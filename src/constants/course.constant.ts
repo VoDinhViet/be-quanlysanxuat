@@ -1,0 +1,7 @@
+export enum LessonType {
+  VIDEO = 'VIDEO',
+  READING = 'READING',
+  QUIZ = 'QUIZ',
+  ASSIGNMENT = 'ASSIGNMENT',
+  LIVE_SESSION = 'LIVE_SESSION',
+}
