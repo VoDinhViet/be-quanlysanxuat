@@ -7,19 +7,19 @@ import { StringValue } from 'ms';
 class ReflectionVariablesValidator {
   @IsString()
   @IsOptional()
-  AUTH_CONFIRM_EMAIL_EXPIRES: string;
+  AUTH_CONFIRM_EMAIL_EXPIRES?: string;
 
   @IsString()
-  AUTH_JWT_SECRET: string;
+  AUTH_JWT_SECRET!: string;
 
   @IsString()
-  AUTH_JWT_TOKEN_EXPIRES_IN: string;
+  AUTH_JWT_TOKEN_EXPIRES_IN!: string;
 
   @IsString()
-  AUTH_REFRESH_SECRET: string;
+  AUTH_REFRESH_SECRET!: string;
 
   @IsString()
-  AUTH_REFRESH_TOKEN_EXPIRES_IN: string;
+  AUTH_REFRESH_TOKEN_EXPIRES_IN!: string;
 }
 
 export default registerAs<AuthConfig>('auth', () => {

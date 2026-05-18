@@ -5,7 +5,7 @@ import validateConfig from '../utils/validate-config';
 
 class EnvironmentVariablesValidator {
   @IsString()
-  REDIS_URL: string;
+  REDIS_URL!: string;
 }
 
 export default registerAs<RedisConfig>('redis', () => {

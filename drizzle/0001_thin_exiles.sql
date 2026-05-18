@@ -1,1 +1,0 @@
-ALTER TABLE "users" ADD COLUMN "is_locked" boolean DEFAULT false NOT NULL;
