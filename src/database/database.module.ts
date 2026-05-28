@@ -20,9 +20,12 @@ export const DRIZZLE = 'DRIZZLE';
         const max = configService.get('database.maxConnections', {
           infer: true,
         });
+        const ssl = configService.get('database.ssl', {
+          infer: true,
+        });
 
         const queryClient = postgres(databaseUrl, {
-          ssl: 'verify-full',
+          ssl,
           max,
         });
         return drizzle(queryClient, { schema });
