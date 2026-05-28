@@ -6,7 +6,7 @@ import { User } from '../../decorators/user.decorator';
 import { AuthService } from './auth.service';
 import { LoginReqDto } from './dto/login.req.dto';
 import { LoginResDto } from './dto/login.res.dto';
-import { MeResDto } from './dto/me.res.dto';
+import { CurrentUserResDto } from './dto/current-user.res.dto';
 import type { JwtPayloadType } from './types/jwt-payload.type';
 
 @ApiTags('Auth')
@@ -25,10 +25,10 @@ export class AuthController {
 
   @Get('me')
   @ApiAuth({
-    type: MeResDto,
+    type: CurrentUserResDto,
     summary: 'Get current account detail',
   })
-  getMe(@User() user: JwtPayloadType): Promise<MeResDto> {
-    return this.authService.getMe(user.sub);
+  getCurrentUser(@User() user: JwtPayloadType): Promise<CurrentUserResDto> {
+    return this.authService.getCurrentUser(user.sub);
   }
 }

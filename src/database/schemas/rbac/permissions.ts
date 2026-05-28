@@ -13,12 +13,12 @@ export const permissions = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => ({
-    codeUnique: uniqueIndex('permissions_code_unique').on(table.code),
-    moduleResourceActionUnique: uniqueIndex('permissions_module_resource_action_unique').on(
+  (table) => [
+    uniqueIndex('permissions_code_unique').on(table.code),
+    uniqueIndex('permissions_module_resource_action_unique').on(
       table.module,
       table.resource,
       table.action,
     ),
-  }),
+  ],
 );

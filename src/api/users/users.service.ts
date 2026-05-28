@@ -10,7 +10,7 @@ import { OrderBy } from '../../constants/app.constant';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database } from '../../database/database.type';
-import { roles, users, UserStatus } from '../../database/schemas';
+import { roles, RoleStatus, users, UserStatus } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { ChangeUserPasswordReqDto } from './dto/change-password.req.dto';
 import { CreateUserReqDto } from './dto/create-user.req.dto';
@@ -53,7 +53,16 @@ export class UsersService {
   }
 
   async getUserDetail(userId: string): Promise<UserResDto> {
-    const user = await this.findUserById(userId);
+    const user = await this.db.query.users.findFirst({
+      where: eq(users.id, userId),
+      with: {
+        role: true,
+      },
+    });
+
+    if (!user) {
+      throw new AppException(ErrorCode.E002, HttpStatus.NOT_FOUND);
+    }
 
     return plainToInstance(UserResDto, user, {
       excludeExtraneousValues: true,
@@ -94,10 +103,10 @@ export class UsersService {
     const [user] = await this.db
       .update(users)
       .set({
-        ...(reqDto.email !== undefined ? { email: reqDto.email } : {}),
-        ...(reqDto.fullName !== undefined ? { fullName: reqDto.fullName } : {}),
-        ...(reqDto.roleId !== undefined ? { roleId: reqDto.roleId } : {}),
-        ...(reqDto.status !== undefined ? { status: reqDto.status } : {}),
+        email: reqDto.email,
+        fullName: reqDto.fullName,
+        roleId: reqDto.roleId,
+        status: reqDto.status,
         updatedAt: new Date(),
       })
       .where(eq(users.id, userId))
@@ -123,30 +132,15 @@ export class UsersService {
     return this.getUserDetail(user.id);
   }
 
-  private async findUserById(userId: string) {
-    const user = await this.db.query.users.findFirst({
-      where: eq(users.id, userId),
-      with: {
-        role: true,
-      },
-    });
-
-    if (!user) {
-      throw new AppException(ErrorCode.E002, HttpStatus.NOT_FOUND);
-    }
-
-    return user;
-  }
-
   private async ensureUserExists(userId: string): Promise<void> {
-    const user = await this.db.query.users.findFirst({
+    const existingUser = await this.db.query.users.findFirst({
       columns: {
         id: true,
       },
       where: eq(users.id, userId),
     });
 
-    if (!user) {
+    if (!existingUser) {
       throw new AppException(ErrorCode.E002, HttpStatus.NOT_FOUND);
     }
   }
@@ -156,14 +150,14 @@ export class UsersService {
       ? and(eq(users.email, email), ne(users.id, ignoredUserId))
       : eq(users.email, email);
 
-    const user = await this.db.query.users.findFirst({
+    const existingUser = await this.db.query.users.findFirst({
       columns: {
         id: true,
       },
       where,
     });
 
-    if (user) {
+    if (existingUser) {
       throw new AppException(ErrorCode.E003, HttpStatus.CONFLICT);
     }
   }
@@ -181,7 +175,7 @@ export class UsersService {
       where: eq(roles.id, roleId),
     });
 
-    if (!role || role.status !== 'active') {
+    if (!role || role.status !== RoleStatus.Active) {
       throw new AppException(ErrorCode.E002, HttpStatus.NOT_FOUND);
     }
   }

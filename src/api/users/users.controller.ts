@@ -55,7 +55,7 @@ export class UsersController {
     type: UserResDto,
     summary: 'Update user',
   })
-  update(
+  updateUser(
     @UUIDParam('userId') userId: string,
     @Body() reqDto: UpdateUserReqDto,
   ): Promise<UserResDto> {
@@ -68,7 +68,7 @@ export class UsersController {
     type: UserResDto,
     summary: 'Change user password',
   })
-  changePassword(
+  changeUserPassword(
     @UUIDParam('userId') userId: string,
     @Body() reqDto: ChangeUserPasswordReqDto,
   ): Promise<UserResDto> {

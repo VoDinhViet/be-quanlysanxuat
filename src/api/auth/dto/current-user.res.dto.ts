@@ -14,7 +14,7 @@ import { UserStatus } from '../../../database/schemas';
 import { AccountRoleResDto } from './role.res.dto';
 
 @Exclude()
-export class MeResDto {
+export class CurrentUserResDto {
   @Expose()
   @UUIDField()
   id!: string;

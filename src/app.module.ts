@@ -11,6 +11,7 @@ import { RedisModule } from './redis/redis.module';
 import { RolesGuard } from './guards/roles.guard';
 import { AuthModule } from './api/auth/auth.module';
 import { UsersModule } from './api/users/users.module';
+import { RolesModule } from './api/roles/roles.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { UsersModule } from './api/users/users.module';
     RedisModule,
     AuthModule,
     UsersModule,
+    RolesModule,
   ],
 
   controllers: [AppController],

@@ -177,19 +177,16 @@ Read these files before non-trivial code changes:
 
 ```text
 docs/architecture.md
-docs/coding-rules.md
+docs/coding-standards.md
 docs/api-standards.md
 docs/database-rules.md
-docs/auth-rbac.md
-docs/security.md
-docs/testing.md
 ```
 
-Workflow and module docs:
+Module specs:
 
 ```text
-docs/workflows/auth.md
-docs/modules/users.md
+docs/module-specs/auth.md
+docs/module-specs/users.md
 ```
 
 Agent instructions:

@@ -11,11 +11,11 @@ import { ErrorCode } from '../../constants/error-code.constant';
 import { Role } from '../../constants/role.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database } from '../../database/database.type';
-import { UserStatus, users } from '../../database/schemas';
+import { RoleStatus, UserStatus, users } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { LoginReqDto } from './dto/login.req.dto';
 import { LoginResDto } from './dto/login.res.dto';
-import { MeResDto } from './dto/me.res.dto';
+import { CurrentUserResDto } from './dto/current-user.res.dto';
 import { JwtPayloadType } from './types/jwt-payload.type';
 
 @Injectable()
@@ -32,7 +32,15 @@ export class AuthService {
     const user = await this.db.query.users.findFirst({
       where: eq(users.email, dto.email),
       with: {
-        role: true,
+        role: {
+          with: {
+            rolePermissions: {
+              with: {
+                permission: true,
+              },
+            },
+          },
+        },
       },
     });
 
@@ -42,7 +50,7 @@ export class AuthService {
 
     const isPasswordValid = await compare(dto.password, user.password);
 
-    if (!isPasswordValid || user.role?.status === 'inactive') {
+    if (!isPasswordValid || user.role?.status === RoleStatus.Inactive) {
       this.throwInvalidCredentials();
     }
 
@@ -61,6 +69,12 @@ export class AuthService {
       LoginResDto,
       {
         userId: user.id,
+        roleCode: user.role?.code,
+        permissions:
+          user.role?.rolePermissions
+            .map((rolePermission) => rolePermission.permission)
+            .filter((permission) => permission.isActive)
+            .map((permission) => permission.code) ?? [],
         accessToken,
         refreshToken,
         tokenExpires: this.getAccessTokenExpiresAt(),
@@ -69,7 +83,7 @@ export class AuthService {
     );
   }
 
-  async getMe(userId: string): Promise<MeResDto> {
+  async getCurrentUser(userId: string): Promise<CurrentUserResDto> {
     const user = await this.db.query.users.findFirst({
       where: eq(users.id, userId),
       with: {
@@ -90,7 +104,7 @@ export class AuthService {
     }
 
     return plainToInstance(
-      MeResDto,
+      CurrentUserResDto,
       {
         ...user,
         permissions:

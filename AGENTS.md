@@ -14,12 +14,11 @@
 Read these files before non-trivial code changes:
 
 - `docs/architecture.md`
-- `docs/coding-rules.md`
+- `docs/coding-standards.md`
 - `docs/api-standards.md`
 - `docs/database-rules.md`
-- `docs/auth-rbac.md`
-- `docs/security.md`
-- `docs/testing.md`
+
+Read the relevant module spec under `docs/module-specs/` before changing an existing API module.
 
 ## Codex Workflow
 
