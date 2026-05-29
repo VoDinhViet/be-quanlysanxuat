@@ -22,6 +22,7 @@
     "db:seed:reset-data": "ts-node src/database/seeds/reset-data.seed.ts",
     "db:seed:rbac": "ts-node src/database/seeds/rbac.seed.ts",
     "db:seed:fake-clients": "ts-node src/database/seeds/fake-clients.seed.ts",
+    "db:seed:update-user-codes": "ts-node src/database/seeds/update-user-codes.seed.ts",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio"
   },
