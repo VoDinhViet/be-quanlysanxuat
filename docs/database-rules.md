@@ -1,243 +1,164 @@
 # Database Standards
 
-## Database Iron Laws
+Rules and conventions for Drizzle schema design, queries, transactions, seed scripts, and migration workflows.
 
-- Use `generatedAlwaysAsIdentity()` for PostgreSQL integer/generated primary keys. Never use `serial()`.
-- Never use `drizzle-kit push` in production or shared environments. Use `pnpm db:generate` and `pnpm db:migrate`.
-- Define `relations()` alongside table definitions whenever the relational query API may use nested `with:` clauses.
-- Never delete, rename, or reorder applied migration files because `__drizzle_migrations__` tracks applied migration checksums.
-- Import query operators such as `eq`, `and`, `or`, `gt`, and `inArray` from `drizzle-orm`. Do not use raw strings or custom predicates for client-driven filters.
+---
 
-## Naming
+## 1. Schema Definitions & Primary Keys
 
-Tables:
+*   **Rule:** Use `camelCase` keys in TypeScript, mapped explicitly to `snake_case` column names in the database. For numeric primary keys, always use `generatedAlwaysAsIdentity()`. Never use `serial()`. Export all schemas via `src/database/schemas/index.ts`.
 
-- snake_case
-- plural business nouns when the table stores a collection, for example `users`, `roles`, `sales_orders`.
+### Examples
 
-Columns:
+*   **Bad (Negative):**
+    ```ts
+    // Violations: PascalCase keys, missing explicit column mapping, using serial()!
+    export const products = pgTable('products', {
+      Id: serial('id').primaryKey(),
+      ProductName: text('product_name'),
+    });
+    ```
 
-- snake_case
-- entity-specific foreign keys, for example `user_id`, `role_id`, `sales_order_id`.
+*   **Good (Positive):**
+    ```ts
+    import { integer, pgTable, text } from 'drizzle-orm/pg-core';
 
-Entity properties:
+    export const products = pgTable('products', {
+      id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
+      productName: text('product_name').notNull(),
+    });
+    ```
 
-- camelCase
-- map to snake_case database names in Drizzle schemas.
+---
 
-Example:
+## 2. Foreign Keys & Relations
 
-```ts
-export const users = pgTable('users', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  fullName: varchar('full_name', { length: 255 }),
-  roleId: uuid('role_id'),
-});
-```
+*   **Rule:** Establish explicit foreign key constraints using `.references()`. Centralize relations in `relations()` blocks adjacent to table definitions to support clean nested queries via the Drizzle `with:` API.
 
-## Required Columns
+### Examples
 
-Most business entities:
+*   **Bad (Negative):**
+    ```ts
+    // Violations: Vague foreign key definition, missing relational model metadata
+    export const orders = pgTable('orders', {
+      id: uuid('id').defaultRandom().primaryKey(),
+      userId: uuid('user_id'), // No foreign key constraint!
+    });
+    ```
 
-- `id`
-- `created_at`
-- `updated_at`
-- `deleted_at` if soft delete is required
-- `created_by` when ownership/audit is important
-- `updated_by` when ownership/audit is important
-- `deleted_by` when soft delete is required and the actor matters
+*   **Good (Positive):**
+    ```ts
+    import { pgTable, uuid, relations } from 'drizzle-orm';
+    import { users } from './users';
 
-Rules:
+    export const orders = pgTable('orders', {
+      id: uuid('id').defaultRandom().primaryKey(),
+      userId: uuid('user_id')
+        .notNull()
+        .references(() => users.id, { onDelete: 'restrict' }), // Cascade/Restrict set intentionally
+    });
 
-- Use `createdAt`, `updatedAt`, and `deletedAt` as TypeScript property names.
-- Use `createdBy`, `updatedBy`, and `deletedBy` as TypeScript property names.
-- Set `createdAt` with `.defaultNow().notNull()`.
-- Set `updatedAt` explicitly on updates.
-- Use `deletedAt` for soft delete instead of hard deleting business records.
-- Use audit actor columns for important business records such as orders, warehouse documents, approvals, payments, and permission changes.
+    export const ordersRelations = relations(orders, ({ one }) => ({
+      user: one(users, {
+        fields: [orders.userId],
+        references: [users.id],
+      }),
+    }));
+    ```
 
-## Identifier Rules
+---
 
-- UUID is preferred for public/business entity identifiers.
-- Use integer identity primary keys only when the data model intentionally needs generated numeric IDs.
-- If using an integer/generated primary key, always use `generatedAlwaysAsIdentity()`.
-- Never use `serial()`.
-- Do not expose predictable numeric IDs publicly when enumeration would be risky.
+## 3. Typed Queries vs Raw SQL
 
-## Data Type Rules
+*   **Rule:** Always import query operators (`eq`, `and`, `or`, `inArray`, `count`) directly from `drizzle-orm`. Never use string concatenation to build raw SQL queries.
 
-- Use `timestamp(...)` for business timestamps.
-- Use `date` only for date-only values such as due dates or working dates.
-- Use `numeric` or integer minor units for money. Do not use floating point types for money.
-- Use integer quantities only when fractional quantities are impossible.
-- Use `numeric` for fractional quantities, weights, ratios, and measurements.
-- Use `boolean(...).notNull().default(false)` for flags unless the business needs three states.
-- Use `text` for unbounded text and `varchar` when a real length limit exists.
-- Use `pgEnum` for stable statuses and business states.
-- Do not store JSON when the fields need filtering, sorting, joining, or constraints.
+### Examples
 
-## Null And Default Rules
+*   **Bad (Negative):**
+    ```ts
+    // Violations: Dangerous string concatenation (SQL injection vulnerability) and raw query execution
+    const keyword = req.query.q;
+    const usersList = await db.execute(sql`SELECT * FROM users WHERE email = '${keyword}'`);
+    ```
 
-- Columns are `notNull()` by default unless the business explicitly allows missing values.
-- Nullable columns must have a clear business reason.
-- Prefer explicit defaults for status, boolean, and timestamp columns.
-- Do not use empty strings as a replacement for `null`.
-- For optional request fields, distinguish omitted `undefined` from intentional `null`.
-- Do not trust calculated values from clients; calculate totals, balances, and statuses on the server.
+*   **Good (Positive):**
+    ```ts
+    import { and, eq, ilike } from 'drizzle-orm';
+    
+    const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
+    const usersList = await db.query.users.findMany({
+      where: and(
+        keyword ? ilike(users.email, keyword) : undefined,
+        eq(users.status, UserStatus.ACTIVE)
+      ),
+    });
+    ```
 
-## Constraint Rules
+---
 
-- Use `uniqueIndex` for business codes, emails, SKUs, and other stable unique values.
-- Use composite unique indexes for scoped uniqueness, for example code unique within a tenant, warehouse, or document.
-- Use `.references()` for stable foreign keys.
-- Always choose `onDelete` behavior intentionally: `restrict`, `cascade`, `set null`, or `no action`.
-- Use `cascade` only for dependent child records that cannot stand alone.
-- Use `set null` only when the relation is optional and historical data remains valid.
-- Use `restrict` or `no action` for important business records that should not disappear.
-- Add check constraints for numeric values that cannot be negative when Drizzle support/project pattern allows it.
-- Remember: Drizzle `relations()` do not create database foreign keys.
+## 4. Multi-Step Writes & Transactions
 
-## Index Rules
+*   **Rule:** Wrap all operations that write to multiple tables, verify current state before state transitions, or check stock balances inside a `db.transaction(...)` block. Check and update status inside the transaction to prevent race conditions.
 
-- Index searchable columns.
-- Index foreign keys and frequent filters.
-- Add composite indexes that match real query patterns, not every possible column combination.
-- Index columns used by common `orderBy` queries when result sets can grow large.
-- Avoid redundant indexes that duplicate a unique index or a composite index prefix.
-- Review indexes when adding new list endpoints, search filters, or reporting queries.
+### Examples
 
-## Query Rules
+*   **Bad (Negative):**
+    ```ts
+    // Violations: Separate queries without transaction! If inserting order items fails, 
+    // the parent order remains stranded (partial database write).
+    async createOrder(reqDto: CreateOrderReqDto) {
+      const [order] = await this.db.insert(orders).values(reqDto).returning();
+      for (const item of reqDto.items) {
+        await this.db.insert(orderItems).values({ ...item, orderId: order.id });
+      }
+    }
+    ```
 
-- Avoid N+1 queries. Use joins, relational queries with `with:`, or batched queries.
-- Select only the columns needed for the use case when loading large records or sensitive fields.
-- Never pass raw client-provided table names, column names, SQL, or sort fields into queries.
-- Import query operators and helpers such as `eq`, `and`, `or`, `gt`, `inArray`, and `count` from `drizzle-orm`.
-- Do not alias `count` as `drizzleCount`; import and use `count()` directly.
-- Use raw SQL only when Drizzle cannot express the query cleanly.
-- Raw SQL must be parameterized and must not concatenate client input.
-- Whitelist dynamic sort and filter fields.
+*   **Good (Positive):**
+    ```ts
+    async createOrder(reqDto: CreateOrderReqDto) {
+      return this.db.transaction(async (tx) => {
+        const [order] = await tx.insert(orders).values(reqDto).returning();
+        
+        const itemRows = reqDto.items.map(item => ({
+          ...item,
+          orderId: order.id,
+        }));
+        
+        await tx.insert(orderItems).values(itemRows);
+        return order;
+      });
+    }
+    ```
 
-## Soft Delete Rules
+---
 
-- Do not hard delete business records unless the data is temporary, technical, or explicitly approved.
-- Use `deletedAt` for soft delete.
-- Use `deletedBy` when the actor matters.
-- Default list/detail queries for business records must exclude soft-deleted rows.
-- Unique indexes must account for soft delete when the business allows recreating the same code after deletion.
-- Cascading hard deletes are allowed only for technical child rows that have no business/audit value.
+## 5. Seed Script Idempotency
 
-## Transactions And Concurrency
+*   **Rule:** All database seeds must be fully idempotent. Use `.onConflictDoNothing()` or `.onConflictDoUpdate()` on every write command to support infinite rerun safety without duplicating rows.
 
-- Use transactions for multi-step operations.
-- In a transaction, read the latest state before writing state transitions.
-- Approval, payment, warehouse import/export, and stock movement flows must validate current status inside the transaction.
-- Prevent double-submit/double-approval by checking the current status before update.
-- Prefer idempotency keys or unique business references for external callbacks and imports.
-- Keep transactions short. Do not perform slow network calls inside an open database transaction.
+### Examples
 
-## Transactions Required
+*   **Bad (Negative):**
+    ```ts
+    // Violations: Will throw conflict/duplicate errors on the second run!
+    await db.insert(roles).values([
+      { code: 'ADMIN', name: 'Quản trị viên' }
+    ]);
+    ```
 
-- create order + items
-- warehouse import
-- warehouse export
-- payment
-- approval workflow
-- permission changes with role assignments
-- any write flow that updates more than one table
+*   **Good (Positive):**
+    ```ts
+    await db
+      .insert(roles)
+      .values([
+        { code: 'ADMIN', name: 'Quản trị viên' }
+      ])
+      .onConflictDoNothing({ target: roles.code }); // Infinite rerun safe
+    ```
 
-## Seed Rules
+---
 
-- Seed files must use `<name>.seed.ts` naming, for example `rbac.seed.ts`.
-- Seeds must be idempotent.
-- Use `onConflictDoNothing` or `onConflictDoUpdate` for repeated seed runs.
-- Seed stable codes and permissions with explicit business values.
-- Do not seed environment-specific secrets into source-controlled files.
-- Do not delete user/business data from seeds.
+## 6. Migration Workflow
 
-## Migration Rules
-
-- Generate migrations with `pnpm db:generate`.
-- Apply migrations with `pnpm db:migrate`.
-- Do not use `drizzle-kit push` in production or shared environments.
-- Do not run migrations without explicit user approval.
-- Never delete, rename, reorder, or edit applied migration files.
-- Review generated SQL before applying migrations.
-- Destructive changes require a data migration/backfill plan.
-- Large table changes require a rollout plan that avoids long locks where possible.
-- Keep schema files and generated migration files in sync.
-
-## Drizzle Rules
-
-Use Drizzle PostgreSQL core imports from:
-
-```ts
-import { index, integer, pgTable, text, timestamp, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
-```
-
-Use camelCase TypeScript keys and snake_case database names.
-
-```ts
-export const users = pgTable(
-  'users',
-  {
-    id: uuid('id').defaultRandom().primaryKey(),
-    fullName: varchar('full_name', { length: 255 }),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-  },
-  (table) => [index('users_full_name_idx').on(table.fullName)],
-);
-```
-
-Numeric primary key example:
-
-```ts
-export const productionLines = pgTable('production_lines', {
-  id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
-  name: text('name').notNull(),
-});
-```
-
-Rules:
-
-- Export schemas and relations through `src/database/schemas/index.ts`.
-- Use `generatedAlwaysAsIdentity()` for PostgreSQL integer/generated primary keys.
-- Do not use `serial()`.
-- Use `pgEnum` for stable database statuses.
-- Use `.references()` for stable foreign keys.
-- Use Drizzle `relations()` for relational queries.
-- Remember: Drizzle relations do not create database foreign keys.
-- Use `uniqueIndex` for business codes.
-- Use `index` for foreign keys and frequent filters.
-- Use the current Drizzle Kit index callback array style for table extra config.
-- Do not use the deprecated object-returning extra config style.
-- Use `$inferSelect` and `$inferInsert` for database types when needed.
-- Use `.returning()` for PostgreSQL inserts/updates when the service needs the changed row.
-- Set `updatedAt` explicitly on updates.
-- Use `db.transaction(...)` for multi-step writes.
-- Use `onConflictDoNothing` / `onConflictDoUpdate` for idempotent seeds/imports.
-- Do not run migrations without explicit user approval.
-
-## Migration Commands
-
-```text
-pnpm db:generate
-pnpm db:migrate
-```
-
-Review generated SQL before running migrations.
-Do not run migrations without explicit user approval.
-Do not use `drizzle-kit push` in production or shared environments.
-Do not delete, rename, reorder, or edit applied migration files.
-
-Extra config example:
-
-```ts
-export const roles = pgTable(
-  'roles',
-  {
-    id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
-    code: text('code').notNull(),
-  },
-  (table) => [uniqueIndex('roles_code_unique').on(table.code)],
-);
-```
+*   **Rule:** Always generate migrations using `pnpm db:generate`. Run migrations using `pnpm db:migrate`. Never run `drizzle-kit push` in production/shared environments. Review SQL files before applying migrations. Never edit, reorder, or rename applied migrations.

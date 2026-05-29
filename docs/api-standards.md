@@ -1,133 +1,165 @@
 # API Standards
 
-## 1. General Rules
+Guidelines for writing APIs that are robust, secure, and predictable for the frontend and external consumers.
 
-- Use DTOs for request validation and response shaping.
-- Validate route params, query params, and request bodies at the API boundary.
-- Route params should be entity-specific.
+---
 
-```text
-GET /users/:userId
-GET /roles/:roleId
-```
+## 1. Route Design & Validation
 
-- Avoid generic `:id` in public API contracts when the entity is known.
-- Dynamic sorting must use a whitelist of allowed fields. Do not pass raw column names from clients into Drizzle or SQL.
+*   **Rule:** Always use entity-specific route parameters (e.g., `:userId`, `:roleId`) instead of generic `:id`. All incoming queries, parameters, and bodies must be validated at the API boundary using request DTOs.
 
-## 2. Success Responses
+### Examples
 
-Single-resource endpoints currently return DTO objects directly.
+*   **Bad (Negative):**
+    ```text
+    GET /api/users/:id             # Ambiguous route param
+    
+    // In Controller
+    async getUserDetail(@Param() params: any) { // Unvalidated param
+      return this.usersService.getUserDetail(params.id);
+    }
+    ```
 
-```json
-{
-  "id": "uuid",
-  "email": "admin@example.com"
-}
-```
+*   **Good (Positive):**
+    ```text
+    GET /api/v1/users/:userId
+    
+    // In Controller
+    @Get(':userId')
+    async getUserDetail(@UUIDParam('userId') userId: string): Promise<UserResDto> {
+      return this.usersService.getUserDetail(userId);
+    }
+    ```
 
-Paginated endpoints use `OffsetPaginatedDto` shape:
+---
 
-```json
-{
-  "data": [],
-  "pagination": {
-    "currentPage": 1,
-    "limit": 20,
-    "nextPage": 2,
-    "previousPage": null,
-    "totalRecords": 100,
-    "totalPages": 5
-  }
-}
-```
+## 2. Success Responses & Pagination
 
-Use `PageOptionsDto` for offset pagination fields:
+*   **Rule:** Single resource endpoints return DTO objects directly. Paginated endpoints must use `OffsetPaginatedDto` containing `data` array and `pagination` metadata. Use `PageOptionsDto` for pagination inputs.
 
-```text
-page
-limit
-q
-order
-```
+### Examples
 
-## 3. Error Responses
+*   **Bad (Negative):**
+    ```ts
+    // Controller returns raw array of database entities without pagination structure
+    @Get()
+    async getUsers(): Promise<UserEntity[]> {
+      return this.usersService.getUsersRaw(); 
+    }
+    ```
 
-Business errors use `AppException`.
+*   **Good (Positive):**
+    ```ts
+    @Get()
+    async getUsers(@Query() reqDto: GetUsersReqDto): Promise<OffsetPaginatedDto<UserResDto>> {
+      return this.usersService.getUsers(reqDto);
+    }
+    
+    // Returns structured payload:
+    // {
+    //   "data": [ ... ],
+    //   "pagination": {
+    //     "currentPage": 1,
+    //     "limit": 20,
+    //     "nextPage": 2,
+    //     "previousPage": null,
+    //     "totalRecords": 100,
+    //     "totalPages": 5
+    //   }
+    // }
+    ```
 
-Current constructor:
+---
 
-```ts
-new AppException(errorCode: ErrorCode, status?: HttpStatus, message?: string)
-```
+## 3. Error Responses & exceptions
 
-Examples:
+*   **Rule:** Throw `AppException` for expected business/API validations and failures. Use error codes registered in `ErrorCode` enum. Let `GlobalExceptionFilter` normalize unexpected errors. Do not leak raw SQL errors or developer stack traces.
 
-```ts
-throw new AppException(ErrorCode.E002, HttpStatus.NOT_FOUND);
+### Examples
 
-throw new AppException(ErrorCode.E004, HttpStatus.UNAUTHORIZED, 'Invalid email or password');
-```
+*   **Bad (Negative):**
+    ```ts
+    if (!user) {
+      throw new Error('User does not exist'); // Unhandled runtime error
+    }
+    
+    try {
+      await db.insert(users).values(data);
+    } catch (e) {
+      throw new BadRequestException(e.message); // Dangerous: leaks raw database constraints/names!
+    }
+    ```
 
-Rules:
+*   **Good (Positive):**
+    ```ts
+    if (!user) {
+      throw new AppException(ErrorCode.E002, HttpStatus.NOT_FOUND); // Structured error
+    }
+    
+    // If database constraints fail, GlobalExceptionFilter automatically handles it 
+    // and returns a safe, sanitized message (e.g. mapping constraint 23505 to Conflict)
+    ```
 
-- Add new values to `src/constants/error-code.constant.ts` before using new business errors.
-- Use `AppException` for expected business/API errors.
-- Use Nest framework exceptions only for guards, validation pipes, or framework-level errors.
-- `GlobalExceptionFilter` normalizes all errors.
-- Validation errors return `details`.
-- Postgres `23505` maps to `409`.
-- Postgres `23503` maps to `400`.
+---
 
-## 4. Security Rules
+## 4. Sorting & Filter Whitelisting
 
-### Authentication
+*   **Rule:** Never trust dynamic fields directly from the client. Whitelist allowed sort/filter properties to prevent unauthorized data access or SQL injection.
 
-- JWT/session is required by default.
-- Private APIs must use the auth guard.
-- Public APIs must be explicitly marked with `@ApiPublic(...)`.
+### Examples
 
-### Authorization
+*   **Bad (Negative):**
+    ```ts
+    // In Service - blindly executing client-provided sort field in Drizzle!
+    async getUsers(reqDto: GetUsersReqDto) {
+      const orderColumn = reqDto.sortBy; // e.g. "password_hash" or "role_id; DROP TABLE users;"
+      return this.db.select().from(users).orderBy(sql`${orderColumn}`);
+    }
+    ```
 
-- Protected business APIs must use `@Permissions('resource:action')`.
-- Ownership validation is required when a user can access only their own resource.
-- Do not rely only on frontend permission checks.
+*   **Good (Positive):**
+    ```ts
+    // In Service - using a strict whitelist
+    async getUsers(reqDto: GetUsersReqDto) {
+      const allowedFields = {
+        email: users.email,
+        fullName: users.fullName,
+        createdAt: users.createdAt,
+      };
 
-### Validation
+      const orderByColumn = allowedFields[reqDto.sortBy] ?? users.createdAt;
+      const orderDirection = reqDto.order === 'desc' ? desc(orderByColumn) : asc(orderByColumn);
 
-- Validate input through DTOs, params, and pipes.
-- Sanitize input before using it in search, filtering, export, or display workflows.
-- Validate enum values with enum DTO decorators or pipes.
-- Whitelist dynamic sort and filter fields.
+      return this.db.select().from(users).orderBy(orderDirection);
+    }
+    ```
 
-### Secrets
+---
 
-Never expose:
+## 5. Secrets Exposure & Logging
 
-- password
-- token
-- secret
-- internal stack trace
-- password hash
-- connection string
+*   **Rule:** Response DTOs must never serialize passwords, tokens, API keys, or stack traces. Critical authentication secrets must never be logged in application logs.
 
-### Logging
+### Examples
 
-Never log:
+*   **Bad (Negative):**
+    ```ts
+    console.log('Incoming login attempt:', reqDto); // Leaks plaintext password in log!
+    
+    return {
+      message: 'Login successful',
+      token: token,
+      user: userRow, // Leaks password hash to client!
+    };
+    ```
 
-- password
-- token
-- credentials
-- password hash
-- authorization header
-- connection string
-
-### Dangerous Operations
-
-Require validation and permission checks:
-
-- approve
-- reject
-- cancel
-- delete
-- import/export warehouse
-- permission changes
+*   **Good (Positive):**
+    ```ts
+    console.log('Login attempt for email:', reqDto.email); // Safe logging
+    
+    return {
+      message: 'Login successful',
+      token: token,
+      user: plainToInstance(UserResDto, userRow, { excludeExtraneousValues: true }), // Sanitized response
+    };
+    ```

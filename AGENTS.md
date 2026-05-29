@@ -16,7 +16,9 @@ Read these files before non-trivial code changes:
 - `docs/architecture.md`
 - `docs/system-flow.md`
 - `docs/module-progress.md`
-- `docs/coding-standards.md`
+- `docs/naming-conventions.md`
+- `docs/typescript-standards.md`
+- `docs/nestjs-standards.md`
 - `docs/api-standards.md`
 - `docs/database-rules.md`
 
