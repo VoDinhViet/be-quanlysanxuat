@@ -1,19 +1,18 @@
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { hash } from 'bcryptjs';
 import { plainToInstance } from 'class-transformer';
-import { and, asc, count as drizzleCount, desc, eq, ilike, ne, or } from 'drizzle-orm';
+import { and, count as drizzleCount, desc, eq, ilike, ne, or } from 'drizzle-orm';
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
-import { PageOptionsDto } from '../../common/dto/offset-pagination/page-options.dto';
-import { OrderBy } from '../../constants/app.constant';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database } from '../../database/database.type';
-import { roles, RoleStatus, users, UserStatus } from '../../database/schemas';
+import { roles, users, UserStatus } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { ChangeUserPasswordReqDto } from './dto/change-password.req.dto';
 import { CreateUserReqDto } from './dto/create-user.req.dto';
+import { GetUsersReqDto } from './dto/get-users.req.dto';
 import { UpdateUserReqDto } from './dto/update-user.req.dto';
 import { UserResDto } from './dto/user.res.dto';
 
@@ -23,13 +22,14 @@ export class UsersService {
 
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
 
-  async getUsers(pageOptions: PageOptionsDto): Promise<OffsetPaginatedDto<UserResDto>> {
-    const keyword = pageOptions.q ? `%${pageOptions.q}%` : undefined;
-    const where = keyword
-      ? or(ilike(users.email, keyword), ilike(users.fullName, keyword))
-      : undefined;
-    const orderBy =
-      pageOptions.order === OrderBy.DESC ? desc(users.createdAt) : asc(users.createdAt);
+  async getUsers(reqDto: GetUsersReqDto): Promise<OffsetPaginatedDto<UserResDto>> {
+    const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
+    const where = and(
+      keyword ? or(ilike(users.email, keyword), ilike(users.fullName, keyword)) : undefined,
+      reqDto.status ? eq(users.status, reqDto.status) : undefined,
+      reqDto.roleId ? eq(users.roleId, reqDto.roleId) : undefined,
+    );
+    const orderBy = desc(users.createdAt);
 
     const [entities, count] = await Promise.all([
       this.db.query.users.findMany({
@@ -37,8 +37,8 @@ export class UsersService {
         with: {
           role: true,
         },
-        limit: pageOptions.limit,
-        offset: pageOptions.offset,
+        limit: reqDto.limit,
+        offset: reqDto.offset,
         orderBy,
       }),
       this.db.select({ total: drizzleCount() }).from(users).where(where),
@@ -48,7 +48,7 @@ export class UsersService {
       plainToInstance(UserResDto, entities, {
         excludeExtraneousValues: true,
       }),
-      new OffsetPaginationDto(count[0]?.total ?? 0, pageOptions),
+      new OffsetPaginationDto(count[0]?.total ?? 0, reqDto),
     );
   }
 
@@ -81,8 +81,11 @@ export class UsersService {
         email: reqDto.email,
         password,
         fullName: reqDto.fullName,
+        phoneNumber: reqDto.phoneNumber,
+        dateOfBirth: reqDto.dateOfBirth,
+        gender: reqDto.gender,
         roleId: reqDto.roleId,
-        status: reqDto.status ?? UserStatus.Active,
+        status: reqDto.status ?? UserStatus.ACTIVE,
       })
       .returning();
 
@@ -105,6 +108,9 @@ export class UsersService {
       .set({
         email: reqDto.email,
         fullName: reqDto.fullName,
+        phoneNumber: reqDto.phoneNumber,
+        dateOfBirth: reqDto.dateOfBirth,
+        gender: reqDto.gender,
         roleId: reqDto.roleId,
         status: reqDto.status,
         updatedAt: new Date(),
@@ -170,12 +176,12 @@ export class UsersService {
     const role = await this.db.query.roles.findFirst({
       columns: {
         id: true,
-        status: true,
+        isActive: true,
       },
       where: eq(roles.id, roleId),
     });
 
-    if (!role || role.status !== RoleStatus.Active) {
+    if (!role || !role.isActive) {
       throw new AppException(ErrorCode.E002, HttpStatus.NOT_FOUND);
     }
   }

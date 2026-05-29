@@ -1,4 +1,4 @@
-import { HttpStatus, Inject, Injectable, UnauthorizedException } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { compare } from 'bcryptjs';
@@ -11,7 +11,7 @@ import { ErrorCode } from '../../constants/error-code.constant';
 import { Role } from '../../constants/role.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database } from '../../database/database.type';
-import { RoleStatus, UserStatus, users } from '../../database/schemas';
+import { UserStatus, users } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { LoginReqDto } from './dto/login.req.dto';
 import { LoginResDto } from './dto/login.res.dto';
@@ -20,6 +20,8 @@ import { JwtPayloadType } from './types/jwt-payload.type';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   private static readonly INVALID_CREDENTIALS_MESSAGE = 'Invalid email or password';
 
   constructor(
@@ -44,13 +46,13 @@ export class AuthService {
       },
     });
 
-    if (!user || user.status !== UserStatus.Active) {
+    if (!user || user.status !== UserStatus.ACTIVE) {
       this.throwInvalidCredentials();
     }
 
     const isPasswordValid = await compare(dto.password, user.password);
 
-    if (!isPasswordValid || user.role?.status === RoleStatus.Inactive) {
+    if (!isPasswordValid || user.role?.isActive === false) {
       this.throwInvalidCredentials();
     }
 
@@ -73,7 +75,6 @@ export class AuthService {
         permissions:
           user.role?.rolePermissions
             .map((rolePermission) => rolePermission.permission)
-            .filter((permission) => permission.isActive)
             .map((permission) => permission.code) ?? [],
         accessToken,
         refreshToken,
@@ -110,7 +111,6 @@ export class AuthService {
         permissions:
           user.role?.rolePermissions
             .map((rolePermission) => rolePermission.permission)
-            .filter((permission) => permission.isActive)
             .map((permission) => permission.code) ?? [],
       },
       { excludeExtraneousValues: true },
@@ -148,7 +148,8 @@ export class AuthService {
       return await this.jwtService.verifyAsync<JwtPayloadType>(token, {
         secret: this.configService.getOrThrow('auth.secret', { infer: true }),
       });
-    } catch {
+    } catch (error) {
+      this.logger.warn(`[Auth] Invalid access token: ${this.getTokenErrorMessage(error)}`);
       throw new UnauthorizedException();
     }
   }
@@ -160,9 +161,18 @@ export class AuthService {
           infer: true,
         }),
       });
-    } catch {
+    } catch (error) {
+      this.logger.warn(`[Auth] Invalid refresh token: ${this.getTokenErrorMessage(error)}`);
       throw new UnauthorizedException();
     }
+  }
+
+  private getTokenErrorMessage(error: unknown): string {
+    if (error instanceof Error) {
+      return `${error.name}: ${error.message}`;
+    }
+
+    return 'Unknown token verification error';
   }
 
   private getAccessTokenExpiresAt(): number {

@@ -9,8 +9,7 @@ import {
 export class IsPasswordConstraint implements ValidatorConstraintInterface {
   validate(value: string) {
     // Regex for: 1 Uppercase, 1 Lowercase, 1 Number, 1 Special character, min 8 chars
-    const regex =
-      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+    const regex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
     return typeof value === 'string' && regex.test(value);
   }
 

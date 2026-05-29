@@ -4,7 +4,7 @@ import { asc, eq } from 'drizzle-orm';
 
 import { DRIZZLE } from '../../database/database.module';
 import type { Database } from '../../database/database.type';
-import { roles, RoleStatus } from '../../database/schemas';
+import { roles } from '../../database/schemas';
 import { RoleOptionResDto } from './dto/role-option.res.dto';
 
 @Injectable()
@@ -19,7 +19,7 @@ export class RolesService {
         name: roles.name,
       })
       .from(roles)
-      .where(eq(roles.status, RoleStatus.Active))
+      .where(eq(roles.isActive, true))
       .orderBy(asc(roles.name));
 
     return plainToInstance(RoleOptionResDto, roleOptions);

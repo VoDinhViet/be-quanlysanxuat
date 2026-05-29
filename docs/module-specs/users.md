@@ -19,11 +19,11 @@ All users endpoints are authenticated and require permissions.
 Decorator:
 
 - `@ApiAuth(..., isPaginated: true)`
-- `@Permissions('employee.update')`
+- `@Permissions('user.update')`
 
 Query DTO:
 
-- `PageOptionsDto`
+- `GetUsersReqDto`
 
 Response:
 
@@ -33,6 +33,8 @@ Business rules:
 
 - Supports pagination.
 - Supports keyword search by email and full name.
+- Supports filtering by `status`.
+- Supports filtering by `roleId`.
 - Sorts by `createdAt` using `pageOptions.order`.
 - Loads each user's role.
 - Must not expose passwords or password hashes.
@@ -42,7 +44,7 @@ Business rules:
 Decorator:
 
 - `@ApiAuth(...)`
-- `@Permissions('employee.update')`
+- `@Permissions('user.update')`
 
 Params:
 
@@ -66,7 +68,7 @@ Errors:
 Decorator:
 
 - `@ApiAuth(..., statusCode: HttpStatus.CREATED)`
-- `@Permissions('employee.create')`
+- `@Permissions('user.create')`
 
 Request DTO:
 
@@ -77,6 +79,9 @@ Request fields:
 - `email`
 - `password`
 - `fullName`
+- `phoneNumber`
+- `dateOfBirth`
+- `gender`
 - `roleId`
 - `status`
 
@@ -90,6 +95,8 @@ Business rules:
 - Password must be hashed before storage.
 - Role must exist and be active when `roleId` is provided.
 - Default status is `UserStatus.Active`.
+- `phoneNumber` is optional.
+- `dateOfBirth` and `gender` are optional.
 - Return the created user detail.
 
 Errors:
@@ -102,7 +109,7 @@ Errors:
 Decorator:
 
 - `@ApiAuth(...)`
-- `@Permissions('employee.update')`
+- `@Permissions('user.update')`
 
 Params:
 
@@ -131,7 +138,7 @@ Errors:
 Decorator:
 
 - `@ApiAuth(...)`
-- `@Permissions('employee.update')`
+- `@Permissions('user.update')`
 
 Params:
 
@@ -157,12 +164,12 @@ Errors:
 
 Current permissions:
 
-- `employee.create`
-- `employee.update`
+- `user.create`
+- `user.update`
 
 Current note:
 
-- `employee.delete` exists in `PermissionCode`, but this module does not currently expose a delete endpoint.
+- `user.delete` exists in `PermissionCode`, but this module does not currently expose a delete endpoint.
 
 ## Dependencies
 

@@ -1,5 +1,6 @@
 export type PermissionCode =
   | 'system.manage'
-  | 'employee.create'
-  | 'employee.update'
-  | 'employee.delete';
+  | 'user.create'
+  | 'user.update'
+  | 'user.delete'
+  | 'client.manage';

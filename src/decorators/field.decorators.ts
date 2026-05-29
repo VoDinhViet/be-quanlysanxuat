@@ -68,9 +68,7 @@ export function NumberField(
 
   if (options.swagger !== false) {
     const { required = true, ...restOptions } = options;
-    decorators.push(
-      ApiProperty({ type: Number, required: !!required, ...restOptions }),
-    );
+    decorators.push(ApiProperty({ type: Number, required: !!required, ...restOptions }));
   }
 
   if (options.int) {
@@ -95,8 +93,7 @@ export function NumberField(
 }
 
 export function NumberFieldOptional(
-  options: Omit<ApiPropertyOptions, 'type' | 'required'> &
-    INumberFieldOptions = {},
+  options: Omit<ApiPropertyOptions, 'type' | 'required'> & INumberFieldOptions = {},
 ): PropertyDecorator {
   return applyDecorators(
     IsOptional({ each: options.each }),
@@ -173,8 +170,7 @@ export function TokenField(
 }
 
 export function StringFieldOptional(
-  options: Omit<ApiPropertyOptions, 'type' | 'required'> &
-    IStringFieldOptions = {},
+  options: Omit<ApiPropertyOptions, 'type' | 'required'> & IStringFieldOptions = {},
 ): PropertyDecorator {
   return applyDecorators(
     IsOptional({ each: options.each }),
@@ -183,8 +179,7 @@ export function StringFieldOptional(
 }
 
 export function PasswordField(
-  options: Omit<ApiPropertyOptions, 'type' | 'minLength'> &
-    IStringFieldOptions = {},
+  options: Omit<ApiPropertyOptions, 'type' | 'minLength'> & IStringFieldOptions = {},
 ): PropertyDecorator {
   const decorators = [StringField({ ...options, minLength: 6 })];
 
@@ -198,8 +193,7 @@ export function PasswordField(
 }
 
 export function PasswordFieldOptional(
-  options: Omit<ApiPropertyOptions, 'type' | 'required' | 'minLength'> &
-    IStringFieldOptions = {},
+  options: Omit<ApiPropertyOptions, 'type' | 'required' | 'minLength'> & IStringFieldOptions = {},
 ): PropertyDecorator {
   return applyDecorators(
     IsOptional({ each: options.each }),
@@ -220,17 +214,14 @@ export function BooleanField(
 
   if (options.swagger !== false) {
     const { required = true, ...restOptions } = options;
-    decorators.push(
-      ApiProperty({ type: Boolean, required: !!required, ...restOptions }),
-    );
+    decorators.push(ApiProperty({ type: Boolean, required: !!required, ...restOptions }));
   }
 
   return applyDecorators(...decorators);
 }
 
 export function BooleanFieldOptional(
-  options: Omit<ApiPropertyOptions, 'type' | 'required'> &
-    IBooleanFieldOptions = {},
+  options: Omit<ApiPropertyOptions, 'type' | 'required'> & IBooleanFieldOptions = {},
 ): PropertyDecorator {
   return applyDecorators(
     IsOptional({ each: options.each }),
@@ -241,10 +232,7 @@ export function BooleanFieldOptional(
 export function EmailField(
   options: Omit<ApiPropertyOptions, 'type'> & IStringFieldOptions = {},
 ): PropertyDecorator {
-  const decorators = [
-    IsEmail(),
-    StringField({ toLowerCase: true, ...options }),
-  ];
+  const decorators = [IsEmail(), StringField({ toLowerCase: true, ...options })];
 
   if (options.nullable) {
     decorators.push(IsNullable());
@@ -254,9 +242,7 @@ export function EmailField(
 
   if (options.swagger !== false) {
     const { required = true, ...restOptions } = options;
-    decorators.push(
-      ApiProperty({ type: String, required: !!required, ...restOptions }),
-    );
+    decorators.push(ApiProperty({ type: String, required: !!required, ...restOptions }));
   }
 
   return applyDecorators(...decorators);
@@ -272,8 +258,7 @@ export function EmailFieldOptional(
 }
 
 export function UUIDField(
-  options: Omit<ApiPropertyOptions, 'type' | 'format' | 'isArray'> &
-    IFieldOptions = {},
+  options: Omit<ApiPropertyOptions, 'type' | 'format' | 'isArray'> & IFieldOptions = {},
 ): PropertyDecorator {
   const decorators = [Type(() => String), IsUUID('4', { each: options.each })];
 
@@ -300,8 +285,7 @@ export function UUIDField(
 }
 
 export function UUIDFieldOptional(
-  options: Omit<ApiPropertyOptions, 'type' | 'required' | 'isArray'> &
-    IFieldOptions = {},
+  options: Omit<ApiPropertyOptions, 'type' | 'required' | 'isArray'> & IFieldOptions = {},
 ): PropertyDecorator {
   return applyDecorators(
     IsOptional({ each: options.each }),
@@ -345,9 +329,7 @@ export function DateField(
 
   if (options.swagger !== false) {
     const { required = true, ...restOptions } = options;
-    decorators.push(
-      ApiProperty({ type: Date, required: !!required, ...restOptions }),
-    );
+    decorators.push(ApiProperty({ type: Date, required: !!required, ...restOptions }));
   }
 
   return applyDecorators(...decorators);
@@ -364,8 +346,7 @@ export function DateFieldOptional(
 
 export function EnumField<TEnum extends object>(
   getEnum: () => TEnum,
-  options: Omit<ApiPropertyOptions, 'type' | 'enum' | 'isArray'> &
-    IEnumFieldOptions = {},
+  options: Omit<ApiPropertyOptions, 'type' | 'enum' | 'isArray'> & IEnumFieldOptions = {},
 ): PropertyDecorator {
   const decorators = [IsEnum(getEnum(), { each: options.each })];
 
@@ -393,8 +374,7 @@ export function EnumField<TEnum extends object>(
 
 export function EnumFieldOptional<TEnum extends object>(
   getEnum: () => TEnum,
-  options: Omit<ApiPropertyOptions, 'type' | 'required' | 'enum'> &
-    IEnumFieldOptions = {},
+  options: Omit<ApiPropertyOptions, 'type' | 'required' | 'enum'> & IEnumFieldOptions = {},
 ): PropertyDecorator {
   return applyDecorators(
     IsOptional({ each: options.each }),
@@ -406,10 +386,7 @@ export function ClassField<TClass extends Constructor>(
   getClass: () => TClass,
   options: Omit<ApiPropertyOptions, 'type'> & IClassFieldOptions = {},
 ): PropertyDecorator {
-  const decorators = [
-    Type(() => getClass()),
-    ValidateNested({ each: options.each }),
-  ];
+  const decorators = [Type(() => getClass()), ValidateNested({ each: options.each })];
 
   if (options.required !== false) {
     decorators.push(IsDefined());
@@ -437,8 +414,7 @@ export function ClassField<TClass extends Constructor>(
 
 export function ClassFieldOptional<TClass extends Constructor>(
   getClass: () => TClass,
-  options: Omit<ApiPropertyOptions, 'type' | 'required'> &
-    IClassFieldOptions = {},
+  options: Omit<ApiPropertyOptions, 'type' | 'required'> & IClassFieldOptions = {},
 ): PropertyDecorator {
   return applyDecorators(
     IsOptional({ each: options.each }),

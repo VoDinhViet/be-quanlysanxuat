@@ -1,15 +1,7 @@
 import { registerAs } from '@nestjs/config';
 import { AppConfig } from './app-config.type';
 import validateConfig from '../utils/validate-config';
-import {
-  IsEnum,
-  IsInt,
-  IsOptional,
-  IsString,
-  IsUrl,
-  Max,
-  Min,
-} from 'class-validator';
+import { IsEnum, IsInt, IsOptional, IsString, IsUrl, Max, Min } from 'class-validator';
 
 import { Environment } from '../constants/app.constant';
 
@@ -66,8 +58,6 @@ export default registerAs<AppConfig>('app', () => {
     apiPrefix: process.env.API_PREFIX || 'api',
     fallbackLanguage: process.env.APP_FALLBACK_LANGUAGE || 'en',
     headerLanguage: process.env.APP_HEADER_LANGUAGE || 'x-custom-lang',
-    corsOrigin: process.env.APP_CORS_ORIGIN
-      ? process.env.APP_CORS_ORIGIN.split(',')
-      : true,
+    corsOrigin: process.env.APP_CORS_ORIGIN ? process.env.APP_CORS_ORIGIN.split(',') : true,
   };
 });

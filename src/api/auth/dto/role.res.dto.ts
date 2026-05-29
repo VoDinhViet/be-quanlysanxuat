@@ -9,7 +9,7 @@ import {
 } from '../../../decorators/field.decorators';
 
 @Exclude()
-export class AccountRoleResDto {
+export class RoleResDto {
   @Expose()
   @UUIDField()
   id!: string;
@@ -28,17 +28,9 @@ export class AccountRoleResDto {
 
   @Expose()
   @BooleanField()
-  isSystem!: boolean;
-
-  @Expose()
-  @StringField()
-  status!: string;
+  isActive!: boolean;
 
   @Expose()
   @DateField()
   createdAt!: Date;
-
-  @Expose()
-  @DateField()
-  updatedAt!: Date;
 }

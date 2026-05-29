@@ -3,15 +3,17 @@ import { Exclude, Expose, Type } from 'class-transformer';
 import {
   ClassFieldOptional,
   DateField,
+  DateFieldOptional,
   EmailField,
   EnumField,
+  EnumFieldOptional,
   StringField,
   StringFieldOptional,
   UUIDField,
   UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
-import { UserStatus } from '../../../database/schemas';
-import { AccountRoleResDto } from './role.res.dto';
+import { UserGender, UserStatus } from '../../../database/schemas';
+import { RoleResDto } from './role.res.dto';
 
 @Exclude()
 export class CurrentUserResDto {
@@ -28,6 +30,14 @@ export class CurrentUserResDto {
   fullName!: string | null;
 
   @Expose()
+  @DateFieldOptional({ nullable: true })
+  dateOfBirth!: Date | null;
+
+  @Expose()
+  @EnumFieldOptional(() => UserGender, { nullable: true })
+  gender!: UserGender | null;
+
+  @Expose()
   @UUIDFieldOptional({ nullable: true })
   roleId!: string | null;
 
@@ -36,9 +46,9 @@ export class CurrentUserResDto {
   status!: UserStatus;
 
   @Expose()
-  @Type(() => AccountRoleResDto)
-  @ClassFieldOptional(() => AccountRoleResDto, { nullable: true })
-  role!: AccountRoleResDto | null;
+  @Type(() => RoleResDto)
+  @ClassFieldOptional(() => RoleResDto, { nullable: true })
+  role!: RoleResDto | null;
 
   @Expose()
   @StringField({ each: true })

@@ -461,7 +461,7 @@ user.status = UserStatus.Active;
 
 - Run the smallest useful verification after code changes.
 - Run targeted tests when logic changes or tests are added.
-- Run `pnpm.cmd run build` when changing modules, controllers, services, guards, decorators, schemas, shared constants, or dependency wiring.
+- Run `pnpm run build` when changing modules, controllers, services, guards, decorators, schemas, shared constants, or dependency wiring.
 - Do not build after docs-only changes unless asked.
 - Report exact commands run and whether they passed.
 

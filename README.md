@@ -95,12 +95,6 @@ Run migrations:
 pnpm.cmd db:migrate
 ```
 
-Seed default users:
-
-```bash
-pnpm.cmd db:seed:default-users
-```
-
 Open Drizzle Studio:
 
 ```bash

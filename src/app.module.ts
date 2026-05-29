@@ -12,6 +12,7 @@ import { RolesGuard } from './guards/roles.guard';
 import { AuthModule } from './api/auth/auth.module';
 import { UsersModule } from './api/users/users.module';
 import { RolesModule } from './api/roles/roles.module';
+import { ClientsModule } from './api/clients/clients.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { RolesModule } from './api/roles/roles.module';
     AuthModule,
     UsersModule,
     RolesModule,
+    ClientsModule,
   ],
 
   controllers: [AppController],

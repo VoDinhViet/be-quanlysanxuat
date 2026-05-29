@@ -54,9 +54,9 @@ Read the relevant module spec under `docs/module-specs/` before changing an exis
 ## Nest CLI Rules
 
 - Use Nest CLI when starting a new module/controller/service:
-  - `pnpm.cmd nest generate module api/<module>`
-  - `pnpm.cmd nest generate controller api/<module> --no-spec`
-  - `pnpm.cmd nest generate service api/<module> --no-spec`
+  - `pnpm nest generate module api/<module>`
+  - `pnpm nest generate controller api/<module> --no-spec`
+  - `pnpm nest generate service api/<module> --no-spec`
 - Use manual file creation for DTOs, types, schemas, tests, or follow-up files that Nest CLI does not generate cleanly.
 - Remove generated boilerplate that does not match the requested business behavior.
 
@@ -94,8 +94,8 @@ Read the relevant module spec under `docs/module-specs/` before changing an exis
 
 ## Verification
 
-- Use `pnpm.cmd` on Windows for scripts.
+- Use `pnpm` for scripts.
 - Run targeted tests when possible.
-- Run `pnpm.cmd run build` when changing modules, services, controllers, schemas, guards, decorators, shared constants, or dependency wiring.
+- Run `pnpm run build` when changing modules, services, controllers, schemas, guards, decorators, shared constants, or dependency wiring.
 - Do not build after docs-only or DTO-only changes unless the user asks.
 - Report commands run and whether they passed.

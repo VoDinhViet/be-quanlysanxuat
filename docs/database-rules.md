@@ -3,7 +3,7 @@
 ## Database Iron Laws
 
 - Use `generatedAlwaysAsIdentity()` for PostgreSQL integer/generated primary keys. Never use `serial()`.
-- Never use `drizzle-kit push` in production or shared environments. Use `pnpm.cmd db:generate` and `pnpm.cmd db:migrate`.
+- Never use `drizzle-kit push` in production or shared environments. Use `pnpm db:generate` and `pnpm db:migrate`.
 - Define `relations()` alongside table definitions whenever the relational query API may use nested `with:` clauses.
 - Never delete, rename, or reorder applied migration files because `__drizzle_migrations__` tracks applied migration checksums.
 - Import query operators such as `eq`, `and`, `or`, `gt`, and `inArray` from `drizzle-orm`. Do not use raw strings or custom predicates for client-driven filters.
@@ -66,7 +66,7 @@ Rules:
 
 ## Data Type Rules
 
-- Use `timestamp(..., { withTimezone: true })` for business timestamps.
+- Use `timestamp(...)` for business timestamps.
 - Use `date` only for date-only values such as due dates or working dates.
 - Use `numeric` or integer minor units for money. Do not use floating point types for money.
 - Use integer quantities only when fractional quantities are impossible.
@@ -111,7 +111,8 @@ Rules:
 - Avoid N+1 queries. Use joins, relational queries with `with:`, or batched queries.
 - Select only the columns needed for the use case when loading large records or sensitive fields.
 - Never pass raw client-provided table names, column names, SQL, or sort fields into queries.
-- Import query operators such as `eq`, `and`, `or`, `gt`, and `inArray` from `drizzle-orm`.
+- Import query operators and helpers such as `eq`, `and`, `or`, `gt`, `inArray`, and `count` from `drizzle-orm`.
+- Do not alias `count` as `drizzleCount`; import and use `count()` directly.
 - Use raw SQL only when Drizzle cannot express the query cleanly.
 - Raw SQL must be parameterized and must not concatenate client input.
 - Whitelist dynamic sort and filter fields.
@@ -146,6 +147,7 @@ Rules:
 
 ## Seed Rules
 
+- Seed files must use `<name>.seed.ts` naming, for example `rbac.seed.ts`.
 - Seeds must be idempotent.
 - Use `onConflictDoNothing` or `onConflictDoUpdate` for repeated seed runs.
 - Seed stable codes and permissions with explicit business values.
@@ -154,8 +156,8 @@ Rules:
 
 ## Migration Rules
 
-- Generate migrations with `pnpm.cmd db:generate`.
-- Apply migrations with `pnpm.cmd db:migrate`.
+- Generate migrations with `pnpm db:generate`.
+- Apply migrations with `pnpm db:migrate`.
 - Do not use `drizzle-kit push` in production or shared environments.
 - Do not run migrations without explicit user approval.
 - Never delete, rename, reorder, or edit applied migration files.
@@ -180,7 +182,7 @@ export const users = pgTable(
   {
     id: uuid('id').defaultRandom().primaryKey(),
     fullName: varchar('full_name', { length: 255 }),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => [index('users_full_name_idx').on(table.fullName)],
 );
@@ -218,8 +220,8 @@ Rules:
 ## Migration Commands
 
 ```text
-pnpm.cmd db:generate
-pnpm.cmd db:migrate
+pnpm db:generate
+pnpm db:migrate
 ```
 
 Review generated SQL before running migrations.

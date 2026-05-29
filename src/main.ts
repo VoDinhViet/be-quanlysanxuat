@@ -70,16 +70,12 @@ export async function bootstrap(): Promise<Express> {
       transform: true,
       whitelist: true,
       errorHttpStatusCode: HttpStatus.UNPROCESSABLE_ENTITY,
-      exceptionFactory: (errors: ValidationError[]) =>
-        new UnprocessableEntityException(errors),
+      exceptionFactory: (errors: ValidationError[]) => new UnprocessableEntityException(errors),
     }),
   );
   app.useGlobalInterceptors(new ClassSerializerInterceptor(reflector));
 
-  if (
-    configService.getOrThrow('app.nodeEnv', { infer: true }) !==
-    Environment.PRODUCTION
-  ) {
+  if (configService.getOrThrow('app.nodeEnv', { infer: true }) !== Environment.PRODUCTION) {
     setupSwagger(app);
   }
 
@@ -104,9 +100,6 @@ if (require.main === module) {
   getServer().then((instance) => {
     const port = process.env.PORT || 3000;
     instance.listen(port);
-    Logger.log(
-      `Application is running on: http://localhost:${port}/api`,
-      'Bootstrap',
-    );
+    Logger.log(`Application is running on: http://localhost:${port}/api`, 'Bootstrap');
   });
 }

@@ -2,12 +2,12 @@ import { Body, Controller, Get, HttpStatus, Patch, Post, Query } from '@nestjs/c
 import { ApiTags } from '@nestjs/swagger';
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
-import { PageOptionsDto } from '../../common/dto/offset-pagination/page-options.dto';
 import { ApiAuth } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
 import { ChangeUserPasswordReqDto } from './dto/change-password.req.dto';
 import { CreateUserReqDto } from './dto/create-user.req.dto';
+import { GetUsersReqDto } from './dto/get-users.req.dto';
 import { UpdateUserReqDto } from './dto/update-user.req.dto';
 import { UserResDto } from './dto/user.res.dto';
 import { UsersService } from './users.service';
@@ -18,18 +18,18 @@ export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get()
-  @Permissions('employee.update')
+  @Permissions('user.update')
   @ApiAuth({
     type: UserResDto,
     summary: 'List users',
     isPaginated: true,
   })
-  getUsers(@Query() pageOptions: PageOptionsDto): Promise<OffsetPaginatedDto<UserResDto>> {
-    return this.usersService.getUsers(pageOptions);
+  getUsers(@Query() reqDto: GetUsersReqDto): Promise<OffsetPaginatedDto<UserResDto>> {
+    return this.usersService.getUsers(reqDto);
   }
 
   @Get(':userId')
-  @Permissions('employee.update')
+  @Permissions('user.update')
   @ApiAuth({
     type: UserResDto,
     summary: 'Get user detail',
@@ -39,7 +39,7 @@ export class UsersController {
   }
 
   @Post()
-  @Permissions('employee.create')
+  @Permissions('user.create')
   @ApiAuth({
     type: UserResDto,
     summary: 'Create user',
@@ -50,7 +50,7 @@ export class UsersController {
   }
 
   @Patch(':userId')
-  @Permissions('employee.update')
+  @Permissions('user.update')
   @ApiAuth({
     type: UserResDto,
     summary: 'Update user',
@@ -63,7 +63,7 @@ export class UsersController {
   }
 
   @Patch(':userId/password')
-  @Permissions('employee.update')
+  @Permissions('user.update')
   @ApiAuth({
     type: UserResDto,
     summary: 'Change user password',

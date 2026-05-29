@@ -75,14 +75,13 @@ export class RolesGuard implements CanActivate {
       },
     });
 
-    if (!role || role.status !== 'active') {
+    if (!role || !role.isActive) {
       return false;
     }
 
     const permissions = new Set(
       role.rolePermissions
         .map((rolePermission) => rolePermission.permission)
-        .filter((permission) => permission.isActive)
         .map((permission) => permission.code),
     );
 

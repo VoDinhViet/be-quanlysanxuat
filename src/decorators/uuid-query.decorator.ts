@@ -14,6 +14,6 @@ export function UUIDQuery(
       example: '3fa85f64-5717-4562-b3fc-2c963f66afa6 (hoặc mã Code)',
     })(target, key!, Object.getOwnPropertyDescriptor(target, key!)!);
 
-    Query(name)(target, key!, index);
+    Query(name)(target, key, index);
   };
 }
