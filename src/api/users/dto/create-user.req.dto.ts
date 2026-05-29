@@ -30,6 +30,9 @@ export class CreateUserReqDto {
   @UUIDFieldOptional({ nullable: true })
   roleId?: string | null;
 
+  @StringFieldOptional({ description: 'User unique code', maxLength: 50 })
+  code?: string;
+
   @EnumFieldOptional(() => UserStatus)
   status?: UserStatus;
 }

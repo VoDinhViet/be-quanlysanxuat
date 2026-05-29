@@ -73,12 +73,20 @@ export class UsersService {
     await this.ensureEmailAvailable(reqDto.email);
     await this.ensureActiveRole(reqDto.roleId);
 
+    let code = reqDto.code;
+    if (code) {
+      await this.ensureCodeAvailable(code);
+    } else {
+      code = await this.generateUserCode();
+    }
+
     const password = await hash(reqDto.password, UsersService.PASSWORD_SALT_ROUNDS);
 
     const [user] = await this.db
       .insert(users)
       .values({
         email: reqDto.email,
+        code,
         password,
         fullName: reqDto.fullName,
         phoneNumber: reqDto.phoneNumber,
@@ -99,6 +107,10 @@ export class UsersService {
       await this.ensureEmailAvailable(reqDto.email, userId);
     }
 
+    if (reqDto.code) {
+      await this.ensureCodeAvailable(reqDto.code, userId);
+    }
+
     if (reqDto.roleId !== undefined) {
       await this.ensureActiveRole(reqDto.roleId);
     }
@@ -107,6 +119,7 @@ export class UsersService {
       .update(users)
       .set({
         email: reqDto.email,
+        code: reqDto.code,
         fullName: reqDto.fullName,
         phoneNumber: reqDto.phoneNumber,
         dateOfBirth: reqDto.dateOfBirth,
@@ -164,6 +177,28 @@ export class UsersService {
     if (existingUser) {
       throw new AppException(ErrorCode.E003, HttpStatus.CONFLICT);
     }
+  }
+
+  private async ensureCodeAvailable(code: string, ignoredUserId?: string): Promise<void> {
+    const where = ignoredUserId
+      ? and(eq(users.code, code), ne(users.id, ignoredUserId))
+      : eq(users.code, code);
+
+    const existingUser = await this.db.query.users.findFirst({
+      columns: {
+        id: true,
+      },
+      where,
+    });
+
+    if (existingUser) {
+      throw new AppException(ErrorCode.E005, HttpStatus.CONFLICT);
+    }
+  }
+
+  private async generateUserCode(): Promise<string> {
+    const [totalRows] = await this.db.select({ total: drizzleCount() }).from(users);
+    return `US${String((totalRows?.total ?? 0) + 1).padStart(4, '0')}`;
   }
 
   private async ensureActiveRole(roleId?: string | null): Promise<void> {

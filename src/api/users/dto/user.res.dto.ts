@@ -9,6 +9,7 @@ import {
   EmailField,
   EnumField,
   EnumFieldOptional,
+  StringField,
   StringFieldOptional,
   UUIDField,
   UUIDFieldOptional,
@@ -19,6 +20,10 @@ export class UserResDto {
   @Expose()
   @UUIDField()
   id!: string;
+
+  @Expose()
+  @StringField({ description: 'User unique code' })
+  code!: string;
 
   @Expose()
   @EmailField()

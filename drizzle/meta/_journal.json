@@ -36,6 +36,13 @@
       "when": 1780038918393,
       "tag": "0004_curly_pride",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1780045449271,
+      "tag": "0005_solid_jackal",
+      "breakpoints": true
     }
   ]
 }

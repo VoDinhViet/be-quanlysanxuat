@@ -26,6 +26,7 @@ type DefaultUserSeed = {
   roleCode: Role;
   email: string;
   fullName: string;
+  code: string;
 };
 
 type RoleIdByCode = Map<Role, string>;
@@ -167,36 +168,43 @@ export const defaultUsersSeed: DefaultUserSeed[] = [
     roleCode: Role.ADMIN,
     email: 'admin@example.com',
     fullName: 'Admin',
+    code: 'US0001',
   },
   {
     roleCode: Role.DIRECTOR,
     email: 'director@example.com',
     fullName: 'Director',
+    code: 'US0002',
   },
   {
     roleCode: Role.QC,
     email: 'qc@example.com',
     fullName: 'QC',
+    code: 'US0003',
   },
   {
     roleCode: Role.BUSINESS,
     email: 'business@example.com',
     fullName: 'Business',
+    code: 'US0004',
   },
   {
     roleCode: Role.PRODUCTION_MANAGER,
     email: 'production.manager@example.com',
     fullName: 'Production Manager',
+    code: 'US0005',
   },
   {
     roleCode: Role.PROCUREMENT_MANAGER,
     email: 'procurement.manager@example.com',
     fullName: 'Procurement Manager',
+    code: 'US0006',
   },
   {
     roleCode: Role.WAREHOUSE,
     email: 'warehouse@example.com',
     fullName: 'Warehouse',
+    code: 'US0007',
   },
 ];
 
@@ -284,6 +292,7 @@ async function seedDefaultUsers(db: RbacSeedDb, roleIdByCode: RoleIdByCode): Pro
     return {
       email: user.email,
       fullName: user.fullName,
+      code: user.code,
       password,
       roleId,
       status: UserStatus.ACTIVE,
@@ -297,6 +306,7 @@ async function seedDefaultUsers(db: RbacSeedDb, roleIdByCode: RoleIdByCode): Pro
       target: users.email,
       set: {
         fullName: sql.raw(`excluded.${users.fullName.name}`),
+        code: sql.raw(`excluded.${users.code.name}`),
         password: sql.raw(`excluded.${users.password.name}`),
         roleId: sql.raw(`excluded.${users.roleId.name}`),
         status: UserStatus.ACTIVE,
