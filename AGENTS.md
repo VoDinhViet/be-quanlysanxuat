@@ -16,11 +16,11 @@ Read these files before non-trivial code changes:
 - `docs/architecture.md`
 - `docs/system-flow.md`
 - `docs/module-progress.md`
-- `docs/naming-conventions.md`
-- `docs/typescript-standards.md`
-- `docs/nestjs-standards.md`
-- `docs/api-standards.md`
-- `docs/database-rules.md`
+- `docs/standards/naming-standards.md`
+- `docs/standards/typescript-standards.md`
+- `docs/standards/nestjs-standards.md`
+- `docs/standards/api-standards.md`
+- `docs/standards/database-standards.md`
 
 Read the relevant module spec under `docs/module-specs/` before changing an existing API module.
 
