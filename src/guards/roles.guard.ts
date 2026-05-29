@@ -85,7 +85,7 @@ export class RolesGuard implements CanActivate {
         .map((permission) => permission.code),
     );
 
-    if (permissions.has('system.manage')) {
+    if (permissions.has('system:manage')) {
       return true;
     }
 

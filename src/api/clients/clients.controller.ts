@@ -17,7 +17,7 @@ export class ClientsController {
   constructor(private readonly clientsService: ClientsService) {}
 
   @Get()
-  @Permissions('client.manage')
+  @Permissions('clients:manage')
   @ApiAuth({
     type: ClientResDto,
     summary: 'List clients',
@@ -28,7 +28,7 @@ export class ClientsController {
   }
 
   @Post()
-  @Permissions('client.manage')
+  @Permissions('clients:manage')
   @ApiAuth({
     type: ClientResDto,
     summary: 'Create client',
@@ -39,7 +39,7 @@ export class ClientsController {
   }
 
   @Patch(':clientId')
-  @Permissions('client.manage')
+  @Permissions('clients:manage')
   @ApiAuth({
     type: ClientResDto,
     summary: 'Update client',
@@ -52,7 +52,7 @@ export class ClientsController {
   }
 
   @Delete(':clientId')
-  @Permissions('client.manage')
+  @Permissions('clients:manage')
   @ApiAuth({
     type: ClientResDto,
     summary: 'Delete client',

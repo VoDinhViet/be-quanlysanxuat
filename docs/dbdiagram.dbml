@@ -4,8 +4,8 @@ Project quan_ly_san_xuat {
 }
 
 Enum client_type {
-  individual
-  company
+  INDIVIDUAL
+  COMPANY
 }
 
 Enum order_status {

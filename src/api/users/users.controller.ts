@@ -18,7 +18,7 @@ export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get()
-  @Permissions('user.update')
+  @Permissions('users:update')
   @ApiAuth({
     type: UserResDto,
     summary: 'List users',
@@ -29,7 +29,7 @@ export class UsersController {
   }
 
   @Get(':userId')
-  @Permissions('user.update')
+  @Permissions('users:update')
   @ApiAuth({
     type: UserResDto,
     summary: 'Get user detail',
@@ -39,7 +39,7 @@ export class UsersController {
   }
 
   @Post()
-  @Permissions('user.create')
+  @Permissions('users:create')
   @ApiAuth({
     type: UserResDto,
     summary: 'Create user',
@@ -50,7 +50,7 @@ export class UsersController {
   }
 
   @Patch(':userId')
-  @Permissions('user.update')
+  @Permissions('users:update')
   @ApiAuth({
     type: UserResDto,
     summary: 'Update user',
@@ -63,7 +63,7 @@ export class UsersController {
   }
 
   @Patch(':userId/password')
-  @Permissions('user.update')
+  @Permissions('users:update')
   @ApiAuth({
     type: UserResDto,
     summary: 'Change user password',

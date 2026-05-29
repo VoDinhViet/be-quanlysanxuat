@@ -118,7 +118,7 @@ Good:
 
 ```ts
 const isActive = user.status === UserStatus.Active;
-const hasPermission = permissionCodes.includes('system.manage');
+const hasPermission = permissionCodes.includes('system:manage');
 const canApproveOrder = order.status === OrderStatus.Pending;
 const shouldHashPassword = Boolean(reqDto.password);
 ```
@@ -287,7 +287,7 @@ Controller:
 - Do not contain business logic.
 - Use `@ApiPublic(...)` for public endpoints.
 - Use `@ApiAuth(...)` for protected endpoints.
-- Use `@Permissions('permission.code')` for business permissions.
+- Use `@Permissions('resource:action')` for business permissions.
 - Use `@UUIDParam('entityId')` for UUID route params.
 
 Service:
@@ -461,7 +461,8 @@ user.status = UserStatus.Active;
 
 - Run the smallest useful verification after code changes.
 - Run targeted tests when logic changes or tests are added.
-- Run `pnpm run build` when changing modules, controllers, services, guards, decorators, schemas, shared constants, or dependency wiring.
+- Do not run `pnpm run build` after every code change by default.
+- Run `pnpm run build` only when asked, when debugging a build/type error, or when the change has broad dependency-wiring risk.
 - Do not build after docs-only changes unless asked.
 - Report exact commands run and whether they passed.
 

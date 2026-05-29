@@ -54,6 +54,8 @@ Root dependency wiring lives in `src/app.module.ts`.
 - `DatabaseModule` is global and provides the Drizzle client through `DRIZZLE`.
 - `RedisModule`, `AuthModule`, and business API modules are imported by `AppModule`.
 
+For end-to-end business flow, keep `docs/system-flow.md` current. For implementation status, keep `docs/module-progress.md` current.
+
 ## Folder Structure
 
 Current project structure:
@@ -116,6 +118,9 @@ Do not use `src/modules/` for new business APIs in this project unless the whole
 - Do not import controllers from other modules.
 - Prefer service-to-service communication between modules.
 - Avoid tight cross-module coupling. Export only stable services needed by other modules.
+- Every API module must have a `docs/module-specs/<module>.md` file once implementation starts.
+- Update the module spec after changing endpoints, DTOs, permissions, schemas, dependencies, or verification.
+- Update `docs/module-progress.md` after changing implementation status, done items, pending items, or blockers.
 
 ## Layer Responsibilities
 
@@ -213,10 +218,10 @@ src/database/schemas/
 ## Auth And RBAC
 
 - APIs require JWT by default unless marked with `@ApiPublic(...)`.
-- Protected business endpoints should use `@Permissions('permission.code')`.
+- Protected business endpoints should use `@Permissions('resource:action')`.
 - Permission codes are typed by `PermissionCode`.
 - Use permission checks instead of hard-coded role checks in controllers.
-- `system.manage` is the broad system permission.
+- `system:manage` is the broad system permission.
 - `GET /auth/me` returns the current user, role, and permission codes for frontend authorization.
 
 ## Shared Code

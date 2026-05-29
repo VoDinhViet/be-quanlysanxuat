@@ -12,7 +12,7 @@ export class RolesController {
   constructor(private readonly rolesService: RolesService) {}
 
   @Get()
-  @Permissions('user.update')
+  @Permissions('roles:manage')
   @ApiAuth({
     type: RoleOptionResDto,
     summary: 'List role options',

@@ -113,7 +113,6 @@ export class UsersService {
         gender: reqDto.gender,
         roleId: reqDto.roleId,
         status: reqDto.status,
-        updatedAt: new Date(),
       })
       .where(eq(users.id, userId))
       .returning();
@@ -130,7 +129,6 @@ export class UsersService {
       .update(users)
       .set({
         password,
-        updatedAt: new Date(),
       })
       .where(eq(users.id, userId))
       .returning();

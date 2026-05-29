@@ -29,6 +29,13 @@
       "when": 1780031784422,
       "tag": "0003_chubby_kinsey_walden",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1780038918393,
+      "tag": "0004_curly_pride",
+      "breakpoints": true
     }
   ]
 }

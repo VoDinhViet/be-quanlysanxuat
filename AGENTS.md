@@ -6,7 +6,7 @@
 - Respond in the user's language. Keep code, identifiers, and comments in English.
 - Keep changes scoped to the user request.
 - Do not revert user changes.
-- Do not create commits unless the user explicitly asks.
+- Automatically create a git commit and push to the remote repository after completing a module or a feature.
 - Ask a concise question only when missing information changes behavior, data model, security, or public API.
 
 ## Read First
@@ -14,6 +14,8 @@
 Read these files before non-trivial code changes:
 
 - `docs/architecture.md`
+- `docs/system-flow.md`
+- `docs/module-progress.md`
 - `docs/coding-standards.md`
 - `docs/api-standards.md`
 - `docs/database-rules.md`
@@ -26,6 +28,9 @@ Read the relevant module spec under `docs/module-specs/` before changing an exis
 - Docs/rules change: update the relevant markdown only.
 - Small code change: inspect affected files, edit narrowly, run targeted verification.
 - New module/feature: read required docs first, inspect nearby patterns, implement, verify.
+- After changing an API module, update its `docs/module-specs/<module>.md` with current endpoints, permissions, dependencies, and rules.
+- After changing implementation progress, update `docs/module-progress.md`.
+- When adding or changing cross-module flow, update `docs/system-flow.md` so AI agents and developers can follow the system behavior.
 - Debugging: reproduce or read the exact error, inspect the smallest relevant area, fix root cause, rerun the failing command.
 - Use repository skills when they match the task:
   - `$backend`: NestJS API/module/service/controller/DTO/Drizzle implementation.
@@ -37,6 +42,7 @@ Read the relevant module spec under `docs/module-specs/` before changing an exis
 
 - Always-on project instructions live in this `AGENTS.md`.
 - Detailed conventions live in `docs/`.
+- System flow, module specs, and module progress live in `docs/system-flow.md`, `docs/module-specs/`, and `docs/module-progress.md`.
 - Reusable Codex workflows live in `.codex/skills/<skill>/SKILL.md`.
 - Do not put coding convention markdown files under `.codex/rules/`.
 - Use `.codex/rules/*.rules` only for Codex command execution policies when needed.
@@ -72,7 +78,7 @@ Read the relevant module spec under `docs/module-specs/` before changing an exis
 
 ## API And Security Rules
 
-- Use existing decorators: `@ApiAuth`, `@ApiPublic`, `@Permissions('permission.code')`, `@User`, field decorators, and `@UUIDParam`.
+- Use existing decorators: `@ApiAuth`, `@ApiPublic`, `@Permissions('resource:action')`, `@User`, field decorators, and `@UUIDParam`.
 - Business errors use `AppException`.
 - Never expose passwords, hashes, tokens, secrets, or connection strings.
 - Validate all client input through DTOs, params, and pipes.
@@ -80,7 +86,7 @@ Read the relevant module spec under `docs/module-specs/` before changing an exis
 - Do not pass raw SQL, raw table names, or raw column names from clients.
 - Whitelist dynamic sort fields.
 - Passwords must be hashed before storage.
-- Protected business endpoints should use permissions; `system.manage` is the broad system permission.
+- Protected business endpoints should use permissions; `system:manage` is the broad system permission.
 
 ## Database Rules
 
@@ -96,6 +102,10 @@ Read the relevant module spec under `docs/module-specs/` before changing an exis
 
 - Use `pnpm` for scripts.
 - Run targeted tests when possible.
-- Run `pnpm run build` when changing modules, services, controllers, schemas, guards, decorators, shared constants, or dependency wiring.
+- Do not run `pnpm run build` after every code change by default.
+- Run `pnpm run build` only when the user asks, when debugging a build/type error, or when the change has broad dependency-wiring risk.
 - Do not build after docs-only or DTO-only changes unless the user asks.
 - Report commands run and whether they passed.
+- Always run `codegraph sync` after finishing code changes, especially when adding new files, to ensure the codebase index is up to date.
+
+

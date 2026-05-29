@@ -88,7 +88,7 @@ Rules:
 
 ### Authorization
 
-- Protected business APIs must use `@Permissions('permission.code')`.
+- Protected business APIs must use `@Permissions('resource:action')`.
 - Ownership validation is required when a user can access only their own resource.
 - Do not rely only on frontend permission checks.
 

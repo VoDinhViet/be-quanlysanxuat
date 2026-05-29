@@ -19,7 +19,7 @@ All users endpoints are authenticated and require permissions.
 Decorator:
 
 - `@ApiAuth(..., isPaginated: true)`
-- `@Permissions('user.update')`
+- `@Permissions('users:update')`
 
 Query DTO:
 
@@ -44,7 +44,7 @@ Business rules:
 Decorator:
 
 - `@ApiAuth(...)`
-- `@Permissions('user.update')`
+- `@Permissions('users:update')`
 
 Params:
 
@@ -68,7 +68,7 @@ Errors:
 Decorator:
 
 - `@ApiAuth(..., statusCode: HttpStatus.CREATED)`
-- `@Permissions('user.create')`
+- `@Permissions('users:create')`
 
 Request DTO:
 
@@ -109,7 +109,7 @@ Errors:
 Decorator:
 
 - `@ApiAuth(...)`
-- `@Permissions('user.update')`
+- `@Permissions('users:update')`
 
 Params:
 
@@ -138,7 +138,7 @@ Errors:
 Decorator:
 
 - `@ApiAuth(...)`
-- `@Permissions('user.update')`
+- `@Permissions('users:update')`
 
 Params:
 
@@ -164,12 +164,12 @@ Errors:
 
 Current permissions:
 
-- `user.create`
-- `user.update`
+- `users:create`
+- `users:update`
 
 Current note:
 
-- `user.delete` exists in `PermissionCode`, but this module does not currently expose a delete endpoint.
+- `users:delete` exists in `PermissionCode`, but this module does not currently expose a delete endpoint.
 
 ## Dependencies
 
@@ -201,7 +201,8 @@ Current note:
 ## Change Checklist
 
 - Update DTOs when request or response shape changes.
+- Update `docs/module-progress.md` when implementation progress changes.
 - Update `PermissionCode` and seed data when adding new protected actions.
 - Update database schema and migrations when adding persisted fields.
-- Run build after changing module/controller/service/DTO wiring.
+- Run targeted verification; do not run full build unless asked or broad dependency wiring changes.
 - Add or update tests for list, detail, create, update, password change, duplicate email, missing user, and inactive role.

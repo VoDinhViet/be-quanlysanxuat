@@ -1,8 +1,8 @@
 import { pgEnum, pgTable, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
 
 export enum ClientType {
-  Individual = 'individual',
-  Company = 'company',
+  Individual = 'INDIVIDUAL',
+  Company = 'COMPANY',
 }
 
 export const clientTypeEnum = pgEnum('client_type', [ClientType.Individual, ClientType.Company]);
