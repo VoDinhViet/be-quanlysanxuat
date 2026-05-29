@@ -136,30 +136,20 @@ Guidelines for writing APIs that are robust, secure, and predictable for the fro
 
 ---
 
-## 5. Secrets Exposure & Logging
+## 5. Safe Logging
 
-*   **Rule:** Response DTOs must never serialize passwords, tokens, API keys, or stack traces. Critical authentication secrets must never be logged in application logs.
+*   **Rule:** Never log full request DTOs, passwords, tokens, or API keys. Log only safe identifiers. For response DTO shaping rules (hiding secrets), see [`nestjs-standards.md §3`](nestjs-standards.md).
 
 ### Examples
 
 *   **Bad (Negative):**
     ```ts
     console.log('Incoming login attempt:', reqDto); // Leaks plaintext password in log!
-    
-    return {
-      message: 'Login successful',
-      token: token,
-      user: userRow, // Leaks password hash to client!
-    };
+    console.log('JWT token:', token);               // Token visible in log aggregator!
     ```
 
 *   **Good (Positive):**
     ```ts
-    console.log('Login attempt for email:', reqDto.email); // Safe logging
-    
-    return {
-      message: 'Login successful',
-      token: token,
-      user: plainToInstance(UserResDto, userRow, { excludeExtraneousValues: true }), // Sanitized response
-    };
+    console.log('Login attempt for email:', reqDto.email); // Safe: only identifier
+    console.log('Token issued for userId:', user.id);      // Safe: no secret value
     ```

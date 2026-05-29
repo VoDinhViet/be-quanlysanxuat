@@ -124,44 +124,15 @@ Do not use `src/modules/` for new business APIs in this project unless the whole
 
 ## Layer Responsibilities
 
-Controller:
+> Detailed rules with Good/Bad examples live in [`nestjs-standards.md`](standards/nestjs-standards.md).
 
-- Define HTTP routes.
-- Apply `@ApiAuth`, `@ApiPublic`, `@Permissions`, params, query DTOs, and body DTOs.
-- Read authenticated user data with `@User()` when needed.
-- Call one service method and return its result.
-- Do not access Drizzle or Redis directly.
-- Do not contain business rules.
-
-Service:
-
-- Enforce business rules.
-- Coordinate reads/writes and external infrastructure.
-- Use `AppException` for expected business/API errors.
-- Hash passwords and protect sensitive values before persistence or response mapping.
-- Use Drizzle query operators imported from `drizzle-orm`.
-- Use transactions for multi-step writes.
-- Map database rows to response DTOs with `plainToInstance(..., { excludeExtraneousValues: true })`.
-
-Repository:
-
-- Optional layer for database-heavy modules.
-- Encapsulate Drizzle table/query details.
-- Return database rows or persistence-focused models to the service.
-- Do not throw transport-specific HTTP errors unless the module has an established local pattern.
-- Do not map response DTOs.
-
-DTO:
-
-- Request DTOs validate client input with project field decorators from `src/decorators/field.decorators.ts`.
-- Response DTOs use `@Exclude()` and `@Expose()` to control output.
-- Response DTOs must never expose passwords, hashes, tokens, secrets, or connection strings.
-
-Guard:
-
-- `AuthGuard` authenticates requests unless an endpoint is marked public.
-- `RolesGuard` checks `@Permissions(...)` metadata.
-- Guards should not implement business workflows.
+| Layer | Responsibility |
+|---|---|
+| **Controller** | HTTP routes, decorators (`@ApiAuth`, `@Permissions`, DTOs), delegate to one service method. No DB/Redis/business logic. |
+| **Service** | Business rules, Drizzle queries, transactions, `AppException`, DTO response mapping via `plainToInstance`. |
+| **Repository** | (Optional) Encapsulate complex Drizzle queries. Return raw rows to service. No HTTP errors, no DTO mapping. |
+| **DTO** | Request: validate with `field.decorators.ts`. Response: `@Exclude`/`@Expose`, never expose secrets. |
+| **Guard** | `AuthGuard` authenticates; `RolesGuard` checks `@Permissions(...)`. No business workflows. |
 
 ## Database Architecture
 
@@ -176,18 +147,7 @@ src/database/
   seeds/
 ```
 
-Rules:
-
-- Use Drizzle schemas from `src/database/schemas/`.
-- Export schemas and relations through `src/database/schemas/index.ts`.
-- Keep table definitions, enums, indexes, and relations in schema files.
-- Define `relations()` beside table definitions when relational queries use nested `with:` clauses.
-- Use camelCase TypeScript keys and snake_case database names.
-- Use `.references()` for stable foreign keys.
-- Use indexes for foreign keys and frequent filters.
-- Use `uniqueIndex` for business codes.
-- Do not run migrations without explicit user approval.
-- Never use `drizzle-kit push` in production or shared environments.
+> Detailed rules with Good/Bad examples live in [`database-standards.md`](standards/database-standards.md).
 
 Schema folder pattern:
 
@@ -205,15 +165,11 @@ src/database/schemas/
 
 ## API Architecture
 
+> Detailed rules with Good/Bad examples live in [`api-standards.md`](standards/api-standards.md).
+
 - Public route prefix is `/api`.
 - URI versioning is enabled.
 - Swagger is generated outside production.
-- Use entity-specific route params such as `:userId` and `:roleId`.
-- Use `PageOptionsDto` and `OffsetPaginatedDto` for offset pagination.
-- Dynamic sort fields must be whitelisted.
-- Business errors use `AppException`.
-- Validation errors are normalized by `GlobalExceptionFilter`.
-- PostgreSQL constraint errors are normalized by `GlobalExceptionFilter`.
 
 ## Auth And RBAC
 
@@ -240,14 +196,3 @@ src/guards/           Auth and RBAC guards.
 src/redis/            Redis configuration and module wiring.
 src/utils/            Small framework utilities.
 ```
-
-## Forbidden
-
-- Database access in controllers.
-- Business logic in controllers.
-- Raw client-provided table names, column names, SQL, or sort fields.
-- Response DTOs exposing sensitive fields.
-- Cross-module controller imports.
-- Circular module dependencies.
-- Unnecessary repository layers for simple modules.
-- New architecture folders that conflict with the current `src/api/<module>` convention.

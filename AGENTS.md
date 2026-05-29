@@ -49,16 +49,6 @@ Read the relevant module spec under `docs/module-specs/` before changing an exis
 - Do not put coding convention markdown files under `.codex/rules/`.
 - Use `.codex/rules/*.rules` only for Codex command execution policies when needed.
 
-## Backend Rules
-
-- This project is a NestJS modular monolith.
-- Business API modules live under `src/api/<module>/`.
-- Controllers stay thin: route decorators, DTO input, current user extraction, and service calls only.
-- Services own business logic, orchestration, Drizzle queries, and response mapping unless a module introduces a repository.
-- DTOs own request validation and response shaping.
-- Guards own authentication and permission checks only.
-- Prefer service-to-service communication between modules. Do not import controllers from other modules.
-
 ## Nest CLI Rules
 
 - Use Nest CLI when starting a new module/controller/service:
@@ -67,38 +57,6 @@ Read the relevant module spec under `docs/module-specs/` before changing an exis
   - `pnpm nest generate service api/<module> --no-spec`
 - Use manual file creation for DTOs, types, schemas, tests, or follow-up files that Nest CLI does not generate cleanly.
 - Remove generated boilerplate that does not match the requested business behavior.
-
-## Code Quality Rules
-
-- Keep code simple and direct. Avoid unnecessary abstractions.
-- Inline one-line helpers unless they remove meaningful duplication or clarify a complex block.
-- Use clear business names. Avoid `data`, `item`, `record`, `result`, `tmp`, `obj`, `val`, and `arr`.
-- Use entity-specific route params and variables, for example `userId`, `roleId`, `salesOrderId`.
-- Use `reqDto` for a single request DTO input in controller/service methods.
-- Boolean names should read as true/false statements, for example `isActive`, `hasPermission`, `canApproveOrder`.
-- Add comments only for non-obvious business rules or complex logic.
-
-## API And Security Rules
-
-- Use existing decorators: `@ApiAuth`, `@ApiPublic`, `@Permissions('resource:action')`, `@User`, field decorators, and `@UUIDParam`.
-- Business errors use `AppException`.
-- Never expose passwords, hashes, tokens, secrets, or connection strings.
-- Validate all client input through DTOs, params, and pipes.
-- Do not trust calculated values from clients.
-- Do not pass raw SQL, raw table names, or raw column names from clients.
-- Whitelist dynamic sort fields.
-- Passwords must be hashed before storage.
-- Protected business endpoints should use permissions; `system:manage` is the broad system permission.
-
-## Database Rules
-
-- Use Drizzle schemas from `src/database/schemas/`.
-- Export schemas and relations through `src/database/schemas/index.ts`.
-- Use camelCase TypeScript keys and snake_case database names.
-- Use `.returning()` for PostgreSQL writes when the service needs the changed row.
-- Set `updatedAt` explicitly on updates.
-- Use transactions for multi-step writes.
-- Do not run migrations without explicit user approval.
 
 ## Verification
 
@@ -109,5 +67,6 @@ Read the relevant module spec under `docs/module-specs/` before changing an exis
 - Do not build after docs-only or DTO-only changes unless the user asks.
 - Report commands run and whether they passed.
 - Always run `codegraph sync` after finishing code changes, especially when adding new files, to ensure the codebase index is up to date.
+
 
 
