@@ -39,6 +39,7 @@ Implemented:
 - Product/unit/type/operation option endpoints.
 - Product revision list/create/update endpoints.
 - Product image upload/delete endpoints backed by `/uploads/products`.
+- Product technical file endpoints backed by `/uploads/products/files`.
 - BOM tree endpoint.
 - BOM line create/update/delete endpoints.
 - Routing get/replace endpoints.

@@ -16,16 +16,19 @@ describe('ProductsController', () => {
       | 'deleteBomLine'
       | 'deleteProductImage'
       | 'deleteProduct'
+      | 'deleteProductTechnicalFile'
       | 'getBomTree'
       | 'getProductOptions'
       | 'getProductRevisions'
       | 'getProducts'
+      | 'getProductTechnicalFiles'
       | 'getRouting'
       | 'lockProduct'
       | 'unlockProduct'
       | 'updateBomLine'
       | 'updateRouting'
       | 'uploadProductImage'
+      | 'uploadProductTechnicalFile'
     >
   >;
 
@@ -38,16 +41,19 @@ describe('ProductsController', () => {
       deleteBomLine: jest.fn(),
       deleteProductImage: jest.fn(),
       deleteProduct: jest.fn(),
+      deleteProductTechnicalFile: jest.fn(),
       getBomTree: jest.fn(),
       getProductOptions: jest.fn(),
       getProductRevisions: jest.fn(),
       getProducts: jest.fn(),
+      getProductTechnicalFiles: jest.fn(),
       getRouting: jest.fn(),
       lockProduct: jest.fn(),
       unlockProduct: jest.fn(),
       updateBomLine: jest.fn(),
       updateRouting: jest.fn(),
       uploadProductImage: jest.fn(),
+      uploadProductTechnicalFile: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -275,6 +281,40 @@ describe('ProductsController', () => {
     await expect(controller.deleteProductImage(productId)).resolves.toBe(response);
 
     expect(productsService.deleteProductImage).toHaveBeenCalledWith(productId);
+  });
+
+  it('should delegate product technical file list, upload, and deletion to service', async () => {
+    const productId = '550e8400-e29b-41d4-a716-446655440001';
+    const fileId = '550e8400-e29b-41d4-a716-446655440002';
+    const file = {
+      originalname: 'drawing.pdf',
+      filename: 'upload-temp',
+      mimetype: 'application/pdf',
+      size: 1024,
+      path: '/tmp/upload-temp',
+    };
+    const user = { sub: '550e8400-e29b-41d4-a716-446655440099' };
+    const listResponse = [{ id: fileId, originalName: 'drawing.pdf' }] as never;
+    const fileResponse = { id: fileId, originalName: 'drawing.pdf' } as never;
+    productsService.getProductTechnicalFiles.mockResolvedValue(listResponse);
+    productsService.uploadProductTechnicalFile.mockResolvedValue(fileResponse);
+    productsService.deleteProductTechnicalFile.mockResolvedValue(fileResponse);
+
+    await expect(controller.getProductTechnicalFiles(productId)).resolves.toBe(listResponse);
+    await expect(controller.uploadProductTechnicalFile(productId, file, user)).resolves.toBe(
+      fileResponse,
+    );
+    await expect(controller.deleteProductTechnicalFile(productId, fileId)).resolves.toBe(
+      fileResponse,
+    );
+
+    expect(productsService.getProductTechnicalFiles).toHaveBeenCalledWith(productId);
+    expect(productsService.uploadProductTechnicalFile).toHaveBeenCalledWith(
+      productId,
+      file,
+      user.sub,
+    );
+    expect(productsService.deleteProductTechnicalFile).toHaveBeenCalledWith(productId, fileId);
   });
 
   it('should delegate product deletion to service', async () => {

@@ -1,6 +1,7 @@
 import { ProductItemType } from '../../../database/schemas';
 import {
   EnumField,
+  NumberFieldOptional,
   StringField,
   StringFieldOptional,
   UUIDField,
@@ -28,6 +29,9 @@ export class CreateProductReqDto {
 
   @StringFieldOptional({ nullable: true })
   imageUrl?: string | null;
+
+  @NumberFieldOptional({ min: 0 })
+  defaultSalePrice?: number;
 
   @StringFieldOptional({ nullable: true })
   note?: string | null;

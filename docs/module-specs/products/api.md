@@ -15,6 +15,12 @@
 - `inactive`: hidden from new source-data use cases.
 - `locked`: blocks product info, revision, BOM, and routing mutations.
 
+### Commercial Price
+
+- `products.defaultSalePrice` stores the commercial default sale price.
+- Orders snapshot this value into `order_items.unitPrice` when an order is created or updated.
+- General product responses do not expose this field; commercial order product options expose it through `GET /orders/product-options`.
+
 ### Revision
 
 - BOM and routing are always scoped to a product revision.
@@ -51,6 +57,9 @@ PATCH  /products/:productId/lock
 PATCH  /products/:productId/unlock
 POST   /products/:productId/image
 DELETE /products/:productId/image
+GET    /products/:productId/files
+POST   /products/:productId/files
+DELETE /products/:productId/files/:fileId
 POST   /products/:productId/copy
 DELETE /products/:productId
 ```
@@ -187,8 +196,27 @@ Business rules:
 - Maximum image size is 5 MB.
 - Uploaded files are stored under `/uploads/products`.
 - The product `imageUrl` is updated to the public `/uploads/products/<file>` URL.
-- Existing active product file records are soft-deleted when a new image is uploaded.
-- `DELETE /products/:productId/image` clears `imageUrl`, soft-deletes active product file records, and removes local files on a best-effort basis.
+- Existing active thumbnail file records are soft-deleted when a new image is uploaded.
+- `DELETE /products/:productId/image` clears `imageUrl`, soft-deletes active thumbnail file records, and removes local files on a best-effort basis.
+- Technical attachment file records are not overwritten by image upload/delete.
+
+## Product Technical File Endpoints
+
+```text
+GET    /products/:productId/files
+POST   /products/:productId/files
+DELETE /products/:productId/files/:fileId
+```
+
+Rules:
+
+- `GET /products/:productId/files` uses `products:read`.
+- Upload/delete uses `products:update`.
+- Files are stored under `/uploads/products/files`.
+- Accepted file types: PDF, DWG, DXF, PNG, JPG, WebP.
+- Maximum file size is 20 MB.
+- Technical attachments are stored as `product_files.fileType = technical_attachment`.
+- Thumbnail image records use `product_files.fileType = thumbnail`.
 
 ## Lookup Endpoints
 

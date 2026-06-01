@@ -78,6 +78,11 @@ export const rbacPermissionsSeed: PermissionSeed[] = [
   { group: 'roles', code: 'roles:manage', name: 'Quản lý vai trò' },
   { group: 'orders', code: 'orders:create', name: 'Thêm đơn hàng' },
   { group: 'orders', code: 'orders:read', name: 'Xem đơn hàng' },
+  {
+    group: 'orders',
+    code: 'orders:read-production',
+    name: 'Xem đơn hàng cho sản xuất',
+  },
   { group: 'orders', code: 'orders:update', name: 'Sửa đơn hàng' },
   { group: 'orders', code: 'orders:delete', name: 'Xóa đơn hàng' },
   { group: 'orders', code: 'orders:approve', name: 'Duyệt đơn hàng' },
@@ -151,6 +156,7 @@ export const rbacRolePermissionCodesSeed: Record<Role, string[]> = {
     'products:routing-manage',
   ],
   [Role.PRODUCTION_MANAGER]: [
+    'orders:read-production',
     'products:read',
     'products:update',
     'products:lock',

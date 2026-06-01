@@ -1,5 +1,14 @@
 import { relations } from 'drizzle-orm';
-import { pgEnum, pgTable, text, timestamp, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
+import {
+  numeric,
+  pgEnum,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+  varchar,
+} from 'drizzle-orm/pg-core';
 
 import { clients } from '../clients';
 import { bomLines } from './bom-lines';
@@ -54,6 +63,10 @@ export const products = pgTable(
       .references(() => units.id, { onDelete: 'restrict' }),
     // Hình ảnh.
     imageUrl: text('image_url'),
+    // Giá bán mặc định dùng để snapshot đơn giá khi tạo đơn hàng.
+    defaultSalePrice: numeric('default_sale_price', { precision: 18, scale: 2 })
+      .notNull()
+      .default('0'),
     // Trạng thái.
     status: productStatusEnum('status').notNull().default(ProductStatus.Active),
     // Ghi chú.

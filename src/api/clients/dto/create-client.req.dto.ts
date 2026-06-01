@@ -1,6 +1,6 @@
 import { ClientType } from '../../../database/schemas';
 import {
-  EmailField,
+  EmailFieldOptional,
   EnumField,
   StringField,
   StringFieldOptional,
@@ -10,8 +10,8 @@ export class CreateClientReqDto {
   @StringField({ maxLength: 255 })
   fullName!: string;
 
-  @EmailField({ description: 'Email address' })
-  email!: string;
+  @EmailFieldOptional({ description: 'Email address' })
+  email?: string;
 
   @StringField({ maxLength: 30 })
   phoneNumber!: string;

@@ -16,6 +16,7 @@ import {
   clients,
   operations,
   productFiles,
+  ProductFileType,
   productRevisions,
   products,
   ProductItemType,
@@ -32,12 +33,20 @@ import {
   PRODUCT_IMAGE_PUBLIC_DIR,
   PRODUCT_IMAGE_UPLOAD_DIR,
 } from './constants/product-image.constants';
+import {
+  MAX_PRODUCT_TECHNICAL_FILE_SIZE_IN_BYTES,
+  PRODUCT_TECHNICAL_FILE_ALLOWED_EXTENSIONS,
+  PRODUCT_TECHNICAL_FILE_ALLOWED_MIME_TYPES,
+  PRODUCT_TECHNICAL_FILE_PUBLIC_DIR,
+  PRODUCT_TECHNICAL_FILE_UPLOAD_DIR,
+} from './constants/product-technical-file.constants';
 import { BomLineResDto } from './dto/bom-line.res.dto';
 import { BomTreeNodeResDto } from './dto/bom-tree-node.res.dto';
 import { CreateBomLineReqDto } from './dto/create-bom-line.req.dto';
 import { CreateProductReqDto } from './dto/create-product.req.dto';
 import { CreateProductRevisionReqDto } from './dto/create-product-revision.req.dto';
 import { GetProductsReqDto } from './dto/get-products.req.dto';
+import { ProductFileResDto } from './dto/product-file.res.dto';
 import { ProductOptionResDto } from './dto/product-option.res.dto';
 import { ProductRevisionResDto } from './dto/product-revision.res.dto';
 import { ProductResDto } from './dto/product.res.dto';
@@ -47,6 +56,7 @@ import { UpdateProductReqDto } from './dto/update-product.req.dto';
 import { UpdateProductRevisionReqDto } from './dto/update-product-revision.req.dto';
 import { UpdateRoutingReqDto } from './dto/update-routing.req.dto';
 import type { ProductImageFile } from './types/product-image-file.type';
+import type { ProductTechnicalFile } from './types/product-technical-file.type';
 
 @Injectable()
 export class ProductsService {
@@ -128,6 +138,8 @@ export class ProductsService {
           itemType: reqDto.itemType,
           unitId: reqDto.unitId,
           imageUrl: reqDto.imageUrl,
+          defaultSalePrice:
+            reqDto.defaultSalePrice === undefined ? undefined : String(reqDto.defaultSalePrice),
           note: reqDto.note,
         })
         .returning();
@@ -163,6 +175,8 @@ export class ProductsService {
         unitId: reqDto.unitId,
         status: reqDto.status,
         imageUrl: reqDto.imageUrl,
+        defaultSalePrice:
+          reqDto.defaultSalePrice === undefined ? undefined : String(reqDto.defaultSalePrice),
         note: reqDto.note,
         updatedAt: new Date(),
       })
@@ -197,7 +211,7 @@ export class ProductsService {
       await rename(uploadedFile.path, targetFilePath);
       isFileMoved = true;
 
-      const existingFiles = await this.getActiveProductFiles(productId);
+      const existingFiles = await this.getActiveProductThumbnailFiles(productId);
       const updatedAt = new Date();
 
       await this.db.transaction(async (tx) => {
@@ -207,10 +221,17 @@ export class ProductsService {
             deletedAt: updatedAt,
             updatedAt,
           })
-          .where(and(eq(productFiles.productId, productId), isNull(productFiles.deletedAt)));
+          .where(
+            and(
+              eq(productFiles.productId, productId),
+              eq(productFiles.fileType, ProductFileType.Thumbnail),
+              isNull(productFiles.deletedAt),
+            ),
+          );
 
         await tx.insert(productFiles).values({
           productId,
+          fileType: ProductFileType.Thumbnail,
           originalName: uploadedFile.originalname,
           fileName,
           mimeType: uploadedFile.mimetype,
@@ -246,7 +267,7 @@ export class ProductsService {
   async deleteProductImage(productId: string): Promise<ProductResDto> {
     await this.ensureProductUnlocked(productId);
 
-    const existingFiles = await this.getActiveProductFiles(productId);
+    const existingFiles = await this.getActiveProductThumbnailFiles(productId);
     const deletedAt = new Date();
 
     await this.db.transaction(async (tx) => {
@@ -256,7 +277,13 @@ export class ProductsService {
           deletedAt,
           updatedAt: deletedAt,
         })
-        .where(and(eq(productFiles.productId, productId), isNull(productFiles.deletedAt)));
+        .where(
+          and(
+            eq(productFiles.productId, productId),
+            eq(productFiles.fileType, ProductFileType.Thumbnail),
+            isNull(productFiles.deletedAt),
+          ),
+        );
 
       await tx
         .update(products)
@@ -270,6 +297,106 @@ export class ProductsService {
     await this.deleteProductLocalFiles(existingFiles);
 
     return this.getProductDetail(productId);
+  }
+
+  /**
+   * Lists active technical attachments for a product.
+   *
+   * @param productId - Product identifier whose technical files should be listed.
+   * @returns Technical attachment metadata visible to production-safe order views.
+   */
+  async getProductTechnicalFiles(productId: string): Promise<ProductFileResDto[]> {
+    await this.ensureProductExists(productId);
+
+    const files = await this.db.query.productFiles.findMany({
+      where: and(
+        eq(productFiles.productId, productId),
+        eq(productFiles.fileType, ProductFileType.TechnicalAttachment),
+        isNull(productFiles.deletedAt),
+      ),
+      orderBy: desc(productFiles.createdAt),
+    });
+
+    return this.mapProductFiles(files);
+  }
+
+  /**
+   * Stores a product technical attachment without changing the product thumbnail.
+   *
+   * @param productId - Product identifier that owns the attachment.
+   * @param file - Uploaded multipart file from the `file` field.
+   * @param uploadedByUserId - Authenticated user identifier for file ownership metadata.
+   * @returns Created technical attachment metadata.
+   */
+  async uploadProductTechnicalFile(
+    productId: string,
+    file: ProductTechnicalFile | undefined,
+    uploadedByUserId: string,
+  ): Promise<ProductFileResDto> {
+    const uploadedFile = await this.ensureUploadedProductTechnicalFileAllowed(file);
+    const extension = this.getAllowedTechnicalFileExtension(uploadedFile.originalname);
+    const fileName = `${productId}-${randomUUID()}${extension}`;
+    const relativeFilePath = `${PRODUCT_TECHNICAL_FILE_PUBLIC_DIR}/${fileName}`;
+    const targetFilePath = join(PRODUCT_TECHNICAL_FILE_UPLOAD_DIR, fileName);
+    let isFileMoved = false;
+
+    try {
+      await this.ensureProductExists(productId);
+      await rename(uploadedFile.path, targetFilePath);
+      isFileMoved = true;
+
+      const [createdFile] = await this.db
+        .insert(productFiles)
+        .values({
+          productId,
+          fileType: ProductFileType.TechnicalAttachment,
+          originalName: uploadedFile.originalname,
+          fileName,
+          mimeType: uploadedFile.mimetype,
+          fileSize: uploadedFile.size,
+          filePath: relativeFilePath,
+          uploadedBy: uploadedByUserId,
+        })
+        .returning();
+
+      return this.mapProductFile(createdFile);
+    } catch (error) {
+      await this.deleteLocalFile(isFileMoved ? targetFilePath : uploadedFile.path);
+      throw error;
+    }
+  }
+
+  /**
+   * Soft-deletes a product technical attachment and removes the local file best effort.
+   *
+   * @param productId - Product identifier that owns the attachment.
+   * @param fileId - Product file identifier.
+   * @returns Deleted technical attachment metadata.
+   */
+  async deleteProductTechnicalFile(productId: string, fileId: string): Promise<ProductFileResDto> {
+    await this.ensureProductExists(productId);
+
+    const file = await this.getProductTechnicalFile(productId, fileId);
+    const deletedAt = new Date();
+
+    await this.db
+      .update(productFiles)
+      .set({
+        deletedAt,
+        updatedAt: deletedAt,
+      })
+      .where(
+        and(
+          eq(productFiles.id, fileId),
+          eq(productFiles.productId, productId),
+          eq(productFiles.fileType, ProductFileType.TechnicalAttachment),
+          isNull(productFiles.deletedAt),
+        ),
+      );
+
+    await this.deleteLocalFile(this.resolveProductFilePath(file.filePath));
+
+    return file;
   }
 
   async lockProduct(productId: string): Promise<ProductResDto> {
@@ -975,9 +1102,13 @@ export class ProductsService {
     });
   }
 
-  private async getActiveProductFiles(productId: string): Promise<ProductFileEntity[]> {
+  private async getActiveProductThumbnailFiles(productId: string): Promise<ProductFileEntity[]> {
     return this.db.query.productFiles.findMany({
-      where: and(eq(productFiles.productId, productId), isNull(productFiles.deletedAt)),
+      where: and(
+        eq(productFiles.productId, productId),
+        eq(productFiles.fileType, ProductFileType.Thumbnail),
+        isNull(productFiles.deletedAt),
+      ),
     });
   }
 
@@ -1014,6 +1145,54 @@ export class ProductsService {
       default:
         return extname(mimeType);
     }
+  }
+
+  private async ensureUploadedProductTechnicalFileAllowed(
+    file: ProductTechnicalFile | undefined,
+  ): Promise<ProductTechnicalFile> {
+    if (!file) {
+      throw new AppException(ErrorCode.V002, HttpStatus.UNPROCESSABLE_ENTITY);
+    }
+
+    const extension = this.getAllowedTechnicalFileExtension(file.originalname);
+    const isAllowedExtension = (
+      PRODUCT_TECHNICAL_FILE_ALLOWED_EXTENSIONS as readonly string[]
+    ).includes(extension);
+    const isAllowedMimeType = (
+      PRODUCT_TECHNICAL_FILE_ALLOWED_MIME_TYPES as readonly string[]
+    ).includes(file.mimetype);
+    const isAllowedFileSize = file.size <= MAX_PRODUCT_TECHNICAL_FILE_SIZE_IN_BYTES;
+
+    if ((!isAllowedMimeType && !isAllowedExtension) || !isAllowedFileSize) {
+      await this.deleteLocalFile(file.path);
+      throw new AppException(ErrorCode.V002, HttpStatus.UNPROCESSABLE_ENTITY);
+    }
+
+    return file;
+  }
+
+  private getAllowedTechnicalFileExtension(originalName: string): string {
+    return extname(originalName).toLowerCase();
+  }
+
+  private async getProductTechnicalFile(
+    productId: string,
+    fileId: string,
+  ): Promise<ProductFileResDto> {
+    const file = await this.db.query.productFiles.findFirst({
+      where: and(
+        eq(productFiles.id, fileId),
+        eq(productFiles.productId, productId),
+        eq(productFiles.fileType, ProductFileType.TechnicalAttachment),
+        isNull(productFiles.deletedAt),
+      ),
+    });
+
+    if (!file) {
+      throw new AppException(ErrorCode.E002, HttpStatus.NOT_FOUND);
+    }
+
+    return this.mapProductFile(file);
   }
 
   private async deleteProductLocalFiles(files: ProductFileEntity[]): Promise<void> {
@@ -1380,6 +1559,29 @@ export class ProductsService {
     return plainToInstance(RoutingStepResDto, stepEntities, {
       excludeExtraneousValues: true,
     });
+  }
+
+  private mapProductFiles(fileEntities: ProductFileEntity[]): ProductFileResDto[] {
+    return plainToInstance(
+      ProductFileResDto,
+      fileEntities.map((file) => this.buildProductFileResponse(file)),
+      {
+        excludeExtraneousValues: true,
+      },
+    );
+  }
+
+  private mapProductFile(file: ProductFileEntity): ProductFileResDto {
+    return plainToInstance(ProductFileResDto, this.buildProductFileResponse(file), {
+      excludeExtraneousValues: true,
+    });
+  }
+
+  private buildProductFileResponse(file: ProductFileEntity): ProductFileEntity & { url: string } {
+    return {
+      ...file,
+      url: `/${file.filePath}`,
+    };
   }
 }
 

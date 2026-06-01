@@ -3,6 +3,7 @@ import { OrderBy } from '../../constants/app.constant';
 import { DRIZZLE } from '../../database/database.module';
 import {
   bomLines,
+  ProductFileType,
   productRevisions,
   products,
   ProductStatus,
@@ -24,7 +25,7 @@ type ProductsServiceDbMock = {
   query: {
     bomLines: { findMany: jest.Mock };
     operations: { findMany: jest.Mock };
-    productFiles: { findMany: jest.Mock };
+    productFiles: { findFirst: jest.Mock; findMany: jest.Mock };
     productRevisions: { findFirst: jest.Mock };
     productTypes: { findMany: jest.Mock };
     products: { findFirst: jest.Mock; findMany: jest.Mock };
@@ -54,6 +55,7 @@ describe('ProductsService', () => {
           findMany: jest.fn(),
         },
         productFiles: {
+          findFirst: jest.fn(),
           findMany: jest.fn(),
         },
         productRevisions: {
@@ -123,6 +125,38 @@ describe('ProductsService', () => {
     );
   });
 
+  it('should list technical files without using thumbnail records', async () => {
+    const productId = '550e8400-e29b-41d4-a716-446655440001';
+    const createdAt = new Date('2024-05-01T00:00:00.000Z');
+    db.query.products.findFirst.mockResolvedValue({ id: productId });
+    db.query.productFiles.findMany.mockResolvedValue([
+      {
+        id: '550e8400-e29b-41d4-a716-446655440002',
+        productId,
+        fileType: ProductFileType.TechnicalAttachment,
+        originalName: 'drawing.pdf',
+        fileName: 'drawing.pdf',
+        mimeType: 'application/pdf',
+        fileSize: 1024,
+        filePath: 'uploads/products/files/drawing.pdf',
+        uploadedBy: null,
+        createdAt,
+        updatedAt: createdAt,
+        deletedAt: null,
+      },
+    ]);
+
+    await expect(service.getProductTechnicalFiles(productId)).resolves.toEqual([
+      expect.objectContaining({
+        id: '550e8400-e29b-41d4-a716-446655440002',
+        fileType: ProductFileType.TechnicalAttachment,
+        url: '/uploads/products/files/drawing.pdf',
+      }),
+    ]);
+
+    expect(db.query.productFiles.findMany).toHaveBeenCalledTimes(1);
+  });
+
   it('should list products ordered by createdAt desc only', async () => {
     const totalWhere = jest.fn().mockResolvedValue([{ total: 0 }]);
     const totalFrom = jest.fn().mockReturnValue({ where: totalWhere });
@@ -138,9 +172,11 @@ describe('ProductsService', () => {
 
     await service.getProducts(reqDto);
 
-    const findManyArgs = db.query.products.findMany.mock.calls[0]?.[0] as {
-      orderBy: DrizzleOrderSql;
-    };
+    const [findManyArgs] = db.query.products.findMany.mock.calls[0] as [
+      {
+        orderBy: DrizzleOrderSql;
+      },
+    ];
     const lastOrderChunk = findManyArgs.orderBy.queryChunks[
       findManyArgs.orderBy.queryChunks.length - 1
     ] as { value?: string[] };
@@ -429,16 +465,24 @@ describe('ProductsService', () => {
 
     db.query.products.findFirst.mockResolvedValue({ id: productId });
     db.update.mockReturnValue({ set: updateSet });
-    jest.spyOn(service, 'getProductDetail').mockResolvedValue(response);
+    const getProductDetailSpy = jest.spyOn(service, 'getProductDetail').mockResolvedValue(response);
 
     await expect(service.unlockProduct(productId)).resolves.toBe(response);
 
     expect(db.update).toHaveBeenCalledWith(products);
-    expect(updateSet).toHaveBeenCalledWith({
+    const [updateSetArg] = updateSet.mock.calls[0] as [
+      {
+        status: ProductStatus;
+        updatedAt: Date;
+      },
+    ];
+
+    expect(updateSetArg).toEqual({
       status: ProductStatus.Active,
-      updatedAt: expect.any(Date),
+      updatedAt: updateSetArg.updatedAt,
     });
+    expect(updateSetArg.updatedAt).toBeInstanceOf(Date);
     expect(updateWhere).toHaveBeenCalled();
-    expect(service.getProductDetail).toHaveBeenCalledWith(productId);
+    expect(getProductDetailSpy).toHaveBeenCalledWith(productId);
   });
 });

@@ -37,7 +37,7 @@ HTTP request
 3. Admin/user management uses `users` and `roles`.
 4. Business master data starts with `clients`, `suppliers`, `products`, and related setup tables.
 5. Product master data defines revisions, multi-level BOM, and routing before production jobs use it.
-6. Sales flow starts from clients and orders.
+6. Sales flow starts from clients and orders; orders require director/admin approval before production use.
 7. Production flow derives work orders and production jobs from approved orders.
 8. Outside processing uses suppliers for outsourced production operations.
 9. Purchase requisitions and purchase orders use material requests and suppliers.
@@ -65,6 +65,8 @@ Sales
   -> orders
        -> order_items
             -> products
+       -> order_files
+       -> director approval
 
 Planning
   -> approved orders
@@ -124,8 +126,8 @@ Rules:
 | Authentication     | `auth`, `users`, `roles` | `users`, `roles`, `permissions`, `role_permissions`                 |
 | Customer data      | `clients`                | `clients`                                                           |
 | Supplier data      | `suppliers`              | `suppliers`                                                         |
-| Product setup      | `products`               | `products`, `product_revisions`, `bom_lines`, `routing_steps`       |
-| Sales              | future `orders`          | `orders`, `order_items`, `order_files`                              |
+| Product setup      | `products`               | `products`, `product_revisions`, `bom_lines`, `routing_steps`, `product_files` |
+| Sales              | `orders`                 | `orders`, `order_items`, `order_files`                              |
 | Planning           | future `work-orders`     | `work_orders`, `work_order_items`, `production_jobs`                |
 | Production runtime | future `production-jobs` | `production_jobs`, `job_operations`                                 |
 | Outside processing | future outside module    | `outside_processing_orders`, `outside_processing_receipts`          |
@@ -143,4 +145,4 @@ Rules:
 
 - Create module specs for `roles`.
 - Create module specs for `clients`.
-- Add module specs for future production, order, warehouse, and purchasing modules as implementation starts.
+- Add module specs for future production, warehouse, and purchasing modules as implementation starts.

@@ -1,14 +1,25 @@
 import { relations } from 'drizzle-orm';
-import { integer, pgTable, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
+import { integer, pgEnum, pgTable, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
 
 import { users } from '../users';
 import { products } from './products';
+
+export enum ProductFileType {
+  Thumbnail = 'thumbnail',
+  TechnicalAttachment = 'technical_attachment',
+}
+
+export const productFileTypeEnum = pgEnum('product_file_type', [
+  ProductFileType.Thumbnail,
+  ProductFileType.TechnicalAttachment,
+]);
 
 export const productFiles = pgTable('product_files', {
   id: uuid('id').defaultRandom().primaryKey(),
   productId: uuid('product_id')
     .notNull()
     .references(() => products.id, { onDelete: 'cascade' }),
+  fileType: productFileTypeEnum('file_type').notNull().default(ProductFileType.Thumbnail),
   originalName: varchar('original_name', { length: 255 }).notNull(),
   fileName: varchar('file_name', { length: 255 }).notNull(),
   mimeType: varchar('mime_type', { length: 100 }),

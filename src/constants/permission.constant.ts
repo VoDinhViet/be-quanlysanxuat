@@ -6,6 +6,7 @@ export type PermissionCode =
   | 'roles:manage'
   | 'orders:create'
   | 'orders:read'
+  | 'orders:read-production'
   | 'orders:update'
   | 'orders:delete'
   | 'orders:approve'

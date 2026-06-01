@@ -28,6 +28,7 @@ Controller tests should verify delegation, route DTO shape, and response ownersh
 - Delete product soft deletes when allowed.
 - Upload image validates MIME type and file size.
 - Delete image clears `imageUrl` and file metadata.
+- Product technical files list/upload/delete and do not overwrite thumbnail records.
 
 ## Verification Commands
 

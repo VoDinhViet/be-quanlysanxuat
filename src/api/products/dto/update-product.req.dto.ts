@@ -1,6 +1,7 @@
 import { ProductItemType, ProductStatus } from '../../../database/schemas';
 import {
   EnumFieldOptional,
+  NumberFieldOptional,
   StringFieldOptional,
   UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
@@ -26,6 +27,9 @@ export class UpdateProductReqDto {
 
   @StringFieldOptional({ nullable: true })
   imageUrl?: string | null;
+
+  @NumberFieldOptional({ min: 0 })
+  defaultSalePrice?: number;
 
   @StringFieldOptional({ nullable: true })
   note?: string | null;

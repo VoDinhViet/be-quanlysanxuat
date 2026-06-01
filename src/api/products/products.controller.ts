@@ -26,12 +26,18 @@ import {
   PRODUCT_IMAGE_FIELD_NAME,
   PRODUCT_IMAGE_UPLOAD_DIR,
 } from './constants/product-image.constants';
+import {
+  MAX_PRODUCT_TECHNICAL_FILE_SIZE_IN_BYTES,
+  PRODUCT_TECHNICAL_FILE_FIELD_NAME,
+  PRODUCT_TECHNICAL_FILE_UPLOAD_DIR,
+} from './constants/product-technical-file.constants';
 import { BomLineResDto } from './dto/bom-line.res.dto';
 import { BomTreeNodeResDto } from './dto/bom-tree-node.res.dto';
 import { CreateBomLineReqDto } from './dto/create-bom-line.req.dto';
 import { CreateProductReqDto } from './dto/create-product.req.dto';
 import { CreateProductRevisionReqDto } from './dto/create-product-revision.req.dto';
 import { GetProductsReqDto } from './dto/get-products.req.dto';
+import { ProductFileResDto } from './dto/product-file.res.dto';
 import { ProductOptionResDto } from './dto/product-option.res.dto';
 import { ProductRevisionResDto } from './dto/product-revision.res.dto';
 import { ProductResDto } from './dto/product.res.dto';
@@ -42,11 +48,20 @@ import { UpdateProductRevisionReqDto } from './dto/update-product-revision.req.d
 import { UpdateRoutingReqDto } from './dto/update-routing.req.dto';
 import { ProductsService } from './products.service';
 import type { ProductImageFile } from './types/product-image-file.type';
+import type { ProductTechnicalFile } from './types/product-technical-file.type';
 
 const PRODUCT_IMAGE_MULTER_OPTIONS: MulterOptions = {
   dest: PRODUCT_IMAGE_UPLOAD_DIR,
   limits: {
     fileSize: MAX_PRODUCT_IMAGE_SIZE_IN_BYTES,
+    files: 1,
+  },
+};
+
+const PRODUCT_TECHNICAL_FILE_MULTER_OPTIONS: MulterOptions = {
+  dest: PRODUCT_TECHNICAL_FILE_UPLOAD_DIR,
+  limits: {
+    fileSize: MAX_PRODUCT_TECHNICAL_FILE_SIZE_IN_BYTES,
     files: 1,
   },
 };
@@ -288,6 +303,84 @@ export class ProductsController {
   })
   deleteProductImage(@UUIDParam('productId') productId: string): Promise<ProductResDto> {
     return this.productsService.deleteProductImage(productId);
+  }
+
+  /**
+   * Lists technical attachments of a product.
+   *
+   * @param productId - Product identifier from the route parameter.
+   * @returns Active technical attachment metadata.
+   */
+  @Get(':productId/files')
+  @Permissions('products:read')
+  @ApiAuth({
+    type: ProductFileResDto,
+    summary: 'List product technical files',
+    isArray: true,
+  })
+  getProductTechnicalFiles(
+    @UUIDParam('productId') productId: string,
+  ): Promise<ProductFileResDto[]> {
+    return this.productsService.getProductTechnicalFiles(productId);
+  }
+
+  /**
+   * Uploads a technical attachment to a product without replacing the thumbnail.
+   *
+   * @param productId - Product identifier from the route parameter.
+   * @param file - Uploaded multipart file from the `file` field.
+   * @param user - Authenticated user payload used for upload ownership metadata.
+   * @returns Created technical attachment metadata.
+   */
+  @Post(':productId/files')
+  @Permissions('products:update')
+  @UseInterceptors(
+    FileInterceptor(PRODUCT_TECHNICAL_FILE_FIELD_NAME, PRODUCT_TECHNICAL_FILE_MULTER_OPTIONS),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: [PRODUCT_TECHNICAL_FILE_FIELD_NAME],
+      properties: {
+        [PRODUCT_TECHNICAL_FILE_FIELD_NAME]: {
+          type: 'string',
+          format: 'binary',
+        },
+      },
+    },
+  })
+  @ApiAuth({
+    type: ProductFileResDto,
+    summary: 'Upload product technical file',
+    statusCode: HttpStatus.CREATED,
+  })
+  uploadProductTechnicalFile(
+    @UUIDParam('productId') productId: string,
+    @UploadedFile() file: ProductTechnicalFile,
+    @User() user: JwtPayloadType,
+  ): Promise<ProductFileResDto> {
+    return this.productsService.uploadProductTechnicalFile(productId, file, user.sub);
+  }
+
+  /**
+   * Soft-deletes a product technical attachment.
+   *
+   * @param productId - Product identifier from the route parameter.
+   * @param fileId - Product file identifier from the route parameter.
+   * @returns Deleted technical attachment metadata.
+   */
+  @Delete(':productId/files/:fileId')
+  @Permissions('products:update')
+  @ApiAuth({
+    type: ProductFileResDto,
+    summary: 'Delete product technical file',
+  })
+  deleteProductTechnicalFile(
+    @UUIDParam('productId') productId: string,
+    @UUIDParam('fileId') fileId: string,
+  ): Promise<ProductFileResDto> {
+    return this.productsService.deleteProductTechnicalFile(productId, fileId);
   }
 
   @Get(':productId')
