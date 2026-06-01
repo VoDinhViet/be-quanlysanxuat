@@ -453,7 +453,7 @@ export class OrdersService {
         unit: true,
         files: {
           where: and(
-            eq(productFiles.fileType, ProductFileType.TechnicalAttachment),
+            eq(productFiles.fileType, ProductFileType.TECHNICAL_ATTACHMENT),
             isNull(productFiles.deletedAt),
           ),
           orderBy: desc(productFiles.createdAt),
@@ -544,7 +544,7 @@ export class OrdersService {
             with: {
               files: {
                 where: and(
-                  eq(productFiles.fileType, ProductFileType.TechnicalAttachment),
+                  eq(productFiles.fileType, ProductFileType.TECHNICAL_ATTACHMENT),
                   isNull(productFiles.deletedAt),
                 ),
                 orderBy: desc(productFiles.createdAt),

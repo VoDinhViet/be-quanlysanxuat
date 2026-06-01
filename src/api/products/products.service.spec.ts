@@ -133,7 +133,7 @@ describe('ProductsService', () => {
       {
         id: '550e8400-e29b-41d4-a716-446655440002',
         productId,
-        fileType: ProductFileType.TechnicalAttachment,
+        fileType: ProductFileType.TECHNICAL_ATTACHMENT,
         originalName: 'drawing.pdf',
         fileName: 'drawing.pdf',
         mimeType: 'application/pdf',
@@ -149,7 +149,7 @@ describe('ProductsService', () => {
     await expect(service.getProductTechnicalFiles(productId)).resolves.toEqual([
       expect.objectContaining({
         id: '550e8400-e29b-41d4-a716-446655440002',
-        fileType: ProductFileType.TechnicalAttachment,
+        fileType: ProductFileType.TECHNICAL_ATTACHMENT,
         url: '/uploads/products/files/drawing.pdf',
       }),
     ]);

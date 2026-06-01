@@ -5,13 +5,13 @@ import { users } from '../users';
 import { products } from './products';
 
 export enum ProductFileType {
-  Thumbnail = 'thumbnail',
-  TechnicalAttachment = 'technical_attachment',
+  THUMBNAIL = 'thumbnail',
+  TECHNICAL_ATTACHMENT = 'technical_attachment',
 }
 
 export const productFileTypeEnum = pgEnum('product_file_type', [
-  ProductFileType.Thumbnail,
-  ProductFileType.TechnicalAttachment,
+  ProductFileType.THUMBNAIL,
+  ProductFileType.TECHNICAL_ATTACHMENT,
 ]);
 
 export const productFiles = pgTable('product_files', {
@@ -19,7 +19,7 @@ export const productFiles = pgTable('product_files', {
   productId: uuid('product_id')
     .notNull()
     .references(() => products.id, { onDelete: 'cascade' }),
-  fileType: productFileTypeEnum('file_type').notNull().default(ProductFileType.Thumbnail),
+  fileType: productFileTypeEnum('file_type').notNull().default(ProductFileType.THUMBNAIL),
   originalName: varchar('original_name', { length: 255 }).notNull(),
   fileName: varchar('file_name', { length: 255 }).notNull(),
   mimeType: varchar('mime_type', { length: 100 }),

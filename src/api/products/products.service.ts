@@ -224,14 +224,14 @@ export class ProductsService {
           .where(
             and(
               eq(productFiles.productId, productId),
-              eq(productFiles.fileType, ProductFileType.Thumbnail),
+              eq(productFiles.fileType, ProductFileType.THUMBNAIL),
               isNull(productFiles.deletedAt),
             ),
           );
 
         await tx.insert(productFiles).values({
           productId,
-          fileType: ProductFileType.Thumbnail,
+          fileType: ProductFileType.THUMBNAIL,
           originalName: uploadedFile.originalname,
           fileName,
           mimeType: uploadedFile.mimetype,
@@ -280,7 +280,7 @@ export class ProductsService {
         .where(
           and(
             eq(productFiles.productId, productId),
-            eq(productFiles.fileType, ProductFileType.Thumbnail),
+            eq(productFiles.fileType, ProductFileType.THUMBNAIL),
             isNull(productFiles.deletedAt),
           ),
         );
@@ -311,7 +311,7 @@ export class ProductsService {
     const files = await this.db.query.productFiles.findMany({
       where: and(
         eq(productFiles.productId, productId),
-        eq(productFiles.fileType, ProductFileType.TechnicalAttachment),
+        eq(productFiles.fileType, ProductFileType.TECHNICAL_ATTACHMENT),
         isNull(productFiles.deletedAt),
       ),
       orderBy: desc(productFiles.createdAt),
@@ -349,7 +349,7 @@ export class ProductsService {
         .insert(productFiles)
         .values({
           productId,
-          fileType: ProductFileType.TechnicalAttachment,
+          fileType: ProductFileType.TECHNICAL_ATTACHMENT,
           originalName: uploadedFile.originalname,
           fileName,
           mimeType: uploadedFile.mimetype,
@@ -389,7 +389,7 @@ export class ProductsService {
         and(
           eq(productFiles.id, fileId),
           eq(productFiles.productId, productId),
-          eq(productFiles.fileType, ProductFileType.TechnicalAttachment),
+          eq(productFiles.fileType, ProductFileType.TECHNICAL_ATTACHMENT),
           isNull(productFiles.deletedAt),
         ),
       );
@@ -1106,7 +1106,7 @@ export class ProductsService {
     return this.db.query.productFiles.findMany({
       where: and(
         eq(productFiles.productId, productId),
-        eq(productFiles.fileType, ProductFileType.Thumbnail),
+        eq(productFiles.fileType, ProductFileType.THUMBNAIL),
         isNull(productFiles.deletedAt),
       ),
     });
@@ -1183,7 +1183,7 @@ export class ProductsService {
       where: and(
         eq(productFiles.id, fileId),
         eq(productFiles.productId, productId),
-        eq(productFiles.fileType, ProductFileType.TechnicalAttachment),
+        eq(productFiles.fileType, ProductFileType.TECHNICAL_ATTACHMENT),
         isNull(productFiles.deletedAt),
       ),
     });
