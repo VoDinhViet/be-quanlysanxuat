@@ -5,12 +5,16 @@ import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated
 import { ApiAuth } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
+import { BomLineResDto } from './dto/bom-line.res.dto';
+import { BomTreeNodeResDto } from './dto/bom-tree-node.res.dto';
+import { CreateBomLineReqDto } from './dto/create-bom-line.req.dto';
 import { CreateProductReqDto } from './dto/create-product.req.dto';
 import { CreateProductRevisionReqDto } from './dto/create-product-revision.req.dto';
 import { GetProductsReqDto } from './dto/get-products.req.dto';
 import { ProductOptionResDto } from './dto/product-option.res.dto';
 import { ProductRevisionResDto } from './dto/product-revision.res.dto';
 import { ProductResDto } from './dto/product.res.dto';
+import { UpdateBomLineReqDto } from './dto/update-bom-line.req.dto';
 import { UpdateProductReqDto } from './dto/update-product.req.dto';
 import { UpdateProductRevisionReqDto } from './dto/update-product-revision.req.dto';
 import { ProductsService } from './products.service';
@@ -112,6 +116,63 @@ export class ProductsController {
     @Body() reqDto: UpdateProductRevisionReqDto,
   ): Promise<ProductRevisionResDto> {
     return this.productsService.updateProductRevision(productId, revisionId, reqDto);
+  }
+
+  @Get(':productId/revisions/:revisionId/bom-tree')
+  @Permissions('products:read')
+  @ApiAuth({
+    type: BomTreeNodeResDto,
+    summary: 'Get product BOM tree',
+  })
+  getBomTree(
+    @UUIDParam('productId') productId: string,
+    @UUIDParam('revisionId') revisionId: string,
+  ): Promise<BomTreeNodeResDto> {
+    return this.productsService.getBomTree(productId, revisionId);
+  }
+
+  @Post(':productId/revisions/:revisionId/bom-lines')
+  @Permissions('products:bom-manage')
+  @ApiAuth({
+    type: BomLineResDto,
+    summary: 'Create BOM line',
+    statusCode: HttpStatus.CREATED,
+  })
+  createBomLine(
+    @UUIDParam('productId') productId: string,
+    @UUIDParam('revisionId') revisionId: string,
+    @Body() reqDto: CreateBomLineReqDto,
+  ): Promise<BomLineResDto> {
+    return this.productsService.createBomLine(productId, revisionId, reqDto);
+  }
+
+  @Patch(':productId/revisions/:revisionId/bom-lines/:bomLineId')
+  @Permissions('products:bom-manage')
+  @ApiAuth({
+    type: BomLineResDto,
+    summary: 'Update BOM line',
+  })
+  updateBomLine(
+    @UUIDParam('productId') productId: string,
+    @UUIDParam('revisionId') revisionId: string,
+    @UUIDParam('bomLineId') bomLineId: string,
+    @Body() reqDto: UpdateBomLineReqDto,
+  ): Promise<BomLineResDto> {
+    return this.productsService.updateBomLine(productId, revisionId, bomLineId, reqDto);
+  }
+
+  @Delete(':productId/revisions/:revisionId/bom-lines/:bomLineId')
+  @Permissions('products:bom-manage')
+  @ApiAuth({
+    type: BomLineResDto,
+    summary: 'Delete BOM line',
+  })
+  deleteBomLine(
+    @UUIDParam('productId') productId: string,
+    @UUIDParam('revisionId') revisionId: string,
+    @UUIDParam('bomLineId') bomLineId: string,
+  ): Promise<BomLineResDto> {
+    return this.productsService.deleteBomLine(productId, revisionId, bomLineId);
   }
 
   @Get(':productId')

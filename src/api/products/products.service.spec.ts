@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database } from '../../database/database.type';
+import { AppException } from '../../exceptions/app.exception';
 import { ProductsService } from './products.service';
 
 describe('ProductsService', () => {
@@ -68,5 +69,58 @@ describe('ProductsService', () => {
         },
       }),
     );
+  });
+
+  it('should reject BOM cycles', () => {
+    const serviceUnderTest = service as unknown as {
+      ensureBomCycleAllowed: (
+        parentItemId: string,
+        childItemId: string,
+        lines: Array<{ parentItemId: string; childItemId: string }>,
+      ) => void;
+    };
+
+    expect(() =>
+      serviceUnderTest.ensureBomCycleAllowed('item-a', 'item-c', [
+        { parentItemId: 'item-c', childItemId: 'item-b' },
+        { parentItemId: 'item-b', childItemId: 'item-a' },
+      ]),
+    ).toThrow(AppException);
+  });
+
+  it('should compute BOM child level from parent line', () => {
+    const serviceUnderTest = service as unknown as {
+      getBomChildLevel: (
+        rootProductId: string,
+        parentItemId: string,
+        lines: Array<{ childItemId: string; level: number }>,
+      ) => number;
+    };
+
+    expect(serviceUnderTest.getBomChildLevel('root', 'root', [])).toBe(1);
+    expect(
+      serviceUnderTest.getBomChildLevel('root', 'item-a', [{ childItemId: 'item-a', level: 1 }]),
+    ).toBe(2);
+  });
+
+  it('should collect descendant BOM line ids for subtree deletion', () => {
+    const serviceUnderTest = service as unknown as {
+      getBomSubtreeLineIds: (
+        rootBomLineId: string,
+        rootChildItemId: string,
+        lines: Array<{ id: string; parentItemId: string; childItemId: string }>,
+      ) => string[];
+    };
+
+    expect(
+      serviceUnderTest
+        .getBomSubtreeLineIds('line-a', 'item-a', [
+          { id: 'line-a', parentItemId: 'root', childItemId: 'item-a' },
+          { id: 'line-a1', parentItemId: 'item-a', childItemId: 'item-a1' },
+          { id: 'line-a11', parentItemId: 'item-a1', childItemId: 'item-a11' },
+          { id: 'line-b', parentItemId: 'root', childItemId: 'item-b' },
+        ])
+        .sort(),
+    ).toEqual(['line-a', 'line-a1', 'line-a11']);
   });
 });

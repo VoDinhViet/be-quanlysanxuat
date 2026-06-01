@@ -9,23 +9,31 @@ describe('ProductsController', () => {
   let productsService: jest.Mocked<
     Pick<
       ProductsService,
+      | 'createBomLine'
       | 'createProduct'
       | 'createProductRevision'
+      | 'deleteBomLine'
       | 'deleteProduct'
+      | 'getBomTree'
       | 'getProductOptions'
       | 'getProductRevisions'
       | 'getProducts'
+      | 'updateBomLine'
     >
   >;
 
   beforeEach(async () => {
     productsService = {
+      createBomLine: jest.fn(),
       createProduct: jest.fn(),
       createProductRevision: jest.fn(),
+      deleteBomLine: jest.fn(),
       deleteProduct: jest.fn(),
+      getBomTree: jest.fn(),
       getProductOptions: jest.fn(),
       getProductRevisions: jest.fn(),
       getProducts: jest.fn(),
+      updateBomLine: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -99,6 +107,68 @@ describe('ProductsController', () => {
     await expect(controller.createProductRevision(productId, reqDto)).resolves.toBe(response);
 
     expect(productsService.createProductRevision).toHaveBeenCalledWith(productId, reqDto);
+  });
+
+  it('should delegate BOM tree queries to service', async () => {
+    const productId = '550e8400-e29b-41d4-a716-446655440001';
+    const revisionId = '550e8400-e29b-41d4-a716-446655440002';
+    const response = { productId, children: [] } as never;
+    productsService.getBomTree.mockResolvedValue(response);
+
+    await expect(controller.getBomTree(productId, revisionId)).resolves.toBe(response);
+
+    expect(productsService.getBomTree).toHaveBeenCalledWith(productId, revisionId);
+  });
+
+  it('should delegate BOM line creation to service', async () => {
+    const productId = '550e8400-e29b-41d4-a716-446655440001';
+    const revisionId = '550e8400-e29b-41d4-a716-446655440002';
+    const reqDto = {
+      parentItemId: productId,
+      childItemId: '550e8400-e29b-41d4-a716-446655440003',
+      qty: 1,
+      unitId: '550e8400-e29b-41d4-a716-446655440004',
+    };
+    const response = { id: '550e8400-e29b-41d4-a716-446655440005' } as never;
+    productsService.createBomLine.mockResolvedValue(response);
+
+    await expect(controller.createBomLine(productId, revisionId, reqDto)).resolves.toBe(response);
+
+    expect(productsService.createBomLine).toHaveBeenCalledWith(productId, revisionId, reqDto);
+  });
+
+  it('should delegate BOM line update to service', async () => {
+    const productId = '550e8400-e29b-41d4-a716-446655440001';
+    const revisionId = '550e8400-e29b-41d4-a716-446655440002';
+    const bomLineId = '550e8400-e29b-41d4-a716-446655440003';
+    const reqDto = { qty: 2 };
+    const response = { id: bomLineId } as never;
+    productsService.updateBomLine.mockResolvedValue(response);
+
+    await expect(controller.updateBomLine(productId, revisionId, bomLineId, reqDto)).resolves.toBe(
+      response,
+    );
+
+    expect(productsService.updateBomLine).toHaveBeenCalledWith(
+      productId,
+      revisionId,
+      bomLineId,
+      reqDto,
+    );
+  });
+
+  it('should delegate BOM line deletion to service', async () => {
+    const productId = '550e8400-e29b-41d4-a716-446655440001';
+    const revisionId = '550e8400-e29b-41d4-a716-446655440002';
+    const bomLineId = '550e8400-e29b-41d4-a716-446655440003';
+    const response = { id: bomLineId } as never;
+    productsService.deleteBomLine.mockResolvedValue(response);
+
+    await expect(controller.deleteBomLine(productId, revisionId, bomLineId)).resolves.toBe(
+      response,
+    );
+
+    expect(productsService.deleteBomLine).toHaveBeenCalledWith(productId, revisionId, bomLineId);
   });
 
   it('should delegate product deletion to service', async () => {

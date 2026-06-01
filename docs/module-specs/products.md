@@ -12,7 +12,7 @@ src/api/products/
 
 ## Current Status
 
-Product CRUD, option, and revision endpoints are implemented. BOM and routing endpoints are pending.
+Product CRUD, option, revision, and BOM tree/line endpoints are implemented. Routing endpoints are pending.
 
 Implemented in this chunk:
 
@@ -22,12 +22,13 @@ Implemented in this chunk:
 - Product CRUD endpoints.
 - Product/unit/type/operation option endpoints.
 - Product revision list/create/update endpoints.
+- BOM tree endpoint.
+- BOM line create/update/delete endpoints.
 - Product `clientId` schema link.
 - Unique indexes for product code and product revision number per product.
 
 Pending implementation:
 
-- BOM tree and BOM line endpoints.
 - Routing endpoints.
 - Product database migration review for optional `bomLines.sortOrder`.
 
@@ -157,6 +158,22 @@ PATCH  /products/:productId/revisions/:revisionId/bom-lines/:bomLineId
 DELETE /products/:productId/revisions/:revisionId/bom-lines/:bomLineId
 ```
 
+BOM endpoint rules:
+
+- `GET /products/:productId/revisions/:revisionId/bom-tree` uses `products:read` and returns `BomTreeNodeResDto`.
+- `POST /products/:productId/revisions/:revisionId/bom-lines` uses `products:bom-manage` and accepts `CreateBomLineReqDto`.
+- `PATCH /products/:productId/revisions/:revisionId/bom-lines/:bomLineId` uses `products:bom-manage` and accepts `UpdateBomLineReqDto`.
+- `DELETE /products/:productId/revisions/:revisionId/bom-lines/:bomLineId` uses `products:bom-manage` and soft-deletes the BOM line plus its descendant BOM lines.
+- Product and revision must exist, and revision must belong to product.
+- Parent item must exist and be FG/WIP.
+- Parent item must be the root product or already attached in the same revision tree.
+- Child item must exist and must not be the same item as parent.
+- Unit must exist when creating or updating a BOM line.
+- Service computes BOM `level`; clients must not send or trust it.
+- Service rejects cycles before creating a BOM line.
+- BOM tree root is the product. Child nodes are built from active `bomLines` for the selected revision.
+- `hasRouting` is calculated from active `routingSteps` for the selected revision.
+
 ### Routing Endpoints
 
 ```text
@@ -172,12 +189,12 @@ Planned permission codes:
 - `products:create`
 - `products:update`
 - `products:delete`
+- `products:bom-manage`
 
 Planned later:
 
 - `products:lock`
 - `products:copy`
-- `products:bom-manage`
 - `products:routing-manage`
 
 Planned endpoint mapping:
@@ -186,17 +203,17 @@ Planned endpoint mapping:
 - Create: `products:create`.
 - Update/image: `products:update`.
 - Delete: `products:delete`.
+- BOM mutation: `products:bom-manage`.
 
 Planned later:
 
 - Lock: `products:lock`.
 - Copy: `products:copy`.
-- BOM: `products:bom-manage`.
 - Routing: `products:routing-manage`.
 
 Implementation note:
 
-- Lock/copy/BOM/routing permissions are not seeded yet.
+- Lock/copy/routing permissions are not seeded yet.
 - Add remaining permission codes and RBAC seed entries only when the matching endpoints are implemented.
 
 ## Dependencies

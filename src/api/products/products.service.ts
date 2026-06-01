@@ -1,6 +1,6 @@
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
-import { and, asc, count, desc, eq, ilike, isNull, ne, or } from 'drizzle-orm';
+import { and, asc, count, desc, eq, ilike, inArray, isNull, ne, or } from 'drizzle-orm';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
@@ -9,20 +9,27 @@ import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database } from '../../database/database.type';
 import {
+  bomLines,
   clients,
   operations,
   productRevisions,
   products,
+  ProductItemType,
   productTypes,
+  routingSteps,
   units,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
+import { BomLineResDto } from './dto/bom-line.res.dto';
+import { BomTreeNodeResDto } from './dto/bom-tree-node.res.dto';
+import { CreateBomLineReqDto } from './dto/create-bom-line.req.dto';
 import { CreateProductReqDto } from './dto/create-product.req.dto';
 import { CreateProductRevisionReqDto } from './dto/create-product-revision.req.dto';
 import { GetProductsReqDto } from './dto/get-products.req.dto';
 import { ProductOptionResDto } from './dto/product-option.res.dto';
 import { ProductRevisionResDto } from './dto/product-revision.res.dto';
 import { ProductResDto } from './dto/product.res.dto';
+import { UpdateBomLineReqDto } from './dto/update-bom-line.req.dto';
 import { UpdateProductReqDto } from './dto/update-product.req.dto';
 import { UpdateProductRevisionReqDto } from './dto/update-product-revision.req.dto';
 
@@ -281,6 +288,156 @@ export class ProductsService {
     return this.mapRevision(revision);
   }
 
+  async getBomTree(productId: string, revisionId: string): Promise<BomTreeNodeResDto> {
+    const rootProduct = await this.getBomRootProduct(productId);
+
+    await this.ensureProductRevisionExists(productId, revisionId);
+
+    const [lines, steps] = await Promise.all([
+      this.db.query.bomLines.findMany({
+        where: and(eq(bomLines.productRevisionId, revisionId), isNull(bomLines.deletedAt)),
+        with: {
+          childItem: {
+            with: {
+              unit: true,
+            },
+          },
+          unit: true,
+        },
+        orderBy: [asc(bomLines.level), asc(bomLines.createdAt)],
+      }),
+      this.db.query.routingSteps.findMany({
+        columns: {
+          itemId: true,
+        },
+        where: and(eq(routingSteps.productRevisionId, revisionId), isNull(routingSteps.deletedAt)),
+      }),
+    ]);
+
+    const routingItemIds = new Set(steps.map((step) => step.itemId));
+    const linesByParentId = new Map<string, BomLineEntityWithRelations[]>();
+
+    for (const line of lines) {
+      const parentLines = linesByParentId.get(line.parentItemId) ?? [];
+      parentLines.push(line);
+      linesByParentId.set(line.parentItemId, parentLines);
+    }
+
+    return this.mapBomTreeNode({
+      product: rootProduct,
+      line: null,
+      parentItemId: null,
+      qty: '1',
+      level: 0,
+      routingItemIds,
+      linesByParentId,
+    });
+  }
+
+  async createBomLine(
+    productId: string,
+    revisionId: string,
+    reqDto: CreateBomLineReqDto,
+  ): Promise<BomLineResDto> {
+    await this.ensureProductRevisionExists(productId, revisionId);
+    await this.ensureUnitExists(reqDto.unitId);
+
+    if (reqDto.parentItemId === reqDto.childItemId) {
+      throw new AppException(ErrorCode.V002, HttpStatus.UNPROCESSABLE_ENTITY);
+    }
+
+    const [parentItem, childItem, existingLines] = await Promise.all([
+      this.getBomItem(reqDto.parentItemId),
+      this.getBomItem(reqDto.childItemId),
+      this.getBomLines(revisionId),
+    ]);
+
+    this.ensureBomParentAllowed(parentItem);
+    this.ensureBomParentAttached(productId, reqDto.parentItemId, existingLines);
+    this.ensureBomCycleAllowed(reqDto.parentItemId, reqDto.childItemId, existingLines);
+
+    const level = this.getBomChildLevel(productId, reqDto.parentItemId, existingLines);
+
+    const [line] = await this.db
+      .insert(bomLines)
+      .values({
+        productRevisionId: revisionId,
+        parentItemId: parentItem.id,
+        childItemId: childItem.id,
+        qty: String(reqDto.qty),
+        unitId: reqDto.unitId,
+        scrapRate: String(reqDto.scrapRate ?? 0),
+        level,
+        note: reqDto.note,
+      })
+      .returning();
+
+    return this.getBomLine(revisionId, line.id);
+  }
+
+  async updateBomLine(
+    productId: string,
+    revisionId: string,
+    bomLineId: string,
+    reqDto: UpdateBomLineReqDto,
+  ): Promise<BomLineResDto> {
+    await this.ensureProductRevisionExists(productId, revisionId);
+
+    if (reqDto.unitId) {
+      await this.ensureUnitExists(reqDto.unitId);
+    }
+
+    await this.ensureBomLineExists(revisionId, bomLineId);
+
+    await this.db
+      .update(bomLines)
+      .set({
+        qty: reqDto.qty === undefined ? undefined : String(reqDto.qty),
+        unitId: reqDto.unitId,
+        scrapRate: reqDto.scrapRate === undefined ? undefined : String(reqDto.scrapRate),
+        note: reqDto.note,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(bomLines.id, bomLineId),
+          eq(bomLines.productRevisionId, revisionId),
+          isNull(bomLines.deletedAt),
+        ),
+      );
+
+    return this.getBomLine(revisionId, bomLineId);
+  }
+
+  async deleteBomLine(
+    productId: string,
+    revisionId: string,
+    bomLineId: string,
+  ): Promise<BomLineResDto> {
+    await this.ensureProductRevisionExists(productId, revisionId);
+
+    const line = await this.getBomLine(revisionId, bomLineId);
+    const lines = await this.getBomLines(revisionId);
+    const deletionIds = this.getBomSubtreeLineIds(bomLineId, line.childItemId, lines);
+    const deletedAt = new Date();
+
+    await this.db
+      .update(bomLines)
+      .set({
+        deletedAt,
+        updatedAt: deletedAt,
+      })
+      .where(
+        and(
+          inArray(bomLines.id, deletionIds),
+          eq(bomLines.productRevisionId, revisionId),
+          isNull(bomLines.deletedAt),
+        ),
+      );
+
+    return line;
+  }
+
   private async ensureProductExists(productId: string): Promise<void> {
     const existingProduct = await this.db.query.products.findFirst({
       columns: {
@@ -353,6 +510,175 @@ export class ProductsService {
     }
   }
 
+  private async getBomRootProduct(productId: string): Promise<ProductWithUnit> {
+    const product = await this.db.query.products.findFirst({
+      where: and(eq(products.id, productId), isNull(products.deletedAt)),
+      with: {
+        unit: true,
+      },
+    });
+
+    if (!product) {
+      throw new AppException(ErrorCode.E002, HttpStatus.NOT_FOUND);
+    }
+
+    return product;
+  }
+
+  private async getBomItem(productId: string): Promise<ProductWithUnit> {
+    const product = await this.db.query.products.findFirst({
+      where: and(eq(products.id, productId), isNull(products.deletedAt)),
+      with: {
+        unit: true,
+      },
+    });
+
+    if (!product) {
+      throw new AppException(ErrorCode.E002, HttpStatus.NOT_FOUND);
+    }
+
+    return product;
+  }
+
+  private async getBomLines(revisionId: string): Promise<(typeof bomLines.$inferSelect)[]> {
+    return this.db.query.bomLines.findMany({
+      where: and(eq(bomLines.productRevisionId, revisionId), isNull(bomLines.deletedAt)),
+    });
+  }
+
+  private async getBomLine(revisionId: string, bomLineId: string): Promise<BomLineResDto> {
+    const line = await this.db.query.bomLines.findFirst({
+      where: and(
+        eq(bomLines.id, bomLineId),
+        eq(bomLines.productRevisionId, revisionId),
+        isNull(bomLines.deletedAt),
+      ),
+      with: {
+        unit: true,
+      },
+    });
+
+    if (!line) {
+      throw new AppException(ErrorCode.E002, HttpStatus.NOT_FOUND);
+    }
+
+    return this.mapBomLine(line);
+  }
+
+  private async ensureBomLineExists(revisionId: string, bomLineId: string): Promise<void> {
+    const existingLine = await this.db.query.bomLines.findFirst({
+      columns: {
+        id: true,
+      },
+      where: and(
+        eq(bomLines.id, bomLineId),
+        eq(bomLines.productRevisionId, revisionId),
+        isNull(bomLines.deletedAt),
+      ),
+    });
+
+    if (!existingLine) {
+      throw new AppException(ErrorCode.E002, HttpStatus.NOT_FOUND);
+    }
+  }
+
+  private ensureBomParentAllowed(parentItem: typeof products.$inferSelect): void {
+    if (![ProductItemType.Fg, ProductItemType.Wip].includes(parentItem.itemType)) {
+      throw new AppException(ErrorCode.V002, HttpStatus.UNPROCESSABLE_ENTITY);
+    }
+  }
+
+  private ensureBomParentAttached(
+    rootProductId: string,
+    parentItemId: string,
+    lines: (typeof bomLines.$inferSelect)[],
+  ): void {
+    const isRoot = parentItemId === rootProductId;
+    const isExistingChild = lines.some((line) => line.childItemId === parentItemId);
+
+    if (!isRoot && !isExistingChild) {
+      throw new AppException(ErrorCode.V002, HttpStatus.UNPROCESSABLE_ENTITY);
+    }
+  }
+
+  private ensureBomCycleAllowed(
+    parentItemId: string,
+    childItemId: string,
+    lines: (typeof bomLines.$inferSelect)[],
+  ): void {
+    const childrenByParentId = new Map<string, string[]>();
+
+    for (const line of lines) {
+      const childIds = childrenByParentId.get(line.parentItemId) ?? [];
+      childIds.push(line.childItemId);
+      childrenByParentId.set(line.parentItemId, childIds);
+    }
+
+    const stack = [childItemId];
+    const visited = new Set<string>();
+
+    while (stack.length > 0) {
+      const currentItemId = stack.pop();
+
+      if (!currentItemId || visited.has(currentItemId)) {
+        continue;
+      }
+
+      if (currentItemId === parentItemId) {
+        throw new AppException(ErrorCode.V002, HttpStatus.UNPROCESSABLE_ENTITY);
+      }
+
+      visited.add(currentItemId);
+      stack.push(...(childrenByParentId.get(currentItemId) ?? []));
+    }
+  }
+
+  private getBomChildLevel(
+    rootProductId: string,
+    parentItemId: string,
+    lines: (typeof bomLines.$inferSelect)[],
+  ): number {
+    if (parentItemId === rootProductId) {
+      return 1;
+    }
+
+    const parentLine = lines.find((line) => line.childItemId === parentItemId);
+
+    if (!parentLine) {
+      throw new AppException(ErrorCode.V002, HttpStatus.UNPROCESSABLE_ENTITY);
+    }
+
+    return parentLine.level + 1;
+  }
+
+  private getBomSubtreeLineIds(
+    rootBomLineId: string,
+    rootChildItemId: string,
+    lines: (typeof bomLines.$inferSelect)[],
+  ): string[] {
+    const deletionIds = new Set([rootBomLineId]);
+    const stack = [rootChildItemId];
+
+    while (stack.length > 0) {
+      const parentItemId = stack.pop();
+
+      if (!parentItemId) {
+        continue;
+      }
+
+      for (const line of lines) {
+        if (line.parentItemId !== parentItemId || deletionIds.has(line.id)) {
+          continue;
+        }
+
+        deletionIds.add(line.id);
+        stack.push(line.childItemId);
+      }
+    }
+
+    return Array.from(deletionIds);
+  }
+
   private async ensureRevisionNoAvailable(
     productId: string,
     revisionNo: string,
@@ -406,6 +732,47 @@ export class ProductsService {
       excludeExtraneousValues: true,
     });
   }
+
+  private mapBomLine(line: BomLineWithUnit): BomLineResDto {
+    return plainToInstance(BomLineResDto, line, {
+      excludeExtraneousValues: true,
+    });
+  }
+
+  private mapBomTreeNode(args: MapBomTreeNodeArgs): BomTreeNodeResDto {
+    const { product, line, parentItemId, qty, level, routingItemIds, linesByParentId } = args;
+    const children = (linesByParentId.get(product.id) ?? []).map((childLine) =>
+      this.mapBomTreeNode({
+        product: childLine.childItem,
+        line: childLine,
+        parentItemId: product.id,
+        qty: childLine.qty,
+        level: childLine.level,
+        routingItemIds,
+        linesByParentId,
+      }),
+    );
+
+    return plainToInstance(
+      BomTreeNodeResDto,
+      {
+        id: line?.id ?? product.id,
+        bomLineId: line?.id ?? null,
+        productId: product.id,
+        parentItemId,
+        code: product.code,
+        name: product.name,
+        imageUrl: product.imageUrl,
+        itemType: product.itemType,
+        qty,
+        unit: line?.unit ?? product.unit,
+        level,
+        hasRouting: routingItemIds.has(product.id),
+        children,
+      },
+      { excludeExtraneousValues: true },
+    );
+  }
 }
 
 type ProductEntityWithRelations = typeof products.$inferSelect & {
@@ -418,4 +785,27 @@ type ProductOptionEntity = {
   id: string;
   code: string;
   name: string;
+};
+
+type ProductWithUnit = typeof products.$inferSelect & {
+  unit: typeof units.$inferSelect;
+};
+
+type BomLineWithUnit = typeof bomLines.$inferSelect & {
+  unit: typeof units.$inferSelect | null;
+};
+
+type BomLineEntityWithRelations = typeof bomLines.$inferSelect & {
+  childItem: ProductWithUnit;
+  unit: typeof units.$inferSelect | null;
+};
+
+type MapBomTreeNodeArgs = {
+  product: ProductWithUnit;
+  line: BomLineEntityWithRelations | null;
+  parentItemId: string | null;
+  qty: string;
+  level: number;
+  routingItemIds: Set<string>;
+  linesByParentId: Map<string, BomLineEntityWithRelations[]>;
 };
