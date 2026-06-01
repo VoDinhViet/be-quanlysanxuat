@@ -36,11 +36,12 @@ HTTP request
 2. Frontend calls `GET /auth/me` to get role and permission codes.
 3. Admin/user management uses `users` and `roles`.
 4. Business master data starts with `clients`, `suppliers`, `products`, and related setup tables.
-5. Sales flow starts from clients and orders.
-6. Production flow derives work orders and production jobs from approved orders.
-7. Outside processing uses suppliers for outsourced production operations.
-8. Purchase requisitions and purchase orders use material requests and suppliers.
-9. Warehouse and QC flows process receipts, issues, returns, inventory, and stock-in quality approval.
+5. Product master data defines revisions, multi-level BOM, and routing before production jobs use it.
+6. Sales flow starts from clients and orders.
+7. Production flow derives work orders and production jobs from approved orders.
+8. Outside processing uses suppliers for outsourced production operations.
+9. Purchase requisitions and purchase orders use material requests and suppliers.
+10. Warehouse and QC flows process receipts, issues, returns, inventory, and stock-in quality approval.
 
 ## Documentation Rules
 
@@ -54,4 +55,4 @@ HTTP request
 
 - Create module specs for `roles`.
 - Create module specs for `clients`.
-- Add module specs for future production, order, warehouse, purchasing, and product modules as implementation starts.
+- Add module specs for future production, order, warehouse, and purchasing modules as implementation starts.

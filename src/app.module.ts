@@ -14,6 +14,7 @@ import { UsersModule } from './api/users/users.module';
 import { RolesModule } from './api/roles/roles.module';
 import { ClientsModule } from './api/clients/clients.module';
 import { SuppliersModule } from './api/suppliers/suppliers.module';
+import { ProductsModule } from './api/products/products.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { SuppliersModule } from './api/suppliers/suppliers.module';
     RolesModule,
     ClientsModule,
     SuppliersModule,
+    ProductsModule,
   ],
 
   controllers: [AppController],
