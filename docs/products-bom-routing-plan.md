@@ -476,7 +476,21 @@ Test cases:
 
 ## Timeline Task Table
 
-Timeline giả định bắt đầu từ `2026-06-01`. Mỗi API là một task riêng. Mỗi button UI kèm xử lý logic là một task riêng để dễ estimate, review và nghiệm thu.
+Timeline thực tế giả định bắt đầu từ `2026-06-01`, có AI hỗ trợ viết code/test/docs nhưng vẫn cần dev review, chạy kiểm tra và sửa lỗi tích hợp. Không tính thứ bảy/chủ nhật. Mỗi API là một task riêng. Mỗi button UI kèm xử lý logic là một task riêng để dễ estimate, review và nghiệm thu.
+
+Giả định nguồn lực:
+
+- `1 dev chính + AI hỗ trợ`: khoảng 10 ngày làm việc, từ `2026-06-01` đến `2026-06-12`.
+- `2 dev + AI hỗ trợ`: có thể rút còn khoảng 7-8 ngày làm việc nếu backend và frontend chạy song song sau khi API contract ổn định.
+- Timeline dưới đây dùng phương án `1 dev chính + AI hỗ trợ`, có buffer kiểm thử và sửa lỗi cuối module.
+
+| Giai đoạn                   | Ngày bắt đầu | Ngày kết thúc |  Giờ | Nội dung                                                                                    | Ghi chú                                   |
+| --------------------------- | ------------ | ------------- | ---: | ------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| Backend core API            | 2026-06-01   | 2026-06-03    |   24 | Product CRUD, options, image, revision, copy, lock/unlock, BOM tree/add                     | Ưu tiên chốt contract cho FE.             |
+| Backend BOM/Routing + tests | 2026-06-04   | 2026-06-05    |   18 | BOM update/delete, routing get/save, focused tests, docs                                    | Có buffer sửa rule lock/cycle/qty.        |
+| Frontend list/form actions  | 2026-06-08   | 2026-06-09    |   15 | List, search/filter, create/edit, lock/unlock, copy, delete                                 | Dùng API đã chốt từ backend.              |
+| Frontend detail/BOM/Routing | 2026-06-10   | 2026-06-11    | 19.5 | Detail, revision selector, revision dialogs, BOM tree, add/edit/delete node, routing dialog | Phần có rủi ro UI/logic cao nhất.         |
+| Integration QA + polish     | 2026-06-12   | 2026-06-12    |    7 | Typecheck/lint, manual verification, fix edge cases, update docs                            | Không nhận thêm scope mới trong ngày này. |
 
 | ID    | Nhóm          | Task                                                                                         | Ngày bắt đầu | Ngày kết thúc |  Giờ | Ghi chú                                                   |
 | ----- | ------------- | -------------------------------------------------------------------------------------------- | ------------ | ------------- | ---: | --------------------------------------------------------- |
@@ -505,31 +519,31 @@ Timeline giả định bắt đầu từ `2026-06-01`. Mỗi API là một task 
 | BE-23 | API           | `DELETE /products/:productId/revisions/:revisionId/bom-lines/:bomLineId` delete BOM line API | 2026-06-04   | 2026-06-04    |  1.5 | Delete node and descendants.                              |
 | BE-24 | API           | `GET /products/:productId/revisions/:revisionId/items/:itemId/routing` get routing API       | 2026-06-04   | 2026-06-04    |    1 | Sort by `stepNo`.                                         |
 | BE-25 | API           | `PUT /products/:productId/revisions/:revisionId/items/:itemId/routing` replace routing API   | 2026-06-04   | 2026-06-04    |  2.5 | Validate FG/WIP only, duplicate step, outsource supplier. |
-| BE-26 | Tests         | Backend focused tests                                                                        | 2026-06-04   | 2026-06-04    |    4 | Cover API business rules and locked state.                |
-| BE-27 | Docs          | Update module spec and system flow                                                           | 2026-06-04   | 2026-06-04    |    1 | Keep API rules current for later agents.                  |
-| FE-01 | Page          | Product list page shell                                                                      | 2026-06-05   | 2026-06-05    |    2 | Route `/manage/products`, table and toolbar.              |
-| FE-02 | UI action     | `[+ Tạo sản phẩm]` button + create dialog logic                                              | 2026-06-05   | 2026-06-05    |    3 | TanStack form, image field, create action.                |
-| FE-03 | UI action     | `[Tìm kiếm]` input + query param logic                                                       | 2026-06-05   | 2026-06-05    |    1 | Use `nuqs` and transition.                                |
-| FE-04 | UI action     | `[Lọc]` filter controls + query param logic                                                  | 2026-06-05   | 2026-06-05    |  1.5 | Client, item type, status.                                |
-| FE-05 | UI action     | `[Xem]` button + detail navigation                                                           | 2026-06-05   | 2026-06-05    |    1 | Link to product detail page.                              |
-| FE-06 | UI action     | `[Sửa]` button + edit dialog logic                                                           | 2026-06-05   | 2026-06-05    |    2 | Update product, image and default revision.               |
-| FE-07 | UI action     | `[Lock/Mở khóa]` button + confirm logic                                                      | 2026-06-05   | 2026-06-05    |  1.5 | Lock and unlock based on current status.                  |
-| FE-08 | UI action     | `[Copy]` button + copy logic                                                                 | 2026-06-05   | 2026-06-05    |  1.5 | Copy product and refresh/redirect.                        |
-| FE-09 | UI action     | `[Xóa]` button + delete dialog logic                                                         | 2026-06-05   | 2026-06-05    |  1.5 | Confirm dialog and soft delete action.                    |
-| FE-10 | Detail        | Product detail layout                                                                        | 2026-06-06   | 2026-06-06    |    2 | Full page layout with back button and product summary.    |
-| FE-11 | UI action     | Revision selector + URL state logic                                                          | 2026-06-06   | 2026-06-06    |  1.5 | Use `nuqs` and `useTransition`.                           |
-| FE-12 | UI action     | `[Tạo revision]` button + create revision dialog logic                                       | 2026-06-06   | 2026-06-06    |    2 | Optional copy from source revision.                       |
-| FE-13 | UI action     | `[Sửa revision]` button + update revision dialog logic                                       | 2026-06-06   | 2026-06-06    |  1.5 | Edit revision number/note.                                |
-| FE-14 | Component     | BOM tree-grid render                                                                         | 2026-06-06   | 2026-06-06    |    3 | Tree indentation, image/icon, routing indicator.          |
-| FE-15 | UI action     | BOM `[+]` button + add node dialog logic                                                     | 2026-06-07   | 2026-06-07    |    3 | Search child product/material, qty/unit validation.       |
-| FE-16 | UI action     | BOM `SL` inline edit + save logic                                                            | 2026-06-07   | 2026-06-07    |    2 | WIP integer, RM decimal.                                  |
-| FE-17 | UI action     | BOM `[X]` button + delete node dialog logic                                                  | 2026-06-07   | 2026-06-07    |  1.5 | Confirm delete and refresh tree.                          |
-| FE-18 | UI action     | `[Routing]` button + routing dialog open logic                                               | 2026-06-07   | 2026-06-07    |  1.5 | Hidden/disabled for RM and consumable.                    |
-| FE-19 | UI action     | `[Thêm công đoạn]` button + add row logic                                                    | 2026-06-07   | 2026-06-07    |  1.5 | Auto next `stepNo`.                                       |
-| FE-20 | UI action     | Routing `[Lưu]` button + replace routing logic                                               | 2026-06-08   | 2026-06-08    |    2 | Save full routing step list.                              |
-| FE-21 | UI action     | Routing `[Xóa dòng]` button + remove row logic                                               | 2026-06-08   | 2026-06-08    |    1 | Local remove before save.                                 |
-| FE-22 | UI action     | Product image click + preview dialog logic                                                   | 2026-06-08   | 2026-06-08    |    1 | Large image preview with fallback icon.                   |
-| FE-23 | Verification  | Frontend lint/typecheck/manual verification                                                  | 2026-06-08   | 2026-06-08    |    3 | Product list, form, BOM, routing, lock/copy/delete.       |
+| BE-26 | Tests         | Backend focused tests                                                                        | 2026-06-05   | 2026-06-05    |    4 | Cover API business rules and locked state.                |
+| BE-27 | Docs          | Update module spec and system flow                                                           | 2026-06-05   | 2026-06-05    |    1 | Keep API rules current for later agents.                  |
+| FE-01 | Page          | Product list page shell                                                                      | 2026-06-08   | 2026-06-08    |    2 | Route `/manage/products`, table and toolbar.              |
+| FE-02 | UI action     | `[+ Tạo sản phẩm]` button + create dialog logic                                              | 2026-06-08   | 2026-06-08    |    3 | TanStack form, image field, create action.                |
+| FE-03 | UI action     | `[Tìm kiếm]` input + query param logic                                                       | 2026-06-08   | 2026-06-08    |    1 | Use `nuqs` and transition.                                |
+| FE-04 | UI action     | `[Lọc]` filter controls + query param logic                                                  | 2026-06-08   | 2026-06-08    |  1.5 | Client, item type, status.                                |
+| FE-05 | UI action     | `[Xem]` button + detail navigation                                                           | 2026-06-09   | 2026-06-09    |    1 | Link to product detail page.                              |
+| FE-06 | UI action     | `[Sửa]` button + edit dialog logic                                                           | 2026-06-09   | 2026-06-09    |    2 | Update product, image and default revision.               |
+| FE-07 | UI action     | `[Lock/Mở khóa]` button + confirm logic                                                      | 2026-06-09   | 2026-06-09    |  1.5 | Lock and unlock based on current status.                  |
+| FE-08 | UI action     | `[Copy]` button + copy logic                                                                 | 2026-06-09   | 2026-06-09    |  1.5 | Copy product and refresh/redirect.                        |
+| FE-09 | UI action     | `[Xóa]` button + delete dialog logic                                                         | 2026-06-09   | 2026-06-09    |  1.5 | Confirm dialog and soft delete action.                    |
+| FE-10 | Detail        | Product detail layout                                                                        | 2026-06-10   | 2026-06-10    |    2 | Full page layout with back button and product summary.    |
+| FE-11 | UI action     | Revision selector + URL state logic                                                          | 2026-06-10   | 2026-06-10    |  1.5 | Use `nuqs` and `useTransition`.                           |
+| FE-12 | UI action     | `[Tạo revision]` button + create revision dialog logic                                       | 2026-06-10   | 2026-06-10    |    2 | Optional copy from source revision.                       |
+| FE-13 | UI action     | `[Sửa revision]` button + update revision dialog logic                                       | 2026-06-10   | 2026-06-10    |  1.5 | Edit revision number/note.                                |
+| FE-14 | Component     | BOM tree-grid render                                                                         | 2026-06-10   | 2026-06-10    |    3 | Tree indentation, image/icon, routing indicator.          |
+| FE-15 | UI action     | BOM `[+]` button + add node dialog logic                                                     | 2026-06-11   | 2026-06-11    |    3 | Search child product/material, qty/unit validation.       |
+| FE-16 | UI action     | BOM `SL` inline edit + save logic                                                            | 2026-06-11   | 2026-06-11    |    2 | WIP integer, RM decimal.                                  |
+| FE-17 | UI action     | BOM `[X]` button + delete node dialog logic                                                  | 2026-06-11   | 2026-06-11    |  1.5 | Confirm delete and refresh tree.                          |
+| FE-18 | UI action     | `[Routing]` button + routing dialog open logic                                               | 2026-06-11   | 2026-06-11    |  1.5 | Hidden/disabled for RM and consumable.                    |
+| FE-19 | UI action     | `[Thêm công đoạn]` button + add row logic                                                    | 2026-06-11   | 2026-06-11    |  1.5 | Auto next `stepNo`.                                       |
+| FE-20 | UI action     | Routing `[Lưu]` button + replace routing logic                                               | 2026-06-12   | 2026-06-12    |    2 | Save full routing step list.                              |
+| FE-21 | UI action     | Routing `[Xóa dòng]` button + remove row logic                                               | 2026-06-12   | 2026-06-12    |    1 | Local remove before save.                                 |
+| FE-22 | UI action     | Product image click + preview dialog logic                                                   | 2026-06-12   | 2026-06-12    |    1 | Large image preview with fallback icon.                   |
+| FE-23 | Verification  | Frontend lint/typecheck/manual verification                                                  | 2026-06-12   | 2026-06-12    |    3 | Product list, form, BOM, routing, lock/copy/delete.       |
 
 ## Open Questions
 
