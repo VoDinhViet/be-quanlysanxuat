@@ -1,5 +1,45 @@
 # Products API Spec
 
+## Data Rules
+
+### Product Types
+
+- `FG`: finished good, may have BOM and routing.
+- `WIP`: work-in-process or intermediate part, may have BOM and routing.
+- `RM`: raw material, must not have routing.
+- `Consumable`: auxiliary material, defaults to no routing.
+
+### Product Status
+
+- `active`: can be used for BOM and future production jobs.
+- `inactive`: hidden from new source-data use cases.
+- `locked`: blocks product info, revision, BOM, and routing mutations.
+
+### Revision
+
+- BOM and routing are always scoped to a product revision.
+- Future jobs must snapshot the selected/current revision.
+- Creating or copying a revision can copy BOM/routing from a source revision.
+
+### BOM
+
+- FG/WIP can be parent nodes.
+- WIP/RM/Consumable can be child nodes.
+- RM/Consumable must not have routing.
+- An item cannot be a child of itself.
+- Cycles are rejected, for example `A -> A1 -> A`.
+- WIP quantity should be an integer.
+- RM quantity can be decimal.
+- Quantity is per 1 parent assembly.
+
+### Routing
+
+- Only FG/WIP items can have routing.
+- `stepNo` is the operation sequence.
+- `stepNo` cannot be duplicated for the same item and revision.
+- `isOutsideProcess = true` marks an outsource operation.
+- Outsource operations can have `defaultSupplierId`.
+
 ## Product Endpoints
 
 ```text
