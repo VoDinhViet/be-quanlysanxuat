@@ -30,6 +30,7 @@ Read the relevant module spec under `docs/module-specs/` before changing an exis
 - Docs/rules change: update the relevant markdown only.
 - Small code change: inspect affected files, edit narrowly, run targeted verification.
 - New module/feature: read required docs first, inspect nearby patterns, implement, verify.
+- API behavior change: add or update focused test cases for the changed success path, validation, permissions, and key failure paths unless the change is docs-only or a clearly mechanical refactor.
 - After changing an API module, update its `docs/module-specs/<module>.md` with current endpoints, permissions, dependencies, and rules.
 - After changing implementation progress, update `docs/module-progress.md`.
 - When adding or changing cross-module flow, update `docs/system-flow.md` so AI agents and developers can follow the system behavior.
@@ -62,11 +63,12 @@ Read the relevant module spec under `docs/module-specs/` before changing an exis
 
 - Use `pnpm` for scripts.
 - Run targeted tests when possible.
+- When tests are added or updated, run the narrowest matching Jest/Supertest command and report the result.
+- If a code change should not add tests, state the reason in the final response.
 - Do not run `pnpm run build` after every code change by default.
 - Run `pnpm run build` only when the user asks, when debugging a build/type error, or when the change has broad dependency-wiring risk.
 - Do not build after docs-only or DTO-only changes unless the user asks.
 - Report commands run and whether they passed.
 - Always run `codegraph sync` after finishing code changes, especially when adding new files, to ensure the codebase index is up to date.
-
 
 
