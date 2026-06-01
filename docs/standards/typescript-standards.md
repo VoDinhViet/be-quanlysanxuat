@@ -55,7 +55,36 @@ TypeScript guidelines to leverage strict type safety, prevent runtime crashes, a
 
 ---
 
-## 3. Variable Declarations
+## 3. Function Documentation
+
+*   **Rule:** Add a concise JSDoc block for exported functions, controller actions, service methods, repository operations, and private helpers that contain non-obvious business rules. The description must state the function purpose, every meaningful `@param`, and the `@returns` value or response DTO. Avoid comments that only repeat the method name or obvious TypeScript types.
+
+### Examples
+
+*   **Bad (Negative):**
+    ```ts
+    // Gets user detail
+    async getUserDetail(userId: string): Promise<UserResDto> {
+      return this.usersService.getUserDetail(userId);
+    }
+    ```
+
+*   **Good (Positive):**
+    ```ts
+    /**
+     * Loads a user profile for the user detail screen.
+     *
+     * @param userId - User identifier from the route parameter.
+     * @returns User profile response DTO without password or token fields.
+     */
+    async getUserDetail(userId: string): Promise<UserResDto> {
+      return this.usersService.getUserDetail(userId);
+    }
+    ```
+
+---
+
+## 4. Variable Declarations
 
 *   **Rule:** Always prefer `const`. Use `let` only for reassignments. Never use `var`. Inject constructor dependencies as `private readonly`. Use `readonly` for fields that should not change after instantiation.
 
@@ -83,7 +112,7 @@ TypeScript guidelines to leverage strict type safety, prevent runtime crashes, a
 
 ---
 
-## 4. Null & Undefined Handling
+## 5. Null & Undefined Handling
 
 *   **Rule:** Use `null` only when it represents an intentional empty value in database or API structures. Use `undefined` for omitted optional properties. Do not use non-null assertions (`!`) to silence type errors; perform explicit checks instead.
 
@@ -106,7 +135,7 @@ TypeScript guidelines to leverage strict type safety, prevent runtime crashes, a
 
 ---
 
-## 5. Imports
+## 6. Imports
 
 *   **Rule:** Always use `import type` for importing only types or interfaces. Clean up unused imports.
 
