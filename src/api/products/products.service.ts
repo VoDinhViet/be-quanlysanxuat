@@ -290,6 +290,26 @@ export class ProductsService {
     return this.getProductDetail(productId);
   }
 
+  /**
+   * Opens a locked product by restoring the active status for future edits.
+   *
+   * @param productId - Product identifier to unlock.
+   * @returns Updated product response DTO with active status.
+   */
+  async unlockProduct(productId: string): Promise<ProductResDto> {
+    await this.ensureProductExists(productId);
+
+    await this.db
+      .update(products)
+      .set({
+        status: ProductStatus.Active,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(products.id, productId), isNull(products.deletedAt)));
+
+    return this.getProductDetail(productId);
+  }
+
   async copyProduct(productId: string): Promise<ProductResDto> {
     const sourceProduct = await this.getProductWithCurrentRevision(productId);
     const sourceRevision = sourceProduct.revisions[0];

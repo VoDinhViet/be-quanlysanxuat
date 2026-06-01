@@ -22,6 +22,7 @@ describe('ProductsController', () => {
       | 'getProducts'
       | 'getRouting'
       | 'lockProduct'
+      | 'unlockProduct'
       | 'updateBomLine'
       | 'updateRouting'
       | 'uploadProductImage'
@@ -43,6 +44,7 @@ describe('ProductsController', () => {
       getProducts: jest.fn(),
       getRouting: jest.fn(),
       lockProduct: jest.fn(),
+      unlockProduct: jest.fn(),
       updateBomLine: jest.fn(),
       updateRouting: jest.fn(),
       uploadProductImage: jest.fn(),
@@ -235,6 +237,16 @@ describe('ProductsController', () => {
     await expect(controller.lockProduct(productId)).resolves.toBe(response);
 
     expect(productsService.lockProduct).toHaveBeenCalledWith(productId);
+  });
+
+  it('should delegate product unlocking to service', async () => {
+    const productId = '550e8400-e29b-41d4-a716-446655440001';
+    const response = { id: productId } as never;
+    productsService.unlockProduct.mockResolvedValue(response);
+
+    await expect(controller.unlockProduct(productId)).resolves.toBe(response);
+
+    expect(productsService.unlockProduct).toHaveBeenCalledWith(productId);
   });
 
   it('should delegate product image upload to service', async () => {

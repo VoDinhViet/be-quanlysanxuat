@@ -1,6 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { DRIZZLE } from '../../database/database.module';
-import { bomLines, productRevisions, ProductStatus, routingSteps } from '../../database/schemas';
+import {
+  bomLines,
+  productRevisions,
+  products,
+  ProductStatus,
+  routingSteps,
+} from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { ProductsService } from './products.service';
 
@@ -24,6 +30,7 @@ type ProductsServiceDbMock = {
     units: { findMany: jest.Mock };
   };
   transaction: jest.Mock;
+  update: jest.Mock;
 };
 
 describe('ProductsService', () => {
@@ -60,6 +67,7 @@ describe('ProductsService', () => {
         },
       },
       transaction: jest.fn(),
+      update: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -377,5 +385,26 @@ describe('ProductsService', () => {
     expect(() => serviceUnderTest.ensureProductStatusUpdateAllowed(ProductStatus.Locked)).toThrow(
       AppException,
     );
+  });
+
+  it('should unlock product by restoring active status', async () => {
+    const productId = '550e8400-e29b-41d4-a716-446655440001';
+    const response = { id: productId, status: ProductStatus.Active } as never;
+    const updateWhere = jest.fn().mockResolvedValue(undefined);
+    const updateSet = jest.fn().mockReturnValue({ where: updateWhere });
+
+    db.query.products.findFirst.mockResolvedValue({ id: productId });
+    db.update.mockReturnValue({ set: updateSet });
+    jest.spyOn(service, 'getProductDetail').mockResolvedValue(response);
+
+    await expect(service.unlockProduct(productId)).resolves.toBe(response);
+
+    expect(db.update).toHaveBeenCalledWith(products);
+    expect(updateSet).toHaveBeenCalledWith({
+      status: ProductStatus.Active,
+      updatedAt: expect.any(Date),
+    });
+    expect(updateWhere).toHaveBeenCalled();
+    expect(service.getProductDetail).toHaveBeenCalledWith(productId);
   });
 });

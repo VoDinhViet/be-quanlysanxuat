@@ -12,7 +12,7 @@ src/api/products/
 
 ## Current Status
 
-Product CRUD, lock, copy, option, revision, BOM tree/line, and routing endpoints are implemented.
+Product CRUD, lock/unlock, copy, option, revision, BOM tree/line, and routing endpoints are implemented.
 
 Implemented in this chunk:
 
@@ -20,7 +20,7 @@ Implemented in this chunk:
 - AppModule wiring.
 - Product permission codes and RBAC seed entries for read/create/update/delete.
 - Product CRUD endpoints.
-- Product lock endpoint.
+- Product lock/unlock endpoints.
 - Product copy endpoint.
 - Product/unit/type/operation option endpoints.
 - Product revision list/create/update endpoints.
@@ -42,6 +42,7 @@ POST   /products
 GET    /products/:productId
 PATCH  /products/:productId
 PATCH  /products/:productId/lock
+PATCH  /products/:productId/unlock
 POST   /products/:productId/image
 DELETE /products/:productId/image
 POST   /products/:productId/copy
@@ -117,6 +118,18 @@ Business rules:
 - Product must exist and not be deleted.
 - Endpoint sets product status to `locked`.
 - Locked products reject product update, revision mutation, BOM mutation, and routing mutation.
+
+### PATCH /products/:productId/unlock
+
+Permission: `products:lock`.
+
+Response DTO: `ProductResDto`.
+
+Business rules:
+
+- Product must exist and not be deleted.
+- Endpoint restores product status to `active`.
+- The system does not store the previous active/inactive status before lock, so unlock always returns the product to active.
 
 ### POST /products/:productId/copy
 

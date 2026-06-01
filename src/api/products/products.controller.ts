@@ -345,6 +345,22 @@ export class ProductsController {
     return this.productsService.lockProduct(productId);
   }
 
+  /**
+   * Opens a locked product so its master data, BOM, and routing can be edited again.
+   *
+   * @param productId - Product identifier from the route parameter.
+   * @returns Updated product response DTO with active status.
+   */
+  @Patch(':productId/unlock')
+  @Permissions('products:lock')
+  @ApiAuth({
+    type: ProductResDto,
+    summary: 'Unlock product',
+  })
+  unlockProduct(@UUIDParam('productId') productId: string): Promise<ProductResDto> {
+    return this.productsService.unlockProduct(productId);
+  }
+
   @Delete(':productId')
   @Permissions('products:delete')
   @ApiAuth({
