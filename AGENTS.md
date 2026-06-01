@@ -21,6 +21,7 @@ Read these files before non-trivial code changes:
 - `docs/standards/nestjs-standards.md`
 - `docs/standards/api-standards.md`
 - `docs/standards/database-standards.md`
+- `docs/standards/testing-standards.md`
 
 Read the relevant module spec under `docs/module-specs/` before changing an existing API module.
 
@@ -30,7 +31,7 @@ Read the relevant module spec under `docs/module-specs/` before changing an exis
 - Docs/rules change: update the relevant markdown only.
 - Small code change: inspect affected files, edit narrowly, run targeted verification.
 - New module/feature: read required docs first, inspect nearby patterns, implement, verify.
-- API behavior change: add or update focused test cases for the changed success path, validation, permissions, and key failure paths unless the change is docs-only or a clearly mechanical refactor.
+- API behavior change: follow `docs/standards/testing-standards.md` and add or update focused test cases unless the change is docs-only or a clearly mechanical refactor.
 - After changing an API module, update its `docs/module-specs/<module>.md` with current endpoints, permissions, dependencies, and rules.
 - After changing implementation progress, update `docs/module-progress.md`.
 - When adding or changing cross-module flow, update `docs/system-flow.md` so AI agents and developers can follow the system behavior.
@@ -72,4 +73,3 @@ Read the relevant module spec under `docs/module-specs/` before changing an exis
 - Do not build after docs-only or DTO-only changes unless the user asks.
 - Report commands run and whether they passed.
 - Always run `codegraph sync` after finishing code changes, especially when adding new files, to ensure the codebase index is up to date.
-
