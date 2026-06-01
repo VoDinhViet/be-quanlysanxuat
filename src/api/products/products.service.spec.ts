@@ -1,6 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { DRIZZLE } from '../../database/database.module';
-import type { Database } from '../../database/database.type';
 import { AppException } from '../../exceptions/app.exception';
 import { ProductsService } from './products.service';
 
@@ -12,9 +11,18 @@ type RoutingStepValidationReq = {
   }>;
 };
 
+type ProductsServiceDbMock = {
+  query: {
+    operations: { findMany: jest.Mock };
+    productTypes: { findMany: jest.Mock };
+    products: { findMany: jest.Mock };
+    units: { findMany: jest.Mock };
+  };
+};
+
 describe('ProductsService', () => {
   let service: ProductsService;
-  let db: jest.Mocked<Pick<Database, 'query'>>;
+  let db: ProductsServiceDbMock;
 
   beforeEach(async () => {
     db = {
@@ -32,7 +40,7 @@ describe('ProductsService', () => {
           findMany: jest.fn(),
         },
       },
-    } as unknown as jest.Mocked<Pick<Database, 'query'>>;
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
