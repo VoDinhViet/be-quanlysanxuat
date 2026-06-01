@@ -43,6 +43,94 @@ HTTP request
 9. Purchase requisitions and purchase orders use material requests and suppliers.
 10. Warehouse and QC flows process receipts, issues, returns, inventory, and stock-in quality approval.
 
+## System Flow Diagram
+
+```text
+Auth / RBAC
+  -> users
+  -> roles
+  -> permissions
+
+Master Data
+  -> clients
+  -> suppliers
+  -> products
+       -> product_revisions
+       -> bom_lines
+       -> routing_steps
+       -> units
+       -> operations
+
+Sales
+  -> orders
+       -> order_items
+            -> products
+
+Planning
+  -> approved orders
+       -> work_orders
+            -> production_jobs
+                 -> snapshot product revision
+                 -> snapshot routing_steps into job_operations
+                 -> explode bom_lines into material demand
+
+Procurement
+  -> material demand
+       -> purchase_requisitions
+            -> purchase_orders
+                 -> suppliers
+
+Production Execution
+  -> production_jobs
+       -> job_operations
+            -> inhouse operation
+            -> outside processing order
+                 -> suppliers
+                 -> outside processing receipt
+
+Warehouse / QC
+  -> warehouse receipts
+  -> warehouse issues
+  -> warehouse returns
+  -> warehouse inventory
+  -> qc stock-in quality approval
+```
+
+## Product To Production Flow
+
+```text
+Create product
+  -> create initial product_revision
+  -> define multi-level BOM by product_revision
+  -> define routing for FG/WIP nodes
+  -> lock or approve revision when ready
+  -> use revision for production job creation
+  -> copy BOM/routing snapshots into job/material workflows
+```
+
+Rules:
+
+- `products` is the source item catalog for FG, WIP, RM, and consumable items.
+- `product_revisions` scopes BOM and routing so existing jobs can keep historical data.
+- `bom_lines` stores parent-child structure for material explosion.
+- `routing_steps` stores planned operations for FG/WIP items only.
+- `production_jobs` must snapshot revision/routing/material demand instead of reading mutable product setup directly during execution.
+
+## Cross Module Ownership
+
+| Flow area          | Owner module             | Main tables                                                         |
+| ------------------ | ------------------------ | ------------------------------------------------------------------- |
+| Authentication     | `auth`, `users`, `roles` | `users`, `roles`, `permissions`, `role_permissions`                 |
+| Customer data      | `clients`                | `clients`                                                           |
+| Supplier data      | `suppliers`              | `suppliers`                                                         |
+| Product setup      | `products`               | `products`, `product_revisions`, `bom_lines`, `routing_steps`       |
+| Sales              | future `orders`          | `orders`, `order_items`, `order_files`                              |
+| Planning           | future `work-orders`     | `work_orders`, `work_order_items`, `production_jobs`                |
+| Production runtime | future `production-jobs` | `production_jobs`, `job_operations`                                 |
+| Outside processing | future outside module    | `outside_processing_orders`, `outside_processing_receipts`          |
+| Procurement        | future purchasing module | `purchase_requisitions`, `purchase_requisition_items`               |
+| Warehouse/QC       | future warehouse/QC      | warehouse tables, inventory tables, QC approval tables when created |
+
 ## Documentation Rules
 
 - When changing an API module, update its module spec in `docs/module-specs/` in the same task.
