@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { OrderBy } from '../../constants/app.constant';
 import { DRIZZLE } from '../../database/database.module';
 import {
   bomLines,
@@ -8,6 +9,7 @@ import {
   routingSteps,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
+import type { GetProductsReqDto } from './dto/get-products.req.dto';
 import { ProductsService } from './products.service';
 
 type RoutingStepValidationReq = {
@@ -29,8 +31,13 @@ type ProductsServiceDbMock = {
     routingSteps: { findMany: jest.Mock };
     units: { findMany: jest.Mock };
   };
+  select: jest.Mock;
   transaction: jest.Mock;
   update: jest.Mock;
+};
+
+type DrizzleOrderSql = {
+  queryChunks: Array<unknown>;
 };
 
 describe('ProductsService', () => {
@@ -66,6 +73,7 @@ describe('ProductsService', () => {
           findMany: jest.fn(),
         },
       },
+      select: jest.fn(),
       transaction: jest.fn(),
       update: jest.fn(),
     };
@@ -113,6 +121,32 @@ describe('ProductsService', () => {
         },
       }),
     );
+  });
+
+  it('should list products ordered by createdAt desc only', async () => {
+    const totalWhere = jest.fn().mockResolvedValue([{ total: 0 }]);
+    const totalFrom = jest.fn().mockReturnValue({ where: totalWhere });
+    const reqDto = {
+      limit: 10,
+      page: 1,
+      offset: 0,
+      order: OrderBy.ASC,
+    } as GetProductsReqDto;
+
+    db.query.products.findMany.mockResolvedValue([]);
+    db.select.mockReturnValue({ from: totalFrom });
+
+    await service.getProducts(reqDto);
+
+    const findManyArgs = db.query.products.findMany.mock.calls[0]?.[0] as {
+      orderBy: DrizzleOrderSql;
+    };
+    const lastOrderChunk = findManyArgs.orderBy.queryChunks[
+      findManyArgs.orderBy.queryChunks.length - 1
+    ] as { value?: string[] };
+
+    expect(findManyArgs.orderBy.queryChunks).toContain(products.createdAt);
+    expect(lastOrderChunk.value).toEqual([' desc']);
   });
 
   it('should reject BOM cycles', () => {

@@ -55,7 +55,7 @@ Permission: `products:read`.
 
 Query DTO: `GetProductsReqDto`.
 
-Query fields: `q`, `clientId`, `itemType`, `status`, `page`, `limit`, `order`.
+Query fields: `q`, `clientId`, `itemType`, `status`, `page`, `limit`.
 
 Response DTO: `OffsetPaginatedDto<ProductResDto>`.
 
@@ -63,7 +63,7 @@ Business rules:
 
 - Soft-deleted products are excluded.
 - Keyword searches product code and name.
-- Sort order currently applies to `createdAt`.
+- Product list sorting is fixed to `createdAt` descending so newest products appear first.
 
 ### POST /products
 

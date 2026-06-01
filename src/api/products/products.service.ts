@@ -8,7 +8,6 @@ import { and, asc, count, desc, eq, ilike, inArray, isNull, ne, or } from 'drizz
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
-import { OrderBy } from '../../constants/app.constant';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database } from '../../database/database.type';
@@ -66,9 +65,6 @@ export class ProductsService {
       reqDto.itemType ? eq(products.itemType, reqDto.itemType) : undefined,
       reqDto.status ? eq(products.status, reqDto.status) : undefined,
     );
-    const orderBy =
-      reqDto.order === OrderBy.DESC ? desc(products.createdAt) : asc(products.createdAt);
-
     const [entities, totalRows] = await Promise.all([
       this.db.query.products.findMany({
         where,
@@ -83,7 +79,7 @@ export class ProductsService {
         },
         limit: reqDto.limit,
         offset: reqDto.offset,
-        orderBy,
+        orderBy: desc(products.createdAt),
       }),
       this.db.select({ total: count() }).from(products).where(where),
     ]);
