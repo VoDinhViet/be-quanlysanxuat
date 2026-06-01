@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpStatus, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpStatus, Patch, Post, Put, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
@@ -14,9 +14,11 @@ import { GetProductsReqDto } from './dto/get-products.req.dto';
 import { ProductOptionResDto } from './dto/product-option.res.dto';
 import { ProductRevisionResDto } from './dto/product-revision.res.dto';
 import { ProductResDto } from './dto/product.res.dto';
+import { RoutingStepResDto } from './dto/routing-step.res.dto';
 import { UpdateBomLineReqDto } from './dto/update-bom-line.req.dto';
 import { UpdateProductReqDto } from './dto/update-product.req.dto';
 import { UpdateProductRevisionReqDto } from './dto/update-product-revision.req.dto';
+import { UpdateRoutingReqDto } from './dto/update-routing.req.dto';
 import { ProductsService } from './products.service';
 
 @ApiTags('Products')
@@ -173,6 +175,37 @@ export class ProductsController {
     @UUIDParam('bomLineId') bomLineId: string,
   ): Promise<BomLineResDto> {
     return this.productsService.deleteBomLine(productId, revisionId, bomLineId);
+  }
+
+  @Get(':productId/revisions/:revisionId/items/:itemId/routing')
+  @Permissions('products:read')
+  @ApiAuth({
+    type: RoutingStepResDto,
+    summary: 'Get item routing',
+    isArray: true,
+  })
+  getRouting(
+    @UUIDParam('productId') productId: string,
+    @UUIDParam('revisionId') revisionId: string,
+    @UUIDParam('itemId') itemId: string,
+  ): Promise<RoutingStepResDto[]> {
+    return this.productsService.getRouting(productId, revisionId, itemId);
+  }
+
+  @Put(':productId/revisions/:revisionId/items/:itemId/routing')
+  @Permissions('products:routing-manage')
+  @ApiAuth({
+    type: RoutingStepResDto,
+    summary: 'Replace item routing',
+    isArray: true,
+  })
+  updateRouting(
+    @UUIDParam('productId') productId: string,
+    @UUIDParam('revisionId') revisionId: string,
+    @UUIDParam('itemId') itemId: string,
+    @Body() reqDto: UpdateRoutingReqDto,
+  ): Promise<RoutingStepResDto[]> {
+    return this.productsService.updateRouting(productId, revisionId, itemId, reqDto);
   }
 
   @Get(':productId')

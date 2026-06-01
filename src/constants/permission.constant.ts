@@ -16,6 +16,7 @@ export type PermissionCode =
   | 'products:update'
   | 'products:delete'
   | 'products:bom-manage'
+  | 'products:routing-manage'
   | 'material-requests:create'
   | 'material-requests:read'
   | 'material-requests:approve'

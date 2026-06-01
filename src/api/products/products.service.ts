@@ -17,6 +17,7 @@ import {
   ProductItemType,
   productTypes,
   routingSteps,
+  suppliers,
   units,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
@@ -29,9 +30,11 @@ import { GetProductsReqDto } from './dto/get-products.req.dto';
 import { ProductOptionResDto } from './dto/product-option.res.dto';
 import { ProductRevisionResDto } from './dto/product-revision.res.dto';
 import { ProductResDto } from './dto/product.res.dto';
+import { RoutingStepResDto } from './dto/routing-step.res.dto';
 import { UpdateBomLineReqDto } from './dto/update-bom-line.req.dto';
 import { UpdateProductReqDto } from './dto/update-product.req.dto';
 import { UpdateProductRevisionReqDto } from './dto/update-product-revision.req.dto';
+import { UpdateRoutingReqDto } from './dto/update-routing.req.dto';
 
 @Injectable()
 export class ProductsService {
@@ -438,6 +441,93 @@ export class ProductsService {
     return line;
   }
 
+  async getRouting(
+    productId: string,
+    revisionId: string,
+    itemId: string,
+  ): Promise<RoutingStepResDto[]> {
+    await this.ensureProductRevisionExists(productId, revisionId);
+
+    const [item, lines] = await Promise.all([
+      this.getBomItem(itemId),
+      this.getBomLines(revisionId),
+    ]);
+
+    this.ensureRoutingItemAllowed(item);
+    this.ensureRoutingItemAttached(productId, itemId, lines);
+
+    const steps = await this.db.query.routingSteps.findMany({
+      where: and(
+        eq(routingSteps.productRevisionId, revisionId),
+        eq(routingSteps.itemId, itemId),
+        isNull(routingSteps.deletedAt),
+      ),
+      with: {
+        operation: true,
+        defaultSupplier: true,
+      },
+      orderBy: asc(routingSteps.stepNo),
+    });
+
+    return this.mapRoutingSteps(steps);
+  }
+
+  async updateRouting(
+    productId: string,
+    revisionId: string,
+    itemId: string,
+    reqDto: UpdateRoutingReqDto,
+  ): Promise<RoutingStepResDto[]> {
+    await this.ensureProductRevisionExists(productId, revisionId);
+
+    const [item, lines] = await Promise.all([
+      this.getBomItem(itemId),
+      this.getBomLines(revisionId),
+    ]);
+
+    this.ensureRoutingItemAllowed(item);
+    this.ensureRoutingItemAttached(productId, itemId, lines);
+    this.ensureRoutingStepsAllowed(reqDto);
+
+    await this.ensureRoutingReferencesExist(reqDto);
+
+    await this.db.transaction(async (tx) => {
+      const deletedAt = new Date();
+
+      await tx
+        .update(routingSteps)
+        .set({
+          deletedAt,
+          updatedAt: deletedAt,
+        })
+        .where(
+          and(
+            eq(routingSteps.productRevisionId, revisionId),
+            eq(routingSteps.itemId, itemId),
+            isNull(routingSteps.deletedAt),
+          ),
+        );
+
+      if (reqDto.steps.length === 0) {
+        return;
+      }
+
+      await tx.insert(routingSteps).values(
+        reqDto.steps.map((step) => ({
+          productRevisionId: revisionId,
+          itemId,
+          operationId: step.operationId,
+          stepNo: step.stepNo,
+          isOutsideProcess: step.isOutsideProcess ?? false,
+          defaultSupplierId: step.defaultSupplierId ?? null,
+          note: step.note ?? null,
+        })),
+      );
+    });
+
+    return this.getRouting(productId, revisionId, itemId);
+  }
+
   private async ensureProductExists(productId: string): Promise<void> {
     const existingProduct = await this.db.query.products.findFirst({
       columns: {
@@ -679,6 +769,81 @@ export class ProductsService {
     return Array.from(deletionIds);
   }
 
+  private ensureRoutingItemAllowed(item: typeof products.$inferSelect): void {
+    if (![ProductItemType.Fg, ProductItemType.Wip].includes(item.itemType)) {
+      throw new AppException(ErrorCode.V002, HttpStatus.UNPROCESSABLE_ENTITY);
+    }
+  }
+
+  private ensureRoutingItemAttached(
+    rootProductId: string,
+    itemId: string,
+    lines: (typeof bomLines.$inferSelect)[],
+  ): void {
+    const isRoot = itemId === rootProductId;
+    const isExistingChild = lines.some((line) => line.childItemId === itemId);
+
+    if (!isRoot && !isExistingChild) {
+      throw new AppException(ErrorCode.V002, HttpStatus.UNPROCESSABLE_ENTITY);
+    }
+  }
+
+  private ensureRoutingStepsAllowed(reqDto: UpdateRoutingReqDto): void {
+    const stepNumbers = new Set<number>();
+
+    for (const step of reqDto.steps) {
+      if (stepNumbers.has(step.stepNo)) {
+        throw new AppException(ErrorCode.V002, HttpStatus.UNPROCESSABLE_ENTITY);
+      }
+
+      stepNumbers.add(step.stepNo);
+
+      if (!step.isOutsideProcess && step.defaultSupplierId) {
+        throw new AppException(ErrorCode.V002, HttpStatus.UNPROCESSABLE_ENTITY);
+      }
+    }
+  }
+
+  private async ensureRoutingReferencesExist(reqDto: UpdateRoutingReqDto): Promise<void> {
+    const operationIds = [...new Set(reqDto.steps.map((step) => step.operationId))];
+    const supplierIds = [
+      ...new Set(
+        reqDto.steps.map((step) => step.defaultSupplierId).filter((id): id is string => !!id),
+      ),
+    ];
+
+    await Promise.all([
+      ...operationIds.map((operationId) => this.ensureOperationExists(operationId)),
+      ...supplierIds.map((supplierId) => this.ensureSupplierExists(supplierId)),
+    ]);
+  }
+
+  private async ensureOperationExists(operationId: string): Promise<void> {
+    const existingOperation = await this.db.query.operations.findFirst({
+      columns: {
+        id: true,
+      },
+      where: and(eq(operations.id, operationId), isNull(operations.deletedAt)),
+    });
+
+    if (!existingOperation) {
+      throw new AppException(ErrorCode.E002, HttpStatus.NOT_FOUND);
+    }
+  }
+
+  private async ensureSupplierExists(supplierId: string): Promise<void> {
+    const existingSupplier = await this.db.query.suppliers.findFirst({
+      columns: {
+        id: true,
+      },
+      where: and(eq(suppliers.id, supplierId), isNull(suppliers.deletedAt)),
+    });
+
+    if (!existingSupplier) {
+      throw new AppException(ErrorCode.E002, HttpStatus.NOT_FOUND);
+    }
+  }
+
   private async ensureRevisionNoAvailable(
     productId: string,
     revisionNo: string,
@@ -773,6 +938,12 @@ export class ProductsService {
       { excludeExtraneousValues: true },
     );
   }
+
+  private mapRoutingSteps(stepEntities: RoutingStepEntityWithRelations[]): RoutingStepResDto[] {
+    return plainToInstance(RoutingStepResDto, stepEntities, {
+      excludeExtraneousValues: true,
+    });
+  }
 }
 
 type ProductEntityWithRelations = typeof products.$inferSelect & {
@@ -808,4 +979,9 @@ type MapBomTreeNodeArgs = {
   level: number;
   routingItemIds: Set<string>;
   linesByParentId: Map<string, BomLineEntityWithRelations[]>;
+};
+
+type RoutingStepEntityWithRelations = typeof routingSteps.$inferSelect & {
+  operation: typeof operations.$inferSelect | null;
+  defaultSupplier: typeof suppliers.$inferSelect | null;
 };

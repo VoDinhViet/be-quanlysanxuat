@@ -18,7 +18,9 @@ describe('ProductsController', () => {
       | 'getProductOptions'
       | 'getProductRevisions'
       | 'getProducts'
+      | 'getRouting'
       | 'updateBomLine'
+      | 'updateRouting'
     >
   >;
 
@@ -33,7 +35,9 @@ describe('ProductsController', () => {
       getProductOptions: jest.fn(),
       getProductRevisions: jest.fn(),
       getProducts: jest.fn(),
+      getRouting: jest.fn(),
       updateBomLine: jest.fn(),
+      updateRouting: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -169,6 +173,40 @@ describe('ProductsController', () => {
     );
 
     expect(productsService.deleteBomLine).toHaveBeenCalledWith(productId, revisionId, bomLineId);
+  });
+
+  it('should delegate routing queries to service', async () => {
+    const productId = '550e8400-e29b-41d4-a716-446655440001';
+    const revisionId = '550e8400-e29b-41d4-a716-446655440002';
+    const itemId = '550e8400-e29b-41d4-a716-446655440003';
+    const response = [{ id: '550e8400-e29b-41d4-a716-446655440004' }] as never;
+    productsService.getRouting.mockResolvedValue(response);
+
+    await expect(controller.getRouting(productId, revisionId, itemId)).resolves.toBe(response);
+
+    expect(productsService.getRouting).toHaveBeenCalledWith(productId, revisionId, itemId);
+  });
+
+  it('should delegate routing updates to service', async () => {
+    const productId = '550e8400-e29b-41d4-a716-446655440001';
+    const revisionId = '550e8400-e29b-41d4-a716-446655440002';
+    const itemId = '550e8400-e29b-41d4-a716-446655440003';
+    const reqDto = {
+      steps: [{ operationId: '550e8400-e29b-41d4-a716-446655440004', stepNo: 1 }],
+    };
+    const response = [{ id: '550e8400-e29b-41d4-a716-446655440005' }] as never;
+    productsService.updateRouting.mockResolvedValue(response);
+
+    await expect(controller.updateRouting(productId, revisionId, itemId, reqDto)).resolves.toBe(
+      response,
+    );
+
+    expect(productsService.updateRouting).toHaveBeenCalledWith(
+      productId,
+      revisionId,
+      itemId,
+      reqDto,
+    );
   });
 
   it('should delegate product deletion to service', async () => {

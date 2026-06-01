@@ -4,6 +4,14 @@ import type { Database } from '../../database/database.type';
 import { AppException } from '../../exceptions/app.exception';
 import { ProductsService } from './products.service';
 
+type RoutingStepValidationReq = {
+  steps: Array<{
+    stepNo: number;
+    isOutsideProcess?: boolean;
+    defaultSupplierId?: string | null;
+  }>;
+};
+
 describe('ProductsService', () => {
   let service: ProductsService;
   let db: jest.Mocked<Pick<Database, 'query'>>;
@@ -122,5 +130,44 @@ describe('ProductsService', () => {
         ])
         .sort(),
     ).toEqual(['line-a', 'line-a1', 'line-a11']);
+  });
+
+  it('should reject supplier on inhouse routing step', () => {
+    const serviceUnderTest = service as unknown as {
+      ensureRoutingStepsAllowed: (reqDto: RoutingStepValidationReq) => void;
+    };
+
+    expect(() =>
+      serviceUnderTest.ensureRoutingStepsAllowed({
+        steps: [{ stepNo: 1, isOutsideProcess: false, defaultSupplierId: 'supplier-id' }],
+      }),
+    ).toThrow(AppException);
+  });
+
+  it('should allow supplier on outside routing step', () => {
+    const serviceUnderTest = service as unknown as {
+      ensureRoutingStepsAllowed: (reqDto: RoutingStepValidationReq) => void;
+    };
+
+    expect(() =>
+      serviceUnderTest.ensureRoutingStepsAllowed({
+        steps: [{ stepNo: 1, isOutsideProcess: true, defaultSupplierId: 'supplier-id' }],
+      }),
+    ).not.toThrow();
+  });
+
+  it('should reject duplicate routing step numbers', () => {
+    const serviceUnderTest = service as unknown as {
+      ensureRoutingStepsAllowed: (reqDto: RoutingStepValidationReq) => void;
+    };
+
+    expect(() =>
+      serviceUnderTest.ensureRoutingStepsAllowed({
+        steps: [
+          { stepNo: 1, isOutsideProcess: false },
+          { stepNo: 1, isOutsideProcess: false },
+        ],
+      }),
+    ).toThrow(AppException);
   });
 });

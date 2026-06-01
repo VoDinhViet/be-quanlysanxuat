@@ -12,7 +12,7 @@ src/api/products/
 
 ## Current Status
 
-Product CRUD, option, revision, and BOM tree/line endpoints are implemented. Routing endpoints are pending.
+Product CRUD, option, revision, BOM tree/line, and routing endpoints are implemented.
 
 Implemented in this chunk:
 
@@ -24,12 +24,12 @@ Implemented in this chunk:
 - Product revision list/create/update endpoints.
 - BOM tree endpoint.
 - BOM line create/update/delete endpoints.
+- Routing get/replace endpoints.
 - Product `clientId` schema link.
 - Unique indexes for product code and product revision number per product.
 
 Pending implementation:
 
-- Routing endpoints.
 - Product database migration review for optional `bomLines.sortOrder`.
 
 ## Planned Public API
@@ -181,6 +181,20 @@ GET /products/:productId/revisions/:revisionId/items/:itemId/routing
 PUT /products/:productId/revisions/:revisionId/items/:itemId/routing
 ```
 
+Routing endpoint rules:
+
+- `GET /products/:productId/revisions/:revisionId/items/:itemId/routing` uses `products:read` and returns `RoutingStepResDto[]` ordered by `stepNo`.
+- `PUT /products/:productId/revisions/:revisionId/items/:itemId/routing` uses `products:routing-manage` and accepts `UpdateRoutingReqDto`.
+- PUT replaces active routing steps for the item in one transaction.
+- Product and revision must exist, and revision must belong to product.
+- Routing item must exist and be FG/WIP.
+- Routing item must be the root product or already attached in the same revision BOM tree.
+- RM/Consumable must not have routing.
+- Operations must exist and not be deleted.
+- Default supplier must exist and not be deleted when provided.
+- Default supplier is allowed only on outside process steps.
+- `stepNo` is provided by the client and must be unique in the submitted routing steps.
+
 ## Permissions
 
 Planned permission codes:
@@ -190,12 +204,12 @@ Planned permission codes:
 - `products:update`
 - `products:delete`
 - `products:bom-manage`
+- `products:routing-manage`
 
 Planned later:
 
 - `products:lock`
 - `products:copy`
-- `products:routing-manage`
 
 Planned endpoint mapping:
 
@@ -204,16 +218,16 @@ Planned endpoint mapping:
 - Update/image: `products:update`.
 - Delete: `products:delete`.
 - BOM mutation: `products:bom-manage`.
+- Routing mutation: `products:routing-manage`.
 
 Planned later:
 
 - Lock: `products:lock`.
 - Copy: `products:copy`.
-- Routing: `products:routing-manage`.
 
 Implementation note:
 
-- Lock/copy/routing permissions are not seeded yet.
+- Lock/copy permissions are not seeded yet.
 - Add remaining permission codes and RBAC seed entries only when the matching endpoints are implemented.
 
 ## Dependencies
