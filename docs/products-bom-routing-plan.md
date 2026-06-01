@@ -173,7 +173,7 @@ POST   /products/:productId/image
 DELETE /products/:productId/image
 ```
 
-Có thể dùng `imageUrl` trước, file upload làm sau nếu chưa có upload standard.
+Đã dùng multipart upload cho field `image`, lưu file public dưới `/uploads/products` và cập nhật `products.imageUrl`.
 
 ### Revision Endpoints
 
@@ -480,4 +480,4 @@ Test cases:
 - Product code unique toàn hệ thống hay unique theo khách hàng?
 - Lock theo product hay theo revision?
 - RM có cho quản lý như product bình thường trong cùng màn hình không?
-- Image upload dùng URL trước hay multipart upload ngay?
+- Image upload dùng multipart upload ngay, URL public được backend trả trong `imageUrl`.

@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { DRIZZLE } from '../../database/database.module';
-import { ProductStatus } from '../../database/schemas';
+import { bomLines, productRevisions, ProductStatus, routingSteps } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { ProductsService } from './products.service';
 
@@ -14,11 +14,16 @@ type RoutingStepValidationReq = {
 
 type ProductsServiceDbMock = {
   query: {
+    bomLines: { findMany: jest.Mock };
     operations: { findMany: jest.Mock };
+    productFiles: { findMany: jest.Mock };
+    productRevisions: { findFirst: jest.Mock };
     productTypes: { findMany: jest.Mock };
     products: { findFirst: jest.Mock; findMany: jest.Mock };
+    routingSteps: { findMany: jest.Mock };
     units: { findMany: jest.Mock };
   };
+  transaction: jest.Mock;
 };
 
 describe('ProductsService', () => {
@@ -28,8 +33,17 @@ describe('ProductsService', () => {
   beforeEach(async () => {
     db = {
       query: {
+        bomLines: {
+          findMany: jest.fn(),
+        },
         operations: {
           findMany: jest.fn(),
+        },
+        productFiles: {
+          findMany: jest.fn(),
+        },
+        productRevisions: {
+          findFirst: jest.fn(),
         },
         productTypes: {
           findMany: jest.fn(),
@@ -38,10 +52,14 @@ describe('ProductsService', () => {
           findFirst: jest.fn(),
           findMany: jest.fn(),
         },
+        routingSteps: {
+          findMany: jest.fn(),
+        },
         units: {
           findMany: jest.fn(),
         },
       },
+      transaction: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -146,9 +164,115 @@ describe('ProductsService', () => {
       generateProductCopyCode: (sourceCode: string) => Promise<string>;
     };
 
-    await expect(serviceUnderTest.generateProductCopyCode('PRD001')).resolves.toBe(
-      'PRD001-COPY-2',
+    await expect(serviceUnderTest.generateProductCopyCode('PRD001')).resolves.toBe('PRD001-COPY-2');
+  });
+
+  it('should copy BOM and routing when creating a revision from source', async () => {
+    const productId = '550e8400-e29b-41d4-a716-446655440001';
+    const sourceRevisionId = '550e8400-e29b-41d4-a716-446655440002';
+    const createdRevisionId = '550e8400-e29b-41d4-a716-446655440003';
+    const createdAt = new Date('2024-05-01T00:00:00.000Z');
+    const createdRevision = {
+      id: createdRevisionId,
+      productId,
+      revisionNo: 'R2',
+      note: 'Copied revision',
+      createdAt,
+      updatedAt: createdAt,
+      deletedAt: null,
+    };
+    const revisionValues = jest.fn().mockReturnValue({
+      returning: jest.fn().mockResolvedValue([createdRevision]),
+    });
+    const bomValues = jest.fn().mockResolvedValue(undefined);
+    const routingValues = jest.fn().mockResolvedValue(undefined);
+    const tx = {
+      insert: jest.fn((table: unknown) => {
+        if (table === productRevisions) {
+          return { values: revisionValues };
+        }
+
+        if (table === bomLines) {
+          return { values: bomValues };
+        }
+
+        if (table === routingSteps) {
+          return { values: routingValues };
+        }
+
+        throw new Error('Unexpected insert table');
+      }),
+    };
+
+    db.query.products.findFirst.mockResolvedValue({
+      id: productId,
+      status: ProductStatus.Active,
+    });
+    db.query.productRevisions.findFirst
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce({ id: sourceRevisionId });
+    db.query.bomLines.findMany.mockResolvedValue([
+      {
+        id: '550e8400-e29b-41d4-a716-446655440010',
+        productRevisionId: sourceRevisionId,
+        parentItemId: productId,
+        childItemId: '550e8400-e29b-41d4-a716-446655440011',
+        qty: '1',
+        unitId: '550e8400-e29b-41d4-a716-446655440012',
+        scrapRate: '0',
+        level: 1,
+        sortOrder: 1,
+        note: null,
+        createdAt,
+        updatedAt: createdAt,
+        deletedAt: null,
+      },
+    ]);
+    db.query.routingSteps.findMany.mockResolvedValue([
+      {
+        id: '550e8400-e29b-41d4-a716-446655440020',
+        productRevisionId: sourceRevisionId,
+        itemId: productId,
+        operationId: '550e8400-e29b-41d4-a716-446655440021',
+        stepNo: 1,
+        isOutsideProcess: false,
+        defaultSupplierId: null,
+        note: null,
+        createdAt,
+        updatedAt: createdAt,
+        deletedAt: null,
+      },
+    ]);
+    db.transaction.mockImplementation((callback: (transaction: typeof tx) => unknown) =>
+      callback(tx),
     );
+
+    await expect(
+      service.createProductRevision(productId, {
+        revisionNo: 'R2',
+        copyFromRevisionId: sourceRevisionId,
+        note: 'Copied revision',
+      }),
+    ).resolves.toMatchObject({
+      id: createdRevisionId,
+      revisionNo: 'R2',
+      note: 'Copied revision',
+    });
+
+    expect(bomValues).toHaveBeenCalledWith([
+      expect.objectContaining({
+        productRevisionId: createdRevisionId,
+        parentItemId: productId,
+        sortOrder: 1,
+      }),
+    ]);
+    expect(routingValues).toHaveBeenCalledWith([
+      expect.objectContaining({
+        productRevisionId: createdRevisionId,
+        itemId: productId,
+        stepNo: 1,
+      }),
+    ]);
   });
 
   it('should collect descendant BOM line ids for subtree deletion', () => {
@@ -182,6 +306,26 @@ describe('ProductsService', () => {
         steps: [{ stepNo: 1, isOutsideProcess: false, defaultSupplierId: 'supplier-id' }],
       }),
     ).toThrow(AppException);
+  });
+
+  it('should normalize uploaded product image extension from MIME type', () => {
+    const serviceUnderTest = service as unknown as {
+      getProductImageExtension: (mimeType: string) => string;
+    };
+
+    expect(serviceUnderTest.getProductImageExtension('image/jpeg')).toBe('.jpg');
+    expect(serviceUnderTest.getProductImageExtension('image/png')).toBe('.png');
+    expect(serviceUnderTest.getProductImageExtension('image/webp')).toBe('.webp');
+  });
+
+  it('should reject missing uploaded product image file', async () => {
+    const serviceUnderTest = service as unknown as {
+      ensureUploadedProductImageAllowed: (file: undefined) => Promise<never>;
+    };
+
+    await expect(serviceUnderTest.ensureUploadedProductImageAllowed(undefined)).rejects.toThrow(
+      AppException,
+    );
   });
 
   it('should allow supplier on outside routing step', () => {

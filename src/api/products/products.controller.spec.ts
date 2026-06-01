@@ -14,6 +14,7 @@ describe('ProductsController', () => {
       | 'createProduct'
       | 'createProductRevision'
       | 'deleteBomLine'
+      | 'deleteProductImage'
       | 'deleteProduct'
       | 'getBomTree'
       | 'getProductOptions'
@@ -23,6 +24,7 @@ describe('ProductsController', () => {
       | 'lockProduct'
       | 'updateBomLine'
       | 'updateRouting'
+      | 'uploadProductImage'
     >
   >;
 
@@ -33,6 +35,7 @@ describe('ProductsController', () => {
       createProduct: jest.fn(),
       createProductRevision: jest.fn(),
       deleteBomLine: jest.fn(),
+      deleteProductImage: jest.fn(),
       deleteProduct: jest.fn(),
       getBomTree: jest.fn(),
       getProductOptions: jest.fn(),
@@ -42,6 +45,7 @@ describe('ProductsController', () => {
       lockProduct: jest.fn(),
       updateBomLine: jest.fn(),
       updateRouting: jest.fn(),
+      uploadProductImage: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -231,6 +235,34 @@ describe('ProductsController', () => {
     await expect(controller.lockProduct(productId)).resolves.toBe(response);
 
     expect(productsService.lockProduct).toHaveBeenCalledWith(productId);
+  });
+
+  it('should delegate product image upload to service', async () => {
+    const productId = '550e8400-e29b-41d4-a716-446655440001';
+    const file = {
+      originalname: 'product.png',
+      filename: 'upload-temp',
+      mimetype: 'image/png',
+      size: 1024,
+      path: '/tmp/upload-temp',
+    };
+    const user = { sub: '550e8400-e29b-41d4-a716-446655440099' };
+    const response = { id: productId, imageUrl: '/uploads/products/product.png' } as never;
+    productsService.uploadProductImage.mockResolvedValue(response);
+
+    await expect(controller.uploadProductImage(productId, file, user)).resolves.toBe(response);
+
+    expect(productsService.uploadProductImage).toHaveBeenCalledWith(productId, file, user.sub);
+  });
+
+  it('should delegate product image deletion to service', async () => {
+    const productId = '550e8400-e29b-41d4-a716-446655440001';
+    const response = { id: productId, imageUrl: null } as never;
+    productsService.deleteProductImage.mockResolvedValue(response);
+
+    await expect(controller.deleteProductImage(productId)).resolves.toBe(response);
+
+    expect(productsService.deleteProductImage).toHaveBeenCalledWith(productId);
   });
 
   it('should delegate product deletion to service', async () => {

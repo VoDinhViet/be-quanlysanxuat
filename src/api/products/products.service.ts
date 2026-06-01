@@ -1,3 +1,7 @@
+import { randomUUID } from 'node:crypto';
+import { rename, unlink } from 'node:fs/promises';
+import { extname, isAbsolute, join } from 'node:path';
+
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { and, asc, count, desc, eq, ilike, inArray, isNull, ne, or } from 'drizzle-orm';
@@ -12,6 +16,7 @@ import {
   bomLines,
   clients,
   operations,
+  productFiles,
   productRevisions,
   products,
   ProductItemType,
@@ -22,6 +27,12 @@ import {
   units,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
+import {
+  MAX_PRODUCT_IMAGE_SIZE_IN_BYTES,
+  PRODUCT_IMAGE_ALLOWED_MIME_TYPES,
+  PRODUCT_IMAGE_PUBLIC_DIR,
+  PRODUCT_IMAGE_UPLOAD_DIR,
+} from './constants/product-image.constants';
 import { BomLineResDto } from './dto/bom-line.res.dto';
 import { BomTreeNodeResDto } from './dto/bom-tree-node.res.dto';
 import { CreateBomLineReqDto } from './dto/create-bom-line.req.dto';
@@ -36,6 +47,7 @@ import { UpdateBomLineReqDto } from './dto/update-bom-line.req.dto';
 import { UpdateProductReqDto } from './dto/update-product.req.dto';
 import { UpdateProductRevisionReqDto } from './dto/update-product-revision.req.dto';
 import { UpdateRoutingReqDto } from './dto/update-routing.req.dto';
+import type { ProductImageFile } from './types/product-image-file.type';
 
 @Injectable()
 export class ProductsService {
@@ -159,6 +171,107 @@ export class ProductsService {
         updatedAt: new Date(),
       })
       .where(and(eq(products.id, productId), isNull(products.deletedAt)));
+
+    return this.getProductDetail(productId);
+  }
+
+  /**
+   * Stores a product image file, replaces any active image metadata, and updates the product URL.
+   *
+   * @param productId - Product identifier whose image should be replaced.
+   * @param file - Uploaded multipart image saved temporarily by Multer.
+   * @param uploadedByUserId - Authenticated user identifier for file ownership metadata.
+   * @returns Updated product response with the new public image URL.
+   */
+  async uploadProductImage(
+    productId: string,
+    file: ProductImageFile | undefined,
+    uploadedByUserId: string,
+  ): Promise<ProductResDto> {
+    const uploadedFile = await this.ensureUploadedProductImageAllowed(file);
+    const extension = this.getProductImageExtension(uploadedFile.mimetype);
+    const fileName = `${productId}-${randomUUID()}${extension}`;
+    const relativeFilePath = `${PRODUCT_IMAGE_PUBLIC_DIR}/${fileName}`;
+    const publicImageUrl = `/${relativeFilePath}`;
+    const targetFilePath = join(PRODUCT_IMAGE_UPLOAD_DIR, fileName);
+    let isFileMoved = false;
+
+    try {
+      await this.ensureProductUnlocked(productId);
+      await rename(uploadedFile.path, targetFilePath);
+      isFileMoved = true;
+
+      const existingFiles = await this.getActiveProductFiles(productId);
+      const updatedAt = new Date();
+
+      await this.db.transaction(async (tx) => {
+        await tx
+          .update(productFiles)
+          .set({
+            deletedAt: updatedAt,
+            updatedAt,
+          })
+          .where(and(eq(productFiles.productId, productId), isNull(productFiles.deletedAt)));
+
+        await tx.insert(productFiles).values({
+          productId,
+          originalName: uploadedFile.originalname,
+          fileName,
+          mimeType: uploadedFile.mimetype,
+          fileSize: uploadedFile.size,
+          filePath: relativeFilePath,
+          uploadedBy: uploadedByUserId,
+        });
+
+        await tx
+          .update(products)
+          .set({
+            imageUrl: publicImageUrl,
+            updatedAt,
+          })
+          .where(and(eq(products.id, productId), isNull(products.deletedAt)));
+      });
+
+      await this.deleteProductLocalFiles(existingFiles);
+
+      return this.getProductDetail(productId);
+    } catch (error) {
+      await this.deleteLocalFile(isFileMoved ? targetFilePath : uploadedFile.path);
+      throw error;
+    }
+  }
+
+  /**
+   * Clears a product image and soft-deletes the active image file records.
+   *
+   * @param productId - Product identifier whose image should be removed.
+   * @returns Updated product response with no public image URL.
+   */
+  async deleteProductImage(productId: string): Promise<ProductResDto> {
+    await this.ensureProductUnlocked(productId);
+
+    const existingFiles = await this.getActiveProductFiles(productId);
+    const deletedAt = new Date();
+
+    await this.db.transaction(async (tx) => {
+      await tx
+        .update(productFiles)
+        .set({
+          deletedAt,
+          updatedAt: deletedAt,
+        })
+        .where(and(eq(productFiles.productId, productId), isNull(productFiles.deletedAt)));
+
+      await tx
+        .update(products)
+        .set({
+          imageUrl: null,
+          updatedAt: deletedAt,
+        })
+        .where(and(eq(products.id, productId), isNull(products.deletedAt)));
+    });
+
+    await this.deleteProductLocalFiles(existingFiles);
 
     return this.getProductDetail(productId);
   }
@@ -337,6 +450,13 @@ export class ProductsService {
     return this.mapRevisions(revisions);
   }
 
+  /**
+   * Creates a product revision and optionally copies BOM/routing from a source revision.
+   *
+   * @param productId - Product identifier that owns the new revision.
+   * @param reqDto - Revision number, optional source revision, and revision note.
+   * @returns Created product revision response DTO.
+   */
   async createProductRevision(
     productId: string,
     reqDto: CreateProductRevisionReqDto,
@@ -344,14 +464,59 @@ export class ProductsService {
     await this.ensureProductUnlocked(productId);
     await this.ensureRevisionNoAvailable(productId, reqDto.revisionNo);
 
-    const [revision] = await this.db
-      .insert(productRevisions)
-      .values({
-        productId,
-        revisionNo: reqDto.revisionNo,
-        note: reqDto.note,
-      })
-      .returning();
+    if (reqDto.copyFromRevisionId) {
+      await this.ensureProductRevisionExists(productId, reqDto.copyFromRevisionId);
+    }
+
+    const [sourceBomLines, sourceRoutingSteps] = reqDto.copyFromRevisionId
+      ? await Promise.all([
+          this.getBomLines(reqDto.copyFromRevisionId),
+          this.getRoutingSteps(reqDto.copyFromRevisionId),
+        ])
+      : [[], []];
+
+    const revision = await this.db.transaction(async (tx) => {
+      const [createdRevision] = await tx
+        .insert(productRevisions)
+        .values({
+          productId,
+          revisionNo: reqDto.revisionNo,
+          note: reqDto.note,
+        })
+        .returning();
+
+      if (sourceBomLines.length > 0) {
+        await tx.insert(bomLines).values(
+          sourceBomLines.map((line) => ({
+            productRevisionId: createdRevision.id,
+            parentItemId: line.parentItemId,
+            childItemId: line.childItemId,
+            qty: line.qty,
+            unitId: line.unitId,
+            scrapRate: line.scrapRate,
+            level: line.level,
+            sortOrder: line.sortOrder,
+            note: line.note,
+          })),
+        );
+      }
+
+      if (sourceRoutingSteps.length > 0) {
+        await tx.insert(routingSteps).values(
+          sourceRoutingSteps.map((step) => ({
+            productRevisionId: createdRevision.id,
+            itemId: step.itemId,
+            operationId: step.operationId,
+            stepNo: step.stepNo,
+            isOutsideProcess: step.isOutsideProcess,
+            defaultSupplierId: step.defaultSupplierId,
+            note: step.note,
+          })),
+        );
+      }
+
+      return createdRevision;
+    });
 
     return this.mapRevision(revision);
   }
@@ -794,6 +959,65 @@ export class ProductsService {
     });
   }
 
+  private async getActiveProductFiles(productId: string): Promise<ProductFileEntity[]> {
+    return this.db.query.productFiles.findMany({
+      where: and(eq(productFiles.productId, productId), isNull(productFiles.deletedAt)),
+    });
+  }
+
+  private async ensureUploadedProductImageAllowed(
+    file: ProductImageFile | undefined,
+  ): Promise<ProductImageFile> {
+    if (!file) {
+      throw new AppException(ErrorCode.V002, HttpStatus.UNPROCESSABLE_ENTITY);
+    }
+
+    const isAllowedMimeType = (PRODUCT_IMAGE_ALLOWED_MIME_TYPES as readonly string[]).includes(
+      file.mimetype,
+    );
+    const isAllowedFileSize = file.size <= MAX_PRODUCT_IMAGE_SIZE_IN_BYTES;
+
+    if (!isAllowedMimeType || !isAllowedFileSize) {
+      await this.deleteLocalFile(file.path);
+      throw new AppException(ErrorCode.V002, HttpStatus.UNPROCESSABLE_ENTITY);
+    }
+
+    return file;
+  }
+
+  private getProductImageExtension(mimeType: string): string {
+    switch (mimeType) {
+      case 'image/jpeg':
+        return '.jpg';
+      case 'image/png':
+        return '.png';
+      case 'image/webp':
+        return '.webp';
+      case 'image/gif':
+        return '.gif';
+      default:
+        return extname(mimeType);
+    }
+  }
+
+  private async deleteProductLocalFiles(files: ProductFileEntity[]): Promise<void> {
+    await Promise.all(
+      files.map((file) => this.deleteLocalFile(this.resolveProductFilePath(file.filePath))),
+    );
+  }
+
+  private resolveProductFilePath(filePath: string): string {
+    return isAbsolute(filePath) ? filePath : join(process.cwd(), filePath);
+  }
+
+  private async deleteLocalFile(filePath: string): Promise<void> {
+    try {
+      await unlink(filePath);
+    } catch {
+      return;
+    }
+  }
+
   private async getBomLine(revisionId: string, bomLineId: string): Promise<BomLineResDto> {
     const line = await this.db.query.bomLines.findFirst({
       where: and(
@@ -1044,10 +1268,7 @@ export class ProductsService {
         attempt === 1
           ? ProductsService.COPY_CODE_SUFFIX
           : `${ProductsService.COPY_CODE_SUFFIX}-${attempt}`;
-      const baseCode = sourceCode.slice(
-        0,
-        ProductsService.MAX_PRODUCT_CODE_LENGTH - suffix.length,
-      );
+      const baseCode = sourceCode.slice(0, ProductsService.MAX_PRODUCT_CODE_LENGTH - suffix.length);
       const candidateCode = `${baseCode}${suffix}`;
       const existingProduct = await this.db.query.products.findFirst({
         columns: {
@@ -1165,6 +1386,8 @@ type ProductWithUnit = typeof products.$inferSelect & {
 type ProductWithRevisions = typeof products.$inferSelect & {
   revisions: (typeof productRevisions.$inferSelect)[];
 };
+
+type ProductFileEntity = typeof productFiles.$inferSelect;
 
 type BomLineWithUnit = typeof bomLines.$inferSelect & {
   unit: typeof units.$inferSelect | null;

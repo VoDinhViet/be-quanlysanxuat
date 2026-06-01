@@ -103,6 +103,7 @@ Create product
   -> create initial product_revision
   -> define multi-level BOM by product_revision
   -> define routing for FG/WIP nodes
+  -> create a new revision by copying BOM/routing from an existing revision when needed
   -> lock or approve revision when ready
   -> use revision for production job creation
   -> copy BOM/routing snapshots into job/material workflows

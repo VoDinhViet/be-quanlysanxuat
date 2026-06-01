@@ -1,10 +1,31 @@
-import { Body, Controller, Delete, Get, HttpStatus, Patch, Post, Put, Query } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpStatus,
+  Patch,
+  Post,
+  Put,
+  Query,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiBody, ApiConsumes, ApiTags } from '@nestjs/swagger';
+import type { MulterOptions } from '@nestjs/platform-express/multer/interfaces/multer-options.interface';
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { ApiAuth } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
+import { User } from '../../decorators/user.decorator';
+import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
+import {
+  MAX_PRODUCT_IMAGE_SIZE_IN_BYTES,
+  PRODUCT_IMAGE_FIELD_NAME,
+  PRODUCT_IMAGE_UPLOAD_DIR,
+} from './constants/product-image.constants';
 import { BomLineResDto } from './dto/bom-line.res.dto';
 import { BomTreeNodeResDto } from './dto/bom-tree-node.res.dto';
 import { CreateBomLineReqDto } from './dto/create-bom-line.req.dto';
@@ -20,6 +41,15 @@ import { UpdateProductReqDto } from './dto/update-product.req.dto';
 import { UpdateProductRevisionReqDto } from './dto/update-product-revision.req.dto';
 import { UpdateRoutingReqDto } from './dto/update-routing.req.dto';
 import { ProductsService } from './products.service';
+import type { ProductImageFile } from './types/product-image-file.type';
+
+const PRODUCT_IMAGE_MULTER_OPTIONS: MulterOptions = {
+  dest: PRODUCT_IMAGE_UPLOAD_DIR,
+  limits: {
+    fileSize: MAX_PRODUCT_IMAGE_SIZE_IN_BYTES,
+    files: 1,
+  },
+};
 
 @ApiTags('Products')
 @Controller('products')
@@ -206,6 +236,58 @@ export class ProductsController {
     @Body() reqDto: UpdateRoutingReqDto,
   ): Promise<RoutingStepResDto[]> {
     return this.productsService.updateRouting(productId, revisionId, itemId, reqDto);
+  }
+
+  /**
+   * Uploads a product image and makes it the product thumbnail.
+   *
+   * @param productId - Product identifier from the route parameter.
+   * @param file - Uploaded multipart image file from the `image` field.
+   * @param user - Authenticated user payload used for upload ownership metadata.
+   * @returns Updated product response with the new public image URL.
+   */
+  @Post(':productId/image')
+  @Permissions('products:update')
+  @UseInterceptors(FileInterceptor(PRODUCT_IMAGE_FIELD_NAME, PRODUCT_IMAGE_MULTER_OPTIONS))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: [PRODUCT_IMAGE_FIELD_NAME],
+      properties: {
+        [PRODUCT_IMAGE_FIELD_NAME]: {
+          type: 'string',
+          format: 'binary',
+        },
+      },
+    },
+  })
+  @ApiAuth({
+    type: ProductResDto,
+    summary: 'Upload product image',
+  })
+  uploadProductImage(
+    @UUIDParam('productId') productId: string,
+    @UploadedFile() file: ProductImageFile,
+    @User() user: JwtPayloadType,
+  ): Promise<ProductResDto> {
+    return this.productsService.uploadProductImage(productId, file, user.sub);
+  }
+
+  /**
+   * Removes the current product image and clears the product thumbnail URL.
+   *
+   * @param productId - Product identifier from the route parameter.
+   * @returns Updated product response with `imageUrl` cleared.
+   */
+  @Delete(':productId/image')
+  @Permissions('products:update')
+  @ApiAuth({
+    type: ProductResDto,
+    summary: 'Delete product image',
+  })
+  deleteProductImage(@UUIDParam('productId') productId: string): Promise<ProductResDto> {
+    return this.productsService.deleteProductImage(productId);
   }
 
   @Get(':productId')

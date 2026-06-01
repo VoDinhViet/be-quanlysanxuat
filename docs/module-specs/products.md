@@ -24,6 +24,7 @@ Implemented in this chunk:
 - Product copy endpoint.
 - Product/unit/type/operation option endpoints.
 - Product revision list/create/update endpoints.
+- Product image upload/delete endpoints backed by `/uploads/products`.
 - BOM tree endpoint.
 - BOM line create/update/delete endpoints.
 - Routing get/replace endpoints.
@@ -41,6 +42,8 @@ POST   /products
 GET    /products/:productId
 PATCH  /products/:productId
 PATCH  /products/:productId/lock
+POST   /products/:productId/image
+DELETE /products/:productId/image
 POST   /products/:productId/copy
 DELETE /products/:productId
 ```
@@ -144,6 +147,30 @@ Business rules:
 - Product must exist and not be deleted.
 - Endpoint soft-deletes the product.
 
+### Product Image Endpoints
+
+```text
+POST   /products/:productId/image
+DELETE /products/:productId/image
+```
+
+Permission: `products:update`.
+
+`POST /products/:productId/image` request: multipart form-data with one `image` file.
+
+Response DTO: `ProductResDto`.
+
+Business rules:
+
+- Product must exist and not be deleted.
+- Product must not be locked.
+- Only `image/jpeg`, `image/png`, `image/webp`, and `image/gif` are accepted.
+- Maximum image size is 5 MB.
+- Uploaded files are stored under `/uploads/products`.
+- The product `imageUrl` is updated to the public `/uploads/products/<file>` URL.
+- Existing active product file records are soft-deleted when a new image is uploaded.
+- `DELETE /products/:productId/image` clears `imageUrl`, soft-deletes active product file records, and removes local files on a best-effort basis.
+
 ### Lookup Endpoints
 
 ```text
@@ -173,7 +200,8 @@ Revision endpoint rules:
 - Product must exist and not be deleted.
 - Revision must belong to the product and not be deleted for update.
 - Revision number must be unique for the product.
-- Creating a revision does not copy BOM/routing yet.
+- Creating a revision can copy active BOM lines and routing steps from `copyFromRevisionId` when provided.
+- `copyFromRevisionId` must belong to the same product and must not be deleted.
 
 ### BOM Endpoints
 
@@ -251,9 +279,11 @@ Planned endpoint mapping:
 
 - Drizzle database client through `DRIZZLE`.
 - `products`, `productRevisions`, `bomLines`, `routingSteps`, `operations`, and `units` schemas.
+- `productFiles` schema for product image metadata.
 - `clients` schema through nullable `products.clientId`.
 - `suppliers` schema for outsource routing default supplier.
 - RBAC permissions through global `RolesGuard`.
+- Local static upload serving from `/uploads`.
 - Latest Drizzle migration adds `bom_lines.sort_order`.
 
 ## Database Rules
@@ -268,10 +298,12 @@ Planned endpoint mapping:
 - Prevent BOM self-parent and cycles.
 - Locking a product or revision prevents product, BOM, and routing mutations.
 - Delete should soft-delete product records and reject unsafe deletion once order/job dependencies exist.
+- Product image replacement stores one active public thumbnail URL on `products.image_url`; historical file records are soft-deleted in `product_files`.
 
 ## Security Rules
 
 - Never expose internal file paths or storage secrets through image/file responses.
+- Product image upload must validate MIME type and size before making the file active.
 - Enforce permissions per endpoint.
 - Validate all route params and request bodies.
 - Whitelist list sorting fields.
