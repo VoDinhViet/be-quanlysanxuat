@@ -1,4 +1,9 @@
-import { NumberField, StringFieldOptional, UUIDField } from '../../../decorators/field.decorators';
+import {
+  NumberField,
+  NumberFieldOptional,
+  StringFieldOptional,
+  UUIDField,
+} from '../../../decorators/field.decorators';
 
 export class CreateBomLineReqDto {
   @UUIDField()
@@ -13,10 +18,10 @@ export class CreateBomLineReqDto {
   @UUIDField()
   unitId!: string;
 
-  @NumberField({ min: 0, required: false })
+  @NumberFieldOptional({ min: 0 })
   scrapRate?: number;
 
-  @NumberField({ int: true, min: 0, required: false })
+  @NumberFieldOptional({ int: true, min: 0 })
   sortOrder?: number;
 
   @StringFieldOptional({ nullable: true })
