@@ -18,10 +18,13 @@ import {
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { CreateProductReqDto } from './dto/create-product.req.dto';
+import { CreateProductRevisionReqDto } from './dto/create-product-revision.req.dto';
 import { GetProductsReqDto } from './dto/get-products.req.dto';
 import { ProductOptionResDto } from './dto/product-option.res.dto';
+import { ProductRevisionResDto } from './dto/product-revision.res.dto';
 import { ProductResDto } from './dto/product.res.dto';
 import { UpdateProductReqDto } from './dto/update-product.req.dto';
+import { UpdateProductRevisionReqDto } from './dto/update-product-revision.req.dto';
 
 @Injectable()
 export class ProductsService {
@@ -217,6 +220,67 @@ export class ProductsService {
     return this.mapOptions(entities);
   }
 
+  async getProductRevisions(productId: string): Promise<ProductRevisionResDto[]> {
+    await this.ensureProductExists(productId);
+
+    const revisions = await this.db.query.productRevisions.findMany({
+      where: and(eq(productRevisions.productId, productId), isNull(productRevisions.deletedAt)),
+      orderBy: desc(productRevisions.createdAt),
+    });
+
+    return this.mapRevisions(revisions);
+  }
+
+  async createProductRevision(
+    productId: string,
+    reqDto: CreateProductRevisionReqDto,
+  ): Promise<ProductRevisionResDto> {
+    await this.ensureProductExists(productId);
+    await this.ensureRevisionNoAvailable(productId, reqDto.revisionNo);
+
+    const [revision] = await this.db
+      .insert(productRevisions)
+      .values({
+        productId,
+        revisionNo: reqDto.revisionNo,
+        note: reqDto.note,
+      })
+      .returning();
+
+    return this.mapRevision(revision);
+  }
+
+  async updateProductRevision(
+    productId: string,
+    revisionId: string,
+    reqDto: UpdateProductRevisionReqDto,
+  ): Promise<ProductRevisionResDto> {
+    await this.ensureProductExists(productId);
+    await this.ensureProductRevisionExists(productId, revisionId);
+
+    if (reqDto.revisionNo) {
+      await this.ensureRevisionNoAvailable(productId, reqDto.revisionNo, revisionId);
+    }
+
+    const [revision] = await this.db
+      .update(productRevisions)
+      .set({
+        revisionNo: reqDto.revisionNo,
+        note: reqDto.note,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(productRevisions.id, revisionId),
+          eq(productRevisions.productId, productId),
+          isNull(productRevisions.deletedAt),
+        ),
+      )
+      .returning();
+
+    return this.mapRevision(revision);
+  }
+
   private async ensureProductExists(productId: string): Promise<void> {
     const existingProduct = await this.db.query.products.findFirst({
       columns: {
@@ -272,6 +336,44 @@ export class ProductsService {
     }
   }
 
+  private async ensureProductRevisionExists(productId: string, revisionId: string): Promise<void> {
+    const existingRevision = await this.db.query.productRevisions.findFirst({
+      columns: {
+        id: true,
+      },
+      where: and(
+        eq(productRevisions.id, revisionId),
+        eq(productRevisions.productId, productId),
+        isNull(productRevisions.deletedAt),
+      ),
+    });
+
+    if (!existingRevision) {
+      throw new AppException(ErrorCode.E002, HttpStatus.NOT_FOUND);
+    }
+  }
+
+  private async ensureRevisionNoAvailable(
+    productId: string,
+    revisionNo: string,
+    ignoredRevisionId?: string,
+  ): Promise<void> {
+    const existingRevision = await this.db.query.productRevisions.findFirst({
+      columns: {
+        id: true,
+      },
+      where: and(
+        eq(productRevisions.productId, productId),
+        eq(productRevisions.revisionNo, revisionNo),
+        ignoredRevisionId ? ne(productRevisions.id, ignoredRevisionId) : undefined,
+      ),
+    });
+
+    if (existingRevision) {
+      throw new AppException(ErrorCode.E005, HttpStatus.CONFLICT);
+    }
+  }
+
   private mapProducts(productEntities: ProductEntityWithRelations[]): ProductResDto[] {
     return productEntities.map((product) => this.mapProduct(product));
   }
@@ -289,6 +391,18 @@ export class ProductsService {
 
   private mapOptions(optionEntities: ProductOptionEntity[]): ProductOptionResDto[] {
     return plainToInstance(ProductOptionResDto, optionEntities, {
+      excludeExtraneousValues: true,
+    });
+  }
+
+  private mapRevisions(revisionEntities: (typeof productRevisions.$inferSelect)[]) {
+    return plainToInstance(ProductRevisionResDto, revisionEntities, {
+      excludeExtraneousValues: true,
+    });
+  }
+
+  private mapRevision(revision: typeof productRevisions.$inferSelect): ProductRevisionResDto {
+    return plainToInstance(ProductRevisionResDto, revision, {
       excludeExtraneousValues: true,
     });
   }

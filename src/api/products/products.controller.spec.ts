@@ -7,14 +7,24 @@ import { ProductsService } from './products.service';
 describe('ProductsController', () => {
   let controller: ProductsController;
   let productsService: jest.Mocked<
-    Pick<ProductsService, 'createProduct' | 'deleteProduct' | 'getProductOptions' | 'getProducts'>
+    Pick<
+      ProductsService,
+      | 'createProduct'
+      | 'createProductRevision'
+      | 'deleteProduct'
+      | 'getProductOptions'
+      | 'getProductRevisions'
+      | 'getProducts'
+    >
   >;
 
   beforeEach(async () => {
     productsService = {
       createProduct: jest.fn(),
+      createProductRevision: jest.fn(),
       deleteProduct: jest.fn(),
       getProductOptions: jest.fn(),
+      getProductRevisions: jest.fn(),
       getProducts: jest.fn(),
     };
 
@@ -68,6 +78,27 @@ describe('ProductsController', () => {
     await expect(controller.getProductOptions()).resolves.toBe(response);
 
     expect(productsService.getProductOptions).toHaveBeenCalledWith();
+  });
+
+  it('should delegate product revisions to service', async () => {
+    const productId = '550e8400-e29b-41d4-a716-446655440001';
+    const response = [{ id: '550e8400-e29b-41d4-a716-446655440002' }] as never;
+    productsService.getProductRevisions.mockResolvedValue(response);
+
+    await expect(controller.getProductRevisions(productId)).resolves.toBe(response);
+
+    expect(productsService.getProductRevisions).toHaveBeenCalledWith(productId);
+  });
+
+  it('should delegate revision creation to service', async () => {
+    const productId = '550e8400-e29b-41d4-a716-446655440001';
+    const reqDto = { revisionNo: 'R2' };
+    const response = { id: '550e8400-e29b-41d4-a716-446655440002' } as never;
+    productsService.createProductRevision.mockResolvedValue(response);
+
+    await expect(controller.createProductRevision(productId, reqDto)).resolves.toBe(response);
+
+    expect(productsService.createProductRevision).toHaveBeenCalledWith(productId, reqDto);
   });
 
   it('should delegate product deletion to service', async () => {

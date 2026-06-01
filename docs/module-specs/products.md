@@ -12,7 +12,7 @@ src/api/products/
 
 ## Current Status
 
-Product CRUD and option endpoints are implemented. Revision, BOM, and routing endpoints are pending.
+Product CRUD, option, and revision endpoints are implemented. BOM and routing endpoints are pending.
 
 Implemented in this chunk:
 
@@ -21,12 +21,12 @@ Implemented in this chunk:
 - Product permission codes and RBAC seed entries for read/create/update/delete.
 - Product CRUD endpoints.
 - Product/unit/type/operation option endpoints.
+- Product revision list/create/update endpoints.
 - Product `clientId` schema link.
 - Unique indexes for product code and product revision number per product.
 
 Pending implementation:
 
-- Product revision endpoints.
 - BOM tree and BOM line endpoints.
 - Routing endpoints.
 - Product database migration review for optional `bomLines.sortOrder`.
@@ -137,6 +137,16 @@ GET   /products/:productId/revisions
 POST  /products/:productId/revisions
 PATCH /products/:productId/revisions/:revisionId
 ```
+
+Revision endpoint rules:
+
+- `GET /products/:productId/revisions` uses `products:read` and returns `ProductRevisionResDto[]`.
+- `POST /products/:productId/revisions` uses `products:update` and accepts `CreateProductRevisionReqDto`.
+- `PATCH /products/:productId/revisions/:revisionId` uses `products:update` and accepts `UpdateProductRevisionReqDto`.
+- Product must exist and not be deleted.
+- Revision must belong to the product and not be deleted for update.
+- Revision number must be unique for the product.
+- Creating a revision does not copy BOM/routing yet.
 
 ### BOM Endpoints
 

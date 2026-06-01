@@ -1,6 +1,11 @@
 import { Exclude, Expose } from 'class-transformer';
 
-import { DateField, StringField, UUIDField } from '../../../decorators/field.decorators';
+import {
+  DateField,
+  StringField,
+  StringFieldOptional,
+  UUIDField,
+} from '../../../decorators/field.decorators';
 
 @Exclude()
 export class ProductRevisionResDto {
@@ -13,6 +18,14 @@ export class ProductRevisionResDto {
   revisionNo!: string;
 
   @Expose()
+  @StringFieldOptional({ nullable: true })
+  note!: string | null;
+
+  @Expose()
   @DateField()
   createdAt!: Date;
+
+  @Expose()
+  @DateField()
+  updatedAt!: Date;
 }

@@ -6,10 +6,13 @@ import { ApiAuth } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
 import { CreateProductReqDto } from './dto/create-product.req.dto';
+import { CreateProductRevisionReqDto } from './dto/create-product-revision.req.dto';
 import { GetProductsReqDto } from './dto/get-products.req.dto';
 import { ProductOptionResDto } from './dto/product-option.res.dto';
+import { ProductRevisionResDto } from './dto/product-revision.res.dto';
 import { ProductResDto } from './dto/product.res.dto';
 import { UpdateProductReqDto } from './dto/update-product.req.dto';
+import { UpdateProductRevisionReqDto } from './dto/update-product-revision.req.dto';
 import { ProductsService } from './products.service';
 
 @ApiTags('Products')
@@ -70,6 +73,45 @@ export class ProductsController {
   })
   getOperationOptions(): Promise<ProductOptionResDto[]> {
     return this.productsService.getOperationOptions();
+  }
+
+  @Get(':productId/revisions')
+  @Permissions('products:read')
+  @ApiAuth({
+    type: ProductRevisionResDto,
+    summary: 'List product revisions',
+    isArray: true,
+  })
+  getProductRevisions(@UUIDParam('productId') productId: string): Promise<ProductRevisionResDto[]> {
+    return this.productsService.getProductRevisions(productId);
+  }
+
+  @Post(':productId/revisions')
+  @Permissions('products:update')
+  @ApiAuth({
+    type: ProductRevisionResDto,
+    summary: 'Create product revision',
+    statusCode: HttpStatus.CREATED,
+  })
+  createProductRevision(
+    @UUIDParam('productId') productId: string,
+    @Body() reqDto: CreateProductRevisionReqDto,
+  ): Promise<ProductRevisionResDto> {
+    return this.productsService.createProductRevision(productId, reqDto);
+  }
+
+  @Patch(':productId/revisions/:revisionId')
+  @Permissions('products:update')
+  @ApiAuth({
+    type: ProductRevisionResDto,
+    summary: 'Update product revision',
+  })
+  updateProductRevision(
+    @UUIDParam('productId') productId: string,
+    @UUIDParam('revisionId') revisionId: string,
+    @Body() reqDto: UpdateProductRevisionReqDto,
+  ): Promise<ProductRevisionResDto> {
+    return this.productsService.updateProductRevision(productId, revisionId, reqDto);
   }
 
   @Get(':productId')
