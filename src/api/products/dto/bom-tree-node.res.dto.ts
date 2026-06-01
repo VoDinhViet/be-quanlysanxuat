@@ -61,6 +61,10 @@ export class BomTreeNodeResDto {
   level!: number;
 
   @Expose()
+  @NumberField({ int: true })
+  sortOrder!: number;
+
+  @Expose()
   @BooleanField()
   hasRouting!: boolean;
 

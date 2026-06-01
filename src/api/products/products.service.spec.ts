@@ -121,6 +121,24 @@ describe('ProductsService', () => {
     ).toBe(2);
   });
 
+  it('should compute next BOM sort order by sibling parent', () => {
+    const serviceUnderTest = service as unknown as {
+      getNextBomSortOrder: (
+        parentItemId: string,
+        lines: Array<{ parentItemId: string; sortOrder: number }>,
+      ) => number;
+    };
+
+    expect(serviceUnderTest.getNextBomSortOrder('root', [])).toBe(1);
+    expect(
+      serviceUnderTest.getNextBomSortOrder('root', [
+        { parentItemId: 'root', sortOrder: 1 },
+        { parentItemId: 'root', sortOrder: 3 },
+        { parentItemId: 'item-a', sortOrder: 10 },
+      ]),
+    ).toBe(4);
+  });
+
   it('should collect descendant BOM line ids for subtree deletion', () => {
     const serviceUnderTest = service as unknown as {
       getBomSubtreeLineIds: (

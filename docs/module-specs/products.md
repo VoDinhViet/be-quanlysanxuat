@@ -28,11 +28,11 @@ Implemented in this chunk:
 - Routing get/replace endpoints.
 - Product `clientId` schema link.
 - Unique indexes for product code and product revision number per product.
+- `bomLines.sortOrder` schema field for stable tree-grid ordering.
 
 Pending implementation:
 
 - Product copy endpoint.
-- Product database migration review for optional `bomLines.sortOrder`.
 
 ## Planned Public API
 
@@ -186,6 +186,8 @@ BOM endpoint rules:
 - Child item must exist and must not be the same item as parent.
 - Unit must exist when creating or updating a BOM line.
 - Service computes BOM `level`; clients must not send or trust it.
+- Service defaults BOM `sortOrder` to the next sibling order when clients omit it.
+- `sortOrder` can be supplied on BOM line create/update to keep tree-grid display order stable.
 - Service rejects cycles before creating a BOM line.
 - BOM tree root is the product. Child nodes are built from active `bomLines` for the selected revision.
 - `hasRouting` is calculated from active `routingSteps` for the selected revision.
@@ -253,12 +255,14 @@ Implementation note:
 - `clients` schema through nullable `products.clientId`.
 - `suppliers` schema for outsource routing default supplier.
 - RBAC permissions through global `RolesGuard`.
+- Latest Drizzle migration adds `bom_lines.sort_order`.
 
 ## Database Rules
 
 - Product code is unique globally.
 - Revision number is unique per product.
 - BOM and routing are revision-scoped.
+- BOM sibling display order is stored in `bom_lines.sort_order`.
 - FG/WIP may have routing.
 - RM/Consumable must not have routing.
 - FG/WIP may be BOM parent nodes.

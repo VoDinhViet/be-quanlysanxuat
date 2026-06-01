@@ -50,6 +50,13 @@
       "when": 1780280709774,
       "tag": "0006_shallow_mercury",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1780287324512,
+      "tag": "0007_legal_tarantula",
+      "breakpoints": true
     }
   ]
 }

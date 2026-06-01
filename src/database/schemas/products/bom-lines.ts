@@ -30,6 +30,8 @@ export const bomLines = pgTable('bom_lines', {
   scrapRate: numeric('scrap_rate', { precision: 8, scale: 4 }).notNull().default('0'),
   // Cấp BOM.
   level: integer('level').notNull().default(1),
+  // Thứ tự hiển thị trong cùng parent.
+  sortOrder: integer('sort_order').notNull().default(0),
   // Ghi chú.
   note: text('note'),
   // Thời gian tạo.

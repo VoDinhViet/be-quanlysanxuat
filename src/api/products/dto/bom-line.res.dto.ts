@@ -3,6 +3,7 @@ import { Exclude, Expose, Type } from 'class-transformer';
 import {
   ClassFieldOptional,
   DateField,
+  NumberField,
   StringField,
   StringFieldOptional,
   UUIDField,
@@ -38,6 +39,10 @@ export class BomLineResDto {
   @Expose()
   @UUIDField()
   unitId!: string;
+
+  @Expose()
+  @NumberField({ int: true })
+  sortOrder!: number;
 
   @Expose()
   @Type(() => ProductOptionResDto)

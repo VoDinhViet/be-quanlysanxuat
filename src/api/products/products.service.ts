@@ -323,7 +323,12 @@ export class ProductsService {
           },
           unit: true,
         },
-        orderBy: [asc(bomLines.level), asc(bomLines.createdAt)],
+        orderBy: [
+          asc(bomLines.level),
+          asc(bomLines.parentItemId),
+          asc(bomLines.sortOrder),
+          asc(bomLines.createdAt),
+        ],
       }),
       this.db.query.routingSteps.findMany({
         columns: {
@@ -377,6 +382,8 @@ export class ProductsService {
     this.ensureBomCycleAllowed(reqDto.parentItemId, reqDto.childItemId, existingLines);
 
     const level = this.getBomChildLevel(productId, reqDto.parentItemId, existingLines);
+    const sortOrder =
+      reqDto.sortOrder ?? this.getNextBomSortOrder(reqDto.parentItemId, existingLines);
 
     const [line] = await this.db
       .insert(bomLines)
@@ -388,6 +395,7 @@ export class ProductsService {
         unitId: reqDto.unitId,
         scrapRate: String(reqDto.scrapRate ?? 0),
         level,
+        sortOrder,
         note: reqDto.note,
       })
       .returning();
@@ -416,6 +424,7 @@ export class ProductsService {
         qty: reqDto.qty === undefined ? undefined : String(reqDto.qty),
         unitId: reqDto.unitId,
         scrapRate: reqDto.scrapRate === undefined ? undefined : String(reqDto.scrapRate),
+        sortOrder: reqDto.sortOrder,
         note: reqDto.note,
         updatedAt: new Date(),
       })
@@ -785,6 +794,21 @@ export class ProductsService {
     return parentLine.level + 1;
   }
 
+  private getNextBomSortOrder(
+    parentItemId: string,
+    lines: (typeof bomLines.$inferSelect)[],
+  ): number {
+    const siblingSortOrders = lines
+      .filter((line) => line.parentItemId === parentItemId)
+      .map((line) => line.sortOrder);
+
+    if (siblingSortOrders.length === 0) {
+      return 1;
+    }
+
+    return Math.max(...siblingSortOrders) + 1;
+  }
+
   private getBomSubtreeLineIds(
     rootBomLineId: string,
     rootChildItemId: string,
@@ -976,6 +1000,7 @@ export class ProductsService {
         qty,
         unit: line?.unit ?? product.unit,
         level,
+        sortOrder: line?.sortOrder ?? 0,
         hasRouting: routingItemIds.has(product.id),
         children,
       },

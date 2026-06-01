@@ -16,6 +16,9 @@ export class CreateBomLineReqDto {
   @NumberField({ min: 0, required: false })
   scrapRate?: number;
 
+  @NumberField({ int: true, min: 0, required: false })
+  sortOrder?: number;
+
   @StringFieldOptional({ nullable: true })
   note?: string | null;
 }
