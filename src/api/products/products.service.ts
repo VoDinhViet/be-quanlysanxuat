@@ -15,6 +15,7 @@ import {
   productRevisions,
   products,
   ProductItemType,
+  ProductStatus,
   productTypes,
   routingSteps,
   suppliers,
@@ -131,7 +132,8 @@ export class ProductsService {
   }
 
   async updateProduct(productId: string, reqDto: UpdateProductReqDto): Promise<ProductResDto> {
-    await this.ensureProductExists(productId);
+    await this.ensureProductUnlocked(productId);
+    this.ensureProductStatusUpdateAllowed(reqDto.status);
 
     await Promise.all([
       reqDto.code ? this.ensureCodeAvailable(reqDto.code, productId) : Promise.resolve(),
@@ -150,6 +152,20 @@ export class ProductsService {
         status: reqDto.status,
         imageUrl: reqDto.imageUrl,
         note: reqDto.note,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(products.id, productId), isNull(products.deletedAt)));
+
+    return this.getProductDetail(productId);
+  }
+
+  async lockProduct(productId: string): Promise<ProductResDto> {
+    await this.ensureProductExists(productId);
+
+    await this.db
+      .update(products)
+      .set({
+        status: ProductStatus.Locked,
         updatedAt: new Date(),
       })
       .where(and(eq(products.id, productId), isNull(products.deletedAt)));
@@ -245,7 +261,7 @@ export class ProductsService {
     productId: string,
     reqDto: CreateProductRevisionReqDto,
   ): Promise<ProductRevisionResDto> {
-    await this.ensureProductExists(productId);
+    await this.ensureProductUnlocked(productId);
     await this.ensureRevisionNoAvailable(productId, reqDto.revisionNo);
 
     const [revision] = await this.db
@@ -265,7 +281,7 @@ export class ProductsService {
     revisionId: string,
     reqDto: UpdateProductRevisionReqDto,
   ): Promise<ProductRevisionResDto> {
-    await this.ensureProductExists(productId);
+    await this.ensureProductUnlocked(productId);
     await this.ensureProductRevisionExists(productId, revisionId);
 
     if (reqDto.revisionNo) {
@@ -343,6 +359,7 @@ export class ProductsService {
     reqDto: CreateBomLineReqDto,
   ): Promise<BomLineResDto> {
     await this.ensureProductRevisionExists(productId, revisionId);
+    await this.ensureProductUnlocked(productId);
     await this.ensureUnitExists(reqDto.unitId);
 
     if (reqDto.parentItemId === reqDto.childItemId) {
@@ -385,6 +402,7 @@ export class ProductsService {
     reqDto: UpdateBomLineReqDto,
   ): Promise<BomLineResDto> {
     await this.ensureProductRevisionExists(productId, revisionId);
+    await this.ensureProductUnlocked(productId);
 
     if (reqDto.unitId) {
       await this.ensureUnitExists(reqDto.unitId);
@@ -418,6 +436,7 @@ export class ProductsService {
     bomLineId: string,
   ): Promise<BomLineResDto> {
     await this.ensureProductRevisionExists(productId, revisionId);
+    await this.ensureProductUnlocked(productId);
 
     const line = await this.getBomLine(revisionId, bomLineId);
     const lines = await this.getBomLines(revisionId);
@@ -479,6 +498,7 @@ export class ProductsService {
     reqDto: UpdateRoutingReqDto,
   ): Promise<RoutingStepResDto[]> {
     await this.ensureProductRevisionExists(productId, revisionId);
+    await this.ensureProductUnlocked(productId);
 
     const [item, lines] = await Promise.all([
       this.getBomItem(itemId),
@@ -538,6 +558,30 @@ export class ProductsService {
 
     if (!existingProduct) {
       throw new AppException(ErrorCode.E002, HttpStatus.NOT_FOUND);
+    }
+  }
+
+  private async ensureProductUnlocked(productId: string): Promise<void> {
+    const existingProduct = await this.db.query.products.findFirst({
+      columns: {
+        id: true,
+        status: true,
+      },
+      where: and(eq(products.id, productId), isNull(products.deletedAt)),
+    });
+
+    if (!existingProduct) {
+      throw new AppException(ErrorCode.E002, HttpStatus.NOT_FOUND);
+    }
+
+    if (existingProduct.status === ProductStatus.Locked) {
+      throw new AppException(ErrorCode.E006, HttpStatus.CONFLICT, 'Product is locked');
+    }
+  }
+
+  private ensureProductStatusUpdateAllowed(status?: ProductStatus): void {
+    if (status === ProductStatus.Locked) {
+      throw new AppException(ErrorCode.V002, HttpStatus.UNPROCESSABLE_ENTITY);
     }
   }
 

@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { DRIZZLE } from '../../database/database.module';
+import { ProductStatus } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { ProductsService } from './products.service';
 
@@ -15,7 +16,7 @@ type ProductsServiceDbMock = {
   query: {
     operations: { findMany: jest.Mock };
     productTypes: { findMany: jest.Mock };
-    products: { findMany: jest.Mock };
+    products: { findFirst: jest.Mock; findMany: jest.Mock };
     units: { findMany: jest.Mock };
   };
 };
@@ -34,6 +35,7 @@ describe('ProductsService', () => {
           findMany: jest.fn(),
         },
         products: {
+          findFirst: jest.fn(),
           findMany: jest.fn(),
         },
         units: {
@@ -177,5 +179,29 @@ describe('ProductsService', () => {
         ],
       }),
     ).toThrow(AppException);
+  });
+
+  it('should reject product mutations when product is locked', async () => {
+    db.query.products.findFirst.mockResolvedValue({
+      id: '550e8400-e29b-41d4-a716-446655440001',
+      status: ProductStatus.Locked,
+    });
+    const serviceUnderTest = service as unknown as {
+      ensureProductUnlocked: (productId: string) => Promise<void>;
+    };
+
+    await expect(
+      serviceUnderTest.ensureProductUnlocked('550e8400-e29b-41d4-a716-446655440001'),
+    ).rejects.toThrow(AppException);
+  });
+
+  it('should reject locked status through generic product update', () => {
+    const serviceUnderTest = service as unknown as {
+      ensureProductStatusUpdateAllowed: (status?: ProductStatus) => void;
+    };
+
+    expect(() => serviceUnderTest.ensureProductStatusUpdateAllowed(ProductStatus.Locked)).toThrow(
+      AppException,
+    );
   });
 });

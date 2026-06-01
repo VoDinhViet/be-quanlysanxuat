@@ -12,7 +12,7 @@ src/api/products/
 
 ## Current Status
 
-Product CRUD, option, revision, BOM tree/line, and routing endpoints are implemented.
+Product CRUD, lock, option, revision, BOM tree/line, and routing endpoints are implemented.
 
 Implemented in this chunk:
 
@@ -20,6 +20,7 @@ Implemented in this chunk:
 - AppModule wiring.
 - Product permission codes and RBAC seed entries for read/create/update/delete.
 - Product CRUD endpoints.
+- Product lock endpoint.
 - Product/unit/type/operation option endpoints.
 - Product revision list/create/update endpoints.
 - BOM tree endpoint.
@@ -30,6 +31,7 @@ Implemented in this chunk:
 
 Pending implementation:
 
+- Product copy endpoint.
 - Product database migration review for optional `bomLines.sortOrder`.
 
 ## Planned Public API
@@ -41,13 +43,13 @@ GET    /products
 POST   /products
 GET    /products/:productId
 PATCH  /products/:productId
+PATCH  /products/:productId/lock
 DELETE /products/:productId
 ```
 
 Pending:
 
 ```text
-PATCH  /products/:productId/lock
 POST   /products/:productId/copy
 ```
 
@@ -103,9 +105,23 @@ Request DTO: `UpdateProductReqDto`.
 Business rules:
 
 - Product must exist and not be deleted.
+- Product must not be locked.
 - New code must be unique globally.
 - Unit must exist and not be deleted when provided.
 - Client must exist and not be deleted when provided.
+- `locked` status must be set through `PATCH /products/:productId/lock`, not this generic update endpoint.
+
+### PATCH /products/:productId/lock
+
+Permission: `products:lock`.
+
+Response DTO: `ProductResDto`.
+
+Business rules:
+
+- Product must exist and not be deleted.
+- Endpoint sets product status to `locked`.
+- Locked products reject product update, revision mutation, BOM mutation, and routing mutation.
 
 ### DELETE /products/:productId
 
@@ -203,12 +219,12 @@ Planned permission codes:
 - `products:create`
 - `products:update`
 - `products:delete`
+- `products:lock`
 - `products:bom-manage`
 - `products:routing-manage`
 
 Planned later:
 
-- `products:lock`
 - `products:copy`
 
 Planned endpoint mapping:
@@ -217,17 +233,17 @@ Planned endpoint mapping:
 - Create: `products:create`.
 - Update/image: `products:update`.
 - Delete: `products:delete`.
+- Lock: `products:lock`.
 - BOM mutation: `products:bom-manage`.
 - Routing mutation: `products:routing-manage`.
 
 Planned later:
 
-- Lock: `products:lock`.
 - Copy: `products:copy`.
 
 Implementation note:
 
-- Lock/copy permissions are not seeded yet.
+- Copy permission is not seeded yet.
 - Add remaining permission codes and RBAC seed entries only when the matching endpoints are implemented.
 
 ## Dependencies

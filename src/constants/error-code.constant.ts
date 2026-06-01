@@ -12,6 +12,7 @@ export enum ErrorCode {
   E003 = 'user.error.email_exists',
   E004 = 'user.error.invalid_credentials',
   E005 = 'user.error.code_exists',
+  E006 = 'product.error.locked',
   E101 = 'class.error.teacher_not_found',
   E102 = 'class.error.invalid_teacher_assignment',
   E103 = 'class.error.forbidden',

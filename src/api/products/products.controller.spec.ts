@@ -19,6 +19,7 @@ describe('ProductsController', () => {
       | 'getProductRevisions'
       | 'getProducts'
       | 'getRouting'
+      | 'lockProduct'
       | 'updateBomLine'
       | 'updateRouting'
     >
@@ -36,6 +37,7 @@ describe('ProductsController', () => {
       getProductRevisions: jest.fn(),
       getProducts: jest.fn(),
       getRouting: jest.fn(),
+      lockProduct: jest.fn(),
       updateBomLine: jest.fn(),
       updateRouting: jest.fn(),
     };
@@ -207,6 +209,16 @@ describe('ProductsController', () => {
       itemId,
       reqDto,
     );
+  });
+
+  it('should delegate product locking to service', async () => {
+    const productId = '550e8400-e29b-41d4-a716-446655440001';
+    const response = { id: productId } as never;
+    productsService.lockProduct.mockResolvedValue(response);
+
+    await expect(controller.lockProduct(productId)).resolves.toBe(response);
+
+    expect(productsService.lockProduct).toHaveBeenCalledWith(productId);
   });
 
   it('should delegate product deletion to service', async () => {

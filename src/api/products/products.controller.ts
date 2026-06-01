@@ -242,6 +242,16 @@ export class ProductsController {
     return this.productsService.updateProduct(productId, reqDto);
   }
 
+  @Patch(':productId/lock')
+  @Permissions('products:lock')
+  @ApiAuth({
+    type: ProductResDto,
+    summary: 'Lock product',
+  })
+  lockProduct(@UUIDParam('productId') productId: string): Promise<ProductResDto> {
+    return this.productsService.lockProduct(productId);
+  }
+
   @Delete(':productId')
   @Permissions('products:delete')
   @ApiAuth({
