@@ -7,6 +7,7 @@ import { AuthService } from './auth.service';
 import { LoginReqDto } from './dto/login.req.dto';
 import { LoginResDto } from './dto/login.res.dto';
 import { CurrentUserResDto } from './dto/current-user.res.dto';
+import { RefreshTokenReqDto } from './dto/refresh-token.req.dto';
 import type { JwtPayloadType } from './types/jwt-payload.type';
 
 @ApiTags('Auth')
@@ -21,6 +22,15 @@ export class AuthController {
   })
   login(@Body() dto: LoginReqDto): Promise<LoginResDto> {
     return this.authService.login(dto);
+  }
+
+  @Post('refresh-token')
+  @ApiPublic({
+    type: LoginResDto,
+    summary: 'Refresh access token',
+  })
+  refreshToken(@Body() dto: RefreshTokenReqDto): Promise<LoginResDto> {
+    return this.authService.refreshToken(dto);
   }
 
   @Get('me')

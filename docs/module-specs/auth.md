@@ -54,6 +54,47 @@ Errors:
 
 - Invalid credentials: `ErrorCode.E004`, HTTP `401`.
 
+### POST /auth/refresh-token
+
+Decorator:
+
+- `@ApiPublic(...)`
+
+Request DTO:
+
+- `RefreshTokenReqDto`
+
+Request fields:
+
+- `refreshToken`
+
+Response DTO:
+
+- `LoginResDto`
+
+Response fields:
+
+- `userId`
+- `roleCode`
+- `permissions`
+- `accessToken`
+- `refreshToken`
+- `tokenExpires`
+
+Business rules:
+
+- Refresh token must be a valid JWT signed by `auth.refreshSecret`.
+- User from refresh token payload must exist.
+- User status must be active.
+- User role must not be inactive.
+- Endpoint issues a new access token and a new refresh token.
+- Response permissions are loaded from the current database role permissions.
+
+Errors:
+
+- Invalid refresh token: HTTP `401`.
+- Inactive or missing user/role: `ErrorCode.E004`, HTTP `401`.
+
 ### GET /auth/me
 
 Decorator:

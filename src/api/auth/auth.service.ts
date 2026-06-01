@@ -17,6 +17,7 @@ import { LoginReqDto } from './dto/login.req.dto';
 import { LoginResDto } from './dto/login.res.dto';
 import { CurrentUserResDto } from './dto/current-user.res.dto';
 import { JwtPayloadType } from './types/jwt-payload.type';
+import { RefreshTokenReqDto } from './dto/refresh-token.req.dto';
 
 @Injectable()
 export class AuthService {
@@ -53,6 +54,56 @@ export class AuthService {
     const isPasswordValid = await compare(dto.password, user.password);
 
     if (!isPasswordValid || user.role?.isActive === false) {
+      this.throwInvalidCredentials();
+    }
+
+    const payload: JwtPayloadType = {
+      sub: user.id,
+      email: user.email,
+      role: user.role?.code as Role | undefined,
+    };
+
+    const [accessToken, refreshToken] = await Promise.all([
+      this.signAccessToken(payload),
+      this.signRefreshToken(payload),
+    ]);
+
+    return plainToInstance(
+      LoginResDto,
+      {
+        userId: user.id,
+        roleCode: user.role?.code,
+        permissions:
+          user.role?.rolePermissions
+            .map((rolePermission) => rolePermission.permission)
+            .map((permission) => permission.code) ?? [],
+        accessToken,
+        refreshToken,
+        tokenExpires: this.getAccessTokenExpiresAt(),
+      },
+      { excludeExtraneousValues: true },
+    );
+  }
+
+  async refreshToken(dto: RefreshTokenReqDto): Promise<LoginResDto> {
+    const refreshPayload = await this.verifyRefreshToken(dto.refreshToken);
+
+    const user = await this.db.query.users.findFirst({
+      where: eq(users.id, refreshPayload.sub),
+      with: {
+        role: {
+          with: {
+            rolePermissions: {
+              with: {
+                permission: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!user || user.status !== UserStatus.ACTIVE || user.role?.isActive === false) {
       this.throwInvalidCredentials();
     }
 
