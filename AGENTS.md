@@ -54,9 +54,11 @@ Read the relevant module spec under `docs/module-specs/` before changing an exis
 
 - Use Nest CLI when starting a new module/controller/service:
   - `pnpm nest generate module api/<module>`
-  - `pnpm nest generate controller api/<module> --no-spec`
-  - `pnpm nest generate service api/<module> --no-spec`
-- Use manual file creation for DTOs, types, schemas, tests, or follow-up files that Nest CLI does not generate cleanly.
+  - `pnpm nest generate controller api/<module>`
+  - `pnpm nest generate service api/<module>`
+- Keep the Nest CLI generated `*.spec.ts` files when adding a controller or service, then replace boilerplate with focused test cases.
+- Use manual file creation for DTOs, types, schemas, or follow-up files that Nest CLI does not generate cleanly.
+- Create test files manually only when the target file already exists or Nest CLI cannot generate the required spec without overwriting working code.
 - Remove generated boilerplate that does not match the requested business behavior.
 
 ## Verification
@@ -70,5 +72,4 @@ Read the relevant module spec under `docs/module-specs/` before changing an exis
 - Do not build after docs-only or DTO-only changes unless the user asks.
 - Report commands run and whether they passed.
 - Always run `codegraph sync` after finishing code changes, especially when adding new files, to ensure the codebase index is up to date.
-
 
