@@ -229,6 +229,17 @@ export class ProductsController {
     return this.productsService.createProduct(reqDto);
   }
 
+  @Post(':productId/copy')
+  @Permissions('products:copy')
+  @ApiAuth({
+    type: ProductResDto,
+    summary: 'Copy product',
+    statusCode: HttpStatus.CREATED,
+  })
+  copyProduct(@UUIDParam('productId') productId: string): Promise<ProductResDto> {
+    return this.productsService.copyProduct(productId);
+  }
+
   @Patch(':productId')
   @Permissions('products:update')
   @ApiAuth({

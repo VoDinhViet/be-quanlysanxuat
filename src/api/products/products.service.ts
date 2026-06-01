@@ -39,6 +39,10 @@ import { UpdateRoutingReqDto } from './dto/update-routing.req.dto';
 
 @Injectable()
 export class ProductsService {
+  private static readonly COPY_CODE_SUFFIX = '-COPY';
+  private static readonly MAX_PRODUCT_CODE_LENGTH = 50;
+  private static readonly MAX_COPY_CODE_ATTEMPTS = 1000;
+
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
 
   async getProducts(reqDto: GetProductsReqDto): Promise<OffsetPaginatedDto<ProductResDto>> {
@@ -171,6 +175,82 @@ export class ProductsService {
       .where(and(eq(products.id, productId), isNull(products.deletedAt)));
 
     return this.getProductDetail(productId);
+  }
+
+  async copyProduct(productId: string): Promise<ProductResDto> {
+    const sourceProduct = await this.getProductWithCurrentRevision(productId);
+    const sourceRevision = sourceProduct.revisions[0];
+
+    if (!sourceRevision) {
+      throw new AppException(ErrorCode.E002, HttpStatus.NOT_FOUND);
+    }
+
+    const [sourceBomLines, sourceRoutingSteps, copiedCode] = await Promise.all([
+      this.getBomLines(sourceRevision.id),
+      this.getRoutingSteps(sourceRevision.id),
+      this.generateProductCopyCode(sourceProduct.code),
+    ]);
+
+    const copiedProduct = await this.db.transaction(async (tx) => {
+      const [createdProduct] = await tx
+        .insert(products)
+        .values({
+          clientId: sourceProduct.clientId,
+          code: copiedCode,
+          name: `${sourceProduct.name} Copy`,
+          itemType: sourceProduct.itemType,
+          unitId: sourceProduct.unitId,
+          imageUrl: sourceProduct.imageUrl,
+          status: ProductStatus.Active,
+          note: sourceProduct.note,
+        })
+        .returning();
+
+      const [createdRevision] = await tx
+        .insert(productRevisions)
+        .values({
+          productId: createdProduct.id,
+          revisionNo: sourceRevision.revisionNo,
+          note: sourceRevision.note,
+        })
+        .returning();
+
+      if (sourceBomLines.length > 0) {
+        await tx.insert(bomLines).values(
+          sourceBomLines.map((line) => ({
+            productRevisionId: createdRevision.id,
+            parentItemId:
+              line.parentItemId === sourceProduct.id ? createdProduct.id : line.parentItemId,
+            childItemId:
+              line.childItemId === sourceProduct.id ? createdProduct.id : line.childItemId,
+            qty: line.qty,
+            unitId: line.unitId,
+            scrapRate: line.scrapRate,
+            level: line.level,
+            sortOrder: line.sortOrder,
+            note: line.note,
+          })),
+        );
+      }
+
+      if (sourceRoutingSteps.length > 0) {
+        await tx.insert(routingSteps).values(
+          sourceRoutingSteps.map((step) => ({
+            productRevisionId: createdRevision.id,
+            itemId: step.itemId === sourceProduct.id ? createdProduct.id : step.itemId,
+            operationId: step.operationId,
+            stepNo: step.stepNo,
+            isOutsideProcess: step.isOutsideProcess,
+            defaultSupplierId: step.defaultSupplierId,
+            note: step.note,
+          })),
+        );
+      }
+
+      return createdProduct;
+    });
+
+    return this.getProductDetail(copiedProduct.id);
   }
 
   async deleteProduct(productId: string): Promise<ProductResDto> {
@@ -570,6 +650,25 @@ export class ProductsService {
     }
   }
 
+  private async getProductWithCurrentRevision(productId: string): Promise<ProductWithRevisions> {
+    const product = await this.db.query.products.findFirst({
+      where: and(eq(products.id, productId), isNull(products.deletedAt)),
+      with: {
+        revisions: {
+          where: isNull(productRevisions.deletedAt),
+          orderBy: desc(productRevisions.createdAt),
+          limit: 1,
+        },
+      },
+    });
+
+    if (!product) {
+      throw new AppException(ErrorCode.E002, HttpStatus.NOT_FOUND);
+    }
+
+    return product;
+  }
+
   private async ensureProductUnlocked(productId: string): Promise<void> {
     const existingProduct = await this.db.query.products.findFirst({
       columns: {
@@ -686,6 +785,12 @@ export class ProductsService {
   private async getBomLines(revisionId: string): Promise<(typeof bomLines.$inferSelect)[]> {
     return this.db.query.bomLines.findMany({
       where: and(eq(bomLines.productRevisionId, revisionId), isNull(bomLines.deletedAt)),
+    });
+  }
+
+  private async getRoutingSteps(revisionId: string): Promise<(typeof routingSteps.$inferSelect)[]> {
+    return this.db.query.routingSteps.findMany({
+      where: and(eq(routingSteps.productRevisionId, revisionId), isNull(routingSteps.deletedAt)),
     });
   }
 
@@ -933,6 +1038,32 @@ export class ProductsService {
     }
   }
 
+  private async generateProductCopyCode(sourceCode: string): Promise<string> {
+    for (let attempt = 1; attempt <= ProductsService.MAX_COPY_CODE_ATTEMPTS; attempt += 1) {
+      const suffix =
+        attempt === 1
+          ? ProductsService.COPY_CODE_SUFFIX
+          : `${ProductsService.COPY_CODE_SUFFIX}-${attempt}`;
+      const baseCode = sourceCode.slice(
+        0,
+        ProductsService.MAX_PRODUCT_CODE_LENGTH - suffix.length,
+      );
+      const candidateCode = `${baseCode}${suffix}`;
+      const existingProduct = await this.db.query.products.findFirst({
+        columns: {
+          id: true,
+        },
+        where: eq(products.code, candidateCode),
+      });
+
+      if (!existingProduct) {
+        return candidateCode;
+      }
+    }
+
+    throw new AppException(ErrorCode.E104, HttpStatus.CONFLICT);
+  }
+
   private mapProducts(productEntities: ProductEntityWithRelations[]): ProductResDto[] {
     return productEntities.map((product) => this.mapProduct(product));
   }
@@ -1029,6 +1160,10 @@ type ProductOptionEntity = {
 
 type ProductWithUnit = typeof products.$inferSelect & {
   unit: typeof units.$inferSelect;
+};
+
+type ProductWithRevisions = typeof products.$inferSelect & {
+  revisions: (typeof productRevisions.$inferSelect)[];
 };
 
 type BomLineWithUnit = typeof bomLines.$inferSelect & {

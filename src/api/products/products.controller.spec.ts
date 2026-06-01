@@ -10,6 +10,7 @@ describe('ProductsController', () => {
     Pick<
       ProductsService,
       | 'createBomLine'
+      | 'copyProduct'
       | 'createProduct'
       | 'createProductRevision'
       | 'deleteBomLine'
@@ -28,6 +29,7 @@ describe('ProductsController', () => {
   beforeEach(async () => {
     productsService = {
       createBomLine: jest.fn(),
+      copyProduct: jest.fn(),
       createProduct: jest.fn(),
       createProductRevision: jest.fn(),
       deleteBomLine: jest.fn(),
@@ -83,6 +85,16 @@ describe('ProductsController', () => {
     await expect(controller.createProduct(reqDto)).resolves.toBe(response);
 
     expect(productsService.createProduct).toHaveBeenCalledWith(reqDto);
+  });
+
+  it('should delegate product copy to service', async () => {
+    const productId = '550e8400-e29b-41d4-a716-446655440001';
+    const response = { id: '550e8400-e29b-41d4-a716-446655440002' } as never;
+    productsService.copyProduct.mockResolvedValue(response);
+
+    await expect(controller.copyProduct(productId)).resolves.toBe(response);
+
+    expect(productsService.copyProduct).toHaveBeenCalledWith(productId);
   });
 
   it('should delegate product options to service', async () => {

@@ -12,7 +12,7 @@ src/api/products/
 
 ## Current Status
 
-Product CRUD, lock, option, revision, BOM tree/line, and routing endpoints are implemented.
+Product CRUD, lock, copy, option, revision, BOM tree/line, and routing endpoints are implemented.
 
 Implemented in this chunk:
 
@@ -21,6 +21,7 @@ Implemented in this chunk:
 - Product permission codes and RBAC seed entries for read/create/update/delete.
 - Product CRUD endpoints.
 - Product lock endpoint.
+- Product copy endpoint.
 - Product/unit/type/operation option endpoints.
 - Product revision list/create/update endpoints.
 - BOM tree endpoint.
@@ -29,10 +30,6 @@ Implemented in this chunk:
 - Product `clientId` schema link.
 - Unique indexes for product code and product revision number per product.
 - `bomLines.sortOrder` schema field for stable tree-grid ordering.
-
-Pending implementation:
-
-- Product copy endpoint.
 
 ## Planned Public API
 
@@ -44,13 +41,8 @@ POST   /products
 GET    /products/:productId
 PATCH  /products/:productId
 PATCH  /products/:productId/lock
-DELETE /products/:productId
-```
-
-Pending:
-
-```text
 POST   /products/:productId/copy
+DELETE /products/:productId
 ```
 
 ### GET /products
@@ -122,6 +114,24 @@ Business rules:
 - Product must exist and not be deleted.
 - Endpoint sets product status to `locked`.
 - Locked products reject product update, revision mutation, BOM mutation, and routing mutation.
+
+### POST /products/:productId/copy
+
+Permission: `products:copy`.
+
+Request body: none.
+
+Response DTO: `ProductResDto`.
+
+Business rules:
+
+- Source product must exist and not be deleted.
+- Source product must have a current revision.
+- Service creates a new active product with copied client, item type, unit, image URL, and note.
+- Service generates a globally unique product code from the source code using the `-COPY` suffix.
+- Service copies the source product's current revision number and note.
+- Service copies active BOM lines and active routing steps from the source revision into the new revision.
+- Root product references in copied BOM/routing are mapped to the new product. Child item references are reused.
 
 ### DELETE /products/:productId
 
@@ -222,12 +232,9 @@ Planned permission codes:
 - `products:update`
 - `products:delete`
 - `products:lock`
+- `products:copy`
 - `products:bom-manage`
 - `products:routing-manage`
-
-Planned later:
-
-- `products:copy`
 
 Planned endpoint mapping:
 
@@ -236,17 +243,9 @@ Planned endpoint mapping:
 - Update/image: `products:update`.
 - Delete: `products:delete`.
 - Lock: `products:lock`.
+- Copy: `products:copy`.
 - BOM mutation: `products:bom-manage`.
 - Routing mutation: `products:routing-manage`.
-
-Planned later:
-
-- Copy: `products:copy`.
-
-Implementation note:
-
-- Copy permission is not seeded yet.
-- Add remaining permission codes and RBAC seed entries only when the matching endpoints are implemented.
 
 ## Dependencies
 

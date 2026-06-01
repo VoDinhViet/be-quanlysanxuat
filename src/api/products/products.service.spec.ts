@@ -139,6 +139,18 @@ describe('ProductsService', () => {
     ).toBe(4);
   });
 
+  it('should generate unique copy product code', async () => {
+    db.query.products.findFirst.mockResolvedValueOnce({ id: 'existing-product-id' });
+    db.query.products.findFirst.mockResolvedValueOnce(undefined);
+    const serviceUnderTest = service as unknown as {
+      generateProductCopyCode: (sourceCode: string) => Promise<string>;
+    };
+
+    await expect(serviceUnderTest.generateProductCopyCode('PRD001')).resolves.toBe(
+      'PRD001-COPY-2',
+    );
+  });
+
   it('should collect descendant BOM line ids for subtree deletion', () => {
     const serviceUnderTest = service as unknown as {
       getBomSubtreeLineIds: (
