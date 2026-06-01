@@ -22,7 +22,7 @@ Update this file whenever an API module changes implementation progress.
 | Users     | `src/api/users/`     | `docs/module-specs/users.md`     | Implemented | List/detail/create/update/change password.                   |
 | Roles     | `src/api/roles/`     | Pending                          | Partial     | Role option list only. Create spec before expanding.         |
 | Clients   | `src/api/clients/`   | Pending                          | Partial     | CRUD exists. Create spec before expanding.                   |
-| Products  | `src/api/products/`  | `docs/module-specs/products.md`  | Partial     | Module scaffold and permissions added. APIs pending.         |
+| Products  | `src/api/products/`  | `docs/module-specs/products.md`  | Partial     | Module scaffold added. APIs and permissions pending.         |
 | Suppliers | `src/api/suppliers/` | `docs/module-specs/suppliers.md` | In progress | List/create/update/delete implemented. Detail/tests pending. |
 
 ## Auth
@@ -96,12 +96,11 @@ Done:
 
 - Module/controller/service/spec scaffold generated with Nest CLI.
 - Module wired into `AppModule`.
-- Product permission codes added.
-- Product RBAC seed entries added.
 - Product module spec created.
 
 Pending:
 
+- Product permission codes and RBAC seed entries.
 - Product CRUD and option endpoints.
 - Product revision endpoints.
 - BOM tree and BOM line endpoints.

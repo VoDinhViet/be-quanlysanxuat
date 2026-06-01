@@ -18,10 +18,10 @@ Implemented in this chunk:
 
 - Nest module/controller/service/spec scaffold.
 - AppModule wiring.
-- Product permission codes and RBAC seed entries.
 
 Pending implementation:
 
+- Product permission codes and RBAC seed entries.
 - Product CRUD and options endpoints.
 - Product revision endpoints.
 - BOM tree and BOM line endpoints.
@@ -77,7 +77,7 @@ PUT /products/:productId/revisions/:revisionId/items/:itemId/routing
 
 ## Permissions
 
-Permission codes:
+Planned permission codes:
 
 - `products:read`
 - `products:create`
@@ -98,6 +98,11 @@ Planned endpoint mapping:
 - Copy: `products:copy`.
 - BOM: `products:bom-manage`.
 - Routing: `products:routing-manage`.
+
+Implementation note:
+
+- Product permissions are not seeded yet.
+- Add permission codes and RBAC seed entries only when the matching endpoints are implemented.
 
 ## Dependencies
 

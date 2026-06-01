@@ -258,7 +258,7 @@ Put routing request:
 
 ## Permissions
 
-Thêm permissions:
+Thiết kế permissions cho module products:
 
 ```text
 products:read
@@ -280,6 +280,11 @@ products:routing-manage
 - Routing: `products:routing-manage`.
 - Lock: `products:lock`.
 - Delete: `products:delete`.
+
+Implementation note:
+
+- Chưa thêm product permissions vào `PermissionCode` hoặc RBAC seed ở bước scaffold.
+- Chỉ thêm permission vào code/seed khi endpoint tương ứng được implement trong chunk đó.
 
 ## Frontend UI Plan
 
