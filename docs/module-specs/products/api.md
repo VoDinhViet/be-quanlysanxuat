@@ -1,40 +1,6 @@
-# Products Module Spec
+# Products API Spec
 
-## Purpose
-
-The products module owns production master data: products, revisions, BOM tree, and routing steps.
-
-Source:
-
-```text
-src/api/products/
-```
-
-## Current Status
-
-Product CRUD, lock/unlock, copy, option, revision, BOM tree/line, and routing endpoints are implemented.
-
-Implemented in this chunk:
-
-- Nest module/controller/service/spec scaffold.
-- AppModule wiring.
-- Product permission codes and RBAC seed entries for read/create/update/delete.
-- Product CRUD endpoints.
-- Product lock/unlock endpoints.
-- Product copy endpoint.
-- Product/unit/type/operation option endpoints.
-- Product revision list/create/update endpoints.
-- Product image upload/delete endpoints backed by `/uploads/products`.
-- BOM tree endpoint.
-- BOM line create/update/delete endpoints.
-- Routing get/replace endpoints.
-- Product `clientId` schema link.
-- Unique indexes for product code and product revision number per product.
-- `bomLines.sortOrder` schema field for stable tree-grid ordering.
-
-## Planned Public API
-
-### Product Endpoints
+## Product Endpoints
 
 ```text
 GET    /products
@@ -160,7 +126,7 @@ Business rules:
 - Product must exist and not be deleted.
 - Endpoint soft-deletes the product.
 
-### Product Image Endpoints
+## Product Image Endpoints
 
 ```text
 POST   /products/:productId/image
@@ -184,7 +150,7 @@ Business rules:
 - Existing active product file records are soft-deleted when a new image is uploaded.
 - `DELETE /products/:productId/image` clears `imageUrl`, soft-deletes active product file records, and removes local files on a best-effort basis.
 
-### Lookup Endpoints
+## Lookup Endpoints
 
 ```text
 GET /products/options
@@ -197,7 +163,7 @@ Permission: `products:read`.
 
 Response DTO: `ProductOptionResDto[]`.
 
-### Revision Endpoints
+## Revision Endpoints
 
 ```text
 GET   /products/:productId/revisions
@@ -216,7 +182,7 @@ Revision endpoint rules:
 - Creating a revision can copy active BOM lines and routing steps from `copyFromRevisionId` when provided.
 - `copyFromRevisionId` must belong to the same product and must not be deleted.
 
-### BOM Endpoints
+## BOM Endpoints
 
 ```text
 GET    /products/:productId/revisions/:revisionId/bom-tree
@@ -243,7 +209,7 @@ BOM endpoint rules:
 - BOM tree root is the product. Child nodes are built from active `bomLines` for the selected revision.
 - `hasRouting` is calculated from active `routingSteps` for the selected revision.
 
-### Routing Endpoints
+## Routing Endpoints
 
 ```text
 GET /products/:productId/revisions/:revisionId/items/:itemId/routing
@@ -266,7 +232,7 @@ Routing endpoint rules:
 
 ## Permissions
 
-Planned permission codes:
+Permission codes:
 
 - `products:read`
 - `products:create`
@@ -277,13 +243,13 @@ Planned permission codes:
 - `products:bom-manage`
 - `products:routing-manage`
 
-Planned endpoint mapping:
+Endpoint mapping:
 
 - List/detail/options: `products:read`.
 - Create: `products:create`.
 - Update/image: `products:update`.
 - Delete: `products:delete`.
-- Lock: `products:lock`.
+- Lock/unlock: `products:lock`.
 - Copy: `products:copy`.
 - BOM mutation: `products:bom-manage`.
 - Routing mutation: `products:routing-manage`.
@@ -319,12 +285,5 @@ Planned endpoint mapping:
 - Product image upload must validate MIME type and size before making the file active.
 - Enforce permissions per endpoint.
 - Validate all route params and request bodies.
-- Whitelist list sorting fields.
+- Whitelist list filtering fields.
 - Do not trust BOM level or routing order from the client without service validation.
-
-## Change Checklist
-
-- Update this spec when endpoints, DTOs, permissions, database rules, or dependencies change.
-- Keep this module spec current when products implementation behavior changes.
-- Update `docs/system-flow.md` when products become part of job/material calculation flow.
-- Add or update focused Jest/Supertest cases following `docs/standards/testing-standards.md`.

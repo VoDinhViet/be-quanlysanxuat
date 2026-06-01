@@ -456,7 +456,7 @@ Test cases:
 
 ## Implementation Order
 
-1. Create `docs/module-specs/products.md`.
+1. Create `docs/module-specs/products/` docs folder.
 2. Add permissions and seed updates.
 3. Add DB migration for missing fields/indexes.
 4. Generate backend products module/controller/service/spec files.
