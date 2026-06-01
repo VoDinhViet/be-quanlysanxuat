@@ -466,7 +466,7 @@ Test cases:
 8. Implement routing APIs.
 9. Add backend tests.
 10. Wire module into `AppModule`.
-11. Update `docs/module-progress.md` and `docs/system-flow.md`.
+11. Update module specs and `docs/system-flow.md`.
 12. Implement frontend product list page.
 13. Implement create/edit product dialog.
 14. Implement BOM tree-grid.

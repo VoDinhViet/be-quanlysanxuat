@@ -54,7 +54,7 @@ Root dependency wiring lives in `src/app.module.ts`.
 - `DatabaseModule` is global and provides the Drizzle client through `DRIZZLE`.
 - `RedisModule`, `AuthModule`, and business API modules are imported by `AppModule`.
 
-For end-to-end business flow, keep `docs/system-flow.md` current. For implementation status, keep `docs/module-progress.md` current.
+For end-to-end business flow, keep `docs/system-flow.md` current.
 
 ## Folder Structure
 
@@ -120,19 +120,18 @@ Do not use `src/modules/` for new business APIs in this project unless the whole
 - Avoid tight cross-module coupling. Export only stable services needed by other modules.
 - Every API module must have a `docs/module-specs/<module>.md` file once implementation starts.
 - Update the module spec after changing endpoints, DTOs, permissions, schemas, dependencies, or verification.
-- Update `docs/module-progress.md` after changing implementation status, done items, pending items, or blockers.
 
 ## Layer Responsibilities
 
 > Detailed rules with Good/Bad examples live in [`nestjs-standards.md`](standards/nestjs-standards.md).
 
-| Layer | Responsibility |
-|---|---|
+| Layer          | Responsibility                                                                                                          |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | **Controller** | HTTP routes, decorators (`@ApiAuth`, `@Permissions`, DTOs), delegate to one service method. No DB/Redis/business logic. |
-| **Service** | Business rules, Drizzle queries, transactions, `AppException`, DTO response mapping via `plainToInstance`. |
-| **Repository** | (Optional) Encapsulate complex Drizzle queries. Return raw rows to service. No HTTP errors, no DTO mapping. |
-| **DTO** | Request: validate with `field.decorators.ts`. Response: `@Exclude`/`@Expose`, never expose secrets. |
-| **Guard** | `AuthGuard` authenticates; `RolesGuard` checks `@Permissions(...)`. No business workflows. |
+| **Service**    | Business rules, Drizzle queries, transactions, `AppException`, DTO response mapping via `plainToInstance`.              |
+| **Repository** | (Optional) Encapsulate complex Drizzle queries. Return raw rows to service. No HTTP errors, no DTO mapping.             |
+| **DTO**        | Request: validate with `field.decorators.ts`. Response: `@Exclude`/`@Expose`, never expose secrets.                     |
+| **Guard**      | `AuthGuard` authenticates; `RolesGuard` checks `@Permissions(...)`. No business workflows.                              |
 
 ## Database Architecture
 

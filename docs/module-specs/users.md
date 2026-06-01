@@ -201,7 +201,7 @@ Current note:
 ## Change Checklist
 
 - Update DTOs when request or response shape changes.
-- Update `docs/module-progress.md` when implementation progress changes.
+- Keep this module spec current when implementation behavior changes.
 - Update `PermissionCode` and seed data when adding new protected actions.
 - Update database schema and migrations when adding persisted fields.
 - Run targeted verification; do not run full build unless asked or broad dependency wiring changes.

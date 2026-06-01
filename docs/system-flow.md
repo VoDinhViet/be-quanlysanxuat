@@ -46,7 +46,6 @@ HTTP request
 ## Documentation Rules
 
 - When changing an API module, update its module spec in `docs/module-specs/` in the same task.
-- When changing implementation status, update `docs/module-progress.md` in the same task.
 - Module specs must include purpose, source, public API, permissions, dependencies, database rules, security rules, and change checklist.
 - When adding a new module, create the module spec before finishing the task.
 - When changing shared flow, permissions, auth, database relationships, or cross-module dependencies, update this file.

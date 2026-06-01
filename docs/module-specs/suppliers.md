@@ -174,7 +174,7 @@ Current endpoint usage:
 
 - Update this spec when endpoints, DTOs, permissions, response fields, or supplier business rules change.
 - Update `PermissionCode` and `rbac.seed.ts` when adding new protected supplier actions.
-- Update `docs/module-progress.md` when implementation progress changes.
+- Keep this module spec current when implementation behavior changes.
 - Update `docs/system-flow.md` when supplier flow affects procurement, outside processing, or purchase orders.
 - Add or update tests for list, detail, create, update, delete, search, pagination, permissions, and soft-delete behavior.
 - Run targeted verification; do not run full build unless asked or broad dependency wiring changes.

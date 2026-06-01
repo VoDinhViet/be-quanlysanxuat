@@ -1,5 +1,5 @@
 import { relations } from 'drizzle-orm';
-import { pgTable, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
 
 import { bomLines } from './bom-lines';
 import { products } from './products';
@@ -9,24 +9,33 @@ import { routingSteps } from './routing-steps';
  * Lưu phiên bản sản phẩm dùng cho BOM và routing.
  * Job sản xuất đã tạo vẫn giữ revision cũ khi có revision mới.
  */
-export const productRevisions = pgTable('product_revisions', {
-  // ID phiên bản sản phẩm.
-  id: uuid('id').defaultRandom().primaryKey(),
-  // Sản phẩm.
-  productId: uuid('product_id')
-    .notNull()
-    .references(() => products.id, { onDelete: 'cascade' }),
-  // Mã phiên bản.
-  revisionNo: varchar('revision_no', { length: 50 }).notNull(),
-  // Ghi chú phiên bản.
-  note: text('note'),
-  // Thời gian tạo.
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  // Thời gian cập nhật.
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-  // Thời gian xóa mềm.
-  deletedAt: timestamp('deleted_at'),
-});
+export const productRevisions = pgTable(
+  'product_revisions',
+  {
+    // ID phiên bản sản phẩm.
+    id: uuid('id').defaultRandom().primaryKey(),
+    // Sản phẩm.
+    productId: uuid('product_id')
+      .notNull()
+      .references(() => products.id, { onDelete: 'cascade' }),
+    // Mã phiên bản.
+    revisionNo: varchar('revision_no', { length: 50 }).notNull(),
+    // Ghi chú phiên bản.
+    note: text('note'),
+    // Thời gian tạo.
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    // Thời gian cập nhật.
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+    // Thời gian xóa mềm.
+    deletedAt: timestamp('deleted_at'),
+  },
+  (table) => [
+    uniqueIndex('product_revisions_product_revision_no_unique_idx').on(
+      table.productId,
+      table.revisionNo,
+    ),
+  ],
+);
 
 export const productRevisionsRelations = relations(productRevisions, ({ one, many }) => ({
   product: one(products, {

@@ -1,6 +1,7 @@
 import { relations } from 'drizzle-orm';
-import { pgEnum, pgTable, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
+import { pgEnum, pgTable, text, timestamp, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
 
+import { clients } from '../clients';
 import { bomLines } from './bom-lines';
 import { jobOperations } from '../job-operations';
 import { productFiles } from './product-files';
@@ -34,34 +35,44 @@ export const productStatusEnum = pgEnum('product_status', [
   ProductStatus.Locked,
 ]);
 
-export const products = pgTable('products', {
-  // ID sản phẩm.
-  id: uuid('id').defaultRandom().primaryKey(),
-  // Mã SP / mã VT / part ID.
-  code: varchar('code', { length: 50 }).notNull(),
-  // Tên sản phẩm.
-  name: varchar('name', { length: 255 }).notNull(),
-  // Loại item.
-  itemType: productItemTypeEnum('item_type').notNull().default(ProductItemType.Fg),
-  // Đơn vị tính.
-  unitId: uuid('unit_id')
-    .notNull()
-    .references(() => units.id, { onDelete: 'restrict' }),
-  // Hình ảnh.
-  imageUrl: text('image_url'),
-  // Trạng thái.
-  status: productStatusEnum('status').notNull().default(ProductStatus.Active),
-  // Ghi chú.
-  note: text('note'),
-  // Thời gian tạo.
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  // Thời gian cập nhật.
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-  // Thời gian xóa mềm.
-  deletedAt: timestamp('deleted_at'),
-});
+export const products = pgTable(
+  'products',
+  {
+    // ID sản phẩm.
+    id: uuid('id').defaultRandom().primaryKey(),
+    // Khách hàng sở hữu/đặt hàng sản phẩm.
+    clientId: uuid('client_id').references(() => clients.id, { onDelete: 'set null' }),
+    // Mã SP / mã VT / part ID.
+    code: varchar('code', { length: 50 }).notNull(),
+    // Tên sản phẩm.
+    name: varchar('name', { length: 255 }).notNull(),
+    // Loại item.
+    itemType: productItemTypeEnum('item_type').notNull().default(ProductItemType.Fg),
+    // Đơn vị tính.
+    unitId: uuid('unit_id')
+      .notNull()
+      .references(() => units.id, { onDelete: 'restrict' }),
+    // Hình ảnh.
+    imageUrl: text('image_url'),
+    // Trạng thái.
+    status: productStatusEnum('status').notNull().default(ProductStatus.Active),
+    // Ghi chú.
+    note: text('note'),
+    // Thời gian tạo.
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    // Thời gian cập nhật.
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+    // Thời gian xóa mềm.
+    deletedAt: timestamp('deleted_at'),
+  },
+  (table) => [uniqueIndex('products_code_unique_idx').on(table.code)],
+);
 
 export const productsRelations = relations(products, ({ one, many }) => ({
+  client: one(clients, {
+    fields: [products.clientId],
+    references: [clients.id],
+  }),
   unit: one(units, {
     fields: [products.unitId],
     references: [units.id],

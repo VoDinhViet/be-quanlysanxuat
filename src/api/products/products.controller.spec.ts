@@ -1,12 +1,31 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ProductItemType } from '../../database/schemas';
+import { CreateProductReqDto } from './dto/create-product.req.dto';
 import { ProductsController } from './products.controller';
+import { ProductsService } from './products.service';
 
 describe('ProductsController', () => {
   let controller: ProductsController;
+  let productsService: jest.Mocked<
+    Pick<ProductsService, 'createProduct' | 'deleteProduct' | 'getProductOptions' | 'getProducts'>
+  >;
 
   beforeEach(async () => {
+    productsService = {
+      createProduct: jest.fn(),
+      deleteProduct: jest.fn(),
+      getProductOptions: jest.fn(),
+      getProducts: jest.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       controllers: [ProductsController],
+      providers: [
+        {
+          provide: ProductsService,
+          useValue: productsService,
+        },
+      ],
     }).compile();
 
     controller = module.get<ProductsController>(ProductsController);
@@ -14,5 +33,50 @@ describe('ProductsController', () => {
 
   it('should be defined', () => {
     expect(controller).toBeDefined();
+  });
+
+  it('should delegate product list queries to service', async () => {
+    const reqDto = { limit: 20, page: 1, offset: 0 } as never;
+    const response = { data: [], pagination: { totalRecords: 0 } } as never;
+    productsService.getProducts.mockResolvedValue(response);
+
+    await expect(controller.getProducts(reqDto)).resolves.toBe(response);
+
+    expect(productsService.getProducts).toHaveBeenCalledWith(reqDto);
+  });
+
+  it('should delegate product creation to service', async () => {
+    const reqDto: CreateProductReqDto = {
+      code: 'XYZ',
+      name: 'Product XYZ',
+      itemType: ProductItemType.Fg,
+      unitId: '550e8400-e29b-41d4-a716-446655440000',
+      revisionNo: 'R1',
+    };
+    const response = { id: '550e8400-e29b-41d4-a716-446655440001' } as never;
+    productsService.createProduct.mockResolvedValue(response);
+
+    await expect(controller.createProduct(reqDto)).resolves.toBe(response);
+
+    expect(productsService.createProduct).toHaveBeenCalledWith(reqDto);
+  });
+
+  it('should delegate product options to service', async () => {
+    const response = [{ id: '550e8400-e29b-41d4-a716-446655440001', code: 'XYZ' }] as never;
+    productsService.getProductOptions.mockResolvedValue(response);
+
+    await expect(controller.getProductOptions()).resolves.toBe(response);
+
+    expect(productsService.getProductOptions).toHaveBeenCalledWith();
+  });
+
+  it('should delegate product deletion to service', async () => {
+    const productId = '550e8400-e29b-41d4-a716-446655440001';
+    const response = { id: productId } as never;
+    productsService.deleteProduct.mockResolvedValue(response);
+
+    await expect(controller.deleteProduct(productId)).resolves.toBe(response);
+
+    expect(productsService.deleteProduct).toHaveBeenCalledWith(productId);
   });
 });

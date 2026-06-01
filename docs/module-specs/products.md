@@ -12,21 +12,24 @@ src/api/products/
 
 ## Current Status
 
-Scaffold only.
+Product CRUD and option endpoints are implemented. Revision, BOM, and routing endpoints are pending.
 
 Implemented in this chunk:
 
 - Nest module/controller/service/spec scaffold.
 - AppModule wiring.
+- Product permission codes and RBAC seed entries for read/create/update/delete.
+- Product CRUD endpoints.
+- Product/unit/type/operation option endpoints.
+- Product `clientId` schema link.
+- Unique indexes for product code and product revision number per product.
 
 Pending implementation:
 
-- Product permission codes and RBAC seed entries.
-- Product CRUD and options endpoints.
 - Product revision endpoints.
 - BOM tree and BOM line endpoints.
 - Routing endpoints.
-- Product database migration review for `clientId`, unique indexes, and optional `sortOrder`.
+- Product database migration review for optional `bomLines.sortOrder`.
 
 ## Planned Public API
 
@@ -37,10 +40,82 @@ GET    /products
 POST   /products
 GET    /products/:productId
 PATCH  /products/:productId
-PATCH  /products/:productId/lock
-POST   /products/:productId/copy
 DELETE /products/:productId
 ```
+
+Pending:
+
+```text
+PATCH  /products/:productId/lock
+POST   /products/:productId/copy
+```
+
+### GET /products
+
+Permission: `products:read`.
+
+Query DTO: `GetProductsReqDto`.
+
+Query fields: `q`, `clientId`, `itemType`, `status`, `page`, `limit`, `order`.
+
+Response DTO: `OffsetPaginatedDto<ProductResDto>`.
+
+Business rules:
+
+- Soft-deleted products are excluded.
+- Keyword searches product code and name.
+- Sort order currently applies to `createdAt`.
+
+### POST /products
+
+Permission: `products:create`.
+
+Request DTO: `CreateProductReqDto`.
+
+Request fields: `clientId`, `code`, `name`, `itemType`, `unitId`, `revisionNo`, `imageUrl`, `note`.
+
+Response DTO: `ProductResDto`.
+
+Business rules:
+
+- Product code must be unique globally.
+- Unit must exist and not be deleted.
+- Client must exist and not be deleted when provided.
+- Product and initial revision are created in one transaction.
+
+### GET /products/:productId
+
+Permission: `products:read`.
+
+Response DTO: `ProductResDto`.
+
+Business rules:
+
+- Product must exist and not be deleted.
+
+### PATCH /products/:productId
+
+Permission: `products:update`.
+
+Request DTO: `UpdateProductReqDto`.
+
+Business rules:
+
+- Product must exist and not be deleted.
+- New code must be unique globally.
+- Unit must exist and not be deleted when provided.
+- Client must exist and not be deleted when provided.
+
+### DELETE /products/:productId
+
+Permission: `products:delete`.
+
+Response DTO: `ProductResDto`.
+
+Business rules:
+
+- Product must exist and not be deleted.
+- Endpoint soft-deletes the product.
 
 ### Lookup Endpoints
 
@@ -50,6 +125,10 @@ GET /products/units/options
 GET /products/types/options
 GET /products/operations/options
 ```
+
+Permission: `products:read`.
+
+Response DTO: `ProductOptionResDto[]`.
 
 ### Revision Endpoints
 
@@ -83,6 +162,9 @@ Planned permission codes:
 - `products:create`
 - `products:update`
 - `products:delete`
+
+Planned later:
+
 - `products:lock`
 - `products:copy`
 - `products:bom-manage`
@@ -94,6 +176,9 @@ Planned endpoint mapping:
 - Create: `products:create`.
 - Update/image: `products:update`.
 - Delete: `products:delete`.
+
+Planned later:
+
 - Lock: `products:lock`.
 - Copy: `products:copy`.
 - BOM: `products:bom-manage`.
@@ -101,21 +186,21 @@ Planned endpoint mapping:
 
 Implementation note:
 
-- Product permissions are not seeded yet.
-- Add permission codes and RBAC seed entries only when the matching endpoints are implemented.
+- Lock/copy/BOM/routing permissions are not seeded yet.
+- Add remaining permission codes and RBAC seed entries only when the matching endpoints are implemented.
 
 ## Dependencies
 
 - Drizzle database client through `DRIZZLE`.
 - `products`, `productRevisions`, `bomLines`, `routingSteps`, `operations`, and `units` schemas.
-- `clients` schema after `products.clientId` is added.
+- `clients` schema through nullable `products.clientId`.
 - `suppliers` schema for outsource routing default supplier.
 - RBAC permissions through global `RolesGuard`.
 
 ## Database Rules
 
-- Product code must be unique by the final chosen scope.
-- Revision number must be unique per product.
+- Product code is unique globally.
+- Revision number is unique per product.
 - BOM and routing are revision-scoped.
 - FG/WIP may have routing.
 - RM/Consumable must not have routing.
@@ -135,6 +220,6 @@ Implementation note:
 ## Change Checklist
 
 - Update this spec when endpoints, DTOs, permissions, database rules, or dependencies change.
-- Update `docs/module-progress.md` when products implementation status changes.
+- Keep this module spec current when products implementation behavior changes.
 - Update `docs/system-flow.md` when products become part of job/material calculation flow.
 - Add or update focused Jest/Supertest cases following `docs/standards/testing-standards.md`.

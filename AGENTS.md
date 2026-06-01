@@ -15,7 +15,6 @@ Read these files before non-trivial code changes:
 
 - `docs/architecture.md`
 - `docs/system-flow.md`
-- `docs/module-progress.md`
 - `docs/standards/naming-standards.md`
 - `docs/standards/typescript-standards.md`
 - `docs/standards/nestjs-standards.md`
@@ -33,7 +32,6 @@ Read the relevant module spec under `docs/module-specs/` before changing an exis
 - New module/feature: read required docs first, inspect nearby patterns, implement, verify.
 - API behavior change: follow `docs/standards/testing-standards.md` and add or update focused test cases unless the change is docs-only or a clearly mechanical refactor.
 - After changing an API module, update its `docs/module-specs/<module>.md` with current endpoints, permissions, dependencies, and rules.
-- After changing implementation progress, update `docs/module-progress.md`.
 - When adding or changing cross-module flow, update `docs/system-flow.md` so AI agents and developers can follow the system behavior.
 - Debugging: reproduce or read the exact error, inspect the smallest relevant area, fix root cause, rerun the failing command.
 - Use repository skills when they match the task:
@@ -46,7 +44,7 @@ Read the relevant module spec under `docs/module-specs/` before changing an exis
 
 - Always-on project instructions live in this `AGENTS.md`.
 - Detailed conventions live in `docs/`.
-- System flow, module specs, and module progress live in `docs/system-flow.md`, `docs/module-specs/`, and `docs/module-progress.md`.
+- System flow and module specs live in `docs/system-flow.md` and `docs/module-specs/`.
 - Reusable Codex workflows live in `.codex/skills/<skill>/SKILL.md`.
 - Do not put coding convention markdown files under `.codex/rules/`.
 - Use `.codex/rules/*.rules` only for Codex command execution policies when needed.
