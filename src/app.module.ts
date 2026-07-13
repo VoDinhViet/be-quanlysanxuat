@@ -3,24 +3,19 @@ import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import appConfig from './config/app.config';
-import databaseConfig from './database/config/database.config';
 import authConfig from './api/auth/config/auth.config';
+import databaseConfig from './database/config/database.config';
 import redisConfig from './redis/redis.config';
 import { DatabaseModule } from './database/database.module';
 import { RedisModule } from './redis/redis.module';
-import { RolesGuard } from './guards/roles.guard';
 import { AuthModule } from './api/auth/auth.module';
+import { HealthModule } from './api/health/health.module';
 import { UsersModule } from './api/users/users.module';
-import { RolesModule } from './api/roles/roles.module';
-import { ClientsModule } from './api/clients/clients.module';
-import { SuppliersModule } from './api/suppliers/suppliers.module';
-import { ProductsModule } from './api/products/products.module';
-import { OrdersModule } from './api/orders/orders.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
-      load: [appConfig, databaseConfig, authConfig, redisConfig],
+      load: [appConfig, authConfig, databaseConfig, redisConfig],
       isGlobal: true,
     }),
 
@@ -28,14 +23,10 @@ import { OrdersModule } from './api/orders/orders.module';
     RedisModule,
     AuthModule,
     UsersModule,
-    RolesModule,
-    ClientsModule,
-    SuppliersModule,
-    ProductsModule,
-    OrdersModule,
+    HealthModule,
   ],
 
   controllers: [AppController],
-  providers: [AppService, RolesGuard],
+  providers: [AppService],
 })
 export class AppModule {}

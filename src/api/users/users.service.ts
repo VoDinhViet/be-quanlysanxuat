@@ -8,7 +8,7 @@ import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-p
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database } from '../../database/database.type';
-import { roles, users, UserStatus } from '../../database/schemas';
+import { users, UserStatus } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { ChangeUserPasswordReqDto } from './dto/change-password.req.dto';
 import { CreateUserReqDto } from './dto/create-user.req.dto';
@@ -25,18 +25,20 @@ export class UsersService {
   async getUsers(reqDto: GetUsersReqDto): Promise<OffsetPaginatedDto<UserResDto>> {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
     const where = and(
-      keyword ? or(ilike(users.email, keyword), ilike(users.fullName, keyword)) : undefined,
+      keyword
+        ? or(
+            ilike(users.email, keyword),
+            ilike(users.username, keyword),
+            ilike(users.fullName, keyword),
+          )
+        : undefined,
       reqDto.status ? eq(users.status, reqDto.status) : undefined,
-      reqDto.roleId ? eq(users.roleId, reqDto.roleId) : undefined,
     );
     const orderBy = desc(users.createdAt);
 
     const [entities, count] = await Promise.all([
       this.db.query.users.findMany({
         where,
-        with: {
-          role: true,
-        },
         limit: reqDto.limit,
         offset: reqDto.offset,
         orderBy,
@@ -55,9 +57,6 @@ export class UsersService {
   async getUserDetail(userId: string): Promise<UserResDto> {
     const user = await this.db.query.users.findFirst({
       where: eq(users.id, userId),
-      with: {
-        role: true,
-      },
     });
 
     if (!user) {
@@ -70,8 +69,8 @@ export class UsersService {
   }
 
   async createUser(reqDto: CreateUserReqDto): Promise<UserResDto> {
+    await this.ensureUsernameAvailable(reqDto.username);
     await this.ensureEmailAvailable(reqDto.email);
-    await this.ensureActiveRole(reqDto.roleId);
 
     let code = reqDto.code;
     if (code) {
@@ -85,6 +84,7 @@ export class UsersService {
     const [user] = await this.db
       .insert(users)
       .values({
+        username: reqDto.username,
         email: reqDto.email,
         code,
         password,
@@ -92,7 +92,6 @@ export class UsersService {
         phoneNumber: reqDto.phoneNumber,
         dateOfBirth: reqDto.dateOfBirth,
         gender: reqDto.gender,
-        roleId: reqDto.roleId,
         status: reqDto.status ?? UserStatus.ACTIVE,
       })
       .returning();
@@ -103,16 +102,16 @@ export class UsersService {
   async updateUser(userId: string, reqDto: UpdateUserReqDto): Promise<UserResDto> {
     await this.ensureUserExists(userId);
 
+    if (reqDto.username) {
+      await this.ensureUsernameAvailable(reqDto.username, userId);
+    }
+
     if (reqDto.email) {
       await this.ensureEmailAvailable(reqDto.email, userId);
     }
 
     if (reqDto.code) {
       await this.ensureCodeAvailable(reqDto.code, userId);
-    }
-
-    if (reqDto.roleId !== undefined) {
-      await this.ensureActiveRole(reqDto.roleId);
     }
 
     const [user] = await this.db
@@ -124,7 +123,6 @@ export class UsersService {
         phoneNumber: reqDto.phoneNumber,
         dateOfBirth: reqDto.dateOfBirth,
         gender: reqDto.gender,
-        roleId: reqDto.roleId,
         status: reqDto.status,
       })
       .where(eq(users.id, userId))
@@ -159,6 +157,23 @@ export class UsersService {
 
     if (!existingUser) {
       throw new AppException(ErrorCode.E002, HttpStatus.NOT_FOUND);
+    }
+  }
+
+  private async ensureUsernameAvailable(username: string, ignoredUserId?: string): Promise<void> {
+    const where = ignoredUserId
+      ? and(eq(users.username, username), ne(users.id, ignoredUserId))
+      : eq(users.username, username);
+
+    const existingUser = await this.db.query.users.findFirst({
+      columns: {
+        id: true,
+      },
+      where,
+    });
+
+    if (existingUser) {
+      throw new AppException(ErrorCode.E001, HttpStatus.CONFLICT);
     }
   }
 
@@ -199,23 +214,5 @@ export class UsersService {
   private async generateUserCode(): Promise<string> {
     const [totalRows] = await this.db.select({ total: drizzleCount() }).from(users);
     return `US${String((totalRows?.total ?? 0) + 1).padStart(4, '0')}`;
-  }
-
-  private async ensureActiveRole(roleId?: string | null): Promise<void> {
-    if (!roleId) {
-      return;
-    }
-
-    const role = await this.db.query.roles.findFirst({
-      columns: {
-        id: true,
-        isActive: true,
-      },
-      where: eq(roles.id, roleId),
-    });
-
-    if (!role || !role.isActive) {
-      throw new AppException(ErrorCode.E002, HttpStatus.NOT_FOUND);
-    }
   }
 }

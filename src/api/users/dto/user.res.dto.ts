@@ -1,9 +1,7 @@
-import { Exclude, Expose, Type } from 'class-transformer';
+import { Exclude, Expose } from 'class-transformer';
 
-import { RoleResDto } from '../../auth/dto/role.res.dto';
 import { UserGender, UserStatus } from '../../../database/schemas';
 import {
-  ClassFieldOptional,
   DateField,
   DateFieldOptional,
   EmailField,
@@ -12,7 +10,6 @@ import {
   StringField,
   StringFieldOptional,
   UUIDField,
-  UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
 
 @Exclude()
@@ -24,6 +21,10 @@ export class UserResDto {
   @Expose()
   @StringField({ description: 'User unique code' })
   code!: string;
+
+  @Expose()
+  @StringField({ description: 'Username' })
+  username!: string;
 
   @Expose()
   @EmailField()
@@ -46,17 +47,8 @@ export class UserResDto {
   gender!: UserGender | null;
 
   @Expose()
-  @UUIDFieldOptional({ nullable: true })
-  roleId!: string | null;
-
-  @Expose()
   @EnumField(() => UserStatus)
   status!: UserStatus;
-
-  @Expose()
-  @Type(() => RoleResDto)
-  @ClassFieldOptional(() => RoleResDto, { nullable: true })
-  role!: RoleResDto | null;
 
   @Expose()
   @DateField()

@@ -20,8 +20,6 @@ import compression from 'compression';
 import type { Express, Request, Response } from 'express';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
-import { AuthGuard } from './guards/auth.guard';
-import { RolesGuard } from './guards/roles.guard';
 import { GlobalExceptionFilter } from './filters/global-exception.filter';
 import { Environment } from './constants/app.constant';
 import { AllConfigType } from './config/config.type';
@@ -64,7 +62,6 @@ export async function bootstrap(): Promise<Express> {
   app.enableVersioning({ type: VersioningType.URI });
 
   app.useGlobalFilters(new GlobalExceptionFilter(configService));
-  app.useGlobalGuards(app.get(AuthGuard), app.get(RolesGuard));
   app.useGlobalPipes(
     new ValidationPipe({
       transform: true,

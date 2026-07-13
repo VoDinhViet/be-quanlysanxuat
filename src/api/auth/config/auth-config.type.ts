@@ -1,9 +1,8 @@
-import { StringValue } from 'ms';
+import type { StringValue } from 'ms';
 
 export type AuthConfig = {
-  confirmEmailExpires: StringValue;
-  secret: string;
-  expires: StringValue;
+  jwtSecret: string;
+  jwtTokenExpiresIn: StringValue;
   refreshSecret: string;
-  refreshExpires: StringValue;
+  refreshTokenExpiresIn: StringValue;
 };

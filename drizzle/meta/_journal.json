@@ -64,6 +64,13 @@
       "when": 1780301313677,
       "tag": "0008_natural_blade",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1783906402217,
+      "tag": "0009_equal_madripoor",
+      "breakpoints": true
     }
   ]
 }

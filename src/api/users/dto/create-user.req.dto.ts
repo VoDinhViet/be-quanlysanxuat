@@ -3,12 +3,15 @@ import {
   EmailField,
   EnumFieldOptional,
   PasswordField,
+  StringField,
   StringFieldOptional,
-  UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
 import { UserGender, UserStatus } from '../../../database/schemas';
 
 export class CreateUserReqDto {
+  @StringField({ description: 'Username', maxLength: 100 })
+  username!: string;
+
   @EmailField({ description: 'Email address' })
   email!: string;
 
@@ -26,9 +29,6 @@ export class CreateUserReqDto {
 
   @EnumFieldOptional(() => UserGender, { nullable: true })
   gender?: UserGender | null;
-
-  @UUIDFieldOptional({ nullable: true })
-  roleId?: string | null;
 
   @StringFieldOptional({ description: 'User unique code', maxLength: 50 })
   code?: string;

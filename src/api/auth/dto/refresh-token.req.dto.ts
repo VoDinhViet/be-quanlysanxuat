@@ -1,6 +1,6 @@
-import { TokenField } from '../../../decorators/field.decorators';
+import { StringField } from '../../../decorators/field.decorators';
 
 export class RefreshTokenReqDto {
-  @TokenField({ description: 'Refresh token' })
+  @StringField({ description: 'Refresh token' })
   refreshToken!: string;
 }

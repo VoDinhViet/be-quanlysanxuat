@@ -1,236 +1,191 @@
-import { HttpStatus, Inject, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
+
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import { HttpStatus, Inject, Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { compare } from 'bcryptjs';
+import type { Cache } from 'cache-manager';
 import { plainToInstance } from 'class-transformer';
-import { eq } from 'drizzle-orm';
+import { eq, or, sql } from 'drizzle-orm';
 import ms from 'ms';
 
 import { AllConfigType } from '../../config/config.type';
+import { CacheKey } from '../../constants/cache.constant';
 import { ErrorCode } from '../../constants/error-code.constant';
-import { Role } from '../../constants/role.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database } from '../../database/database.type';
-import { UserStatus, users } from '../../database/schemas';
+import { users } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
+import { createCacheKey } from '../../utils/cache.util';
 import { LoginReqDto } from './dto/login.req.dto';
 import { LoginResDto } from './dto/login.res.dto';
-import { CurrentUserResDto } from './dto/current-user.res.dto';
-import { JwtPayloadType } from './types/jwt-payload.type';
 import { RefreshTokenReqDto } from './dto/refresh-token.req.dto';
+import { JwtPayloadType } from './types/jwt-payload.type';
+import { RefreshTokenPayloadType } from './types/refresh-token-payload.type';
+
+type SessionUser = {
+  id: string;
+  username: string;
+  email: string;
+};
+
+type StoredSession = {
+  userId: string;
+  hash: string;
+};
 
 @Injectable()
 export class AuthService {
-  private readonly logger = new Logger(AuthService.name);
-
-  private static readonly INVALID_CREDENTIALS_MESSAGE = 'Invalid email or password';
-
   constructor(
-    private readonly configService: ConfigService<AllConfigType>,
-    private readonly jwtService: JwtService,
     @Inject(DRIZZLE) private readonly db: Database,
+    @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
+    private readonly jwtService: JwtService,
+    private readonly configService: ConfigService<AllConfigType>,
   ) {}
 
-  async login(dto: LoginReqDto): Promise<LoginResDto> {
+  async login(reqDto: LoginReqDto): Promise<LoginResDto> {
     const user = await this.db.query.users.findFirst({
-      where: eq(users.email, dto.email),
-      with: {
-        role: {
-          with: {
-            rolePermissions: {
-              with: {
-                permission: true,
-              },
-            },
-          },
-        },
-      },
-    });
-
-    if (!user || user.status !== UserStatus.ACTIVE) {
-      this.throwInvalidCredentials();
-    }
-
-    const isPasswordValid = await compare(dto.password, user.password);
-
-    if (!isPasswordValid || user.role?.isActive === false) {
-      this.throwInvalidCredentials();
-    }
-
-    const payload: JwtPayloadType = {
-      sub: user.id,
-      email: user.email,
-      role: user.role?.code as Role | undefined,
-    };
-
-    const [accessToken, refreshToken] = await Promise.all([
-      this.signAccessToken(payload),
-      this.signRefreshToken(payload),
-    ]);
-
-    return plainToInstance(
-      LoginResDto,
-      {
-        userId: user.id,
-        roleCode: user.role?.code,
-        permissions:
-          user.role?.rolePermissions
-            .map((rolePermission) => rolePermission.permission)
-            .map((permission) => permission.code) ?? [],
-        accessToken,
-        refreshToken,
-        tokenExpires: this.getAccessTokenExpiresAt(),
-      },
-      { excludeExtraneousValues: true },
-    );
-  }
-
-  async refreshToken(dto: RefreshTokenReqDto): Promise<LoginResDto> {
-    const refreshPayload = await this.verifyRefreshToken(dto.refreshToken);
-
-    const user = await this.db.query.users.findFirst({
-      where: eq(users.id, refreshPayload.sub),
-      with: {
-        role: {
-          with: {
-            rolePermissions: {
-              with: {
-                permission: true,
-              },
-            },
-          },
-        },
-      },
-    });
-
-    if (!user || user.status !== UserStatus.ACTIVE || user.role?.isActive === false) {
-      this.throwInvalidCredentials();
-    }
-
-    const payload: JwtPayloadType = {
-      sub: user.id,
-      email: user.email,
-      role: user.role?.code as Role | undefined,
-    };
-
-    const [accessToken, refreshToken] = await Promise.all([
-      this.signAccessToken(payload),
-      this.signRefreshToken(payload),
-    ]);
-
-    return plainToInstance(
-      LoginResDto,
-      {
-        userId: user.id,
-        roleCode: user.role?.code,
-        permissions:
-          user.role?.rolePermissions
-            .map((rolePermission) => rolePermission.permission)
-            .map((permission) => permission.code) ?? [],
-        accessToken,
-        refreshToken,
-        tokenExpires: this.getAccessTokenExpiresAt(),
-      },
-      { excludeExtraneousValues: true },
-    );
-  }
-
-  async getCurrentUser(userId: string): Promise<CurrentUserResDto> {
-    const user = await this.db.query.users.findFirst({
-      where: eq(users.id, userId),
-      with: {
-        role: {
-          with: {
-            rolePermissions: {
-              with: {
-                permission: true,
-              },
-            },
-          },
-        },
-      },
+      where: or(
+        eq(sql`lower(${users.username})`, reqDto.identifier),
+        eq(users.email, reqDto.identifier),
+      ),
     });
 
     if (!user) {
-      throw new AppException(ErrorCode.E002, HttpStatus.NOT_FOUND);
+      throw new AppException(ErrorCode.E004, HttpStatus.UNAUTHORIZED);
     }
 
+    const isPasswordValid = await compare(reqDto.password, user.password);
+
+    if (!isPasswordValid) {
+      throw new AppException(ErrorCode.E004, HttpStatus.UNAUTHORIZED);
+    }
+
+    const sessionId = randomUUID();
+    const { accessToken, refreshToken } = await this.createTokenPair(user, sessionId);
+
     return plainToInstance(
-      CurrentUserResDto,
+      LoginResDto,
       {
-        ...user,
-        permissions:
-          user.role?.rolePermissions
-            .map((rolePermission) => rolePermission.permission)
-            .map((permission) => permission.code) ?? [],
+        accessToken,
+        refreshToken,
+        tokenType: 'Bearer',
       },
       { excludeExtraneousValues: true },
     );
   }
 
-  private throwInvalidCredentials(): never {
-    throw new AppException(
-      ErrorCode.E004,
-      HttpStatus.UNAUTHORIZED,
-      AuthService.INVALID_CREDENTIALS_MESSAGE,
+  async refresh(reqDto: RefreshTokenReqDto): Promise<LoginResDto> {
+    const refreshSecret = this.configService.getOrThrow('auth.refreshSecret', { infer: true });
+
+    let refreshPayload: RefreshTokenPayloadType;
+
+    try {
+      refreshPayload = await this.jwtService.verifyAsync(reqDto.refreshToken, {
+        secret: refreshSecret,
+      });
+    } catch {
+      throw new UnauthorizedException();
+    }
+
+    const storedSession = await this.cacheManager.get<StoredSession>(
+      createCacheKey(CacheKey.SESSION_HASH, refreshPayload.sessionId),
+    );
+
+    if (!storedSession || storedSession.hash !== refreshPayload.hash) {
+      throw new UnauthorizedException();
+    }
+
+    const user = await this.db.query.users.findFirst({
+      where: eq(users.id, storedSession.userId),
+    });
+
+    if (!user) {
+      throw new UnauthorizedException();
+    }
+
+    const { accessToken, refreshToken } = await this.createTokenPair(
+      user,
+      refreshPayload.sessionId,
+    );
+
+    return plainToInstance(
+      LoginResDto,
+      {
+        accessToken,
+        refreshToken,
+        tokenType: 'Bearer',
+      },
+      { excludeExtraneousValues: true },
     );
   }
 
-  async signAccessToken(payload: JwtPayloadType): Promise<string> {
-    return this.jwtService.signAsync(payload, {
-      secret: this.configService.getOrThrow('auth.secret', { infer: true }),
-      expiresIn: this.configService.getOrThrow('auth.expires', { infer: true }),
+  async logout(payload: JwtPayloadType): Promise<void> {
+    const jwtTokenExpiresIn = this.configService.getOrThrow('auth.jwtTokenExpiresIn', {
+      infer: true,
     });
-  }
+    const expiresInMs = ms(jwtTokenExpiresIn);
 
-  async signRefreshToken(payload: JwtPayloadType): Promise<string> {
-    return this.jwtService.signAsync(payload, {
-      secret: this.configService.getOrThrow('auth.refreshSecret', {
-        infer: true,
-      }),
-      expiresIn: this.configService.getOrThrow('auth.refreshExpires', {
-        infer: true,
-      }),
-    });
+    await Promise.all([
+      this.cacheManager.set(
+        createCacheKey(CacheKey.SESSION_BLACKLIST, payload.sessionId),
+        true,
+        expiresInMs,
+      ),
+      this.cacheManager.del(createCacheKey(CacheKey.SESSION_HASH, payload.sessionId)),
+    ]);
   }
 
   async verifyAccessToken(token: string): Promise<JwtPayloadType> {
+    let payload: JwtPayloadType;
+
     try {
-      return await this.jwtService.verifyAsync<JwtPayloadType>(token, {
-        secret: this.configService.getOrThrow('auth.secret', { infer: true }),
-      });
-    } catch (error) {
-      this.logger.warn(`[Auth] Invalid access token: ${this.getTokenErrorMessage(error)}`);
+      payload = await this.jwtService.verifyAsync(token);
+    } catch {
       throw new UnauthorizedException();
     }
-  }
 
-  async verifyRefreshToken(token: string): Promise<JwtPayloadType> {
-    try {
-      return await this.jwtService.verifyAsync<JwtPayloadType>(token, {
-        secret: this.configService.getOrThrow('auth.refreshSecret', {
-          infer: true,
-        }),
-      });
-    } catch (error) {
-      this.logger.warn(`[Auth] Invalid refresh token: ${this.getTokenErrorMessage(error)}`);
+    const isSessionBlacklisted = await this.cacheManager.get<boolean>(
+      createCacheKey(CacheKey.SESSION_BLACKLIST, payload.sessionId),
+    );
+
+    if (isSessionBlacklisted) {
       throw new UnauthorizedException();
     }
+
+    return payload;
   }
 
-  private getTokenErrorMessage(error: unknown): string {
-    if (error instanceof Error) {
-      return `${error.name}: ${error.message}`;
-    }
-
-    return 'Unknown token verification error';
-  }
-
-  private getAccessTokenExpiresAt(): number {
-    const expiresIn = this.configService.getOrThrow('auth.expires', {
+  private async createTokenPair(
+    user: SessionUser,
+    sessionId: string,
+  ): Promise<{ accessToken: string; refreshToken: string }> {
+    const refreshSecret = this.configService.getOrThrow('auth.refreshSecret', { infer: true });
+    const refreshTokenExpiresIn = this.configService.getOrThrow('auth.refreshTokenExpiresIn', {
       infer: true,
     });
+    const hash = randomUUID();
 
-    return Date.now() + ms(expiresIn);
+    const [accessToken, refreshToken] = await Promise.all([
+      this.jwtService.signAsync({
+        sub: user.id,
+        username: user.username,
+        email: user.email,
+        sessionId,
+      }),
+      this.jwtService.signAsync(
+        { sessionId, hash },
+        { secret: refreshSecret, expiresIn: refreshTokenExpiresIn },
+      ),
+    ]);
+
+    await this.cacheManager.set(
+      createCacheKey(CacheKey.SESSION_HASH, sessionId),
+      { userId: user.id, hash },
+      ms(refreshTokenExpiresIn),
+    );
+
+    return { accessToken, refreshToken };
   }
 }

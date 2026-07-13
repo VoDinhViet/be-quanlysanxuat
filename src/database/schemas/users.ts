@@ -1,7 +1,5 @@
 import { date, pgEnum, pgTable, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
 
-import { roles } from './rbac/roles';
-
 export enum UserStatus {
   ACTIVE = 'ACTIVE',
   INACTIVE = 'INACTIVE',
@@ -23,13 +21,13 @@ export const userGenderEnum = pgEnum('user_gender', [
 export const users = pgTable('users', {
   id: uuid('id').defaultRandom().primaryKey(),
   code: varchar('code', { length: 50 }).notNull().unique(),
+  username: varchar('username', { length: 100 }).notNull().unique(),
   email: varchar('email', { length: 255 }).notNull().unique(),
   password: varchar('password', { length: 255 }).notNull(),
   fullName: varchar('full_name', { length: 255 }),
   phoneNumber: varchar('phone_number', { length: 30 }),
   dateOfBirth: date('date_of_birth', { mode: 'date' }),
   gender: userGenderEnum('gender'),
-  roleId: uuid('role_id').references(() => roles.id, { onDelete: 'set null' }),
   status: userStatusEnum('status').notNull().default(UserStatus.ACTIVE),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at')

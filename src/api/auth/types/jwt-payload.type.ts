@@ -1,7 +1,8 @@
-import { Role } from '../../../constants/role.constant';
-
 export type JwtPayloadType = {
   sub: string;
-  email?: string;
-  role?: Role;
+  username: string;
+  email: string;
+  sessionId: string;
+  iat: number;
+  exp: number;
 };
