@@ -15,7 +15,7 @@ import { CacheKey } from '../../constants/cache.constant';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database } from '../../database/database.type';
-import { users } from '../../database/schemas';
+import { credentials, users, UserStatus } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { createCacheKey } from '../../utils/cache.util';
 import { LoginReqDto } from './dto/login.req.dto';
@@ -24,14 +24,14 @@ import { RefreshTokenReqDto } from './dto/refresh-token.req.dto';
 import { JwtPayloadType } from './types/jwt-payload.type';
 import { RefreshTokenPayloadType } from './types/refresh-token-payload.type';
 
-type SessionUser = {
-  id: string;
+type SessionCredential = {
+  credentialId: string;
   username: string;
   email: string;
 };
 
 type StoredSession = {
-  userId: string;
+  credentialId: string;
   hash: string;
 };
 
@@ -45,29 +45,35 @@ export class AuthService {
   ) {}
 
   async login(reqDto: LoginReqDto): Promise<LoginResDto> {
-    const user = await this.db.query.users.findFirst({
+    const credential = await this.db.query.credentials.findFirst({
       where: or(
-        eq(sql`lower(${users.username})`, reqDto.identifier),
-        eq(users.email, reqDto.identifier),
+        eq(sql`lower(${credentials.username})`, reqDto.identifier),
+        eq(credentials.email, reqDto.identifier),
       ),
     });
 
-    if (!user) {
+    if (!credential) {
       throw new AppException(ErrorCode.E004, HttpStatus.UNAUTHORIZED);
     }
 
-    const isPasswordValid = await compare(reqDto.password, user.password);
+    const isPasswordValid = await compare(reqDto.password, credential.password);
 
     if (!isPasswordValid) {
       throw new AppException(ErrorCode.E004, HttpStatus.UNAUTHORIZED);
     }
 
+    await this.ensureCredentialActive(credential.id);
+
     const sessionId = randomUUID();
-    const { accessToken, refreshToken } = await this.createTokenPair(user, sessionId);
+    const { accessToken, refreshToken } = await this.createTokenPair(
+      { credentialId: credential.id, username: credential.username, email: credential.email },
+      sessionId,
+    );
 
     return plainToInstance(
       LoginResDto,
       {
+        userId: credential.id,
         accessToken,
         refreshToken,
         tokenType: 'Bearer',
@@ -97,22 +103,25 @@ export class AuthService {
       throw new UnauthorizedException();
     }
 
-    const user = await this.db.query.users.findFirst({
-      where: eq(users.id, storedSession.userId),
+    const credential = await this.db.query.credentials.findFirst({
+      where: eq(credentials.id, storedSession.credentialId),
     });
 
-    if (!user) {
+    if (!credential) {
       throw new UnauthorizedException();
     }
 
+    await this.ensureCredentialActive(credential.id);
+
     const { accessToken, refreshToken } = await this.createTokenPair(
-      user,
+      { credentialId: credential.id, username: credential.username, email: credential.email },
       refreshPayload.sessionId,
     );
 
     return plainToInstance(
       LoginResDto,
       {
+        userId: credential.id,
         accessToken,
         refreshToken,
         tokenType: 'Bearer',
@@ -157,8 +166,25 @@ export class AuthService {
     return payload;
   }
 
+  /**
+   * A credential linked to a `users` row (via `users.credentialId`) whose `status` is
+   * `RESIGNED` can no longer log in or refresh — this revokes access as soon as the next
+   * login/refresh happens, without needing to touch existing cached sessions directly.
+   * A credential with no linked `users` row (e.g. the seeded superadmin) is always active.
+   */
+  private async ensureCredentialActive(credentialId: string): Promise<void> {
+    const linkedUser = await this.db.query.users.findFirst({
+      where: eq(users.credentialId, credentialId),
+      columns: { status: true },
+    });
+
+    if (linkedUser?.status === UserStatus.RESIGNED) {
+      throw new AppException(ErrorCode.E018, HttpStatus.FORBIDDEN);
+    }
+  }
+
   private async createTokenPair(
-    user: SessionUser,
+    credential: SessionCredential,
     sessionId: string,
   ): Promise<{ accessToken: string; refreshToken: string }> {
     const refreshSecret = this.configService.getOrThrow('auth.refreshSecret', { infer: true });
@@ -169,9 +195,9 @@ export class AuthService {
 
     const [accessToken, refreshToken] = await Promise.all([
       this.jwtService.signAsync({
-        sub: user.id,
-        username: user.username,
-        email: user.email,
+        sub: credential.credentialId,
+        username: credential.username,
+        email: credential.email,
         sessionId,
       }),
       this.jwtService.signAsync(
@@ -182,7 +208,7 @@ export class AuthService {
 
     await this.cacheManager.set(
       createCacheKey(CacheKey.SESSION_HASH, sessionId),
-      { userId: user.id, hash },
+      { credentialId: credential.credentialId, hash },
       ms(refreshTokenExpiresIn),
     );
 

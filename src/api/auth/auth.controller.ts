@@ -1,13 +1,12 @@
-import { Body, Controller, HttpStatus, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, HttpStatus, Post } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 
+import { CurrentUser } from '../../decorators/current-user.decorator';
 import { ApiAuth, ApiPublic } from '../../decorators/http.decorators';
-import { User } from '../../decorators/user.decorator';
 import { AuthService } from './auth.service';
 import { LoginReqDto } from './dto/login.req.dto';
 import { LoginResDto } from './dto/login.res.dto';
 import { RefreshTokenReqDto } from './dto/refresh-token.req.dto';
-import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import type { JwtPayloadType } from './types/jwt-payload.type';
 
 @ApiTags('Auth')
@@ -36,12 +35,11 @@ export class AuthController {
   }
 
   @Post('logout')
-  @UseGuards(JwtAuthGuard)
   @ApiAuth({
     summary: 'Đăng xuất (blacklist token hiện tại)',
     statusCode: HttpStatus.NO_CONTENT,
   })
-  logout(@User() payload: JwtPayloadType): Promise<void> {
+  logout(@CurrentUser() payload: JwtPayloadType): Promise<void> {
     return this.authService.logout(payload);
   }
 }

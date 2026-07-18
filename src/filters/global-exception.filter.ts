@@ -7,6 +7,7 @@ import {
   HttpException,
   HttpStatus,
   Logger,
+  PayloadTooLargeException,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -14,6 +15,7 @@ import { STATUS_CODES } from 'http';
 import { ErrorDetailDto } from '../common/dto/error-detail.dto';
 import { ErrorDto } from '../common/dto/error.dto';
 import { AllConfigType } from '../config/config.type';
+import { ErrorCode } from '../constants/error-code.constant';
 import { AppException } from '../exceptions/app.exception';
 import { Environment } from '../constants/app.constant';
 
@@ -47,6 +49,10 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       exception instanceof BadRequestException
     ) {
       error = this.handleValidationException(exception);
+    } else if (exception instanceof PayloadTooLargeException) {
+      // Multer's own FileInterceptor pre-transforms a MulterError(LIMIT_FILE_SIZE)
+      // into this exact exception type before it ever reaches this filter.
+      error = this.handlePayloadTooLargeException(exception);
     } else if (exception instanceof HttpException) {
       error = this.handleHttpException(exception);
     } else if (exception && typeof exception === 'object' && 'code' in exception) {
@@ -126,6 +132,21 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       statusCode,
       error: STATUS_CODES[statusCode] || 'Error',
       message: typeof r === 'string' ? r : (r.message as string) || exception.message,
+    };
+
+    this.logger.debug(exception);
+    return errorRes;
+  }
+
+  private handlePayloadTooLargeException(exception: PayloadTooLargeException): ErrorDto {
+    const statusCode = exception.getStatus();
+
+    const errorRes: ErrorDto = {
+      timestamp: new Date().toISOString(),
+      statusCode,
+      error: STATUS_CODES[statusCode] || 'Payload Too Large',
+      errorCode: ErrorCode.E017,
+      message: exception.message,
     };
 
     this.logger.debug(exception);

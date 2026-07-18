@@ -71,6 +71,90 @@
       "when": 1783906402217,
       "tag": "0009_equal_madripoor",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1784011266985,
+      "tag": "0010_foamy_odin",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1784013131550,
+      "tag": "0011_previous_avengers",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1784099117936,
+      "tag": "0012_magenta_black_tarantula",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1784100560180,
+      "tag": "0013_tired_gressill",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1784101322467,
+      "tag": "0014_fresh_thena",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1784102400000,
+      "tag": "0015_rename_credentials_users",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1784348842473,
+      "tag": "0016_careful_nekra",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1784350664349,
+      "tag": "0017_silent_norrin_radd",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1784350755613,
+      "tag": "0018_daffy_magdalene",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1784365180463,
+      "tag": "0019_uneven_jack_flag",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1784371522642,
+      "tag": "0020_black_true_believers",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1784380967322,
+      "tag": "0021_normal_valkyrie",
+      "breakpoints": true
     }
   ]
 }

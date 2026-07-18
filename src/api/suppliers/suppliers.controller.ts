@@ -1,0 +1,89 @@
+import { Body, Controller, Delete, Get, HttpStatus, Patch, Post, Query } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
+
+import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
+import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
+import { CurrentUser } from '../../decorators/current-user.decorator';
+import { ApiAuth, ApiPublic } from '../../decorators/http.decorators';
+import { UUIDParam } from '../../decorators/param.decorators';
+import { Permissions } from '../../decorators/permissions.decorator';
+import { CreateSupplierReqDto } from './dto/create-supplier.req.dto';
+import { GetSuppliersReqDto } from './dto/get-suppliers.req.dto';
+import { SupplierResDto } from './dto/supplier.res.dto';
+import { SupplierStatsResDto } from './dto/supplier-stats.res.dto';
+import { UpdateSupplierReqDto } from './dto/update-supplier.req.dto';
+import { SuppliersService } from './suppliers.service';
+
+@ApiTags('Suppliers')
+@Controller('suppliers')
+export class SuppliersController {
+  constructor(private readonly suppliersService: SuppliersService) {}
+
+  @Get()
+  @Permissions('suppliers:read')
+  @ApiPublic({
+    type: SupplierResDto,
+    summary: 'List suppliers',
+    isPaginated: true,
+  })
+  getSuppliers(@Query() reqDto: GetSuppliersReqDto): Promise<OffsetPaginatedDto<SupplierResDto>> {
+    return this.suppliersService.getSuppliers(reqDto);
+  }
+
+  @Get('stats')
+  @Permissions('suppliers:read')
+  @ApiPublic({
+    type: SupplierStatsResDto,
+    summary: 'Get supplier stats (total / active / paused / stopped)',
+  })
+  getSupplierStats(): Promise<SupplierStatsResDto> {
+    return this.suppliersService.getSupplierStats();
+  }
+
+  @Get(':id')
+  @Permissions('suppliers:read')
+  @ApiPublic({
+    type: SupplierResDto,
+    summary: 'Get supplier detail',
+  })
+  getSupplierDetail(@UUIDParam('id') id: string): Promise<SupplierResDto> {
+    return this.suppliersService.getSupplierDetail(id);
+  }
+
+  @Post()
+  @Permissions('suppliers:create')
+  @ApiAuth({
+    type: SupplierResDto,
+    summary: 'Create supplier',
+    statusCode: HttpStatus.CREATED,
+  })
+  createSupplier(
+    @Body() reqDto: CreateSupplierReqDto,
+    @CurrentUser() payload: JwtPayloadType,
+  ): Promise<SupplierResDto> {
+    return this.suppliersService.createSupplier(reqDto, payload.sub);
+  }
+
+  @Patch(':id')
+  @Permissions('suppliers:update')
+  @ApiAuth({
+    type: SupplierResDto,
+    summary: 'Update supplier',
+  })
+  updateSupplier(
+    @UUIDParam('id') id: string,
+    @Body() reqDto: UpdateSupplierReqDto,
+  ): Promise<SupplierResDto> {
+    return this.suppliersService.updateSupplier(id, reqDto);
+  }
+
+  @Delete(':id')
+  @Permissions('suppliers:delete')
+  @ApiAuth({
+    summary: 'Delete supplier (soft delete)',
+    statusCode: HttpStatus.NO_CONTENT,
+  })
+  deleteSupplier(@UUIDParam('id') id: string): Promise<void> {
+    return this.suppliersService.deleteSupplier(id);
+  }
+}

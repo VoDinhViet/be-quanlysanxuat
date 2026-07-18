@@ -1,7 +1,7 @@
 # Workflow Rules
 
 - Package manager is **pnpm**. Never use `npm` or `yarn` commands in this repo.
-- Before considering a change done: run `pnpm lint` and the relevant `pnpm test` file(s); make sure `pnpm build` stays clean.
+- Don't run `pnpm build`/`pnpm lint`/`pnpm format` after every small edit (a rename, a one-line tweak) — it's slow and the user finds it disruptive. Only run them once at the end of a larger unit of work, before declaring a non-trivial task done, or when the user explicitly asks.
 - **Never run `pnpm db:migrate` against a shared/prod database** without explicit user approval.
 - Drizzle schema changes follow edit → re-export in `schemas/index.ts` → `pnpm db:generate` → `pnpm db:migrate`, in that order (full detail in `.claude/rules/database.md`).
 - Don't assume removed business modules (clients/suppliers/products/orders/roles) or the old RBAC schema exist — they were deleted. Don't search for them or recreate them unless explicitly asked.

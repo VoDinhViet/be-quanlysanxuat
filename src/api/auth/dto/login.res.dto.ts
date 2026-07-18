@@ -1,9 +1,13 @@
 import { Exclude, Expose } from 'class-transformer';
 
-import { StringField } from '../../../decorators/field.decorators';
+import { StringField, UUIDField } from '../../../decorators/field.decorators';
 
 @Exclude()
 export class LoginResDto {
+  @Expose()
+  @UUIDField({ description: 'User id' })
+  userId!: string;
+
   @Expose()
   @StringField({ description: 'JWT access token' })
   accessToken!: string;
