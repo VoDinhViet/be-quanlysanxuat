@@ -69,15 +69,24 @@ export class UsersService {
   async getCredentialDetail(credentialId: string): Promise<CredentialResDto> {
     const credential = await this.db.query.credentials.findFirst({
       where: eq(credentials.id, credentialId),
+      with: {
+        role: { columns: { id: true, code: true, name: true } },
+      },
     });
 
     if (!credential) {
       throw new AppException(ErrorCode.E002, HttpStatus.NOT_FOUND);
     }
 
-    return plainToInstance(CredentialResDto, credential, {
-      excludeExtraneousValues: true,
-    });
+    // Effective permissions come from the cached resolver (superadmin's role
+    // carries `system:manage`), so the FE can drive permission-based UI.
+    const permissions = await this.permissionsService.getPermissionCodes(credentialId);
+
+    return plainToInstance(
+      CredentialResDto,
+      { ...credential, role: credential.role ?? null, permissions },
+      { excludeExtraneousValues: true },
+    );
   }
 
   async createUser(reqDto: CreateUserReqDto, createdBy: string): Promise<UserResDto> {

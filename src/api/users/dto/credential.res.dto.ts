@@ -1,11 +1,29 @@
 import { Exclude, Expose } from 'class-transformer';
 
+import type { PermissionCode } from '../../../constants/permission.constant';
 import {
+  ClassField,
   DateField,
   EmailFieldOptional,
+  StringField,
   StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
+
+@Exclude()
+export class RoleRefResDto {
+  @Expose()
+  @UUIDField()
+  id!: string;
+
+  @Expose()
+  @StringField({ description: 'Stable role code, e.g. SUPER_ADMIN' })
+  code!: string;
+
+  @Expose()
+  @StringField({ description: 'Display name' })
+  name!: string;
+}
 
 @Exclude()
 export class CredentialResDto {
@@ -20,6 +38,20 @@ export class CredentialResDto {
   @Expose()
   @EmailFieldOptional({ nullable: true })
   email!: string | null;
+
+  @Expose()
+  @ClassField(() => RoleRefResDto, {
+    nullable: true,
+    description: 'Role assigned to this login identity, or null if none',
+  })
+  role!: RoleRefResDto | null;
+
+  @Expose()
+  @StringField({
+    each: true,
+    description: 'Effective permission codes (includes system:manage for superadmin)',
+  })
+  permissions!: PermissionCode[];
 
   @Expose()
   @DateField()
