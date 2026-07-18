@@ -1,0 +1,70 @@
+# Feature: Authorization (Roles & Permissions)
+
+## Goal
+
+Add real authorization on top of the existing authentication (`docs/features/auth.md`). A **Hybrid RBAC** model: the set of permissions is a fixed catalogue defined in code, while **roles** (bundles of permissions) live in the DB and are managed at runtime by an admin. Every route is protected by default; a route declares the permission it needs and the guard enforces it against the logged-in user's role.
+
+## Model & resolution
+
+- **Permission** = a fixed `resource:action` code (e.g. `clients:create`). The full catalogue is `PERMISSION_CODES` in `src/constants/permission.constant.ts` — the only source of truth for what actions exist. Not editable at runtime.
+- **Role** = a DB row (`roles` table) with a `code`, `name`, and a `permissions` array of permission codes. Admins create/edit roles and assign permissions to them via API.
+- **Assignment** = a role is attached to a **`credentials`** row via `credentials.roleId` (nullable). The JWT `sub` is the credential id, so the guard resolves permissions straight from the token subject — no `users` row needed (the seeded superadmin has none). "Assigning a role to a user" sets `roleId` on that user's linked credential.
+- **One role per user.** Effective permissions = that role's `permissions` array.
+- **Super permission**: a role holding `system:manage` passes **every** check (god-mode). The seeded **Super Admin** role (`code: SUPER_ADMIN`, `isSystem: true`) holds it and is linked to the superadmin credential.
+- **Resolution per request** (no permissions baked into the token): `JWT.sub → credentials.roleId → roles.permissions[]`, cached in Redis two levels deep (`credential_role:<credId>`, `role_permissions:<roleId>`, TTL 300s). Editing a role clears `role_permissions:<roleId>`; reassigning a user's role clears `credential_role:<credId>` — so changes take effect within a request, not only on re-login.
+
+## Enforcement (secure by default)
+
+- `JwtAuthGuard` + `PermissionsGuard` are registered **globally** (`APP_GUARD` in `src/app.module.ts`), in that order.
+- **Every route requires a valid session by default.** `@Public()` / `@ApiPublic()` (previously inert, now honoured) opts a route out of both auth and permission checks.
+- A route with no `@Permissions(...)` only needs authentication. A route with `@Permissions('x:y')` also needs that permission (all listed codes required; `system:manage` bypasses).
+- Public routes today: `POST /auth/login`, `POST /auth/refresh`, `GET /health`, `GET /`, and all master-data list endpoints + the `clients`/`products`/`suppliers` read (GET) endpoints (still `@ApiPublic`). Everything else needs a token.
+
+## Business rules (roles API)
+
+- `code` is a stable identifier, unique among non-deleted roles, **uppercased** on input, and **not editable** after creation.
+- `permissions[]` must be a subset of `PERMISSION_CODES` (validated server-side, `E031`).
+- `isSystem` roles (e.g. Super Admin) are **read-only**: update and delete are refused (`E030`).
+- **Escalation guard**: only a caller who already holds `system:manage` may create/update a role containing `system:manage`, or assign a role that grants `system:manage` (e.g. Super Admin) to a user — otherwise `E403`/`E034`. This stops a `roles:manage` holder from self-granting full control.
+- Delete is a **soft delete** and is refused if any credential still references the role (`E029`) — reassign those users first.
+- Roles list `q` matches `code`/`name`; results exclude soft-deleted rows.
+
+## API contract
+
+| Method | Path | Auth | Request | Response |
+| ------ | ---- | ---- | ------- | -------- |
+| GET | `/roles` | `roles:manage` | `GetRolesReqDto` (paginated, `q`) | `200` + paginated `RoleResDto` |
+| GET | `/roles/permissions` | `roles:manage` | — | `200` + `PermissionGroupResDto[]` (catalogue grouped by resource) |
+| GET | `/roles/:id` | `roles:manage` | — | `200` + `RoleResDto` |
+| POST | `/roles` | `roles:manage` | `CreateRoleReqDto` (`code`, `name`, `description?`, `permissions[]`) | `201` + `RoleResDto` |
+| PATCH | `/roles/:id` | `roles:manage` | `UpdateRoleReqDto` (`name?`, `description?`, `permissions?`) | `200` + `RoleResDto` |
+| DELETE | `/roles/:id` | `roles:manage` | — | `204 No Content` |
+| PATCH | `/users/:userId/role` | `roles:manage` | `AssignRoleReqDto` (`roleId`) | `200` + `UserResDto` |
+
+## Error cases
+
+| Case | ErrorCode | HTTP status |
+| ---- | --------- | ----------- |
+| Role not found | `ErrorCode.E027` | 404 |
+| Role code already taken | `ErrorCode.E028` | 409 |
+| Delete a role still assigned to a credential | `ErrorCode.E029` | 409 |
+| Modify/delete a system (`isSystem`) role | `ErrorCode.E030` | 403 |
+| Permission code outside the catalogue | `ErrorCode.E031` | 400 |
+| Assign a role to a user with no linked credential | `ErrorCode.E032` | 400 |
+| Authenticated but missing the required permission | `ErrorCode.E033` | 403 |
+| Non-super caller grants/assigns `system:manage` | `ErrorCode.E034` | 403 |
+| No/invalid bearer token on a protected route | `UnauthorizedException` | 401 |
+
+## Out of scope
+
+- **Multiple roles per user** — one role per credential for now (no `user_roles` join).
+- **Runtime-created permissions** — permission codes are code-defined; only roles are managed at runtime.
+- **Per-record / row-level authorization** (e.g. "only your own clients") — checks are per-route only.
+- Re-scoping which permission each existing route requires (the current `@Permissions` annotations are kept as-is; some reads still carry write-ish codes like `users:update`).
+
+## Frontend integration notes
+
+- **Breaking change (2026-07-18)**: authorization is now enforced. Previously many routes were open (no guard); now **every route is protected by default** and the client must send `Authorization: Bearer <accessToken>`. Notably `GET /users` and `GET /users/:id` — which were reachable without a token — now require auth **and** the `users:update` permission. Public routes that stay open: auth login/refresh, health, root, and the master-data / `clients`/`products`/`suppliers` GET reads.
+- A `403` with `errorCode: "auth.error.forbidden"` (`E033`) means the user is authenticated but their role lacks the permission the route needs — render an "không đủ quyền" state, distinct from the `401` (not logged in) case.
+- New admin surface: `GET /roles/permissions` returns the permission catalogue grouped by resource (`{ resource, permissions: [{ code, action }] }`) to build a role editor; CRUD roles at `/roles`; assign a role to a user with `PATCH /users/:userId/role` (`{ roleId }`).
+- Permission/role changes take effect on the **next request** (cache is invalidated on edit/assign) — no forced re-login needed.

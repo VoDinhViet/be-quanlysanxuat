@@ -17,6 +17,7 @@ Detailed, enforceable conventions live in `.claude/rules/` and are imported belo
 @.claude/rules/dto.md
 @.claude/rules/database.md
 @.claude/rules/errors-pagination.md
+@.claude/rules/testing.md
 
 ## Commands
 
@@ -53,7 +54,7 @@ Three modules exist: `auth`, `users`, `health`. `users` is the reference example
 
 Register new modules in `src/app.module.ts`.
 
-**No global guard**: every route is public by default. Auth is opt-in per route via `@UseGuards(JwtAuthGuard)` (`src/api/auth/guards/jwt-auth.guard.ts`) — currently only on `auth/logout` and none of `health`'s routes. Read the authenticated user with `@User()` (`src/decorators/user.decorator.ts`); on unguarded routes it resolves to `undefined`. `@Public()`/`@ApiPublic()` are inert metadata unless the route also carries `JwtAuthGuard`.
+**Global secure-by-default guards**: `JwtAuthGuard` + `PermissionsGuard` are registered as `APP_GUARD` in `src/app.module.ts` (in that order). Every route requires a valid bearer token by default; mark a route `@Public()` / `@ApiPublic()` (`src/decorators/public.decorator.ts`) to opt out of both auth and permission checks. A route declares the permission it needs with `@Permissions('resource:action')`; `PermissionsGuard` enforces it (a role holding `system:manage` passes everything). Roles live in the DB and are resolved per-request from the token's credential id (Redis-cached). Read the authenticated user with `@CurrentUser()` (`src/decorators/current-user.decorator.ts`) — on `@Public()` routes it resolves to `undefined`. Full model: `docs/features/authorization.md`.
 
 ### Database (Drizzle)
 

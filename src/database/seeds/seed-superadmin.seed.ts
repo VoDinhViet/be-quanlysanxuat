@@ -8,17 +8,16 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 
 import * as schema from '../schemas';
-import { UserStatus, users } from '../schemas/users';
+import { credentials } from '../schemas/credentials';
+import { ensureSuperAdminRole } from './seed-roles.seed';
 
 const PASSWORD_SALT_ROUNDS = 10;
 
 function getSuperadminConfig() {
   return {
-    code: process.env.SUPERADMIN_CODE || 'ADMIN001',
     username: process.env.SUPERADMIN_USERNAME || 'superadmin',
     email: process.env.SUPERADMIN_EMAIL || 'superadmin@tienhuy.com',
     password: process.env.SUPERADMIN_PASSWORD || 'Admin@123',
-    fullName: process.env.SUPERADMIN_FULL_NAME || 'Super Admin',
   };
 }
 
@@ -42,30 +41,36 @@ async function main() {
 async function seedSuperadmin(db: ReturnType<typeof drizzle<typeof schema>>) {
   const config = getSuperadminConfig();
 
-  const existingUser = await db.query.users.findFirst({
-    where: or(
-      eq(users.username, config.username),
-      eq(users.email, config.email),
-      eq(users.code, config.code),
-    ),
+  // The superadmin's power comes from the Super Admin role (which holds `system:manage`), so the
+  // role must exist and the credential must point at it.
+  const superAdminRoleId = await ensureSuperAdminRole(db);
+
+  const existingUser = await db.query.credentials.findFirst({
+    where: or(eq(credentials.username, config.username), eq(credentials.email, config.email)),
   });
 
   if (existingUser) {
-    console.log(
-      `Superadmin already exists (username: ${existingUser.username}, email: ${existingUser.email}). Skipping.`,
-    );
+    if (existingUser.roleId !== superAdminRoleId) {
+      await db
+        .update(credentials)
+        .set({ roleId: superAdminRoleId })
+        .where(eq(credentials.id, existingUser.id));
+      console.log(`Superadmin already exists — linked it to the Super Admin role.`);
+    } else {
+      console.log(
+        `Superadmin already exists (username: ${existingUser.username}, email: ${existingUser.email}). Skipping.`,
+      );
+    }
     return;
   }
 
   const password = await hash(config.password, PASSWORD_SALT_ROUNDS);
 
-  await db.insert(users).values({
-    code: config.code,
+  await db.insert(credentials).values({
     username: config.username,
     email: config.email,
     password,
-    fullName: config.fullName,
-    status: UserStatus.ACTIVE,
+    roleId: superAdminRoleId,
   });
 
   console.log('Superadmin account created:');

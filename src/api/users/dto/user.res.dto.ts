@@ -2,15 +2,18 @@ import { Exclude, Expose } from 'class-transformer';
 
 import { UserGender, UserStatus } from '../../../database/schemas';
 import {
+  ClassField,
+  ClassFieldOptional,
   DateField,
   DateFieldOptional,
-  EmailField,
+  EmailFieldOptional,
   EnumField,
-  EnumFieldOptional,
   StringField,
   StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
+import { NamedRefResDto } from './named-ref.res.dto';
+import { UserCredentialResDto } from './user-credential.res.dto';
 
 @Exclude()
 export class UserResDto {
@@ -19,36 +22,64 @@ export class UserResDto {
   id!: string;
 
   @Expose()
-  @StringField({ description: 'User unique code' })
+  @StringField({ description: 'User code' })
   code!: string;
 
   @Expose()
-  @StringField({ description: 'Username' })
-  username!: string;
+  @StringField({ description: 'Full name' })
+  fullName!: string;
 
   @Expose()
-  @EmailField()
-  email!: string;
-
-  @Expose()
-  @StringFieldOptional({ nullable: true })
-  fullName!: string | null;
-
-  @Expose()
-  @StringFieldOptional({ nullable: true })
-  phoneNumber!: string | null;
+  @EnumField(() => UserGender)
+  gender!: UserGender;
 
   @Expose()
   @DateFieldOptional({ nullable: true })
   dateOfBirth!: Date | null;
 
   @Expose()
-  @EnumFieldOptional(() => UserGender, { nullable: true })
-  gender!: UserGender | null;
+  @StringFieldOptional({ nullable: true })
+  idNumber!: string | null;
+
+  @Expose()
+  @StringFieldOptional({ nullable: true })
+  phoneNumber!: string | null;
+
+  @Expose()
+  @EmailFieldOptional({ nullable: true })
+  email!: string | null;
+
+  @Expose()
+  @StringFieldOptional({ nullable: true })
+  address!: string | null;
+
+  @Expose()
+  @StringFieldOptional({ nullable: true })
+  avatarUrl!: string | null;
+
+  @Expose()
+  @ClassField(() => NamedRefResDto)
+  department!: NamedRefResDto;
+
+  @Expose()
+  @ClassField(() => NamedRefResDto)
+  position!: NamedRefResDto;
+
+  @Expose()
+  @DateField({ description: 'Hire date' })
+  hireDate!: Date;
+
+  @Expose()
+  @StringFieldOptional({ nullable: true })
+  note!: string | null;
 
   @Expose()
   @EnumField(() => UserStatus)
   status!: UserStatus;
+
+  @Expose()
+  @ClassFieldOptional(() => UserCredentialResDto, { nullable: true })
+  credential!: UserCredentialResDto | null;
 
   @Expose()
   @DateField()

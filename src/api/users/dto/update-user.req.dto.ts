@@ -1,32 +1,45 @@
+import { UserGender, UserStatus } from '../../../database/schemas';
 import {
   DateFieldOptional,
   EmailFieldOptional,
   EnumFieldOptional,
   StringFieldOptional,
+  UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
-import { UserGender, UserStatus } from '../../../database/schemas';
 
 export class UpdateUserReqDto {
-  @StringFieldOptional({ description: 'Username', maxLength: 100 })
-  username?: string;
+  @StringFieldOptional({ description: 'Full name', maxLength: 255 })
+  fullName?: string;
 
-  @EmailFieldOptional({ description: 'Email address' })
-  email?: string;
-
-  @StringFieldOptional({ nullable: true, maxLength: 255 })
-  fullName?: string | null;
-
-  @StringFieldOptional({ nullable: true, maxLength: 30 })
-  phoneNumber?: string | null;
+  @EnumFieldOptional(() => UserGender)
+  gender?: UserGender;
 
   @DateFieldOptional({ nullable: true })
   dateOfBirth?: Date | null;
 
-  @EnumFieldOptional(() => UserGender, { nullable: true })
-  gender?: UserGender | null;
+  @StringFieldOptional({ description: 'CCCD/CMND number', nullable: true, maxLength: 20 })
+  idNumber?: string | null;
 
-  @StringFieldOptional({ description: 'User unique code', maxLength: 50 })
-  code?: string;
+  @StringFieldOptional({ nullable: true, maxLength: 30 })
+  phoneNumber?: string | null;
+
+  @EmailFieldOptional({ description: 'Personal email', nullable: true })
+  email?: string | null;
+
+  @StringFieldOptional({ description: 'Permanent address', nullable: true, maxLength: 500 })
+  address?: string | null;
+
+  @UUIDFieldOptional({ description: 'Department id' })
+  departmentId?: string;
+
+  @UUIDFieldOptional({ description: 'Position id' })
+  positionId?: string;
+
+  @DateFieldOptional({ description: 'Hire date' })
+  hireDate?: Date;
+
+  @StringFieldOptional({ nullable: true, maxLength: 1000 })
+  note?: string | null;
 
   @EnumFieldOptional(() => UserStatus)
   status?: UserStatus;

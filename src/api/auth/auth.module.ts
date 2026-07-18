@@ -6,6 +6,8 @@ import { AllConfigType } from '../../config/config.type';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { PermissionsGuard } from './guards/permissions.guard';
+import { PermissionsService } from './permissions.service';
 
 @Module({
   imports: [
@@ -20,7 +22,7 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtAuthGuard],
-  exports: [AuthService, JwtAuthGuard],
+  providers: [AuthService, PermissionsService, JwtAuthGuard, PermissionsGuard],
+  exports: [AuthService, PermissionsService, JwtAuthGuard, PermissionsGuard],
 })
 export class AuthModule {}

@@ -1,17 +1,28 @@
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { hash } from 'bcryptjs';
 import { plainToInstance } from 'class-transformer';
-import { and, count as drizzleCount, desc, eq, ilike, ne, or } from 'drizzle-orm';
+import { and, count as drizzleCount, desc, eq, ilike, isNull, ne, or } from 'drizzle-orm';
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { ErrorCode } from '../../constants/error-code.constant';
+import { type PermissionCode, SUPER_PERMISSION } from '../../constants/permission.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database } from '../../database/database.type';
-import { users, UserStatus } from '../../database/schemas';
+import {
+  credentials,
+  departments,
+  positions,
+  roles,
+  users,
+  UserStatus,
+} from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
-import { ChangeUserPasswordReqDto } from './dto/change-password.req.dto';
+import { PermissionsService } from '../auth/permissions.service';
+import { AssignRoleReqDto } from './dto/assign-role.req.dto';
+import { CreateCredentialReqDto } from './dto/create-credential.req.dto';
 import { CreateUserReqDto } from './dto/create-user.req.dto';
+import { CredentialResDto } from './dto/credential.res.dto';
 import { GetUsersReqDto } from './dto/get-users.req.dto';
 import { UpdateUserReqDto } from './dto/update-user.req.dto';
 import { UserResDto } from './dto/user.res.dto';
@@ -20,20 +31,16 @@ import { UserResDto } from './dto/user.res.dto';
 export class UsersService {
   private static readonly PASSWORD_SALT_ROUNDS = 10;
 
-  constructor(@Inject(DRIZZLE) private readonly db: Database) {}
+  constructor(
+    @Inject(DRIZZLE) private readonly db: Database,
+    private readonly permissionsService: PermissionsService,
+  ) {}
 
   async getUsers(reqDto: GetUsersReqDto): Promise<OffsetPaginatedDto<UserResDto>> {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
-    const where = and(
-      keyword
-        ? or(
-            ilike(users.email, keyword),
-            ilike(users.username, keyword),
-            ilike(users.fullName, keyword),
-          )
-        : undefined,
-      reqDto.status ? eq(users.status, reqDto.status) : undefined,
-    );
+    const where = keyword
+      ? or(ilike(users.fullName, keyword), ilike(users.code, keyword))
+      : undefined;
     const orderBy = desc(users.createdAt);
 
     const [entities, count] = await Promise.all([
@@ -42,6 +49,11 @@ export class UsersService {
         limit: reqDto.limit,
         offset: reqDto.offset,
         orderBy,
+        with: {
+          department: true,
+          position: true,
+          credential: true,
+        },
       }),
       this.db.select({ total: drizzleCount() }).from(users).where(where),
     ]);
@@ -54,45 +66,47 @@ export class UsersService {
     );
   }
 
-  async getUserDetail(userId: string): Promise<UserResDto> {
-    const user = await this.db.query.users.findFirst({
-      where: eq(users.id, userId),
+  async getCredentialDetail(credentialId: string): Promise<CredentialResDto> {
+    const credential = await this.db.query.credentials.findFirst({
+      where: eq(credentials.id, credentialId),
     });
 
-    if (!user) {
+    if (!credential) {
       throw new AppException(ErrorCode.E002, HttpStatus.NOT_FOUND);
     }
 
-    return plainToInstance(UserResDto, user, {
+    return plainToInstance(CredentialResDto, credential, {
       excludeExtraneousValues: true,
     });
   }
 
-  async createUser(reqDto: CreateUserReqDto): Promise<UserResDto> {
-    await this.ensureUsernameAvailable(reqDto.username);
-    await this.ensureEmailAvailable(reqDto.email);
+  async createUser(reqDto: CreateUserReqDto, createdBy: string): Promise<UserResDto> {
+    await Promise.all([
+      this.ensureDepartmentExists(reqDto.departmentId),
+      this.ensurePositionExists(reqDto.positionId),
+    ]);
 
-    let code = reqDto.code;
-    if (code) {
-      await this.ensureCodeAvailable(code);
-    } else {
-      code = await this.generateUserCode();
+    if (reqDto.idNumber) {
+      await this.validateIdNumberUniqueness(reqDto.idNumber);
     }
 
-    const password = await hash(reqDto.password, UsersService.PASSWORD_SALT_ROUNDS);
+    // Provision the ERP credential (if requested) before inserting the user row, so a
+    // failed credential creation (e.g. duplicate username/email) never leaves an orphan user.
+    let credentialId: string | undefined;
+    if (reqDto.credential) {
+      credentialId = await this.createCredential(reqDto.credential);
+    }
+
+    const code = await this.generateUserCode();
 
     const [user] = await this.db
       .insert(users)
       .values({
-        username: reqDto.username,
-        email: reqDto.email,
+        ...reqDto,
         code,
-        password,
-        fullName: reqDto.fullName,
-        phoneNumber: reqDto.phoneNumber,
-        dateOfBirth: reqDto.dateOfBirth,
-        gender: reqDto.gender,
-        status: reqDto.status ?? UserStatus.ACTIVE,
+        status: reqDto.status ?? UserStatus.WORKING,
+        credentialId,
+        createdBy,
       })
       .returning();
 
@@ -102,117 +116,221 @@ export class UsersService {
   async updateUser(userId: string, reqDto: UpdateUserReqDto): Promise<UserResDto> {
     await this.ensureUserExists(userId);
 
-    if (reqDto.username) {
-      await this.ensureUsernameAvailable(reqDto.username, userId);
+    if (reqDto.departmentId) {
+      await this.ensureDepartmentExists(reqDto.departmentId);
+    }
+    if (reqDto.positionId) {
+      await this.ensurePositionExists(reqDto.positionId);
+    }
+    if (reqDto.idNumber) {
+      await this.validateIdNumberUniqueness(reqDto.idNumber, userId);
     }
 
-    if (reqDto.email) {
-      await this.ensureEmailAvailable(reqDto.email, userId);
-    }
-
-    if (reqDto.code) {
-      await this.ensureCodeAvailable(reqDto.code, userId);
-    }
-
-    const [user] = await this.db
+    await this.db
       .update(users)
-      .set({
-        email: reqDto.email,
-        code: reqDto.code,
-        fullName: reqDto.fullName,
-        phoneNumber: reqDto.phoneNumber,
-        dateOfBirth: reqDto.dateOfBirth,
-        gender: reqDto.gender,
-        status: reqDto.status,
-      })
-      .where(eq(users.id, userId))
-      .returning();
+      .set({ ...reqDto })
+      .where(eq(users.id, userId));
 
-    return this.getUserDetail(user.id);
+    return this.getUserDetail(userId);
   }
 
-  async changeUserPassword(userId: string, reqDto: ChangeUserPasswordReqDto): Promise<UserResDto> {
+  async uploadUserAvatar(userId: string, file?: Express.Multer.File): Promise<UserResDto> {
     await this.ensureUserExists(userId);
 
-    const password = await hash(reqDto.password, UsersService.PASSWORD_SALT_ROUNDS);
+    if (!file) {
+      throw new AppException(ErrorCode.E016, HttpStatus.BAD_REQUEST);
+    }
 
-    const [user] = await this.db
+    await this.db
       .update(users)
-      .set({
-        password,
-      })
-      .where(eq(users.id, userId))
-      .returning();
+      .set({ avatarUrl: `/uploads/${file.filename}` })
+      .where(eq(users.id, userId));
 
-    return this.getUserDetail(user.id);
+    return this.getUserDetail(userId);
   }
 
-  private async ensureUserExists(userId: string): Promise<void> {
-    const existingUser = await this.db.query.users.findFirst({
-      columns: {
-        id: true,
-      },
+  /**
+   * Assigns a role to a user. The role lives on the user's login `credential` (the JWT subject),
+   * so the user must have a linked credential (E032). Clears the credential's cached permissions
+   * so the change takes effect on the next request.
+   *
+   * Privilege escalation guard: assigning a role that grants the god-mode `system:manage` code
+   * (e.g. the seeded Super Admin) is only allowed if the actor already holds `system:manage` —
+   * otherwise a `roles:manage` holder could grant themselves full control (E034).
+   */
+  async assignRole(
+    userId: string,
+    reqDto: AssignRoleReqDto,
+    actorCredentialId: string,
+  ): Promise<UserResDto> {
+    const user = await this.db.query.users.findFirst({
+      columns: { id: true, credentialId: true },
       where: eq(users.id, userId),
     });
 
-    if (!existingUser) {
-      throw new AppException(ErrorCode.E002, HttpStatus.NOT_FOUND);
+    if (!user) {
+      throw new AppException(ErrorCode.E012, HttpStatus.NOT_FOUND);
+    }
+
+    if (!user.credentialId) {
+      throw new AppException(ErrorCode.E032, HttpStatus.BAD_REQUEST);
+    }
+
+    const role = await this.ensureRoleExists(reqDto.roleId);
+    await this.ensureActorMayAssign(role.permissions, actorCredentialId);
+
+    await this.db
+      .update(credentials)
+      .set({ roleId: reqDto.roleId })
+      .where(eq(credentials.id, user.credentialId));
+
+    await this.permissionsService.invalidateCredential(user.credentialId);
+
+    return this.getUserDetail(userId);
+  }
+
+  private async ensureActorMayAssign(
+    rolePermissions: PermissionCode[],
+    actorCredentialId: string,
+  ): Promise<void> {
+    if (!rolePermissions.includes(SUPER_PERMISSION)) {
+      return;
+    }
+
+    const actorPermissions = await this.permissionsService.getPermissionCodes(actorCredentialId);
+
+    if (!actorPermissions.includes(SUPER_PERMISSION)) {
+      throw new AppException(ErrorCode.E034, HttpStatus.FORBIDDEN);
     }
   }
 
-  private async ensureUsernameAvailable(username: string, ignoredUserId?: string): Promise<void> {
-    const where = ignoredUserId
-      ? and(eq(users.username, username), ne(users.id, ignoredUserId))
-      : eq(users.username, username);
+  private async ensureRoleExists(roleId: string) {
+    const existing = await this.db.query.roles.findFirst({
+      columns: { id: true, permissions: true },
+      where: and(eq(roles.id, roleId), isNull(roles.deletedAt)),
+    });
 
-    const existingUser = await this.db.query.users.findFirst({
-      columns: {
-        id: true,
+    if (!existing) {
+      throw new AppException(ErrorCode.E027, HttpStatus.NOT_FOUND);
+    }
+
+    return existing;
+  }
+
+  private async createCredential(credential: CreateCredentialReqDto): Promise<string> {
+    await Promise.all([
+      this.validateCredentialUsernameUniqueness(credential.username),
+      this.validateCredentialEmailUniqueness(credential.email),
+    ]);
+
+    const password = await hash(credential.password, UsersService.PASSWORD_SALT_ROUNDS);
+
+    const [created] = await this.db
+      .insert(credentials)
+      .values({
+        username: credential.username,
+        email: credential.email,
+        password,
+      })
+      .returning();
+
+    return created.id;
+  }
+
+  async getUserDetail(userId: string): Promise<UserResDto> {
+    const user = await this.db.query.users.findFirst({
+      where: eq(users.id, userId),
+      with: {
+        department: true,
+        position: true,
+        credential: true,
       },
+    });
+
+    if (!user) {
+      throw new AppException(ErrorCode.E012, HttpStatus.NOT_FOUND);
+    }
+
+    return plainToInstance(UserResDto, user, {
+      excludeExtraneousValues: true,
+    });
+  }
+
+  private async ensureUserExists(userId: string): Promise<void> {
+    const existing = await this.db.query.users.findFirst({
+      columns: { id: true },
+      where: eq(users.id, userId),
+    });
+
+    if (!existing) {
+      throw new AppException(ErrorCode.E012, HttpStatus.NOT_FOUND);
+    }
+  }
+
+  private async ensureDepartmentExists(departmentId: string): Promise<void> {
+    const existing = await this.db.query.departments.findFirst({
+      columns: { id: true },
+      where: eq(departments.id, departmentId),
+    });
+
+    if (!existing) {
+      throw new AppException(ErrorCode.E014, HttpStatus.NOT_FOUND);
+    }
+  }
+
+  private async ensurePositionExists(positionId: string): Promise<void> {
+    const existing = await this.db.query.positions.findFirst({
+      columns: { id: true },
+      where: eq(positions.id, positionId),
+    });
+
+    if (!existing) {
+      throw new AppException(ErrorCode.E015, HttpStatus.NOT_FOUND);
+    }
+  }
+
+  private async validateIdNumberUniqueness(
+    idNumber: string,
+    ignoredUserId?: string,
+  ): Promise<void> {
+    const where = ignoredUserId
+      ? and(eq(users.idNumber, idNumber), ne(users.id, ignoredUserId))
+      : eq(users.idNumber, idNumber);
+
+    const existing = await this.db.query.users.findFirst({
+      columns: { id: true },
       where,
     });
 
-    if (existingUser) {
+    if (existing) {
+      throw new AppException(ErrorCode.E013, HttpStatus.CONFLICT);
+    }
+  }
+
+  private async validateCredentialUsernameUniqueness(username: string): Promise<void> {
+    const existing = await this.db.query.credentials.findFirst({
+      columns: { id: true },
+      where: eq(credentials.username, username),
+    });
+
+    if (existing) {
       throw new AppException(ErrorCode.E001, HttpStatus.CONFLICT);
     }
   }
 
-  private async ensureEmailAvailable(email: string, ignoredUserId?: string): Promise<void> {
-    const where = ignoredUserId
-      ? and(eq(users.email, email), ne(users.id, ignoredUserId))
-      : eq(users.email, email);
-
-    const existingUser = await this.db.query.users.findFirst({
-      columns: {
-        id: true,
-      },
-      where,
+  private async validateCredentialEmailUniqueness(email: string): Promise<void> {
+    const existing = await this.db.query.credentials.findFirst({
+      columns: { id: true },
+      where: eq(credentials.email, email),
     });
 
-    if (existingUser) {
+    if (existing) {
       throw new AppException(ErrorCode.E003, HttpStatus.CONFLICT);
-    }
-  }
-
-  private async ensureCodeAvailable(code: string, ignoredUserId?: string): Promise<void> {
-    const where = ignoredUserId
-      ? and(eq(users.code, code), ne(users.id, ignoredUserId))
-      : eq(users.code, code);
-
-    const existingUser = await this.db.query.users.findFirst({
-      columns: {
-        id: true,
-      },
-      where,
-    });
-
-    if (existingUser) {
-      throw new AppException(ErrorCode.E005, HttpStatus.CONFLICT);
     }
   }
 
   private async generateUserCode(): Promise<string> {
     const [totalRows] = await this.db.select({ total: drizzleCount() }).from(users);
-    return `US${String((totalRows?.total ?? 0) + 1).padStart(4, '0')}`;
+    return `NV${String((totalRows?.total ?? 0) + 1).padStart(4, '0')}`;
   }
 }
