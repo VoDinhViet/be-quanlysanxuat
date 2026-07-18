@@ -5,6 +5,8 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { JwtAuthGuard } from './api/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from './api/auth/guards/permissions.guard';
+import { MaterialGroupsModule } from './api/material-groups/material-groups.module';
+import { MaterialsModule } from './api/materials/materials.module';
 import { RolesModule } from './api/roles/roles.module';
 import appConfig from './config/app.config';
 import authConfig from './api/auth/config/auth.config';
@@ -51,6 +53,8 @@ import { UsersModule } from './api/users/users.module';
     SuppliersModule,
     HealthModule,
     RolesModule,
+    MaterialGroupsModule,
+    MaterialsModule,
   ],
 
   controllers: [AppController],

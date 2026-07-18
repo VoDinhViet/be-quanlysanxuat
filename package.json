@@ -24,6 +24,8 @@
     "db:seed:supplier-groups": "ts-node src/database/seeds/seed-supplier-groups.seed.ts",
     "db:seed:client-groups": "ts-node src/database/seeds/seed-client-groups.seed.ts",
     "db:seed:countries": "ts-node src/database/seeds/seed-countries.seed.ts",
+    "db:seed:units": "ts-node src/database/seeds/seed-units.seed.ts",
+    "db:seed:material-groups": "ts-node src/database/seeds/seed-material-groups.seed.ts",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio"
   },
