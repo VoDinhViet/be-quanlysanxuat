@@ -40,7 +40,7 @@ export class MaterialGroupsController {
   }
 
   @Post()
-  @Permissions('material-groups:manage')
+  @Permissions('materials:create')
   @ApiAuth({
     type: MaterialGroupResDto,
     summary: 'Create material group',
@@ -51,7 +51,7 @@ export class MaterialGroupsController {
   }
 
   @Patch(':id')
-  @Permissions('material-groups:manage')
+  @Permissions('materials:update')
   @ApiAuth({
     type: MaterialGroupResDto,
     summary: 'Update material group',
@@ -64,7 +64,7 @@ export class MaterialGroupsController {
   }
 
   @Delete(':id')
-  @Permissions('material-groups:manage')
+  @Permissions('materials:delete')
   @ApiAuth({
     summary: 'Delete material group (blocked if used by any material)',
     statusCode: HttpStatus.NO_CONTENT,

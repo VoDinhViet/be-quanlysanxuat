@@ -20,7 +20,7 @@ export class RolesController {
   constructor(private readonly rolesService: RolesService) {}
 
   @Get()
-  @Permissions('roles:manage')
+  @Permissions('roles:read')
   @ApiAuth({
     type: RoleResDto,
     summary: 'List roles',
@@ -32,7 +32,7 @@ export class RolesController {
 
   // Declared before `:id` so the literal path wins over the UUID param route.
   @Get('permissions')
-  @Permissions('roles:manage')
+  @Permissions('roles:read')
   @ApiAuth({
     type: PermissionGroupResDto,
     summary: 'List the permission catalogue (grouped by resource)',
@@ -43,7 +43,7 @@ export class RolesController {
   }
 
   @Get(':id')
-  @Permissions('roles:manage')
+  @Permissions('roles:read')
   @ApiAuth({
     type: RoleResDto,
     summary: 'Get role detail',
@@ -53,7 +53,7 @@ export class RolesController {
   }
 
   @Post()
-  @Permissions('roles:manage')
+  @Permissions('roles:create')
   @ApiAuth({
     type: RoleResDto,
     summary: 'Create role',
@@ -67,7 +67,7 @@ export class RolesController {
   }
 
   @Patch(':id')
-  @Permissions('roles:manage')
+  @Permissions('roles:update')
   @ApiAuth({
     type: RoleResDto,
     summary: 'Update role (system roles are read-only)',
@@ -81,7 +81,7 @@ export class RolesController {
   }
 
   @Delete(':id')
-  @Permissions('roles:manage')
+  @Permissions('roles:delete')
   @ApiAuth({
     summary: 'Delete role (soft delete; blocked if system or in use)',
     statusCode: HttpStatus.NO_CONTENT,

@@ -165,7 +165,7 @@ describe('RolesService', () => {
 
     it('throws E034 when a non-super actor tries to grant system:manage', async () => {
       mockDb.query.roles.findFirst.mockResolvedValue(undefined); // code is free
-      mockPermissionsService.getPermissionCodes.mockResolvedValue(['roles:manage']);
+      mockPermissionsService.getPermissionCodes.mockResolvedValue(['roles:update']);
 
       await expect(
         service.createRole(
@@ -223,7 +223,7 @@ describe('RolesService', () => {
 
     it('throws E034 when a non-super actor adds system:manage to a role', async () => {
       mockDb.query.roles.findFirst.mockResolvedValue(buildRole());
-      mockPermissionsService.getPermissionCodes.mockResolvedValue(['roles:manage']);
+      mockPermissionsService.getPermissionCodes.mockResolvedValue(['roles:update']);
 
       await expect(
         service.updateRole(

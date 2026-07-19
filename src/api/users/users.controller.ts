@@ -90,7 +90,7 @@ export class UsersController {
   }
 
   @Patch(':userId/role')
-  @Permissions('roles:manage')
+  @Permissions('roles:update')
   @ApiAuth({
     type: UserResDto,
     summary: 'Assign a role to a user',

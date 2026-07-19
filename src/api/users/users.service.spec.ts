@@ -282,7 +282,7 @@ describe('UsersService', () => {
         id: 'role-1',
         permissions: ['system:manage'],
       });
-      mockPermissionsService.getPermissionCodes.mockResolvedValue(['roles:manage']);
+      mockPermissionsService.getPermissionCodes.mockResolvedValue(['roles:update']);
 
       await expect(service.assignRole('user-1', reqDto, 'actor-cred')).rejects.toMatchObject({
         status: HttpStatus.FORBIDDEN,

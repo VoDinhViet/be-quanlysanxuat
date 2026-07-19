@@ -30,9 +30,9 @@ All routes require a bearer token; permissions are enforced (secure-by-default).
 | DELETE | `/materials/:id` | `materials:delete` | — | `204 No Content` |
 | GET | `/material-groups` | `materials:read` | paginated (`q` on code/name) | `200` + paginated `MaterialGroupResDto` |
 | GET | `/material-groups/:id` | `materials:read` | — | `200` + `MaterialGroupResDto` |
-| POST | `/material-groups` | `material-groups:manage` | `CreateMaterialGroupReqDto` | `201` + `MaterialGroupResDto` |
-| PATCH | `/material-groups/:id` | `material-groups:manage` | `UpdateMaterialGroupReqDto` (no `code`) | `200` + `MaterialGroupResDto` |
-| DELETE | `/material-groups/:id` | `material-groups:manage` | — | `204 No Content` |
+| POST | `/material-groups` | `materials:create` | `CreateMaterialGroupReqDto` | `201` + `MaterialGroupResDto` |
+| PATCH | `/material-groups/:id` | `materials:update` | `UpdateMaterialGroupReqDto` (no `code`) | `200` + `MaterialGroupResDto` |
+| DELETE | `/material-groups/:id` | `materials:delete` | — | `204 No Content` |
 
 - `q` on materials fuzzy-matches (`unaccent` ILIKE) `code`, `name`, and the material group's `name`.
 - List uses `MaterialType` / `MaterialStatus` enum filters.
@@ -58,6 +58,7 @@ All routes require a bearer token; permissions are enforced (secure-by-default).
 
 ## Frontend integration notes
 
+- **Breaking change (2026-07-19)**: `material-groups:manage` (used on POST/PATCH/DELETE `/material-groups`) was removed and folded into the `materials:*` codes: POST → `materials:create`, PATCH → `materials:update`, DELETE → `materials:delete`. GET `/material-groups` is unchanged (`materials:read`). Any role in the DB that only held `material-groups:manage` loses write access to material groups until re-granted the matching `materials:*` code via the role editor.
 - **New (2026-07-18)**: the Materials module ships. All routes require `Authorization: Bearer <token>` and the listed permission (unlike the older products/clients read endpoints, which are public). A `403` `auth.error.forbidden` means the role lacks the permission.
 - **Image / documents upload is two-step**: `POST /uploads` (image, ≤5MB jpeg/png/webp/gif) or `POST /uploads/document` (≤10MB pdf/doc/docx/xls/xlsx) → take the returned `url` → send it as `imageUrl` (single) or inside the `attachments[]` array (`{ url, filename, mimetype?, size? }`) on create/update. `attachments` is replace-all: `[]` clears, omit to keep.
 - `code` is server-generated (`VTxxxx`) and immutable — don't send it on update; the field is rejected there.
