@@ -34,7 +34,7 @@ pnpm test:e2e                     # e2e tests (test/jest-e2e.json)
 pnpm db:generate                  # generate Drizzle migration from schema changes
 pnpm db:migrate                   # apply migrations (never against shared/prod DBs without approval)
 pnpm db:studio                    # Drizzle Studio
-pnpm db:seed:superadmin           # create default superadmin user (idempotent, skips if exists)
+pnpm db:seed:credentials          # seed 7 default accounts (roles + departments + positions + credentials + users), idempotent
 ```
 
 Env is loaded from `.env.${NODE_ENV}` first, then `.env` as fallback (see `src/main.ts` and seed scripts). Requires PostgreSQL and Redis running. Swagger UI at `/api-docs` outside production.

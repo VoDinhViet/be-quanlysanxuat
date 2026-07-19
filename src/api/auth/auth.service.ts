@@ -170,7 +170,7 @@ export class AuthService {
    * A credential linked to a `users` row (via `users.credentialId`) whose `status` is
    * `RESIGNED` can no longer log in or refresh — this revokes access as soon as the next
    * login/refresh happens, without needing to touch existing cached sessions directly.
-   * A credential with no linked `users` row (e.g. the seeded superadmin) is always active.
+   * A credential with no linked `users` row is always active.
    */
   private async ensureCredentialActive(credentialId: string): Promise<void> {
     const linkedUser = await this.db.query.users.findFirst({

@@ -7,11 +7,11 @@ Manage ERP login credentials: list/view credentials, "my profile", and `POST /us
 ## Business rules
 
 - `username` and `email` are each globally unique. `username`/`email` conflicts both raise the same error (`E001`); email conflicts specifically raise `E003` — see Error cases.
-- `username`, `email`, and `password` are all **required** (`NOT NULL`) at the DB level — every creation path (the optional `user` object on `POST /users`, `pnpm db:seed:superadmin`) always supplies all three.
+- `username`, `email`, and `password` are all **required** (`NOT NULL`) at the DB level — every creation path (the optional `user` object on `POST /users`, `pnpm db:seed:credentials`) always supplies all three.
 - `password` is always stored bcrypt-hashed (10 salt rounds) — a plaintext password never reaches the DB or a response.
 - `credentials` is a **login credential only** — it has no name/gender/DOB/phone fields of its own. Personal/HR info for a user lives on the `users` table (see `docs/features/employees.md`); a `credentials` row is just the login secrets a user's ERP account logs in with.
-- `credentials` has no active/inactive flag of its own either. A user's ERP credential is only ever as "active" as `users.status` (`WORKING`/`RESIGNED`) says it is; a credential with no linked user (e.g. the seeded superadmin) is always considered active. Nothing currently gates login on this either way (see Out of scope).
-- A `credentials` row can only ever be created as a side effect of `POST /users` (which always creates a `users` row too, and optionally a linked credential — see `docs/features/employees.md` for the full request/response shape), or via the `pnpm db:seed:superadmin` script. There is no bare "create just a login credential with no user" endpoint.
+- `credentials` has no active/inactive flag of its own either. A user's ERP credential is only ever as "active" as `users.status` (`WORKING`/`RESIGNED`) says it is; a credential with no linked user is always considered active. Nothing currently gates login on this either way (see Out of scope).
+- A `credentials` row can only ever be created as a side effect of `POST /users` (which always creates a `users` row too, and optionally a linked credential — see `docs/features/employees.md` for the full request/response shape), or via the `pnpm db:seed:credentials` script. There is no bare "create just a login credential with no user" endpoint.
 
 ## API contract
 
@@ -21,7 +21,7 @@ Manage ERP login credentials: list/view credentials, "my profile", and `POST /us
 | GET | `/users` | jwt | `GetUsersReqDto` (extends `PageOptionsDto`: `limit`, `page`, `q`, `order`) | `OffsetPaginatedDto<CredentialResDto>` |
 | GET | `/users/:userId` | jwt | — | `CredentialResDto` |
 | POST | `/users` | jwt + `users:create` | `CreateUserReqDto` (optional nested `user: CreateCredentialReqDto`) | `201` + `UserResDto` |
-| PATCH | `/users/:userId/role` | jwt + `roles:manage` | `AssignRoleReqDto` (`roleId`) | `200` + `UserResDto` |
+| PATCH | `/users/:userId/role` | jwt + `roles:update` | `AssignRoleReqDto` (`roleId`) | `200` + `UserResDto` |
 
 - List search (`q`) matches `email` or `username` (case-insensitive substring, `ilike`).
 - `POST /users` creates a **user**, optionally with a linked ERP credential — it does not return a plain `CredentialResDto`. See `docs/features/employees.md` for the full field-by-field business rules and request/response shape (`CreateUserReqDto` / `UserResDto`); this endpoint is documented there in detail since the entity being created is primarily a user (profile) record.
@@ -40,7 +40,7 @@ Manage ERP login credentials: list/view credentials, "my profile", and `POST /us
 
 ## Out of scope
 
-- No update/delete/password-change endpoint exists on `/users` — a credential can only be created via `POST /users` (always alongside a user) or `pnpm db:seed:superadmin`. There is currently no way to edit an existing credential's username/email or reset its password through any API.
+- No update/delete/password-change endpoint exists on `/users` — a credential can only be created via `POST /users` (always alongside a user) or `pnpm db:seed:credentials`. There is currently no way to edit an existing credential's username/email or reset its password through any API.
 - No soft delete.
 - No active/inactive gate on login — `credentials` has no status field at all; only `users.status` exists, and nothing currently reads it to block login. (Role/permission enforcement now **does** exist — see `docs/features/authorization.md`.)
 
@@ -60,13 +60,13 @@ Manage ERP login credentials: list/view credentials, "my profile", and `POST /us
 - **Breaking change (2026-07-15)**: `status` was removed from `credentials` entirely (in addition to the personal-info fields below).
   - `CredentialResDto` no longer returns `status`.
   - `GET /users` no longer supports a `status` filter.
-  - There is no more account-level `UserStatus` (`ACTIVE`/`INACTIVE`) enum in the API at all. If the FE needs an "is this person active" signal for someone with a user record, use `UserResDto.status` (`WORKING`/`RESIGNED`) instead — credentials without a linked user (e.g. superadmin) have no such concept and should be treated as always active.
+  - There is no more account-level `UserStatus` (`ACTIVE`/`INACTIVE`) enum in the API at all. If the FE needs an "is this person active" signal for someone with a user record, use `UserResDto.status` (`WORKING`/`RESIGNED`) instead — credentials without a linked user have no such concept and should be treated as always active.
 - **Breaking change (2026-07-15)**: `fullName`, `phoneNumber`, `dateOfBirth`, `gender` were removed from `credentials` entirely.
   - `CredentialResDto` no longer returns `fullName`, `phoneNumber`, `dateOfBirth`, or `gender` — remove any FE code reading them off a credential object.
   - List search (`q`) no longer matches `fullName` (only `email`/`username` now).
   - This info now lives on the `users` table (see `docs/features/employees.md`) — a user's name/gender/DOB/phone/etc. comes from `UserResDto`, not from the linked `credentials` row.
   - `products.creator` (nested in `ProductResDto`) changed shape: `{ id, fullName }` → `{ id, username }`, since `credentials.fullName` no longer exists (see `docs/features/products.md`).
 - **Breaking change (2026-07-15)**: `code` was removed from `credentials` entirely. `CredentialResDto` no longer returns `code`; there is no more `USxxxx` account code anywhere in the API. (The user's own `NVxxxx` code on `UserResDto` is unaffected — see `docs/features/employees.md`.)
-- A default seeded superadmin credential exists (`username: superadmin`, `email: superadmin@tienhuy.com`) for initial login — see `pnpm db:seed:superadmin` in the repo README/CLAUDE.md if credentials need to be regenerated.
+- **Breaking change (2026-07-19)**: the old default seeded `superadmin` credential and `pnpm db:seed:superadmin` script are gone. `pnpm db:seed:credentials` now seeds 7 default accounts (one per role, each with a linked `users` profile) — see `docs/features/authorization.md` for the role list and default credentials.
 - `GET /users/me` returns the logged-in credential's own `CredentialResDto`, resolved from the bearer access token — no path/query param needed. Requires `Authorization: Bearer <accessToken>`. Prefer this over decoding the token yourself and calling `GET /users/:userId`.
-- **Breaking change (2026-07-18)**: `GET /users` and `GET /users/:userId` now require a bearer token **and** the `users:update` permission (were previously open). New endpoint `PATCH /users/:userId/role` (`{ roleId }`, needs `roles:manage`) assigns a role to a user. See `docs/features/authorization.md` for the roles/permissions model and the permission catalogue endpoint.
+- **Breaking change (2026-07-18)**: `GET /users` and `GET /users/:userId` now require a bearer token **and** the `users:update` permission (were previously open). New endpoint `PATCH /users/:userId/role` (`{ roleId }`, needs `roles:update`) assigns a role to a user. See `docs/features/authorization.md` for the roles/permissions model and the permission catalogue endpoint.

@@ -17,7 +17,7 @@ export class RoleRefResDto {
   id!: string;
 
   @Expose()
-  @StringField({ description: 'Stable role code, e.g. SUPER_ADMIN' })
+  @StringField({ description: 'Stable role code, e.g. ADMIN' })
   code!: string;
 
   @Expose()
@@ -49,7 +49,7 @@ export class CredentialResDto {
   @Expose()
   @StringField({
     each: true,
-    description: 'Effective permission codes (includes system:manage for superadmin)',
+    description: 'Effective permission codes (includes system:manage for the ADMIN role)',
   })
   permissions!: PermissionCode[];
 

@@ -16,7 +16,7 @@ export class RoleResDto {
   id!: string;
 
   @Expose()
-  @StringField({ description: 'Stable role code, e.g. SUPER_ADMIN' })
+  @StringField({ description: 'Stable role code, e.g. ADMIN' })
   code!: string;
 
   @Expose()

@@ -148,9 +148,9 @@ export class RolesService {
 
   /**
    * Prevents privilege escalation: a caller may only put the god-mode `system:manage` code on a
-   * role if they already hold it. Otherwise a `roles:manage` holder could mint a role granting
-   * full control and assign it to themselves. Only the actor's own permission set is consulted
-   * (cached), and only when `system:manage` is actually being granted.
+   * role if they already hold it. Otherwise a `roles:create`/`roles:update` holder could mint a
+   * role granting full control and assign it to themselves. Only the actor's own permission set
+   * is consulted (cached), and only when `system:manage` is actually being granted.
    */
   private async ensureActorMayGrant(
     permissions: PermissionCode[],

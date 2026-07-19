@@ -78,7 +78,7 @@ export class UsersService {
       throw new AppException(ErrorCode.E002, HttpStatus.NOT_FOUND);
     }
 
-    // Effective permissions come from the cached resolver (superadmin's role
+    // Effective permissions come from the cached resolver (the ADMIN role
     // carries `system:manage`), so the FE can drive permission-based UI.
     const permissions = await this.permissionsService.getPermissionCodes(credentialId);
 
@@ -164,8 +164,8 @@ export class UsersService {
    * so the change takes effect on the next request.
    *
    * Privilege escalation guard: assigning a role that grants the god-mode `system:manage` code
-   * (e.g. the seeded Super Admin) is only allowed if the actor already holds `system:manage` —
-   * otherwise a `roles:manage` holder could grant themselves full control (E034).
+   * (e.g. the seeded ADMIN role) is only allowed if the actor already holds `system:manage` —
+   * otherwise a `roles:update` holder could grant themselves full control (E034).
    */
   async assignRole(
     userId: string,
