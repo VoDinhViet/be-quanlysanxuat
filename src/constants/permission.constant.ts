@@ -26,10 +26,9 @@ export const PERMISSION_CODES = [
   'products:update',
   'products:delete',
   'products:copy',
+  // Only the codes actually wired to a route: materials currently exposes list + create.
   'materials:read',
   'materials:create',
-  'materials:update',
-  'materials:delete',
   'suppliers:read',
   'suppliers:create',
   'suppliers:update',

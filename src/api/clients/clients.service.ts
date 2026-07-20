@@ -1,6 +1,6 @@
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
-import { and, count as drizzleCount, desc, eq, inArray, isNull, ne, or } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, isNull, ne, or } from 'drizzle-orm';
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
@@ -44,7 +44,7 @@ export class ClientsService {
     );
     const orderBy = desc(clients.createdAt);
 
-    const [entities, count] = await Promise.all([
+    const [entities, countRows] = await Promise.all([
       this.db.query.clients.findMany({
         where,
         limit: reqDto.limit,
@@ -56,14 +56,14 @@ export class ClientsService {
           contacts: true,
         },
       }),
-      this.db.select({ total: drizzleCount() }).from(clients).where(where),
+      this.db.select({ total: count() }).from(clients).where(where),
     ]);
 
     return new OffsetPaginatedDto(
       plainToInstance(ClientResDto, entities, {
         excludeExtraneousValues: true,
       }),
-      new OffsetPaginationDto(count[0]?.total ?? 0, reqDto),
+      new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
     );
   }
 
@@ -135,26 +135,18 @@ export class ClientsService {
       await this.ensureClientGroupExists(reqDto.clientGroupId);
     }
 
-    // drizzle's `.set()` throws "No values to set" if every key resolves to `undefined` (e.g. a
-    // PATCH that only touches `contacts`), so only issue the UPDATE when at least one field was
-    // actually sent.
-    const clientUpdate = {
-      code: reqDto.code,
-      name: reqDto.name,
-      clientGroupId: reqDto.clientGroupId,
-      taxCode: reqDto.taxCode,
-      phoneNumber: reqDto.phoneNumber,
-      email: reqDto.email,
-      address: reqDto.address,
-      note: reqDto.note,
-      status: reqDto.status,
-    };
-    if (Object.values(clientUpdate).some((value) => value !== undefined)) {
-      await this.db.update(clients).set(clientUpdate).where(eq(clients.id, clientId));
-    }
+    const { contacts, ...clientFields } = reqDto;
 
-    if (reqDto.contacts) {
-      await this.replaceContacts(clientId, reqDto.contacts);
+    // `updatedAt` is always written, which doubles as the reason `.set()` is safe here: drizzle
+    // throws a bare "No values to set" (a 500) when every value is `undefined`, and that is the
+    // normal shape of a PATCH touching only `contacts`.
+    await this.db
+      .update(clients)
+      .set({ ...clientFields, updatedAt: new Date() })
+      .where(eq(clients.id, clientId));
+
+    if (contacts) {
+      await this.replaceContacts(clientId, contacts);
     }
 
     return this.getClientDetail(clientId);
@@ -244,7 +236,7 @@ export class ClientsService {
   }
 
   private async generateClientCode(): Promise<string> {
-    const [totalRows] = await this.db.select({ total: drizzleCount() }).from(clients);
+    const [totalRows] = await this.db.select({ total: count() }).from(clients);
     return `KH${String((totalRows?.total ?? 0) + 1).padStart(4, '0')}`;
   }
 }

@@ -14,11 +14,11 @@ export class MaterialGroupResDto {
   id!: string;
 
   @Expose()
-  @StringField()
+  @StringField({ description: 'Material group code' })
   code!: string;
 
   @Expose()
-  @StringField()
+  @StringField({ description: 'Material group name' })
   name!: string;
 
   @Expose()

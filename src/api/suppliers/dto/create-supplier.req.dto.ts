@@ -10,7 +10,6 @@ import {
   UUIDField,
   UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
-import { SupplierAttachmentReqDto } from './supplier-attachment.req.dto';
 import { SupplierPaymentReqDto } from './supplier-payment.req.dto';
 import { SupplierRepresentativeReqDto } from './supplier-representative.req.dto';
 
@@ -43,12 +42,11 @@ export class CreateSupplierReqDto {
   @StringFieldOptional({ description: 'Note', nullable: true, maxLength: 1000 })
   note?: string | null;
 
-  @StringFieldOptional({
-    description: 'Logo URL (from POST /uploads)',
+  @UUIDFieldOptional({
     nullable: true,
-    maxLength: 500,
+    description: 'Logo file id (from POST /files?type=SUPPLIER_LOGO)',
   })
-  logoUrl?: string | null;
+  logoFileId?: string | null;
 
   @UUIDFieldOptional({ description: 'Country id', nullable: true })
   countryId?: string | null;
@@ -71,8 +69,11 @@ export class CreateSupplierReqDto {
   })
   internalNote?: string | null;
 
-  @ClassFieldOptional(() => SupplierAttachmentReqDto, { each: true })
-  attachments?: SupplierAttachmentReqDto[];
+  @UUIDFieldOptional({
+    each: true,
+    description: 'Attachment file ids (from POST /files?type=SUPPLIER_DOCUMENT)',
+  })
+  attachmentFileIds?: string[];
 
   @ClassFieldOptional(() => SupplierRepresentativeReqDto, { each: true })
   representatives?: SupplierRepresentativeReqDto[];

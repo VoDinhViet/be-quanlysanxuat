@@ -13,6 +13,7 @@ import {
 
 import { countries } from './countries';
 import { credentials } from './credentials';
+import { files } from './files';
 import { supplierGroups } from './supplier-groups';
 
 export enum SupplierStatus {
@@ -78,7 +79,7 @@ export const suppliers = pgTable(
     email: varchar('email', { length: 255 }),
     address: varchar('address', { length: 500 }).notNull(),
     note: varchar('note', { length: 1000 }),
-    logoUrl: varchar('logo_url', { length: 500 }),
+    logoFileId: uuid('logo_file_id').references(() => files.id, { onDelete: 'set null' }),
     countryId: uuid('country_id').references(() => countries.id, { onDelete: 'set null' }),
 
     // Other information
@@ -103,6 +104,12 @@ export const suppliers = pgTable(
   ],
 );
 
+/**
+ * Join table onto the `files` registry, same shape as `material_attachments`. It deliberately
+ * stores nothing but the link: url/filename/mimetype/size live on `files`, so attachments get
+ * magic-byte validation, signed URLs and orphan sweeping for free instead of being a second,
+ * weaker file registry.
+ */
 export const supplierAttachments = pgTable(
   'supplier_attachments',
   {
@@ -110,10 +117,9 @@ export const supplierAttachments = pgTable(
     supplierId: uuid('supplier_id')
       .notNull()
       .references(() => suppliers.id, { onDelete: 'cascade' }),
-    url: varchar('url', { length: 500 }).notNull(),
-    filename: varchar('filename', { length: 255 }).notNull(),
-    mimetype: varchar('mimetype', { length: 100 }),
-    size: integer('size'),
+    fileId: uuid('file_id')
+      .notNull()
+      .references(() => files.id, { onDelete: 'cascade' }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => [index('idx_supplier_attachments_supplier_id').on(table.supplierId)],
@@ -170,6 +176,10 @@ export const suppliersRelations = relations(suppliers, ({ one, many }) => ({
     fields: [suppliers.createdBy],
     references: [credentials.id],
   }),
+  logoFile: one(files, {
+    fields: [suppliers.logoFileId],
+    references: [files.id],
+  }),
   attachments: many(supplierAttachments),
   representatives: many(supplierRepresentatives),
   payment: one(supplierPaymentInfo, {
@@ -182,6 +192,10 @@ export const supplierAttachmentsRelations = relations(supplierAttachments, ({ on
   supplier: one(suppliers, {
     fields: [supplierAttachments.supplierId],
     references: [suppliers.id],
+  }),
+  file: one(files, {
+    fields: [supplierAttachments.fileId],
+    references: [files.id],
   }),
 }));
 

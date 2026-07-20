@@ -6,7 +6,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 NestJS 11 modular monolith for a production management system ("quản lý sản xuất"). PostgreSQL + Drizzle ORM, Redis, Swagger. Package manager is pnpm.
 
-Current state: minimal scaffold with three API modules — `auth`, `users`, and `health`. Other business modules (clients, suppliers, products, orders, roles) and the whole RBAC schema/permission system have been removed; don't look for them. `package.json` is still named `be-giasu-ai` — it hasn't been renamed for this project.
+Current state: 17 API modules under `src/api/` — `auth`, `users`, `roles`, `health`, `files`, `clients`, `client-groups`, `products`, `product-groups`, `materials`, `material-groups`, `suppliers`, `supplier-groups`, `units`, `departments`, `positions`, `countries`. RBAC (roles + granular permission codes) is live, see `docs/features/authorization.md`. `package.json` is still named `be-giasu-ai` — it hasn't been renamed for this project.
+
+Removed on purpose (don't recreate unless asked): `orders`, `uploads` (replaced by `files`).
+
+`suppliers`/`supplier-groups` were removed on 2026-07-20 and **rolled back the same day** — they exist and are current. They were restored on the `files` registry (`logoFileId` / `attachmentFileIds`), not the plain-URL model they originally shipped with. `countries` exists because suppliers reference it.
 
 ## Rules
 
@@ -50,7 +54,7 @@ Env is loaded from `.env.${NODE_ENV}` first, then `.env` as fallback (see `src/m
 
 ### Modules (`src/api/<module>/`)
 
-Three modules exist: `auth`, `users`, `health`. `users` is the reference example for new modules — coding conventions (controller/service shape, DTOs, errors, pagination) live in `.claude/rules/` (imported above), not repeated here. Business rules and API contracts per module live in `docs/features/`: [`auth.md`](docs/features/auth.md), [`users.md`](docs/features/users.md), [`health.md`](docs/features/health.md).
+`users` is the reference example for new modules — coding conventions (controller/service shape, DTOs, errors, pagination) live in `.claude/rules/` (imported above), not repeated here. Business rules and API contracts per module live in `docs/features/`: [`auth.md`](docs/features/auth.md), [`users.md`](docs/features/users.md), [`health.md`](docs/features/health.md).
 
 Register new modules in `src/app.module.ts`.
 

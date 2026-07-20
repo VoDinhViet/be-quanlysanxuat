@@ -1,7 +1,7 @@
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { hash } from 'bcryptjs';
 import { plainToInstance } from 'class-transformer';
-import { and, count as drizzleCount, desc, eq, ilike, isNull, ne, or } from 'drizzle-orm';
+import { and, count, desc, eq, ilike, isNull, ne, or } from 'drizzle-orm';
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
@@ -19,6 +19,7 @@ import {
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { PermissionsService } from '../auth/permissions.service';
+import { FilesService } from '../files/files.service';
 import { AssignRoleReqDto } from './dto/assign-role.req.dto';
 import { CreateCredentialReqDto } from './dto/create-credential.req.dto';
 import { CreateUserReqDto } from './dto/create-user.req.dto';
@@ -34,6 +35,7 @@ export class UsersService {
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly permissionsService: PermissionsService,
+    private readonly filesService: FilesService,
   ) {}
 
   async getUsers(reqDto: GetUsersReqDto): Promise<OffsetPaginatedDto<UserResDto>> {
@@ -43,7 +45,7 @@ export class UsersService {
       : undefined;
     const orderBy = desc(users.createdAt);
 
-    const [entities, count] = await Promise.all([
+    const [entities, countRows] = await Promise.all([
       this.db.query.users.findMany({
         where,
         limit: reqDto.limit,
@@ -53,16 +55,17 @@ export class UsersService {
           department: true,
           position: true,
           credential: true,
+          avatarFile: true,
         },
       }),
-      this.db.select({ total: drizzleCount() }).from(users).where(where),
+      this.db.select({ total: count() }).from(users).where(where),
     ]);
 
     return new OffsetPaginatedDto(
       plainToInstance(UserResDto, entities, {
         excludeExtraneousValues: true,
       }),
-      new OffsetPaginationDto(count[0]?.total ?? 0, reqDto),
+      new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
     );
   }
 
@@ -97,6 +100,9 @@ export class UsersService {
 
     if (reqDto.idNumber) {
       await this.validateIdNumberUniqueness(reqDto.idNumber);
+    }
+    if (reqDto.avatarFileId) {
+      await this.filesService.linkFiles([reqDto.avatarFileId]);
     }
 
     // Provision the ERP credential (if requested) before inserting the user row, so a
@@ -134,25 +140,16 @@ export class UsersService {
     if (reqDto.idNumber) {
       await this.validateIdNumberUniqueness(reqDto.idNumber, userId);
     }
-
-    await this.db
-      .update(users)
-      .set({ ...reqDto })
-      .where(eq(users.id, userId));
-
-    return this.getUserDetail(userId);
-  }
-
-  async uploadUserAvatar(userId: string, file?: Express.Multer.File): Promise<UserResDto> {
-    await this.ensureUserExists(userId);
-
-    if (!file) {
-      throw new AppException(ErrorCode.E016, HttpStatus.BAD_REQUEST);
+    if (reqDto.avatarFileId) {
+      await this.filesService.linkFiles([reqDto.avatarFileId]);
     }
 
+    // `updatedAt` is always written, which doubles as the reason `.set()` is safe here: drizzle
+    // throws a bare "No values to set" (a 500) when every value is `undefined`, i.e. on an empty
+    // PATCH body.
     await this.db
       .update(users)
-      .set({ avatarUrl: `/uploads/${file.filename}` })
+      .set({ ...reqDto, updatedAt: new Date() })
       .where(eq(users.id, userId));
 
     return this.getUserDetail(userId);
@@ -253,6 +250,7 @@ export class UsersService {
         department: true,
         position: true,
         credential: true,
+        avatarFile: true,
       },
     });
 
@@ -339,7 +337,7 @@ export class UsersService {
   }
 
   private async generateUserCode(): Promise<string> {
-    const [totalRows] = await this.db.select({ total: drizzleCount() }).from(users);
+    const [totalRows] = await this.db.select({ total: count() }).from(users);
     return `NV${String((totalRows?.total ?? 0) + 1).padStart(4, '0')}`;
   }
 }

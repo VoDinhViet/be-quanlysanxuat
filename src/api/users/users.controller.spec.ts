@@ -18,7 +18,6 @@ describe('UsersController', () => {
     createUser: jest.Mock;
     updateUser: jest.Mock;
     assignRole: jest.Mock;
-    uploadUserAvatar: jest.Mock;
   };
 
   const payload = { sub: 'user-1' } as JwtPayloadType;
@@ -31,7 +30,6 @@ describe('UsersController', () => {
       createUser: jest.fn(),
       updateUser: jest.fn(),
       assignRole: jest.fn(),
-      uploadUserAvatar: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -114,17 +112,6 @@ describe('UsersController', () => {
     const result = await controller.assignRole('user-1', reqDto, payload);
 
     expect(mockService.assignRole).toHaveBeenCalledWith('user-1', reqDto, payload.sub);
-    expect(result).toBe(expected);
-  });
-
-  it('uploadUserAvatar delegates to UsersService.uploadUserAvatar', async () => {
-    const file = { filename: 'a.png' } as Express.Multer.File;
-    const expected = { id: 'user-1' };
-    mockService.uploadUserAvatar.mockResolvedValue(expected);
-
-    const result = await controller.uploadUserAvatar('user-1', file);
-
-    expect(mockService.uploadUserAvatar).toHaveBeenCalledWith('user-1', file);
     expect(result).toBe(expected);
   });
 });

@@ -3,6 +3,7 @@ import { date, pgEnum, pgTable, timestamp, uuid, varchar } from 'drizzle-orm/pg-
 
 import { credentials } from './credentials';
 import { departments } from './departments';
+import { files } from './files';
 import { positions } from './positions';
 
 export enum UserGender {
@@ -34,7 +35,7 @@ export const users = pgTable('users', {
   phoneNumber: varchar('phone_number', { length: 30 }),
   email: varchar('email', { length: 255 }),
   address: varchar('address', { length: 500 }),
-  avatarUrl: varchar('avatar_url', { length: 500 }),
+  avatarFileId: uuid('avatar_file_id').references(() => files.id, { onDelete: 'set null' }),
   departmentId: uuid('department_id')
     .notNull()
     .references(() => departments.id, { onDelete: 'restrict' }),
@@ -70,5 +71,9 @@ export const usersRelations = relations(users, ({ one }) => ({
   creator: one(credentials, {
     fields: [users.createdBy],
     references: [credentials.id],
+  }),
+  avatarFile: one(files, {
+    fields: [users.avatarFileId],
+    references: [files.id],
   }),
 }));

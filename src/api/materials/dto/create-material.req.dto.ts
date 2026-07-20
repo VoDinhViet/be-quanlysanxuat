@@ -1,6 +1,5 @@
 import { MaterialStatus, MaterialType } from '../../../database/schemas';
 import {
-  ClassFieldOptional,
   EnumFieldOptional,
   NumberFieldOptional,
   StringField,
@@ -8,7 +7,6 @@ import {
   UUIDField,
   UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
-import { MaterialAttachmentReqDto } from './material-attachment.req.dto';
 
 export class CreateMaterialReqDto {
   @StringField({ maxLength: 255 })
@@ -30,12 +28,8 @@ export class CreateMaterialReqDto {
   @StringFieldOptional({ maxLength: 50, description: 'Auto-generated (VTxxxx) if omitted' })
   readonly code?: string;
 
-  @StringFieldOptional({
-    maxLength: 500,
-    nullable: true,
-    description: 'Image URL (from POST /uploads)',
-  })
-  readonly imageUrl?: string | null;
+  @UUIDFieldOptional({ nullable: true, description: 'Image file id (from POST /files)' })
+  readonly imageFileId?: string | null;
 
   @EnumFieldOptional(() => MaterialStatus, { description: 'Defaults to ACTIVE' })
   readonly status?: MaterialStatus;
@@ -65,15 +59,12 @@ export class CreateMaterialReqDto {
   @StringFieldOptional({ maxLength: 255, nullable: true })
   readonly origin?: string | null;
 
-  @UUIDFieldOptional({ nullable: true, description: 'Preferred supplier id' })
-  readonly preferredSupplierId?: string | null;
-
   @StringFieldOptional({ maxLength: 100, nullable: true })
   readonly leadTime?: string | null;
 
-  @ClassFieldOptional(() => MaterialAttachmentReqDto, {
+  @UUIDFieldOptional({
     each: true,
-    description: 'Images & documents',
+    description: 'Attachment file ids (from POST /files, kind=DOCUMENT)',
   })
-  readonly attachments?: MaterialAttachmentReqDto[];
+  readonly attachmentFileIds?: string[];
 }

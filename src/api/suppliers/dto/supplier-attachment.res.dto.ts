@@ -1,11 +1,7 @@
 import { Exclude, Expose } from 'class-transformer';
 
-import {
-  NumberFieldOptional,
-  StringField,
-  StringFieldOptional,
-  UUIDField,
-} from '../../../decorators/field.decorators';
+import { ClassField, UUIDField } from '../../../decorators/field.decorators';
+import { FileResDto } from '../../files/dto/file.res.dto';
 
 @Exclude()
 export class SupplierAttachmentResDto {
@@ -14,18 +10,6 @@ export class SupplierAttachmentResDto {
   id!: string;
 
   @Expose()
-  @StringField({ description: 'File URL' })
-  url!: string;
-
-  @Expose()
-  @StringField({ description: 'Original filename' })
-  filename!: string;
-
-  @Expose()
-  @StringFieldOptional({ nullable: true })
-  mimetype!: string | null;
-
-  @Expose()
-  @NumberFieldOptional({ nullable: true })
-  size!: number | null;
+  @ClassField(() => FileResDto)
+  file!: FileResDto;
 }

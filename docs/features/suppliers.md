@@ -20,9 +20,10 @@ Manage the master list of suppliers ("Quản lý nhà cung cấp") shown on the 
 - Delete is a **soft delete** (`deletedAt` timestamp) — deleted suppliers are excluded from every read (list/detail/stats).
 - `createdBy` is always taken from the bearer token (`sub` claim) on create — never accepted from the request body.
 - Search (`q`) is **accent-insensitive**, matching `code`, `name`, `taxCode`, or any of the supplier's `representatives[].name`.
-- `attachments` (tài liệu đính kèm) is a **replace-all** list: sending `attachments` on create/update inserts exactly that set (existing attachments not included are deleted). Omitting `attachments` on update leaves existing attachments untouched.
-- `representatives` (người đại diện) is a **replace-all** list (same semantics as `attachments`), stored in its own `supplier_representatives` table — a supplier can have zero or many representatives, each with `name` (required), `phoneNumber` (optional), and `isPrimary` (boolean, defaults `false`; the FE decides how to use it — e.g. show the primary one on the list screen — the backend does not enforce exactly one primary).
-- `logoUrl` and each attachment's `url` are plain strings populated by first calling the upload endpoints (see below) — there's no direct file upload on the supplier endpoints themselves.
+- `attachmentFileIds` (tài liệu đính kèm) is a **replace-all** list of ids from the `files` registry: sending it on create/update stores exactly that set (rows not included are deleted). Omitting it on update leaves existing attachments untouched.
+- `representatives` (người đại diện) is a **replace-all** list (same semantics as `attachmentFileIds`), stored in its own `supplier_representatives` table — a supplier can have zero or many representatives, each with `name` (required), `phoneNumber` (optional), and `isPrimary` (boolean, defaults `false`; the FE decides how to use it — e.g. show the primary one on the list screen — the backend does not enforce exactly one primary).
+- **Files go through the `files` registry, never as URL strings.** Upload first (`POST /files?type=SUPPLIER_LOGO` or `?type=SUPPLIER_DOCUMENT`), then send the returned ids as `logoFileId` / `attachmentFileIds`. Every id is validated before the write — an unknown one 404s with `E042` and **nothing is persisted**. There is no direct file upload on the supplier endpoints themselves.
+- **Atomic writes**: create and update wrap all their statements (supplier row, payment info, attachments, representatives) in a single `db.transaction`, so a partial supplier can never be left behind.
 
 ## API contract
 
@@ -36,10 +37,10 @@ Manage the master list of suppliers ("Quản lý nhà cung cấp") shown on the 
 | DELETE | `/suppliers/:id` | jwt | — | `204` (soft delete) |
 | GET | `/supplier-groups` | public | `q`, `page`, `limit` | `OffsetPaginatedDto<SupplierGroupResDto>` (dropdown data) |
 | GET | `/countries` | public | `q`, `page`, `limit` | `OffsetPaginatedDto<CountryResDto>` (dropdown data) |
-| POST | `/uploads` | jwt | multipart `file` (image, ≤5MB) | `201` + `UploadResDto` — use for `logoUrl` |
-| POST | `/uploads/document` | jwt | multipart `file` (pdf/doc/docx/xls/xlsx, ≤10MB) | `201` + `UploadResDto` — use for each attachment |
+| POST | `/files?type=SUPPLIER_LOGO` | jwt | multipart `file` (image, ≤5MB) | `201` + `FileResDto` — its `id` becomes `logoFileId` |
+| POST | `/files?type=SUPPLIER_DOCUMENT` | jwt | multipart `file` (pdf/docx/xlsx, ≤10MB) | `201` + `FileResDto` — its `id` goes into `attachmentFileIds` |
 
-- `SupplierResDto` nests: `group { id, code, name }`, `country { id, code, name, logoUrl } | null` (`logoUrl` is a flag icon, seeded from a public flag CDN — see Business rules), `payment { bankName, bankAccountNumber, bankAccountHolder, bankBranch, defaultPaymentMethod, defaultPaymentTerm, creditLimit, creditLimitStartDate }` (never `null` — always present, its fields may individually be `null`), `attachments [{ id, url, filename, mimetype, size }]`, `representatives [{ id, name, phoneNumber, isPrimary }]`, `creator { id, username } | null`.
+- `SupplierResDto` nests: `group { id, code, name }`, `country { id, code, name, logoUrl } | null` (`logoUrl` is a flag icon, seeded from a public flag CDN — see Business rules), `payment { bankName, bankAccountNumber, bankAccountHolder, bankBranch, defaultPaymentMethod, defaultPaymentTerm, creditLimit, creditLimitStartDate }` (never `null` — always present, its fields may individually be `null`), `logo: FileResDto | null`, `attachments [{ id, file: FileResDto }]`, `representatives [{ id, name, phoneNumber, isPrimary }]`, `creator { id, username } | null`.
 - List/detail/stats read routes are public (consistent with the rest of the module set at this stage of the project). Only write routes (create/update/delete) require a valid bearer access token.
 - `GET /supplier-groups` and `GET /countries` are minimal list-only endpoints to populate the "Nhóm NCC" and "Quốc gia" dropdowns/filters — full CRUD for either is out of scope (seeded data only, see Out of scope).
 - `GET /suppliers/stats` counts non-deleted suppliers grouped by `status`; `total` is the sum of all three.
@@ -53,6 +54,7 @@ Manage the master list of suppliers ("Quản lý nhà cung cấp") shown on the 
 | `supplierGroupId` does not reference an existing supplier group | `ErrorCode.E021` | 404 Not Found |
 | Supplier `taxCode` already taken (create/update) | `ErrorCode.E022` | 409 Conflict |
 | `countryId` does not reference an existing country | `ErrorCode.E023` | 404 Not Found |
+| `logoFileId` / an `attachmentFileIds` entry is not in the files registry | `ErrorCode.E042` | 404 Not Found |
 | Upload: missing/invalid file type | `ErrorCode.E016` | 400 Bad Request |
 | Upload: file exceeds size limit (5MB image / 10MB document) | `ErrorCode.E017` | 400 Bad Request |
 
@@ -68,12 +70,20 @@ Manage the master list of suppliers ("Quản lý nhà cung cấp") shown on the 
 
 ## Frontend integration notes
 
+- **Removed and restored (2026-07-20)**: the suppliers module was deleted and rolled back the same day. It is back with the **same paths, permissions and error codes** (`E019`–`E023` keep their original meanings, so nothing was ever remapped). Any supplier data that existed before is gone — the tables were dropped and recreated empty.
+- **Breaking change (2026-07-20)**: files moved onto the `files` registry, so the restored module is **not** byte-identical to what shipped before:
+  - `logoUrl` (string) → **`logoFileId`** (uuid); response `logo: FileResDto | null`.
+  - `attachments: [{ url, filename, mimetype, size }]` → **`attachmentFileIds: string[]`**; response `attachments: [{ id, file: FileResDto }]`.
+  - `POST /uploads` and `POST /uploads/document` **no longer exist** — use `POST /files?type=SUPPLIER_LOGO` / `?type=SUPPLIER_DOCUMENT`.
+  - An unknown file id now returns **404 `E042`**.
+  - Displayable URLs are signed and expire after ~1 hour; do not cache them, re-read the supplier instead.
+
 - **New feature (2026-07-18)**: `suppliers`, `supplier-groups`, `countries`, and the `POST /uploads/document` endpoint are brand-new — nothing existed before this. Non-breaking (nothing to migrate from).
 - **Internal restructuring (2026-07-18)**: the single "Người đại diện" / "Điện thoại người đại diện" fields (`representativeName`/`representativePhone`) were replaced same-day, before any real consumer, by a `representatives[]` array (`{ name, phoneNumber, isPrimary }`) supporting multiple representatives per supplier — same replace-all semantics as `attachments`.
 - Country is now a dropdown backed by `GET /countries` (send the selected row's `id` as `countryId`), not free-text — populate it the same way as "Nhóm NCC" (supports `?q=` for search-as-you-type).
 - Payment/bank fields are sent and received as a nested `payment { ... }` object, not flat top-level fields. On update, `payment` is a partial merge (only send the sub-fields you're changing); omit `payment` entirely to leave all payment info untouched.
-- Upload the logo via `POST /uploads` (existing image endpoint, unchanged) and send the returned `url` as `logoUrl`. Upload each document attachment via the new `POST /uploads/document` endpoint and collect `{ url, filename, mimetype, size }` from each response into the `attachments` array sent on create/update.
-- `attachments` and `representatives` are both replace-all: to keep existing entries on update, you must resend the full set (fetch the current `SupplierResDto.attachments`/`representatives` first and merge client-side).
+- Upload the logo via `POST /files?type=SUPPLIER_LOGO` and send the returned **`id`** as `logoFileId`. Upload each document via `POST /files?type=SUPPLIER_DOCUMENT` and collect the ids into `attachmentFileIds`. Read displayable URLs from `logo.url` and `attachments[].file.url` — both are signed and expire (see `docs/features/files.md`).
+- `attachmentFileIds` and `representatives` are both replace-all: to keep existing entries on update, you must resend the full set (fetch the current `SupplierResDto.attachments`/`representatives` first and merge client-side).
 - Populate the 4 stat cards (Tổng NCC / Đang hoạt động / Tạm ngưng / Đã ngừng hợp tác) from `GET /suppliers/stats`.
 - Write actions (Thêm/Sửa/Xóa) require `Authorization: Bearer <accessToken>` — a logged-out user can still view the list/detail/stats but gets `401` attempting to create/edit/delete.
 - The search box can send accent-insensitive Vietnamese text directly; it matches supplier code, name, tax code, and any representative's name.

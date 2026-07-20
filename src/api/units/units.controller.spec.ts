@@ -30,7 +30,7 @@ describe('UnitsController', () => {
   describe('getUnits', () => {
     it('delegates to UnitsService.getUnits', async () => {
       const reqDto = new GetUnitsReqDto();
-      const expected = { data: [], pagination: {} };
+      const expected = [{ id: '1', code: 'KG', name: 'Kilogram' }];
       mockService.getUnits.mockResolvedValue(expected);
 
       const result = await controller.getUnits(reqDto);

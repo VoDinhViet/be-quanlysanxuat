@@ -2,9 +2,11 @@ import { HttpStatus } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { ErrorCode } from '../../constants/error-code.constant';
+import { AppException } from '../../exceptions/app.exception';
 import { DRIZZLE } from '../../database/database.module';
 import { chainableMock, QueryMockArgs } from '../../test-utils/chainable-mock.util';
 import { PermissionsService } from '../auth/permissions.service';
+import { FilesService } from '../files/files.service';
 import { AssignRoleReqDto } from './dto/assign-role.req.dto';
 import { CreateUserReqDto } from './dto/create-user.req.dto';
 import { GetUsersReqDto } from './dto/get-users.req.dto';
@@ -29,6 +31,10 @@ describe('UsersService', () => {
     invalidateCredential: jest.Mock;
     invalidateRole: jest.Mock;
     getPermissionCodes: jest.Mock;
+  };
+  let mockFilesService: {
+    upload: jest.Mock;
+    linkFiles: jest.Mock;
   };
 
   const buildReqDto = (overrides: Partial<GetUsersReqDto> = {}): GetUsersReqDto =>
@@ -55,12 +61,17 @@ describe('UsersService', () => {
       invalidateRole: jest.fn(),
       getPermissionCodes: jest.fn(),
     };
+    mockFilesService = {
+      upload: jest.fn(),
+      linkFiles: jest.fn(),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         UsersService,
         { provide: DRIZZLE, useValue: mockDb },
         { provide: PermissionsService, useValue: mockPermissionsService },
+        { provide: FilesService, useValue: mockFilesService },
       ],
     }).compile();
 
@@ -81,7 +92,12 @@ describe('UsersService', () => {
 
       const callArgs = mockDb.query.users.findMany.mock.calls[0][0];
       expect(callArgs.where).toBeUndefined();
-      expect(callArgs.with).toEqual({ department: true, position: true, credential: true });
+      expect(callArgs.with).toEqual({
+        department: true,
+        position: true,
+        credential: true,
+        avatarFile: true,
+      });
     });
 
     it('builds a keyword filter when q is provided', async () => {
@@ -209,6 +225,40 @@ describe('UsersService', () => {
         response: { errorCode: ErrorCode.E015 },
       });
     });
+
+    it('validates avatarFileId via FilesService when provided', async () => {
+      mockDb.query.departments.findFirst.mockResolvedValue({ id: 'dept-1' });
+      mockDb.query.positions.findFirst.mockResolvedValue({ id: 'pos-1' });
+      mockDb.query.users.findFirst.mockResolvedValue({ id: 'new-user-id' });
+
+      await service.createUser(
+        Object.assign(new CreateUserReqDto(), reqDto, { avatarFileId: 'file-1' }),
+        'creator-1',
+      );
+
+      expect(mockFilesService.linkFiles).toHaveBeenCalledWith(['file-1']);
+    });
+
+    it('propagates E042 when avatarFileId does not reference an existing file', async () => {
+      mockDb.query.departments.findFirst.mockResolvedValue({ id: 'dept-1' });
+      mockDb.query.positions.findFirst.mockResolvedValue({ id: 'pos-1' });
+      mockFilesService.linkFiles.mockRejectedValue(
+        Object.assign(new Error(), {
+          status: HttpStatus.NOT_FOUND,
+          response: { errorCode: ErrorCode.E042 },
+        }),
+      );
+
+      await expect(
+        service.createUser(
+          Object.assign(new CreateUserReqDto(), reqDto, { avatarFileId: 'missing-file' }),
+          'creator-1',
+        ),
+      ).rejects.toMatchObject({
+        status: HttpStatus.NOT_FOUND,
+        response: { errorCode: ErrorCode.E042 },
+      });
+    });
   });
 
   describe('updateUser', () => {
@@ -291,33 +341,57 @@ describe('UsersService', () => {
     });
   });
 
-  describe('uploadUserAvatar', () => {
-    it('throws E016 when no file is provided', async () => {
-      mockDb.query.users.findFirst.mockResolvedValue({ id: 'user-1' });
+  describe('updateUser', () => {
+    // Was a 500: `.set()` with every value `undefined` throws a bare "No values to set". The
+    // always-written `updated_at` is what makes an empty PATCH a harmless no-op instead.
+    it('handles an empty PATCH body without throwing', async () => {
+      mockDb.query.users.findFirst
+        .mockResolvedValueOnce({ id: 'user-1' }) // ensureUserExists
+        .mockResolvedValueOnce({ id: 'user-1' }); // getUserDetail
 
-      await expect(service.uploadUserAvatar('user-1', undefined)).rejects.toMatchObject({
-        status: HttpStatus.BAD_REQUEST,
-        response: { errorCode: ErrorCode.E016 },
-      });
+      await expect(service.updateUser('user-1', new UpdateUserReqDto())).resolves.toBeDefined();
+      expect(mockDb.update).toHaveBeenCalled();
+    });
+  });
+
+  describe('updateUser avatar linking', () => {
+    it('validates avatarFileId through the files registry before writing', async () => {
+      mockDb.query.users.findFirst
+        .mockResolvedValueOnce({ id: 'user-1' }) // ensureUserExists
+        .mockResolvedValueOnce({ id: 'user-1' }); // getUserDetail
+
+      await service.updateUser(
+        'user-1',
+        Object.assign(new UpdateUserReqDto(), { avatarFileId: 'file-1' }),
+      );
+
+      expect(mockFilesService.linkFiles).toHaveBeenCalledWith(['file-1']);
+      expect(mockDb.update).toHaveBeenCalled();
     });
 
-    it('throws E012 when the user does not exist', async () => {
-      mockDb.query.users.findFirst.mockResolvedValue(undefined);
+    it('propagates E042 and never writes when the avatar file is unknown', async () => {
+      mockDb.query.users.findFirst.mockResolvedValue({ id: 'user-1' });
+      mockFilesService.linkFiles.mockRejectedValue(
+        new AppException(ErrorCode.E042, HttpStatus.NOT_FOUND),
+      );
 
       await expect(
-        service.uploadUserAvatar('missing', { filename: 'a.png' } as Express.Multer.File),
-      ).rejects.toMatchObject({
-        status: HttpStatus.NOT_FOUND,
-        response: { errorCode: ErrorCode.E012 },
-      });
+        service.updateUser(
+          'user-1',
+          Object.assign(new UpdateUserReqDto(), { avatarFileId: 'ghost' }),
+        ),
+      ).rejects.toMatchObject({ response: { errorCode: ErrorCode.E042 } });
+      expect(mockDb.update).not.toHaveBeenCalled();
     });
 
-    it('updates avatarUrl when a file is provided', async () => {
-      mockDb.query.users.findFirst.mockResolvedValue({ id: 'user-1' });
+    it('does not touch the files registry when avatarFileId is omitted', async () => {
+      mockDb.query.users.findFirst
+        .mockResolvedValueOnce({ id: 'user-1' })
+        .mockResolvedValueOnce({ id: 'user-1' });
 
-      await service.uploadUserAvatar('user-1', { filename: 'a.png' } as Express.Multer.File);
+      await service.updateUser('user-1', Object.assign(new UpdateUserReqDto(), { fullName: 'A' }));
 
-      expect(mockDb.update).toHaveBeenCalled();
+      expect(mockFilesService.linkFiles).not.toHaveBeenCalled();
     });
   });
 });

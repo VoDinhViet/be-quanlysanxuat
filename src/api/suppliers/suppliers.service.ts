@@ -7,7 +7,7 @@ import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-p
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
-import type { Database } from '../../database/database.type';
+import type { Database, DbTransaction } from '../../database/database.type';
 import {
   countries,
   supplierAttachments,
@@ -18,6 +18,7 @@ import {
   SupplierStatus,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
+import { FilesService } from '../files/files.service';
 import { CreateSupplierReqDto } from './dto/create-supplier.req.dto';
 import { GetSuppliersReqDto } from './dto/get-suppliers.req.dto';
 import { SupplierResDto } from './dto/supplier.res.dto';
@@ -26,7 +27,10 @@ import { UpdateSupplierReqDto } from './dto/update-supplier.req.dto';
 
 @Injectable()
 export class SuppliersService {
-  constructor(@Inject(DRIZZLE) private readonly db: Database) {}
+  constructor(
+    @Inject(DRIZZLE) private readonly db: Database,
+    private readonly filesService: FilesService,
+  ) {}
 
   async getSuppliers(reqDto: GetSuppliersReqDto): Promise<OffsetPaginatedDto<SupplierResDto>> {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
@@ -61,7 +65,8 @@ export class SuppliersService {
         with: {
           group: true,
           creator: true,
-          attachments: true,
+          attachments: { with: { file: true } },
+          logoFile: true,
           representatives: true,
           country: true,
           payment: true,
@@ -105,7 +110,8 @@ export class SuppliersService {
       with: {
         group: true,
         creator: true,
-        attachments: true,
+        attachments: { with: { file: true } },
+        logoFile: true,
         representatives: true,
         country: true,
         payment: true,
@@ -134,50 +140,38 @@ export class SuppliersService {
     if (reqDto.countryId) {
       await this.ensureCountryExists(reqDto.countryId);
     }
+    await this.linkSuppliedFiles(reqDto);
 
-    const [supplier] = await this.db
-      .insert(suppliers)
-      .values({
-        code,
-        name: reqDto.name,
-        supplierGroupId: reqDto.supplierGroupId,
-        type: reqDto.type,
-        taxCode: reqDto.taxCode,
-        phoneNumber: reqDto.phoneNumber,
-        email: reqDto.email,
-        address: reqDto.address,
-        note: reqDto.note,
-        logoUrl: reqDto.logoUrl,
-        countryId: reqDto.countryId,
-        rating: reqDto.rating,
-        status: reqDto.status ?? SupplierStatus.ACTIVE,
-        internalNote: reqDto.internalNote,
-        createdBy: userId,
-      })
-      .returning();
+    // `payment` / `representatives` / `attachmentFileIds` live in their own tables — peel them off
+    // so the rest of the DTO spreads straight onto the `suppliers` row.
+    const { payment, representatives, attachmentFileIds, ...supplierFields } = reqDto;
 
-    // Every supplier always has exactly one payment info row, created right away.
-    await this.db.insert(supplierPaymentInfo).values({
-      supplierId: supplier.id,
-      bankName: reqDto.payment?.bankName,
-      bankAccountNumber: reqDto.payment?.bankAccountNumber,
-      bankAccountHolder: reqDto.payment?.bankAccountHolder,
-      bankBranch: reqDto.payment?.bankBranch,
-      defaultPaymentMethod: reqDto.payment?.defaultPaymentMethod,
-      defaultPaymentTerm: reqDto.payment?.defaultPaymentTerm,
-      creditLimit: reqDto.payment?.creditLimit,
-      creditLimitStartDate: reqDto.payment?.creditLimitStartDate,
+    const supplierId = await this.db.transaction(async (tx) => {
+      const [supplier] = await tx
+        .insert(suppliers)
+        .values({
+          ...supplierFields,
+          code,
+          status: reqDto.status ?? SupplierStatus.ACTIVE,
+          createdBy: userId,
+        })
+        .returning();
+
+      // Every supplier always has exactly one payment info row, created right away.
+      await tx.insert(supplierPaymentInfo).values({ supplierId: supplier.id, ...payment });
+
+      if (attachmentFileIds?.length) {
+        await this.replaceAttachments(tx, supplier.id, attachmentFileIds);
+      }
+
+      if (representatives?.length) {
+        await this.replaceRepresentatives(tx, supplier.id, representatives);
+      }
+
+      return supplier.id;
     });
 
-    if (reqDto.attachments?.length) {
-      await this.replaceAttachments(supplier.id, reqDto.attachments);
-    }
-
-    if (reqDto.representatives?.length) {
-      await this.replaceRepresentatives(supplier.id, reqDto.representatives);
-    }
-
-    return this.getSupplierDetail(supplier.id);
+    return this.getSupplierDetail(supplierId);
   }
 
   async updateSupplier(supplierId: string, reqDto: UpdateSupplierReqDto): Promise<SupplierResDto> {
@@ -195,58 +189,36 @@ export class SuppliersService {
     if (reqDto.countryId) {
       await this.ensureCountryExists(reqDto.countryId);
     }
+    await this.linkSuppliedFiles(reqDto);
 
-    // drizzle's `.set()` throws "No values to set" if every key resolves to `undefined` (e.g. a
-    // PATCH that only touches `payment`/`attachments`), so only issue each UPDATE when at least
-    // one of its own fields was actually sent.
-    const supplierUpdate = {
-      code: reqDto.code,
-      name: reqDto.name,
-      supplierGroupId: reqDto.supplierGroupId,
-      type: reqDto.type,
-      taxCode: reqDto.taxCode,
-      phoneNumber: reqDto.phoneNumber,
-      email: reqDto.email,
-      address: reqDto.address,
-      note: reqDto.note,
-      logoUrl: reqDto.logoUrl,
-      countryId: reqDto.countryId,
-      rating: reqDto.rating,
-      status: reqDto.status,
-      internalNote: reqDto.internalNote,
-    };
-    if (Object.values(supplierUpdate).some((value) => value !== undefined)) {
-      await this.db.update(suppliers).set(supplierUpdate).where(eq(suppliers.id, supplierId));
-    }
+    const { payment, representatives, attachmentFileIds, ...supplierFields } = reqDto;
 
-    if (reqDto.payment) {
-      // The payment info row always exists (created in createSupplier); only the fields
-      // actually sent are overwritten, everything else keeps its current value.
-      const paymentUpdate = {
-        bankName: reqDto.payment.bankName,
-        bankAccountNumber: reqDto.payment.bankAccountNumber,
-        bankAccountHolder: reqDto.payment.bankAccountHolder,
-        bankBranch: reqDto.payment.bankBranch,
-        defaultPaymentMethod: reqDto.payment.defaultPaymentMethod,
-        defaultPaymentTerm: reqDto.payment.defaultPaymentTerm,
-        creditLimit: reqDto.payment.creditLimit,
-        creditLimitStartDate: reqDto.payment.creditLimitStartDate,
-      };
-      if (Object.values(paymentUpdate).some((value) => value !== undefined)) {
-        await this.db
+    await this.db.transaction(async (tx) => {
+      // `updatedAt` is always written, which doubles as the reason `.set()` is safe here: drizzle
+      // throws a bare "No values to set" (a 500) when every value is `undefined`, and that is the
+      // normal shape of a PATCH touching only `payment`/`representatives`/`attachmentFileIds`.
+      await tx
+        .update(suppliers)
+        .set({ ...supplierFields, updatedAt: new Date() })
+        .where(eq(suppliers.id, supplierId));
+
+      if (payment) {
+        // The payment info row always exists (created in createSupplier); only the fields
+        // actually sent are overwritten, everything else keeps its current value.
+        await tx
           .update(supplierPaymentInfo)
-          .set(paymentUpdate)
+          .set({ ...payment, updatedAt: new Date() })
           .where(eq(supplierPaymentInfo.supplierId, supplierId));
       }
-    }
 
-    if (reqDto.attachments) {
-      await this.replaceAttachments(supplierId, reqDto.attachments);
-    }
+      if (attachmentFileIds) {
+        await this.replaceAttachments(tx, supplierId, attachmentFileIds);
+      }
 
-    if (reqDto.representatives) {
-      await this.replaceRepresentatives(supplierId, reqDto.representatives);
-    }
+      if (representatives) {
+        await this.replaceRepresentatives(tx, supplierId, representatives);
+      }
+    });
 
     return this.getSupplierDetail(supplierId);
   }
@@ -260,35 +232,46 @@ export class SuppliersService {
       .where(eq(suppliers.id, supplierId));
   }
 
-  private async replaceAttachments(
-    supplierId: string,
-    attachments: CreateSupplierReqDto['attachments'],
+  /**
+   * Validates every file id the request carries and marks them linked, so the orphan sweeper
+   * leaves them alone. Runs **before** the transaction on purpose — see `FilesService.linkFiles`.
+   */
+  private async linkSuppliedFiles(
+    reqDto: CreateSupplierReqDto | UpdateSupplierReqDto,
   ): Promise<void> {
-    await this.db.delete(supplierAttachments).where(eq(supplierAttachments.supplierId, supplierId));
+    const fileIds = [reqDto.logoFileId, ...(reqDto.attachmentFileIds ?? [])].filter(
+      (id): id is string => Boolean(id),
+    );
 
-    if (attachments?.length) {
-      await this.db.insert(supplierAttachments).values(
-        attachments.map((attachment) => ({
-          supplierId,
-          url: attachment.url,
-          filename: attachment.filename,
-          mimetype: attachment.mimetype,
-          size: attachment.size,
-        })),
-      );
+    await this.filesService.linkFiles(fileIds);
+  }
+
+  /** Replace-all. `tx` is required so a caller cannot accidentally write outside the transaction. */
+  private async replaceAttachments(
+    tx: DbTransaction,
+    supplierId: string,
+    attachmentFileIds: string[],
+  ): Promise<void> {
+    await tx.delete(supplierAttachments).where(eq(supplierAttachments.supplierId, supplierId));
+
+    if (attachmentFileIds.length) {
+      await tx
+        .insert(supplierAttachments)
+        .values(attachmentFileIds.map((fileId) => ({ supplierId, fileId })));
     }
   }
 
   private async replaceRepresentatives(
+    tx: DbTransaction,
     supplierId: string,
     representatives: CreateSupplierReqDto['representatives'],
   ): Promise<void> {
-    await this.db
+    await tx
       .delete(supplierRepresentatives)
       .where(eq(supplierRepresentatives.supplierId, supplierId));
 
     if (representatives?.length) {
-      await this.db.insert(supplierRepresentatives).values(
+      await tx.insert(supplierRepresentatives).values(
         representatives.map((representative) => ({
           supplierId,
           name: representative.name,

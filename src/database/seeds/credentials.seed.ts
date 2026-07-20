@@ -85,7 +85,7 @@ const ROLES = {
   WAREHOUSE: {
     code: 'WAREHOUSE',
     name: 'Kho',
-    permissions: ['materials:read', 'materials:create', 'materials:update', 'materials:delete'],
+    permissions: ['materials:read', 'materials:create'],
     isSystem: false,
   },
   PRODUCTION: {

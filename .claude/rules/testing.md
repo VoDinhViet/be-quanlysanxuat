@@ -63,10 +63,16 @@ No `coverageThreshold` is enforced in `package.json` at this stage — don't add
   };
   ```
   For `db.query.<table>.findMany`/`findFirst`, mock directly with `jest.fn<any, [QueryMockArgs]>().mockResolvedValue(...)` per test case — don't route these through `chainableMock()`, they're not chained further. Typing `findMany`'s mock with the `[QueryMockArgs]` args tuple (also exported from `chainable-mock.util.ts`) means `mockFn.mock.calls[0][0]` comes back as `QueryMockArgs`, not `any`, so asserting on `callArgs.where`/`.limit`/`.offset`/`.with` needs no cast.
+- **`db.transaction` needs its own explicit mock** — `chainable()` can't model it (every property access returns a fresh `jest.fn`, so the callback never runs and the test silently asserts nothing). Add the key by hand and hand the callback `mockDb` itself, so `tx.insert(...)` resolves to the same jest mock and every `toHaveBeenCalledWith`/`toHaveBeenCalledTimes` assertion keeps working:
+  ```ts
+  transaction: jest.fn(async (cb: (tx: unknown) => Promise<unknown>) => cb(mockDb)),
+  ```
+  `chainable()` also can't report what `.values()` received, for the same reason. When a test needs to assert on the written row, use a capturing insert mock instead — see `buildInsertMock` + `insertedValues` in `src/api/materials/materials.service.spec.ts`.
+- A service that opens a transaction **must** have a rollback test: `mockDb.transaction.mockRejectedValue(...)`, then assert the error propagates *and* that the post-commit re-fetch never ran.
 - `jest.clearAllMocks()` in `afterEach` so call-count/argument assertions don't leak between test cases.
 - Cover, for every public method:
   - The happy path.
-  - **Every** `AppException` branch the method can throw (not-found, conflict, ...) — assert both the error class and that it carries the right `ErrorCode` (e.g. `expect(promise).rejects.toMatchObject({ errorCode: ErrorCode.E019 })` or catch-and-inspect).
+  - **Every** `AppException` branch the method can throw (not-found, conflict, ...) — assert it carries the right `ErrorCode`. `AppException` passes `{ errorCode, message }` to `HttpException` as the *response body*, so the code sits under `response`, not on the error itself: `await expect(promise).rejects.toMatchObject({ response: { errorCode: ErrorCode.E036 } })`. Asserting `{ errorCode: ... }` at the top level always fails.
   - Module-specific edge cases where they exist: the "no values to set" partial-update guard (only issue `.update()` when at least one field is defined — assert `mockDb.update` was/wasn't called), replace-all child-table logic (old rows deleted, new rows inserted only when the array is non-empty, existing rows left untouched when the field is omitted entirely), auto-generated vs explicit `code`, uniqueness checks excluding the current row on update (`ne(id, ignoredId)`).
 - Prefer asserting `mockDb.X` was called with the expected arguments (`toHaveBeenCalledWith`) over asserting on `chainable()` internals — the chain mock only exists to make the call succeed, not to be inspected.
 

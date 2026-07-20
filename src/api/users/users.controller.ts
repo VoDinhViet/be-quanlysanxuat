@@ -1,19 +1,7 @@
-import {
-  Body,
-  Controller,
-  Get,
-  HttpStatus,
-  Patch,
-  Post,
-  Query,
-  UploadedFile,
-  UseInterceptors,
-} from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiBody, ApiConsumes, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Get, HttpStatus, Patch, Post, Query } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
-import { multerOptions } from '../uploads/config/multer.config';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { CurrentUser } from '../../decorators/current-user.decorator';
 import { ApiAuth } from '../../decorators/http.decorators';
@@ -103,25 +91,7 @@ export class UsersController {
     return this.usersService.assignRole(userId, reqDto, payload.sub);
   }
 
-  @Post(':userId/avatar')
-  @UseInterceptors(FileInterceptor('file', multerOptions))
-  @ApiConsumes('multipart/form-data')
-  @ApiBody({
-    schema: {
-      type: 'object',
-      properties: {
-        file: { type: 'string', format: 'binary' },
-      },
-    },
-  })
-  @ApiAuth({
-    type: UserResDto,
-    summary: 'Upload a user avatar (max 5MB, jpeg/png/webp/gif)',
-  })
-  uploadUserAvatar(
-    @UUIDParam('userId') userId: string,
-    @UploadedFile() file?: Express.Multer.File,
-  ): Promise<UserResDto> {
-    return this.usersService.uploadUserAvatar(userId, file);
-  }
+  // `POST /users/:userId/avatar` was removed on 2026-07-20: it duplicated `POST /files` and was
+  // the only unprotected mutation on this controller. Set the avatar by uploading through
+  // `POST /files?type=USER_AVATAR` and sending the returned id as `avatarFileId` on PATCH above.
 }

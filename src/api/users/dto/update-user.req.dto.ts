@@ -29,6 +29,9 @@ export class UpdateUserReqDto {
   @StringFieldOptional({ description: 'Permanent address', nullable: true, maxLength: 500 })
   address?: string | null;
 
+  @UUIDFieldOptional({ description: 'Avatar file id (from POST /files?type=USER_AVATAR)' })
+  avatarFileId?: string | null;
+
   @UUIDFieldOptional({ description: 'Department id' })
   departmentId?: string;
 

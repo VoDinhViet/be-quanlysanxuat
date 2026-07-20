@@ -4,7 +4,9 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import { SupplierStatus } from '../../database/schemas';
+import { AppException } from '../../exceptions/app.exception';
 import { chainableMock, QueryMockArgs } from '../../test-utils/chainable-mock.util';
+import { FilesService } from '../files/files.service';
 import { CreateSupplierReqDto } from './dto/create-supplier.req.dto';
 import { GetSuppliersReqDto } from './dto/get-suppliers.req.dto';
 import { UpdateSupplierReqDto } from './dto/update-supplier.req.dto';
@@ -22,7 +24,9 @@ describe('SuppliersService', () => {
     insert: jest.Mock;
     update: jest.Mock;
     delete: jest.Mock;
+    transaction: jest.Mock;
   };
+  let mockFilesService: { linkFiles: jest.Mock };
 
   const buildReqDto = (overrides: Partial<GetSuppliersReqDto> = {}): GetSuppliersReqDto =>
     Object.assign(new GetSuppliersReqDto(), overrides);
@@ -41,10 +45,18 @@ describe('SuppliersService', () => {
       insert: chainableMock([{ id: 'new-supplier-id' }]),
       update: chainableMock(undefined),
       delete: chainableMock(undefined),
+      // Handing the callback `mockDb` itself keeps `tx.insert(...)` pointing at the same jest mock,
+      // so call-count assertions work whether a write sits inside the transaction or not.
+      transaction: jest.fn(async (cb: (tx: unknown) => Promise<unknown>) => cb(mockDb)),
     };
+    mockFilesService = { linkFiles: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [SuppliersService, { provide: DRIZZLE, useValue: mockDb }],
+      providers: [
+        SuppliersService,
+        { provide: DRIZZLE, useValue: mockDb },
+        { provide: FilesService, useValue: mockFilesService },
+      ],
     }).compile();
 
     service = module.get<SuppliersService>(SuppliersService);
@@ -69,7 +81,8 @@ describe('SuppliersService', () => {
       expect(callArgs.with).toEqual({
         group: true,
         creator: true,
-        attachments: true,
+        attachments: { with: { file: true } },
+        logoFile: true,
         representatives: true,
         country: true,
         payment: true,
@@ -135,7 +148,8 @@ describe('SuppliersService', () => {
           with: {
             group: true,
             creator: true,
-            attachments: true,
+            attachments: { with: { file: true } },
+            logoFile: true,
             representatives: true,
             country: true,
             payment: true,
@@ -185,7 +199,7 @@ describe('SuppliersService', () => {
 
       await service.createSupplier(
         Object.assign(new CreateSupplierReqDto(), reqDto, {
-          attachments: [{ url: '/uploads/a.pdf', filename: 'a.pdf' }],
+          attachmentFileIds: ['file-a'],
           representatives: [{ name: 'Nguyễn Văn A', isPrimary: true }],
         }),
         'user-1',
@@ -193,6 +207,60 @@ describe('SuppliersService', () => {
 
       // supplier + payment + attachments + representatives.
       expect(mockDb.insert).toHaveBeenCalledTimes(4);
+      expect(mockDb.transaction).toHaveBeenCalledTimes(1);
+    });
+
+    it('links the logo and attachment files before opening the transaction', async () => {
+      mockDb.query.supplierGroups.findFirst.mockResolvedValue({ id: 'group-1' });
+      mockDb.query.suppliers.findFirst
+        .mockResolvedValueOnce(undefined)
+        .mockResolvedValueOnce({ id: 'new-supplier-id' });
+
+      await service.createSupplier(
+        Object.assign(new CreateSupplierReqDto(), reqDto, {
+          logoFileId: 'logo-file',
+          attachmentFileIds: ['doc-a', 'doc-b'],
+        }),
+        'user-1',
+      );
+
+      expect(mockFilesService.linkFiles).toHaveBeenCalledWith(['logo-file', 'doc-a', 'doc-b']);
+    });
+
+    it('propagates E042 from the files registry and never opens a transaction', async () => {
+      mockDb.query.supplierGroups.findFirst.mockResolvedValue({ id: 'group-1' });
+      mockDb.query.suppliers.findFirst.mockResolvedValueOnce(undefined);
+      mockFilesService.linkFiles.mockRejectedValue(
+        new AppException(ErrorCode.E042, HttpStatus.NOT_FOUND),
+      );
+
+      await expect(
+        service.createSupplier(
+          Object.assign(new CreateSupplierReqDto(), reqDto, { attachmentFileIds: ['ghost'] }),
+          'user-1',
+        ),
+      ).rejects.toMatchObject({ response: { errorCode: ErrorCode.E042 } });
+      expect(mockDb.transaction).not.toHaveBeenCalled();
+    });
+
+    // Required by .claude/rules/testing.md for any service that opens a transaction: the error must
+    // propagate AND the post-commit re-fetch must not run.
+    it('rolls back and never re-reads the detail when a write inside the transaction fails', async () => {
+      mockDb.query.supplierGroups.findFirst.mockResolvedValue({ id: 'group-1' });
+      mockDb.query.suppliers.findFirst.mockResolvedValueOnce(undefined);
+      const failure = new Error('representative insert failed');
+      mockDb.transaction.mockRejectedValue(failure);
+
+      await expect(
+        service.createSupplier(
+          Object.assign(new CreateSupplierReqDto(), reqDto, {
+            representatives: [{ name: 'Nguyễn Văn A', isPrimary: true }],
+          }),
+          'user-1',
+        ),
+      ).rejects.toThrow(failure);
+      // Only the uniqueness probe ran; the detail re-fetch (2nd call) must not have happened.
+      expect(mockDb.query.suppliers.findFirst).toHaveBeenCalledTimes(1);
     });
 
     it('throws E020 when the explicit code is already taken', async () => {
@@ -266,27 +334,32 @@ describe('SuppliersService', () => {
       expect(mockDb.update).toHaveBeenCalled();
     });
 
-    it('does not issue a supplier UPDATE when only payment is sent (no values to set)', async () => {
+    // A PATCH touching only `payment` leaves every supplier-level field `undefined`. Both updates
+    // still run — the always-written `updated_at` is what keeps drizzle from throwing
+    // "No values to set", which would reach the client as a 500.
+    it('handles a PATCH that only touches payment without throwing', async () => {
       mockDb.query.suppliers.findFirst.mockResolvedValue({ id: 's1' });
 
-      await service.updateSupplier(
-        's1',
-        Object.assign(new UpdateSupplierReqDto(), { payment: { bankName: 'Vietcombank' } }),
-      );
+      await expect(
+        service.updateSupplier(
+          's1',
+          Object.assign(new UpdateSupplierReqDto(), { payment: { bankName: 'Vietcombank' } }),
+        ),
+      ).resolves.toBeDefined();
 
-      // 1 update call for supplier_payment_info, but NOT for the supplier row itself.
-      expect(mockDb.update).toHaveBeenCalledTimes(1);
+      // supplier row + supplier_payment_info.
+      expect(mockDb.update).toHaveBeenCalledTimes(2);
     });
 
-    it('does not issue a payment UPDATE when payment has no defined fields', async () => {
+    it('leaves payment untouched when the request omits it entirely', async () => {
       mockDb.query.suppliers.findFirst.mockResolvedValue({ id: 's1' });
 
       await service.updateSupplier(
         's1',
-        Object.assign(new UpdateSupplierReqDto(), { name: 'Tên mới', payment: {} }),
+        Object.assign(new UpdateSupplierReqDto(), { name: 'Tên mới' }),
       );
 
-      // Only the supplier row update, payment update skipped entirely.
+      // Only the supplier row — `if (payment)` still gates the payment table.
       expect(mockDb.update).toHaveBeenCalledTimes(1);
     });
 

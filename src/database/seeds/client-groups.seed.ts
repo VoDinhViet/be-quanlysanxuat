@@ -32,7 +32,7 @@ async function main() {
   }
 }
 
-async function seedClientGroups(db: ReturnType<typeof drizzle<typeof schema>>) {
+export async function seedClientGroups(db: ReturnType<typeof drizzle<typeof schema>>) {
   for (const group of CLIENT_GROUPS) {
     const existing = await db.query.clientGroups.findFirst({
       where: eq(clientGroups.code, group.code),

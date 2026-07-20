@@ -41,10 +41,11 @@ Manage the master list of clients ("Quản lý khách hàng") shown on the custo
 
 ## Out of scope
 
-- No stat cards / counts endpoint (unlike `suppliers`, there's no `GET /clients/stats`).
+- No stat cards / counts endpoint (there's no `GET /clients/stats`).
 - No "Khu vực" (region) field or filter — not modeled at this stage; add later once the FE form gains a corresponding field.
-- No payment/bank info, logo, or file attachments on clients (unlike `suppliers`).
+- No payment/bank info, logo, or file attachments on clients.
 - No CRUD (create/update/delete) for `client_groups` — only a read-only list endpoint exists; seeded via `pnpm db:seed:client-groups` (3 groups: Chiến lược / Thường / Tiềm năng).
+- `pnpm db:seed:clients` seeds ~50 fake clients (with contacts) for testing, via `drizzle-seed`; ensures the 3 client groups exist first. Idempotent (skips entirely if already run) but not curated data — see `.claude/rules/database.md`.
 - No approval/workflow around status changes — any authenticated write can set any `status`.
 - No versioned/audit history of client edits.
 - No permission enforcement — `@Permissions('clients:*')` decorators are metadata only (per `.claude/rules/api-module.md`); actual protection on write routes comes solely from `@UseGuards(JwtAuthGuard)`.
@@ -53,7 +54,7 @@ Manage the master list of clients ("Quản lý khách hàng") shown on the custo
 
 - **Breaking change (2026-07-18)**: `GET /clients` previously returned only `{ id, code, name }` (list-only master data). It is now a full CRUD resource — the response DTO gained `taxCode`, `phoneNumber`, `email`, `address`, `note`, `group`, `status`, `contacts`, `creator`, `createdAt`, `updatedAt`. Any existing FE code consuming the old minimal shape keeps working (fields were only added, not removed or renamed).
 - **New endpoints (2026-07-18)**: `POST /clients`, `GET /clients/:id`, `PATCH /clients/:id`, `DELETE /clients/:id`, and `GET /client-groups` are brand-new.
-- Client group is a dropdown backed by `GET /client-groups` (send the selected row's `id` as `clientGroupId`), populated the same way as "Nhóm NCC" in suppliers (supports `?q=` for search-as-you-type).
+- Client group is a dropdown backed by `GET /client-groups` (send the selected row's `id` as `clientGroupId`), supports `?q=` for search-as-you-type.
 - Contacts are replace-all: to keep existing entries on update, you must resend the full set (fetch the current `ClientResDto.contacts` first and merge client-side).
 - Write actions (Thêm/Sửa/Xóa) require `Authorization: Bearer <accessToken>` — a logged-out user can still view the list/detail but gets `401` attempting to create/edit/delete.
 - The search box can send accent-insensitive Vietnamese text directly; it matches client code, name, tax code, email, phone number, and any contact's name.

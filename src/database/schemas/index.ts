@@ -1,5 +1,6 @@
 export * from './roles';
 export * from './credentials';
+export * from './files';
 export * from './client-groups';
 export * from './material-groups';
 export * from './materials';

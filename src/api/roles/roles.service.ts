@@ -1,6 +1,6 @@
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
-import { and, count as drizzleCount, desc, eq, isNull, or } from 'drizzle-orm';
+import { and, count, desc, eq, isNull, or } from 'drizzle-orm';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
@@ -39,19 +39,19 @@ export class RolesService {
         : undefined,
     );
 
-    const [entities, count] = await Promise.all([
+    const [entities, countRows] = await Promise.all([
       this.db.query.roles.findMany({
         where,
         limit: reqDto.limit,
         offset: reqDto.offset,
         orderBy: desc(roles.createdAt),
       }),
-      this.db.select({ total: drizzleCount() }).from(roles).where(where),
+      this.db.select({ total: count() }).from(roles).where(where),
     ]);
 
     return new OffsetPaginatedDto(
       plainToInstance(RoleResDto, entities, { excludeExtraneousValues: true }),
-      new OffsetPaginationDto(count[0]?.total ?? 0, reqDto),
+      new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
     );
   }
 
@@ -98,14 +98,13 @@ export class RolesService {
       await this.ensureActorMayGrant(reqDto.permissions, actorCredentialId);
     }
 
-    const roleUpdate = {
-      name: reqDto.name,
-      description: reqDto.description,
-      permissions: reqDto.permissions,
-    };
-    if (Object.values(roleUpdate).some((value) => value !== undefined)) {
-      await this.db.update(roles).set(roleUpdate).where(eq(roles.id, roleId));
-    }
+    // `updatedAt` is always written, which doubles as the reason `.set()` is safe here: drizzle
+    // throws a bare "No values to set" (a 500) when every value is `undefined`, i.e. on an empty
+    // PATCH body.
+    await this.db
+      .update(roles)
+      .set({ ...reqDto, updatedAt: new Date() })
+      .where(eq(roles.id, roleId));
 
     // Permission set may have changed — drop the cached permissions for this role so the next
     // request for any user holding it reloads fresh.

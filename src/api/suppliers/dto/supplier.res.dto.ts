@@ -1,4 +1,4 @@
-import { Exclude, Expose } from 'class-transformer';
+import { Exclude, Expose, Transform } from 'class-transformer';
 
 import { SupplierStatus, SupplierType } from '../../../database/schemas';
 import {
@@ -12,6 +12,8 @@ import {
   UUIDField,
 } from '../../../decorators/field.decorators';
 import { CountryRefResDto } from './country-ref.res.dto';
+import { FileResDto } from '../../files/dto/file.res.dto';
+import { toFileResDto } from '../../files/dto/to-file-res.dto.util';
 import { SupplierAttachmentResDto } from './supplier-attachment.res.dto';
 import { SupplierCreatorResDto } from './supplier-creator.res.dto';
 import { SupplierGroupRefResDto } from './supplier-group-ref.res.dto';
@@ -61,8 +63,14 @@ export class SupplierResDto {
   note!: string | null;
 
   @Expose()
-  @StringFieldOptional({ nullable: true })
-  logoUrl!: string | null;
+  // `toClassOnly`: the global ClassSerializerInterceptor serialises this DTO a second
+  // time, and on that pass `obj` is the DTO instance — which has no `logoFile` — so an
+  // unrestricted transform would overwrite the resolved file with null.
+  @Transform(({ obj }: { obj: { logoFile?: unknown } }) => toFileResDto(obj.logoFile), {
+    toClassOnly: true,
+  })
+  @ClassFieldOptional(() => FileResDto, { nullable: true, description: 'Logo file' })
+  logo!: FileResDto | null;
 
   @Expose()
   @ClassFieldOptional(() => CountryRefResDto, { nullable: true })

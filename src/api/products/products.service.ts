@@ -1,23 +1,44 @@
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
-import { and, count as drizzleCount, desc, eq, inArray, isNull, ne, or } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, isNull, ne, or } from 'drizzle-orm';
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
-import type { Database } from '../../database/database.type';
-import { clients, productGroups, products, ProductStatus, units } from '../../database/schemas';
+import type { Database, DbTransaction } from '../../database/database.type';
+import {
+  clients,
+  productAttachments,
+  productGroups,
+  products,
+  ProductStatus,
+  units,
+  UnitScope,
+} from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
+import { FilesService } from '../files/files.service';
 import { CreateProductReqDto } from './dto/create-product.req.dto';
 import { GetProductsReqDto } from './dto/get-products.req.dto';
 import { ProductResDto } from './dto/product.res.dto';
 import { UpdateProductReqDto } from './dto/update-product.req.dto';
 
+const PRODUCT_DETAIL_WITH = {
+  client: true,
+  group: true,
+  unit: true,
+  creator: true,
+  imageFile: true,
+  attachments: { with: { file: true } },
+} as const;
+
 @Injectable()
 export class ProductsService {
-  constructor(@Inject(DRIZZLE) private readonly db: Database) {}
+  constructor(
+    @Inject(DRIZZLE) private readonly db: Database,
+    private readonly filesService: FilesService,
+  ) {}
 
   async getProducts(reqDto: GetProductsReqDto): Promise<OffsetPaginatedDto<ProductResDto>> {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
@@ -42,7 +63,7 @@ export class ProductsService {
     );
     const orderBy = desc(products.createdAt);
 
-    const [entities, count] = await Promise.all([
+    const [entities, countRows] = await Promise.all([
       this.db.query.products.findMany({
         where,
         limit: reqDto.limit,
@@ -53,28 +74,24 @@ export class ProductsService {
           group: true,
           unit: true,
           creator: true,
+          imageFile: true,
         },
       }),
-      this.db.select({ total: drizzleCount() }).from(products).where(where),
+      this.db.select({ total: count() }).from(products).where(where),
     ]);
 
     return new OffsetPaginatedDto(
       plainToInstance(ProductResDto, entities, {
         excludeExtraneousValues: true,
       }),
-      new OffsetPaginationDto(count[0]?.total ?? 0, reqDto),
+      new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
     );
   }
 
   async getProductDetail(productId: string): Promise<ProductResDto> {
     const product = await this.db.query.products.findFirst({
       where: and(eq(products.id, productId), isNull(products.deletedAt)),
-      with: {
-        client: true,
-        group: true,
-        unit: true,
-        creator: true,
-      },
+      with: PRODUCT_DETAIL_WITH,
     });
 
     if (!product) {
@@ -101,24 +118,34 @@ export class ProductsService {
     if (reqDto.productGroupId) {
       await this.ensureProductGroupExists(reqDto.productGroupId);
     }
+    await this.linkSuppliedFiles(reqDto);
 
-    const [product] = await this.db
-      .insert(products)
-      .values({
-        code,
-        name: reqDto.name,
-        imageUrl: reqDto.imageUrl,
-        revision: reqDto.revision ?? 'R01',
-        status: reqDto.status ?? ProductStatus.ACTIVE,
-        note: reqDto.note,
-        clientId: reqDto.clientId,
-        productGroupId: reqDto.productGroupId,
-        unitId: reqDto.unitId,
-        createdBy: userId,
-      })
-      .returning();
+    // `attachmentFileIds` has no column on `products` — it must be peeled off before the spread,
+    // or drizzle tries to write a field that does not exist.
+    const { attachmentFileIds, ...productFields } = reqDto;
 
-    return this.getProductDetail(product.id);
+    // The product row and its attachments must land together: without this transaction a failing
+    // attachment insert would leave a committed product with no documents.
+    const productId = await this.db.transaction(async (tx) => {
+      const [product] = await tx
+        .insert(products)
+        .values({
+          ...productFields,
+          code,
+          revision: reqDto.revision ?? 'R01',
+          status: reqDto.status ?? ProductStatus.ACTIVE,
+          createdBy: userId,
+        })
+        .returning();
+
+      if (attachmentFileIds?.length) {
+        await this.insertAttachments(tx, product.id, attachmentFileIds);
+      }
+
+      return product.id;
+    });
+
+    return this.getProductDetail(productId);
   }
 
   async updateProduct(productId: string, reqDto: UpdateProductReqDto): Promise<ProductResDto> {
@@ -136,24 +163,27 @@ export class ProductsService {
     if (reqDto.productGroupId) {
       await this.ensureProductGroupExists(reqDto.productGroupId);
     }
+    await this.linkSuppliedFiles(reqDto);
 
-    const [product] = await this.db
-      .update(products)
-      .set({
-        code: reqDto.code,
-        name: reqDto.name,
-        imageUrl: reqDto.imageUrl,
-        revision: reqDto.revision,
-        status: reqDto.status,
-        note: reqDto.note,
-        clientId: reqDto.clientId,
-        productGroupId: reqDto.productGroupId,
-        unitId: reqDto.unitId,
-      })
-      .where(eq(products.id, productId))
-      .returning();
+    const { attachmentFileIds, ...productFields } = reqDto;
 
-    return this.getProductDetail(product.id);
+    await this.db.transaction(async (tx) => {
+      // `updatedAt` is always written, which doubles as the reason `.set()` is safe here: drizzle
+      // throws a bare "No values to set" (a 500) when every value is `undefined`, which is the
+      // normal shape of a PATCH touching only `attachmentFileIds`.
+      await tx
+        .update(products)
+        .set({ ...productFields, updatedAt: new Date() })
+        .where(eq(products.id, productId));
+
+      // Truthiness on the array itself, not `.length`: `[]` means "remove every document",
+      // `undefined` means "this PATCH does not touch documents".
+      if (attachmentFileIds) {
+        await this.replaceAttachments(tx, productId, attachmentFileIds);
+      }
+    });
+
+    return this.getProductDetail(productId);
   }
 
   async deleteProduct(productId: string): Promise<void> {
@@ -166,23 +196,84 @@ export class ProductsService {
     const original = await this.ensureProductExists(productId);
     const code = await this.generateProductCode();
 
-    const [product] = await this.db
-      .insert(products)
-      .values({
-        code,
-        name: original.name,
-        imageUrl: original.imageUrl,
-        revision: original.revision,
-        status: original.status,
-        note: original.note,
-        clientId: original.clientId,
-        productGroupId: original.productGroupId,
-        unitId: original.unitId,
-        createdBy: userId,
-      })
-      .returning();
+    // The copy points at the same file rows as the original — `files` is a registry, and both
+    // products referencing one row is exactly what it is for. Skipping this would silently give
+    // the copy an empty document list.
+    const originalAttachments = await this.db.query.productAttachments.findMany({
+      columns: { fileId: true },
+      where: eq(productAttachments.productId, productId),
+    });
 
-    return this.getProductDetail(product.id);
+    const copyId = await this.db.transaction(async (tx) => {
+      const [product] = await tx
+        .insert(products)
+        .values({
+          code,
+          name: original.name,
+          imageFileId: original.imageFileId,
+          revision: original.revision,
+          status: original.status,
+          note: original.note,
+          clientId: original.clientId,
+          productGroupId: original.productGroupId,
+          unitId: original.unitId,
+          createdBy: userId,
+        })
+        .returning();
+
+      if (originalAttachments.length) {
+        await this.insertAttachments(
+          tx,
+          product.id,
+          originalAttachments.map(({ fileId }) => fileId),
+        );
+      }
+
+      return product.id;
+    });
+
+    return this.getProductDetail(copyId);
+  }
+
+  /**
+   * Validates every file id the request carries and marks them linked, so the orphan sweeper
+   * leaves them alone. Runs **before** the transaction on purpose — see `FilesService.linkFiles`.
+   */
+  private async linkSuppliedFiles(
+    reqDto: CreateProductReqDto | UpdateProductReqDto,
+  ): Promise<void> {
+    const fileIds = [reqDto.imageFileId, ...(reqDto.attachmentFileIds ?? [])].filter(
+      (fileId): fileId is string => Boolean(fileId),
+    );
+
+    await this.filesService.linkFiles(fileIds);
+  }
+
+  /**
+   * Writes the attachment rows. Takes `tx` (not `this.db`) so it can only ever be called from
+   * inside an open transaction — passing the pooled connection is a compile error.
+   */
+  private async insertAttachments(
+    tx: DbTransaction,
+    productId: string,
+    fileIds: string[],
+  ): Promise<void> {
+    await tx.insert(productAttachments).values(fileIds.map((fileId) => ({ productId, fileId })));
+  }
+
+  /** Replace-all. `tx` is required so a caller cannot accidentally write outside the transaction. */
+  private async replaceAttachments(
+    tx: DbTransaction,
+    productId: string,
+    attachmentFileIds: string[],
+  ): Promise<void> {
+    await tx.delete(productAttachments).where(eq(productAttachments.productId, productId));
+
+    if (attachmentFileIds.length) {
+      await tx
+        .insert(productAttachments)
+        .values(attachmentFileIds.map((fileId) => ({ productId, fileId })));
+    }
   }
 
   private async ensureProductExists(productId: string) {
@@ -212,14 +303,22 @@ export class ProductsService {
     }
   }
 
+  /**
+   * The unit must exist *and* be flagged as usable on products — filtering the dropdown with
+   * `GET /units?scope=PRODUCT` is cosmetic on its own, a client can still post any unit id.
+   */
   private async ensureUnitExists(unitId: string): Promise<void> {
     const existing = await this.db.query.units.findFirst({
       columns: { id: true },
+      with: { scopes: { columns: { scope: true } } },
       where: eq(units.id, unitId),
     });
 
     if (!existing) {
       throw new AppException(ErrorCode.E011, HttpStatus.NOT_FOUND);
+    }
+    if (!existing.scopes.some(({ scope }) => scope === UnitScope.PRODUCT)) {
+      throw new AppException(ErrorCode.E043, HttpStatus.BAD_REQUEST);
     }
   }
 
@@ -246,7 +345,7 @@ export class ProductsService {
   }
 
   private async generateProductCode(): Promise<string> {
-    const [totalRows] = await this.db.select({ total: drizzleCount() }).from(products);
+    const [totalRows] = await this.db.select({ total: count() }).from(products);
     return `SP${String((totalRows?.total ?? 0) + 1).padStart(4, '0')}`;
   }
 }

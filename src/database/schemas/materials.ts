@@ -1,20 +1,10 @@
 import { relations } from 'drizzle-orm';
-import {
-  index,
-  integer,
-  jsonb,
-  numeric,
-  pgEnum,
-  pgTable,
-  timestamp,
-  uuid,
-  varchar,
-} from 'drizzle-orm/pg-core';
+import { index, numeric, pgEnum, pgTable, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
 
 import { clients } from './clients';
 import { credentials } from './credentials';
+import { files } from './files';
 import { materialGroups } from './material-groups';
-import { suppliers } from './suppliers';
 import { units } from './units';
 
 export enum MaterialType {
@@ -39,8 +29,8 @@ export const materialStatusEnum = pgEnum('material_status', [
 
 /**
  * Materials master data ("vật tư"). No soft delete: a material is either ACTIVE or INACTIVE
- * ("ngừng sử dụng"), and hard delete is only allowed while it has no transactions. `code` is
- * immutable. When `type` is CLIENT, `clientId` is required (enforced in the service).
+ * ("ngừng sử dụng"). `code` is immutable. When `type` is CLIENT, `clientId` is required
+ * (enforced in the service).
  */
 export const materials = pgTable(
   'materials',
@@ -56,7 +46,7 @@ export const materials = pgTable(
       .references(() => materialGroups.id, { onDelete: 'restrict' }),
     type: materialTypeEnum('type').notNull().default(MaterialType.INTERNAL),
     clientId: uuid('client_id').references(() => clients.id, { onDelete: 'set null' }),
-    imageUrl: varchar('image_url', { length: 500 }),
+    imageFileId: uuid('image_file_id').references(() => files.id, { onDelete: 'set null' }),
     status: materialStatusEnum('status').notNull().default(MaterialStatus.ACTIVE),
     note: varchar('note', { length: 1000 }),
 
@@ -68,9 +58,6 @@ export const materials = pgTable(
     colorSurface: varchar('color_surface', { length: 255 }),
     description: varchar('description', { length: 2000 }),
     origin: varchar('origin', { length: 255 }),
-    preferredSupplierId: uuid('preferred_supplier_id').references(() => suppliers.id, {
-      onDelete: 'set null',
-    }),
     leadTime: varchar('lead_time', { length: 100 }),
 
     createdBy: uuid('created_by').references(() => credentials.id, { onDelete: 'set null' }),
@@ -88,7 +75,10 @@ export const materials = pgTable(
   ],
 );
 
-/** 1-many with materials: the "images & documents" tab, replace-all on update. */
+/**
+ * 1-many with materials: the "images & documents" tab. Each row is a link to a `files` registry
+ * row, never a bare URL. Replace-all on update.
+ */
 export const materialAttachments = pgTable(
   'material_attachments',
   {
@@ -96,32 +86,12 @@ export const materialAttachments = pgTable(
     materialId: uuid('material_id')
       .notNull()
       .references(() => materials.id, { onDelete: 'cascade' }),
-    url: varchar('url', { length: 500 }).notNull(),
-    filename: varchar('filename', { length: 255 }).notNull(),
-    mimetype: varchar('mimetype', { length: 100 }),
-    size: integer('size'),
+    fileId: uuid('file_id')
+      .notNull()
+      .references(() => files.id, { onDelete: 'cascade' }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => [index('idx_material_attachments_material_id').on(table.materialId)],
-);
-
-/**
- * Change log ("lịch sử thay đổi") for a material. `changes` holds `{ field: { from, to } }` for
- * UPDATE and the initial field snapshot for CREATE. Cascades on material delete.
- */
-export const materialLogs = pgTable(
-  'material_logs',
-  {
-    id: uuid('id').defaultRandom().primaryKey(),
-    materialId: uuid('material_id')
-      .notNull()
-      .references(() => materials.id, { onDelete: 'cascade' }),
-    action: varchar('action', { length: 20 }).notNull(),
-    changes: jsonb('changes').$type<Record<string, unknown>>().notNull().default({}),
-    changedBy: uuid('changed_by').references(() => credentials.id, { onDelete: 'set null' }),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-  },
-  (table) => [index('idx_material_logs_material_id').on(table.materialId)],
 );
 
 export const materialsRelations = relations(materials, ({ one, many }) => ({
@@ -137,16 +107,15 @@ export const materialsRelations = relations(materials, ({ one, many }) => ({
     fields: [materials.clientId],
     references: [clients.id],
   }),
-  preferredSupplier: one(suppliers, {
-    fields: [materials.preferredSupplierId],
-    references: [suppliers.id],
-  }),
   creator: one(credentials, {
     fields: [materials.createdBy],
     references: [credentials.id],
   }),
+  imageFile: one(files, {
+    fields: [materials.imageFileId],
+    references: [files.id],
+  }),
   attachments: many(materialAttachments),
-  logs: many(materialLogs),
 }));
 
 export const materialAttachmentsRelations = relations(materialAttachments, ({ one }) => ({
@@ -154,15 +123,8 @@ export const materialAttachmentsRelations = relations(materialAttachments, ({ on
     fields: [materialAttachments.materialId],
     references: [materials.id],
   }),
-}));
-
-export const materialLogsRelations = relations(materialLogs, ({ one }) => ({
-  material: one(materials, {
-    fields: [materialLogs.materialId],
-    references: [materials.id],
-  }),
-  changer: one(credentials, {
-    fields: [materialLogs.changedBy],
-    references: [credentials.id],
+  file: one(files, {
+    fields: [materialAttachments.fileId],
+    references: [files.id],
   }),
 }));

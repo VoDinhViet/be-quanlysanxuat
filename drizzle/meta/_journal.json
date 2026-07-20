@@ -169,6 +169,76 @@
       "when": 1784388448588,
       "tag": "0023_old_hedge_knight",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1784514162043,
+      "tag": "0024_clumsy_ares",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1784514233869,
+      "tag": "0025_premium_siren",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1784519210162,
+      "tag": "0026_violet_red_hulk",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1784521200705,
+      "tag": "0027_fine_nextwave",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1784525740630,
+      "tag": "0028_ambitious_malice",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1784530824580,
+      "tag": "0029_majestic_night_thrasher",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1784530841755,
+      "tag": "0030_good_blink",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1784531883514,
+      "tag": "0031_stale_energizer",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1784533639643,
+      "tag": "0032_lively_norrin_radd",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1784538232835,
+      "tag": "0033_tense_slapstick",
+      "breakpoints": true
     }
   ]
 }

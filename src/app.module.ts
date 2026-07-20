@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { JwtAuthGuard } from './api/auth/guards/jwt-auth.guard';
@@ -8,36 +9,43 @@ import { PermissionsGuard } from './api/auth/guards/permissions.guard';
 import { MaterialGroupsModule } from './api/material-groups/material-groups.module';
 import { MaterialsModule } from './api/materials/materials.module';
 import { RolesModule } from './api/roles/roles.module';
+import { SupplierGroupsModule } from './api/supplier-groups/supplier-groups.module';
+import { SuppliersModule } from './api/suppliers/suppliers.module';
 import appConfig from './config/app.config';
+import uploadConfig from './config/upload.config';
 import authConfig from './api/auth/config/auth.config';
 import databaseConfig from './database/config/database.config';
 import redisConfig from './redis/redis.config';
 import { DatabaseModule } from './database/database.module';
 import { RedisModule } from './redis/redis.module';
+import { StorageModule } from './storage/storage.module';
 import { AuthModule } from './api/auth/auth.module';
 import { ClientGroupsModule } from './api/client-groups/client-groups.module';
 import { ClientsModule } from './api/clients/clients.module';
 import { CountriesModule } from './api/countries/countries.module';
 import { DepartmentsModule } from './api/departments/departments.module';
+import { FilesModule } from './api/files/files.module';
 import { HealthModule } from './api/health/health.module';
 import { PositionsModule } from './api/positions/positions.module';
 import { ProductGroupsModule } from './api/product-groups/product-groups.module';
 import { ProductsModule } from './api/products/products.module';
-import { SupplierGroupsModule } from './api/supplier-groups/supplier-groups.module';
-import { SuppliersModule } from './api/suppliers/suppliers.module';
 import { UnitsModule } from './api/units/units.module';
-import { UploadsModule } from './api/uploads/uploads.module';
 import { UsersModule } from './api/users/users.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
-      load: [appConfig, authConfig, databaseConfig, redisConfig],
+      load: [appConfig, authConfig, databaseConfig, redisConfig, uploadConfig],
       isGlobal: true,
     }),
 
+    // Drives FilesCleanupService. In-memory timers, so this only ticks when the app runs as a
+    // long-lived process (`main.ts`'s `instance.listen`), not under the serverless handler export.
+    ScheduleModule.forRoot(),
+
     DatabaseModule,
     RedisModule,
+    StorageModule,
     AuthModule,
     UsersModule,
     ClientsModule,
@@ -47,14 +55,14 @@ import { UsersModule } from './api/users/users.module';
     UnitsModule,
     ProductsModule,
     DepartmentsModule,
+    FilesModule,
     PositionsModule,
-    UploadsModule,
-    SupplierGroupsModule,
-    SuppliersModule,
     HealthModule,
     RolesModule,
     MaterialGroupsModule,
     MaterialsModule,
+    SuppliersModule,
+    SupplierGroupsModule,
   ],
 
   controllers: [AppController],

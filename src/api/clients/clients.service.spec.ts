@@ -207,15 +207,20 @@ describe('ClientsService', () => {
       expect(mockDb.update).toHaveBeenCalled();
     });
 
-    it('does not issue an UPDATE when only contacts are sent (no values to set)', async () => {
+    // A PATCH touching only `contacts` leaves every client-level field `undefined`. That used to
+    // be skipped; it now writes `updated_at` alone, which is what keeps drizzle from throwing
+    // "No values to set" (a 500).
+    it('issues a safe updated_at-only UPDATE when only contacts are sent', async () => {
       mockDb.query.clients.findFirst.mockResolvedValue({ id: 'c1' });
 
-      await service.updateClient(
-        'c1',
-        Object.assign(new UpdateClientReqDto(), { contacts: [{ name: 'Trần Thị B' }] }),
-      );
+      await expect(
+        service.updateClient(
+          'c1',
+          Object.assign(new UpdateClientReqDto(), { contacts: [{ name: 'Trần Thị B' }] }),
+        ),
+      ).resolves.toBeDefined();
 
-      expect(mockDb.update).not.toHaveBeenCalled();
+      expect(mockDb.update).toHaveBeenCalled();
       expect(mockDb.delete).toHaveBeenCalled(); // replaceContacts still runs
     });
 

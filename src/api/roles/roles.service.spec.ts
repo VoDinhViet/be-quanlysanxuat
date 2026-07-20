@@ -250,12 +250,17 @@ describe('RolesService', () => {
       expect(mockPermissionsService.invalidateRole).toHaveBeenCalledWith('role-1');
     });
 
-    it('skips the UPDATE when no fields are sent but still invalidates the cache', async () => {
+    // An empty PATCH used to be skipped entirely. It now issues a harmless `updated_at`-only
+    // UPDATE — the always-present timestamp is what stops drizzle throwing "No values to set",
+    // which would surface as a 500.
+    it('still issues a safe UPDATE and invalidates the cache when no fields are sent', async () => {
       mockDb.query.roles.findFirst.mockResolvedValue(buildRole());
 
-      await service.updateRole('role-1', new UpdateRoleReqDto(), 'actor-cred');
+      await expect(
+        service.updateRole('role-1', new UpdateRoleReqDto(), 'actor-cred'),
+      ).resolves.toBeDefined();
 
-      expect(mockDb.update).not.toHaveBeenCalled();
+      expect(mockDb.update).toHaveBeenCalled();
       expect(mockPermissionsService.invalidateRole).toHaveBeenCalledWith('role-1');
     });
   });

@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
-import { and, count as drizzleCount, desc, or } from 'drizzle-orm';
+import { and, count, desc, or } from 'drizzle-orm';
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
@@ -26,21 +26,21 @@ export class DepartmentsService {
     );
     const orderBy = desc(departments.createdAt);
 
-    const [entities, count] = await Promise.all([
+    const [entities, countRows] = await Promise.all([
       this.db.query.departments.findMany({
         where,
         limit: reqDto.limit,
         offset: reqDto.offset,
         orderBy,
       }),
-      this.db.select({ total: drizzleCount() }).from(departments).where(where),
+      this.db.select({ total: count() }).from(departments).where(where),
     ]);
 
     return new OffsetPaginatedDto(
       plainToInstance(DepartmentResDto, entities, {
         excludeExtraneousValues: true,
       }),
-      new OffsetPaginationDto(count[0]?.total ?? 0, reqDto),
+      new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
     );
   }
 }

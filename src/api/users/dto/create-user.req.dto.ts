@@ -9,6 +9,7 @@ import {
   StringField,
   StringFieldOptional,
   UUIDField,
+  UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
 import { CreateCredentialReqDto } from './create-credential.req.dto';
 
@@ -34,8 +35,8 @@ export class CreateUserReqDto {
   @StringFieldOptional({ description: 'Permanent address', nullable: true, maxLength: 500 })
   address?: string | null;
 
-  @StringFieldOptional({ description: 'Avatar image URL', nullable: true, maxLength: 500 })
-  avatarUrl?: string | null;
+  @UUIDFieldOptional({ description: 'Avatar file id (from POST /files)', nullable: true })
+  avatarFileId?: string | null;
 
   @UUIDField({ description: 'Department id' })
   departmentId!: string;

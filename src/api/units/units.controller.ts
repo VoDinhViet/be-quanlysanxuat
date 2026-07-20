@@ -1,7 +1,6 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 
-import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { ApiPublic } from '../../decorators/http.decorators';
 import { GetUnitsReqDto } from './dto/get-units.req.dto';
 import { UnitResDto } from './dto/unit.res.dto';
@@ -16,9 +15,9 @@ export class UnitsController {
   @ApiPublic({
     type: UnitResDto,
     summary: 'List units',
-    isPaginated: true,
+    isArray: true,
   })
-  getUnits(@Query() reqDto: GetUnitsReqDto): Promise<OffsetPaginatedDto<UnitResDto>> {
+  getUnits(@Query() reqDto: GetUnitsReqDto): Promise<UnitResDto[]> {
     return this.unitsService.getUnits(reqDto);
   }
 }

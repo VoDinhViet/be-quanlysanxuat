@@ -7,15 +7,25 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 
 import * as schema from '../schemas';
-import { units } from '../schemas/units';
+import { units, unitScopes, UnitScope } from '../schemas/units';
 
+const { PRODUCT, MATERIAL, SEMI_FINISHED } = UnitScope;
+
+/**
+ * `scopes` says which kinds of entity may be measured in each unit — raw-stock units (Tấm, Cây,
+ * Mét) are material-only, while piece/weight units apply everywhere.
+ *
+ * Idempotent by `code`, and it **skips units that already exist**, so re-running will not add or
+ * remove scopes on a unit already in the DB. Changing scopes later is a migration (or a future
+ * admin screen), not a re-seed.
+ */
 const UNITS = [
-  { code: 'TAM', name: 'Tấm' },
-  { code: 'CAY', name: 'Cây' },
-  { code: 'CAI', name: 'Cái' },
-  { code: 'KG', name: 'Kg' },
-  { code: 'BO', name: 'Bộ' },
-  { code: 'MET', name: 'Mét' },
+  { code: 'TAM', name: 'Tấm', scopes: [MATERIAL] },
+  { code: 'CAY', name: 'Cây', scopes: [MATERIAL] },
+  { code: 'MET', name: 'Mét', scopes: [MATERIAL] },
+  { code: 'CAI', name: 'Cái', scopes: [PRODUCT, MATERIAL, SEMI_FINISHED] },
+  { code: 'BO', name: 'Bộ', scopes: [PRODUCT, MATERIAL, SEMI_FINISHED] },
+  { code: 'KG', name: 'Kg', scopes: [PRODUCT, MATERIAL, SEMI_FINISHED] },
 ];
 
 async function main() {
@@ -36,16 +46,22 @@ async function main() {
 }
 
 async function seedUnits(db: ReturnType<typeof drizzle<typeof schema>>) {
-  for (const unit of UNITS) {
-    const existing = await db.query.units.findFirst({ where: eq(units.code, unit.code) });
+  for (const { code, name, scopes } of UNITS) {
+    const existing = await db.query.units.findFirst({ where: eq(units.code, code) });
 
     if (existing) {
-      console.log(`Unit "${unit.code}" already exists. Skipping.`);
+      console.log(`Unit "${code}" already exists. Skipping.`);
       continue;
     }
 
-    await db.insert(units).values(unit);
-    console.log(`Unit "${unit.code}" (${unit.name}) created.`);
+    // The unit row and its scope rows must land together — a unit with no scope is unusable
+    // everywhere, which is worse than not having created it at all.
+    await db.transaction(async (tx) => {
+      const [unit] = await tx.insert(units).values({ code, name }).returning();
+      await tx.insert(unitScopes).values(scopes.map((scope) => ({ unitId: unit.id, scope })));
+    });
+
+    console.log(`Unit "${code}" (${name}) created with scopes: ${scopes.join(', ')}.`);
   }
 }
 

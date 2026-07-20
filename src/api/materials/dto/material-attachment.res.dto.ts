@@ -1,12 +1,7 @@
 import { Exclude, Expose } from 'class-transformer';
 
-import {
-  DateField,
-  NumberFieldOptional,
-  StringField,
-  StringFieldOptional,
-  UUIDField,
-} from '../../../decorators/field.decorators';
+import { ClassField, UUIDField } from '../../../decorators/field.decorators';
+import { FileResDto } from '../../files/dto/file.res.dto';
 
 @Exclude()
 export class MaterialAttachmentResDto {
@@ -15,22 +10,6 @@ export class MaterialAttachmentResDto {
   id!: string;
 
   @Expose()
-  @StringField()
-  url!: string;
-
-  @Expose()
-  @StringField()
-  filename!: string;
-
-  @Expose()
-  @StringFieldOptional({ nullable: true })
-  mimetype!: string | null;
-
-  @Expose()
-  @NumberFieldOptional({ nullable: true })
-  size!: number | null;
-
-  @Expose()
-  @DateField()
-  createdAt!: Date;
+  @ClassField(() => FileResDto)
+  file!: FileResDto;
 }

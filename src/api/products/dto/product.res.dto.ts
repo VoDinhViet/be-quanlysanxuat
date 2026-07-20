@@ -1,5 +1,7 @@
-import { Exclude, Expose } from 'class-transformer';
+import { Exclude, Expose, Transform } from 'class-transformer';
 
+import { FileResDto } from '../../files/dto/file.res.dto';
+import { toFileResDto } from '../../files/dto/to-file-res.dto.util';
 import { ProductStatus } from '../../../database/schemas';
 import {
   ClassField,
@@ -10,6 +12,7 @@ import {
   StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
+import { ProductAttachmentResDto } from './product-attachment.res.dto';
 import { ProductCreatorResDto } from './product-creator.res.dto';
 import { ProductRefResDto } from './product-ref.res.dto';
 
@@ -28,8 +31,14 @@ export class ProductResDto {
   name!: string;
 
   @Expose()
-  @StringFieldOptional({ nullable: true })
-  imageUrl!: string | null;
+  // `toClassOnly`: the global ClassSerializerInterceptor serialises this DTO a second
+  // time, and on that pass `obj` is the DTO instance — which has no `imageFile` — so an
+  // unrestricted transform would overwrite the resolved file with null.
+  @Transform(({ obj }: { obj: { imageFile?: unknown } }) => toFileResDto(obj.imageFile), {
+    toClassOnly: true,
+  })
+  @ClassFieldOptional(() => FileResDto, { nullable: true, description: 'Image file' })
+  image!: FileResDto | null;
 
   @Expose()
   @StringField({ description: 'Revision, e.g. R01' })
@@ -58,6 +67,10 @@ export class ProductResDto {
   @Expose()
   @ClassFieldOptional(() => ProductCreatorResDto, { nullable: true })
   creator!: ProductCreatorResDto | null;
+
+  @Expose()
+  @ClassFieldOptional(() => ProductAttachmentResDto, { each: true })
+  attachments!: ProductAttachmentResDto[];
 
   @Expose()
   @DateField()

@@ -15,6 +15,24 @@ Reference implementation: `src/api/users/users.controller.ts` and `src/api/users
 - `@Injectable()`, inject the DB with `constructor(@Inject(DRIZZLE) private readonly db: Database)` (`DRIZZLE` token from `src/database/database.module.ts`, `Database` type from `src/database/database.type.ts`).
 - Read with the relational query API: `this.db.query.<table>.findMany({ where, limit, offset, orderBy })` / `.findFirst({ where, columns })`. Write with the builder API: `this.db.insert(table).values({...}).returning()`, `this.db.update(table).set({...}).where(...).returning()`.
 - Fetch nested relations for a response DTO with `with: { relation: true }` (full related row) — don't hand-pick `columns` there. The response DTO's `@Exclude()`/`@Expose()` (`.claude/rules/dto.md`) is what actually restricts the serialized shape, so mirroring a column list at the query layer is redundant and drifts out of sync as the DTO changes. This is different from `columns` on a root existence-check query (e.g. `ensureXExists`), which legitimately narrows to `{ id: true }` since there's no DTO involved.
+- **Build write payloads by spreading the DTO** (`{ ...reqDto }`), not by listing every column by hand. Adding a field to the DTO shouldn't require remembering a second edit — forget it and the field is silently never written, with no error. When the DTO also carries child collections that aren't columns on the table (`payment`, `contacts`, `representatives`, `attachmentFileIds`), peel them off first and spread the rest:
+
+  ```ts
+  const { payment, representatives, attachmentFileIds, ...supplierFields } = reqDto;
+  await tx.insert(suppliers).values({ ...supplierFields, code, createdBy: userId });
+  ```
+
+  `.values()`/`.set()` are strictly typed, so spreading a field that isn't a column is a compile error rather than a runtime surprise.
+- **Every partial UPDATE writes `updatedAt: new Date()` alongside the spread.** This is not cosmetic: `.set()` throws a bare `Error: No values to set` when every value is `undefined`, which reaches the client as a **500**, and that is the normal shape of an empty PATCH body or one touching only a child table (`{ payment: {...} }` on a supplier). The always-present timestamp keeps the statement valid. It also means a no-op PATCH bumps `updated_at` — accepted, since the row was addressed by a write request.
+
+  ```ts
+  await this.db
+    .update(clients)
+    .set({ ...clientFields, updatedAt: new Date() })
+    .where(eq(clients.id, clientId));
+  ```
+
+  (`$onUpdate` on the column does *not* cover this — drizzle rejects the empty set before applying it.)
 - Always map entities to response DTOs with `plainToInstance(XResDto, entity, { excludeExtraneousValues: true })` — never return a raw Drizzle row from a service method that a controller exposes.
 - After create/update, re-fetch the row by id (e.g. a `getXDetail(id)` helper) and map that — don't map the raw `.returning()` result directly.
 - Factor existence/uniqueness checks into private helpers, named by which of the two they do — don't mix the two verbs:
@@ -23,3 +41,28 @@ Reference implementation: `src/api/users/users.controller.ts` and `src/api/users
   - See `src/api/products/products.service.ts` for a service using both (`ensureUnitExists`, `ensureProductExists`, `validateCodeUniqueness`).
 - Throw business errors with `throw new AppException(ErrorCode.Exxx, HttpStatus.XXX)` — see `.claude/rules/errors-pagination.md`.
 - Configuration constants (e.g. bcrypt salt rounds) go on the class as `private static readonly NAME = value`.
+
+## Transactions
+
+Reference implementation: `MaterialsService.createMaterial` (`src/api/materials/materials.service.ts`) — the only transaction in the repo so far.
+
+- **When you need one**: two or more write statements that must all land or all roll back (parent row + child rows, replace-all on a child table, a write plus its audit-log row). A single write needs no transaction — Postgres already makes it atomic.
+- **Shape**: run every read-only check *first* (`ensureXExists`, `validateXUniqueness`, `FilesService.ensureFilesExist`), then wrap only the writes. Return the id from the callback and re-fetch the detail **after** the transaction commits — don't build a response DTO inside it.
+
+  ```ts
+  const materialId = await this.db.transaction(async (tx) => {
+    const [material] = await tx.insert(materials).values({...}).returning();
+    if (reqDto.attachmentFileIds?.length) {
+      await this.insertAttachments(tx, material.id, reqDto.attachmentFileIds);
+    }
+    return material.id;
+  });
+
+  return this.getMaterialDetail(materialId);
+  ```
+
+- **Inside the callback use `tx` for every statement — never `this.db`.** `this.db` checks out a *different* connection from the pool, so those statements run outside the transaction and commit on their own. There is no error and no warning when this happens; it is the easiest way to silently lose atomicity.
+- **A write helper called from a transaction takes `tx: DbTransaction` as its first, required parameter** (`DbTransaction` from `src/database/database.type.ts`) — not a `Database | DbTransaction` union and never a `= this.db` default. `Database` is not assignable to `DbTransaction`, so this turns the mistake above into a compile error instead of a convention to remember.
+- **Abort with `throw new AppException(...)`, not `tx.rollback()`.** Any throw inside the callback rolls the transaction back, and `AppException` keeps the right error code and HTTP status through `GlobalExceptionFilter`. `tx.rollback()` throws drizzle's `TransactionRollbackError`, which propagates out of `db.transaction()` untouched and surfaces to the client as a bare **500**.
+- **A transaction gives atomicity, not isolation from concurrent writers.** Uniqueness checks run before it opens, so a TOCTOU window remains (see `generateMaterialCode()`, which counts rows and adds 1). The only real defence is a DB unique constraint.
+- **Don't reach for these until a feature actually needs them**: nested `tx.transaction()` (real `SAVEPOINT`s) and the config argument (`isolationLevel` / `accessMode` / `deferrable`, emitted as `SET TRANSACTION ...`). The default `read committed` is fine; if you change it, write down why.

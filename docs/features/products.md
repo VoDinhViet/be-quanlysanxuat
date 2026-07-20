@@ -7,7 +7,7 @@ Manage the master catalog of products ("Sản phẩm — Dữ liệu nguồn") s
 ## Business rules
 
 - `code` is globally unique. If omitted on create, it's auto-generated as `SP` + a zero-padded sequential number (e.g. `SP0001`), based on the current total row count.
-- `unitId` is required and must reference an existing `units` row (`ErrorCode.E011` if not found).
+- `unitId` is required and must reference an existing `units` row (`ErrorCode.E011` if not found) that carries the `PRODUCT` scope (`ErrorCode.E043` if not — see `docs/features/units.md`).
 - `clientId` and `productGroupId` are optional; when provided they must reference existing rows (`ErrorCode.E009` / `E010`), and can be cleared by sending `null` on update.
 - `revision` defaults to `R01` on create. There is no revision history — updating `revision` just overwrites the stored value (see Out of scope).
 - `status` defaults to `ACTIVE` (`ACTIVE | INACTIVE`).
@@ -28,11 +28,14 @@ Manage the master catalog of products ("Sản phẩm — Dữ liệu nguồn") s
 | POST | `/products/:id/copy` | jwt | — | `201` + `ProductResDto` (duplicate with a new code) |
 | GET | `/clients` | public | `q`, `page`, `limit` | `OffsetPaginatedDto<ClientResDto>` (dropdown data) |
 | GET | `/product-groups` | public | `q`, `page`, `limit` | `OffsetPaginatedDto<ProductGroupResDto>` (dropdown data) |
-| GET | `/units` | public | `q`, `page`, `limit` | `OffsetPaginatedDto<UnitResDto>` (dropdown data) |
+| GET | `/units` | public | `q`, `scope` | `UnitResDto[]` — **not paginated** (dropdown data — pass `scope=PRODUCT`) |
+| POST | `/files` | jwt | `multipart`, `?type=PRODUCT_IMAGE` | `201` + `FileResDto` (upload before linking `imageFileId`) |
 
-- `ProductResDto` nests lightweight refs: `client { id, code, name } | null`, `group { id, code, name } | null`, `unit { id, code, name }`, `creator { id, username } | null`.
+- `ProductResDto` nests lightweight refs: `client { id, code, name } | null`, `group { id, code, name } | null`, `unit { id, code, name }`, `creator { id, username } | null`, and `image: FileResDto | null`.
+- **Images go through the `files` registry**, not a URL string: upload with `POST /files?type=PRODUCT_IMAGE`, then send the returned id as `imageFileId`. An unknown id 404s with `E042`. `POST /products/:id/copy` copies the `imageFileId`, so the copy shares the original's file — there is no reference counting, so deleting that file clears the image on both.
 - List/detail read routes are public (consistent with the rest of the `users`/`auth` module set at this stage of the project — see Out of scope). Only write routes (create/update/delete/copy) require a valid bearer access token.
 - `GET /clients`, `/product-groups`, `/units` are minimal list-only endpoints meant to populate dropdowns/filters on the products screen — full CRUD for these master-data entities is a separate, future task.
+- `GET /units` is the odd one out: it returns a bare array rather than a paginated envelope (see `docs/features/units.md` for why). `/clients` and `/product-groups` stay paginated.
 
 ## Error cases
 
@@ -43,6 +46,8 @@ Manage the master catalog of products ("Sản phẩm — Dữ liệu nguồn") s
 | `clientId` does not reference an existing client | `ErrorCode.E009` | 404 Not Found |
 | `productGroupId` does not reference an existing product group | `ErrorCode.E010` | 404 Not Found |
 | `unitId` does not reference an existing unit | `ErrorCode.E011` | 404 Not Found |
+| `imageFileId` does not reference a file in the registry | `ErrorCode.E042` | 404 Not Found |
+| The unit exists but isn't usable on products (e.g. `Mét`) | `ErrorCode.E043` | 400 Bad Request |
 
 ## Out of scope
 
@@ -50,16 +55,20 @@ Manage the master catalog of products ("Sản phẩm — Dữ liệu nguồn") s
 - No CRUD (create/update/delete) for `clients` / `product-groups` / `units` — only read-only list endpoints exist so far.
 - No backend Excel export — the frontend is expected to export from the already-fetched list data.
 - No `LOCKED` product status (only `ACTIVE`/`INACTIVE`) — no lock/unlock action on this screen.
-- No dedicated image upload wired into this endpoint — `imageUrl` is still a plain string set by the client. It can now be populated via the generic `POST /uploads` endpoint (see `docs/features/uploads.md`): upload the image first, then send the returned `url` as `imageUrl` on create/update.
 - No permission enforcement — `@Permissions('products:*')` decorators are metadata only (per `.claude/rules/api-module.md`); actual protection on write routes comes solely from `@UseGuards(JwtAuthGuard)`.
 
 ## Frontend integration notes
 
 - **Internal rename only (2026-07-16)**: `products.createdBy` now references the `credentials` table (renamed from `users` — see `docs/features/users.md`). No API contract change; `creator { id, username }` is unaffected.
 - **Breaking change (2026-07-15)**: `products.creator.fullName` → `products.creator.username`. The `credentials` table (then still called `users`) no longer has a `fullName` column (see `docs/features/users.md`), so the nested creator ref on every product now exposes `{ id, username }` instead of `{ id, fullName }`.
-- **New feature (2026-07-15)**: a generic image upload endpoint now exists at `POST /api/uploads` (see `docs/features/uploads.md`) — use it to get an `imageUrl` before creating/updating a product. This is a separate call, not part of `POST /products`/`PATCH /products/:id`.
+- **Breaking change (2026-07-20)**: the generic upload endpoint moved from `POST /api/uploads` to `POST /api/files` (field `file` + `kind: 'IMAGE'`, response now `{ id, url, originalName, mimetype, size, kind, createdAt }` instead of `{ url, filename, mimetype, size }` — see `docs/features/files.md`). ~~`products.imageUrl` itself is unaffected~~ — **superseded later the same day**: see the `imageFileId` note below.
+- **New feature (2026-07-15)**: a generic image upload endpoint now exists (see `docs/features/files.md`) — it is a separate call, not part of `POST /products`/`PATCH /products/:id`. (Its response is now linked as `imageFileId`, not `imageUrl` — see the 2026-07-20 note below.)
 - **New feature (2026-07-14)**: `products`, `clients`, `product-groups`, `units` are brand-new endpoints — nothing existed before this. Non-breaking (nothing to migrate from).
-- Populate the "Khách hàng" / "Nhóm sản phẩm" / "ĐVT" dropdowns and filters from `GET /clients`, `GET /product-groups`, `GET /units` respectively (each supports `?q=` for search-as-you-type).
+- Populate the "Khách hàng" / "Nhóm sản phẩm" / "ĐVT" dropdowns and filters from `GET /clients`, `GET /product-groups`, `GET /units?scope=PRODUCT` respectively (each supports `?q=` for search-as-you-type).
+- **Breaking change (2026-07-20)**: the ĐVT dropdown must now pass `scope=PRODUCT`. Without it `GET /units` still returns material-only units such as `Tấm`/`Mét`, and submitting one is rejected with **400 `E043`**.
+- **Breaking change (2026-07-20)**: product images moved to the `files` registry. `imageUrl` (plain string) is **gone** from create/update — upload via `POST /files?type=PRODUCT_IMAGE` and send the returned id as **`imageFileId`**. In responses, `imageUrl` is replaced by nested **`image: FileResDto | null`**; read the URL from `image.url`. That URL is signed and **expires after ~1 hour** — don't cache it, re-read the product to refresh (see `docs/features/files.md`).
+- **New (2026-07-20)**: `GET /product-groups` now returns seeded data (`THANH_PHAM`, `LINH_KIEN`, `VAT_TU`, `MUA_NGOAI`) — the table was previously empty, so the "Nhóm sản phẩm" dropdown was always blank. Its response also gained `description`, `createdAt`, `updatedAt` (fields added only, non-breaking). Details in `docs/features/product-groups.md`.
+- **Breaking change (2026-07-20)**: `GET /units` no longer paginates — it returns `UnitResDto[]` directly instead of `{ data, pagination }`. The ĐVT dropdown must read the array straight off the response; drop `?page=`/`?limit=`. `GET /clients` and `GET /product-groups` are unaffected and still paginated.
 - Write actions (Thêm/Sửa/Xóa/Nhân bản) require `Authorization: Bearer <accessToken>` — a logged-out user can still view the list/detail but gets `401` attempting to create/edit/delete/copy.
 - The search box on the list screen can send accent-insensitive Vietnamese text directly (no need to strip diacritics client-side); it matches product code, name, and group name.
 - "Nhân bản" (copy) is `POST /products/:id/copy` — no request body needed; the response is the newly created product with a fresh `code`.

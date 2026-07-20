@@ -15,7 +15,6 @@ import { ConfigService } from '@nestjs/config';
 import { NestFactory, Reflector } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { ValidationError } from 'class-validator';
-import { join } from 'path';
 import compression from 'compression';
 import type { Express, Request, Response } from 'express';
 import helmet from 'helmet';
@@ -38,11 +37,12 @@ export async function bootstrap(): Promise<Express> {
   );
   app.use(compression());
 
-  app.useStaticAssets(join(process.cwd(), 'uploads'), {
-    prefix: '/uploads/',
-  });
-
   const configService = app.get(ConfigService<AllConfigType>);
+
+  // No `useStaticAssets` for the upload dir, deliberately. Static middleware is registered on the
+  // raw Express adapter, so the global JwtAuthGuard/PermissionsGuard never see those requests —
+  // mounting `uploads/` here would publish every stored file to anyone who can guess a URL. Bytes
+  // are served only by `GET /files/:id/download`, behind a signed URL. Do not re-add this.
 
   app.enableCors({
     origin: configService.getOrThrow('app.corsOrigin', { infer: true }),

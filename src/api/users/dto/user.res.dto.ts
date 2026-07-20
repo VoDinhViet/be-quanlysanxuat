@@ -1,4 +1,4 @@
-import { Exclude, Expose } from 'class-transformer';
+import { Exclude, Expose, Transform } from 'class-transformer';
 
 import { UserGender, UserStatus } from '../../../database/schemas';
 import {
@@ -12,6 +12,8 @@ import {
   StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
+import { FileResDto } from '../../files/dto/file.res.dto';
+import { toFileResDto } from '../../files/dto/to-file-res.dto.util';
 import { NamedRefResDto } from './named-ref.res.dto';
 import { UserCredentialResDto } from './user-credential.res.dto';
 
@@ -54,8 +56,14 @@ export class UserResDto {
   address!: string | null;
 
   @Expose()
-  @StringFieldOptional({ nullable: true })
-  avatarUrl!: string | null;
+  // `toClassOnly`: the global ClassSerializerInterceptor serialises this DTO a second
+  // time, and on that pass `obj` is the DTO instance — which has no `avatarFile` — so an
+  // unrestricted transform would overwrite the resolved file with null.
+  @Transform(({ obj }: { obj: { avatarFile?: unknown } }) => toFileResDto(obj.avatarFile), {
+    toClassOnly: true,
+  })
+  @ClassFieldOptional(() => FileResDto, { nullable: true, description: 'Avatar file' })
+  avatar!: FileResDto | null;
 
   @Expose()
   @ClassField(() => NamedRefResDto)

@@ -23,8 +23,17 @@ export class CreateProductReqDto {
   @UUIDFieldOptional({ description: 'Product group id', nullable: true })
   productGroupId?: string | null;
 
-  @StringFieldOptional({ description: 'Image URL', nullable: true, maxLength: 500 })
-  imageUrl?: string | null;
+  @UUIDFieldOptional({
+    description: 'Image file id (from POST /files?type=PRODUCT_IMAGE)',
+    nullable: true,
+  })
+  imageFileId?: string | null;
+
+  @UUIDFieldOptional({
+    each: true,
+    description: 'Attachment file ids (from POST /files?type=PRODUCT_DOCUMENT)',
+  })
+  attachmentFileIds?: string[];
 
   @StringFieldOptional({ description: 'Revision, defaults to R01', maxLength: 50 })
   revision?: string;
