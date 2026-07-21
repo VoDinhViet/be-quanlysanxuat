@@ -12,7 +12,7 @@ import { UsersService } from './users.service';
 describe('UsersController', () => {
   let controller: UsersController;
   let mockService: {
-    getCredentialDetail: jest.Mock;
+    getCurrentUser: jest.Mock;
     getUsers: jest.Mock;
     getUserDetail: jest.Mock;
     createUser: jest.Mock;
@@ -24,7 +24,7 @@ describe('UsersController', () => {
 
   beforeEach(async () => {
     mockService = {
-      getCredentialDetail: jest.fn(),
+      getCurrentUser: jest.fn(),
       getUsers: jest.fn(),
       getUserDetail: jest.fn(),
       createUser: jest.fn(),
@@ -51,13 +51,13 @@ describe('UsersController', () => {
     expect(controller).toBeDefined();
   });
 
-  it('getCurrentUser delegates to UsersService.getCredentialDetail with the current user id', async () => {
+  it('getCurrentUser delegates to UsersService.getCurrentUser with the current user id', async () => {
     const expected = { id: 'cred-1' };
-    mockService.getCredentialDetail.mockResolvedValue(expected);
+    mockService.getCurrentUser.mockResolvedValue(expected);
 
     const result = await controller.getCurrentUser(payload);
 
-    expect(mockService.getCredentialDetail).toHaveBeenCalledWith(payload.sub);
+    expect(mockService.getCurrentUser).toHaveBeenCalledWith(payload.sub);
     expect(result).toBe(expected);
   });
 

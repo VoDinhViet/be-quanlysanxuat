@@ -1,4 +1,4 @@
-import { Exclude, Expose, Transform } from 'class-transformer';
+import { Exclude, Expose } from 'class-transformer';
 
 import { MaterialStatus, MaterialType } from '../../../database/schemas';
 import {
@@ -10,8 +10,8 @@ import {
   StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
+import { FileField } from '../../files/dto/file.field';
 import { FileResDto } from '../../files/dto/file.res.dto';
-import { toFileResDto } from '../../files/dto/to-file-res.dto.util';
 import { MaterialAttachmentResDto } from './material-attachment.res.dto';
 import { MaterialCreatorResDto } from './material-creator.res.dto';
 import { MaterialRefResDto } from './material-ref.res.dto';
@@ -51,13 +51,7 @@ export class MaterialResDto {
   client!: MaterialRefResDto | null;
 
   @Expose()
-  // `toClassOnly`: the global ClassSerializerInterceptor serialises this DTO a second
-  // time, and on that pass `obj` is the DTO instance — which has no `imageFile` — so an
-  // unrestricted transform would overwrite the resolved file with null.
-  @Transform(({ obj }: { obj: { imageFile?: unknown } }) => toFileResDto(obj.imageFile), {
-    toClassOnly: true,
-  })
-  @ClassFieldOptional(() => FileResDto, { nullable: true, description: 'Image file' })
+  @FileField('imageFile', 'Image file')
   image!: FileResDto | null;
 
   @Expose()

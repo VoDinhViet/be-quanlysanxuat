@@ -1,10 +1,14 @@
-import { ProductStatus } from '../../../database/schemas';
+import { ProductStatus, ProductType } from '../../../database/schemas';
 import {
   EnumFieldOptional,
   StringFieldOptional,
   UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
 
+/**
+ * No `revision` field — manage revisions via `POST /products/:id/revisions` and
+ * `POST /products/:id/revisions/:revisionId/activate` (see `product-revisions` module).
+ */
 export class UpdateProductReqDto {
   @StringFieldOptional({ description: 'Product name', maxLength: 255 })
   name?: string;
@@ -14,6 +18,9 @@ export class UpdateProductReqDto {
 
   @StringFieldOptional({ description: 'Product code', maxLength: 50 })
   code?: string;
+
+  @EnumFieldOptional(() => ProductType)
+  type?: ProductType;
 
   @UUIDFieldOptional({ description: 'Client id', nullable: true })
   clientId?: string | null;
@@ -32,9 +39,6 @@ export class UpdateProductReqDto {
     description: 'Attachment file ids (from POST /files?type=PRODUCT_DOCUMENT)',
   })
   attachmentFileIds?: string[];
-
-  @StringFieldOptional({ description: 'Revision', maxLength: 50 })
-  revision?: string;
 
   @EnumFieldOptional(() => ProductStatus)
   status?: ProductStatus;

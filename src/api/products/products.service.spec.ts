@@ -3,10 +3,11 @@ import { Test, TestingModule } from '@nestjs/testing';
 
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
-import { ProductStatus, UnitScope } from '../../database/schemas';
+import { ProductStatus, ProductType, UnitScope } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { chainableMock, QueryMockArgs } from '../../test-utils/chainable-mock.util';
 import { FilesService } from '../files/files.service';
+import { ProductRevisionsService } from '../product-revisions/product-revisions.service';
 import { CreateProductReqDto } from './dto/create-product.req.dto';
 import { GetProductsReqDto } from './dto/get-products.req.dto';
 import { UpdateProductReqDto } from './dto/update-product.req.dto';
@@ -29,9 +30,27 @@ describe('ProductsService', () => {
     transaction: jest.Mock;
   };
   let mockFilesService: { linkFiles: jest.Mock };
+  let mockProductRevisionsService: { createInitialRevision: jest.Mock };
 
   const buildReqDto = (overrides: Partial<GetProductsReqDto> = {}): GetProductsReqDto =>
     Object.assign(new GetProductsReqDto(), overrides);
+
+  /**
+   * `chainable()` hands back a fresh jest.fn on every property access, so `.values()` arguments
+   * can't be read back from it. This capturing variant records them for the tests that need to
+   * assert on what was actually written (e.g. the `type` default) — swapped into `mockDb.insert`
+   * only for those tests, same as `mockDb.select` is swapped per-test elsewhere in this file.
+   */
+  const captureInsert = (resultId = 'new-product-id') => {
+    const insertedValues: unknown[] = [];
+    const insert = jest.fn(() => ({
+      values: jest.fn((rows: unknown) => {
+        insertedValues.push(rows);
+        return { returning: jest.fn().mockResolvedValue([{ id: resultId }]) };
+      }),
+    }));
+    return { insert, insertedValues };
+  };
 
   beforeEach(async () => {
     mockDb = {
@@ -54,12 +73,16 @@ describe('ProductsService', () => {
       transaction: jest.fn(async (cb: (tx: unknown) => Promise<unknown>) => cb(mockDb)),
     };
     mockFilesService = { linkFiles: jest.fn() };
+    mockProductRevisionsService = {
+      createInitialRevision: jest.fn().mockResolvedValue('revision-id'),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ProductsService,
         { provide: DRIZZLE, useValue: mockDb },
         { provide: FilesService, useValue: mockFilesService },
+        { provide: ProductRevisionsService, useValue: mockProductRevisionsService },
       ],
     }).compile();
 
@@ -88,14 +111,16 @@ describe('ProductsService', () => {
         unit: true,
         creator: true,
         imageFile: true,
+        currentRevision: { columns: { revisionNo: true } },
       });
     });
 
-    it('applies clientId/productGroupId/status filters when provided', async () => {
+    it('applies clientId/productGroupId/type/status filters when provided', async () => {
       await service.getProducts(
         buildReqDto({
           clientId: 'client-1',
           productGroupId: 'group-1',
+          type: ProductType.WIP,
           status: ProductStatus.ACTIVE,
         }),
       );
@@ -131,6 +156,7 @@ describe('ProductsService', () => {
             creator: true,
             imageFile: true,
             attachments: { with: { file: true } },
+            currentRevision: { columns: { revisionNo: true } },
           },
         }),
       );
@@ -165,6 +191,26 @@ describe('ProductsService', () => {
       expect(mockDb.query.units.findFirst).toHaveBeenCalled();
       expect(mockDb.insert).toHaveBeenCalled();
       expect(result).toBeDefined();
+    });
+
+    it('bootstraps the initial revision and points the product at it', async () => {
+      mockDb.query.units.findFirst.mockResolvedValue({
+        id: 'unit-1',
+        scopes: [{ scope: UnitScope.PRODUCT }],
+      });
+      mockDb.query.products.findFirst.mockResolvedValue({ id: 'new-product-id' });
+      const { insert } = captureInsert('new-product-id'); // `.returning()` resolves this as product.id
+      mockDb.insert = insert;
+
+      await service.createProduct(reqDto, 'user-1');
+
+      expect(mockProductRevisionsService.createInitialRevision).toHaveBeenCalledWith(
+        mockDb, // the transaction callback receives `mockDb` itself, standing in for `tx`
+        'new-product-id',
+        'user-1',
+      );
+      // The revision id `createInitialRevision` resolves to must land on `products.currentRevisionId`.
+      expect(mockDb.update).toHaveBeenCalled();
     });
 
     it('throws E008 when the explicit code is already taken', async () => {
@@ -441,7 +487,7 @@ describe('ProductsService', () => {
   describe('copyProduct', () => {
     it('inserts a new product copied from the original with a fresh code', async () => {
       mockDb.query.products.findFirst
-        .mockResolvedValueOnce({ id: 'p1', name: 'Sản phẩm A', revision: 'R01' }) // ensureProductExists
+        .mockResolvedValueOnce({ id: 'p1', name: 'Sản phẩm A' }) // ensureProductExists
         .mockResolvedValueOnce({ id: 'new-product-id' }); // getProductDetail
       mockDb.select = chainableMock([{ total: 5 }]);
 
@@ -453,7 +499,7 @@ describe('ProductsService', () => {
 
     it('clones the original attachments onto the copy', async () => {
       mockDb.query.products.findFirst
-        .mockResolvedValueOnce({ id: 'p1', name: 'Sản phẩm A', revision: 'R01' })
+        .mockResolvedValueOnce({ id: 'p1', name: 'Sản phẩm A' })
         .mockResolvedValueOnce({ id: 'new-product-id' });
       mockDb.query.productAttachments.findMany.mockResolvedValue([
         { fileId: 'doc-a' },
@@ -462,7 +508,9 @@ describe('ProductsService', () => {
 
       await service.copyProduct('p1', 'user-1');
 
-      // Two inserts: the product row, then its attachment rows.
+      // Two REAL inserts: the product row, then its attachment rows — `createInitialRevision` is
+      // mocked in this spec (its own transactional insert is covered in
+      // `product-revisions.service.spec.ts`), so it never calls `tx.insert` here.
       expect(mockDb.insert).toHaveBeenCalledTimes(2);
     });
 
@@ -473,6 +521,72 @@ describe('ProductsService', () => {
         status: HttpStatus.NOT_FOUND,
         response: { errorCode: ErrorCode.E007 },
       });
+    });
+
+    it('carries the original type over onto the copy', async () => {
+      mockDb.query.products.findFirst
+        .mockResolvedValueOnce({ id: 'p1', name: 'Sản phẩm A', type: ProductType.WIP })
+        .mockResolvedValueOnce({ id: 'copy-id' });
+      mockDb.select = chainableMock([{ total: 5 }]);
+      const { insert, insertedValues } = captureInsert('copy-id');
+      mockDb.insert = insert;
+
+      await service.copyProduct('p1', 'user-1');
+
+      expect((insertedValues[0] as Record<string, unknown>).type).toBe(ProductType.WIP);
+    });
+
+    it('creates a fresh initial revision for the copy rather than carrying the source’s over', async () => {
+      mockDb.query.products.findFirst
+        .mockResolvedValueOnce({ id: 'p1', name: 'Sản phẩm A' })
+        .mockResolvedValueOnce({ id: 'copy-id' });
+      mockDb.select = chainableMock([{ total: 5 }]);
+      const { insert } = captureInsert('copy-id');
+      mockDb.insert = insert;
+
+      await service.copyProduct('p1', 'user-1');
+
+      expect(mockProductRevisionsService.createInitialRevision).toHaveBeenCalledWith(
+        mockDb,
+        'copy-id',
+        'user-1',
+      );
+    });
+  });
+
+  describe('type (FG/WIP)', () => {
+    const reqDto: CreateProductReqDto = Object.assign(new CreateProductReqDto(), {
+      name: 'Sản phẩm A',
+      unitId: 'unit-1',
+    });
+
+    beforeEach(() => {
+      mockDb.query.units.findFirst.mockResolvedValue({
+        id: 'unit-1',
+        scopes: [{ scope: UnitScope.PRODUCT }],
+      });
+      mockDb.query.products.findFirst.mockResolvedValue({ id: 'new-product-id' });
+    });
+
+    it('defaults to FG when omitted on create', async () => {
+      const { insert, insertedValues } = captureInsert();
+      mockDb.insert = insert;
+
+      await service.createProduct(reqDto, 'user-1');
+
+      expect((insertedValues[0] as Record<string, unknown>).type).toBe(ProductType.FG);
+    });
+
+    it('respects an explicit type on create', async () => {
+      const { insert, insertedValues } = captureInsert();
+      mockDb.insert = insert;
+
+      await service.createProduct(
+        Object.assign(new CreateProductReqDto(), reqDto, { type: ProductType.WIP }),
+        'user-1',
+      );
+
+      expect((insertedValues[0] as Record<string, unknown>).type).toBe(ProductType.WIP);
     });
   });
 });

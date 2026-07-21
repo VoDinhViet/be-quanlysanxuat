@@ -6,11 +6,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 NestJS 11 modular monolith for a production management system ("quản lý sản xuất"). PostgreSQL + Drizzle ORM, Redis, Swagger. Package manager is pnpm.
 
-Current state: 17 API modules under `src/api/` — `auth`, `users`, `roles`, `health`, `files`, `clients`, `client-groups`, `products`, `product-groups`, `materials`, `material-groups`, `suppliers`, `supplier-groups`, `units`, `departments`, `positions`, `countries`. RBAC (roles + granular permission codes) is live, see `docs/features/authorization.md`. `package.json` is still named `be-giasu-ai` — it hasn't been renamed for this project.
+Current state: 20 API modules under `src/api/` — `auth`, `users`, `roles`, `health`, `files`, `clients`, `client-groups`, `products`, `product-groups`, `product-revisions`, `boms`, `materials`, `material-groups`, `suppliers`, `supplier-groups`, `units`, `departments`, `positions`, `countries`, `operations`. RBAC (roles + granular permission codes) is live, see `docs/features/authorization.md`. `package.json` is still named `be-giasu-ai` — it hasn't been renamed for this project.
 
 Removed on purpose (don't recreate unless asked): `orders`, `uploads` (replaced by `files`).
 
 `suppliers`/`supplier-groups` were removed on 2026-07-20 and **rolled back the same day** — they exist and are current. They were restored on the `files` registry (`logoFileId` / `attachmentFileIds`), not the plain-URL model they originally shipped with. `countries` exists because suppliers reference it.
+
+`operations` (added 2026-07-21) is master data for công đoạn (production steps), classified `INHOUSE`/`OUTSOURCE` — groundwork for a future product structure/routing feature (see `docs/features/operations.md`, `docs/features/products.md`). `products` gained a `type` (`FG`/`WIP`) column the same day for the same reason.
+
+`product-revisions` (added 2026-07-21) is a versioning shell for products — `product_revisions` + `products.currentRevisionId`, nested routes under `POST/GET /products/:productId/revisions*` (see `docs/features/product-revisions.md`). `products.revision` (the old free-text column) was replaced: it's now derived from the current revision, no longer settable via `CreateProductReqDto`/`UpdateProductReqDto`. Routing itself is not built yet — this is groundwork only.
+
+`boms` (added 2026-07-21) is the read side of the BOM/structure tree ("Cấu trúc sản phẩm") hanging off a product revision — `boms` + `bom_items` (self-referencing, PRODUCT/MATERIAL leaf items), exposed via `GET /products/:productId/revisions/:revisionId/bom` (see `docs/features/boms.md`). No writer exists yet — a BOM can only be inspected, not created or edited, through the API.
 
 ## Rules
 

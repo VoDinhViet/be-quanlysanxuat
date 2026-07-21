@@ -1,7 +1,7 @@
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { hash } from 'bcryptjs';
 import { plainToInstance } from 'class-transformer';
-import { and, count, desc, eq, ilike, isNull, ne, or } from 'drizzle-orm';
+import { and, count, desc, eq, getTableColumns, ilike, isNull, ne, or } from 'drizzle-orm';
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
@@ -12,6 +12,7 @@ import type { Database } from '../../database/database.type';
 import {
   credentials,
   departments,
+  files,
   positions,
   roles,
   users,
@@ -69,25 +70,47 @@ export class UsersService {
     );
   }
 
-  async getCredentialDetail(credentialId: string): Promise<CredentialResDto> {
-    const credential = await this.db.query.credentials.findFirst({
-      where: eq(credentials.id, credentialId),
-      with: {
-        role: { columns: { id: true, code: true, name: true } },
-      },
-    });
+  async getCurrentUser(credentialId: string): Promise<CredentialResDto> {
+    // `fullName` lives on the linked `users` (employee) row, `role` on `roles`, and the `avatar` on
+    // `files` (via the user's `avatarFileId`) — none is a column on `credentials`, so all three are
+    // left-joined: a credential with no linked user (e.g. an admin-only login), no role, or no
+    // avatar still returns a row.
+    const [row] = await this.db
+      .select({
+        id: credentials.id,
+        username: credentials.username,
+        email: credentials.email,
+        fullName: users.fullName,
+        avatarFile: getTableColumns(files),
+        role: getTableColumns(roles),
+        createdAt: credentials.createdAt,
+        updatedAt: credentials.updatedAt,
+      })
+      .from(credentials)
+      .leftJoin(users, eq(users.credentialId, credentials.id))
+      .leftJoin(roles, eq(roles.id, credentials.roleId))
+      .leftJoin(files, eq(files.id, users.avatarFileId))
+      .where(eq(credentials.id, credentialId))
+      .limit(1);
 
-    if (!credential) {
+    if (!row) {
       throw new AppException(ErrorCode.E002, HttpStatus.NOT_FOUND);
     }
 
-    // Effective permissions come from the cached resolver (the ADMIN role
-    // carries `system:manage`), so the FE can drive permission-based UI.
+    // Effective permissions come from the cached resolver (the ADMIN role carries
+    // `system:manage`), so the FE can drive permission-based UI.
     const permissions = await this.permissionsService.getPermissionCodes(credentialId);
 
     return plainToInstance(
       CredentialResDto,
-      { ...credential, role: credential.role ?? null, permissions },
+      // A left-joined miss surfaces as an all-null object, not `null` — collapse `role`/`avatarFile`
+      // so the DTO renders `null` instead of a ref/file full of null fields.
+      {
+        ...row,
+        role: row.role?.id ? row.role : null,
+        avatarFile: row.avatarFile?.id ? row.avatarFile : null,
+        permissions,
+      },
       { excludeExtraneousValues: true },
     );
   }

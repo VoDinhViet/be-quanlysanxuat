@@ -61,6 +61,10 @@ export enum ErrorCode {
   // link was tampered with or minted elsewhere — worth surfacing differently, and worth logging.
   E044 = 'file.error.invalid_signature',
   E045 = 'file.error.url_expired',
+  E046 = 'operation.error.not_found',
+  E047 = 'operation.error.code_exists',
+  E048 = 'product_revision.error.not_found',
+  E049 = 'product_revision.error.number_exists',
   E101 = 'class.error.teacher_not_found',
   E102 = 'class.error.invalid_teacher_assignment',
   E103 = 'class.error.forbidden',

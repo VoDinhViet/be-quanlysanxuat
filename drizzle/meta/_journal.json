@@ -239,6 +239,48 @@
       "when": 1784538232835,
       "tag": "0033_tense_slapstick",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1784600883373,
+      "tag": "0034_grey_magus",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1784604314186,
+      "tag": "0035_great_mephisto",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1784604591089,
+      "tag": "0036_backfill_product_revisions",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1784604733753,
+      "tag": "0037_tearful_cyclops",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1784605816101,
+      "tag": "0038_graceful_black_panther",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1784628032207,
+      "tag": "0039_brave_skreet",
+      "breakpoints": true
     }
   ]
 }

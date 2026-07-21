@@ -4,6 +4,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { BomsModule } from './api/boms/boms.module';
 import { JwtAuthGuard } from './api/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from './api/auth/guards/permissions.guard';
 import { MaterialGroupsModule } from './api/material-groups/material-groups.module';
@@ -26,8 +27,10 @@ import { CountriesModule } from './api/countries/countries.module';
 import { DepartmentsModule } from './api/departments/departments.module';
 import { FilesModule } from './api/files/files.module';
 import { HealthModule } from './api/health/health.module';
+import { OperationsModule } from './api/operations/operations.module';
 import { PositionsModule } from './api/positions/positions.module';
 import { ProductGroupsModule } from './api/product-groups/product-groups.module';
+import { ProductRevisionsModule } from './api/product-revisions/product-revisions.module';
 import { ProductsModule } from './api/products/products.module';
 import { UnitsModule } from './api/units/units.module';
 import { UsersModule } from './api/users/users.module';
@@ -54,6 +57,9 @@ import { UsersModule } from './api/users/users.module';
     ProductGroupsModule,
     UnitsModule,
     ProductsModule,
+    ProductRevisionsModule,
+    BomsModule,
+    OperationsModule,
     DepartmentsModule,
     FilesModule,
     PositionsModule,

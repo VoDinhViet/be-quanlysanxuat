@@ -14,11 +14,13 @@ import {
   productGroups,
   products,
   ProductStatus,
+  ProductType,
   units,
   UnitScope,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { FilesService } from '../files/files.service';
+import { ProductRevisionsService } from '../product-revisions/product-revisions.service';
 import { CreateProductReqDto } from './dto/create-product.req.dto';
 import { GetProductsReqDto } from './dto/get-products.req.dto';
 import { ProductResDto } from './dto/product.res.dto';
@@ -31,6 +33,7 @@ const PRODUCT_DETAIL_WITH = {
   creator: true,
   imageFile: true,
   attachments: { with: { file: true } },
+  currentRevision: { columns: { revisionNo: true } },
 } as const;
 
 @Injectable()
@@ -38,6 +41,7 @@ export class ProductsService {
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly filesService: FilesService,
+    private readonly productRevisionsService: ProductRevisionsService,
   ) {}
 
   async getProducts(reqDto: GetProductsReqDto): Promise<OffsetPaginatedDto<ProductResDto>> {
@@ -59,6 +63,7 @@ export class ProductsService {
         : undefined,
       reqDto.clientId ? eq(products.clientId, reqDto.clientId) : undefined,
       reqDto.productGroupId ? eq(products.productGroupId, reqDto.productGroupId) : undefined,
+      reqDto.type ? eq(products.type, reqDto.type) : undefined,
       reqDto.status ? eq(products.status, reqDto.status) : undefined,
     );
     const orderBy = desc(products.createdAt);
@@ -75,15 +80,20 @@ export class ProductsService {
           unit: true,
           creator: true,
           imageFile: true,
+          currentRevision: { columns: { revisionNo: true } },
         },
       }),
       this.db.select({ total: count() }).from(products).where(where),
     ]);
 
     return new OffsetPaginatedDto(
-      plainToInstance(ProductResDto, entities, {
-        excludeExtraneousValues: true,
-      }),
+      plainToInstance(
+        ProductResDto,
+        entities.map((entity) => this.withDerivedRevision(entity)),
+        {
+          excludeExtraneousValues: true,
+        },
+      ),
       new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
     );
   }
@@ -98,7 +108,7 @@ export class ProductsService {
       throw new AppException(ErrorCode.E007, HttpStatus.NOT_FOUND);
     }
 
-    return plainToInstance(ProductResDto, product, {
+    return plainToInstance(ProductResDto, this.withDerivedRevision(product), {
       excludeExtraneousValues: true,
     });
   }
@@ -132,11 +142,24 @@ export class ProductsService {
         .values({
           ...productFields,
           code,
-          revision: reqDto.revision ?? 'R01',
+          type: reqDto.type ?? ProductType.FG,
           status: reqDto.status ?? ProductStatus.ACTIVE,
           createdBy: userId,
         })
         .returning();
+
+      // Every product always has a "current" revision from the moment it exists — bootstrap it
+      // ("R01") here, then point the product at it. Two statements because `product.id` must exist
+      // before a `product_revisions` row can reference it.
+      const revisionId = await this.productRevisionsService.createInitialRevision(
+        tx,
+        product.id,
+        userId,
+      );
+      await tx
+        .update(products)
+        .set({ currentRevisionId: revisionId })
+        .where(eq(products.id, product.id));
 
       if (attachmentFileIds?.length) {
         await this.insertAttachments(tx, product.id, attachmentFileIds);
@@ -210,8 +233,8 @@ export class ProductsService {
         .values({
           code,
           name: original.name,
+          type: original.type,
           imageFileId: original.imageFileId,
-          revision: original.revision,
           status: original.status,
           note: original.note,
           clientId: original.clientId,
@@ -220,6 +243,18 @@ export class ProductsService {
           createdBy: userId,
         })
         .returning();
+
+      // A copy is a new product identity — its revision history restarts at "R01" rather than
+      // carrying over the source's current revisionNo.
+      const revisionId = await this.productRevisionsService.createInitialRevision(
+        tx,
+        product.id,
+        userId,
+      );
+      await tx
+        .update(products)
+        .set({ currentRevisionId: revisionId })
+        .where(eq(products.id, product.id));
 
       if (originalAttachments.length) {
         await this.insertAttachments(
@@ -347,5 +382,18 @@ export class ProductsService {
   private async generateProductCode(): Promise<string> {
     const [totalRows] = await this.db.select({ total: count() }).from(products);
     return `SP${String((totalRows?.total ?? 0) + 1).padStart(4, '0')}`;
+  }
+
+  /**
+   * `ProductResDto.revision` stays a plain `string` for read consumers (unchanged shape/name), but
+   * its value is now derived from the currently-current `product_revisions` row instead of a
+   * stored column. Every product is guaranteed a current revision (bootstrapped on create, and
+   * backfilled for pre-existing rows by a one-off migration), so this is only ever `null` in a
+   * data-integrity gap.
+   */
+  private withDerivedRevision<T extends { currentRevision?: { revisionNo: string } | null }>(
+    entity: T,
+  ): T & { revision: string | null } {
+    return { ...entity, revision: entity.currentRevision?.revisionNo ?? null };
   }
 }

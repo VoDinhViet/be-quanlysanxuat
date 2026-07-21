@@ -46,6 +46,11 @@ Manage ERP login credentials: list/view credentials, "my profile", and `POST /us
 
 ## Frontend integration notes
 
+- **New fields (2026-07-21)**: `CredentialResDto` (`GET /users/me` only) now carries everything needed to render the logged-in user card — avatar, name, username, email, role badge (additive, non-breaking):
+  - `fullName`: `string | null` — name of the **linked user (employee) profile** (partially undoes the 2026-07-15 removal below, but sourced correctly from `users`, not from a `credentials` column).
+  - `avatar`: `FileResDto | null` — the linked user's avatar, same shape as `UserResDto.avatar` (`{ id, url, originalName, mimetype, size, type, kind, createdAt }`, `url` is a short-lived signed link — render directly as `<img src>`, don't cache).
+  - `username` / `email` / `role` (`{ id, code, name }`) were already returned — `role.name` is the badge label (e.g. "Quản trị viên").
+  - All of `fullName`/`avatar` are resolved via a left join on the credential's linked user; they are `null` when the credential has no linked user (e.g. an admin-only login) or no avatar. `GET /users` and `GET /users/:userId` return `UserResDto`, which already carries these.
 - **Internal rename only (2026-07-16)**: this is a pure backend renaming — no API contract change. Route paths, JSON field names, enum values, error codes, and status codes are all unchanged. What changed is purely internal: the DB table + Drizzle schema formerly called `users` (login) is now called `credentials`, and the table formerly called `employees` is now called `users` (see `docs/features/employees.md`). `CredentialResDto`/`UserResDto`/`CreateUserReqDto`/`CreateCredentialReqDto` are the corresponding new class names — no frontend action needed.
 - **Breaking change (2026-07-16)**: `username`/`email`/`password` on the `credentials` table are now `NOT NULL` at the DB level (previously nullable to allow a hypothetical placeholder credential). No current endpoint ever produced a row with any of them null, so this has no observable effect on any response shape.
 - **Breaking change (2026-07-16)**: the `errorCode` string values changed for the credential-related error codes, to match the `credentials` table name:

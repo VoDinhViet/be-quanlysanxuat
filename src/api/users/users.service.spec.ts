@@ -4,8 +4,9 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { AppException } from '../../exceptions/app.exception';
 import { DRIZZLE } from '../../database/database.module';
-import { chainableMock, QueryMockArgs } from '../../test-utils/chainable-mock.util';
+import { chainable, chainableMock, QueryMockArgs } from '../../test-utils/chainable-mock.util';
 import { PermissionsService } from '../auth/permissions.service';
+import { setFileUrlResolver } from '../files/file-url-resolver';
 import { FilesService } from '../files/files.service';
 import { AssignRoleReqDto } from './dto/assign-role.req.dto';
 import { CreateUserReqDto } from './dto/create-user.req.dto';
@@ -41,6 +42,10 @@ describe('UsersService', () => {
     Object.assign(new GetUsersReqDto(), overrides);
 
   beforeEach(async () => {
+    // FileResDto.url is minted by a module-level resolver that FilesModule installs at bootstrap;
+    // stub it so avatar mapping doesn't throw "resolver not initialised" in unit tests.
+    setFileUrlResolver((fileId) => `/api/files/${fileId}/download?sig=test`);
+
     mockDb = {
       query: {
         users: {
@@ -108,22 +113,86 @@ describe('UsersService', () => {
     });
   });
 
-  describe('getCredentialDetail', () => {
-    it('returns the mapped credential when found', async () => {
-      mockDb.query.credentials.findFirst.mockResolvedValue({
-        id: 'cred-1',
-        username: 'superadmin',
-      });
+  describe('getCurrentUser', () => {
+    const buildRow = (overrides: Record<string, unknown> = {}) => ({
+      id: 'cred-1',
+      username: 'superadmin',
+      email: 'admin@example.com',
+      fullName: 'Nguyen Van A',
+      avatarFile: {
+        id: 'file-1',
+        originalName: 'avatar.png',
+        mimetype: 'image/png',
+        size: 1024,
+        type: 'USER_AVATAR',
+        kind: 'IMAGE',
+        createdAt: new Date('2026-01-01'),
+      },
+      role: { id: 'role-1', code: 'ADMIN', name: 'Administrator' },
+      createdAt: new Date('2026-01-01'),
+      updatedAt: new Date('2026-01-01'),
+      ...overrides,
+    });
 
-      const result = await service.getCredentialDetail('cred-1');
+    it('returns the mapped credential with fullName, avatar and role from the joined row', async () => {
+      mockDb.select.mockReturnValueOnce(chainable([buildRow()]));
+      mockPermissionsService.getPermissionCodes.mockResolvedValue([]);
 
-      expect(result).toBeDefined();
+      const result = await service.getCurrentUser('cred-1');
+
+      expect(result.fullName).toBe('Nguyen Van A');
+      expect(result.role).toMatchObject({ code: 'ADMIN' });
+      expect(result.avatar).toMatchObject({ id: 'file-1' });
+      expect(result.avatar?.url).toContain('file-1');
+    });
+
+    it('leaves fullName null when the credential has no linked user', async () => {
+      mockDb.select.mockReturnValueOnce(chainable([buildRow({ fullName: null })]));
+      mockPermissionsService.getPermissionCodes.mockResolvedValue([]);
+
+      const result = await service.getCurrentUser('cred-1');
+
+      expect(result.fullName).toBeNull();
+    });
+
+    it('collapses an all-null joined role into null', async () => {
+      mockDb.select.mockReturnValueOnce(
+        chainable([buildRow({ role: { id: null, code: null, name: null } })]),
+      );
+      mockPermissionsService.getPermissionCodes.mockResolvedValue([]);
+
+      const result = await service.getCurrentUser('cred-1');
+
+      expect(result.role).toBeNull();
+    });
+
+    it('collapses an all-null joined avatar file into null', async () => {
+      mockDb.select.mockReturnValueOnce(
+        chainable([
+          buildRow({
+            avatarFile: {
+              id: null,
+              originalName: null,
+              mimetype: null,
+              size: null,
+              type: null,
+              kind: null,
+              createdAt: null,
+            },
+          }),
+        ]),
+      );
+      mockPermissionsService.getPermissionCodes.mockResolvedValue([]);
+
+      const result = await service.getCurrentUser('cred-1');
+
+      expect(result.avatar).toBeNull();
     });
 
     it('throws E002 not found when the credential does not exist', async () => {
-      mockDb.query.credentials.findFirst.mockResolvedValue(undefined);
+      mockDb.select.mockReturnValueOnce(chainable([]));
 
-      await expect(service.getCredentialDetail('missing')).rejects.toMatchObject({
+      await expect(service.getCurrentUser('missing')).rejects.toMatchObject({
         status: HttpStatus.NOT_FOUND,
         response: { errorCode: ErrorCode.E002 },
       });

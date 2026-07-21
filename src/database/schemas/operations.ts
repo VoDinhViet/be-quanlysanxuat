@@ -1,0 +1,58 @@
+import { relations } from 'drizzle-orm';
+import { pgEnum, pgTable, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
+
+import { credentials } from './credentials';
+
+/**
+ * Which lane a công đoạn (operation) runs in: `INHOUSE` is performed on the factory floor,
+ * `OUTSOURCE` is sent to a supplier for processing (gia công ngoài). This is the master flag the
+ * "Gia công ngoài" screen filters on (`GET /operations?type=OUTSOURCE`); a routing step later
+ * (Phase 2) defaults to this value but may override it per step.
+ */
+export enum OperationType {
+  INHOUSE = 'INHOUSE',
+  OUTSOURCE = 'OUTSOURCE',
+}
+
+export const operationTypeEnum = pgEnum('operation_type', [
+  OperationType.INHOUSE,
+  OperationType.OUTSOURCE,
+]);
+
+export enum OperationStatus {
+  ACTIVE = 'ACTIVE',
+  INACTIVE = 'INACTIVE',
+}
+
+export const operationStatusEnum = pgEnum('operation_status', [
+  OperationStatus.ACTIVE,
+  OperationStatus.INACTIVE,
+]);
+
+/**
+ * Master data for công đoạn (production operations/steps), e.g. Cắt laser, Hàn, Sơn tĩnh điện.
+ * Referenced by routing (`node_operations`, Phase 2) to sequence the steps a product/part goes
+ * through. Soft-deleted (not hard-deleted) because routing will hold a foreign key to a row here.
+ */
+export const operations = pgTable('operations', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  code: varchar('code', { length: 50 }).notNull().unique(),
+  name: varchar('name', { length: 255 }).notNull(),
+  type: operationTypeEnum('type').notNull().default(OperationType.INHOUSE),
+  note: varchar('note', { length: 1000 }),
+  status: operationStatusEnum('status').notNull().default(OperationStatus.ACTIVE),
+  createdBy: uuid('created_by').references(() => credentials.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at')
+    .defaultNow()
+    .notNull()
+    .$onUpdate(() => new Date()),
+  deletedAt: timestamp('deleted_at'),
+});
+
+export const operationsRelations = relations(operations, ({ one }) => ({
+  creator: one(credentials, {
+    fields: [operations.createdBy],
+    references: [credentials.id],
+  }),
+}));

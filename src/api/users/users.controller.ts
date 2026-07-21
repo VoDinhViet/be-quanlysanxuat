@@ -26,7 +26,7 @@ export class UsersController {
     summary: 'Get my profile',
   })
   getCurrentUser(@CurrentUser() payload: JwtPayloadType): Promise<CredentialResDto> {
-    return this.usersService.getCredentialDetail(payload.sub);
+    return this.usersService.getCurrentUser(payload.sub);
   }
 
   @Get()

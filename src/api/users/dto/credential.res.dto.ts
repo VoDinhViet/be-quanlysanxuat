@@ -9,6 +9,8 @@ import {
   StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
+import { FileField } from '../../files/dto/file.field';
+import { FileResDto } from '../../files/dto/file.res.dto';
 
 @Exclude()
 export class RoleRefResDto {
@@ -38,6 +40,20 @@ export class CredentialResDto {
   @Expose()
   @EmailFieldOptional({ nullable: true })
   email!: string | null;
+
+  @Expose()
+  @StringFieldOptional({
+    description: 'Full name from the linked user (employee) profile, or null if none is linked',
+    nullable: true,
+  })
+  fullName!: string | null;
+
+  @Expose()
+  @FileField(
+    'avatarFile',
+    'Avatar file from the linked user (employee) profile, or null if none is linked',
+  )
+  avatar!: FileResDto | null;
 
   @Expose()
   @ClassField(() => RoleRefResDto, {
