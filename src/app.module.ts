@@ -30,8 +30,8 @@ import { HealthModule } from './api/health/health.module';
 import { OperationsModule } from './api/operations/operations.module';
 import { PositionsModule } from './api/positions/positions.module';
 import { ProductGroupsModule } from './api/product-groups/product-groups.module';
-import { ProductRevisionsModule } from './api/product-revisions/product-revisions.module';
 import { ProductsModule } from './api/products/products.module';
+import { RoutingModule } from './api/routing/routing.module';
 import { UnitsModule } from './api/units/units.module';
 import { UsersModule } from './api/users/users.module';
 
@@ -57,9 +57,9 @@ import { UsersModule } from './api/users/users.module';
     ProductGroupsModule,
     UnitsModule,
     ProductsModule,
-    ProductRevisionsModule,
     BomsModule,
     OperationsModule,
+    RoutingModule,
     DepartmentsModule,
     FilesModule,
     PositionsModule,

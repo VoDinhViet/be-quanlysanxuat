@@ -39,10 +39,6 @@ export class ProductResDto {
   image!: FileResDto | null;
 
   @Expose()
-  @StringField({ description: 'Revision, e.g. R01' })
-  revision!: string;
-
-  @Expose()
   @EnumField(() => ProductStatus)
   status!: ProductStatus;
 
@@ -69,6 +65,13 @@ export class ProductResDto {
   @Expose()
   @ClassFieldOptional(() => ProductAttachmentResDto, { each: true })
   attachments!: ProductAttachmentResDto[];
+
+  @Expose()
+  @ClassFieldOptional(() => ProductRefResDto, {
+    nullable: true,
+    description: 'Sản phẩm gốc được sao chép từ (nếu là bản sao)',
+  })
+  source!: ProductRefResDto | null;
 
   @Expose()
   @DateField()

@@ -10,6 +10,7 @@ export * from './product-groups';
 export * from './units';
 export * from './products';
 export * from './boms';
+export * from './routing-steps';
 export * from './departments';
 export * from './positions';
 export * from './users';

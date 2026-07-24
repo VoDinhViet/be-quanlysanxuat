@@ -8,8 +8,8 @@ import {
 } from '../../../decorators/field.decorators';
 
 /**
- * No `revision` field — the first revision ("R01") is auto-created for every new product; manage
- * revisions afterward via `POST /products/:id/revisions` (see `product-revisions` module).
+ * No `revision` field — versioning is done by cloning the whole product via
+ * `POST /products/:id/copy`, not by editing a version-history sub-resource.
  */
 export class CreateProductReqDto {
   @StringField({ description: 'Product name', maxLength: 255 })
@@ -18,11 +18,15 @@ export class CreateProductReqDto {
   @UUIDField({ description: 'Unit id (ĐVT)' })
   unitId!: string;
 
-  @StringFieldOptional({ description: 'Product code; auto-generated if omitted', maxLength: 50 })
+  @StringFieldOptional({
+    description: 'Product code; auto-generated if omitted',
+    maxLength: 50,
+  })
   code?: string;
 
   @EnumFieldOptional(() => ProductType, {
-    description: 'FG (thành phẩm) or WIP (bán thành phẩm); defaults to FG',
+    description:
+      'FINISHED_GOOD (thành phẩm) or WORK_IN_PROGRESS (bán thành phẩm); defaults to FINISHED_GOOD',
   })
   type?: ProductType;
 

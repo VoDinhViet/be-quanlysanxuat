@@ -63,8 +63,22 @@ export enum ErrorCode {
   E045 = 'file.error.url_expired',
   E046 = 'operation.error.not_found',
   E047 = 'operation.error.code_exists',
-  E048 = 'product_revision.error.not_found',
-  E049 = 'product_revision.error.number_exists',
+  // E048/E049 (product_revision not_found/number_exists) stay reserved — the product-revisions
+  // module was removed in favor of whole-product copy/clone (`POST /products/:id/copy`); no
+  // current throw site uses them.
+  E050 = 'bom_item.error.not_found',
+  E051 = 'bom_item.error.parent_not_found',
+  E052 = 'bom_item.error.parent_is_material',
+  E053 = 'bom_item.error.product_not_wip',
+  E054 = 'bom_item.error.cycle_detected',
+  E055 = 'bom_item.error.quantity_not_integer',
+  E056 = 'routing_step.error.not_found',
+  // `bomItemId` on a routing route doesn't reference a `bom_items` row within the URL's own
+  // product BOM — either it doesn't exist at all, or it belongs to a different product's tree.
+  E062 = 'routing_step.error.bom_item_not_found',
+  // The `bomItemId` node exists and belongs to this product's BOM, but is a MATERIAL leaf —
+  // vật tư nodes never carry their own routing.
+  E063 = 'routing_step.error.material_node',
   E101 = 'class.error.teacher_not_found',
   E102 = 'class.error.invalid_teacher_assignment',
   E103 = 'class.error.forbidden',

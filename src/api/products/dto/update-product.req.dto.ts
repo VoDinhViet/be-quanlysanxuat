@@ -6,8 +6,8 @@ import {
 } from '../../../decorators/field.decorators';
 
 /**
- * No `revision` field — manage revisions via `POST /products/:id/revisions` and
- * `POST /products/:id/revisions/:revisionId/activate` (see `product-revisions` module).
+ * No `revision` field — versioning is done by cloning the whole product via
+ * `POST /products/:id/copy`, not by editing a version-history sub-resource.
  */
 export class UpdateProductReqDto {
   @StringFieldOptional({ description: 'Product name', maxLength: 255 })

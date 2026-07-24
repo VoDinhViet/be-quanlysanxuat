@@ -1,6 +1,16 @@
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
-import { and, count, desc, eq, inArray, isNull, ne, or } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  inArray,
+  isNull,
+  ne,
+  or,
+} from 'drizzle-orm';
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
@@ -9,18 +19,21 @@ import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
+  bomItems,
+  boms,
   clients,
   productAttachments,
   productGroups,
   products,
   ProductStatus,
   ProductType,
+  routingSteps,
   units,
   UnitScope,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
+import { formatLtreeNodeId } from '../boms/utils/ltree.util';
 import { FilesService } from '../files/files.service';
-import { ProductRevisionsService } from '../product-revisions/product-revisions.service';
 import { CreateProductReqDto } from './dto/create-product.req.dto';
 import { GetProductsReqDto } from './dto/get-products.req.dto';
 import { ProductResDto } from './dto/product.res.dto';
@@ -33,7 +46,7 @@ const PRODUCT_DETAIL_WITH = {
   creator: true,
   imageFile: true,
   attachments: { with: { file: true } },
-  currentRevision: { columns: { revisionNo: true } },
+  source: { columns: { id: true, code: true, name: true } },
 } as const;
 
 @Injectable()
@@ -41,10 +54,11 @@ export class ProductsService {
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly filesService: FilesService,
-    private readonly productRevisionsService: ProductRevisionsService,
   ) {}
 
-  async getProducts(reqDto: GetProductsReqDto): Promise<OffsetPaginatedDto<ProductResDto>> {
+  async getProducts(
+    reqDto: GetProductsReqDto,
+  ): Promise<OffsetPaginatedDto<ProductResDto>> {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
     const where = and(
       isNull(products.deletedAt),
@@ -62,7 +76,9 @@ export class ProductsService {
           )
         : undefined,
       reqDto.clientId ? eq(products.clientId, reqDto.clientId) : undefined,
-      reqDto.productGroupId ? eq(products.productGroupId, reqDto.productGroupId) : undefined,
+      reqDto.productGroupId
+        ? eq(products.productGroupId, reqDto.productGroupId)
+        : undefined,
       reqDto.type ? eq(products.type, reqDto.type) : undefined,
       reqDto.status ? eq(products.status, reqDto.status) : undefined,
     );
@@ -80,20 +96,16 @@ export class ProductsService {
           unit: true,
           creator: true,
           imageFile: true,
-          currentRevision: { columns: { revisionNo: true } },
+          source: { columns: { id: true, code: true, name: true } },
         },
       }),
       this.db.select({ total: count() }).from(products).where(where),
     ]);
 
     return new OffsetPaginatedDto(
-      plainToInstance(
-        ProductResDto,
-        entities.map((entity) => this.withDerivedRevision(entity)),
-        {
-          excludeExtraneousValues: true,
-        },
-      ),
+      plainToInstance(ProductResDto, entities, {
+        excludeExtraneousValues: true,
+      }),
       new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
     );
   }
@@ -108,12 +120,15 @@ export class ProductsService {
       throw new AppException(ErrorCode.E007, HttpStatus.NOT_FOUND);
     }
 
-    return plainToInstance(ProductResDto, this.withDerivedRevision(product), {
+    return plainToInstance(ProductResDto, product, {
       excludeExtraneousValues: true,
     });
   }
 
-  async createProduct(reqDto: CreateProductReqDto, userId: string): Promise<ProductResDto> {
+  async createProduct(
+    reqDto: CreateProductReqDto,
+    userId: string,
+  ): Promise<ProductResDto> {
     let code = reqDto.code;
     if (code) {
       await this.validateCodeUniqueness(code);
@@ -142,24 +157,11 @@ export class ProductsService {
         .values({
           ...productFields,
           code,
-          type: reqDto.type ?? ProductType.FG,
+          type: reqDto.type ?? ProductType.FINISHED_GOOD,
           status: reqDto.status ?? ProductStatus.ACTIVE,
           createdBy: userId,
         })
         .returning();
-
-      // Every product always has a "current" revision from the moment it exists — bootstrap it
-      // ("R01") here, then point the product at it. Two statements because `product.id` must exist
-      // before a `product_revisions` row can reference it.
-      const revisionId = await this.productRevisionsService.createInitialRevision(
-        tx,
-        product.id,
-        userId,
-      );
-      await tx
-        .update(products)
-        .set({ currentRevisionId: revisionId })
-        .where(eq(products.id, product.id));
 
       if (attachmentFileIds?.length) {
         await this.insertAttachments(tx, product.id, attachmentFileIds);
@@ -171,7 +173,10 @@ export class ProductsService {
     return this.getProductDetail(productId);
   }
 
-  async updateProduct(productId: string, reqDto: UpdateProductReqDto): Promise<ProductResDto> {
+  async updateProduct(
+    productId: string,
+    reqDto: UpdateProductReqDto,
+  ): Promise<ProductResDto> {
     await this.ensureProductExists(productId);
 
     if (reqDto.code) {
@@ -212,20 +217,62 @@ export class ProductsService {
   async deleteProduct(productId: string): Promise<void> {
     await this.ensureProductExists(productId);
 
-    await this.db.update(products).set({ deletedAt: new Date() }).where(eq(products.id, productId));
+    await this.db
+      .update(products)
+      .set({ deletedAt: new Date() })
+      .where(eq(products.id, productId));
   }
 
+  /**
+   * Deep-clones a product: the row itself, its attachments, its whole BOM tree, its Cấp 0 root
+   * routing, and each cloned node's own as-used routing — a full independent product, not a
+   * version of the source. `sourceProductId` records lineage only ("Sao chép từ"); nothing about
+   * the clone stays linked to the source afterward.
+   */
   async copyProduct(productId: string, userId: string): Promise<ProductResDto> {
     const original = await this.ensureProductExists(productId);
     const code = await this.generateProductCode();
 
+    // Every read happens before the transaction opens — see `.claude/rules/api-module.md`.
+
     // The copy points at the same file rows as the original — `files` is a registry, and both
     // products referencing one row is exactly what it is for. Skipping this would silently give
     // the copy an empty document list.
-    const originalAttachments = await this.db.query.productAttachments.findMany({
-      columns: { fileId: true },
-      where: eq(productAttachments.productId, productId),
+    const originalAttachments = await this.db.query.productAttachments.findMany(
+      {
+        columns: { fileId: true },
+        where: eq(productAttachments.productId, productId),
+      },
+    );
+
+    const sourceBom = await this.db.query.boms.findFirst({
+      columns: { id: true },
+      where: eq(boms.productId, productId),
     });
+    // Parents always precede their children: `checkNoCycle`-free copy relies on visiting a node
+    // only after its parent has already been remapped (see `cloneBomTree`).
+    const sourceBomItems = sourceBom
+      ? await this.db.query.bomItems.findMany({
+          where: eq(bomItems.bomId, sourceBom.id),
+          orderBy: [asc(bomItems.level), asc(bomItems.sortOrder)],
+        })
+      : [];
+
+    // Cấp 0 (root product) routing — keyed by productId, unrelated to the BOM tree.
+    const sourceRootOperations = await this.db.query.routingSteps.findMany({
+      where: eq(routingSteps.productId, productId),
+    });
+
+    // As-used routing on each source node — remapped through `newBomItemIdByOldId` once the tree
+    // itself has been cloned (see below). Empty tree → nothing to fetch.
+    const sourceNodeOperations = sourceBomItems.length
+      ? await this.db.query.routingSteps.findMany({
+          where: inArray(
+            routingSteps.bomItemId,
+            sourceBomItems.map((item) => item.id),
+          ),
+        })
+      : [];
 
     const copyId = await this.db.transaction(async (tx) => {
       const [product] = await tx
@@ -235,6 +282,7 @@ export class ProductsService {
           name: original.name,
           type: original.type,
           imageFileId: original.imageFileId,
+          sourceProductId: original.id,
           status: original.status,
           note: original.note,
           clientId: original.clientId,
@@ -244,24 +292,51 @@ export class ProductsService {
         })
         .returning();
 
-      // A copy is a new product identity — its revision history restarts at "R01" rather than
-      // carrying over the source's current revisionNo.
-      const revisionId = await this.productRevisionsService.createInitialRevision(
-        tx,
-        product.id,
-        userId,
-      );
-      await tx
-        .update(products)
-        .set({ currentRevisionId: revisionId })
-        .where(eq(products.id, product.id));
-
       if (originalAttachments.length) {
         await this.insertAttachments(
           tx,
           product.id,
           originalAttachments.map(({ fileId }) => fileId),
         );
+      }
+
+      const newBomItemIdByOldId = sourceBomItems.length
+        ? await this.cloneBomTree(tx, product.id, sourceBomItems, userId)
+        : new Map<string, string>();
+
+      if (sourceRootOperations.length) {
+        await tx.insert(routingSteps).values(
+          sourceRootOperations.map((step) => ({
+            productId: product.id,
+            bomItemId: null,
+            operationId: step.operationId,
+            sortOrder: step.sortOrder,
+            note: step.note,
+            createdBy: userId,
+          })),
+        );
+      }
+
+      const clonedNodeSteps = sourceNodeOperations.flatMap((step) => {
+        const bomItemId = step.bomItemId
+          ? newBomItemIdByOldId.get(step.bomItemId)
+          : undefined;
+        return bomItemId
+          ? [
+              {
+                productId: null,
+                bomItemId,
+                operationId: step.operationId,
+                sortOrder: step.sortOrder,
+                note: step.note,
+                createdBy: userId,
+              },
+            ]
+          : [];
+      });
+
+      if (clonedNodeSteps.length) {
+        await tx.insert(routingSteps).values(clonedNodeSteps);
       }
 
       return product.id;
@@ -271,15 +346,75 @@ export class ProductsService {
   }
 
   /**
+   * Inserts a fresh `boms` header for `newProductId`, then clones every source `bom_items` row
+   * onto it: new ids, `parentId` remapped through the old→new id map, and `path` rebuilt from the
+   * *new* parent's path (the old ltree path embeds the old ids, so it can't just be copied).
+   * `productId`/`materialId` on each row still point at the original WIP/material — cloning a BOM
+   * does not recursively clone the products it references. Requires `sourceItems` to already be
+   * ordered parent-before-child (by `level`), so a parent's remapped id/path always exists in the
+   * maps by the time its children are processed. Returns the old→new `bom_items.id` map so the
+   * caller can remap each cloned node's own as-used routing (`routing_steps.bom_item_id`).
+   */
+  private async cloneBomTree(
+    tx: DbTransaction,
+    newProductId: string,
+    sourceItems: (typeof bomItems.$inferSelect)[],
+    userId: string,
+  ): Promise<Map<string, string>> {
+    const [bom] = await tx
+      .insert(boms)
+      .values({ productId: newProductId, createdBy: userId })
+      .returning({ id: boms.id });
+
+    const newIdByOldId = new Map<string, string>();
+    const newPathByOldId = new Map<string, string>();
+
+    const newItems = sourceItems.map((item) => {
+      const newId = crypto.randomUUID();
+      newIdByOldId.set(item.id, newId);
+
+      const newParentId = item.parentId
+        ? (newIdByOldId.get(item.parentId) ?? null)
+        : null;
+      const parentPath = item.parentId
+        ? newPathByOldId.get(item.parentId)
+        : undefined;
+      const nodeKey = formatLtreeNodeId(newId);
+      const newPath = parentPath ? `${parentPath}.${nodeKey}` : nodeKey;
+      newPathByOldId.set(item.id, newPath);
+
+      return {
+        id: newId,
+        bomId: bom.id,
+        parentId: newParentId,
+        itemType: item.itemType,
+        productId: item.productId,
+        materialId: item.materialId,
+        quantity: item.quantity,
+        path: newPath,
+        level: item.level,
+        sortOrder: item.sortOrder,
+        note: item.note,
+        createdBy: userId,
+      };
+    });
+
+    await tx.insert(bomItems).values(newItems);
+
+    return newIdByOldId;
+  }
+
+  /**
    * Validates every file id the request carries and marks them linked, so the orphan sweeper
    * leaves them alone. Runs **before** the transaction on purpose — see `FilesService.linkFiles`.
    */
   private async linkSuppliedFiles(
     reqDto: CreateProductReqDto | UpdateProductReqDto,
   ): Promise<void> {
-    const fileIds = [reqDto.imageFileId, ...(reqDto.attachmentFileIds ?? [])].filter(
-      (fileId): fileId is string => Boolean(fileId),
-    );
+    const fileIds = [
+      reqDto.imageFileId,
+      ...(reqDto.attachmentFileIds ?? []),
+    ].filter((fileId): fileId is string => Boolean(fileId));
 
     await this.filesService.linkFiles(fileIds);
   }
@@ -293,7 +428,9 @@ export class ProductsService {
     productId: string,
     fileIds: string[],
   ): Promise<void> {
-    await tx.insert(productAttachments).values(fileIds.map((fileId) => ({ productId, fileId })));
+    await tx
+      .insert(productAttachments)
+      .values(fileIds.map((fileId) => ({ productId, fileId })));
   }
 
   /** Replace-all. `tx` is required so a caller cannot accidentally write outside the transaction. */
@@ -302,7 +439,9 @@ export class ProductsService {
     productId: string,
     attachmentFileIds: string[],
   ): Promise<void> {
-    await tx.delete(productAttachments).where(eq(productAttachments.productId, productId));
+    await tx
+      .delete(productAttachments)
+      .where(eq(productAttachments.productId, productId));
 
     if (attachmentFileIds.length) {
       await tx
@@ -323,7 +462,10 @@ export class ProductsService {
     return existing;
   }
 
-  private async validateCodeUniqueness(code: string, ignoredProductId?: string): Promise<void> {
+  private async validateCodeUniqueness(
+    code: string,
+    ignoredProductId?: string,
+  ): Promise<void> {
     const where = ignoredProductId
       ? and(eq(products.code, code), ne(products.id, ignoredProductId))
       : eq(products.code, code);
@@ -368,7 +510,9 @@ export class ProductsService {
     }
   }
 
-  private async ensureProductGroupExists(productGroupId: string): Promise<void> {
+  private async ensureProductGroupExists(
+    productGroupId: string,
+  ): Promise<void> {
     const existing = await this.db.query.productGroups.findFirst({
       columns: { id: true },
       where: eq(productGroups.id, productGroupId),
@@ -382,18 +526,5 @@ export class ProductsService {
   private async generateProductCode(): Promise<string> {
     const [totalRows] = await this.db.select({ total: count() }).from(products);
     return `SP${String((totalRows?.total ?? 0) + 1).padStart(4, '0')}`;
-  }
-
-  /**
-   * `ProductResDto.revision` stays a plain `string` for read consumers (unchanged shape/name), but
-   * its value is now derived from the currently-current `product_revisions` row instead of a
-   * stored column. Every product is guaranteed a current revision (bootstrapped on create, and
-   * backfilled for pre-existing rows by a one-off migration), so this is only ever `null` in a
-   * data-integrity gap.
-   */
-  private withDerivedRevision<T extends { currentRevision?: { revisionNo: string } | null }>(
-    entity: T,
-  ): T & { revision: string | null } {
-    return { ...entity, revision: entity.currentRevision?.revisionNo ?? null };
   }
 }

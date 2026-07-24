@@ -1,4 +1,13 @@
-import { Body, Controller, Delete, Get, HttpStatus, Patch, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpStatus,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
@@ -25,18 +34,22 @@ export class ProductsController {
     summary: 'List products',
     isPaginated: true,
   })
-  getProducts(@Query() reqDto: GetProductsReqDto): Promise<OffsetPaginatedDto<ProductResDto>> {
+  getProducts(
+    @Query() reqDto: GetProductsReqDto,
+  ): Promise<OffsetPaginatedDto<ProductResDto>> {
     return this.productsService.getProducts(reqDto);
   }
 
-  @Get(':id')
+  @Get(':productId')
   @Permissions('products:read')
   @ApiPublic({
     type: ProductResDto,
     summary: 'Get product detail',
   })
-  getProductDetail(@UUIDParam('id') id: string): Promise<ProductResDto> {
-    return this.productsService.getProductDetail(id);
+  getProductDetail(
+    @UUIDParam('productId') productId: string,
+  ): Promise<ProductResDto> {
+    return this.productsService.getProductDetail(productId);
   }
 
   @Post()
@@ -53,40 +66,41 @@ export class ProductsController {
     return this.productsService.createProduct(reqDto, payload.sub);
   }
 
-  @Patch(':id')
+  @Patch(':productId')
   @Permissions('products:update')
   @ApiAuth({
     type: ProductResDto,
     summary: 'Update product',
   })
   updateProduct(
-    @UUIDParam('id') id: string,
+    @UUIDParam('productId') productId: string,
     @Body() reqDto: UpdateProductReqDto,
   ): Promise<ProductResDto> {
-    return this.productsService.updateProduct(id, reqDto);
+    return this.productsService.updateProduct(productId, reqDto);
   }
 
-  @Delete(':id')
+  @Delete(':productId')
   @Permissions('products:delete')
   @ApiAuth({
     summary: 'Delete product (soft delete)',
     statusCode: HttpStatus.NO_CONTENT,
   })
-  deleteProduct(@UUIDParam('id') id: string): Promise<void> {
-    return this.productsService.deleteProduct(id);
+  deleteProduct(@UUIDParam('productId') productId: string): Promise<void> {
+    return this.productsService.deleteProduct(productId);
   }
 
-  @Post(':id/copy')
+  @Post(':productId/copy')
   @Permissions('products:copy')
   @ApiAuth({
     type: ProductResDto,
-    summary: 'Copy (duplicate) a product',
+    summary:
+      'Copy (clone) a product, including its BOM tree and routing (Nhân bản)',
     statusCode: HttpStatus.CREATED,
   })
   copyProduct(
-    @UUIDParam('id') id: string,
+    @UUIDParam('productId') productId: string,
     @CurrentUser() payload: JwtPayloadType,
   ): Promise<ProductResDto> {
-    return this.productsService.copyProduct(id, payload.sub);
+    return this.productsService.copyProduct(productId, payload.sub);
   }
 }
