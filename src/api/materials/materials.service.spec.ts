@@ -3,8 +3,15 @@ import { Test, TestingModule } from '@nestjs/testing';
 
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
-import { MaterialStatus, MaterialType, UnitScope } from '../../database/schemas';
-import { chainableMock, QueryMockArgs } from '../../test-utils/chainable-mock.util';
+import {
+  MaterialStatus,
+  MaterialType,
+  UnitScope,
+} from '../../database/schemas';
+import {
+  chainableMock,
+  QueryMockArgs,
+} from '../../test-utils/chainable-mock.util';
 import { AppException } from '../../exceptions/app.exception';
 import { FilesService } from '../files/files.service';
 import { CreateMaterialReqDto } from './dto/create-material.req.dto';
@@ -22,7 +29,10 @@ describe('MaterialsService', () => {
   let service: MaterialsService;
   let mockDb: {
     query: {
-      materials: { findMany: jest.Mock<any, [QueryMockArgs]>; findFirst: jest.Mock };
+      materials: {
+        findMany: jest.Mock<any, [QueryMockArgs]>;
+        findFirst: jest.Mock;
+      };
       materialGroups: { findFirst: jest.Mock };
       units: { findFirst: jest.Mock };
       clients: { findFirst: jest.Mock };
@@ -36,7 +46,8 @@ describe('MaterialsService', () => {
   let insertedValues: unknown[];
 
   /** The single row an `insert(materials)` received. */
-  const insertedRow = (index: number) => insertedValues[index] as Record<string, unknown>;
+  const insertedRow = (index: number) =>
+    insertedValues[index] as Record<string, unknown>;
 
   /**
    * `chainable()` hands back a fresh jest.fn on every property access, so `.values()` arguments
@@ -72,10 +83,13 @@ describe('MaterialsService', () => {
     updatedAt: new Date(),
   };
 
-  const buildListReqDto = (overrides: Partial<GetMaterialsReqDto> = {}): GetMaterialsReqDto =>
-    Object.assign(new GetMaterialsReqDto(), overrides);
+  const buildListReqDto = (
+    overrides: Partial<GetMaterialsReqDto> = {},
+  ): GetMaterialsReqDto => Object.assign(new GetMaterialsReqDto(), overrides);
 
-  const buildCreateReqDto = (overrides: Partial<CreateMaterialReqDto> = {}): CreateMaterialReqDto =>
+  const buildCreateReqDto = (
+    overrides: Partial<CreateMaterialReqDto> = {},
+  ): CreateMaterialReqDto =>
     Object.assign(new CreateMaterialReqDto(), {
       name: 'Thép tấm 5mm',
       unitId: 'unit-id',
@@ -91,19 +105,26 @@ describe('MaterialsService', () => {
           findMany: jest.fn<any, [QueryMockArgs]>().mockResolvedValue([]),
           findFirst: jest.fn().mockResolvedValue(DETAIL_ROW),
         },
-        materialGroups: { findFirst: jest.fn().mockResolvedValue({ id: 'group-id' }) },
-        units: {
-          findFirst: jest
-            .fn()
-            .mockResolvedValue({ id: 'unit-id', scopes: [{ scope: UnitScope.MATERIAL }] }),
+        materialGroups: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'group-id' }),
         },
-        clients: { findFirst: jest.fn().mockResolvedValue({ id: 'client-id' }) },
+        units: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'unit-id',
+            scopes: [{ scope: UnitScope.MATERIAL }],
+          }),
+        },
+        clients: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'client-id' }),
+        },
       },
       select: chainableMock([{ total: 0 }]),
       insert: buildInsertMock(),
       // Passing mockDb itself as the transaction handle keeps `tx.insert(...)` pointing at the
       // same jest mock, so call-count assertions work whether a write is inside the tx or not.
-      transaction: jest.fn(async (cb: (tx: unknown) => Promise<unknown>) => cb(mockDb)),
+      transaction: jest.fn(async (cb: (tx: unknown) => Promise<unknown>) =>
+        cb(mockDb),
+      ),
     };
     mockFilesService = { linkFiles: jest.fn() };
 
@@ -145,7 +166,9 @@ describe('MaterialsService', () => {
     it('builds a predicate when q is given', async () => {
       await service.getMaterials(buildListReqDto({ q: 'thép' }));
 
-      expect(mockDb.query.materials.findMany.mock.calls[0][0].where).toBeDefined();
+      expect(
+        mockDb.query.materials.findMany.mock.calls[0][0].where,
+      ).toBeDefined();
     });
 
     it('builds a predicate for each filter', async () => {
@@ -158,11 +181,15 @@ describe('MaterialsService', () => {
         }),
       );
 
-      expect(mockDb.query.materials.findMany.mock.calls[0][0].where).toBeDefined();
+      expect(
+        mockDb.query.materials.findMany.mock.calls[0][0].where,
+      ).toBeDefined();
     });
 
     it('maps rows to MaterialResDto and reports the total', async () => {
-      mockDb.query.materials.findMany.mockResolvedValue([{ ...DETAIL_ROW, secret: 'dropped' }]);
+      mockDb.query.materials.findMany.mockResolvedValue([
+        { ...DETAIL_ROW, secret: 'dropped' },
+      ]);
       mockDb.select = chainableMock([{ total: 1 }]);
 
       const result = await service.getMaterials(buildListReqDto());
@@ -175,7 +202,10 @@ describe('MaterialsService', () => {
 
   describe('createMaterial', () => {
     it('auto-generates the code when omitted and writes inside a transaction', async () => {
-      const result = await service.createMaterial(buildCreateReqDto(), 'user-id');
+      const result = await service.createMaterial(
+        buildCreateReqDto(),
+        'user-id',
+      );
 
       expect(mockDb.transaction).toHaveBeenCalledTimes(1);
       expect(mockDb.insert).toHaveBeenCalledTimes(1);
@@ -192,7 +222,10 @@ describe('MaterialsService', () => {
         .mockResolvedValueOnce(undefined) // uniqueness probe
         .mockResolvedValueOnce(DETAIL_ROW); // detail re-read
 
-      await service.createMaterial(buildCreateReqDto({ code: 'VT9999' }), 'user-id');
+      await service.createMaterial(
+        buildCreateReqDto({ code: 'VT9999' }),
+        'user-id',
+      );
 
       const inserted = insertedRow(0);
       expect(inserted.code).toBe('VT9999');
@@ -215,11 +248,17 @@ describe('MaterialsService', () => {
 
     it('validates image and attachment file ids together', async () => {
       await service.createMaterial(
-        buildCreateReqDto({ imageFileId: 'image-file', attachmentFileIds: ['doc-file'] }),
+        buildCreateReqDto({
+          imageFileId: 'image-file',
+          attachmentFileIds: ['doc-file'],
+        }),
         'user-id',
       );
 
-      expect(mockFilesService.linkFiles).toHaveBeenCalledWith(['image-file', 'doc-file']);
+      expect(mockFilesService.linkFiles).toHaveBeenCalledWith([
+        'image-file',
+        'doc-file',
+      ]);
     });
 
     it('persists the client link and requires it when type is CLIENT', async () => {
@@ -234,7 +273,10 @@ describe('MaterialsService', () => {
 
     it('clears any clientId when type is INTERNAL', async () => {
       await service.createMaterial(
-        buildCreateReqDto({ type: MaterialType.INTERNAL, clientId: 'client-id' }),
+        buildCreateReqDto({
+          type: MaterialType.INTERNAL,
+          clientId: 'client-id',
+        }),
         'user-id',
       );
 
@@ -244,10 +286,15 @@ describe('MaterialsService', () => {
     });
 
     it('throws E036 when the supplied code is taken', async () => {
-      mockDb.query.materials.findFirst.mockResolvedValueOnce({ id: 'existing-id' });
+      mockDb.query.materials.findFirst.mockResolvedValueOnce({
+        id: 'existing-id',
+      });
 
       await expect(
-        service.createMaterial(buildCreateReqDto({ code: 'VT0001' }), 'user-id'),
+        service.createMaterial(
+          buildCreateReqDto({ code: 'VT0001' }),
+          'user-id',
+        ),
       ).rejects.toMatchObject({ response: { errorCode: ErrorCode.E036 } });
       expect(mockDb.transaction).not.toHaveBeenCalled();
     });
@@ -255,16 +302,23 @@ describe('MaterialsService', () => {
     it('throws E011 when the unit does not exist', async () => {
       mockDb.query.units.findFirst.mockResolvedValue(undefined);
 
-      await expect(service.createMaterial(buildCreateReqDto(), 'user-id')).rejects.toMatchObject({
+      await expect(
+        service.createMaterial(buildCreateReqDto(), 'user-id'),
+      ).rejects.toMatchObject({
         response: { errorCode: ErrorCode.E011 },
       });
       expect(mockDb.transaction).not.toHaveBeenCalled();
     });
 
     it('throws E043 when the unit exists but is not usable on materials', async () => {
-      mockDb.query.units.findFirst.mockResolvedValue({ id: 'unit-id', scopes: [] });
+      mockDb.query.units.findFirst.mockResolvedValue({
+        id: 'unit-id',
+        scopes: [],
+      });
 
-      await expect(service.createMaterial(buildCreateReqDto(), 'user-id')).rejects.toMatchObject({
+      await expect(
+        service.createMaterial(buildCreateReqDto(), 'user-id'),
+      ).rejects.toMatchObject({
         response: { errorCode: ErrorCode.E043 },
       });
       expect(mockDb.transaction).not.toHaveBeenCalled();
@@ -273,14 +327,19 @@ describe('MaterialsService', () => {
     it('throws E037 when the material group does not exist', async () => {
       mockDb.query.materialGroups.findFirst.mockResolvedValue(undefined);
 
-      await expect(service.createMaterial(buildCreateReqDto(), 'user-id')).rejects.toMatchObject({
+      await expect(
+        service.createMaterial(buildCreateReqDto(), 'user-id'),
+      ).rejects.toMatchObject({
         response: { errorCode: ErrorCode.E037 },
       });
     });
 
     it('throws E040 when type is CLIENT without a clientId', async () => {
       await expect(
-        service.createMaterial(buildCreateReqDto({ type: MaterialType.CLIENT }), 'user-id'),
+        service.createMaterial(
+          buildCreateReqDto({ type: MaterialType.CLIENT }),
+          'user-id',
+        ),
       ).rejects.toMatchObject({ response: { errorCode: ErrorCode.E040 } });
       expect(mockDb.transaction).not.toHaveBeenCalled();
     });
@@ -302,7 +361,10 @@ describe('MaterialsService', () => {
       );
 
       await expect(
-        service.createMaterial(buildCreateReqDto({ attachmentFileIds: ['ghost'] }), 'user-id'),
+        service.createMaterial(
+          buildCreateReqDto({ attachmentFileIds: ['ghost'] }),
+          'user-id',
+        ),
       ).rejects.toMatchObject({ response: { errorCode: ErrorCode.E042 } });
       expect(mockDb.transaction).not.toHaveBeenCalled();
     });
@@ -312,7 +374,10 @@ describe('MaterialsService', () => {
       mockDb.transaction.mockRejectedValue(failure);
 
       await expect(
-        service.createMaterial(buildCreateReqDto({ attachmentFileIds: ['file-a'] }), 'user-id'),
+        service.createMaterial(
+          buildCreateReqDto({ attachmentFileIds: ['file-a'] }),
+          'user-id',
+        ),
       ).rejects.toThrow(failure);
       expect(mockDb.query.materials.findFirst).not.toHaveBeenCalled();
     });
