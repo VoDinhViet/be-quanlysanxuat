@@ -93,14 +93,18 @@ describe('UsersController', () => {
     expect(result).toBe(expected);
   });
 
-  it('updateUser delegates to UsersService.updateUser', async () => {
+  it('updateUser delegates to UsersService.updateUser with the current user id', async () => {
     const reqDto = new UpdateUserReqDto();
     const expected = { id: 'user-1' };
     mockService.updateUser.mockResolvedValue(expected);
 
-    const result = await controller.updateUser('user-1', reqDto);
+    const result = await controller.updateUser('user-1', reqDto, payload);
 
-    expect(mockService.updateUser).toHaveBeenCalledWith('user-1', reqDto);
+    expect(mockService.updateUser).toHaveBeenCalledWith(
+      'user-1',
+      reqDto,
+      payload.sub,
+    );
     expect(result).toBe(expected);
   });
 
@@ -111,7 +115,11 @@ describe('UsersController', () => {
 
     const result = await controller.assignRole('user-1', reqDto, payload);
 
-    expect(mockService.assignRole).toHaveBeenCalledWith('user-1', reqDto, payload.sub);
+    expect(mockService.assignRole).toHaveBeenCalledWith(
+      'user-1',
+      reqDto,
+      payload.sub,
+    );
     expect(result).toBe(expected);
   });
 });

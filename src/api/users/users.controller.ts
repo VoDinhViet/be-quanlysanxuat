@@ -1,4 +1,12 @@
-import { Body, Controller, Get, HttpStatus, Patch, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpStatus,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
@@ -25,7 +33,9 @@ export class UsersController {
     type: CredentialResDto,
     summary: 'Get my profile',
   })
-  getCurrentUser(@CurrentUser() payload: JwtPayloadType): Promise<CredentialResDto> {
+  getCurrentUser(
+    @CurrentUser() payload: JwtPayloadType,
+  ): Promise<CredentialResDto> {
     return this.usersService.getCurrentUser(payload.sub);
   }
 
@@ -36,7 +46,9 @@ export class UsersController {
     summary: 'List users',
     isPaginated: true,
   })
-  getUsers(@Query() reqDto: GetUsersReqDto): Promise<OffsetPaginatedDto<UserResDto>> {
+  getUsers(
+    @Query() reqDto: GetUsersReqDto,
+  ): Promise<OffsetPaginatedDto<UserResDto>> {
     return this.usersService.getUsers(reqDto);
   }
 
@@ -50,11 +62,13 @@ export class UsersController {
     return this.usersService.getUserDetail(userId);
   }
 
+  // Sending `credential.roleId` additionally requires `roles:update` — checked in the service
+  // (E033), not here, because the requirement is conditional on the field being present.
   @Post()
   @Permissions('users:create')
   @ApiAuth({
     type: UserResDto,
-    summary: 'Create user (user + optional ERP credential)',
+    summary: 'Create user (user + optional ERP credential, with optional role)',
     statusCode: HttpStatus.CREATED,
   })
   createUser(
@@ -64,17 +78,20 @@ export class UsersController {
     return this.usersService.createUser(reqDto, payload.sub);
   }
 
+  // Sending `roleId` additionally requires `roles:update` — checked in the service (E033), not
+  // here, because the requirement is conditional on the field being present.
   @Patch(':userId')
   @Permissions('users:update')
   @ApiAuth({
     type: UserResDto,
-    summary: 'Update user profile',
+    summary: 'Update user profile (and optionally their role)',
   })
   updateUser(
     @UUIDParam('userId') userId: string,
     @Body() reqDto: UpdateUserReqDto,
+    @CurrentUser() payload: JwtPayloadType,
   ): Promise<UserResDto> {
-    return this.usersService.updateUser(userId, reqDto);
+    return this.usersService.updateUser(userId, reqDto, payload.sub);
   }
 
   @Patch(':userId/role')

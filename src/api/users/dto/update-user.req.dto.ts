@@ -17,7 +17,11 @@ export class UpdateUserReqDto {
   @DateFieldOptional({ nullable: true })
   dateOfBirth?: Date | null;
 
-  @StringFieldOptional({ description: 'CCCD/CMND number', nullable: true, maxLength: 20 })
+  @StringFieldOptional({
+    description: 'CCCD/CMND number',
+    nullable: true,
+    maxLength: 20,
+  })
   idNumber?: string | null;
 
   @StringFieldOptional({ nullable: true, maxLength: 30 })
@@ -26,10 +30,16 @@ export class UpdateUserReqDto {
   @EmailFieldOptional({ description: 'Personal email', nullable: true })
   email?: string | null;
 
-  @StringFieldOptional({ description: 'Permanent address', nullable: true, maxLength: 500 })
+  @StringFieldOptional({
+    description: 'Permanent address',
+    nullable: true,
+    maxLength: 500,
+  })
   address?: string | null;
 
-  @UUIDFieldOptional({ description: 'Avatar file id (from POST /files?type=USER_AVATAR)' })
+  @UUIDFieldOptional({
+    description: 'Avatar file id (from POST /files?type=USER_AVATAR)',
+  })
   avatarFileId?: string | null;
 
   @UUIDFieldOptional({ description: 'Department id' })
@@ -46,4 +56,13 @@ export class UpdateUserReqDto {
 
   @EnumFieldOptional(() => UserStatus)
   status?: UserStatus;
+
+  // Written to the user's login `credentials` row, NOT to `users` — peel it off before spreading
+  // this DTO into `.set(users)`. Requires the caller to hold `roles:update` on top of
+  // `users:update` (enforced in `UsersService`, E033), and the user to have a linked credential
+  // (E032). Same rules as the dedicated `PATCH /users/:userId/role`.
+  @UUIDFieldOptional({
+    description: "Role id to assign to this user's login credential",
+  })
+  roleId?: string;
 }

@@ -1,12 +1,25 @@
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { hash } from 'bcryptjs';
 import { plainToInstance } from 'class-transformer';
-import { and, count, desc, eq, getTableColumns, ilike, isNull, ne, or } from 'drizzle-orm';
+import {
+  and,
+  count,
+  desc,
+  eq,
+  getTableColumns,
+  ilike,
+  isNull,
+  ne,
+  or,
+} from 'drizzle-orm';
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { ErrorCode } from '../../constants/error-code.constant';
-import { type PermissionCode, SUPER_PERMISSION } from '../../constants/permission.constant';
+import {
+  type PermissionCode,
+  SUPER_PERMISSION,
+} from '../../constants/permission.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database } from '../../database/database.type';
 import {
@@ -39,7 +52,9 @@ export class UsersService {
     private readonly filesService: FilesService,
   ) {}
 
-  async getUsers(reqDto: GetUsersReqDto): Promise<OffsetPaginatedDto<UserResDto>> {
+  async getUsers(
+    reqDto: GetUsersReqDto,
+  ): Promise<OffsetPaginatedDto<UserResDto>> {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
     const where = keyword
       ? or(ilike(users.fullName, keyword), ilike(users.code, keyword))
@@ -55,7 +70,7 @@ export class UsersService {
         with: {
           department: true,
           position: true,
-          credential: true,
+          credential: { with: { role: true } },
           avatarFile: true,
         },
       }),
@@ -99,7 +114,8 @@ export class UsersService {
 
     // Effective permissions come from the cached resolver (the ADMIN role carries
     // `system:manage`), so the FE can drive permission-based UI.
-    const permissions = await this.permissionsService.getPermissionCodes(credentialId);
+    const permissions =
+      await this.permissionsService.getPermissionCodes(credentialId);
 
     return plainToInstance(
       CredentialResDto,
@@ -115,10 +131,17 @@ export class UsersService {
     );
   }
 
-  async createUser(reqDto: CreateUserReqDto, createdBy: string): Promise<UserResDto> {
+  async createUser(
+    reqDto: CreateUserReqDto,
+    actorCredentialId: string,
+  ): Promise<UserResDto> {
+    // `credential` is a nested object, not a column on `users` — peel it off so the spread below
+    // only carries real columns.
+    const { credential, ...userFields } = reqDto;
+
     await Promise.all([
       this.ensureDepartmentExists(reqDto.departmentId),
-      this.ensurePositionExists(reqDto.positionId),
+      this.ensurePositionInDepartment(reqDto.positionId, reqDto.departmentId),
     ]);
 
     if (reqDto.idNumber) {
@@ -127,12 +150,16 @@ export class UsersService {
     if (reqDto.avatarFileId) {
       await this.filesService.linkFiles([reqDto.avatarFileId]);
     }
+    // Read-only check, so it belongs with the others — before any write happens.
+    if (credential?.roleId) {
+      await this.resolveRoleForAssignment(credential.roleId, actorCredentialId);
+    }
 
     // Provision the ERP credential (if requested) before inserting the user row, so a
     // failed credential creation (e.g. duplicate username/email) never leaves an orphan user.
     let credentialId: string | undefined;
-    if (reqDto.credential) {
-      credentialId = await this.createCredential(reqDto.credential);
+    if (credential) {
+      credentialId = await this.createCredential(credential);
     }
 
     const code = await this.generateUserCode();
@@ -140,25 +167,37 @@ export class UsersService {
     const [user] = await this.db
       .insert(users)
       .values({
-        ...reqDto,
+        ...userFields,
         code,
         status: reqDto.status ?? UserStatus.WORKING,
         credentialId,
-        createdBy,
+        createdBy: actorCredentialId,
       })
       .returning();
 
     return this.getUserDetail(user.id);
   }
 
-  async updateUser(userId: string, reqDto: UpdateUserReqDto): Promise<UserResDto> {
-    await this.ensureUserExists(userId);
+  async updateUser(
+    userId: string,
+    reqDto: UpdateUserReqDto,
+    actorCredentialId: string,
+  ): Promise<UserResDto> {
+    const existing = await this.ensureUserExists(userId);
 
-    if (reqDto.departmentId) {
-      await this.ensureDepartmentExists(reqDto.departmentId);
-    }
-    if (reqDto.positionId) {
-      await this.ensurePositionExists(reqDto.positionId);
+    // Re-validate the (department, position) pair whenever either side changes — including when
+    // only one of the two is sent, against the other's *effective* value (the new one if sent,
+    // else the user's current one). A department-only change without a matching new position
+    // will always mismatch (E064) by design, since a position belongs to exactly one department.
+    // Both are required UUIDs on the DTO, so a truthy check is equivalent to `!== undefined` here.
+    if (reqDto.departmentId || reqDto.positionId) {
+      if (reqDto.departmentId) {
+        await this.ensureDepartmentExists(reqDto.departmentId);
+      }
+      await this.ensurePositionInDepartment(
+        reqDto.positionId ?? existing.positionId,
+        reqDto.departmentId ?? existing.departmentId,
+      );
     }
     if (reqDto.idNumber) {
       await this.validateIdNumberUniqueness(reqDto.idNumber, userId);
@@ -166,14 +205,30 @@ export class UsersService {
     if (reqDto.avatarFileId) {
       await this.filesService.linkFiles([reqDto.avatarFileId]);
     }
+    // Role assignment rides along on the profile update, but the role itself lives on the login
+    // credential — a user with no credential has nothing to assign to (E032). Same rules as the
+    // dedicated `PATCH /users/:userId/role`; both go through `resolveRoleForAssignment`.
+    if (reqDto.roleId) {
+      if (!existing.credentialId) {
+        throw new AppException(ErrorCode.E032, HttpStatus.BAD_REQUEST);
+      }
+      await this.resolveRoleForAssignment(reqDto.roleId, actorCredentialId);
+    }
+
+    // `roleId` has no column on `users` — peel it off before the spread.
+    const { roleId, ...userFields } = reqDto;
 
     // `updatedAt` is always written, which doubles as the reason `.set()` is safe here: drizzle
     // throws a bare "No values to set" (a 500) when every value is `undefined`, i.e. on an empty
-    // PATCH body.
+    // PATCH body or one carrying only `roleId`.
     await this.db
       .update(users)
-      .set({ ...reqDto, updatedAt: new Date() })
+      .set({ ...userFields, updatedAt: new Date() })
       .where(eq(users.id, userId));
+
+    if (roleId && existing.credentialId) {
+      await this.applyRoleToCredential(existing.credentialId, roleId);
+    }
 
     return this.getUserDetail(userId);
   }
@@ -205,17 +260,66 @@ export class UsersService {
       throw new AppException(ErrorCode.E032, HttpStatus.BAD_REQUEST);
     }
 
-    const role = await this.ensureRoleExists(reqDto.roleId);
-    await this.ensureActorMayAssign(role.permissions, actorCredentialId);
+    await this.resolveRoleForAssignment(reqDto.roleId, actorCredentialId);
 
-    await this.db
-      .update(credentials)
-      .set({ roleId: reqDto.roleId })
-      .where(eq(credentials.id, user.credentialId));
-
-    await this.permissionsService.invalidateCredential(user.credentialId);
+    await this.applyRoleToCredential(user.credentialId, reqDto.roleId);
 
     return this.getUserDetail(userId);
+  }
+
+  /**
+   * Every check that must pass before a role may be written onto a credential, in the order the
+   * client sees them: the actor is allowed to manage roles at all (E033) → the role exists (E027)
+   * → the actor isn't escalating their own privileges through it (E034).
+   *
+   * Shared by all three assignment paths (`POST /users`, `PATCH /users/:userId`,
+   * `PATCH /users/:userId/role`) so none of them can drift away from the others.
+   */
+  private async resolveRoleForAssignment(
+    roleId: string,
+    actorCredentialId: string,
+  ): Promise<void> {
+    await this.ensureActorMayManageRoles(actorCredentialId);
+    const role = await this.ensureRoleExists(roleId);
+    await this.ensureActorMayAssign(role.permissions, actorCredentialId);
+  }
+
+  /**
+   * `POST /users` and `PATCH /users/:userId` are guarded by `users:create`/`users:update`, which
+   * say nothing about roles — so assigning one through them needs `roles:update` checked here
+   * instead, and only when a `roleId` was actually sent. Without this, `users:create` alone would
+   * quietly become "may grant any role".
+   *
+   * `system:manage` passes, mirroring `PermissionsGuard` — otherwise a Super Admin would be
+   * blocked by this service despite passing every route guard.
+   */
+  private async ensureActorMayManageRoles(
+    actorCredentialId: string,
+  ): Promise<void> {
+    const actorPermissions =
+      await this.permissionsService.getPermissionCodes(actorCredentialId);
+
+    const mayManage =
+      actorPermissions.includes(SUPER_PERMISSION) ||
+      actorPermissions.includes('roles:update');
+
+    if (!mayManage) {
+      throw new AppException(ErrorCode.E033, HttpStatus.FORBIDDEN);
+    }
+  }
+
+  /** Writes the role onto the credential and drops its cached role→permissions mapping, so the
+   * change takes effect on that identity's next request instead of after the cache TTL. */
+  private async applyRoleToCredential(
+    credentialId: string,
+    roleId: string,
+  ): Promise<void> {
+    await this.db
+      .update(credentials)
+      .set({ roleId })
+      .where(eq(credentials.id, credentialId));
+
+    await this.permissionsService.invalidateCredential(credentialId);
   }
 
   private async ensureActorMayAssign(
@@ -226,7 +330,8 @@ export class UsersService {
       return;
     }
 
-    const actorPermissions = await this.permissionsService.getPermissionCodes(actorCredentialId);
+    const actorPermissions =
+      await this.permissionsService.getPermissionCodes(actorCredentialId);
 
     if (!actorPermissions.includes(SUPER_PERMISSION)) {
       throw new AppException(ErrorCode.E034, HttpStatus.FORBIDDEN);
@@ -246,20 +351,29 @@ export class UsersService {
     return existing;
   }
 
-  private async createCredential(credential: CreateCredentialReqDto): Promise<string> {
+  private async createCredential(
+    credential: CreateCredentialReqDto,
+  ): Promise<string> {
     await Promise.all([
       this.validateCredentialUsernameUniqueness(credential.username),
       this.validateCredentialEmailUniqueness(credential.email),
     ]);
 
-    const password = await hash(credential.password, UsersService.PASSWORD_SALT_ROUNDS);
+    const password = await hash(
+      credential.password,
+      UsersService.PASSWORD_SALT_ROUNDS,
+    );
 
+    // `roleId` is already validated by the caller (`createUser` runs `resolveRoleForAssignment`
+    // with the other read-only checks). No cache to invalidate — this credential id is brand new,
+    // so `PermissionsService` has never resolved it.
     const [created] = await this.db
       .insert(credentials)
       .values({
         username: credential.username,
         email: credential.email,
         password,
+        roleId: credential.roleId,
       })
       .returning();
 
@@ -272,7 +386,7 @@ export class UsersService {
       with: {
         department: true,
         position: true,
-        credential: true,
+        credential: { with: { role: true } },
         avatarFile: true,
       },
     });
@@ -286,15 +400,30 @@ export class UsersService {
     });
   }
 
-  private async ensureUserExists(userId: string): Promise<void> {
+  /** Returns the columns callers need right after (department/position, to compute the
+   * "effective" pair on a partial update; `credentialId`, to assign a role) instead of a second
+   * re-fetch. */
+  private async ensureUserExists(userId: string): Promise<{
+    id: string;
+    departmentId: string;
+    positionId: string;
+    credentialId: string | null;
+  }> {
     const existing = await this.db.query.users.findFirst({
-      columns: { id: true },
+      columns: {
+        id: true,
+        departmentId: true,
+        positionId: true,
+        credentialId: true,
+      },
       where: eq(users.id, userId),
     });
 
     if (!existing) {
       throw new AppException(ErrorCode.E012, HttpStatus.NOT_FOUND);
     }
+
+    return existing;
   }
 
   private async ensureDepartmentExists(departmentId: string): Promise<void> {
@@ -308,14 +437,22 @@ export class UsersService {
     }
   }
 
-  private async ensurePositionExists(positionId: string): Promise<void> {
-    const existing = await this.db.query.positions.findFirst({
-      columns: { id: true },
+  /** A position must (a) exist (`E015`) and (b) belong to `departmentId` (`E064`) — a chức vụ is
+   * always scoped to exactly one phòng ban. One query covers both checks. */
+  private async ensurePositionInDepartment(
+    positionId: string,
+    departmentId: string,
+  ): Promise<void> {
+    const position = await this.db.query.positions.findFirst({
+      columns: { id: true, departmentId: true },
       where: eq(positions.id, positionId),
     });
 
-    if (!existing) {
+    if (!position) {
       throw new AppException(ErrorCode.E015, HttpStatus.NOT_FOUND);
+    }
+    if (position.departmentId !== departmentId) {
+      throw new AppException(ErrorCode.E064, HttpStatus.BAD_REQUEST);
     }
   }
 
@@ -337,7 +474,9 @@ export class UsersService {
     }
   }
 
-  private async validateCredentialUsernameUniqueness(username: string): Promise<void> {
+  private async validateCredentialUsernameUniqueness(
+    username: string,
+  ): Promise<void> {
     const existing = await this.db.query.credentials.findFirst({
       columns: { id: true },
       where: eq(credentials.username, username),
@@ -348,7 +487,9 @@ export class UsersService {
     }
   }
 
-  private async validateCredentialEmailUniqueness(email: string): Promise<void> {
+  private async validateCredentialEmailUniqueness(
+    email: string,
+  ): Promise<void> {
     const existing = await this.db.query.credentials.findFirst({
       columns: { id: true },
       where: eq(credentials.email, email),
