@@ -17,8 +17,8 @@ type UploadPolicy = {
  *
  * There is intentionally no empty `permissions` field here. A registry that *looks* like it gates
  * access while gating nothing is worse than one that plainly doesn't: the next reader would assume
- * they are protected. To turn enforcement on, see the "Đường nâng cấp" section of
- * `docs/features/files.md` — add the field, add a guard reading `?type=`, and use OR semantics.
+ * they are protected. To turn enforcement on: add the field, add a guard reading `?type=`, and use
+ * OR semantics.
  */
 export const UPLOAD_POLICIES: Record<UploadType, UploadPolicy> = {
   [UploadType.USER_AVATAR]: { kind: FileKind.IMAGE },

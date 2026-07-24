@@ -20,8 +20,9 @@ import type { StorageProvider } from '../../storage/storage-provider.interface';
  * is safe by default, because linking is what marks a file, not who links it.
  *
  * **Requires a long-lived process.** `@nestjs/schedule` timers live in memory, so under the
- * serverless handler exported by `main.ts` this never fires and nothing reports it. See
- * `docs/features/files.md` for what to run instead in that deployment.
+ * serverless handler exported by `main.ts` this never fires and nothing reports it — an external
+ * scheduler (cron hitting a dedicated endpoint, a queue worker, etc.) is needed in that deployment;
+ * none is wired up yet.
  */
 @Injectable()
 export class FilesCleanupService {
@@ -35,7 +36,9 @@ export class FilesCleanupService {
 
   @Cron(CronExpression.EVERY_HOUR)
   async sweepOrphans(): Promise<void> {
-    const orphanTtl = this.configService.getOrThrow('upload.orphanTtl', { infer: true });
+    const orphanTtl = this.configService.getOrThrow('upload.orphanTtl', {
+      infer: true,
+    });
     const cutoff = new Date(Date.now() - orphanTtl * 1000);
 
     const orphans = await this.db.query.files.findMany({
@@ -60,6 +63,8 @@ export class FilesCleanupService {
       ),
     );
 
-    this.logger.log(`Swept ${orphans.length} orphaned file(s) older than ${orphanTtl}s`);
+    this.logger.log(
+      `Swept ${orphans.length} orphaned file(s) older than ${orphanTtl}s`,
+    );
   }
 }

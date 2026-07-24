@@ -6,21 +6,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 NestJS 11 modular monolith for a production management system ("quản lý sản xuất"). PostgreSQL + Drizzle ORM, Redis, Swagger. Package manager is pnpm.
 
-Current state: 20 API modules under `src/api/` — `auth`, `users`, `roles`, `health`, `files`, `clients`, `client-groups`, `products`, `product-groups`, `product-revisions`, `boms`, `materials`, `material-groups`, `suppliers`, `supplier-groups`, `units`, `departments`, `positions`, `countries`, `operations`. RBAC (roles + granular permission codes) is live, see `docs/features/authorization.md`. `package.json` is still named `be-giasu-ai` — it hasn't been renamed for this project.
+Current state: 21 API modules under `src/api/` — `auth`, `users`, `roles`, `health`, `files`, `clients`, `client-groups`, `products`, `product-groups`, `boms`, `routing`, `materials`, `material-groups`, `suppliers`, `supplier-groups`, `units`, `departments`, `positions`, `countries`, `operations`, `orders`. RBAC (roles + granular permission codes) is live. `package.json` is still named `be-giasu-ai` — it hasn't been renamed for this project.
 
-Removed on purpose (don't recreate unless asked): `orders`, `uploads` (replaced by `files`).
+Removed on purpose (don't recreate unless asked): `uploads` (replaced by `files`). A prior `orders` module existed very early in the project's history and was removed along with most of the scaffold (`eea5926`) — the current `orders` (added 2026-07-24, see below) is an unrelated, fresh greenfield build, not a restoration of that old one (different schema shape: no PO/PR/VAT/approval workflow).
 
 `suppliers`/`supplier-groups` were removed on 2026-07-20 and **rolled back the same day** — they exist and are current. They were restored on the `files` registry (`logoFileId` / `attachmentFileIds`), not the plain-URL model they originally shipped with. `countries` exists because suppliers reference it.
 
-`operations` (added 2026-07-21) is master data for công đoạn (production steps), classified `INHOUSE`/`OUTSOURCE` — groundwork for a future product structure/routing feature (see `docs/features/operations.md`, `docs/features/products.md`). `products` gained a `type` (`FG`/`WIP`) column the same day for the same reason.
+`operations` (added 2026-07-21) is master data for công đoạn (production steps), classified `INHOUSE`/`OUTSOURCE` — groundwork for a future product structure/routing feature. `products` gained a `type` (`FINISHED_GOOD`/`WORK_IN_PROGRESS`, renamed from `FG`/`WIP` on 2026-07-22) column the same day for the same reason.
 
-`product-revisions` (added 2026-07-21) is a versioning shell for products — `product_revisions` + `products.currentRevisionId`, nested routes under `POST/GET /products/:productId/revisions*` (see `docs/features/product-revisions.md`). `products.revision` (the old free-text column) was replaced: it's now derived from the current revision, no longer settable via `CreateProductReqDto`/`UpdateProductReqDto`. Routing itself is not built yet — this is groundwork only.
+`product-revisions` (added 2026-07-21, **removed 2026-07-24**) was a versioning shell for products — don't recreate it or look for `product_revisions`/`currentRevisionId` in the schema, they're gone. Versioning is now done by cloning the whole product (see `POST /products/:id/copy` below) instead of editing a version-history sub-resource. `products.sourceProductId` (nullable, self-FK) records which product a clone was made from, for lineage display only.
 
-`boms` (added 2026-07-21) is the read side of the BOM/structure tree ("Cấu trúc sản phẩm") hanging off a product revision — `boms` + `bom_items` (self-referencing, PRODUCT/MATERIAL leaf items), exposed via `GET /products/:productId/revisions/:revisionId/bom` (see `docs/features/boms.md`). No writer exists yet — a BOM can only be inspected, not created or edited, through the API.
+`boms` (added 2026-07-21, writer added 2026-07-22, **repointed from revision to product 2026-07-24**) is the BOM/structure tree ("Cấu trúc sản phẩm") — `boms` + `bom_items` (self-referencing, PRODUCT/MATERIAL leaf items), one BOM per product (`boms.productId` unique). Read via `GET /products/:productId/bom`; written per-node in real time via `POST/PATCH/DELETE .../bom/items[/:itemId]` (permission `products:bom-manage`). Each PRODUCT node's read response embeds its own as-used routing as `operations` (see `routing` below); MATERIAL nodes always get `[]`.
+
+`routing` (added 2026-07-22 as `revision-operations`, renamed `product-operations` + repointed from revision to product 2026-07-24, **generalized to per-BOM-node ("as-used") and renamed again 2026-07-24**) is routing ("Công đoạn") — the sequence of `operations` a node of a product's structure goes through, table `routing_steps`. A row is keyed by **either** `productId` (the root product's own "Cấp 0" routing) **or** `bomItemId` (one specific `bom_items` node's own routing — the same WIP referenced from two different parents can carry a different routing at each position), mutually exclusive via a DB CHECK. Read/write Cấp 0 via `GET/POST/PATCH/DELETE /products/:productId/operations[/:stepId]`; read/write one BOM node via the same verbs under `/products/:productId/bom/items/:itemId/operations[/:stepId]` (permission `products:bom-manage` for writes, reused from `boms`).
+
+`POST /products/:id/copy` (permission `products:copy`) deep-clones a product: the row itself, its attachments, its whole BOM tree, and its whole routing — a full independent product, not a version of the source. This is the versioning mechanism for this project (see the `product-revisions` note above).
+
+`orders` (added 2026-07-24) is a first, deliberately small slice of Sales Order management — `orders` (header: client, sales staff, dates, status, `totalAmount`) + `order_items` (product lines; `totalAmount` is always server-computed as the sum of line totals, never accepted from the client). Unlike most master-data modules, **every** `/orders*` route requires a bearer token, including reads. "Trễ hạn" (overdue) is a computed, not stored, flag. Deliberately deferred for now: delivery tracking, VAT, production-driven statuses.
 
 ## Rules
 
-Detailed, enforceable conventions live in `.claude/rules/` and are imported below:
+Detailed, enforceable conventions live in `.claude/rules/` and are imported below (always active for every task):
 
 @.claude/rules/workflow.md
 @.claude/rules/api-module.md
@@ -28,6 +34,8 @@ Detailed, enforceable conventions live in `.claude/rules/` and are imported belo
 @.claude/rules/database.md
 @.claude/rules/errors-pagination.md
 @.claude/rules/testing.md
+
+On-demand capabilities (doc refactor, CLAUDE.md audit, Fowler-style code refactor) live in `.claude/skills/` — see `.claude/README.md` for the rule-vs-skill standard.
 
 ## Commands
 
@@ -60,18 +68,19 @@ Env is loaded from `.env.${NODE_ENV}` first, then `.env` as fallback (see `src/m
 
 ### Modules (`src/api/<module>/`)
 
-`users` is the reference example for new modules — coding conventions (controller/service shape, DTOs, errors, pagination) live in `.claude/rules/` (imported above), not repeated here. Business rules and API contracts per module live in `docs/features/`: [`auth.md`](docs/features/auth.md), [`users.md`](docs/features/users.md), [`health.md`](docs/features/health.md).
+`users` is the reference example for new modules — coding conventions (controller/service shape, DTOs, errors, pagination) live in `.claude/rules/` (imported above), not repeated here. Business rules and API contracts per module, when written, live in `docs/features/<module>.md` (no fixed template — written as needed, see `.claude/rules/workflow.md`).
 
 Register new modules in `src/app.module.ts`.
 
-**Global secure-by-default guards**: `JwtAuthGuard` + `PermissionsGuard` are registered as `APP_GUARD` in `src/app.module.ts` (in that order). Every route requires a valid bearer token by default; mark a route `@Public()` / `@ApiPublic()` (`src/decorators/public.decorator.ts`) to opt out of both auth and permission checks. A route declares the permission it needs with `@Permissions('resource:action')`; `PermissionsGuard` enforces it (a role holding `system:manage` passes everything). Roles live in the DB and are resolved per-request from the token's credential id (Redis-cached). Read the authenticated user with `@CurrentUser()` (`src/decorators/current-user.decorator.ts`) — on `@Public()` routes it resolves to `undefined`. Full model: `docs/features/authorization.md`.
+**Global secure-by-default guards**: `JwtAuthGuard` + `PermissionsGuard` are registered as `APP_GUARD` in `src/app.module.ts` (in that order). Every route requires a valid bearer token by default; mark a route `@Public()` / `@ApiPublic()` (`src/decorators/public.decorator.ts`) to opt out of both auth and permission checks. A route declares the permission it needs with `@Permissions('resource:action')`; `PermissionsGuard` enforces it (a role holding `system:manage` passes everything). Roles live in the DB and are resolved per-request from the token's credential id (Redis-cached). Read the authenticated user with `@CurrentUser()` (`src/decorators/current-user.decorator.ts`) — on `@Public()` routes it resolves to `undefined`.
 
 ### Database (Drizzle)
 
 - `DatabaseModule` is `@Global()`, token `DRIZZLE`, type `Database` (`src/database/database.type.ts`). Conventions (schema shape, re-export requirement, soft-delete reality): `.claude/rules/database.md`.
+- Cross-cutting ER diagram + data-flow diagram for the product/BOM/routing domain (products, boms, bom_items, routing_steps, operations, product_groups, units): `docs/architecture.md`. Different in shape from `docs/features/*.md` — no business rules/API contract there, just how the tables connect and in what order writes happen.
 
 ## Notes
 
-- README references an older doc layout (`docs/architecture.md`, `coding-standards.md`, `api-standards.md`, `database-rules.md`, `module-specs/*`) and `AGENTS.md` — none of those exist, don't look for them. The current `docs/features/` folder (feature specs, see `.claude/rules/workflow.md`) is a fresh convention, not a restoration of the old one.
+- README references an older doc layout (`coding-standards.md`, `api-standards.md`, `database-rules.md`, `module-specs/*`) and `AGENTS.md` — none of those exist, don't look for them. `docs/architecture.md` (added 2026-07-22) is a real, current file — it's a fresh cross-cutting ER/data-flow doc, unrelated in shape or content to whatever the old abandoned layout's version of that path used to be. The `docs/features/` folder (feature specs, see `.claude/rules/workflow.md`) is likewise a fresh convention, not a restoration of the old one.
 - `uploads/` is served statically at `/uploads/` and is git-ignored.
 - `src/common/` has some DTOs duplicated at both `common/*` and `common/dto/*` (e.g. pagination, error DTOs) — prefer the versions under `common/dto/`.

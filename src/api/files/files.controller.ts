@@ -33,8 +33,8 @@ export class FilesController {
 
   /**
    * No `@Permissions(...)`: any authenticated user may upload any type for now. That is a
-   * deliberate simplification, recorded in `docs/features/files.md` along with what to do to turn
-   * per-type permissions on — not an omission to be "fixed" by copying a permission from elsewhere.
+   * deliberate simplification (see `UPLOAD_POLICIES` in `upload-policy.ts` for how to turn
+   * per-type permissions on) — not an omission to be "fixed" by copying a permission from elsewhere.
    */
   @Post()
   @UseInterceptors(FileInterceptor('file', multerOptions))
@@ -49,7 +49,8 @@ export class FilesController {
   })
   @ApiAuth({
     type: FileResDto,
-    summary: 'Upload a file (registered in the `files` registry, not linked to any entity yet)',
+    summary:
+      'Upload a file (registered in the `files` registry, not linked to any entity yet)',
     statusCode: HttpStatus.CREATED,
   })
   uploadFile(
@@ -57,7 +58,10 @@ export class FilesController {
     @Query() reqDto: UploadFileReqDto,
     @CurrentUser() payload: JwtPayloadType,
   ): Promise<FileResDto> {
-    return this.filesService.upload(file, { type: reqDto.type, uploadedBy: payload.sub });
+    return this.filesService.upload(file, {
+      type: reqDto.type,
+      uploadedBy: payload.sub,
+    });
   }
 
   @Get(':id')
@@ -89,10 +93,14 @@ export class FilesController {
 
   @Delete(':id')
   @ApiAuth({
-    summary: 'Delete a file (uploader or system:manage only; removes registry row and bytes)',
+    summary:
+      'Delete a file (uploader or system:manage only; removes registry row and bytes)',
     statusCode: HttpStatus.NO_CONTENT,
   })
-  deleteFile(@UUIDParam('id') id: string, @CurrentUser() payload: JwtPayloadType): Promise<void> {
+  deleteFile(
+    @UUIDParam('id') id: string,
+    @CurrentUser() payload: JwtPayloadType,
+  ): Promise<void> {
     return this.filesService.deleteFile(id, payload.sub);
   }
 }

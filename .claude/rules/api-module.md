@@ -8,7 +8,7 @@ Reference implementation: `src/api/users/users.controller.ts` and `src/api/users
 - Decorate each handler with `@ApiAuth({ type, summary, isPaginated?, statusCode? })` (JWT-authenticated, from `src/decorators/http.decorators.ts`) or `@ApiPublic({...})` for public routes. Both bundle the Swagger response shape — don't hand-roll `@ApiOkResponse`/`@ApiResponse`.
 - Use `@UUIDParam('id')` (`src/decorators/param.decorators.ts`) for UUID path params — never a raw `@Param('id')`.
 - Handlers must stay **thin**: `return this.xService.method(reqDto);` directly, no branching or business logic in the controller. Type the return as `Promise<XResDto>` or `Promise<OffsetPaginatedDto<XResDto>>`.
-- `@Permissions()` / `@Roles()` are inert metadata — no guard currently reads them. Do not rely on them for actual authorization; if a route needs to be protected, use `@UseGuards(JwtAuthGuard)` (see `src/api/auth/guards/jwt-auth.guard.ts`).
+- `@Permissions('resource:action')` is **live and enforced** by `PermissionsGuard` (`src/api/auth/guards/permissions.guard.ts`), registered globally as `APP_GUARD` right after `JwtAuthGuard` — it reads the decorator's metadata and 403s (`ErrorCode.E033`) if the caller's role lacks the permission (a role holding `system:manage` passes everything). Every non-`@Public()`/`@ApiPublic()` route should declare the permission it needs.
 
 ## Services
 
@@ -33,6 +33,10 @@ Reference implementation: `src/api/users/users.controller.ts` and `src/api/users
   ```
 
   (`$onUpdate` on the column does *not* cover this — drizzle rejects the empty set before applying it.)
+- **Don't hand-roll `if (reqDto.field !== undefined) setValues.field = reqDto.field` per column to build a partial-update payload.** It's redundant: Drizzle already drops `undefined` values from `.set()`, `ValidationPipe`'s `whitelist: true` already stripped anything not on the DTO, and the always-present `updatedAt` (above) already keeps the statement non-empty. Spread the DTO straight into `.set()`, same as a create — see `RoutingService.updateStep`/`BomsService.updateBomItem`. Three cases still need an explicit `!== undefined` (or an equivalent narrower check) instead of a plain spread:
+  - **Replace-all on a child collection where `[]` is a meaningful value** ("clear all") distinct from "field omitted" — spreading can't tell those apart. See `OrdersService.updateOrder`'s `items`.
+  - **A field that needs a transform before it can be written** (e.g. a `number` DTO field going into a `numeric`/string column) — peel it off, spread the rest, and write the transformed value only `if (field !== undefined)`. See `BomsService.updateBomItem`'s `quantity`.
+  - **A business-rule check that must run only when the field was actually sent**, independent of the write itself (e.g. an integer-only constraint that shouldn't fire on an update that doesn't touch the field). A plain truthy check (`if (reqDto.field)`) is fine here instead when the valid value range excludes falsy (e.g. a required UUID) — reserve `!== undefined` for when `0`/`''`/`false` must still count as "sent".
 - Always map entities to response DTOs with `plainToInstance(XResDto, entity, { excludeExtraneousValues: true })` — never return a raw Drizzle row from a service method that a controller exposes.
 - After create/update, re-fetch the row by id (e.g. a `getXDetail(id)` helper) and map that — don't map the raw `.returning()` result directly.
 - Factor existence/uniqueness checks into private helpers, named by which of the two they do — don't mix the two verbs:

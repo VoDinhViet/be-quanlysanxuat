@@ -1,78 +1,109 @@
-# Feature: Products
+# Tính năng: Products (Sản phẩm)
 
-## Goal
+## Mục đích
 
-Manage the master catalog of products ("Sản phẩm — Dữ liệu nguồn") shown on the products list screen: search/filter, view, create, edit, duplicate, and delete products, each linked to a client, a product group, and a unit of measure.
+Quản lý sản phẩm — cả **thành phẩm** (`FINISHED_GOOD`) lẫn **bán thành phẩm** (`WORK_IN_PROGRESS`). Đây là bảng gốc mà toàn bộ miền cấu trúc sản phẩm dựng lên trên: BOM ([`boms.md`](boms.md)) và công đoạn ([`routing.md`](routing.md)) đều móc vào một dòng `products`.
 
-## Business rules
+## Quy tắc nghiệp vụ
 
-- `code` is globally unique. If omitted on create, it's auto-generated as `SP` + a zero-padded sequential number (e.g. `SP0001`), based on the current total row count.
-- `type` is `FG` (thành phẩm — a sellable end product) or `WIP` (bán thành phẩm — an intermediate part that only exists as a component inside another product's structure). Defaults to `FG` when omitted on create. Both share every other mechanic on this table (image, revision, attachments); a future BOM/structure feature (out of scope here, see Out of scope) will reference `WIP` rows as child nodes of a `FG` product's tree. `POST /products/:id/copy` carries the original's `type` over onto the copy.
-- `unitId` is required and must reference an existing `units` row (`ErrorCode.E011` if not found) that carries the `PRODUCT` scope (`ErrorCode.E043` if not — see `docs/features/units.md`).
-- `clientId` and `productGroupId` are optional; when provided they must reference existing rows (`ErrorCode.E009` / `E010`), and can be cleared by sending `null` on update.
-- `revision` is **not a settable field** — a product's first revision (`R01`) is auto-created when the product is created, and `revision` on read responses is derived from whichever revision is current. Manage revisions (create new ones, switch/rollback which one is current) via `docs/features/product-revisions.md`. `POST /products/:id/copy` starts the copy's revision history fresh at `R01` rather than carrying the source's over.
-- `status` defaults to `ACTIVE` (`ACTIVE | INACTIVE`).
-- Delete is a **soft delete** (`deletedAt` timestamp) — deleted products are excluded from every read (list/detail) and no longer count toward `SPxxxx` code generation avoidance (a new product can reuse a freed code once the old row's `deletedAt` is set, since uniqueness checks don't exclude soft-deleted rows explicitly — deleted codes stay reserved).
-- Copy (`POST /products/:id/copy`) duplicates all fields of an existing (non-deleted) product except `id`/`code`/timestamps: a fresh `code` is auto-generated, `createdBy` is the caller performing the copy.
-- `createdBy` is always taken from the bearer token (`sub` claim) on create/copy — it is never accepted from the request body.
-- Search (`q`) is **accent-insensitive** (e.g. "khung may" matches "Khung máy A"), backed by the PostgreSQL `unaccent` extension, and matches `code`, `name`, or the linked product group's `name`.
+### Phân loại và trạng thái
+
+- **Thành phẩm và bán thành phẩm nằm chung một bảng.** Chúng dùng chung mọi cơ chế (hình ảnh, BOM, routing) và chỉ khác nhau ở cách được dùng: `FINISHED_GOOD` là gốc của cây cấu trúc của chính nó, `WORK_IN_PROGRESS` được tham chiếu như một node con trong cây BOM của sản phẩm khác. **Vật tư (RM) là bảng hoàn toàn khác** — xem `materials`.
+- `type` mặc định `FINISHED_GOOD` khi không gửi. Hai giá trị này **đổi tên từ `FG`/`WIP` vào 2026-07-22**; không còn client nào nên gửi tên cũ.
+- `status` mặc định `ACTIVE`, giá trị còn lại là `INACTIVE`. Đây chỉ là cờ hiển thị/lọc — hệ thống **không** chặn dùng sản phẩm `INACTIVE` trong BOM hay đơn hàng.
+
+### Mã sản phẩm
+
+- **`code` tự sinh khi không gửi**, theo dạng `SP0001` — đếm tổng số dòng `products` rồi +1, pad 4 chữ số.
+- Cách sinh này **đếm cả sản phẩm đã xoá mềm**, nên mã không liền mạch sau khi xoá là bình thường, không phải bug.
+- **Có cửa sổ TOCTOU**: hai request tạo song song có thể tính ra cùng một số. Chốt chặn thật là ràng buộc `unique` trên cột `products.code` ở DB — request thua cuộc sẽ nhận lỗi từ tầng DB, không phải `E008`.
+- Gửi `code` thủ công thì nó được kiểm trùng trước (`E008`, 409). Khi `PATCH`, phép kiểm loại trừ chính dòng đang sửa (`ne(products.id, id)`), nên `PATCH` lại đúng mã cũ không bị coi là trùng.
+
+### Đơn vị tính, khách hàng, nhóm
+
+- **`unitId` bắt buộc, và đơn vị phải dùng được cho sản phẩm.** Không chỉ kiểm tồn tại (`E011`, 404) mà còn kiểm đơn vị đó có scope `PRODUCT` (`E043`, 400). Hai lỗi cố ý tách nhau: client cần phân biệt "không tìm thấy đơn vị" với "đơn vị này không dùng được cho sản phẩm". Lọc dropdown bằng `GET /units?scope=PRODUCT` chỉ là hiển thị — request viết tay vẫn bị chặn ở đây.
+- `clientId` và `productGroupId` **tuỳ chọn** và nullable; nếu có gửi thì phải tồn tại (`E009` / `E010`, đều 404).
+
+### Hình ảnh và tài liệu đính kèm
+
+- `imageFileId` và `attachmentFileIds` đều trỏ tới registry `files`, **không bao giờ là URL trần**. Upload trước qua `POST /files?type=PRODUCT_IMAGE` / `PRODUCT_DOCUMENT`, rồi gửi id lên đây.
+- Mọi file id gửi lên được kiểm và **đánh dấu đã liên kết** (`FilesService.linkFiles`) **trước khi transaction mở**, để bộ quét file mồ côi không dọn mất chúng.
+- **`attachmentFileIds` là replace-all khi `PATCH`**, và phân biệt hai trạng thái khác nhau:
+  - gửi `[]` → **xoá hết** tài liệu đính kèm;
+  - **bỏ hẳn trường** → PATCH này không đụng tới tài liệu.
+  Đây là lý do code kiểm truthy trên chính mảng chứ không phải `.length`.
+- Trong response, các file được đổi tên: quan hệ `imageFile` phơi ra thành `image`. `FileResDto.url` là **link ký số có hạn** — dùng trực tiếp làm `<img src>` được, nhưng **đừng cache hay lưu lại**: hết `UPLOAD_URL_TTL` giây là hỏng, phải đọc lại sản phẩm để lấy link mới.
+
+### Xoá
+
+- **Xoá là xoá mềm** (`deletedAt`). Mọi truy vấn đọc đều lọc `isNull(products.deletedAt)`.
+- **Không có kiểm ràng buộc trước khi xoá.** Xoá mềm một sản phẩm đang được dùng làm node trong BOM của sản phẩm khác vẫn thành công — dòng `bom_items` còn nguyên (`onDelete: restrict` chỉ chặn xoá cứng), nhưng cây BOM sẽ đọc ra node trỏ tới một sản phẩm đã ẩn. Cần chặn thì phải bổ sung luật, hiện chưa có.
+
+### Nhân bản sản phẩm (`POST /products/:id/copy`)
+
+- **Đây là cơ chế "phiên bản" của dự án này.** Module `product-revisions` đã bị gỡ vào 2026-07-24; không có bảng `product_revisions` hay cột `currentRevisionId` nữa. Muốn một biến thể mới thì clone cả sản phẩm.
+- Clone sâu, trong **một transaction**: dòng sản phẩm, tài liệu đính kèm, **toàn bộ cây BOM**, routing Cấp 0, và routing as-used của từng node đã clone.
+- **Bản sao là một sản phẩm độc lập hoàn toàn** — BOM riêng, routing riêng. `sourceProductId` chỉ ghi lại nguồn gốc để hiển thị ("Sao chép từ"), không tạo ràng buộc gì sau đó; sửa bản sao không ảnh hưởng bản gốc và ngược lại.
+- **Bản sao trỏ tới cùng các dòng `files` với bản gốc** — `files` là registry, hai sản phẩm cùng tham chiếu một file chính là công dụng của nó. File không bị nhân đôi trên đĩa.
+- **Clone BOM không clone đệ quy các sản phẩm được tham chiếu.** `productId`/`materialId` trên mỗi node vẫn trỏ tới đúng WIP/vật tư gốc — chỉ cấu trúc được nhân bản, không phải các sản phẩm thành phần.
+- Đường dẫn `path` (ltree) của từng node được **dựng lại từ id mới**, không copy nguyên: `path` cũ nhúng id cũ nên copy thẳng sẽ hỏng.
+- `code` của bản sao **luôn tự sinh**, không nhận từ client. `name` giữ nguyên tên bản gốc — hai sản phẩm cùng tên khác mã là trạng thái bình thường sau khi nhân bản, client nên hiển thị mã để phân biệt.
+- Người tạo bản sao là caller hiện tại (`createdBy`), không phải người tạo bản gốc.
 
 ## API contract
 
 | Method | Path | Auth | Request | Response |
 | ------ | ---- | ---- | ------- | -------- |
-| GET | `/products` | public | `GetProductsReqDto` (`q`, `clientId`, `productGroupId`, `type`, `status`, `page`, `limit`) | `OffsetPaginatedDto<ProductResDto>` |
-| GET | `/products/:id` | public | — | `ProductResDto` |
-| POST | `/products` | jwt (`JwtAuthGuard`) | `CreateProductReqDto` | `201` + `ProductResDto` |
-| PATCH | `/products/:id` | jwt | `UpdateProductReqDto` (all fields optional) | `ProductResDto` |
-| DELETE | `/products/:id` | jwt | — | `204` (soft delete) |
-| POST | `/products/:id/copy` | jwt | — | `201` + `ProductResDto` (duplicate with a new code) |
-| — | `/products/:productId/revisions*` | — | — | see `docs/features/product-revisions.md` — create/list/detail/activate a revision |
-| GET | `/clients` | public | `q`, `page`, `limit` | `OffsetPaginatedDto<ClientResDto>` (dropdown data) |
-| GET | `/product-groups` | public | `q`, `page`, `limit` | `OffsetPaginatedDto<ProductGroupResDto>` (dropdown data) |
-| GET | `/units` | public | `q`, `scope` | `UnitResDto[]` — **not paginated** (dropdown data — pass `scope=PRODUCT`) |
-| POST | `/files` | jwt | `multipart`, `?type=PRODUCT_IMAGE` | `201` + `FileResDto` (upload before linking `imageFileId`) |
+| GET | `/products` | **public** ⚠️ | `GetProductsReqDto` — `limit`, `page`, `q`, `order`, `clientId`, `productGroupId`, `type`, `status` | `200` + `ProductResDto` phân trang |
+| GET | `/products/:productId` | **public** ⚠️ | — | `200` + `ProductResDto` |
+| POST | `/products` | `products:create` | `CreateProductReqDto` — `name`*, `unitId`*, `code`, `type`, `clientId`, `productGroupId`, `imageFileId`, `attachmentFileIds`, `status`, `note` | `201` + `ProductResDto` |
+| PATCH | `/products/:productId` | `products:update` | `UpdateProductReqDto` — mọi trường tuỳ chọn | `200` + `ProductResDto` |
+| DELETE | `/products/:productId` | `products:delete` | — | `204`, không có body |
+| POST | `/products/:productId/copy` | `products:copy` | — | `201` + `ProductResDto` (bản sao) |
 
-- `ProductResDto` nests lightweight refs: `client { id, code, name } | null`, `group { id, code, name } | null`, `unit { id, code, name }`, `creator { id, username } | null`, and `image: FileResDto | null`.
-- **Images go through the `files` registry**, not a URL string: upload with `POST /files?type=PRODUCT_IMAGE`, then send the returned id as `imageFileId`. An unknown id 404s with `E042`. `POST /products/:id/copy` copies the `imageFileId`, so the copy shares the original's file — there is no reference counting, so deleting that file clears the image on both.
-- List/detail read routes are public (consistent with the rest of the `users`/`auth` module set at this stage of the project — see Out of scope). Only write routes (create/update/delete/copy) require a valid bearer access token.
-- `GET /clients`, `/product-groups`, `/units` are minimal list-only endpoints meant to populate dropdowns/filters on the products screen — full CRUD for these master-data entities is a separate, future task.
-- `GET /units` is the odd one out: it returns a bare array rather than a paginated envelope (see `docs/features/units.md` for why). `/clients` and `/product-groups` stay paginated.
+(`*` = bắt buộc)
 
-## Error cases
+> ⚠️ **Hai route GET đang thực sự public, dù có `@Permissions('products:read')`.** Chúng dùng `@ApiPublic()`, mà decorator này áp `Public()`; cả `JwtAuthGuard` lẫn `PermissionsGuard` đều `return true` ngay khi thấy metadata đó. Nên `@Permissions` trên hai route này **không có tác dụng** — gọi được mà không cần token. Tài liệu ghi đúng hành vi hiện tại; nếu ý định thật là bắt buộc đăng nhập thì phải đổi `@ApiPublic` thành `@ApiAuth` (là thay đổi breaking với client đang gọi không token). Các route GET của [`boms.md`](boms.md) và [`routing.md`](routing.md) cũng đang y hệt.
 
-| Case | ErrorCode | HTTP status |
-| ---- | --------- | ----------- |
-| Product not found (detail/update/delete/copy) | `ErrorCode.E007` | 404 Not Found |
-| Product `code` already taken (create/update, explicit code only) | `ErrorCode.E008` | 409 Conflict |
-| `clientId` does not reference an existing client | `ErrorCode.E009` | 404 Not Found |
-| `productGroupId` does not reference an existing product group | `ErrorCode.E010` | 404 Not Found |
-| `unitId` does not reference an existing unit | `ErrorCode.E011` | 404 Not Found |
-| `imageFileId` does not reference a file in the registry | `ErrorCode.E042` | 404 Not Found |
-| The unit exists but isn't usable on products (e.g. `Mét`) | `ErrorCode.E043` | 400 Bad Request |
+- `q` khớp mờ (`unaccent` ILIKE) `code`, `name` **và tên nhóm sản phẩm** (qua subquery vào `product_groups`) — rộng hơn các endpoint danh sách khác, vốn chỉ tìm `code`/`name`.
+- Bốn filter `clientId` / `productGroupId` / `type` / `status` cộng dồn theo `AND`, và cộng dồn với `q`.
+- Sắp xếp **mới nhất trước** (`created_at DESC`).
+- **`ProductResDto` ở danh sách nhẹ hơn ở chi tiết**: bản danh sách không kèm `attachments` (chi tiết thì có). Các quan hệ khác — `client`, `group`, `unit`, `creator`, `image`, `source` — có ở cả hai. Đừng dựng màn hình chi tiết từ dữ liệu lấy ở danh sách.
+- `client`/`group`/`unit`/`source` là ref gọn `{ id, code, name }`; `creator` là `{ id, username }`.
+- Sau `POST`/`PATCH`/`copy`, service đọc lại dòng bằng `getProductDetail(id)` rồi mới map — response luôn là trạng thái đã lưu, kèm đầy đủ quan hệ.
 
-## Out of scope
+## Trường hợp lỗi
 
-- No BOM/structure tree or routing yet — revision **history** now exists (see `docs/features/product-revisions.md`), but there is nothing to version inside a revision yet (no structure/routing rows attach to a `revisionId` in this phase). `type` (`FG`/`WIP`) is groundwork for that future structure feature; it does **not** itself imply a parent/child tree or routing exists.
-- No CRUD (create/update/delete) for `clients` / `product-groups` / `units` — only read-only list endpoints exist so far.
-- No backend Excel export — the frontend is expected to export from the already-fetched list data.
-- No `LOCKED` product status (only `ACTIVE`/`INACTIVE`) — no lock/unlock action on this screen.
-- No permission enforcement — `@Permissions('products:*')` decorators are metadata only (per `.claude/rules/api-module.md`); actual protection on write routes comes solely from `@UseGuards(JwtAuthGuard)`.
+| Trường hợp | ErrorCode | HTTP status |
+| ---------- | --------- | ----------- |
+| Không tìm thấy sản phẩm (hoặc đã xoá mềm) | `ErrorCode.E007` | 404 |
+| `code` đã tồn tại ở sản phẩm khác | `ErrorCode.E008` | 409 |
+| `clientId` không tồn tại | `ErrorCode.E009` | 404 |
+| `productGroupId` không tồn tại | `ErrorCode.E010` | 404 |
+| `unitId` không tồn tại | `ErrorCode.E011` | 404 |
+| Đơn vị tồn tại nhưng không có scope `PRODUCT` | `ErrorCode.E043` | 400 |
+| `imageFileId`/`attachmentFileIds` chứa file id không tồn tại | `ErrorCode.E042` | 404 |
+| Role của caller thiếu quyền route yêu cầu | `ErrorCode.E033` | 403 |
 
-## Frontend integration notes
+`E006` (`product.error.locked`) có trong enum nhưng **hiện không có chỗ nào throw** — đừng xử lý nó ở client cho tới khi có luật khoá sản phẩm thật.
 
-- **Breaking change (2026-07-21)**: `revision` is **removed** from `CreateProductReqDto`/`UpdateProductReqDto` — sending it in a create/update body is silently ignored (extraneous fields are stripped by the global `ValidationPipe`). A product's first revision (`R01`) is now auto-created on `POST /products`; to add or switch revisions afterward, use the new `docs/features/product-revisions.md` endpoints (`POST /products/:id/revisions`, `POST /products/:id/revisions/:revisionId/activate`). `ProductResDto.revision` keeps the same field name/type (`string`) so read-only consumers are unaffected — its value now reflects whichever revision is current. `POST /products/:id/copy` no longer carries the source's `revisionNo` over onto the copy — the copy always starts at `R01`.
-- **New field (2026-07-21)**: `ProductResDto` now returns `type` (`FG` | `WIP`), and `CreateProductReqDto`/`UpdateProductReqDto`/`GetProductsReqDto` accept it. Additive, **non-breaking** — `type` defaults to `FG` on create when omitted, so existing integrations that don't send it keep working unchanged. Use it to render the "Loại" column/filter on the products list and the "Loại" dropdown on the product form. This is unrelated to `product-groups` (`GET /product-groups`, still the "Nhóm sản phẩm" classification) — `type` is a new, separate axis.
-- **Internal rename only (2026-07-16)**: `products.createdBy` now references the `credentials` table (renamed from `users` — see `docs/features/users.md`). No API contract change; `creator { id, username }` is unaffected.
-- **Breaking change (2026-07-15)**: `products.creator.fullName` → `products.creator.username`. The `credentials` table (then still called `users`) no longer has a `fullName` column (see `docs/features/users.md`), so the nested creator ref on every product now exposes `{ id, username }` instead of `{ id, fullName }`.
-- **Breaking change (2026-07-20)**: the generic upload endpoint moved from `POST /api/uploads` to `POST /api/files` (field `file` + `kind: 'IMAGE'`, response now `{ id, url, originalName, mimetype, size, kind, createdAt }` instead of `{ url, filename, mimetype, size }` — see `docs/features/files.md`). ~~`products.imageUrl` itself is unaffected~~ — **superseded later the same day**: see the `imageFileId` note below.
-- **New feature (2026-07-15)**: a generic image upload endpoint now exists (see `docs/features/files.md`) — it is a separate call, not part of `POST /products`/`PATCH /products/:id`. (Its response is now linked as `imageFileId`, not `imageUrl` — see the 2026-07-20 note below.)
-- **New feature (2026-07-14)**: `products`, `clients`, `product-groups`, `units` are brand-new endpoints — nothing existed before this. Non-breaking (nothing to migrate from).
-- Populate the "Khách hàng" / "Nhóm sản phẩm" / "ĐVT" dropdowns and filters from `GET /clients`, `GET /product-groups`, `GET /units?scope=PRODUCT` respectively (each supports `?q=` for search-as-you-type).
-- **Breaking change (2026-07-20)**: the ĐVT dropdown must now pass `scope=PRODUCT`. Without it `GET /units` still returns material-only units such as `Tấm`/`Mét`, and submitting one is rejected with **400 `E043`**.
-- **Breaking change (2026-07-20)**: product images moved to the `files` registry. `imageUrl` (plain string) is **gone** from create/update — upload via `POST /files?type=PRODUCT_IMAGE` and send the returned id as **`imageFileId`**. In responses, `imageUrl` is replaced by nested **`image: FileResDto | null`**; read the URL from `image.url`. That URL is signed and **expires after ~1 hour** — don't cache it, re-read the product to refresh (see `docs/features/files.md`).
-- **New (2026-07-20)**: `GET /product-groups` now returns seeded data (`THANH_PHAM`, `LINH_KIEN`, `VAT_TU`, `MUA_NGOAI`) — the table was previously empty, so the "Nhóm sản phẩm" dropdown was always blank. Its response also gained `description`, `createdAt`, `updatedAt` (fields added only, non-breaking). Details in `docs/features/product-groups.md`.
-- **Breaking change (2026-07-20)**: `GET /units` no longer paginates — it returns `UnitResDto[]` directly instead of `{ data, pagination }`. The ĐVT dropdown must read the array straight off the response; drop `?page=`/`?limit=`. `GET /clients` and `GET /product-groups` are unaffected and still paginated.
-- Write actions (Thêm/Sửa/Xóa/Nhân bản) require `Authorization: Bearer <accessToken>` — a logged-out user can still view the list/detail but gets `401` attempting to create/edit/delete/copy.
-- The search box on the list screen can send accent-insensitive Vietnamese text directly (no need to strip diacritics client-side); it matches product code, name, and group name.
-- "Nhân bản" (copy) is `POST /products/:id/copy` — no request body needed; the response is the newly created product with a fresh `code`.
+## Ghi chú tích hợp cho frontend
+
+- **Breaking (2026-07-24)**: module `product-revisions` đã bị gỡ. Mọi route `/products/:id/revisions*` không còn tồn tại, `ProductResDto` không còn `currentRevisionId`. Thay bằng `POST /products/:id/copy` — trả về một sản phẩm mới hoàn chỉnh, không phải một revision. `E048`/`E049` được giữ chỗ nhưng không còn được throw.
+- **Breaking (2026-07-24)**: BOM và routing đổi từ khoá theo revision sang khoá theo product. Đường dẫn mới là `/products/:productId/bom` và `/products/:productId/operations` — xem [`boms.md`](boms.md), [`routing.md`](routing.md).
+- **Mới (2026-07-24)**: `ProductResDto.source` (`{ id, code, name }` hoặc `null`) cho biết sản phẩm này được sao chép từ đâu. Hiển thị nhãn "Sao chép từ <code>" khi khác `null`; đừng suy ra bất kỳ liên kết dữ liệu nào từ nó, đây thuần tuý là thông tin nguồn gốc.
+- **(2026-07-22)**: `type` đổi giá trị từ `FG`/`WIP` sang `FINISHED_GOOD`/`WORK_IN_PROGRESS`. Filter `?type=` phải dùng tên mới.
+- Khi `PATCH` mà **không** muốn đụng tới tài liệu đính kèm, hãy **bỏ hẳn `attachmentFileIds`** khỏi body. Gửi `[]` là lệnh xoá sạch.
+
+## Ngoài phạm vi
+
+- Giá, tồn kho, đơn vị quy đổi.
+- Khoá sản phẩm khi đã có phát sinh (`E006` giữ chỗ cho việc này).
+- Chặn xoá sản phẩm đang được dùng trong BOM của sản phẩm khác.
+- Lịch sử thay đổi / audit log — chỉ có `createdBy` + timestamp.
+
+## Xem thêm
+
+- [`boms.md`](boms.md) — cấu trúc sản phẩm, một BOM cho mỗi sản phẩm.
+- [`routing.md`](routing.md) — công đoạn, cả Cấp 0 lẫn as-used theo node.
+- `docs/architecture.md` — sơ đồ ER và luồng ghi của cả miền products/boms/routing.
