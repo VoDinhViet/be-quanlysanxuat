@@ -28,6 +28,7 @@ import { DepartmentsModule } from './api/departments/departments.module';
 import { FilesModule } from './api/files/files.module';
 import { HealthModule } from './api/health/health.module';
 import { OperationsModule } from './api/operations/operations.module';
+import { OrdersModule } from './api/orders/orders.module';
 import { PositionsModule } from './api/positions/positions.module';
 import { ProductGroupsModule } from './api/product-groups/product-groups.module';
 import { ProductsModule } from './api/products/products.module';
@@ -69,6 +70,7 @@ import { UsersModule } from './api/users/users.module';
     MaterialsModule,
     SuppliersModule,
     SupplierGroupsModule,
+    OrdersModule,
   ],
 
   controllers: [AppController],

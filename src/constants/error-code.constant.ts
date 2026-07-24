@@ -73,6 +73,11 @@ export enum ErrorCode {
   E054 = 'bom_item.error.cycle_detected',
   E055 = 'bom_item.error.quantity_not_integer',
   E056 = 'routing_step.error.not_found',
+  E057 = 'order.error.not_found',
+  E058 = 'order.error.code_exists',
+  E059 = 'order.error.client_not_found',
+  E060 = 'order.error.staff_not_found',
+  E061 = 'order.error.product_not_found',
   // `bomItemId` on a routing route doesn't reference a `bom_items` row within the URL's own
   // product BOM — either it doesn't exist at all, or it belongs to a different product's tree.
   E062 = 'routing_step.error.bom_item_not_found',

@@ -38,6 +38,10 @@ export const PERMISSION_CODES = [
   'suppliers:create',
   'suppliers:update',
   'suppliers:delete',
+  'orders:read',
+  'orders:create',
+  'orders:update',
+  'orders:delete',
 ] as const;
 
 export type PermissionCode = (typeof PERMISSION_CODES)[number];
