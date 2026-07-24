@@ -79,15 +79,23 @@ export const suppliers = pgTable(
     email: varchar('email', { length: 255 }),
     address: varchar('address', { length: 500 }).notNull(),
     note: varchar('note', { length: 1000 }),
-    logoFileId: uuid('logo_file_id').references(() => files.id, { onDelete: 'set null' }),
-    countryId: uuid('country_id').references(() => countries.id, { onDelete: 'set null' }),
+    logoFileId: uuid('logo_file_id').references(() => files.id, {
+      onDelete: 'set null',
+    }),
+    countryId: uuid('country_id').references(() => countries.id, {
+      onDelete: 'set null',
+    }),
 
     // Other information
     rating: integer('rating'),
-    status: supplierStatusEnum('status').notNull().default(SupplierStatus.ACTIVE),
+    status: supplierStatusEnum('status')
+      .notNull()
+      .default(SupplierStatus.ACTIVE),
     internalNote: varchar('internal_note', { length: 1000 }),
 
-    createdBy: uuid('created_by').references(() => credentials.id, { onDelete: 'set null' }),
+    createdBy: uuid('created_by').references(() => credentials.id, {
+      onDelete: 'set null',
+    }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at')
       .defaultNow()
@@ -98,6 +106,8 @@ export const suppliers = pgTable(
   (table) => [
     index('idx_suppliers_supplier_group_id').on(table.supplierGroupId),
     index('idx_suppliers_country_id').on(table.countryId),
+    index('idx_suppliers_logo_file_id').on(table.logoFileId),
+    index('idx_suppliers_created_by').on(table.createdBy),
     index('idx_suppliers_status')
       .on(table.status)
       .where(sql`deleted_at IS NULL`),
@@ -122,7 +132,10 @@ export const supplierAttachments = pgTable(
       .references(() => files.id, { onDelete: 'cascade' }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
-  (table) => [index('idx_supplier_attachments_supplier_id').on(table.supplierId)],
+  (table) => [
+    index('idx_supplier_attachments_supplier_id').on(table.supplierId),
+    index('idx_supplier_attachments_file_id').on(table.fileId),
+  ],
 );
 
 /** 1-many with suppliers: a supplier can have multiple representatives, replace-all on update. */
@@ -138,7 +151,9 @@ export const supplierRepresentatives = pgTable(
     isPrimary: boolean('is_primary').notNull().default(false),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
-  (table) => [index('idx_supplier_representatives_supplier_id').on(table.supplierId)],
+  (table) => [
+    index('idx_supplier_representatives_supplier_id').on(table.supplierId),
+  ],
 );
 
 /** 1-1 with suppliers: always created alongside the supplier row (see SuppliersService.createSupplier). */
@@ -188,27 +203,36 @@ export const suppliersRelations = relations(suppliers, ({ one, many }) => ({
   }),
 }));
 
-export const supplierAttachmentsRelations = relations(supplierAttachments, ({ one }) => ({
-  supplier: one(suppliers, {
-    fields: [supplierAttachments.supplierId],
-    references: [suppliers.id],
+export const supplierAttachmentsRelations = relations(
+  supplierAttachments,
+  ({ one }) => ({
+    supplier: one(suppliers, {
+      fields: [supplierAttachments.supplierId],
+      references: [suppliers.id],
+    }),
+    file: one(files, {
+      fields: [supplierAttachments.fileId],
+      references: [files.id],
+    }),
   }),
-  file: one(files, {
-    fields: [supplierAttachments.fileId],
-    references: [files.id],
-  }),
-}));
+);
 
-export const supplierRepresentativesRelations = relations(supplierRepresentatives, ({ one }) => ({
-  supplier: one(suppliers, {
-    fields: [supplierRepresentatives.supplierId],
-    references: [suppliers.id],
+export const supplierRepresentativesRelations = relations(
+  supplierRepresentatives,
+  ({ one }) => ({
+    supplier: one(suppliers, {
+      fields: [supplierRepresentatives.supplierId],
+      references: [suppliers.id],
+    }),
   }),
-}));
+);
 
-export const supplierPaymentInfoRelations = relations(supplierPaymentInfo, ({ one }) => ({
-  supplier: one(suppliers, {
-    fields: [supplierPaymentInfo.supplierId],
-    references: [suppliers.id],
+export const supplierPaymentInfoRelations = relations(
+  supplierPaymentInfo,
+  ({ one }) => ({
+    supplier: one(suppliers, {
+      fields: [supplierPaymentInfo.supplierId],
+      references: [suppliers.id],
+    }),
   }),
-}));
+);

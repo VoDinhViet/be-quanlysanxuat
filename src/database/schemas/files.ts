@@ -1,5 +1,13 @@
 import { relations } from 'drizzle-orm';
-import { integer, pgEnum, pgTable, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
+import {
+  index,
+  integer,
+  pgEnum,
+  pgTable,
+  timestamp,
+  uuid,
+  varchar,
+} from 'drizzle-orm/pg-core';
 
 import { credentials } from './credentials';
 
@@ -8,7 +16,10 @@ export enum FileKind {
   DOCUMENT = 'DOCUMENT',
 }
 
-export const fileKindEnum = pgEnum('file_kind', [FileKind.IMAGE, FileKind.DOCUMENT]);
+export const fileKindEnum = pgEnum('file_kind', [
+  FileKind.IMAGE,
+  FileKind.DOCUMENT,
+]);
 
 /**
  * What a file was uploaded *for*. `FileKind` says which bytes are acceptable (the mime family);
@@ -46,25 +57,33 @@ export const uploadTypeEnum = pgEnum('upload_type', [
  * migration to a new one (e.g. S3). Other entities (`users`, `materials`, ...)
  * reference a row here by `id` instead of duplicating url/filename/mimetype/size themselves.
  */
-export const files = pgTable('files', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  storageKey: varchar('storage_key', { length: 500 }).notNull().unique(),
-  originalName: varchar('original_name', { length: 255 }).notNull(),
-  mimetype: varchar('mimetype', { length: 100 }).notNull(),
-  size: integer('size').notNull(),
-  checksum: varchar('checksum', { length: 64 }),
-  type: uploadTypeEnum('type').notNull(),
-  kind: fileKindEnum('kind').notNull(),
-  storageDriver: varchar('storage_driver', { length: 20 }).notNull().default('local'),
-  uploadedBy: uuid('uploaded_by').references(() => credentials.id, { onDelete: 'set null' }),
-  /**
-   * When an entity first referenced this file. `NULL` means uploaded but never linked — the user
-   * picked an image and then abandoned the form — and makes the row sweepable by
-   * `FilesCleanupService` once it is older than `upload.orphanTtl`. Set by `FilesService.linkFiles`.
-   */
-  linkedAt: timestamp('linked_at'),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+export const files = pgTable(
+  'files',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    storageKey: varchar('storage_key', { length: 500 }).notNull().unique(),
+    originalName: varchar('original_name', { length: 255 }).notNull(),
+    mimetype: varchar('mimetype', { length: 100 }).notNull(),
+    size: integer('size').notNull(),
+    checksum: varchar('checksum', { length: 64 }),
+    type: uploadTypeEnum('type').notNull(),
+    kind: fileKindEnum('kind').notNull(),
+    storageDriver: varchar('storage_driver', { length: 20 })
+      .notNull()
+      .default('local'),
+    uploadedBy: uuid('uploaded_by').references(() => credentials.id, {
+      onDelete: 'set null',
+    }),
+    /**
+     * When an entity first referenced this file. `NULL` means uploaded but never linked — the user
+     * picked an image and then abandoned the form — and makes the row sweepable by
+     * `FilesCleanupService` once it is older than `upload.orphanTtl`. Set by `FilesService.linkFiles`.
+     */
+    linkedAt: timestamp('linked_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [index('idx_files_uploaded_by').on(table.uploadedBy)],
+);
 
 export const filesRelations = relations(files, ({ one }) => ({
   uploader: one(credentials, {

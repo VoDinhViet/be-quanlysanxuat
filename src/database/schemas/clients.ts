@@ -1,5 +1,13 @@
 import { relations, sql } from 'drizzle-orm';
-import { boolean, index, pgEnum, pgTable, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
+import {
+  boolean,
+  index,
+  pgEnum,
+  pgTable,
+  timestamp,
+  uuid,
+  varchar,
+} from 'drizzle-orm/pg-core';
 
 import { clientGroups } from './client-groups';
 import { credentials } from './credentials';
@@ -9,7 +17,10 @@ export enum ClientStatus {
   PAUSED = 'PAUSED',
 }
 
-export const clientStatusEnum = pgEnum('client_status', [ClientStatus.ACTIVE, ClientStatus.PAUSED]);
+export const clientStatusEnum = pgEnum('client_status', [
+  ClientStatus.ACTIVE,
+  ClientStatus.PAUSED,
+]);
 
 export const clients = pgTable(
   'clients',
@@ -26,7 +37,9 @@ export const clients = pgTable(
     address: varchar('address', { length: 500 }),
     note: varchar('note', { length: 1000 }),
     status: clientStatusEnum('status').notNull().default(ClientStatus.ACTIVE),
-    createdBy: uuid('created_by').references(() => credentials.id, { onDelete: 'set null' }),
+    createdBy: uuid('created_by').references(() => credentials.id, {
+      onDelete: 'set null',
+    }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at')
       .defaultNow()
@@ -36,6 +49,7 @@ export const clients = pgTable(
   },
   (table) => [
     index('idx_clients_client_group_id').on(table.clientGroupId),
+    index('idx_clients_created_by').on(table.createdBy),
     index('idx_clients_status')
       .on(table.status)
       .where(sql`deleted_at IS NULL`),

@@ -1,5 +1,13 @@
 import { relations } from 'drizzle-orm';
-import { index, numeric, pgEnum, pgTable, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
+import {
+  index,
+  numeric,
+  pgEnum,
+  pgTable,
+  timestamp,
+  uuid,
+  varchar,
+} from 'drizzle-orm/pg-core';
 
 import { clients } from './clients';
 import { credentials } from './credentials';
@@ -45,9 +53,15 @@ export const materials = pgTable(
       .notNull()
       .references(() => materialGroups.id, { onDelete: 'restrict' }),
     type: materialTypeEnum('type').notNull().default(MaterialType.INTERNAL),
-    clientId: uuid('client_id').references(() => clients.id, { onDelete: 'set null' }),
-    imageFileId: uuid('image_file_id').references(() => files.id, { onDelete: 'set null' }),
-    status: materialStatusEnum('status').notNull().default(MaterialStatus.ACTIVE),
+    clientId: uuid('client_id').references(() => clients.id, {
+      onDelete: 'set null',
+    }),
+    imageFileId: uuid('image_file_id').references(() => files.id, {
+      onDelete: 'set null',
+    }),
+    status: materialStatusEnum('status')
+      .notNull()
+      .default(MaterialStatus.ACTIVE),
     note: varchar('note', { length: 1000 }),
 
     // Extended information (all optional)
@@ -60,7 +74,9 @@ export const materials = pgTable(
     origin: varchar('origin', { length: 255 }),
     leadTime: varchar('lead_time', { length: 100 }),
 
-    createdBy: uuid('created_by').references(() => credentials.id, { onDelete: 'set null' }),
+    createdBy: uuid('created_by').references(() => credentials.id, {
+      onDelete: 'set null',
+    }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at')
       .defaultNow()
@@ -68,8 +84,11 @@ export const materials = pgTable(
       .$onUpdate(() => new Date()),
   },
   (table) => [
+    index('idx_materials_unit_id').on(table.unitId),
     index('idx_materials_material_group_id').on(table.materialGroupId),
     index('idx_materials_client_id').on(table.clientId),
+    index('idx_materials_image_file_id').on(table.imageFileId),
+    index('idx_materials_created_by').on(table.createdBy),
     index('idx_materials_status').on(table.status),
     index('idx_materials_type').on(table.type),
   ],
@@ -91,7 +110,10 @@ export const materialAttachments = pgTable(
       .references(() => files.id, { onDelete: 'cascade' }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
-  (table) => [index('idx_material_attachments_material_id').on(table.materialId)],
+  (table) => [
+    index('idx_material_attachments_material_id').on(table.materialId),
+    index('idx_material_attachments_file_id').on(table.fileId),
+  ],
 );
 
 export const materialsRelations = relations(materials, ({ one, many }) => ({
@@ -118,13 +140,16 @@ export const materialsRelations = relations(materials, ({ one, many }) => ({
   attachments: many(materialAttachments),
 }));
 
-export const materialAttachmentsRelations = relations(materialAttachments, ({ one }) => ({
-  material: one(materials, {
-    fields: [materialAttachments.materialId],
-    references: [materials.id],
+export const materialAttachmentsRelations = relations(
+  materialAttachments,
+  ({ one }) => ({
+    material: one(materials, {
+      fields: [materialAttachments.materialId],
+      references: [materials.id],
+    }),
+    file: one(files, {
+      fields: [materialAttachments.fileId],
+      references: [files.id],
+    }),
   }),
-  file: one(files, {
-    fields: [materialAttachments.fileId],
-    references: [files.id],
-  }),
-}));
+);

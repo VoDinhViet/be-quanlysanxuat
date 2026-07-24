@@ -84,6 +84,10 @@ export enum ErrorCode {
   // The `bomItemId` node exists and belongs to this product's BOM, but is a MATERIAL leaf —
   // vật tư nodes never carry their own routing.
   E063 = 'routing_step.error.material_node',
+  // `positionId` on a user create/update exists (E015 already passed) but doesn't belong to the
+  // effective `departmentId` (the one sent, or the user's current one when only one of the pair
+  // is being changed).
+  E064 = 'position.error.department_mismatch',
   E101 = 'class.error.teacher_not_found',
   E102 = 'class.error.invalid_teacher_assignment',
   E103 = 'class.error.forbidden',

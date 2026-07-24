@@ -7,7 +7,10 @@ import { eq, or } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 
-import { type PermissionCode, SUPER_PERMISSION } from '../../constants/permission.constant';
+import {
+  type PermissionCode,
+  SUPER_PERMISSION,
+} from '../../constants/permission.constant';
 import * as schema from '../schemas';
 import { credentials } from '../schemas/credentials';
 import { departments } from '../schemas/departments';
@@ -231,6 +234,7 @@ async function ensureDepartment(
 async function ensurePosition(
   db: SeedDatabase,
   position: { code: string; name: string },
+  departmentId: string,
 ): Promise<string> {
   const existing = await db.query.positions.findFirst({
     where: eq(positions.code, position.code),
@@ -241,7 +245,10 @@ async function ensurePosition(
     return existing.id;
   }
 
-  const [created] = await db.insert(positions).values(position).returning({ id: positions.id });
+  const [created] = await db
+    .insert(positions)
+    .values({ ...position, departmentId })
+    .returning({ id: positions.id });
 
   console.log(`Position "${position.code}" (${position.name}) created.`);
 
@@ -255,13 +262,21 @@ async function ensureCredential(
   password: string,
 ): Promise<string> {
   const existing = await db.query.credentials.findFirst({
-    where: or(eq(credentials.username, account.username), eq(credentials.email, account.email)),
+    where: or(
+      eq(credentials.username, account.username),
+      eq(credentials.email, account.email),
+    ),
   });
 
   if (existing) {
     if (existing.roleId !== roleId) {
-      await db.update(credentials).set({ roleId }).where(eq(credentials.id, existing.id));
-      console.log(`Credential "${account.username}" already exists — relinked to role.`);
+      await db
+        .update(credentials)
+        .set({ roleId })
+        .where(eq(credentials.id, existing.id));
+      console.log(
+        `Credential "${account.username}" already exists — relinked to role.`,
+      );
     } else {
       console.log(`Credential "${account.username}" already exists. Skipping.`);
     }
@@ -324,7 +339,7 @@ export async function seedCredentials(db: SeedDatabase): Promise<void> {
   for (const account of ACCOUNTS) {
     const roleId = await ensureRole(db, account.role);
     const departmentId = await ensureDepartment(db, account.department);
-    const positionId = await ensurePosition(db, account.position);
+    const positionId = await ensurePosition(db, account.position, departmentId);
     const credentialId = await ensureCredential(db, account, roleId, password);
 
     await ensureUser(db, {

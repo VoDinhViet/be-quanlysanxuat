@@ -1,5 +1,5 @@
 import { relations } from 'drizzle-orm';
-import { pgTable, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
+import { index, pgTable, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
 
 import { roles } from './roles';
 
@@ -13,18 +13,24 @@ import { roles } from './roles';
  * role, so the permission layer resolves permissions straight from the token subject without
  * needing a `users` row.
  */
-export const credentials = pgTable('credentials', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  username: varchar('username', { length: 100 }).notNull().unique(),
-  email: varchar('email', { length: 255 }).notNull().unique(),
-  password: varchar('password', { length: 255 }).notNull(),
-  roleId: uuid('role_id').references(() => roles.id, { onDelete: 'set null' }),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at')
-    .defaultNow()
-    .notNull()
-    .$onUpdate(() => new Date()),
-});
+export const credentials = pgTable(
+  'credentials',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    username: varchar('username', { length: 100 }).notNull().unique(),
+    email: varchar('email', { length: 255 }).notNull().unique(),
+    password: varchar('password', { length: 255 }).notNull(),
+    roleId: uuid('role_id').references(() => roles.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at')
+      .defaultNow()
+      .notNull()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [index('idx_credentials_role_id').on(table.roleId)],
+);
 
 export const credentialsRelations = relations(credentials, ({ one }) => ({
   role: one(roles, {

@@ -1,7 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { DRIZZLE } from '../../database/database.module';
-import { chainableMock, QueryMockArgs } from '../../test-utils/chainable-mock.util';
+import {
+  chainableMock,
+  QueryMockArgs,
+} from '../../test-utils/chainable-mock.util';
 import { GetPositionsReqDto } from './dto/get-positions.req.dto';
 import { PositionsService } from './positions.service';
 
@@ -12,12 +15,17 @@ describe('PositionsService', () => {
     select: jest.Mock;
   };
 
-  const buildReqDto = (overrides: Partial<GetPositionsReqDto> = {}): GetPositionsReqDto =>
-    Object.assign(new GetPositionsReqDto(), overrides);
+  const buildReqDto = (
+    overrides: Partial<GetPositionsReqDto> = {},
+  ): GetPositionsReqDto => Object.assign(new GetPositionsReqDto(), overrides);
 
   beforeEach(async () => {
     mockDb = {
-      query: { positions: { findMany: jest.fn<any, [QueryMockArgs]>().mockResolvedValue([]) } },
+      query: {
+        positions: {
+          findMany: jest.fn<any, [QueryMockArgs]>().mockResolvedValue([]),
+        },
+      },
       select: chainableMock([{ total: 0 }]),
     };
 
@@ -37,8 +45,15 @@ describe('PositionsService', () => {
   });
 
   describe('getPositions', () => {
-    it('returns a paginated list without a keyword filter', async () => {
-      const rows = [{ id: '1', code: 'TP', name: 'Trưởng phòng' }];
+    it('returns a paginated list without a keyword filter, nesting department', async () => {
+      const rows = [
+        {
+          id: '1',
+          code: 'TP',
+          name: 'Trưởng phòng',
+          department: { id: 'dept-1', code: 'KD', name: 'Phòng Kinh doanh' },
+        },
+      ];
       mockDb.query.positions.findMany.mockResolvedValue(rows);
       mockDb.select = chainableMock([{ total: 1 }]);
 
@@ -46,15 +61,27 @@ describe('PositionsService', () => {
 
       const callArgs = mockDb.query.positions.findMany.mock.calls[0][0];
       expect(callArgs.where).toBeUndefined();
+      expect(callArgs.with).toEqual({ department: true });
       expect(callArgs.limit).toBe(10);
       expect(callArgs.offset).toBe(0);
       expect(result.data).toHaveLength(1);
-      expect(result.data[0]).toMatchObject({ code: 'TP', name: 'Trưởng phòng' });
+      expect(result.data[0]).toMatchObject({
+        code: 'TP',
+        name: 'Trưởng phòng',
+        department: { code: 'KD', name: 'Phòng Kinh doanh' },
+      });
       expect(result.pagination.totalRecords).toBe(1);
     });
 
     it('builds a keyword search filter when q is provided', async () => {
       await service.getPositions(buildReqDto({ q: 'truong phong' }));
+
+      const callArgs = mockDb.query.positions.findMany.mock.calls[0][0];
+      expect(callArgs.where).toBeDefined();
+    });
+
+    it('filters by departmentId when provided', async () => {
+      await service.getPositions(buildReqDto({ departmentId: 'dept-1' }));
 
       const callArgs = mockDb.query.positions.findMany.mock.calls[0][0];
       expect(callArgs.where).toBeDefined();
