@@ -43,7 +43,8 @@ export class CredentialResDto {
 
   @Expose()
   @StringFieldOptional({
-    description: 'Full name from the linked user (employee) profile, or null if none is linked',
+    description:
+      'Full name from the linked user (employee) profile, or null if none is linked',
     nullable: true,
   })
   fullName!: string | null;
@@ -65,7 +66,8 @@ export class CredentialResDto {
   @Expose()
   @StringField({
     each: true,
-    description: 'Effective permission codes (includes system:manage for the ADMIN role)',
+    description:
+      'Effective permission codes (includes system:manage for the ADMIN role)',
   })
   permissions!: PermissionCode[];
 

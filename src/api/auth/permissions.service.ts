@@ -42,11 +42,15 @@ export class PermissionsService {
   }
 
   async invalidateRole(roleId: string): Promise<void> {
-    await this.cacheManager.del(createCacheKey(CacheKey.ROLE_PERMISSIONS, roleId));
+    await this.cacheManager.del(
+      createCacheKey(CacheKey.ROLE_PERMISSIONS, roleId),
+    );
   }
 
   async invalidateCredential(credentialId: string): Promise<void> {
-    await this.cacheManager.del(createCacheKey(CacheKey.CREDENTIAL_ROLE, credentialId));
+    await this.cacheManager.del(
+      createCacheKey(CacheKey.CREDENTIAL_ROLE, credentialId),
+    );
   }
 
   private async resolveRoleId(credentialId: string): Promise<string | null> {
@@ -86,7 +90,11 @@ export class PermissionsService {
     });
     const permissions = role?.permissions ?? [];
 
-    await this.cacheManager.set(key, permissions, PermissionsService.CACHE_TTL_MS);
+    await this.cacheManager.set(
+      key,
+      permissions,
+      PermissionsService.CACHE_TTL_MS,
+    );
 
     return permissions;
   }

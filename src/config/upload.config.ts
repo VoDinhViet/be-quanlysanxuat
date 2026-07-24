@@ -1,5 +1,12 @@
 import { registerAs } from '@nestjs/config';
-import { IsEnum, IsInt, IsOptional, IsString, MinLength, Min } from 'class-validator';
+import {
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  MinLength,
+  Min,
+} from 'class-validator';
 import { join } from 'path';
 
 import { StorageDriver, UploadConfig } from './upload-config.type';
@@ -55,7 +62,9 @@ export default registerAs<UploadConfig>('upload', () => {
       ? parseInt(process.env.UPLOAD_MAX_DOCUMENT_SIZE, 10)
       : 10 * 1024 * 1024,
     urlSecret: process.env.UPLOAD_URL_SECRET as string,
-    urlTtl: process.env.UPLOAD_URL_TTL ? parseInt(process.env.UPLOAD_URL_TTL, 10) : 3600,
+    urlTtl: process.env.UPLOAD_URL_TTL
+      ? parseInt(process.env.UPLOAD_URL_TTL, 10)
+      : 3600,
     // Must comfortably outlast the longest a user might sit on a half-filled form with an image
     // already uploaded — sweeping too eagerly deletes a file the form is about to reference.
     orphanTtl: process.env.UPLOAD_ORPHAN_TTL

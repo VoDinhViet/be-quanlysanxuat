@@ -36,7 +36,10 @@ export class SupplierGroupsService {
         offset: reqDto.offset,
         orderBy,
       }),
-      this.db.select({ total: drizzleCount() }).from(supplierGroups).where(where),
+      this.db
+        .select({ total: drizzleCount() })
+        .from(supplierGroups)
+        .where(where),
     ]);
 
     return new OffsetPaginatedDto(

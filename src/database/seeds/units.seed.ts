@@ -47,7 +47,9 @@ async function main() {
 
 async function seedUnits(db: ReturnType<typeof drizzle<typeof schema>>) {
   for (const { code, name, scopes } of UNITS) {
-    const existing = await db.query.units.findFirst({ where: eq(units.code, code) });
+    const existing = await db.query.units.findFirst({
+      where: eq(units.code, code),
+    });
 
     if (existing) {
       console.log(`Unit "${code}" already exists. Skipping.`);
@@ -58,10 +60,14 @@ async function seedUnits(db: ReturnType<typeof drizzle<typeof schema>>) {
     // everywhere, which is worse than not having created it at all.
     await db.transaction(async (tx) => {
       const [unit] = await tx.insert(units).values({ code, name }).returning();
-      await tx.insert(unitScopes).values(scopes.map((scope) => ({ unitId: unit.id, scope })));
+      await tx
+        .insert(unitScopes)
+        .values(scopes.map((scope) => ({ unitId: unit.id, scope })));
     });
 
-    console.log(`Unit "${code}" (${name}) created with scopes: ${scopes.join(', ')}.`);
+    console.log(
+      `Unit "${code}" (${name}) created with scopes: ${scopes.join(', ')}.`,
+    );
   }
 }
 

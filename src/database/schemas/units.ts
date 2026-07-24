@@ -1,5 +1,12 @@
 import { relations } from 'drizzle-orm';
-import { pgEnum, pgTable, primaryKey, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
+import {
+  pgEnum,
+  pgTable,
+  primaryKey,
+  timestamp,
+  uuid,
+  varchar,
+} from 'drizzle-orm/pg-core';
 
 /**
  * Which kind of entity may be measured in a given unit. Stored as rows in `unit_scopes`, not as

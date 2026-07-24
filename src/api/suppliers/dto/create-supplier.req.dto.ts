@@ -33,7 +33,10 @@ export class CreateSupplierReqDto {
   @StringField({ description: 'Address', maxLength: 500 })
   address!: string;
 
-  @StringFieldOptional({ description: 'Supplier code; auto-generated if omitted', maxLength: 50 })
+  @StringFieldOptional({
+    description: 'Supplier code; auto-generated if omitted',
+    maxLength: 50,
+  })
   code?: string;
 
   @EmailFieldOptional({ description: 'Email', nullable: true })
@@ -56,7 +59,13 @@ export class CreateSupplierReqDto {
   payment?: SupplierPaymentReqDto;
 
   // 3. Other information
-  @NumberFieldOptional({ description: 'Rating (0-5)', nullable: true, min: 0, max: 5, int: true })
+  @NumberFieldOptional({
+    description: 'Rating (0-5)',
+    nullable: true,
+    min: 0,
+    max: 5,
+    int: true,
+  })
   rating?: number | null;
 
   @EnumFieldOptional(() => SupplierStatus)
@@ -71,7 +80,8 @@ export class CreateSupplierReqDto {
 
   @UUIDFieldOptional({
     each: true,
-    description: 'Attachment file ids (from POST /files?type=SUPPLIER_DOCUMENT)',
+    description:
+      'Attachment file ids (from POST /files?type=SUPPLIER_DOCUMENT)',
   })
   attachmentFileIds?: string[];
 

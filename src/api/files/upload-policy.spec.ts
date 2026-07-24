@@ -18,9 +18,13 @@ describe('UPLOAD_POLICIES', () => {
   });
 
   it('treats documents as the only non-image type today', () => {
-    expect(UPLOAD_POLICIES[UploadType.MATERIAL_DOCUMENT].kind).toBe(FileKind.DOCUMENT);
+    expect(UPLOAD_POLICIES[UploadType.MATERIAL_DOCUMENT].kind).toBe(
+      FileKind.DOCUMENT,
+    );
     expect(UPLOAD_POLICIES[UploadType.USER_AVATAR].kind).toBe(FileKind.IMAGE);
-    expect(UPLOAD_POLICIES[UploadType.MATERIAL_IMAGE].kind).toBe(FileKind.IMAGE);
+    expect(UPLOAD_POLICIES[UploadType.MATERIAL_IMAGE].kind).toBe(
+      FileKind.IMAGE,
+    );
     expect(UPLOAD_POLICIES[UploadType.PRODUCT_IMAGE].kind).toBe(FileKind.IMAGE);
   });
 });

@@ -76,7 +76,10 @@ describe('OperationsController', () => {
 
     const result = await controller.createOperation(reqDto, payload);
 
-    expect(mockService.createOperation).toHaveBeenCalledWith(reqDto, payload.sub);
+    expect(mockService.createOperation).toHaveBeenCalledWith(
+      reqDto,
+      payload.sub,
+    );
     expect(result).toBe(expected);
   });
 

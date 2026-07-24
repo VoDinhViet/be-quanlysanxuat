@@ -12,7 +12,8 @@ import { StorageProvider } from '../storage-provider.interface';
 @Injectable()
 export class LocalDiskStorageProvider implements StorageProvider {
   constructor(
-    @Inject(ConfigService) private readonly configService: ConfigService<AllConfigType>,
+    @Inject(ConfigService)
+    private readonly configService: ConfigService<AllConfigType>,
   ) {}
 
   async save(key: string, buffer: Buffer): Promise<void> {

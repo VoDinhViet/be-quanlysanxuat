@@ -10,7 +10,9 @@ export type DetectedFileType = {
  * loaded via a dynamic `import()` rather than a static one to avoid `ERR_REQUIRE_ESM`.
  * Returns `undefined` when the content doesn't match any known file signature.
  */
-export async function detectFileType(buffer: Buffer): Promise<DetectedFileType | undefined> {
+export async function detectFileType(
+  buffer: Buffer,
+): Promise<DetectedFileType | undefined> {
   const { fileTypeFromBuffer } = await import('file-type');
   return fileTypeFromBuffer(buffer);
 }

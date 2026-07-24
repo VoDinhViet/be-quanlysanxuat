@@ -17,7 +17,9 @@ export class FileResDto {
   id!: string;
 
   @Expose()
-  @Transform(({ obj }: { obj: { id?: string } }) => (obj.id ? resolveFileUrl(obj.id) : null))
+  @Transform(({ obj }: { obj: { id?: string } }) =>
+    obj.id ? resolveFileUrl(obj.id) : null,
+  )
   @StringField({
     description:
       'Signed, expiring download URL, e.g. /api/files/<id>/download?exp=...&sig=... — usable ' +
@@ -39,7 +41,9 @@ export class FileResDto {
   size!: number;
 
   @Expose()
-  @EnumField(() => UploadType, { description: 'What the file was uploaded for' })
+  @EnumField(() => UploadType, {
+    description: 'What the file was uploaded for',
+  })
   type!: UploadType;
 
   @Expose()

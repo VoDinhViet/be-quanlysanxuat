@@ -21,7 +21,10 @@ export class ClientGroupsService {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
     const where = and(
       keyword
-        ? or(unaccentILike(clientGroups.code, keyword), unaccentILike(clientGroups.name, keyword))
+        ? or(
+            unaccentILike(clientGroups.code, keyword),
+            unaccentILike(clientGroups.name, keyword),
+          )
         : undefined,
     );
     const orderBy = desc(clientGroups.createdAt);

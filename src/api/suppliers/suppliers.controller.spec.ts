@@ -88,7 +88,10 @@ describe('SuppliersController', () => {
 
     const result = await controller.createSupplier(reqDto, payload);
 
-    expect(mockService.createSupplier).toHaveBeenCalledWith(reqDto, payload.sub);
+    expect(mockService.createSupplier).toHaveBeenCalledWith(
+      reqDto,
+      payload.sub,
+    );
     expect(result).toBe(expected);
   });
 

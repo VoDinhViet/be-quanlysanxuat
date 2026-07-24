@@ -38,7 +38,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
     // Debug active on non-production
     this.debug =
-      this.configService.getOrThrow('app.nodeEnv', { infer: true }) !== Environment.PRODUCTION;
+      this.configService.getOrThrow('app.nodeEnv', { infer: true }) !==
+      Environment.PRODUCTION;
 
     let error: ErrorDto;
 
@@ -55,7 +56,11 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       error = this.handlePayloadTooLargeException(exception);
     } else if (exception instanceof HttpException) {
       error = this.handleHttpException(exception);
-    } else if (exception && typeof exception === 'object' && 'code' in exception) {
+    } else if (
+      exception &&
+      typeof exception === 'object' &&
+      'code' in exception
+    ) {
       // Handling Postgres database errors naturally for Drizzle + pg
       error = this.handleDatabaseError(exception as PostgresError);
     } else {
@@ -131,14 +136,17 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       timestamp: new Date().toISOString(),
       statusCode,
       error: STATUS_CODES[statusCode] || 'Error',
-      message: typeof r === 'string' ? r : (r.message as string) || exception.message,
+      message:
+        typeof r === 'string' ? r : (r.message as string) || exception.message,
     };
 
     this.logger.debug(exception);
     return errorRes;
   }
 
-  private handlePayloadTooLargeException(exception: PayloadTooLargeException): ErrorDto {
+  private handlePayloadTooLargeException(
+    exception: PayloadTooLargeException,
+  ): ErrorDto {
     const statusCode = exception.getStatus();
 
     const errorRes: ErrorDto = {

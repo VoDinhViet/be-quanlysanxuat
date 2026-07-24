@@ -35,7 +35,9 @@ async function main() {
   }
 }
 
-async function seedMaterialGroups(db: ReturnType<typeof drizzle<typeof schema>>) {
+async function seedMaterialGroups(
+  db: ReturnType<typeof drizzle<typeof schema>>,
+) {
   for (const group of MATERIAL_GROUPS) {
     const existing = await db.query.materialGroups.findFirst({
       where: eq(materialGroups.code, group.code),

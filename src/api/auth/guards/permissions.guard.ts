@@ -10,7 +10,10 @@ import type { Request } from 'express';
 
 import { PERMISSIONS_KEY } from '../../../decorators/permissions.decorator';
 import { IS_PUBLIC_KEY } from '../../../decorators/public.decorator';
-import { type PermissionCode, SUPER_PERMISSION } from '../../../constants/permission.constant';
+import {
+  type PermissionCode,
+  SUPER_PERMISSION,
+} from '../../../constants/permission.constant';
 import { ErrorCode } from '../../../constants/error-code.constant';
 import { AppException } from '../../../exceptions/app.exception';
 import { PermissionsService } from '../permissions.service';
@@ -42,16 +45,18 @@ export class PermissionsGuard implements CanActivate {
       return true;
     }
 
-    const required = this.reflector.getAllAndOverride<PermissionCode[]>(PERMISSIONS_KEY, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
+    const required = this.reflector.getAllAndOverride<PermissionCode[]>(
+      PERMISSIONS_KEY,
+      [context.getHandler(), context.getClass()],
+    );
 
     if (!required || required.length === 0) {
       return true;
     }
 
-    const request = context.switchToHttp().getRequest<Request & { user?: JwtPayloadType }>();
+    const request = context
+      .switchToHttp()
+      .getRequest<Request & { user?: JwtPayloadType }>();
     const user = request.user;
 
     if (!user?.sub) {

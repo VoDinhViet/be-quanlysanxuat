@@ -18,20 +18,33 @@ export class CreateMaterialReqDto {
   @UUIDField({ description: 'Material group id' })
   readonly materialGroupId!: string;
 
-  @EnumFieldOptional(() => MaterialType, { description: 'Defaults to INTERNAL' })
+  @EnumFieldOptional(() => MaterialType, {
+    description: 'Defaults to INTERNAL',
+  })
   readonly type?: MaterialType;
 
   // Required only when type is CLIENT (enforced in the service, E040).
-  @UUIDFieldOptional({ nullable: true, description: 'Client id (required when type=CLIENT)' })
+  @UUIDFieldOptional({
+    nullable: true,
+    description: 'Client id (required when type=CLIENT)',
+  })
   readonly clientId?: string | null;
 
-  @StringFieldOptional({ maxLength: 50, description: 'Auto-generated (VTxxxx) if omitted' })
+  @StringFieldOptional({
+    maxLength: 50,
+    description: 'Auto-generated (VTxxxx) if omitted',
+  })
   readonly code?: string;
 
-  @UUIDFieldOptional({ nullable: true, description: 'Image file id (from POST /files)' })
+  @UUIDFieldOptional({
+    nullable: true,
+    description: 'Image file id (from POST /files)',
+  })
   readonly imageFileId?: string | null;
 
-  @EnumFieldOptional(() => MaterialStatus, { description: 'Defaults to ACTIVE' })
+  @EnumFieldOptional(() => MaterialStatus, {
+    description: 'Defaults to ACTIVE',
+  })
   readonly status?: MaterialStatus;
 
   @StringFieldOptional({ maxLength: 1000, nullable: true })
@@ -47,7 +60,11 @@ export class CreateMaterialReqDto {
   @StringFieldOptional({ maxLength: 255, nullable: true })
   readonly dimensions?: string | null;
 
-  @NumberFieldOptional({ min: 0, nullable: true, description: 'Specific weight' })
+  @NumberFieldOptional({
+    min: 0,
+    nullable: true,
+    description: 'Specific weight',
+  })
   readonly specificWeight?: number | null;
 
   @StringFieldOptional({ maxLength: 255, nullable: true })

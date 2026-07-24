@@ -50,7 +50,9 @@ describe('FilesController', () => {
 
   it('uploadFile delegates to FilesService.upload with the current user id', async () => {
     const file = { originalname: 'a.png' } as Express.Multer.File;
-    const reqDto = Object.assign(new UploadFileReqDto(), { type: UploadType.MATERIAL_DOCUMENT });
+    const reqDto = Object.assign(new UploadFileReqDto(), {
+      type: UploadType.MATERIAL_DOCUMENT,
+    });
     const expected = { id: 'file-1' };
     mockService.upload.mockResolvedValue(expected);
 
@@ -64,7 +66,10 @@ describe('FilesController', () => {
   });
 
   it('downloadFile delegates to FilesService.streamFile with the signed query and response', async () => {
-    const reqDto = Object.assign(new DownloadFileReqDto(), { exp: 123, sig: 'abc' });
+    const reqDto = Object.assign(new DownloadFileReqDto(), {
+      exp: 123,
+      sig: 'abc',
+    });
     const res = {} as never;
     const expected = { stream: true };
     mockService.streamFile.mockResolvedValue(expected);

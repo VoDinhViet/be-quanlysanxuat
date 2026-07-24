@@ -21,7 +21,11 @@ const OPERATIONS = [
   { code: 'MAI', name: 'Mài', type: OperationType.INHOUSE },
   { code: 'LAP_RAP_TONG', name: 'Lắp ráp tổng', type: OperationType.INHOUSE },
   { code: 'DONG_GOI', name: 'Đóng gói', type: OperationType.INHOUSE },
-  { code: 'SON_TINH_DIEN', name: 'Sơn tĩnh điện', type: OperationType.OUTSOURCE },
+  {
+    code: 'SON_TINH_DIEN',
+    name: 'Sơn tĩnh điện',
+    type: OperationType.OUTSOURCE,
+  },
 ];
 
 async function main() {

@@ -9,10 +9,18 @@ export class ClientContactReqDto {
   @StringField({ description: 'Contact full name', maxLength: 255 })
   name!: string;
 
-  @StringFieldOptional({ description: 'Position/title', nullable: true, maxLength: 255 })
+  @StringFieldOptional({
+    description: 'Position/title',
+    nullable: true,
+    maxLength: 255,
+  })
   position?: string | null;
 
-  @StringFieldOptional({ description: 'Phone number', nullable: true, maxLength: 30 })
+  @StringFieldOptional({
+    description: 'Phone number',
+    nullable: true,
+    maxLength: 30,
+  })
   phoneNumber?: string | null;
 
   @EmailFieldOptional({ description: 'Email', nullable: true })

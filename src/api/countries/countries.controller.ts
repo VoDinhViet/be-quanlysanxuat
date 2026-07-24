@@ -18,7 +18,9 @@ export class CountriesController {
     summary: 'List countries',
     isPaginated: true,
   })
-  getCountries(@Query() reqDto: GetCountriesReqDto): Promise<OffsetPaginatedDto<CountryResDto>> {
+  getCountries(
+    @Query() reqDto: GetCountriesReqDto,
+  ): Promise<OffsetPaginatedDto<CountryResDto>> {
     return this.countriesService.getCountries(reqDto);
   }
 }

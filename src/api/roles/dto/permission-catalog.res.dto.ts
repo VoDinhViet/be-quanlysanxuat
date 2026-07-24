@@ -17,7 +17,9 @@ export class PermissionItemResDto {
 @Exclude()
 export class PermissionGroupResDto {
   @Expose()
-  @StringField({ description: 'Resource the permissions belong to, e.g. clients' })
+  @StringField({
+    description: 'Resource the permissions belong to, e.g. clients',
+  })
   resource!: string;
 
   @Expose()

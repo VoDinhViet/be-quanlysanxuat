@@ -18,7 +18,9 @@ export class PositionsController {
     summary: 'List positions',
     isPaginated: true,
   })
-  getPositions(@Query() reqDto: GetPositionsReqDto): Promise<OffsetPaginatedDto<PositionResDto>> {
+  getPositions(
+    @Query() reqDto: GetPositionsReqDto,
+  ): Promise<OffsetPaginatedDto<PositionResDto>> {
     return this.positionsService.getPositions(reqDto);
   }
 }

@@ -118,7 +118,8 @@ const CONTACT_POSITIONS = [
 // 60 combinations > 50 needed: (industry, suffix) pairs are distinct for i < LCM(15, 20) = 60.
 const COMPANY_NAMES = Array.from(
   { length: 60 },
-  (_, i) => `${BUSINESS_TYPES[i % 5]} ${INDUSTRIES[i % 15]} ${SUFFIXES[i % 20]}`,
+  (_, i) =>
+    `${BUSINESS_TYPES[i % 5]} ${INDUSTRIES[i % 15]} ${SUFFIXES[i % 20]}`,
 );
 const ADDRESSES = Array.from(
   { length: 60 },
@@ -133,9 +134,20 @@ const CLIENT_CODES = Array.from(
   { length: CLIENT_COUNT },
   (_, i) => `KH${String(i + 1).padStart(4, '0')}`,
 );
-const TAX_CODES = Array.from({ length: CLIENT_COUNT }, (_, i) => String(1000000000 + i));
+const TAX_CODES = Array.from({ length: CLIENT_COUNT }, (_, i) =>
+  String(1000000000 + i),
+);
 // Repetition-weighted pool: ~7/8 ACTIVE, 1/8 PAUSED.
-const STATUSES = ['ACTIVE', 'ACTIVE', 'ACTIVE', 'ACTIVE', 'ACTIVE', 'ACTIVE', 'ACTIVE', 'PAUSED'];
+const STATUSES = [
+  'ACTIVE',
+  'ACTIVE',
+  'ACTIVE',
+  'ACTIVE',
+  'ACTIVE',
+  'ACTIVE',
+  'ACTIVE',
+  'PAUSED',
+];
 
 const CLIENT_GROUP_CODES = ['STRATEGIC', 'REGULAR', 'POTENTIAL'];
 
@@ -170,7 +182,9 @@ async function seedClients(db: SeedDatabase) {
   });
 
   if (existing) {
-    console.log(`Clients already seeded (found "${CLIENT_CODES[0]}"). Skipping.`);
+    console.log(
+      `Clients already seeded (found "${CLIENT_CODES[0]}"). Skipping.`,
+    );
     return;
   }
 
@@ -194,7 +208,10 @@ async function seedClients(db: SeedDatabase) {
         name: f.valuesFromArray({ values: COMPANY_NAMES, isUnique: true }),
         clientGroupId: f.valuesFromArray({ values: groupIds }),
         taxCode: f.weightedRandom([
-          { weight: 0.8, value: f.valuesFromArray({ values: TAX_CODES, isUnique: true }) },
+          {
+            weight: 0.8,
+            value: f.valuesFromArray({ values: TAX_CODES, isUnique: true }),
+          },
           { weight: 0.2, value: f.default({ defaultValue: null }) },
         ]),
         phoneNumber: f.phoneNumber({ template: '09########' }),

@@ -18,11 +18,18 @@ import { toFileResDto } from './to-file-res.dto.util';
  * that pass `obj` is the DTO instance (which has no `<relationKey>`), so an unrestricted transform
  * would overwrite the resolved file with null.
  */
-export function FileField(relationKey: string, description?: string): PropertyDecorator {
+export function FileField(
+  relationKey: string,
+  description?: string,
+): PropertyDecorator {
   return applyDecorators(
-    Transform(({ obj }: { obj: Record<string, unknown> }) => toFileResDto(obj[relationKey]), {
-      toClassOnly: true,
-    }),
+    Transform(
+      ({ obj }: { obj: Record<string, unknown> }) =>
+        toFileResDto(obj[relationKey]),
+      {
+        toClassOnly: true,
+      },
+    ),
     ClassFieldOptional(() => FileResDto, { nullable: true, description }),
   );
 }

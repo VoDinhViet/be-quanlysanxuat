@@ -31,7 +31,11 @@ describe('FilesService', () => {
     update: jest.Mock;
     delete: jest.Mock;
   };
-  let mockStorageProvider: { save: jest.Mock; delete: jest.Mock; createReadStream: jest.Mock };
+  let mockStorageProvider: {
+    save: jest.Mock;
+    delete: jest.Mock;
+    createReadStream: jest.Mock;
+  };
   let mockConfigService: { getOrThrow: jest.Mock };
   let mockPermissionsService: { getPermissionCodes: jest.Mock };
   /** Rows handed to `insert(...).values(...)`, so tests can assert on what was written. */
@@ -40,7 +44,9 @@ describe('FilesService', () => {
   const UPLOADER = 'credential-1';
   const OTHER_USER = 'credential-2';
 
-  const buildFile = (overrides: Partial<Express.Multer.File> = {}): Express.Multer.File =>
+  const buildFile = (
+    overrides: Partial<Express.Multer.File> = {},
+  ): Express.Multer.File =>
     ({
       originalname: 'photo.png',
       buffer: Buffer.from('fake-image-bytes'),
@@ -87,7 +93,9 @@ describe('FilesService', () => {
     insertedValues = [];
     // `FileResDto.url` goes through the module-level resolver, which throws until FilesModule binds
     // it at boot. Tests have no module lifecycle, so bind a deterministic stand-in here.
-    setFileUrlResolver((fileId) => `/api/files/${fileId}/download?exp=1&sig=test`);
+    setFileUrlResolver(
+      (fileId) => `/api/files/${fileId}/download?exp=1&sig=test`,
+    );
 
     mockDb = {
       query: { files: { findFirst: jest.fn(), findMany: jest.fn() } },
@@ -100,8 +108,12 @@ describe('FilesService', () => {
       delete: jest.fn().mockResolvedValue(undefined),
       createReadStream: jest.fn(() => Readable.from(['bytes'])),
     };
-    mockConfigService = { getOrThrow: jest.fn((key: string) => CONFIG_VALUES[key]) };
-    mockPermissionsService = { getPermissionCodes: jest.fn().mockResolvedValue([]) };
+    mockConfigService = {
+      getOrThrow: jest.fn((key: string) => CONFIG_VALUES[key]),
+    };
+    mockPermissionsService = {
+      getPermissionCodes: jest.fn().mockResolvedValue([]),
+    };
     mockDetectFileType.mockResolvedValue({ mime: 'image/png', ext: 'png' });
 
     const module: TestingModule = await Test.createTestingModule({
@@ -139,12 +151,12 @@ describe('FilesService', () => {
     it('throws E017 when the file exceeds the size limit for its kind', async () => {
       const file = buildFile({ size: 6 * 1024 * 1024 }); // > 5MB image limit
 
-      await expect(service.upload(file, { type: UploadType.MATERIAL_IMAGE })).rejects.toMatchObject(
-        {
-          status: HttpStatus.PAYLOAD_TOO_LARGE,
-          response: { errorCode: ErrorCode.E017 },
-        },
-      );
+      await expect(
+        service.upload(file, { type: UploadType.MATERIAL_IMAGE }),
+      ).rejects.toMatchObject({
+        status: HttpStatus.PAYLOAD_TOO_LARGE,
+        response: { errorCode: ErrorCode.E017 },
+      });
       expect(mockDetectFileType).not.toHaveBeenCalled();
     });
 
@@ -162,7 +174,10 @@ describe('FilesService', () => {
 
     it('throws E016 when the detected type is not allowed for the type policy', async () => {
       // Client asks for an avatar, but the real bytes are a PDF — magic-byte check must win.
-      mockDetectFileType.mockResolvedValue({ mime: 'application/pdf', ext: 'pdf' });
+      mockDetectFileType.mockResolvedValue({
+        mime: 'application/pdf',
+        ext: 'pdf',
+      });
 
       await expect(
         service.upload(buildFile(), { type: UploadType.USER_AVATAR }),
@@ -174,7 +189,10 @@ describe('FilesService', () => {
 
     it('rejects legacy .doc/.xls (undetectable by file-type) even under a DOCUMENT type', async () => {
       mockDetectFileType.mockResolvedValue(undefined);
-      const file = buildFile({ originalname: 'contract.doc', mimetype: 'application/msword' });
+      const file = buildFile({
+        originalname: 'contract.doc',
+        mimetype: 'application/msword',
+      });
 
       await expect(
         service.upload(file, { type: UploadType.MATERIAL_DOCUMENT }),
@@ -209,24 +227,36 @@ describe('FilesService', () => {
     // The whole point of deriving `kind` server-side: a DOCUMENT type must pick the document
     // allowlist and cap even though the client never says so.
     it('derives kind from the policy rather than from the client', async () => {
-      mockDetectFileType.mockResolvedValue({ mime: 'application/pdf', ext: 'pdf' });
-
-      await service.upload(buildFile({ originalname: 'invoice.pdf', size: 8 * 1024 * 1024 }), {
-        type: UploadType.MATERIAL_DOCUMENT,
+      mockDetectFileType.mockResolvedValue({
+        mime: 'application/pdf',
+        ext: 'pdf',
       });
 
-      expect(mockConfigService.getOrThrow).toHaveBeenCalledWith('upload.maxDocumentSize', {
-        infer: true,
-      });
+      await service.upload(
+        buildFile({ originalname: 'invoice.pdf', size: 8 * 1024 * 1024 }),
+        {
+          type: UploadType.MATERIAL_DOCUMENT,
+        },
+      );
+
+      expect(mockConfigService.getOrThrow).toHaveBeenCalledWith(
+        'upload.maxDocumentSize',
+        {
+          infer: true,
+        },
+      );
       expect(insertedValues[0].kind).toBe(FileKind.DOCUMENT);
     });
 
     it('applies the image cap to an image type', async () => {
       await service.upload(buildFile(), { type: UploadType.PRODUCT_IMAGE });
 
-      expect(mockConfigService.getOrThrow).toHaveBeenCalledWith('upload.maxImageSize', {
-        infer: true,
-      });
+      expect(mockConfigService.getOrThrow).toHaveBeenCalledWith(
+        'upload.maxImageSize',
+        {
+          infer: true,
+        },
+      );
     });
   });
 
@@ -251,7 +281,10 @@ describe('FilesService', () => {
   });
 
   describe('streamFile', () => {
-    const reqDto = { exp: Math.floor(Date.now() / 1000) + 600, sig: 'whatever' };
+    const reqDto = {
+      exp: Math.floor(Date.now() / 1000) + 600,
+      sig: 'whatever',
+    };
     type HeaderMap = Record<string, string>;
     const buildRes = () => ({ set: jest.fn<void, [HeaderMap]>() });
     /** Headers passed to the single `res.set({...})` call. */
@@ -264,7 +297,9 @@ describe('FilesService', () => {
 
       const result = await service.streamFile('file-1', reqDto, res as never);
 
-      expect(mockStorageProvider.createReadStream).toHaveBeenCalledWith('2026/07/20/uuid.png');
+      expect(mockStorageProvider.createReadStream).toHaveBeenCalledWith(
+        '2026/07/20/uuid.png',
+      );
       expect(result).toBeDefined();
       const headers = headersOf(res);
       expect(headers['Content-Type']).toBe('image/png');
@@ -285,7 +320,10 @@ describe('FilesService', () => {
     // Vietnamese filenames are the norm here; a bare `filename=` would mangle every diacritic.
     it('encodes a Vietnamese filename via RFC 5987 and keeps an ASCII fallback', async () => {
       mockDb.query.files.findFirst.mockResolvedValue(
-        buildFileRow({ originalName: 'Bản vẽ kỹ thuật.pdf', kind: FileKind.DOCUMENT }),
+        buildFileRow({
+          originalName: 'Bản vẽ kỹ thuật.pdf',
+          kind: FileKind.DOCUMENT,
+        }),
       );
       const res = buildRes();
 
@@ -324,7 +362,9 @@ describe('FilesService', () => {
 
       await service.deleteFile('file-1', UPLOADER);
 
-      expect(mockStorageProvider.delete).toHaveBeenCalledWith('2026/07/20/uuid.png');
+      expect(mockStorageProvider.delete).toHaveBeenCalledWith(
+        '2026/07/20/uuid.png',
+      );
       expect(mockDb.delete).toHaveBeenCalled();
       // The uploader shortcut must not even consult the permission cache.
       expect(mockPermissionsService.getPermissionCodes).not.toHaveBeenCalled();
@@ -332,7 +372,9 @@ describe('FilesService', () => {
 
     it('lets a system:manage holder delete someone else’s file', async () => {
       mockDb.query.files.findFirst.mockResolvedValue(buildFileRow());
-      mockPermissionsService.getPermissionCodes.mockResolvedValue(['system:manage']);
+      mockPermissionsService.getPermissionCodes.mockResolvedValue([
+        'system:manage',
+      ]);
 
       await service.deleteFile('file-1', OTHER_USER);
 
@@ -341,9 +383,13 @@ describe('FilesService', () => {
 
     it('throws E033 when another user without system:manage tries to delete', async () => {
       mockDb.query.files.findFirst.mockResolvedValue(buildFileRow());
-      mockPermissionsService.getPermissionCodes.mockResolvedValue(['materials:read']);
+      mockPermissionsService.getPermissionCodes.mockResolvedValue([
+        'materials:read',
+      ]);
 
-      await expect(service.deleteFile('file-1', OTHER_USER)).rejects.toMatchObject({
+      await expect(
+        service.deleteFile('file-1', OTHER_USER),
+      ).rejects.toMatchObject({
         status: HttpStatus.FORBIDDEN,
         response: { errorCode: ErrorCode.E033 },
       });
@@ -354,7 +400,9 @@ describe('FilesService', () => {
     it('throws E042 when the file does not exist', async () => {
       mockDb.query.files.findFirst.mockResolvedValue(undefined);
 
-      await expect(service.deleteFile('missing', UPLOADER)).rejects.toMatchObject({
+      await expect(
+        service.deleteFile('missing', UPLOADER),
+      ).rejects.toMatchObject({
         status: HttpStatus.NOT_FOUND,
         response: { errorCode: ErrorCode.E042 },
       });

@@ -21,7 +21,10 @@ export class DepartmentsService {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
     const where = and(
       keyword
-        ? or(unaccentILike(departments.code, keyword), unaccentILike(departments.name, keyword))
+        ? or(
+            unaccentILike(departments.code, keyword),
+            unaccentILike(departments.name, keyword),
+          )
         : undefined,
     );
     const orderBy = desc(departments.createdAt);

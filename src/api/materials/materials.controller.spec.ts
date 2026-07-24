@@ -52,7 +52,10 @@ describe('MaterialsController', () => {
 
       const result = await controller.createMaterial(reqDto, payload);
 
-      expect(mockService.createMaterial).toHaveBeenCalledWith(reqDto, 'credential-id');
+      expect(mockService.createMaterial).toHaveBeenCalledWith(
+        reqDto,
+        'credential-id',
+      );
       expect(result).toBe(expected);
     });
   });

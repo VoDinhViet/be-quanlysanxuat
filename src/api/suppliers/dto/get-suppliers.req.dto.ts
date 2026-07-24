@@ -1,6 +1,9 @@
 import { PageOptionsDto } from '../../../common/dto/offset-pagination/page-options.dto';
 import { SupplierStatus } from '../../../database/schemas';
-import { EnumFieldOptional, UUIDFieldOptional } from '../../../decorators/field.decorators';
+import {
+  EnumFieldOptional,
+  UUIDFieldOptional,
+} from '../../../decorators/field.decorators';
 
 export class GetSuppliersReqDto extends PageOptionsDto {
   @EnumFieldOptional(() => SupplierStatus)

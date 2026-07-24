@@ -8,6 +8,8 @@ import { EnumField } from '../../../decorators/field.decorators';
  * costs the frontend nothing.
  */
 export class UploadFileReqDto {
-  @EnumField(() => UploadType, { description: 'What this file is being uploaded for' })
+  @EnumField(() => UploadType, {
+    description: 'What this file is being uploaded for',
+  })
   readonly type!: UploadType;
 }

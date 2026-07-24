@@ -23,7 +23,11 @@ export class CreateUserReqDto {
   @DateFieldOptional({ nullable: true })
   dateOfBirth?: Date | null;
 
-  @StringFieldOptional({ description: 'CCCD/CMND number', nullable: true, maxLength: 20 })
+  @StringFieldOptional({
+    description: 'CCCD/CMND number',
+    nullable: true,
+    maxLength: 20,
+  })
   idNumber?: string | null;
 
   @StringFieldOptional({ nullable: true, maxLength: 30 })
@@ -32,10 +36,17 @@ export class CreateUserReqDto {
   @EmailFieldOptional({ description: 'Personal email', nullable: true })
   email?: string | null;
 
-  @StringFieldOptional({ description: 'Permanent address', nullable: true, maxLength: 500 })
+  @StringFieldOptional({
+    description: 'Permanent address',
+    nullable: true,
+    maxLength: 500,
+  })
   address?: string | null;
 
-  @UUIDFieldOptional({ description: 'Avatar file id (from POST /files)', nullable: true })
+  @UUIDFieldOptional({
+    description: 'Avatar file id (from POST /files)',
+    nullable: true,
+  })
   avatarFileId?: string | null;
 
   @UUIDField({ description: 'Department id' })

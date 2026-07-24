@@ -5,7 +5,10 @@ import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import { SupplierStatus } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
-import { chainableMock, QueryMockArgs } from '../../test-utils/chainable-mock.util';
+import {
+  chainableMock,
+  QueryMockArgs,
+} from '../../test-utils/chainable-mock.util';
 import { FilesService } from '../files/files.service';
 import { CreateSupplierReqDto } from './dto/create-supplier.req.dto';
 import { GetSuppliersReqDto } from './dto/get-suppliers.req.dto';
@@ -16,7 +19,10 @@ describe('SuppliersService', () => {
   let service: SuppliersService;
   let mockDb: {
     query: {
-      suppliers: { findMany: jest.Mock<any, [QueryMockArgs]>; findFirst: jest.Mock };
+      suppliers: {
+        findMany: jest.Mock<any, [QueryMockArgs]>;
+        findFirst: jest.Mock;
+      };
       supplierGroups: { findFirst: jest.Mock };
       countries: { findFirst: jest.Mock };
     };
@@ -28,8 +34,9 @@ describe('SuppliersService', () => {
   };
   let mockFilesService: { linkFiles: jest.Mock };
 
-  const buildReqDto = (overrides: Partial<GetSuppliersReqDto> = {}): GetSuppliersReqDto =>
-    Object.assign(new GetSuppliersReqDto(), overrides);
+  const buildReqDto = (
+    overrides: Partial<GetSuppliersReqDto> = {},
+  ): GetSuppliersReqDto => Object.assign(new GetSuppliersReqDto(), overrides);
 
   beforeEach(async () => {
     mockDb = {
@@ -47,7 +54,9 @@ describe('SuppliersService', () => {
       delete: chainableMock(undefined),
       // Handing the callback `mockDb` itself keeps `tx.insert(...)` pointing at the same jest mock,
       // so call-count assertions work whether a write sits inside the transaction or not.
-      transaction: jest.fn(async (cb: (tx: unknown) => Promise<unknown>) => cb(mockDb)),
+      transaction: jest.fn(async (cb: (tx: unknown) => Promise<unknown>) =>
+        cb(mockDb),
+      ),
     };
     mockFilesService = { linkFiles: jest.fn() };
 
@@ -138,7 +147,10 @@ describe('SuppliersService', () => {
 
   describe('getSupplierDetail', () => {
     it('returns the mapped supplier when found', async () => {
-      mockDb.query.suppliers.findFirst.mockResolvedValue({ id: 's1', code: 'NCC0001' });
+      mockDb.query.suppliers.findFirst.mockResolvedValue({
+        id: 's1',
+        code: 'NCC0001',
+      });
 
       const result = await service.getSupplierDetail('s1');
 
@@ -169,16 +181,21 @@ describe('SuppliersService', () => {
   });
 
   describe('createSupplier', () => {
-    const reqDto: CreateSupplierReqDto = Object.assign(new CreateSupplierReqDto(), {
-      name: 'Nhà cung cấp A',
-      supplierGroupId: 'group-1',
-      taxCode: '0312345678',
-      phoneNumber: '0909123456',
-      address: '123 Đường ABC',
-    });
+    const reqDto: CreateSupplierReqDto = Object.assign(
+      new CreateSupplierReqDto(),
+      {
+        name: 'Nhà cung cấp A',
+        supplierGroupId: 'group-1',
+        taxCode: '0312345678',
+        phoneNumber: '0909123456',
+        address: '123 Đường ABC',
+      },
+    );
 
     it('auto-generates a code, always creates a payment row, and inserts', async () => {
-      mockDb.query.supplierGroups.findFirst.mockResolvedValue({ id: 'group-1' });
+      mockDb.query.supplierGroups.findFirst.mockResolvedValue({
+        id: 'group-1',
+      });
       mockDb.query.suppliers.findFirst
         .mockResolvedValueOnce(undefined) // validateTaxCodeUniqueness: no conflict
         .mockResolvedValueOnce({ id: 'new-supplier-id' }); // getSupplierDetail
@@ -192,7 +209,9 @@ describe('SuppliersService', () => {
     });
 
     it('inserts attachments and representatives only when provided', async () => {
-      mockDb.query.supplierGroups.findFirst.mockResolvedValue({ id: 'group-1' });
+      mockDb.query.supplierGroups.findFirst.mockResolvedValue({
+        id: 'group-1',
+      });
       mockDb.query.suppliers.findFirst
         .mockResolvedValueOnce(undefined) // validateTaxCodeUniqueness: no conflict
         .mockResolvedValueOnce({ id: 'new-supplier-id' }); // getSupplierDetail
@@ -211,7 +230,9 @@ describe('SuppliersService', () => {
     });
 
     it('links the logo and attachment files before opening the transaction', async () => {
-      mockDb.query.supplierGroups.findFirst.mockResolvedValue({ id: 'group-1' });
+      mockDb.query.supplierGroups.findFirst.mockResolvedValue({
+        id: 'group-1',
+      });
       mockDb.query.suppliers.findFirst
         .mockResolvedValueOnce(undefined)
         .mockResolvedValueOnce({ id: 'new-supplier-id' });
@@ -224,11 +245,17 @@ describe('SuppliersService', () => {
         'user-1',
       );
 
-      expect(mockFilesService.linkFiles).toHaveBeenCalledWith(['logo-file', 'doc-a', 'doc-b']);
+      expect(mockFilesService.linkFiles).toHaveBeenCalledWith([
+        'logo-file',
+        'doc-a',
+        'doc-b',
+      ]);
     });
 
     it('propagates E042 from the files registry and never opens a transaction', async () => {
-      mockDb.query.supplierGroups.findFirst.mockResolvedValue({ id: 'group-1' });
+      mockDb.query.supplierGroups.findFirst.mockResolvedValue({
+        id: 'group-1',
+      });
       mockDb.query.suppliers.findFirst.mockResolvedValueOnce(undefined);
       mockFilesService.linkFiles.mockRejectedValue(
         new AppException(ErrorCode.E042, HttpStatus.NOT_FOUND),
@@ -236,7 +263,9 @@ describe('SuppliersService', () => {
 
       await expect(
         service.createSupplier(
-          Object.assign(new CreateSupplierReqDto(), reqDto, { attachmentFileIds: ['ghost'] }),
+          Object.assign(new CreateSupplierReqDto(), reqDto, {
+            attachmentFileIds: ['ghost'],
+          }),
           'user-1',
         ),
       ).rejects.toMatchObject({ response: { errorCode: ErrorCode.E042 } });
@@ -246,7 +275,9 @@ describe('SuppliersService', () => {
     // Required by .claude/rules/testing.md for any service that opens a transaction: the error must
     // propagate AND the post-commit re-fetch must not run.
     it('rolls back and never re-reads the detail when a write inside the transaction fails', async () => {
-      mockDb.query.supplierGroups.findFirst.mockResolvedValue({ id: 'group-1' });
+      mockDb.query.supplierGroups.findFirst.mockResolvedValue({
+        id: 'group-1',
+      });
       mockDb.query.suppliers.findFirst.mockResolvedValueOnce(undefined);
       const failure = new Error('representative insert failed');
       mockDb.transaction.mockRejectedValue(failure);
@@ -264,11 +295,15 @@ describe('SuppliersService', () => {
     });
 
     it('throws E020 when the explicit code is already taken', async () => {
-      mockDb.query.suppliers.findFirst.mockResolvedValue({ id: 'other-supplier' });
+      mockDb.query.suppliers.findFirst.mockResolvedValue({
+        id: 'other-supplier',
+      });
 
       await expect(
         service.createSupplier(
-          Object.assign(new CreateSupplierReqDto(), reqDto, { code: 'NCC0001' }),
+          Object.assign(new CreateSupplierReqDto(), reqDto, {
+            code: 'NCC0001',
+          }),
           'user-1',
         ),
       ).rejects.toMatchObject({
@@ -278,9 +313,13 @@ describe('SuppliersService', () => {
     });
 
     it('throws E022 when taxCode is already taken', async () => {
-      mockDb.query.suppliers.findFirst.mockResolvedValue({ id: 'other-supplier' });
+      mockDb.query.suppliers.findFirst.mockResolvedValue({
+        id: 'other-supplier',
+      });
 
-      await expect(service.createSupplier(reqDto, 'user-1')).rejects.toMatchObject({
+      await expect(
+        service.createSupplier(reqDto, 'user-1'),
+      ).rejects.toMatchObject({
         status: HttpStatus.CONFLICT,
         response: { errorCode: ErrorCode.E022 },
       });
@@ -289,19 +328,25 @@ describe('SuppliersService', () => {
     it('throws E021 when supplierGroupId does not reference an existing group', async () => {
       mockDb.query.supplierGroups.findFirst.mockResolvedValue(undefined);
 
-      await expect(service.createSupplier(reqDto, 'user-1')).rejects.toMatchObject({
+      await expect(
+        service.createSupplier(reqDto, 'user-1'),
+      ).rejects.toMatchObject({
         status: HttpStatus.NOT_FOUND,
         response: { errorCode: ErrorCode.E021 },
       });
     });
 
     it('throws E023 when countryId does not reference an existing country', async () => {
-      mockDb.query.supplierGroups.findFirst.mockResolvedValue({ id: 'group-1' });
+      mockDb.query.supplierGroups.findFirst.mockResolvedValue({
+        id: 'group-1',
+      });
       mockDb.query.countries.findFirst.mockResolvedValue(undefined);
 
       await expect(
         service.createSupplier(
-          Object.assign(new CreateSupplierReqDto(), reqDto, { countryId: 'country-1' }),
+          Object.assign(new CreateSupplierReqDto(), reqDto, {
+            countryId: 'country-1',
+          }),
           'user-1',
         ),
       ).rejects.toMatchObject({
@@ -328,7 +373,9 @@ describe('SuppliersService', () => {
 
       await service.updateSupplier(
         's1',
-        Object.assign(new UpdateSupplierReqDto(), { internalNote: 'Ghi chú nội bộ' }),
+        Object.assign(new UpdateSupplierReqDto(), {
+          internalNote: 'Ghi chú nội bộ',
+        }),
       );
 
       expect(mockDb.update).toHaveBeenCalled();
@@ -343,7 +390,9 @@ describe('SuppliersService', () => {
       await expect(
         service.updateSupplier(
           's1',
-          Object.assign(new UpdateSupplierReqDto(), { payment: { bankName: 'Vietcombank' } }),
+          Object.assign(new UpdateSupplierReqDto(), {
+            payment: { bankName: 'Vietcombank' },
+          }),
         ),
       ).resolves.toBeDefined();
 

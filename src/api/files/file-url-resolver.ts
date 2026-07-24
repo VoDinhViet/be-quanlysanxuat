@@ -9,7 +9,9 @@
  * is the cheaper failure.
  */
 let resolver: (fileId: string) => string = () => {
-  throw new Error('File URL resolver not initialised — FilesModule.onModuleInit did not run.');
+  throw new Error(
+    'File URL resolver not initialised — FilesModule.onModuleInit did not run.',
+  );
 };
 
 export function setFileUrlResolver(fn: (fileId: string) => string): void {

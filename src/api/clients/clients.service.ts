@@ -8,7 +8,12 @@ import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database } from '../../database/database.type';
-import { clientContacts, clientGroups, clients, ClientStatus } from '../../database/schemas';
+import {
+  clientContacts,
+  clientGroups,
+  clients,
+  ClientStatus,
+} from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { ClientResDto } from './dto/client.res.dto';
 import { CreateClientReqDto } from './dto/create-client.req.dto';
@@ -19,7 +24,9 @@ import { UpdateClientReqDto } from './dto/update-client.req.dto';
 export class ClientsService {
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
 
-  async getClients(reqDto: GetClientsReqDto): Promise<OffsetPaginatedDto<ClientResDto>> {
+  async getClients(
+    reqDto: GetClientsReqDto,
+  ): Promise<OffsetPaginatedDto<ClientResDto>> {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
     const where = and(
       isNull(clients.deletedAt),
@@ -40,7 +47,9 @@ export class ClientsService {
           )
         : undefined,
       reqDto.status ? eq(clients.status, reqDto.status) : undefined,
-      reqDto.clientGroupId ? eq(clients.clientGroupId, reqDto.clientGroupId) : undefined,
+      reqDto.clientGroupId
+        ? eq(clients.clientGroupId, reqDto.clientGroupId)
+        : undefined,
     );
     const orderBy = desc(clients.createdAt);
 
@@ -86,7 +95,10 @@ export class ClientsService {
     });
   }
 
-  async createClient(reqDto: CreateClientReqDto, userId: string): Promise<ClientResDto> {
+  async createClient(
+    reqDto: CreateClientReqDto,
+    userId: string,
+  ): Promise<ClientResDto> {
     let code = reqDto.code;
     if (code) {
       await this.validateCodeUniqueness(code);
@@ -122,7 +134,10 @@ export class ClientsService {
     return this.getClientDetail(client.id);
   }
 
-  async updateClient(clientId: string, reqDto: UpdateClientReqDto): Promise<ClientResDto> {
+  async updateClient(
+    clientId: string,
+    reqDto: UpdateClientReqDto,
+  ): Promise<ClientResDto> {
     await this.ensureClientExists(clientId);
 
     if (reqDto.code) {
@@ -155,14 +170,19 @@ export class ClientsService {
   async deleteClient(clientId: string): Promise<void> {
     await this.ensureClientExists(clientId);
 
-    await this.db.update(clients).set({ deletedAt: new Date() }).where(eq(clients.id, clientId));
+    await this.db
+      .update(clients)
+      .set({ deletedAt: new Date() })
+      .where(eq(clients.id, clientId));
   }
 
   private async replaceContacts(
     clientId: string,
     contacts: CreateClientReqDto['contacts'],
   ): Promise<void> {
-    await this.db.delete(clientContacts).where(eq(clientContacts.clientId, clientId));
+    await this.db
+      .delete(clientContacts)
+      .where(eq(clientContacts.clientId, clientId));
 
     if (contacts?.length) {
       await this.db.insert(clientContacts).values(
@@ -191,7 +211,10 @@ export class ClientsService {
     return existing;
   }
 
-  private async validateCodeUniqueness(code: string, ignoredClientId?: string): Promise<void> {
+  private async validateCodeUniqueness(
+    code: string,
+    ignoredClientId?: string,
+  ): Promise<void> {
     const where = ignoredClientId
       ? and(eq(clients.code, code), ne(clients.id, ignoredClientId))
       : eq(clients.code, code);

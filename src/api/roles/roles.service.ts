@@ -19,7 +19,10 @@ import { AppException } from '../../exceptions/app.exception';
 import { PermissionsService } from '../auth/permissions.service';
 import { CreateRoleReqDto } from './dto/create-role.req.dto';
 import { GetRolesReqDto } from './dto/get-roles.req.dto';
-import { PermissionGroupResDto, PermissionItemResDto } from './dto/permission-catalog.res.dto';
+import {
+  PermissionGroupResDto,
+  PermissionItemResDto,
+} from './dto/permission-catalog.res.dto';
 import { RoleResDto } from './dto/role.res.dto';
 import { UpdateRoleReqDto } from './dto/update-role.req.dto';
 
@@ -30,12 +33,17 @@ export class RolesService {
     private readonly permissionsService: PermissionsService,
   ) {}
 
-  async getRoles(reqDto: GetRolesReqDto): Promise<OffsetPaginatedDto<RoleResDto>> {
+  async getRoles(
+    reqDto: GetRolesReqDto,
+  ): Promise<OffsetPaginatedDto<RoleResDto>> {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
     const where = and(
       isNull(roles.deletedAt),
       keyword
-        ? or(unaccentILike(roles.code, keyword), unaccentILike(roles.name, keyword))
+        ? or(
+            unaccentILike(roles.code, keyword),
+            unaccentILike(roles.name, keyword),
+          )
         : undefined,
     );
 
@@ -67,7 +75,10 @@ export class RolesService {
     return plainToInstance(RoleResDto, role, { excludeExtraneousValues: true });
   }
 
-  async createRole(reqDto: CreateRoleReqDto, actorCredentialId: string): Promise<RoleResDto> {
+  async createRole(
+    reqDto: CreateRoleReqDto,
+    actorCredentialId: string,
+  ): Promise<RoleResDto> {
     await this.validateCodeUniqueness(reqDto.code);
     this.validatePermissions(reqDto.permissions);
     await this.ensureActorMayGrant(reqDto.permissions, actorCredentialId);
@@ -118,7 +129,10 @@ export class RolesService {
     this.ensureNotSystemRole(role.isSystem);
     await this.ensureRoleNotInUse(roleId);
 
-    await this.db.update(roles).set({ deletedAt: new Date() }).where(eq(roles.id, roleId));
+    await this.db
+      .update(roles)
+      .set({ deletedAt: new Date() })
+      .where(eq(roles.id, roleId));
     await this.permissionsService.invalidateRole(roleId);
   }
 
@@ -138,7 +152,9 @@ export class RolesService {
   }
 
   private validatePermissions(permissions: string[]): void {
-    const invalid = permissions.filter((permission) => !isPermissionCode(permission));
+    const invalid = permissions.filter(
+      (permission) => !isPermissionCode(permission),
+    );
 
     if (invalid.length > 0) {
       throw new AppException(ErrorCode.E031, HttpStatus.BAD_REQUEST);
@@ -159,7 +175,8 @@ export class RolesService {
       return;
     }
 
-    const actorPermissions = await this.permissionsService.getPermissionCodes(actorCredentialId);
+    const actorPermissions =
+      await this.permissionsService.getPermissionCodes(actorCredentialId);
 
     if (!actorPermissions.includes(SUPER_PERMISSION)) {
       throw new AppException(ErrorCode.E034, HttpStatus.FORBIDDEN);

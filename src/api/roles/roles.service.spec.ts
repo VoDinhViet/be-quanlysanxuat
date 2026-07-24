@@ -3,7 +3,10 @@ import { Test, TestingModule } from '@nestjs/testing';
 
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
-import { chainableMock, QueryMockArgs } from '../../test-utils/chainable-mock.util';
+import {
+  chainableMock,
+  QueryMockArgs,
+} from '../../test-utils/chainable-mock.util';
 import { PermissionsService } from '../auth/permissions.service';
 import { CreateRoleReqDto } from './dto/create-role.req.dto';
 import { GetRolesReqDto } from './dto/get-roles.req.dto';
@@ -14,7 +17,10 @@ describe('RolesService', () => {
   let service: RolesService;
   let mockDb: {
     query: {
-      roles: { findMany: jest.Mock<any, [QueryMockArgs]>; findFirst: jest.Mock };
+      roles: {
+        findMany: jest.Mock<any, [QueryMockArgs]>;
+        findFirst: jest.Mock;
+      };
       credentials: { findFirst: jest.Mock };
     };
     select: jest.Mock;
@@ -39,8 +45,9 @@ describe('RolesService', () => {
     ...overrides,
   });
 
-  const buildReqDto = (overrides: Partial<GetRolesReqDto> = {}): GetRolesReqDto =>
-    Object.assign(new GetRolesReqDto(), overrides);
+  const buildReqDto = (
+    overrides: Partial<GetRolesReqDto> = {},
+  ): GetRolesReqDto => Object.assign(new GetRolesReqDto(), overrides);
 
   beforeEach(async () => {
     mockDb = {
@@ -109,7 +116,10 @@ describe('RolesService', () => {
 
       const result = await service.getRoleDetail('role-1');
 
-      expect(result).toMatchObject({ code: 'ACCOUNTANT', permissions: ['clients:read'] });
+      expect(result).toMatchObject({
+        code: 'ACCOUNTANT',
+        permissions: ['clients:read'],
+      });
     });
 
     it('throws E027 not found when the role does not exist', async () => {
@@ -143,7 +153,9 @@ describe('RolesService', () => {
     it('throws E028 when the code is already taken', async () => {
       mockDb.query.roles.findFirst.mockResolvedValue({ id: 'other-role' });
 
-      await expect(service.createRole(reqDto, 'actor-cred')).rejects.toMatchObject({
+      await expect(
+        service.createRole(reqDto, 'actor-cred'),
+      ).rejects.toMatchObject({
         status: HttpStatus.CONFLICT,
         response: { errorCode: ErrorCode.E028 },
       });
@@ -154,7 +166,9 @@ describe('RolesService', () => {
 
       await expect(
         service.createRole(
-          Object.assign(new CreateRoleReqDto(), reqDto, { permissions: ['not:a-real-code'] }),
+          Object.assign(new CreateRoleReqDto(), reqDto, {
+            permissions: ['not:a-real-code'],
+          }),
           'actor-cred',
         ),
       ).rejects.toMatchObject({
@@ -165,11 +179,15 @@ describe('RolesService', () => {
 
     it('throws E034 when a non-super actor tries to grant system:manage', async () => {
       mockDb.query.roles.findFirst.mockResolvedValue(undefined); // code is free
-      mockPermissionsService.getPermissionCodes.mockResolvedValue(['roles:update']);
+      mockPermissionsService.getPermissionCodes.mockResolvedValue([
+        'roles:update',
+      ]);
 
       await expect(
         service.createRole(
-          Object.assign(new CreateRoleReqDto(), reqDto, { permissions: ['system:manage'] }),
+          Object.assign(new CreateRoleReqDto(), reqDto, {
+            permissions: ['system:manage'],
+          }),
           'actor-cred',
         ),
       ).rejects.toMatchObject({
@@ -182,10 +200,14 @@ describe('RolesService', () => {
       mockDb.query.roles.findFirst
         .mockResolvedValueOnce(undefined) // validateCodeUniqueness
         .mockResolvedValueOnce(buildRole({ permissions: ['system:manage'] })); // getRoleDetail
-      mockPermissionsService.getPermissionCodes.mockResolvedValue(['system:manage']);
+      mockPermissionsService.getPermissionCodes.mockResolvedValue([
+        'system:manage',
+      ]);
 
       const result = await service.createRole(
-        Object.assign(new CreateRoleReqDto(), reqDto, { permissions: ['system:manage'] }),
+        Object.assign(new CreateRoleReqDto(), reqDto, {
+          permissions: ['system:manage'],
+        }),
         'actor-cred',
       );
 
@@ -207,7 +229,9 @@ describe('RolesService', () => {
     });
 
     it('throws E030 when trying to modify a system role', async () => {
-      mockDb.query.roles.findFirst.mockResolvedValue(buildRole({ isSystem: true }));
+      mockDb.query.roles.findFirst.mockResolvedValue(
+        buildRole({ isSystem: true }),
+      );
 
       await expect(
         service.updateRole(
@@ -223,12 +247,16 @@ describe('RolesService', () => {
 
     it('throws E034 when a non-super actor adds system:manage to a role', async () => {
       mockDb.query.roles.findFirst.mockResolvedValue(buildRole());
-      mockPermissionsService.getPermissionCodes.mockResolvedValue(['roles:update']);
+      mockPermissionsService.getPermissionCodes.mockResolvedValue([
+        'roles:update',
+      ]);
 
       await expect(
         service.updateRole(
           'role-1',
-          Object.assign(new UpdateRoleReqDto(), { permissions: ['system:manage'] }),
+          Object.assign(new UpdateRoleReqDto(), {
+            permissions: ['system:manage'],
+          }),
           'actor-cred',
         ),
       ).rejects.toMatchObject({
@@ -247,7 +275,9 @@ describe('RolesService', () => {
       );
 
       expect(mockDb.update).toHaveBeenCalled();
-      expect(mockPermissionsService.invalidateRole).toHaveBeenCalledWith('role-1');
+      expect(mockPermissionsService.invalidateRole).toHaveBeenCalledWith(
+        'role-1',
+      );
     });
 
     // An empty PATCH used to be skipped entirely. It now issues a harmless `updated_at`-only
@@ -261,13 +291,17 @@ describe('RolesService', () => {
       ).resolves.toBeDefined();
 
       expect(mockDb.update).toHaveBeenCalled();
-      expect(mockPermissionsService.invalidateRole).toHaveBeenCalledWith('role-1');
+      expect(mockPermissionsService.invalidateRole).toHaveBeenCalledWith(
+        'role-1',
+      );
     });
   });
 
   describe('deleteRole', () => {
     it('throws E030 for a system role', async () => {
-      mockDb.query.roles.findFirst.mockResolvedValue(buildRole({ isSystem: true }));
+      mockDb.query.roles.findFirst.mockResolvedValue(
+        buildRole({ isSystem: true }),
+      );
 
       await expect(service.deleteRole('role-1')).rejects.toMatchObject({
         status: HttpStatus.FORBIDDEN,
@@ -292,7 +326,9 @@ describe('RolesService', () => {
       await service.deleteRole('role-1');
 
       expect(mockDb.update).toHaveBeenCalled();
-      expect(mockPermissionsService.invalidateRole).toHaveBeenCalledWith('role-1');
+      expect(mockPermissionsService.invalidateRole).toHaveBeenCalledWith(
+        'role-1',
+      );
     });
   });
 
@@ -302,8 +338,12 @@ describe('RolesService', () => {
 
       const clients = catalog.find((group) => group.resource === 'clients');
       expect(clients).toBeDefined();
-      expect(clients?.permissions.some((p) => p.code === 'clients:create')).toBe(true);
-      expect(clients?.permissions.every((p) => typeof p.action === 'string')).toBe(true);
+      expect(
+        clients?.permissions.some((p) => p.code === 'clients:create'),
+      ).toBe(true);
+      expect(
+        clients?.permissions.every((p) => typeof p.action === 'string'),
+      ).toBe(true);
     });
   });
 });

@@ -20,7 +20,9 @@ import type { StorageProvider } from './storage-provider.interface';
         configService: ConfigService<AllConfigType>,
         localDiskProvider: LocalDiskStorageProvider,
       ): StorageProvider => {
-        const driver = configService.getOrThrow('upload.driver', { infer: true });
+        const driver = configService.getOrThrow('upload.driver', {
+          infer: true,
+        });
 
         switch (driver) {
           case StorageDriver.LOCAL:

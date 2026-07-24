@@ -1,4 +1,8 @@
-import { ExecutionContext, HttpStatus, UnauthorizedException } from '@nestjs/common';
+import {
+  ExecutionContext,
+  HttpStatus,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 
 import { ErrorCode } from '../../../constants/error-code.constant';
@@ -49,7 +53,9 @@ describe('PermissionsGuard', () => {
   it('allows routes that declare no permissions (auth is enough)', async () => {
     setReflector(false, undefined);
 
-    await expect(guard.canActivate(buildContext({ sub: 'cred-1' }))).resolves.toBe(true);
+    await expect(
+      guard.canActivate(buildContext({ sub: 'cred-1' })),
+    ).resolves.toBe(true);
     expect(permissionsService.getPermissionCodes).not.toHaveBeenCalled();
   });
 
@@ -57,21 +63,30 @@ describe('PermissionsGuard', () => {
     setReflector(false, ['clients:create']);
     permissionsService.getPermissionCodes.mockResolvedValue(['system:manage']);
 
-    await expect(guard.canActivate(buildContext({ sub: 'cred-1' }))).resolves.toBe(true);
+    await expect(
+      guard.canActivate(buildContext({ sub: 'cred-1' })),
+    ).resolves.toBe(true);
   });
 
   it('allows a user holding every required permission', async () => {
     setReflector(false, ['clients:create']);
-    permissionsService.getPermissionCodes.mockResolvedValue(['clients:read', 'clients:create']);
+    permissionsService.getPermissionCodes.mockResolvedValue([
+      'clients:read',
+      'clients:create',
+    ]);
 
-    await expect(guard.canActivate(buildContext({ sub: 'cred-1' }))).resolves.toBe(true);
+    await expect(
+      guard.canActivate(buildContext({ sub: 'cred-1' })),
+    ).resolves.toBe(true);
   });
 
   it('throws E033 (403) when the user is missing a required permission', async () => {
     setReflector(false, ['clients:delete']);
     permissionsService.getPermissionCodes.mockResolvedValue(['clients:read']);
 
-    await expect(guard.canActivate(buildContext({ sub: 'cred-1' }))).rejects.toMatchObject({
+    await expect(
+      guard.canActivate(buildContext({ sub: 'cred-1' })),
+    ).rejects.toMatchObject({
       status: HttpStatus.FORBIDDEN,
       response: { errorCode: ErrorCode.E033 },
     });
@@ -80,8 +95,8 @@ describe('PermissionsGuard', () => {
   it('throws Unauthorized when a protected route has no authenticated user', async () => {
     setReflector(false, ['clients:read']);
 
-    await expect(guard.canActivate(buildContext(undefined))).rejects.toBeInstanceOf(
-      UnauthorizedException,
-    );
+    await expect(
+      guard.canActivate(buildContext(undefined)),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
   });
 });

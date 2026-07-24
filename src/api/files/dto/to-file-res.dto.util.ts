@@ -20,5 +20,7 @@ export function toFileResDto(relation: unknown): FileResDto | null {
     return null;
   }
 
-  return plainToInstance(FileResDto, relation, { excludeExtraneousValues: true });
+  return plainToInstance(FileResDto, relation, {
+    excludeExtraneousValues: true,
+  });
 }

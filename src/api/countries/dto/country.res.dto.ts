@@ -1,6 +1,10 @@
 import { Exclude, Expose } from 'class-transformer';
 
-import { StringField, StringFieldOptional, UUIDField } from '../../../decorators/field.decorators';
+import {
+  StringField,
+  StringFieldOptional,
+  UUIDField,
+} from '../../../decorators/field.decorators';
 
 @Exclude()
 export class CountryResDto {

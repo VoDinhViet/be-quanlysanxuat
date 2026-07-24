@@ -1,7 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { DRIZZLE } from '../../database/database.module';
-import { chainableMock, QueryMockArgs } from '../../test-utils/chainable-mock.util';
+import {
+  chainableMock,
+  QueryMockArgs,
+} from '../../test-utils/chainable-mock.util';
 import { CountriesService } from './countries.service';
 import { GetCountriesReqDto } from './dto/get-countries.req.dto';
 
@@ -12,12 +15,17 @@ describe('CountriesService', () => {
     select: jest.Mock;
   };
 
-  const buildReqDto = (overrides: Partial<GetCountriesReqDto> = {}): GetCountriesReqDto =>
-    Object.assign(new GetCountriesReqDto(), overrides);
+  const buildReqDto = (
+    overrides: Partial<GetCountriesReqDto> = {},
+  ): GetCountriesReqDto => Object.assign(new GetCountriesReqDto(), overrides);
 
   beforeEach(async () => {
     mockDb = {
-      query: { countries: { findMany: jest.fn<any, [QueryMockArgs]>().mockResolvedValue([]) } },
+      query: {
+        countries: {
+          findMany: jest.fn<any, [QueryMockArgs]>().mockResolvedValue([]),
+        },
+      },
       select: chainableMock([{ total: 0 }]),
     };
 

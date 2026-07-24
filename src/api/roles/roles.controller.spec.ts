@@ -95,7 +95,11 @@ describe('RolesController', () => {
 
     const result = await controller.updateRole('role-1', reqDto, payload);
 
-    expect(mockService.updateRole).toHaveBeenCalledWith('role-1', reqDto, payload.sub);
+    expect(mockService.updateRole).toHaveBeenCalledWith(
+      'role-1',
+      reqDto,
+      payload.sub,
+    );
     expect(result).toBe(expected);
   });
 

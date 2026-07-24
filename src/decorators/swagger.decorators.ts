@@ -20,17 +20,22 @@ export const ApiPaginatedResponse = <T extends Type<any>>(options: {
   }
   return applyDecorators(
     ApiExtraModels(
-      options.paginationType === 'offset' ? OffsetPaginatedDto : CursorPaginatedDto,
+      options.paginationType === 'offset'
+        ? OffsetPaginatedDto
+        : CursorPaginatedDto,
       options.type,
     ),
     ApiOkResponse({
-      description: options.description || `Paginated list of ${options.type.name}`,
+      description:
+        options.description || `Paginated list of ${options.type.name}`,
       schema: {
         title: `PaginatedResponseOf${options.type.name}`,
         allOf: [
           {
             $ref: getSchemaPath(
-              options.paginationType === 'offset' ? OffsetPaginatedDto : CursorPaginatedDto,
+              options.paginationType === 'offset'
+                ? OffsetPaginatedDto
+                : CursorPaginatedDto,
             ),
           },
           {

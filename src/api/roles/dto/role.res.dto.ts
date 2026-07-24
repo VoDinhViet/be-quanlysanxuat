@@ -28,7 +28,10 @@ export class RoleResDto {
   description!: string | null;
 
   @Expose()
-  @StringField({ each: true, description: 'Permission codes granted to this role' })
+  @StringField({
+    each: true,
+    description: 'Permission codes granted to this role',
+  })
   permissions!: PermissionCode[];
 
   @Expose()

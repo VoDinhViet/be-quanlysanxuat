@@ -20,8 +20,14 @@ import { createHmac, timingSafeEqual } from 'crypto';
 const DOWNLOAD_PATH_PREFIX = '/api/files';
 
 /** `exp` is part of the signed payload, so pushing the expiry out invalidates the signature. */
-const buildSignature = (fileId: string, expiresAt: number, secret: string): string =>
-  createHmac('sha256', secret).update(`${fileId}:${expiresAt}`).digest('base64url');
+const buildSignature = (
+  fileId: string,
+  expiresAt: number,
+  secret: string,
+): string =>
+  createHmac('sha256', secret)
+    .update(`${fileId}:${expiresAt}`)
+    .digest('base64url');
 
 export function buildSignedFileUrl(
   fileId: string,
@@ -46,12 +52,18 @@ export function isSignatureValid(
 
   // `timingSafeEqual` throws on a length mismatch, so the length check has to come first — and it
   // leaks nothing beyond the signature length, which is fixed by the algorithm anyway.
-  return expected.length === received.length && timingSafeEqual(expected, received);
+  return (
+    expected.length === received.length && timingSafeEqual(expected, received)
+  );
 }
 
-export const isExpired = (expiresAt: number, nowMs: number = Date.now()): boolean =>
-  expiresAt * 1000 <= nowMs;
+export const isExpired = (
+  expiresAt: number,
+  nowMs: number = Date.now(),
+): boolean => expiresAt * 1000 <= nowMs;
 
 /** Seconds left before `expiresAt`, floored at 0 — used for `Cache-Control: max-age`. */
-export const secondsUntil = (expiresAt: number, nowMs: number = Date.now()): number =>
-  Math.max(0, expiresAt - Math.floor(nowMs / 1000));
+export const secondsUntil = (
+  expiresAt: number,
+  nowMs: number = Date.now(),
+): number => Math.max(0, expiresAt - Math.floor(nowMs / 1000));

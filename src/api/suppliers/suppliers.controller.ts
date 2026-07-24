@@ -1,4 +1,13 @@
-import { Body, Controller, Delete, Get, HttpStatus, Patch, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpStatus,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
@@ -26,7 +35,9 @@ export class SuppliersController {
     summary: 'List suppliers',
     isPaginated: true,
   })
-  getSuppliers(@Query() reqDto: GetSuppliersReqDto): Promise<OffsetPaginatedDto<SupplierResDto>> {
+  getSuppliers(
+    @Query() reqDto: GetSuppliersReqDto,
+  ): Promise<OffsetPaginatedDto<SupplierResDto>> {
     return this.suppliersService.getSuppliers(reqDto);
   }
 

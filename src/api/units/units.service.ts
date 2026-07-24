@@ -20,7 +20,10 @@ export class UnitsService {
     const entities = await this.db.query.units.findMany({
       where: and(
         keyword
-          ? or(unaccentILike(units.code, keyword), unaccentILike(units.name, keyword))
+          ? or(
+              unaccentILike(units.code, keyword),
+              unaccentILike(units.name, keyword),
+            )
           : undefined,
         reqDto.scope
           ? inArray(

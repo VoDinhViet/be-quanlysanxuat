@@ -1,6 +1,15 @@
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
-import { and, count as drizzleCount, desc, eq, inArray, isNull, ne, or } from 'drizzle-orm';
+import {
+  and,
+  count as drizzleCount,
+  desc,
+  eq,
+  inArray,
+  isNull,
+  ne,
+  or,
+} from 'drizzle-orm';
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
@@ -32,7 +41,9 @@ export class SuppliersService {
     private readonly filesService: FilesService,
   ) {}
 
-  async getSuppliers(reqDto: GetSuppliersReqDto): Promise<OffsetPaginatedDto<SupplierResDto>> {
+  async getSuppliers(
+    reqDto: GetSuppliersReqDto,
+  ): Promise<OffsetPaginatedDto<SupplierResDto>> {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
     const where = and(
       isNull(suppliers.deletedAt),
@@ -51,7 +62,9 @@ export class SuppliersService {
           )
         : undefined,
       reqDto.status ? eq(suppliers.status, reqDto.status) : undefined,
-      reqDto.supplierGroupId ? eq(suppliers.supplierGroupId, reqDto.supplierGroupId) : undefined,
+      reqDto.supplierGroupId
+        ? eq(suppliers.supplierGroupId, reqDto.supplierGroupId)
+        : undefined,
       reqDto.countryId ? eq(suppliers.countryId, reqDto.countryId) : undefined,
     );
     const orderBy = desc(suppliers.createdAt);
@@ -90,7 +103,9 @@ export class SuppliersService {
       .where(isNull(suppliers.deletedAt))
       .groupBy(suppliers.status);
 
-    const byStatus = Object.fromEntries(rows.map((row) => [row.status, row.total]));
+    const byStatus = Object.fromEntries(
+      rows.map((row) => [row.status, row.total]),
+    );
 
     return plainToInstance(
       SupplierStatsResDto,
@@ -127,7 +142,10 @@ export class SuppliersService {
     });
   }
 
-  async createSupplier(reqDto: CreateSupplierReqDto, userId: string): Promise<SupplierResDto> {
+  async createSupplier(
+    reqDto: CreateSupplierReqDto,
+    userId: string,
+  ): Promise<SupplierResDto> {
     let code = reqDto.code;
     if (code) {
       await this.validateCodeUniqueness(code);
@@ -144,7 +162,8 @@ export class SuppliersService {
 
     // `payment` / `representatives` / `attachmentFileIds` live in their own tables — peel them off
     // so the rest of the DTO spreads straight onto the `suppliers` row.
-    const { payment, representatives, attachmentFileIds, ...supplierFields } = reqDto;
+    const { payment, representatives, attachmentFileIds, ...supplierFields } =
+      reqDto;
 
     const supplierId = await this.db.transaction(async (tx) => {
       const [supplier] = await tx
@@ -158,7 +177,9 @@ export class SuppliersService {
         .returning();
 
       // Every supplier always has exactly one payment info row, created right away.
-      await tx.insert(supplierPaymentInfo).values({ supplierId: supplier.id, ...payment });
+      await tx
+        .insert(supplierPaymentInfo)
+        .values({ supplierId: supplier.id, ...payment });
 
       if (attachmentFileIds?.length) {
         await this.replaceAttachments(tx, supplier.id, attachmentFileIds);
@@ -174,7 +195,10 @@ export class SuppliersService {
     return this.getSupplierDetail(supplierId);
   }
 
-  async updateSupplier(supplierId: string, reqDto: UpdateSupplierReqDto): Promise<SupplierResDto> {
+  async updateSupplier(
+    supplierId: string,
+    reqDto: UpdateSupplierReqDto,
+  ): Promise<SupplierResDto> {
     await this.ensureSupplierExists(supplierId);
 
     if (reqDto.code) {
@@ -191,7 +215,8 @@ export class SuppliersService {
     }
     await this.linkSuppliedFiles(reqDto);
 
-    const { payment, representatives, attachmentFileIds, ...supplierFields } = reqDto;
+    const { payment, representatives, attachmentFileIds, ...supplierFields } =
+      reqDto;
 
     await this.db.transaction(async (tx) => {
       // `updatedAt` is always written, which doubles as the reason `.set()` is safe here: drizzle
@@ -239,9 +264,10 @@ export class SuppliersService {
   private async linkSuppliedFiles(
     reqDto: CreateSupplierReqDto | UpdateSupplierReqDto,
   ): Promise<void> {
-    const fileIds = [reqDto.logoFileId, ...(reqDto.attachmentFileIds ?? [])].filter(
-      (id): id is string => Boolean(id),
-    );
+    const fileIds = [
+      reqDto.logoFileId,
+      ...(reqDto.attachmentFileIds ?? []),
+    ].filter((id): id is string => Boolean(id));
 
     await this.filesService.linkFiles(fileIds);
   }
@@ -252,7 +278,9 @@ export class SuppliersService {
     supplierId: string,
     attachmentFileIds: string[],
   ): Promise<void> {
-    await tx.delete(supplierAttachments).where(eq(supplierAttachments.supplierId, supplierId));
+    await tx
+      .delete(supplierAttachments)
+      .where(eq(supplierAttachments.supplierId, supplierId));
 
     if (attachmentFileIds.length) {
       await tx
@@ -294,7 +322,10 @@ export class SuppliersService {
     return existing;
   }
 
-  private async validateCodeUniqueness(code: string, ignoredSupplierId?: string): Promise<void> {
+  private async validateCodeUniqueness(
+    code: string,
+    ignoredSupplierId?: string,
+  ): Promise<void> {
     const where = ignoredSupplierId
       ? and(eq(suppliers.code, code), ne(suppliers.id, ignoredSupplierId))
       : eq(suppliers.code, code);
@@ -327,7 +358,9 @@ export class SuppliersService {
     }
   }
 
-  private async ensureSupplierGroupExists(supplierGroupId: string): Promise<void> {
+  private async ensureSupplierGroupExists(
+    supplierGroupId: string,
+  ): Promise<void> {
     const existing = await this.db.query.supplierGroups.findFirst({
       columns: { id: true },
       where: eq(supplierGroups.id, supplierGroupId),
@@ -350,7 +383,9 @@ export class SuppliersService {
   }
 
   private async generateSupplierCode(): Promise<string> {
-    const [totalRows] = await this.db.select({ total: drizzleCount() }).from(suppliers);
+    const [totalRows] = await this.db
+      .select({ total: drizzleCount() })
+      .from(suppliers);
     return `NCC${String((totalRows?.total ?? 0) + 1).padStart(4, '0')}`;
   }
 }

@@ -1,7 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { DRIZZLE } from '../../database/database.module';
-import { chainableMock, QueryMockArgs } from '../../test-utils/chainable-mock.util';
+import {
+  chainableMock,
+  QueryMockArgs,
+} from '../../test-utils/chainable-mock.util';
 import { GetProductGroupsReqDto } from './dto/get-product-groups.req.dto';
 import { ProductGroupsService } from './product-groups.service';
 
@@ -12,12 +15,18 @@ describe('ProductGroupsService', () => {
     select: jest.Mock;
   };
 
-  const buildReqDto = (overrides: Partial<GetProductGroupsReqDto> = {}): GetProductGroupsReqDto =>
+  const buildReqDto = (
+    overrides: Partial<GetProductGroupsReqDto> = {},
+  ): GetProductGroupsReqDto =>
     Object.assign(new GetProductGroupsReqDto(), overrides);
 
   beforeEach(async () => {
     mockDb = {
-      query: { productGroups: { findMany: jest.fn<any, [QueryMockArgs]>().mockResolvedValue([]) } },
+      query: {
+        productGroups: {
+          findMany: jest.fn<any, [QueryMockArgs]>().mockResolvedValue([]),
+        },
+      },
       select: chainableMock([{ total: 0 }]),
     };
 
@@ -49,7 +58,10 @@ describe('ProductGroupsService', () => {
       expect(callArgs.limit).toBe(10);
       expect(callArgs.offset).toBe(0);
       expect(result.data).toHaveLength(1);
-      expect(result.data[0]).toMatchObject({ code: 'PG01', name: 'Nhóm sản phẩm A' });
+      expect(result.data[0]).toMatchObject({
+        code: 'PG01',
+        name: 'Nhóm sản phẩm A',
+      });
       expect(result.pagination.totalRecords).toBe(1);
     });
 

@@ -7,4 +7,5 @@
  * — so without a value here, merely importing a controller that touches Multer throws before any
  * test runs. Supplying a dummy keeps that guarantee in production while letting tests import freely.
  */
-process.env.UPLOAD_URL_SECRET ??= 'test-only-upload-url-secret-at-least-32-chars';
+process.env.UPLOAD_URL_SECRET ??=
+  'test-only-upload-url-secret-at-least-32-chars';

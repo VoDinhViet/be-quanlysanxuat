@@ -4,7 +4,10 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import { ClientStatus } from '../../database/schemas';
-import { chainableMock, QueryMockArgs } from '../../test-utils/chainable-mock.util';
+import {
+  chainableMock,
+  QueryMockArgs,
+} from '../../test-utils/chainable-mock.util';
 import { ClientsService } from './clients.service';
 import { CreateClientReqDto } from './dto/create-client.req.dto';
 import { GetClientsReqDto } from './dto/get-clients.req.dto';
@@ -14,7 +17,10 @@ describe('ClientsService', () => {
   let service: ClientsService;
   let mockDb: {
     query: {
-      clients: { findMany: jest.Mock<any, [QueryMockArgs]>; findFirst: jest.Mock };
+      clients: {
+        findMany: jest.Mock<any, [QueryMockArgs]>;
+        findFirst: jest.Mock;
+      };
       clientGroups: { findFirst: jest.Mock };
     };
     select: jest.Mock;
@@ -23,8 +29,9 @@ describe('ClientsService', () => {
     delete: jest.Mock;
   };
 
-  const buildReqDto = (overrides: Partial<GetClientsReqDto> = {}): GetClientsReqDto =>
-    Object.assign(new GetClientsReqDto(), overrides);
+  const buildReqDto = (
+    overrides: Partial<GetClientsReqDto> = {},
+  ): GetClientsReqDto => Object.assign(new GetClientsReqDto(), overrides);
 
   beforeEach(async () => {
     mockDb = {
@@ -64,7 +71,11 @@ describe('ClientsService', () => {
       expect(callArgs.where).toBeDefined();
       expect(callArgs.limit).toBe(10);
       expect(callArgs.offset).toBe(0);
-      expect(callArgs.with).toEqual({ group: true, creator: true, contacts: true });
+      expect(callArgs.with).toEqual({
+        group: true,
+        creator: true,
+        contacts: true,
+      });
     });
 
     it('builds a keyword search filter (incl. contact name match) when q is provided', async () => {
@@ -96,13 +107,18 @@ describe('ClientsService', () => {
 
   describe('getClientDetail', () => {
     it('returns the mapped client when found', async () => {
-      mockDb.query.clients.findFirst.mockResolvedValue({ id: 'c1', code: 'KH0001' });
+      mockDb.query.clients.findFirst.mockResolvedValue({
+        id: 'c1',
+        code: 'KH0001',
+      });
 
       const result = await service.getClientDetail('c1');
 
       expect(result).toBeDefined();
       expect(mockDb.query.clients.findFirst).toHaveBeenCalledWith(
-        expect.objectContaining({ with: { group: true, creator: true, contacts: true } }),
+        expect.objectContaining({
+          with: { group: true, creator: true, contacts: true },
+        }),
       );
     });
 
@@ -168,7 +184,9 @@ describe('ClientsService', () => {
 
       await expect(
         service.createClient(
-          Object.assign(new CreateClientReqDto(), reqDto, { taxCode: '0312345678' }),
+          Object.assign(new CreateClientReqDto(), reqDto, {
+            taxCode: '0312345678',
+          }),
           'user-1',
         ),
       ).rejects.toMatchObject({
@@ -180,7 +198,9 @@ describe('ClientsService', () => {
     it('throws E026 when clientGroupId does not reference an existing group', async () => {
       mockDb.query.clientGroups.findFirst.mockResolvedValue(undefined);
 
-      await expect(service.createClient(reqDto, 'user-1')).rejects.toMatchObject({
+      await expect(
+        service.createClient(reqDto, 'user-1'),
+      ).rejects.toMatchObject({
         status: HttpStatus.NOT_FOUND,
         response: { errorCode: ErrorCode.E026 },
       });
@@ -191,18 +211,21 @@ describe('ClientsService', () => {
     it('throws E009 when the client does not exist', async () => {
       mockDb.query.clients.findFirst.mockResolvedValue(undefined);
 
-      await expect(service.updateClient('missing', new UpdateClientReqDto())).rejects.toMatchObject(
-        {
-          status: HttpStatus.NOT_FOUND,
-          response: { errorCode: ErrorCode.E009 },
-        },
-      );
+      await expect(
+        service.updateClient('missing', new UpdateClientReqDto()),
+      ).rejects.toMatchObject({
+        status: HttpStatus.NOT_FOUND,
+        response: { errorCode: ErrorCode.E009 },
+      });
     });
 
     it('updates only the fields sent', async () => {
       mockDb.query.clients.findFirst.mockResolvedValue({ id: 'c1' });
 
-      await service.updateClient('c1', Object.assign(new UpdateClientReqDto(), { note: 'VIP' }));
+      await service.updateClient(
+        'c1',
+        Object.assign(new UpdateClientReqDto(), { note: 'VIP' }),
+      );
 
       expect(mockDb.update).toHaveBeenCalled();
     });
@@ -216,7 +239,9 @@ describe('ClientsService', () => {
       await expect(
         service.updateClient(
           'c1',
-          Object.assign(new UpdateClientReqDto(), { contacts: [{ name: 'Trần Thị B' }] }),
+          Object.assign(new UpdateClientReqDto(), {
+            contacts: [{ name: 'Trần Thị B' }],
+          }),
         ),
       ).resolves.toBeDefined();
 
@@ -227,7 +252,10 @@ describe('ClientsService', () => {
     it('replaces contacts with an empty array to clear them', async () => {
       mockDb.query.clients.findFirst.mockResolvedValue({ id: 'c1' });
 
-      await service.updateClient('c1', Object.assign(new UpdateClientReqDto(), { contacts: [] }));
+      await service.updateClient(
+        'c1',
+        Object.assign(new UpdateClientReqDto(), { contacts: [] }),
+      );
 
       expect(mockDb.delete).toHaveBeenCalled();
       expect(mockDb.insert).not.toHaveBeenCalled(); // nothing to insert
@@ -239,7 +267,10 @@ describe('ClientsService', () => {
         .mockResolvedValueOnce({ id: 'other' }); // validateCodeUniqueness conflict
 
       await expect(
-        service.updateClient('c1', Object.assign(new UpdateClientReqDto(), { code: 'KH0002' })),
+        service.updateClient(
+          'c1',
+          Object.assign(new UpdateClientReqDto(), { code: 'KH0002' }),
+        ),
       ).rejects.toMatchObject({
         status: HttpStatus.CONFLICT,
         response: { errorCode: ErrorCode.E024 },

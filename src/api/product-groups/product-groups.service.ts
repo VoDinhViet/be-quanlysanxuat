@@ -21,7 +21,10 @@ export class ProductGroupsService {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
     const where = and(
       keyword
-        ? or(unaccentILike(productGroups.code, keyword), unaccentILike(productGroups.name, keyword))
+        ? or(
+            unaccentILike(productGroups.code, keyword),
+            unaccentILike(productGroups.name, keyword),
+          )
         : undefined,
     );
     const orderBy = desc(productGroups.createdAt);

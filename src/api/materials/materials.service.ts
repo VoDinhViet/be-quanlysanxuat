@@ -40,7 +40,9 @@ export class MaterialsService {
     private readonly filesService: FilesService,
   ) {}
 
-  async getMaterials(reqDto: GetMaterialsReqDto): Promise<OffsetPaginatedDto<MaterialResDto>> {
+  async getMaterials(
+    reqDto: GetMaterialsReqDto,
+  ): Promise<OffsetPaginatedDto<MaterialResDto>> {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
     const where = and(
       keyword
@@ -57,7 +59,9 @@ export class MaterialsService {
           )
         : undefined,
       reqDto.type ? eq(materials.type, reqDto.type) : undefined,
-      reqDto.materialGroupId ? eq(materials.materialGroupId, reqDto.materialGroupId) : undefined,
+      reqDto.materialGroupId
+        ? eq(materials.materialGroupId, reqDto.materialGroupId)
+        : undefined,
       reqDto.clientId ? eq(materials.clientId, reqDto.clientId) : undefined,
       reqDto.status ? eq(materials.status, reqDto.status) : undefined,
     );
@@ -68,18 +72,29 @@ export class MaterialsService {
         limit: reqDto.limit,
         offset: reqDto.offset,
         orderBy: desc(materials.createdAt),
-        with: { unit: true, group: true, client: true, creator: true, imageFile: true },
+        with: {
+          unit: true,
+          group: true,
+          client: true,
+          creator: true,
+          imageFile: true,
+        },
       }),
       this.db.select({ total: count() }).from(materials).where(where),
     ]);
 
     return new OffsetPaginatedDto(
-      plainToInstance(MaterialResDto, entities, { excludeExtraneousValues: true }),
+      plainToInstance(MaterialResDto, entities, {
+        excludeExtraneousValues: true,
+      }),
       new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
     );
   }
 
-  async createMaterial(reqDto: CreateMaterialReqDto, userId: string): Promise<MaterialResDto> {
+  async createMaterial(
+    reqDto: CreateMaterialReqDto,
+    userId: string,
+  ): Promise<MaterialResDto> {
     // Every check below is a read, so it runs before the transaction opens — the transaction
     // only has to keep the writes together.
     let code = reqDto.code;
@@ -93,7 +108,10 @@ export class MaterialsService {
     await this.ensureMaterialGroupExists(reqDto.materialGroupId);
 
     const type = reqDto.type ?? MaterialType.INTERNAL;
-    const clientId = await this.resolveClientLink(type, reqDto.clientId ?? null);
+    const clientId = await this.resolveClientLink(
+      type,
+      reqDto.clientId ?? null,
+    );
     const status = reqDto.status ?? MaterialStatus.ACTIVE;
 
     await this.filesService.linkFiles(
@@ -120,7 +138,10 @@ export class MaterialsService {
           materialGrade: reqDto.materialGrade,
           technicalStandard: reqDto.technicalStandard,
           dimensions: reqDto.dimensions,
-          specificWeight: reqDto.specificWeight != null ? String(reqDto.specificWeight) : undefined,
+          specificWeight:
+            reqDto.specificWeight != null
+              ? String(reqDto.specificWeight)
+              : undefined,
           colorSurface: reqDto.colorSurface,
           description: reqDto.description,
           origin: reqDto.origin,
@@ -153,7 +174,9 @@ export class MaterialsService {
       throw new AppException(ErrorCode.E035, HttpStatus.NOT_FOUND);
     }
 
-    return plainToInstance(MaterialResDto, material, { excludeExtraneousValues: true });
+    return plainToInstance(MaterialResDto, material, {
+      excludeExtraneousValues: true,
+    });
   }
 
   /**
@@ -184,11 +207,15 @@ export class MaterialsService {
     materialId: string,
     fileIds: string[],
   ): Promise<void> {
-    await tx.insert(materialAttachments).values(fileIds.map((fileId) => ({ materialId, fileId })));
+    await tx
+      .insert(materialAttachments)
+      .values(fileIds.map((fileId) => ({ materialId, fileId })));
   }
 
   private async generateMaterialCode(): Promise<string> {
-    const [totalRows] = await this.db.select({ total: count() }).from(materials);
+    const [totalRows] = await this.db
+      .select({ total: count() })
+      .from(materials);
     return `VT${String((totalRows?.total ?? 0) + 1).padStart(4, '0')}`;
   }
 
@@ -222,7 +249,9 @@ export class MaterialsService {
     }
   }
 
-  private async ensureMaterialGroupExists(materialGroupId: string): Promise<void> {
+  private async ensureMaterialGroupExists(
+    materialGroupId: string,
+  ): Promise<void> {
     const existing = await this.db.query.materialGroups.findFirst({
       columns: { id: true },
       where: eq(materialGroups.id, materialGroupId),

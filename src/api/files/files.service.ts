@@ -28,7 +28,12 @@ type UploadOptions = {
 
 @Injectable()
 export class FilesService {
-  private static readonly IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+  private static readonly IMAGE_MIME_TYPES = [
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+    'image/gif',
+  ];
 
   // Legacy binary Office formats (application/msword, application/vnd.ms-excel) are deliberately
   // excluded — `file-type` has no magic-byte signature for the old OLE2/CFB container, so a
@@ -47,7 +52,10 @@ export class FilesService {
     private readonly permissionsService: PermissionsService,
   ) {}
 
-  async upload(file: Express.Multer.File | undefined, options: UploadOptions): Promise<FileResDto> {
+  async upload(
+    file: Express.Multer.File | undefined,
+    options: UploadOptions,
+  ): Promise<FileResDto> {
     if (!file) {
       throw new AppException(ErrorCode.E016, HttpStatus.BAD_REQUEST);
     }
@@ -56,11 +64,15 @@ export class FilesService {
     // USER_AVATAR while claiming DOCUMENT and slip a PDF past the image allowlist.
     const { kind } = UPLOAD_POLICIES[options.type];
     const allowedMimeTypes =
-      kind === FileKind.IMAGE ? FilesService.IMAGE_MIME_TYPES : FilesService.DOCUMENT_MIME_TYPES;
+      kind === FileKind.IMAGE
+        ? FilesService.IMAGE_MIME_TYPES
+        : FilesService.DOCUMENT_MIME_TYPES;
     const maxSize =
       kind === FileKind.IMAGE
         ? this.configService.getOrThrow('upload.maxImageSize', { infer: true })
-        : this.configService.getOrThrow('upload.maxDocumentSize', { infer: true });
+        : this.configService.getOrThrow('upload.maxDocumentSize', {
+            infer: true,
+          });
 
     if (file.size > maxSize) {
       throw new AppException(ErrorCode.E017, HttpStatus.PAYLOAD_TOO_LARGE);
@@ -76,7 +88,9 @@ export class FilesService {
 
     const storageKey = this.buildStorageKey(detected.ext);
     const checksum = createHash('sha256').update(file.buffer).digest('hex');
-    const storageDriver = this.configService.getOrThrow('upload.driver', { infer: true });
+    const storageDriver = this.configService.getOrThrow('upload.driver', {
+      infer: true,
+    });
 
     await this.storageProvider.save(storageKey, file.buffer, detected.mime);
 
@@ -118,13 +132,18 @@ export class FilesService {
     res.set({
       'Content-Type': file.mimetype,
       'Content-Length': String(file.size),
-      'Content-Disposition': this.buildContentDisposition(file.kind, file.originalName),
+      'Content-Disposition': this.buildContentDisposition(
+        file.kind,
+        file.originalName,
+      ),
       // Bounded by the signature's own lifetime — caching past `exp` would just cache a URL that
       // no longer works. `private` because the URL is a capability, not public content.
       'Cache-Control': `private, max-age=${secondsUntil(reqDto.exp)}`,
     });
 
-    return new StreamableFile(this.storageProvider.createReadStream(file.storageKey));
+    return new StreamableFile(
+      this.storageProvider.createReadStream(file.storageKey),
+    );
   }
 
   /**
@@ -135,7 +154,8 @@ export class FilesService {
     const file = await this.ensureFileExists(fileId);
 
     if (file.uploadedBy !== actorCredentialId) {
-      const granted = await this.permissionsService.getPermissionCodes(actorCredentialId);
+      const granted =
+        await this.permissionsService.getPermissionCodes(actorCredentialId);
 
       if (!granted.includes(SUPER_PERMISSION)) {
         throw new AppException(ErrorCode.E033, HttpStatus.FORBIDDEN);
@@ -180,7 +200,9 @@ export class FilesService {
   }
 
   private async ensureFileExists(fileId: string) {
-    const file = await this.db.query.files.findFirst({ where: eq(files.id, fileId) });
+    const file = await this.db.query.files.findFirst({
+      where: eq(files.id, fileId),
+    });
 
     if (!file) {
       throw new AppException(ErrorCode.E042, HttpStatus.NOT_FOUND);
@@ -195,9 +217,14 @@ export class FilesService {
    * carrying the real value — original names here are Vietnamese, and a plain `filename=` would
    * mangle every diacritic.
    */
-  private buildContentDisposition(kind: FileKind, originalName: string): string {
+  private buildContentDisposition(
+    kind: FileKind,
+    originalName: string,
+  ): string {
     const disposition = kind === FileKind.IMAGE ? 'inline' : 'attachment';
-    const asciiFallback = originalName.replace(/[^\x20-\x7E]/g, '_').replace(/["\\]/g, '_');
+    const asciiFallback = originalName
+      .replace(/[^\x20-\x7E]/g, '_')
+      .replace(/["\\]/g, '_');
 
     return `${disposition}; filename="${asciiFallback}"; filename*=UTF-8''${encodeURIComponent(originalName)}`;
   }

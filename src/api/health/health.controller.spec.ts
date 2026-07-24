@@ -39,10 +39,12 @@ describe('HealthController', () => {
   describe('check', () => {
     it('delegates to HealthCheckService.check with the database and redis indicators', async () => {
       const expected = { status: 'ok', info: {}, error: {}, details: {} };
-      mockHealthCheckService.check.mockImplementation(async (indicators: Array<() => unknown>) => {
-        await Promise.all(indicators.map((indicator) => indicator()));
-        return expected;
-      });
+      mockHealthCheckService.check.mockImplementation(
+        async (indicators: Array<() => unknown>) => {
+          await Promise.all(indicators.map((indicator) => indicator()));
+          return expected;
+        },
+      );
 
       const result = await controller.check();
 

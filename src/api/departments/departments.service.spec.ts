@@ -1,7 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { DRIZZLE } from '../../database/database.module';
-import { chainableMock, QueryMockArgs } from '../../test-utils/chainable-mock.util';
+import {
+  chainableMock,
+  QueryMockArgs,
+} from '../../test-utils/chainable-mock.util';
 import { DepartmentsService } from './departments.service';
 import { GetDepartmentsReqDto } from './dto/get-departments.req.dto';
 
@@ -12,12 +15,18 @@ describe('DepartmentsService', () => {
     select: jest.Mock;
   };
 
-  const buildReqDto = (overrides: Partial<GetDepartmentsReqDto> = {}): GetDepartmentsReqDto =>
+  const buildReqDto = (
+    overrides: Partial<GetDepartmentsReqDto> = {},
+  ): GetDepartmentsReqDto =>
     Object.assign(new GetDepartmentsReqDto(), overrides);
 
   beforeEach(async () => {
     mockDb = {
-      query: { departments: { findMany: jest.fn<any, [QueryMockArgs]>().mockResolvedValue([]) } },
+      query: {
+        departments: {
+          findMany: jest.fn<any, [QueryMockArgs]>().mockResolvedValue([]),
+        },
+      },
       select: chainableMock([{ total: 0 }]),
     };
 

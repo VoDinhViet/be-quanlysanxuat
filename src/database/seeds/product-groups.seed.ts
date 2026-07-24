@@ -21,9 +21,17 @@ const PRODUCT_GROUPS = [
     name: 'Sản phẩm thành phẩm',
     description: 'Sản phẩm hoàn chỉnh do nhà máy sản xuất',
   },
-  { code: 'LINH_KIEN', name: 'Linh kiện', description: 'Linh kiện, cụm chi tiết' },
+  {
+    code: 'LINH_KIEN',
+    name: 'Linh kiện',
+    description: 'Linh kiện, cụm chi tiết',
+  },
   { code: 'VAT_TU', name: 'Vật tư', description: 'Vật tư dùng trong sản xuất' },
-  { code: 'MUA_NGOAI', name: 'Mua ngoài', description: 'Hàng mua ngoài, không tự sản xuất' },
+  {
+    code: 'MUA_NGOAI',
+    name: 'Mua ngoài',
+    description: 'Hàng mua ngoài, không tự sản xuất',
+  },
 ];
 
 async function main() {
@@ -43,7 +51,9 @@ async function main() {
   }
 }
 
-async function seedProductGroups(db: ReturnType<typeof drizzle<typeof schema>>) {
+async function seedProductGroups(
+  db: ReturnType<typeof drizzle<typeof schema>>,
+) {
   for (const group of PRODUCT_GROUPS) {
     const existing = await db.query.productGroups.findFirst({
       where: eq(productGroups.code, group.code),

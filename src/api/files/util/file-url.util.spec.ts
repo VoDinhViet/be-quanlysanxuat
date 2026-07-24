@@ -1,4 +1,9 @@
-import { buildSignedFileUrl, isExpired, isSignatureValid, secondsUntil } from './file-url.util';
+import {
+  buildSignedFileUrl,
+  isExpired,
+  isSignatureValid,
+  secondsUntil,
+} from './file-url.util';
 
 describe('file-url.util', () => {
   const SECRET = 'a-test-secret-at-least-32-characters-long';
@@ -16,7 +21,9 @@ describe('file-url.util', () => {
     it('points at the unversioned download route with exp and sig', () => {
       const url = buildSignedFileUrl(FILE_ID, SECRET, 3600, NOW);
 
-      expect(url).toMatch(new RegExp(`^/api/files/${FILE_ID}/download\\?exp=\\d+&sig=.+$`));
+      expect(url).toMatch(
+        new RegExp(`^/api/files/${FILE_ID}/download\\?exp=\\d+&sig=.+$`),
+      );
     });
 
     it('sets exp to now + ttl in unix seconds', () => {
@@ -28,26 +35,34 @@ describe('file-url.util', () => {
 
   describe('isSignatureValid', () => {
     it('accepts a signature it just produced', () => {
-      const { exp, sig } = parse(buildSignedFileUrl(FILE_ID, SECRET, 3600, NOW));
+      const { exp, sig } = parse(
+        buildSignedFileUrl(FILE_ID, SECRET, 3600, NOW),
+      );
 
       expect(isSignatureValid(FILE_ID, exp, sig, SECRET)).toBe(true);
     });
 
     it('rejects a tampered signature', () => {
-      const { exp, sig } = parse(buildSignedFileUrl(FILE_ID, SECRET, 3600, NOW));
+      const { exp, sig } = parse(
+        buildSignedFileUrl(FILE_ID, SECRET, 3600, NOW),
+      );
       const tampered = `${sig.slice(0, -1)}${sig.at(-1) === 'A' ? 'B' : 'A'}`;
 
       expect(isSignatureValid(FILE_ID, exp, tampered, SECRET)).toBe(false);
     });
 
     it('rejects a pushed-out expiry, because exp is inside the signed payload', () => {
-      const { exp, sig } = parse(buildSignedFileUrl(FILE_ID, SECRET, 3600, NOW));
+      const { exp, sig } = parse(
+        buildSignedFileUrl(FILE_ID, SECRET, 3600, NOW),
+      );
 
       expect(isSignatureValid(FILE_ID, exp + 86_400, sig, SECRET)).toBe(false);
     });
 
     it("rejects one file's signature replayed against another file", () => {
-      const { exp, sig } = parse(buildSignedFileUrl(FILE_ID, SECRET, 3600, NOW));
+      const { exp, sig } = parse(
+        buildSignedFileUrl(FILE_ID, SECRET, 3600, NOW),
+      );
 
       expect(isSignatureValid(OTHER_FILE_ID, exp, sig, SECRET)).toBe(false);
     });
@@ -65,7 +80,9 @@ describe('file-url.util', () => {
     it('returns false instead of throwing on a wrong-length signature', () => {
       const { exp } = parse(buildSignedFileUrl(FILE_ID, SECRET, 3600, NOW));
 
-      expect(() => isSignatureValid(FILE_ID, exp, 'short', SECRET)).not.toThrow();
+      expect(() =>
+        isSignatureValid(FILE_ID, exp, 'short', SECRET),
+      ).not.toThrow();
       expect(isSignatureValid(FILE_ID, exp, 'short', SECRET)).toBe(false);
       expect(isSignatureValid(FILE_ID, exp, '', SECRET)).toBe(false);
     });

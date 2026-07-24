@@ -23,7 +23,9 @@ export class MaterialsController {
     summary: 'List materials',
     isPaginated: true,
   })
-  getMaterials(@Query() reqDto: GetMaterialsReqDto): Promise<OffsetPaginatedDto<MaterialResDto>> {
+  getMaterials(
+    @Query() reqDto: GetMaterialsReqDto,
+  ): Promise<OffsetPaginatedDto<MaterialResDto>> {
     return this.materialsService.getMaterials(reqDto);
   }
 

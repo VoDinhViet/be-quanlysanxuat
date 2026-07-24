@@ -3,7 +3,10 @@ import { Test, TestingModule } from '@nestjs/testing';
 
 import { DRIZZLE } from '../../database/database.module';
 import { STORAGE_PROVIDER } from '../../storage/storage.constants';
-import { chainableMock, QueryMockArgs } from '../../test-utils/chainable-mock.util';
+import {
+  chainableMock,
+  QueryMockArgs,
+} from '../../test-utils/chainable-mock.util';
 import { FilesCleanupService } from './files-cleanup.service';
 
 const ORPHAN_TTL = 24 * 60 * 60;
@@ -21,7 +24,11 @@ describe('FilesCleanupService', () => {
 
   beforeEach(async () => {
     mockDb = {
-      query: { files: { findMany: jest.fn<any, [QueryMockArgs]>().mockResolvedValue([]) } },
+      query: {
+        files: {
+          findMany: jest.fn<any, [QueryMockArgs]>().mockResolvedValue([]),
+        },
+      },
       delete: chainableMock(undefined),
     };
     mockStorageProvider = { delete: jest.fn().mockResolvedValue(undefined) };
@@ -60,7 +67,10 @@ describe('FilesCleanupService', () => {
   it('reads the grace period from config and narrows the selected columns', async () => {
     await service.sweepOrphans();
 
-    expect(mockConfigService.getOrThrow).toHaveBeenCalledWith('upload.orphanTtl', { infer: true });
+    expect(mockConfigService.getOrThrow).toHaveBeenCalledWith(
+      'upload.orphanTtl',
+      { infer: true },
+    );
     const callArgs = mockDb.query.files.findMany.mock.calls[0][0];
     expect(callArgs.where).toBeDefined();
     expect(callArgs.columns).toEqual({ id: true, storageKey: true });
@@ -84,7 +94,9 @@ describe('FilesCleanupService', () => {
   // no row left behind are unreachable — nothing records the storage key any more.
   it('removes bytes before rows', async () => {
     const order: string[] = [];
-    mockDb.query.files.findMany.mockResolvedValue([orphan('file-1', '2026/07/20/a.png')]);
+    mockDb.query.files.findMany.mockResolvedValue([
+      orphan('file-1', '2026/07/20/a.png'),
+    ]);
     mockStorageProvider.delete.mockImplementation(() => {
       order.push('bytes');
       return Promise.resolve();

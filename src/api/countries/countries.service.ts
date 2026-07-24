@@ -15,11 +15,16 @@ import { GetCountriesReqDto } from './dto/get-countries.req.dto';
 export class CountriesService {
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
 
-  async getCountries(reqDto: GetCountriesReqDto): Promise<OffsetPaginatedDto<CountryResDto>> {
+  async getCountries(
+    reqDto: GetCountriesReqDto,
+  ): Promise<OffsetPaginatedDto<CountryResDto>> {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
     const where = and(
       keyword
-        ? or(unaccentILike(countries.code, keyword), unaccentILike(countries.name, keyword))
+        ? or(
+            unaccentILike(countries.code, keyword),
+            unaccentILike(countries.name, keyword),
+          )
         : undefined,
     );
     const orderBy = desc(countries.createdAt);

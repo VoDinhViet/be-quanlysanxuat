@@ -1,7 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { DRIZZLE } from '../../database/database.module';
-import { chainableMock, QueryMockArgs } from '../../test-utils/chainable-mock.util';
+import {
+  chainableMock,
+  QueryMockArgs,
+} from '../../test-utils/chainable-mock.util';
 import { ClientGroupsService } from './client-groups.service';
 import { GetClientGroupsReqDto } from './dto/get-client-groups.req.dto';
 
@@ -12,12 +15,18 @@ describe('ClientGroupsService', () => {
     select: jest.Mock;
   };
 
-  const buildReqDto = (overrides: Partial<GetClientGroupsReqDto> = {}): GetClientGroupsReqDto =>
+  const buildReqDto = (
+    overrides: Partial<GetClientGroupsReqDto> = {},
+  ): GetClientGroupsReqDto =>
     Object.assign(new GetClientGroupsReqDto(), overrides);
 
   beforeEach(async () => {
     mockDb = {
-      query: { clientGroups: { findMany: jest.fn<any, [QueryMockArgs]>().mockResolvedValue([]) } },
+      query: {
+        clientGroups: {
+          findMany: jest.fn<any, [QueryMockArgs]>().mockResolvedValue([]),
+        },
+      },
       select: chainableMock([{ total: 0 }]),
     };
 
@@ -49,7 +58,10 @@ describe('ClientGroupsService', () => {
       expect(callArgs.limit).toBe(10);
       expect(callArgs.offset).toBe(0);
       expect(result.data).toHaveLength(1);
-      expect(result.data[0]).toMatchObject({ code: 'STRATEGIC', name: 'Chiến lược' });
+      expect(result.data[0]).toMatchObject({
+        code: 'STRATEGIC',
+        name: 'Chiến lược',
+      });
       expect(result.pagination.totalRecords).toBe(1);
     });
 

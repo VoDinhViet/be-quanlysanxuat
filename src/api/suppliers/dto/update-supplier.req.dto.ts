@@ -53,7 +53,13 @@ export class UpdateSupplierReqDto {
   payment?: SupplierPaymentReqDto;
 
   // 3. Other information
-  @NumberFieldOptional({ description: 'Rating (0-5)', nullable: true, min: 0, max: 5, int: true })
+  @NumberFieldOptional({
+    description: 'Rating (0-5)',
+    nullable: true,
+    min: 0,
+    max: 5,
+    int: true,
+  })
   rating?: number | null;
 
   @EnumFieldOptional(() => SupplierStatus)
@@ -68,7 +74,8 @@ export class UpdateSupplierReqDto {
 
   @UUIDFieldOptional({
     each: true,
-    description: 'Attachment file ids (from POST /files?type=SUPPLIER_DOCUMENT)',
+    description:
+      'Attachment file ids (from POST /files?type=SUPPLIER_DOCUMENT)',
   })
   attachmentFileIds?: string[];
 

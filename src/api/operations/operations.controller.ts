@@ -1,4 +1,13 @@
-import { Body, Controller, Delete, Get, HttpStatus, Patch, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpStatus,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';

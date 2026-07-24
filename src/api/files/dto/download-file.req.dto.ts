@@ -6,9 +6,14 @@ import { NumberField, StringField } from '../../../decorators/field.decorators';
  * it is not the security boundary.
  */
 export class DownloadFileReqDto {
-  @NumberField({ int: true, description: 'Unix seconds the signature expires at' })
+  @NumberField({
+    int: true,
+    description: 'Unix seconds the signature expires at',
+  })
   readonly exp!: number;
 
-  @StringField({ description: 'HMAC-SHA256 signature over `<fileId>:<exp>`, base64url' })
+  @StringField({
+    description: 'HMAC-SHA256 signature over `<fileId>:<exp>`, base64url',
+  })
   readonly sig!: string;
 }

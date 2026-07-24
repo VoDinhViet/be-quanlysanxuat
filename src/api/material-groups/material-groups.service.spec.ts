@@ -1,7 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { DRIZZLE } from '../../database/database.module';
-import { chainableMock, QueryMockArgs } from '../../test-utils/chainable-mock.util';
+import {
+  chainableMock,
+  QueryMockArgs,
+} from '../../test-utils/chainable-mock.util';
 import { GetMaterialGroupsReqDto } from './dto/get-material-groups.req.dto';
 import { MaterialGroupsService } from './material-groups.service';
 
@@ -12,19 +15,26 @@ describe('MaterialGroupsService', () => {
     select: jest.Mock;
   };
 
-  const buildReqDto = (overrides: Partial<GetMaterialGroupsReqDto> = {}): GetMaterialGroupsReqDto =>
+  const buildReqDto = (
+    overrides: Partial<GetMaterialGroupsReqDto> = {},
+  ): GetMaterialGroupsReqDto =>
     Object.assign(new GetMaterialGroupsReqDto(), overrides);
 
   beforeEach(async () => {
     mockDb = {
       query: {
-        materialGroups: { findMany: jest.fn<any, [QueryMockArgs]>().mockResolvedValue([]) },
+        materialGroups: {
+          findMany: jest.fn<any, [QueryMockArgs]>().mockResolvedValue([]),
+        },
       },
       select: chainableMock([{ total: 0 }]),
     };
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [MaterialGroupsService, { provide: DRIZZLE, useValue: mockDb }],
+      providers: [
+        MaterialGroupsService,
+        { provide: DRIZZLE, useValue: mockDb },
+      ],
     }).compile();
 
     service = module.get<MaterialGroupsService>(MaterialGroupsService);

@@ -117,7 +117,9 @@ describe('AuthService', () => {
         password: 'hashed-password',
       });
       (compare as jest.Mock).mockResolvedValue(true);
-      mockDb.query.users.findFirst.mockResolvedValue({ status: UserStatus.RESIGNED });
+      mockDb.query.users.findFirst.mockResolvedValue({
+        status: UserStatus.RESIGNED,
+      });
 
       await expect(service.login(reqDto)).rejects.toMatchObject({
         response: { errorCode: 'user.error.resigned' },
@@ -131,8 +133,14 @@ describe('AuthService', () => {
     });
 
     it('returns new tokens when the refresh token and session hash match', async () => {
-      mockJwtService.verifyAsync.mockResolvedValue({ sessionId: 'session-1', hash: 'hash-1' });
-      mockCacheManager.get.mockResolvedValue({ credentialId: 'cred-1', hash: 'hash-1' });
+      mockJwtService.verifyAsync.mockResolvedValue({
+        sessionId: 'session-1',
+        hash: 'hash-1',
+      });
+      mockCacheManager.get.mockResolvedValue({
+        credentialId: 'cred-1',
+        hash: 'hash-1',
+      });
       mockDb.query.credentials.findFirst.mockResolvedValue({
         id: 'cred-1',
         username: 'superadmin',
@@ -148,21 +156,36 @@ describe('AuthService', () => {
     it('throws Unauthorized when the refresh token fails verification', async () => {
       mockJwtService.verifyAsync.mockRejectedValue(new Error('invalid token'));
 
-      await expect(service.refresh(reqDto)).rejects.toBeInstanceOf(UnauthorizedException);
+      await expect(service.refresh(reqDto)).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
     });
 
     it('throws Unauthorized when the stored session hash does not match', async () => {
-      mockJwtService.verifyAsync.mockResolvedValue({ sessionId: 'session-1', hash: 'hash-1' });
-      mockCacheManager.get.mockResolvedValue({ credentialId: 'cred-1', hash: 'different-hash' });
+      mockJwtService.verifyAsync.mockResolvedValue({
+        sessionId: 'session-1',
+        hash: 'hash-1',
+      });
+      mockCacheManager.get.mockResolvedValue({
+        credentialId: 'cred-1',
+        hash: 'different-hash',
+      });
 
-      await expect(service.refresh(reqDto)).rejects.toBeInstanceOf(UnauthorizedException);
+      await expect(service.refresh(reqDto)).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
     });
 
     it('throws Unauthorized when no session is cached', async () => {
-      mockJwtService.verifyAsync.mockResolvedValue({ sessionId: 'session-1', hash: 'hash-1' });
+      mockJwtService.verifyAsync.mockResolvedValue({
+        sessionId: 'session-1',
+        hash: 'hash-1',
+      });
       mockCacheManager.get.mockResolvedValue(undefined);
 
-      await expect(service.refresh(reqDto)).rejects.toBeInstanceOf(UnauthorizedException);
+      await expect(service.refresh(reqDto)).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
     });
   });
 
@@ -189,18 +212,21 @@ describe('AuthService', () => {
     it('throws Unauthorized when the token fails verification', async () => {
       mockJwtService.verifyAsync.mockRejectedValue(new Error('invalid token'));
 
-      await expect(service.verifyAccessToken('bad-token')).rejects.toBeInstanceOf(
-        UnauthorizedException,
-      );
+      await expect(
+        service.verifyAccessToken('bad-token'),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
     });
 
     it('throws Unauthorized when the session is blacklisted', async () => {
-      mockJwtService.verifyAsync.mockResolvedValue({ sub: 'cred-1', sessionId: 'session-1' });
+      mockJwtService.verifyAsync.mockResolvedValue({
+        sub: 'cred-1',
+        sessionId: 'session-1',
+      });
       mockCacheManager.get.mockResolvedValue(true);
 
-      await expect(service.verifyAccessToken('valid-token')).rejects.toBeInstanceOf(
-        UnauthorizedException,
-      );
+      await expect(
+        service.verifyAccessToken('valid-token'),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
     });
   });
 });

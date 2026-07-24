@@ -1,5 +1,8 @@
 import { OperationStatus, OperationType } from '../../../database/schemas';
-import { EnumFieldOptional, StringFieldOptional } from '../../../decorators/field.decorators';
+import {
+  EnumFieldOptional,
+  StringFieldOptional,
+} from '../../../decorators/field.decorators';
 
 export class UpdateOperationReqDto {
   @StringFieldOptional({ description: 'Operation name', maxLength: 255 })

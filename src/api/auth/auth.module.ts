@@ -16,7 +16,9 @@ import { PermissionsService } from './permissions.service';
       useFactory: (configService: ConfigService<AllConfigType>) => ({
         secret: configService.getOrThrow('auth.jwtSecret', { infer: true }),
         signOptions: {
-          expiresIn: configService.getOrThrow('auth.jwtTokenExpiresIn', { infer: true }),
+          expiresIn: configService.getOrThrow('auth.jwtTokenExpiresIn', {
+            infer: true,
+          }),
         },
       }),
     }),

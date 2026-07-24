@@ -3,9 +3,18 @@ import { DatabaseConfig } from './database-config.type';
 import validateConfig from '../../utils/validate-config';
 import { IsIn, IsNumber, IsOptional, IsString } from 'class-validator';
 
-const databaseSslModes = ['false', 'true', 'require', 'allow', 'prefer', 'verify-full'] as const;
+const databaseSslModes = [
+  'false',
+  'true',
+  'require',
+  'allow',
+  'prefer',
+  'verify-full',
+] as const;
 
-function parseDatabaseSslMode(sslMode?: (typeof databaseSslModes)[number]): DatabaseConfig['ssl'] {
+function parseDatabaseSslMode(
+  sslMode?: (typeof databaseSslModes)[number],
+): DatabaseConfig['ssl'] {
   if (!sslMode || sslMode === 'false') {
     return undefined;
   }
@@ -38,6 +47,8 @@ export default registerAs<DatabaseConfig>('database', () => {
     maxConnections: process.env.DATABASE_MAX_CONNECTIONS
       ? parseInt(process.env.DATABASE_MAX_CONNECTIONS, 10)
       : undefined,
-    ssl: parseDatabaseSslMode(process.env.DATABASE_SSL_MODE as (typeof databaseSslModes)[number]),
+    ssl: parseDatabaseSslMode(
+      process.env.DATABASE_SSL_MODE as (typeof databaseSslModes)[number],
+    ),
   };
 });

@@ -21,14 +21,20 @@ describe('FileSignatureGuard', () => {
   const validQuery = (ttl = 3600) => {
     const url = buildSignedFileUrl(FILE_ID, SECRET, ttl);
     const search = new URLSearchParams(url.split('?')[1]);
-    return { exp: search.get('exp') as string, sig: search.get('sig') as string };
+    return {
+      exp: search.get('exp') as string,
+      sig: search.get('sig') as string,
+    };
   };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         FileSignatureGuard,
-        { provide: ConfigService, useValue: { getOrThrow: jest.fn(() => SECRET) } },
+        {
+          provide: ConfigService,
+          useValue: { getOrThrow: jest.fn(() => SECRET) },
+        },
       ],
     }).compile();
 
@@ -40,7 +46,9 @@ describe('FileSignatureGuard', () => {
   });
 
   it('allows a correctly signed, unexpired URL', () => {
-    expect(guard.canActivate(buildContext({ id: FILE_ID }, validQuery()))).toBe(true);
+    expect(guard.canActivate(buildContext({ id: FILE_ID }, validQuery()))).toBe(
+      true,
+    );
   });
 
   /**
@@ -56,7 +64,9 @@ describe('FileSignatureGuard', () => {
       return;
     }
 
-    throw new Error(`expected the guard to reject with ${code}, but it allowed the request`);
+    throw new Error(
+      `expected the guard to reject with ${code}, but it allowed the request`,
+    );
   };
 
   it('throws E044 when sig is missing', () => {
@@ -77,7 +87,10 @@ describe('FileSignatureGuard', () => {
     const { sig } = validQuery();
 
     for (const exp of ['', 'abc', '12abc', '1.5']) {
-      expectRejection(buildContext({ id: FILE_ID }, { exp, sig }), ErrorCode.E044);
+      expectRejection(
+        buildContext({ id: FILE_ID }, { exp, sig }),
+        ErrorCode.E044,
+      );
     }
   });
 
@@ -85,7 +98,10 @@ describe('FileSignatureGuard', () => {
     const { exp, sig } = validQuery();
     const tampered = `${sig.slice(0, -1)}${sig.at(-1) === 'A' ? 'B' : 'A'}`;
 
-    expectRejection(buildContext({ id: FILE_ID }, { exp, sig: tampered }), ErrorCode.E044);
+    expectRejection(
+      buildContext({ id: FILE_ID }, { exp, sig: tampered }),
+      ErrorCode.E044,
+    );
   });
 
   it("throws E044 when another file's signature is replayed", () => {
@@ -100,6 +116,9 @@ describe('FileSignatureGuard', () => {
   // Signature is checked before expiry on purpose: answering "expired" to an invalid signature
   // would confirm to an attacker that the rest of their forgery was structurally correct.
   it('throws E045 (not E044) once a valid signature ages out', () => {
-    expectRejection(buildContext({ id: FILE_ID }, validQuery(-10)), ErrorCode.E045);
+    expectRejection(
+      buildContext({ id: FILE_ID }, validQuery(-10)),
+      ErrorCode.E045,
+    );
   });
 });

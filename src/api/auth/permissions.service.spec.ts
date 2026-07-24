@@ -56,14 +56,26 @@ describe('PermissionsService', () => {
 
   describe('getPermissionCodes', () => {
     it('loads role + permissions from DB on a cold cache and caches both levels', async () => {
-      mockDb.query.credentials.findFirst.mockResolvedValue({ roleId: 'role-1' });
-      mockDb.query.roles.findFirst.mockResolvedValue({ permissions: ['clients:read'] });
+      mockDb.query.credentials.findFirst.mockResolvedValue({
+        roleId: 'role-1',
+      });
+      mockDb.query.roles.findFirst.mockResolvedValue({
+        permissions: ['clients:read'],
+      });
 
       const result = await service.getPermissionCodes('cred-1');
 
       expect(result).toEqual(['clients:read']);
-      expect(mockCache.set).toHaveBeenCalledWith(CRED_KEY, 'role-1', expect.any(Number));
-      expect(mockCache.set).toHaveBeenCalledWith(ROLE_KEY, ['clients:read'], expect.any(Number));
+      expect(mockCache.set).toHaveBeenCalledWith(
+        CRED_KEY,
+        'role-1',
+        expect.any(Number),
+      );
+      expect(mockCache.set).toHaveBeenCalledWith(
+        ROLE_KEY,
+        ['clients:read'],
+        expect.any(Number),
+      );
     });
 
     it('returns [] and never queries roles when the credential has no role', async () => {

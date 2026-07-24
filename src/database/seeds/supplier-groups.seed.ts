@@ -10,10 +10,26 @@ import * as schema from '../schemas';
 import { supplierGroups } from '../schemas/supplier-groups';
 
 const SUPPLIER_GROUPS = [
-  { code: 'VTKL', name: 'Vật tư kim loại', description: 'Thép tấm, ống, hộp, kim loại các loại' },
-  { code: 'LKCK', name: 'Linh kiện cơ khí', description: 'Bạc đạn, vòng bi, linh kiện cơ khí' },
-  { code: 'GC', name: 'Gia công', description: 'Gia công cơ khí, chi tiết máy' },
-  { code: 'TBD', name: 'Thiết bị điện', description: 'Thiết bị, linh kiện điện' },
+  {
+    code: 'VTKL',
+    name: 'Vật tư kim loại',
+    description: 'Thép tấm, ống, hộp, kim loại các loại',
+  },
+  {
+    code: 'LKCK',
+    name: 'Linh kiện cơ khí',
+    description: 'Bạc đạn, vòng bi, linh kiện cơ khí',
+  },
+  {
+    code: 'GC',
+    name: 'Gia công',
+    description: 'Gia công cơ khí, chi tiết máy',
+  },
+  {
+    code: 'TBD',
+    name: 'Thiết bị điện',
+    description: 'Thiết bị, linh kiện điện',
+  },
   {
     code: 'NVL',
     name: 'Nguyên vật liệu',
@@ -38,7 +54,9 @@ async function main() {
   }
 }
 
-async function seedSupplierGroups(db: ReturnType<typeof drizzle<typeof schema>>) {
+async function seedSupplierGroups(
+  db: ReturnType<typeof drizzle<typeof schema>>,
+) {
   for (const group of SUPPLIER_GROUPS) {
     const existing = await db.query.supplierGroups.findFirst({
       where: eq(supplierGroups.code, group.code),

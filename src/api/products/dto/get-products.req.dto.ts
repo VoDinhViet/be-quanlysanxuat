@@ -1,6 +1,9 @@
 import { PageOptionsDto } from '../../../common/dto/offset-pagination/page-options.dto';
 import { ProductStatus, ProductType } from '../../../database/schemas';
-import { EnumFieldOptional, UUIDFieldOptional } from '../../../decorators/field.decorators';
+import {
+  EnumFieldOptional,
+  UUIDFieldOptional,
+} from '../../../decorators/field.decorators';
 
 export class GetProductsReqDto extends PageOptionsDto {
   @UUIDFieldOptional({ description: 'Filter by client id' })

@@ -72,7 +72,10 @@ export class MaterialResDto {
   dimensions!: string | null;
 
   @Expose()
-  @StringFieldOptional({ nullable: true, description: 'Specific weight (numeric, as string)' })
+  @StringFieldOptional({
+    nullable: true,
+    description: 'Specific weight (numeric, as string)',
+  })
   specificWeight!: string | null;
 
   @Expose()

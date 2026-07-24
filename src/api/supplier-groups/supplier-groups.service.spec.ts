@@ -1,7 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { DRIZZLE } from '../../database/database.module';
-import { chainableMock, QueryMockArgs } from '../../test-utils/chainable-mock.util';
+import {
+  chainableMock,
+  QueryMockArgs,
+} from '../../test-utils/chainable-mock.util';
 import { GetSupplierGroupsReqDto } from './dto/get-supplier-groups.req.dto';
 import { SupplierGroupsService } from './supplier-groups.service';
 
@@ -12,19 +15,26 @@ describe('SupplierGroupsService', () => {
     select: jest.Mock;
   };
 
-  const buildReqDto = (overrides: Partial<GetSupplierGroupsReqDto> = {}): GetSupplierGroupsReqDto =>
+  const buildReqDto = (
+    overrides: Partial<GetSupplierGroupsReqDto> = {},
+  ): GetSupplierGroupsReqDto =>
     Object.assign(new GetSupplierGroupsReqDto(), overrides);
 
   beforeEach(async () => {
     mockDb = {
       query: {
-        supplierGroups: { findMany: jest.fn<any, [QueryMockArgs]>().mockResolvedValue([]) },
+        supplierGroups: {
+          findMany: jest.fn<any, [QueryMockArgs]>().mockResolvedValue([]),
+        },
       },
       select: chainableMock([{ total: 0 }]),
     };
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [SupplierGroupsService, { provide: DRIZZLE, useValue: mockDb }],
+      providers: [
+        SupplierGroupsService,
+        { provide: DRIZZLE, useValue: mockDb },
+      ],
     }).compile();
 
     service = module.get<SupplierGroupsService>(SupplierGroupsService);
@@ -51,7 +61,10 @@ describe('SupplierGroupsService', () => {
       expect(callArgs.limit).toBe(10);
       expect(callArgs.offset).toBe(0);
       expect(result.data).toHaveLength(1);
-      expect(result.data[0]).toMatchObject({ code: 'VTKL', name: 'Vật tư kim loại' });
+      expect(result.data[0]).toMatchObject({
+        code: 'VTKL',
+        name: 'Vật tư kim loại',
+      });
       expect(result.pagination.totalRecords).toBe(1);
     });
 

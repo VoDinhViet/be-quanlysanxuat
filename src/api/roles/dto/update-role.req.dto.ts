@@ -12,6 +12,10 @@ export class UpdateRoleReqDto {
   @StringFieldOptional({ maxLength: 500, nullable: true })
   readonly description?: string | null;
 
-  @StringFieldOptional({ each: true, enum: PERMISSION_CODES, description: 'Permission codes' })
+  @StringFieldOptional({
+    each: true,
+    enum: PERMISSION_CODES,
+    description: 'Permission codes',
+  })
   readonly permissions?: PermissionCode[];
 }

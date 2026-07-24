@@ -1,7 +1,12 @@
 import { randomUUID } from 'crypto';
 
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
-import { HttpStatus, Inject, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  HttpStatus,
+  Inject,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { compare } from 'bcryptjs';
@@ -66,7 +71,11 @@ export class AuthService {
 
     const sessionId = randomUUID();
     const { accessToken, refreshToken } = await this.createTokenPair(
-      { credentialId: credential.id, username: credential.username, email: credential.email },
+      {
+        credentialId: credential.id,
+        username: credential.username,
+        email: credential.email,
+      },
       sessionId,
     );
 
@@ -83,7 +92,9 @@ export class AuthService {
   }
 
   async refresh(reqDto: RefreshTokenReqDto): Promise<LoginResDto> {
-    const refreshSecret = this.configService.getOrThrow('auth.refreshSecret', { infer: true });
+    const refreshSecret = this.configService.getOrThrow('auth.refreshSecret', {
+      infer: true,
+    });
 
     let refreshPayload: RefreshTokenPayloadType;
 
@@ -114,7 +125,11 @@ export class AuthService {
     await this.ensureCredentialActive(credential.id);
 
     const { accessToken, refreshToken } = await this.createTokenPair(
-      { credentialId: credential.id, username: credential.username, email: credential.email },
+      {
+        credentialId: credential.id,
+        username: credential.username,
+        email: credential.email,
+      },
       refreshPayload.sessionId,
     );
 
@@ -131,9 +146,12 @@ export class AuthService {
   }
 
   async logout(payload: JwtPayloadType): Promise<void> {
-    const jwtTokenExpiresIn = this.configService.getOrThrow('auth.jwtTokenExpiresIn', {
-      infer: true,
-    });
+    const jwtTokenExpiresIn = this.configService.getOrThrow(
+      'auth.jwtTokenExpiresIn',
+      {
+        infer: true,
+      },
+    );
     const expiresInMs = ms(jwtTokenExpiresIn);
 
     await Promise.all([
@@ -142,7 +160,9 @@ export class AuthService {
         true,
         expiresInMs,
       ),
-      this.cacheManager.del(createCacheKey(CacheKey.SESSION_HASH, payload.sessionId)),
+      this.cacheManager.del(
+        createCacheKey(CacheKey.SESSION_HASH, payload.sessionId),
+      ),
     ]);
   }
 
@@ -187,10 +207,15 @@ export class AuthService {
     credential: SessionCredential,
     sessionId: string,
   ): Promise<{ accessToken: string; refreshToken: string }> {
-    const refreshSecret = this.configService.getOrThrow('auth.refreshSecret', { infer: true });
-    const refreshTokenExpiresIn = this.configService.getOrThrow('auth.refreshTokenExpiresIn', {
+    const refreshSecret = this.configService.getOrThrow('auth.refreshSecret', {
       infer: true,
     });
+    const refreshTokenExpiresIn = this.configService.getOrThrow(
+      'auth.refreshTokenExpiresIn',
+      {
+        infer: true,
+      },
+    );
     const hash = randomUUID();
 
     const [accessToken, refreshToken] = await Promise.all([

@@ -25,7 +25,9 @@ export class FilesModule implements OnModuleInit {
    * time, so the clock starts when the client is handed the URL.
    */
   onModuleInit(): void {
-    const secret = this.configService.getOrThrow('upload.urlSecret', { infer: true });
+    const secret = this.configService.getOrThrow('upload.urlSecret', {
+      infer: true,
+    });
     const ttl = this.configService.getOrThrow('upload.urlTtl', { infer: true });
 
     setFileUrlResolver((fileId) => buildSignedFileUrl(fileId, secret, ttl));

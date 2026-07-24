@@ -57,7 +57,9 @@ describe('JwtAuthGuard', () => {
     reflector.getAllAndOverride.mockReturnValue(false);
     const { context } = buildContext();
 
-    await expect(guard.canActivate(context)).rejects.toBeInstanceOf(UnauthorizedException);
+    await expect(guard.canActivate(context)).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
     expect(authService.verifyAccessToken).not.toHaveBeenCalled();
   });
 });

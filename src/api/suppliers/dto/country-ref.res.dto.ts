@@ -1,6 +1,10 @@
 import { Exclude, Expose } from 'class-transformer';
 
-import { StringField, StringFieldOptional, UUIDField } from '../../../decorators/field.decorators';
+import {
+  StringField,
+  StringFieldOptional,
+  UUIDField,
+} from '../../../decorators/field.decorators';
 
 /** Lightweight reference to a country, nested inside SupplierResDto. */
 @Exclude()

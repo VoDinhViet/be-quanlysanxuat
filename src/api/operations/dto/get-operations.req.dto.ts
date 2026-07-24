@@ -4,7 +4,8 @@ import { EnumFieldOptional } from '../../../decorators/field.decorators';
 
 export class GetOperationsReqDto extends PageOptionsDto {
   @EnumFieldOptional(() => OperationType, {
-    description: 'Filter by type — e.g. type=OUTSOURCE for the "Gia công ngoài" screen',
+    description:
+      'Filter by type — e.g. type=OUTSOURCE for the "Gia công ngoài" screen',
   })
   readonly type?: OperationType;
 

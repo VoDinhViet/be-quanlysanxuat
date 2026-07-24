@@ -1,4 +1,9 @@
-import { CanActivate, ExecutionContext, HttpStatus, Injectable } from '@nestjs/common';
+import {
+  CanActivate,
+  ExecutionContext,
+  HttpStatus,
+  Injectable,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Request } from 'express';
 
@@ -20,7 +25,9 @@ export class FileSignatureGuard implements CanActivate {
   constructor(private readonly configService: ConfigService<AllConfigType>) {}
 
   canActivate(context: ExecutionContext): boolean {
-    const request = context.switchToHttp().getRequest<Request<{ id: string }>>();
+    const request = context
+      .switchToHttp()
+      .getRequest<Request<{ id: string }>>();
     const { id } = request.params;
     const { exp, sig } = request.query;
 
@@ -36,7 +43,9 @@ export class FileSignatureGuard implements CanActivate {
       throw new AppException(ErrorCode.E044, HttpStatus.UNAUTHORIZED);
     }
 
-    const secret = this.configService.getOrThrow('upload.urlSecret', { infer: true });
+    const secret = this.configService.getOrThrow('upload.urlSecret', {
+      infer: true,
+    });
 
     if (!isSignatureValid(id, expiresAt, sig, secret)) {
       throw new AppException(ErrorCode.E044, HttpStatus.UNAUTHORIZED);

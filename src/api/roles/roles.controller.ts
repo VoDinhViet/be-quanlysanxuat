@@ -1,4 +1,13 @@
-import { Body, Controller, Delete, Get, HttpStatus, Patch, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpStatus,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
@@ -26,7 +35,9 @@ export class RolesController {
     summary: 'List roles',
     isPaginated: true,
   })
-  getRoles(@Query() reqDto: GetRolesReqDto): Promise<OffsetPaginatedDto<RoleResDto>> {
+  getRoles(
+    @Query() reqDto: GetRolesReqDto,
+  ): Promise<OffsetPaginatedDto<RoleResDto>> {
     return this.rolesService.getRoles(reqDto);
   }
 

@@ -19,7 +19,9 @@ import { UpdateOperationReqDto } from './dto/update-operation.req.dto';
 export class OperationsService {
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
 
-  async getOperations(reqDto: GetOperationsReqDto): Promise<OffsetPaginatedDto<OperationResDto>> {
+  async getOperations(
+    reqDto: GetOperationsReqDto,
+  ): Promise<OffsetPaginatedDto<OperationResDto>> {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
     const where = and(
       isNull(operations.deletedAt),
@@ -63,7 +65,10 @@ export class OperationsService {
     });
   }
 
-  async createOperation(reqDto: CreateOperationReqDto, userId: string): Promise<OperationResDto> {
+  async createOperation(
+    reqDto: CreateOperationReqDto,
+    userId: string,
+  ): Promise<OperationResDto> {
     let code = reqDto.code;
     if (code) {
       await this.validateCodeUniqueness(code);
@@ -118,7 +123,10 @@ export class OperationsService {
     return existing;
   }
 
-  private async validateCodeUniqueness(code: string, ignoredOperationId?: string): Promise<void> {
+  private async validateCodeUniqueness(
+    code: string,
+    ignoredOperationId?: string,
+  ): Promise<void> {
     const where = ignoredOperationId
       ? and(eq(operations.code, code), ne(operations.id, ignoredOperationId))
       : eq(operations.code, code);
@@ -134,7 +142,9 @@ export class OperationsService {
   }
 
   private async generateOperationCode(): Promise<string> {
-    const [totalRows] = await this.db.select({ total: count() }).from(operations);
+    const [totalRows] = await this.db
+      .select({ total: count() })
+      .from(operations);
     return `CD${String((totalRows?.total ?? 0) + 1).padStart(4, '0')}`;
   }
 }

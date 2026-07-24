@@ -2,7 +2,10 @@ import { Test, TestingModule } from '@nestjs/testing';
 
 import { DRIZZLE } from '../../database/database.module';
 import { UnitScope } from '../../database/schemas';
-import { chainableMock, QueryMockArgs } from '../../test-utils/chainable-mock.util';
+import {
+  chainableMock,
+  QueryMockArgs,
+} from '../../test-utils/chainable-mock.util';
 import { GetUnitsReqDto } from './dto/get-units.req.dto';
 import { UnitsService } from './units.service';
 
@@ -13,12 +16,17 @@ describe('UnitsService', () => {
     select: jest.Mock;
   };
 
-  const buildReqDto = (overrides: Partial<GetUnitsReqDto> = {}): GetUnitsReqDto =>
-    Object.assign(new GetUnitsReqDto(), overrides);
+  const buildReqDto = (
+    overrides: Partial<GetUnitsReqDto> = {},
+  ): GetUnitsReqDto => Object.assign(new GetUnitsReqDto(), overrides);
 
   beforeEach(async () => {
     mockDb = {
-      query: { units: { findMany: jest.fn<any, [QueryMockArgs]>().mockResolvedValue([]) } },
+      query: {
+        units: {
+          findMany: jest.fn<any, [QueryMockArgs]>().mockResolvedValue([]),
+        },
+      },
       // Still needed: the `scope` filter builds a subquery with `db.select(...)`.
       select: chainableMock([]),
     };
@@ -65,7 +73,9 @@ describe('UnitsService', () => {
     it('orders alphabetically by name for the dropdown', async () => {
       await service.getUnits(buildReqDto());
 
-      expect(mockDb.query.units.findMany.mock.calls[0][0].orderBy).toBeDefined();
+      expect(
+        mockDb.query.units.findMany.mock.calls[0][0].orderBy,
+      ).toBeDefined();
     });
 
     it('builds a keyword search filter when q is provided', async () => {
@@ -85,7 +95,9 @@ describe('UnitsService', () => {
     it('does not filter by scope when none is requested', async () => {
       await service.getUnits(buildReqDto());
 
-      expect(mockDb.query.units.findMany.mock.calls[0][0].where).toBeUndefined();
+      expect(
+        mockDb.query.units.findMany.mock.calls[0][0].where,
+      ).toBeUndefined();
     });
   });
 });

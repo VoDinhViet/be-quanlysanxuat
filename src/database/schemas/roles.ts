@@ -1,4 +1,11 @@
-import { boolean, jsonb, pgTable, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
+import {
+  boolean,
+  jsonb,
+  pgTable,
+  timestamp,
+  uuid,
+  varchar,
+} from 'drizzle-orm/pg-core';
 
 import type { PermissionCode } from '../../constants/permission.constant';
 
@@ -15,7 +22,10 @@ export const roles = pgTable('roles', {
   code: varchar('code', { length: 50 }).notNull().unique(),
   name: varchar('name', { length: 100 }).notNull(),
   description: varchar('description', { length: 500 }),
-  permissions: jsonb('permissions').$type<PermissionCode[]>().notNull().default([]),
+  permissions: jsonb('permissions')
+    .$type<PermissionCode[]>()
+    .notNull()
+    .default([]),
   isSystem: boolean('is_system').notNull().default(false),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at')

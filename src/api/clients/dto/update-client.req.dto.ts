@@ -18,16 +18,28 @@ export class UpdateClientReqDto {
   @StringFieldOptional({ description: 'Client code', maxLength: 50 })
   code?: string;
 
-  @StringFieldOptional({ description: 'Tax code (Mã số thuế)', nullable: true, maxLength: 50 })
+  @StringFieldOptional({
+    description: 'Tax code (Mã số thuế)',
+    nullable: true,
+    maxLength: 50,
+  })
   taxCode?: string | null;
 
-  @StringFieldOptional({ description: 'Phone number', nullable: true, maxLength: 30 })
+  @StringFieldOptional({
+    description: 'Phone number',
+    nullable: true,
+    maxLength: 30,
+  })
   phoneNumber?: string | null;
 
   @EmailFieldOptional({ description: 'Email', nullable: true })
   email?: string | null;
 
-  @StringFieldOptional({ description: 'Address', nullable: true, maxLength: 500 })
+  @StringFieldOptional({
+    description: 'Address',
+    nullable: true,
+    maxLength: 500,
+  })
   address?: string | null;
 
   @StringFieldOptional({ description: 'Note', nullable: true, maxLength: 1000 })

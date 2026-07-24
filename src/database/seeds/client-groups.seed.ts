@@ -10,7 +10,11 @@ import * as schema from '../schemas';
 import { clientGroups } from '../schemas/client-groups';
 
 const CLIENT_GROUPS = [
-  { code: 'STRATEGIC', name: 'Chiến lược', description: 'Khách hàng chiến lược, ưu tiên cao' },
+  {
+    code: 'STRATEGIC',
+    name: 'Chiến lược',
+    description: 'Khách hàng chiến lược, ưu tiên cao',
+  },
   { code: 'REGULAR', name: 'Thường', description: 'Khách hàng thường' },
   { code: 'POTENTIAL', name: 'Tiềm năng', description: 'Khách hàng tiềm năng' },
 ];
@@ -32,7 +36,9 @@ async function main() {
   }
 }
 
-export async function seedClientGroups(db: ReturnType<typeof drizzle<typeof schema>>) {
+export async function seedClientGroups(
+  db: ReturnType<typeof drizzle<typeof schema>>,
+) {
   for (const group of CLIENT_GROUPS) {
     const existing = await db.query.clientGroups.findFirst({
       where: eq(clientGroups.code, group.code),

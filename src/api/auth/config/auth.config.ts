@@ -26,8 +26,10 @@ export default registerAs<AuthConfig>('auth', () => {
 
   return {
     jwtSecret: process.env.AUTH_JWT_SECRET!,
-    jwtTokenExpiresIn: (process.env.AUTH_JWT_TOKEN_EXPIRES_IN || '7d') as StringValue,
+    jwtTokenExpiresIn: (process.env.AUTH_JWT_TOKEN_EXPIRES_IN ||
+      '7d') as StringValue,
     refreshSecret: process.env.AUTH_REFRESH_SECRET!,
-    refreshTokenExpiresIn: (process.env.AUTH_REFRESH_TOKEN_EXPIRES_IN || '7d') as StringValue,
+    refreshTokenExpiresIn: (process.env.AUTH_REFRESH_TOKEN_EXPIRES_IN ||
+      '7d') as StringValue,
   };
 });

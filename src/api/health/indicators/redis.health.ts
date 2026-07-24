@@ -1,6 +1,9 @@
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Inject, Injectable } from '@nestjs/common';
-import { HealthIndicatorResult, HealthIndicatorService } from '@nestjs/terminus';
+import {
+  HealthIndicatorResult,
+  HealthIndicatorService,
+} from '@nestjs/terminus';
 import type { Cache } from 'cache-manager';
 
 const PING_KEY = 'health:ping';
