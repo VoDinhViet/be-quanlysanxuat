@@ -68,7 +68,11 @@ export const materials = pgTable(
     materialGrade: varchar('material_grade', { length: 255 }),
     technicalStandard: varchar('technical_standard', { length: 255 }),
     dimensions: varchar('dimensions', { length: 255 }),
-    specificWeight: numeric('specific_weight', { precision: 12, scale: 3 }),
+    specificWeight: numeric('specific_weight', {
+      precision: 12,
+      scale: 3,
+      mode: 'number',
+    }),
     colorSurface: varchar('color_surface', { length: 255 }),
     description: varchar('description', { length: 2000 }),
     origin: varchar('origin', { length: 255 }),

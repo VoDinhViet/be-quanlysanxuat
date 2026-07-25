@@ -9,6 +9,7 @@ import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
+  bomItems,
   clients,
   materialAttachments,
   materialGroups,
@@ -23,6 +24,7 @@ import { FilesService } from '../files/files.service';
 import { CreateMaterialReqDto } from './dto/create-material.req.dto';
 import { GetMaterialsReqDto } from './dto/get-materials.req.dto';
 import { MaterialResDto } from './dto/material.res.dto';
+import { UpdateMaterialReqDto } from './dto/update-material.req.dto';
 
 const MATERIAL_DETAIL_WITH = {
   unit: true,
@@ -91,6 +93,22 @@ export class MaterialsService {
     );
   }
 
+  /** Reads back a material with everything a `MaterialResDto` needs. */
+  async getMaterialDetail(materialId: string): Promise<MaterialResDto> {
+    const material = await this.db.query.materials.findFirst({
+      where: eq(materials.id, materialId),
+      with: MATERIAL_DETAIL_WITH,
+    });
+
+    if (!material) {
+      throw new AppException(ErrorCode.E035, HttpStatus.NOT_FOUND);
+    }
+
+    return plainToInstance(MaterialResDto, material, {
+      excludeExtraneousValues: true,
+    });
+  }
+
   async createMaterial(
     reqDto: CreateMaterialReqDto,
     userId: string,
@@ -114,11 +132,12 @@ export class MaterialsService {
     );
     const status = reqDto.status ?? MaterialStatus.ACTIVE;
 
-    await this.filesService.linkFiles(
-      [reqDto.imageFileId, ...(reqDto.attachmentFileIds ?? [])].filter(
-        (fileId): fileId is string => !!fileId,
-      ),
-    );
+    // `attachmentFileIds` lives in its own table, not a column on `materials` — peel it off so
+    // the rest of the DTO spreads straight onto the row. `specificWeight` needs no transform:
+    // the column is declared `mode: 'number'`, so drizzle converts it to/from `numeric` itself.
+    const { attachmentFileIds, ...materialFields } = reqDto;
+
+    await this.linkMaterialFiles(reqDto);
 
     // The material row and its attachments must land together: without this transaction a
     // failing attachment insert would leave a committed material with no documents.
@@ -126,32 +145,17 @@ export class MaterialsService {
       const [material] = await tx
         .insert(materials)
         .values({
+          ...materialFields,
           code,
-          name: reqDto.name,
-          unitId: reqDto.unitId,
-          materialGroupId: reqDto.materialGroupId,
           type,
           clientId,
-          imageFileId: reqDto.imageFileId,
           status,
-          note: reqDto.note,
-          materialGrade: reqDto.materialGrade,
-          technicalStandard: reqDto.technicalStandard,
-          dimensions: reqDto.dimensions,
-          specificWeight:
-            reqDto.specificWeight != null
-              ? String(reqDto.specificWeight)
-              : undefined,
-          colorSurface: reqDto.colorSurface,
-          description: reqDto.description,
-          origin: reqDto.origin,
-          leadTime: reqDto.leadTime,
           createdBy: userId,
         })
         .returning();
 
-      if (reqDto.attachmentFileIds?.length) {
-        await this.insertAttachments(tx, material.id, reqDto.attachmentFileIds);
+      if (attachmentFileIds?.length) {
+        await this.insertAttachments(tx, material.id, attachmentFileIds);
       }
 
       return material.id;
@@ -160,23 +164,74 @@ export class MaterialsService {
     return this.getMaterialDetail(materialId);
   }
 
-  /**
-   * Reads back a material with everything a `MaterialResDto` needs. Private for now — there is no
-   * `GET /materials/:id` route yet; create() uses it to return the freshly written row.
-   */
-  private async getMaterialDetail(materialId: string): Promise<MaterialResDto> {
-    const material = await this.db.query.materials.findFirst({
-      where: eq(materials.id, materialId),
-      with: MATERIAL_DETAIL_WITH,
-    });
+  async updateMaterial(
+    materialId: string,
+    reqDto: UpdateMaterialReqDto,
+  ): Promise<MaterialResDto> {
+    const existing = await this.ensureMaterialExists(materialId);
 
-    if (!material) {
-      throw new AppException(ErrorCode.E035, HttpStatus.NOT_FOUND);
+    if (reqDto.unitId) {
+      await this.ensureUnitExists(reqDto.unitId);
+    }
+    if (reqDto.materialGroupId) {
+      await this.ensureMaterialGroupExists(reqDto.materialGroupId);
     }
 
-    return plainToInstance(MaterialResDto, material, {
-      excludeExtraneousValues: true,
+    // `attachmentFileIds` replace-all lives in its own table; `clientId` needs re-validating
+    // against the *effective* type before it can be written — peel both off so the rest of the
+    // DTO spreads straight onto the row. `specificWeight` needs no transform (see `createMaterial`).
+    const {
+      attachmentFileIds,
+      clientId: requestedClientId,
+      ...materialFields
+    } = reqDto;
+
+    // Re-validate the (type, clientId) pair whenever either side changes — including when only
+    // one of the two is sent, against the other's *effective* value (the new one if sent, else
+    // the material's current one). Same idea as `UsersService.updateUser`'s (department,
+    // position) re-validation.
+    let clientId: string | null | undefined;
+    if (reqDto.type || requestedClientId !== undefined) {
+      clientId = await this.resolveClientLink(
+        reqDto.type ?? existing.type,
+        requestedClientId !== undefined ? requestedClientId : existing.clientId,
+      );
+    }
+
+    await this.linkMaterialFiles(reqDto);
+
+    await this.db.transaction(async (tx) => {
+      // `updatedAt` is always written, which doubles as the reason `.set()` is safe here: drizzle
+      // throws a bare "No values to set" (a 500) when every value is `undefined`, the normal
+      // shape of a PATCH touching only `attachmentFileIds`.
+      await tx
+        .update(materials)
+        .set({
+          ...materialFields,
+          ...(clientId !== undefined ? { clientId } : {}),
+          updatedAt: new Date(),
+        })
+        .where(eq(materials.id, materialId));
+
+      if (attachmentFileIds !== undefined) {
+        await this.replaceAttachments(tx, materialId, attachmentFileIds);
+      }
     });
+
+    return this.getMaterialDetail(materialId);
+  }
+
+  /**
+   * Hard delete — `materials` has no soft delete (see schema comment: a material is either
+   * ACTIVE or INACTIVE, never "deleted"). Blocked when the material is still referenced by a BOM
+   * node (E041); the FK is `onDelete: 'restrict'`, so an unchecked delete would otherwise surface
+   * as a raw 500 instead of a clean 409.
+   */
+  async deleteMaterial(materialId: string): Promise<void> {
+    await this.ensureMaterialExists(materialId);
+    await this.ensureMaterialNotInUse(materialId);
+
+    await this.db.delete(materials).where(eq(materials.id, materialId));
   }
 
   /**
@@ -199,6 +254,21 @@ export class MaterialsService {
   }
 
   /**
+   * Validates every file id the request carries and marks them linked, so the orphan sweeper
+   * leaves them alone. Runs **before** the transaction on purpose — see `FilesService.linkFiles`.
+   */
+  private async linkMaterialFiles(
+    reqDto: CreateMaterialReqDto | UpdateMaterialReqDto,
+  ): Promise<void> {
+    const fileIds = [
+      reqDto.imageFileId,
+      ...(reqDto.attachmentFileIds ?? []),
+    ].filter((fileId): fileId is string => !!fileId);
+
+    await this.filesService.linkFiles(fileIds);
+  }
+
+  /**
    * Writes the attachment rows. Takes `tx` (not `this.db`) so it can only ever be called from
    * inside an open transaction — passing the pooled connection is a compile error.
    */
@@ -210,6 +280,21 @@ export class MaterialsService {
     await tx
       .insert(materialAttachments)
       .values(fileIds.map((fileId) => ({ materialId, fileId })));
+  }
+
+  /** Replace-all. `tx` is required so a caller cannot accidentally write outside the transaction. */
+  private async replaceAttachments(
+    tx: DbTransaction,
+    materialId: string,
+    fileIds: string[],
+  ): Promise<void> {
+    await tx
+      .delete(materialAttachments)
+      .where(eq(materialAttachments.materialId, materialId));
+
+    if (fileIds.length) {
+      await this.insertAttachments(tx, materialId, fileIds);
+    }
   }
 
   private async generateMaterialCode(): Promise<string> {
@@ -270,6 +355,41 @@ export class MaterialsService {
 
     if (!existing) {
       throw new AppException(ErrorCode.E009, HttpStatus.NOT_FOUND);
+    }
+  }
+
+  /** Returns the columns callers need right after (`type`/`clientId`, to compute the "effective"
+   * pair on a partial update) instead of a second re-fetch. */
+  private async ensureMaterialExists(materialId: string): Promise<{
+    id: string;
+    type: MaterialType;
+    clientId: string | null;
+  }> {
+    const existing = await this.db.query.materials.findFirst({
+      columns: { id: true, type: true, clientId: true },
+      where: eq(materials.id, materialId),
+    });
+
+    if (!existing) {
+      throw new AppException(ErrorCode.E035, HttpStatus.NOT_FOUND);
+    }
+
+    return existing;
+  }
+
+  /**
+   * Blocks hard-delete when the material is referenced by at least one BOM node — the FK is
+   * `onDelete: 'restrict'` (see `bom_items.materialId`), so an unchecked delete would otherwise
+   * surface as a raw 500 instead of a clean 409.
+   */
+  private async ensureMaterialNotInUse(materialId: string): Promise<void> {
+    const used = await this.db.query.bomItems.findFirst({
+      columns: { id: true },
+      where: eq(bomItems.materialId, materialId),
+    });
+
+    if (used) {
+      throw new AppException(ErrorCode.E041, HttpStatus.CONFLICT);
     }
   }
 }

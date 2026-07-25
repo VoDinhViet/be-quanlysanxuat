@@ -3,17 +3,30 @@ import { Test, TestingModule } from '@nestjs/testing';
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
 import { CreateMaterialReqDto } from './dto/create-material.req.dto';
 import { GetMaterialsReqDto } from './dto/get-materials.req.dto';
+import { UpdateMaterialReqDto } from './dto/update-material.req.dto';
 import { MaterialsController } from './materials.controller';
 import { MaterialsService } from './materials.service';
 
 describe('MaterialsController', () => {
   let controller: MaterialsController;
-  let mockService: { getMaterials: jest.Mock; createMaterial: jest.Mock };
+  let mockService: {
+    getMaterials: jest.Mock;
+    getMaterialDetail: jest.Mock;
+    createMaterial: jest.Mock;
+    updateMaterial: jest.Mock;
+    deleteMaterial: jest.Mock;
+  };
 
   const payload = { sub: 'credential-id' } as JwtPayloadType;
 
   beforeEach(async () => {
-    mockService = { getMaterials: jest.fn(), createMaterial: jest.fn() };
+    mockService = {
+      getMaterials: jest.fn(),
+      getMaterialDetail: jest.fn(),
+      createMaterial: jest.fn(),
+      updateMaterial: jest.fn(),
+      deleteMaterial: jest.fn(),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [MaterialsController],
@@ -44,6 +57,18 @@ describe('MaterialsController', () => {
     });
   });
 
+  describe('getMaterialDetail', () => {
+    it('delegates to MaterialsService.getMaterialDetail', async () => {
+      const expected = { id: 'material-id' };
+      mockService.getMaterialDetail.mockResolvedValue(expected);
+
+      const result = await controller.getMaterialDetail('material-id');
+
+      expect(mockService.getMaterialDetail).toHaveBeenCalledWith('material-id');
+      expect(result).toBe(expected);
+    });
+  });
+
   describe('createMaterial', () => {
     it('passes the current credential id through as the creator', async () => {
       const reqDto = new CreateMaterialReqDto();
@@ -57,6 +82,32 @@ describe('MaterialsController', () => {
         'credential-id',
       );
       expect(result).toBe(expected);
+    });
+  });
+
+  describe('updateMaterial', () => {
+    it('delegates to MaterialsService.updateMaterial', async () => {
+      const reqDto = new UpdateMaterialReqDto();
+      const expected = { id: 'material-id' };
+      mockService.updateMaterial.mockResolvedValue(expected);
+
+      const result = await controller.updateMaterial('material-id', reqDto);
+
+      expect(mockService.updateMaterial).toHaveBeenCalledWith(
+        'material-id',
+        reqDto,
+      );
+      expect(result).toBe(expected);
+    });
+  });
+
+  describe('deleteMaterial', () => {
+    it('delegates to MaterialsService.deleteMaterial', async () => {
+      mockService.deleteMaterial.mockResolvedValue(undefined);
+
+      await controller.deleteMaterial('material-id');
+
+      expect(mockService.deleteMaterial).toHaveBeenCalledWith('material-id');
     });
   });
 });

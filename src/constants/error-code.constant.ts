@@ -48,10 +48,13 @@ export enum ErrorCode {
   E035 = 'material.error.not_found',
   E036 = 'material.error.code_exists',
   E037 = 'material_group.error.not_found',
-  // E038 (material_group.code_exists), E039 (material_group.in_use) and E041
-  // (material.has_transactions) stay reserved with their original meanings — the material-group
-  // CRUD and the material delete route that raise them aren't built yet.
+  // E038 (material_group.code_exists) and E039 (material_group.in_use) stay reserved with their
+  // original meanings — the material-group CRUD that would raise them isn't built yet.
   E040 = 'material.error.client_required',
+  // Blocks `DELETE /materials/:materialId` when the material is still referenced by at least one
+  // `bom_items` node — the FK is `onDelete: 'restrict'`, so this turns what would otherwise be a
+  // raw 500 into a clean 409.
+  E041 = 'material.has_transactions',
   E042 = 'file.error.not_found',
   // The unit exists but isn't assignable to this kind of entity (e.g. `Mét` on a product) —
   // deliberately distinct from E011 so the client can tell a bad id from a wrong-scope unit.

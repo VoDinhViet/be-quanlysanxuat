@@ -16,12 +16,20 @@ import { AppException } from '../../exceptions/app.exception';
 import { FilesService } from '../files/files.service';
 import { CreateMaterialReqDto } from './dto/create-material.req.dto';
 import { GetMaterialsReqDto } from './dto/get-materials.req.dto';
+import { UpdateMaterialReqDto } from './dto/update-material.req.dto';
 import { MaterialsService } from './materials.service';
 
 /** Minimal stand-in for drizzle's insert builder: `.values().returning()` or a bare `await`. */
 interface InsertChain {
   values: jest.Mock;
   returning: jest.Mock;
+  then: (resolve: (value: unknown) => unknown) => unknown;
+}
+
+/** Minimal stand-in for drizzle's update builder: `.set().where()`. */
+interface UpdateChain {
+  set: jest.Mock;
+  where: jest.Mock;
   then: (resolve: (value: unknown) => unknown) => unknown;
 }
 
@@ -36,18 +44,27 @@ describe('MaterialsService', () => {
       materialGroups: { findFirst: jest.Mock };
       units: { findFirst: jest.Mock };
       clients: { findFirst: jest.Mock };
+      bomItems: { findFirst: jest.Mock };
     };
     select: jest.Mock;
     insert: jest.Mock;
+    update: jest.Mock;
+    delete: jest.Mock;
     transaction: jest.Mock;
   };
   let mockFilesService: { linkFiles: jest.Mock };
   /** Rows handed to each `insert(...).values(...)` call, in order. */
   let insertedValues: unknown[];
+  /** Payloads handed to each `update(...).set(...)` call, in order. */
+  let updatedValues: unknown[];
 
   /** The single row an `insert(materials)` received. */
   const insertedRow = (index: number) =>
     insertedValues[index] as Record<string, unknown>;
+
+  /** The single payload an `update(materials).set(...)` received. */
+  const updatedRow = (index: number) =>
+    updatedValues[index] as Record<string, unknown>;
 
   /**
    * `chainable()` hands back a fresh jest.fn on every property access, so `.values()` arguments
@@ -62,6 +79,20 @@ describe('MaterialsService', () => {
           return chain;
         }),
         returning: jest.fn().mockResolvedValue([{ id: 'new-material-id' }]),
+        then: (resolve) => resolve(undefined),
+      };
+      return chain;
+    });
+
+  /** Same idea as `buildInsertMock`, capturing what `.set(...)` received. */
+  const buildUpdateMock = () =>
+    jest.fn(() => {
+      const chain: UpdateChain = {
+        set: jest.fn((values: unknown) => {
+          updatedValues.push(values);
+          return chain;
+        }),
+        where: jest.fn(() => chain),
         then: (resolve) => resolve(undefined),
       };
       return chain;
@@ -97,8 +128,21 @@ describe('MaterialsService', () => {
       ...overrides,
     });
 
+  const buildUpdateReqDto = (
+    overrides: Partial<UpdateMaterialReqDto> = {},
+  ): UpdateMaterialReqDto =>
+    Object.assign(new UpdateMaterialReqDto(), overrides);
+
+  /** The narrow row `ensureMaterialExists` reads — not the full detail shape. */
+  const EXISTING_ROW = {
+    id: 'material-id',
+    type: MaterialType.INTERNAL,
+    clientId: null as string | null,
+  };
+
   beforeEach(async () => {
     insertedValues = [];
+    updatedValues = [];
     mockDb = {
       query: {
         materials: {
@@ -117,9 +161,14 @@ describe('MaterialsService', () => {
         clients: {
           findFirst: jest.fn().mockResolvedValue({ id: 'client-id' }),
         },
+        bomItems: {
+          findFirst: jest.fn().mockResolvedValue(undefined),
+        },
       },
       select: chainableMock([{ total: 0 }]),
       insert: buildInsertMock(),
+      update: buildUpdateMock(),
+      delete: chainableMock(undefined),
       // Passing mockDb itself as the transaction handle keeps `tx.insert(...)` pointing at the
       // same jest mock, so call-count assertions work whether a write is inside the tx or not.
       transaction: jest.fn(async (cb: (tx: unknown) => Promise<unknown>) =>
@@ -380,6 +429,219 @@ describe('MaterialsService', () => {
         ),
       ).rejects.toThrow(failure);
       expect(mockDb.query.materials.findFirst).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getMaterialDetail', () => {
+    it('returns the mapped detail when found', async () => {
+      const result = await service.getMaterialDetail('new-material-id');
+
+      expect(result.code).toBe('VT0001');
+    });
+
+    it('throws E035 when not found', async () => {
+      mockDb.query.materials.findFirst.mockResolvedValueOnce(undefined);
+
+      await expect(service.getMaterialDetail('missing')).rejects.toMatchObject({
+        response: { errorCode: ErrorCode.E035 },
+      });
+    });
+  });
+
+  describe('updateMaterial', () => {
+    it('throws E035 when the material does not exist', async () => {
+      mockDb.query.materials.findFirst.mockResolvedValueOnce(undefined);
+
+      await expect(
+        service.updateMaterial('missing', buildUpdateReqDto({ name: 'x' })),
+      ).rejects.toMatchObject({ response: { errorCode: ErrorCode.E035 } });
+      expect(mockDb.transaction).not.toHaveBeenCalled();
+    });
+
+    it('updates fields and always writes updatedAt', async () => {
+      mockDb.query.materials.findFirst.mockResolvedValueOnce(EXISTING_ROW);
+
+      const result = await service.updateMaterial(
+        'material-id',
+        buildUpdateReqDto({ name: 'Thép tấm 10mm' }),
+      );
+
+      const updated = updatedRow(0);
+      expect(updated.name).toBe('Thép tấm 10mm');
+      expect(updated.updatedAt).toBeInstanceOf(Date);
+      expect(result).toBeDefined();
+    });
+
+    it('issues a safe updated_at-only UPDATE when only attachmentFileIds is sent', async () => {
+      mockDb.query.materials.findFirst.mockResolvedValueOnce(EXISTING_ROW);
+
+      await expect(
+        service.updateMaterial(
+          'material-id',
+          buildUpdateReqDto({ attachmentFileIds: ['file-a'] }),
+        ),
+      ).resolves.toBeDefined();
+
+      expect(mockDb.update).toHaveBeenCalledTimes(1);
+      expect(updatedRow(0).updatedAt).toBeInstanceOf(Date);
+    });
+
+    it('passes specificWeight straight through as a number (column is mode: "number")', async () => {
+      mockDb.query.materials.findFirst.mockResolvedValueOnce(EXISTING_ROW);
+
+      await service.updateMaterial(
+        'material-id',
+        buildUpdateReqDto({ specificWeight: 12.5 }),
+      );
+
+      expect(updatedRow(0).specificWeight).toBe(12.5);
+    });
+
+    it('throws E040 when switching to type CLIENT without an effective clientId', async () => {
+      mockDb.query.materials.findFirst.mockResolvedValueOnce(EXISTING_ROW);
+
+      await expect(
+        service.updateMaterial(
+          'material-id',
+          buildUpdateReqDto({ type: MaterialType.CLIENT }),
+        ),
+      ).rejects.toMatchObject({ response: { errorCode: ErrorCode.E040 } });
+      expect(mockDb.update).not.toHaveBeenCalled();
+    });
+
+    it('persists clientId when switching to type CLIENT with a clientId', async () => {
+      mockDb.query.materials.findFirst.mockResolvedValueOnce(EXISTING_ROW);
+
+      await service.updateMaterial(
+        'material-id',
+        buildUpdateReqDto({ type: MaterialType.CLIENT, clientId: 'client-id' }),
+      );
+
+      expect(updatedRow(0).clientId).toBe('client-id');
+    });
+
+    it('clears clientId when switching to type INTERNAL', async () => {
+      mockDb.query.materials.findFirst.mockResolvedValueOnce({
+        ...EXISTING_ROW,
+        type: MaterialType.CLIENT,
+        clientId: 'client-id',
+      });
+
+      await service.updateMaterial(
+        'material-id',
+        buildUpdateReqDto({ type: MaterialType.INTERNAL }),
+      );
+
+      expect(updatedRow(0).clientId).toBeNull();
+    });
+
+    it('re-validates against the effective (current) type when only clientId is sent', async () => {
+      mockDb.query.materials.findFirst.mockResolvedValueOnce({
+        ...EXISTING_ROW,
+        type: MaterialType.CLIENT,
+        clientId: 'old-client-id',
+      });
+
+      await service.updateMaterial(
+        'material-id',
+        buildUpdateReqDto({ clientId: 'client-id' }),
+      );
+
+      expect(updatedRow(0).clientId).toBe('client-id');
+    });
+
+    it('leaves clientId untouched when neither type nor clientId is sent', async () => {
+      mockDb.query.materials.findFirst.mockResolvedValueOnce(EXISTING_ROW);
+
+      await service.updateMaterial(
+        'material-id',
+        buildUpdateReqDto({ name: 'x' }),
+      );
+
+      expect(updatedRow(0)).not.toHaveProperty('clientId');
+      expect(mockDb.query.clients.findFirst).not.toHaveBeenCalled();
+    });
+
+    it('replaces attachments (including clearing with []) when attachmentFileIds is sent', async () => {
+      mockDb.query.materials.findFirst.mockResolvedValueOnce(EXISTING_ROW);
+
+      await service.updateMaterial(
+        'material-id',
+        buildUpdateReqDto({ attachmentFileIds: ['file-a'] }),
+      );
+
+      expect(mockDb.delete).toHaveBeenCalledTimes(1);
+      expect(insertedRow(0)).toEqual([
+        { materialId: 'material-id', fileId: 'file-a' },
+      ]);
+    });
+
+    it('leaves attachments untouched when attachmentFileIds is omitted', async () => {
+      mockDb.query.materials.findFirst.mockResolvedValueOnce(EXISTING_ROW);
+
+      await service.updateMaterial(
+        'material-id',
+        buildUpdateReqDto({ name: 'x' }),
+      );
+
+      expect(mockDb.delete).not.toHaveBeenCalled();
+      expect(mockDb.insert).not.toHaveBeenCalled();
+    });
+
+    it('throws E011 when the supplied unit does not exist', async () => {
+      mockDb.query.materials.findFirst.mockResolvedValueOnce(EXISTING_ROW);
+      mockDb.query.units.findFirst.mockResolvedValue(undefined);
+
+      await expect(
+        service.updateMaterial(
+          'material-id',
+          buildUpdateReqDto({ unitId: 'missing-unit' }),
+        ),
+      ).rejects.toMatchObject({ response: { errorCode: ErrorCode.E011 } });
+    });
+
+    it('throws E037 when the supplied material group does not exist', async () => {
+      mockDb.query.materials.findFirst.mockResolvedValueOnce(EXISTING_ROW);
+      mockDb.query.materialGroups.findFirst.mockResolvedValue(undefined);
+
+      await expect(
+        service.updateMaterial(
+          'material-id',
+          buildUpdateReqDto({ materialGroupId: 'missing-group' }),
+        ),
+      ).rejects.toMatchObject({ response: { errorCode: ErrorCode.E037 } });
+    });
+  });
+
+  describe('deleteMaterial', () => {
+    it('throws E035 when the material does not exist', async () => {
+      mockDb.query.materials.findFirst.mockResolvedValueOnce(undefined);
+
+      await expect(service.deleteMaterial('missing')).rejects.toMatchObject({
+        response: { errorCode: ErrorCode.E035 },
+      });
+      expect(mockDb.delete).not.toHaveBeenCalled();
+    });
+
+    it('throws E041 when the material is referenced by a BOM item', async () => {
+      mockDb.query.materials.findFirst.mockResolvedValueOnce(EXISTING_ROW);
+      mockDb.query.bomItems.findFirst.mockResolvedValueOnce({
+        id: 'bom-item-id',
+      });
+
+      await expect(service.deleteMaterial('material-id')).rejects.toMatchObject(
+        { response: { errorCode: ErrorCode.E041 } },
+      );
+      expect(mockDb.delete).not.toHaveBeenCalled();
+    });
+
+    it('hard-deletes an unused material', async () => {
+      mockDb.query.materials.findFirst.mockResolvedValueOnce(EXISTING_ROW);
+      mockDb.query.bomItems.findFirst.mockResolvedValueOnce(undefined);
+
+      await service.deleteMaterial('material-id');
+
+      expect(mockDb.delete).toHaveBeenCalledTimes(1);
     });
   });
 });

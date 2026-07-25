@@ -6,6 +6,7 @@ import {
   ClassFieldOptional,
   DateField,
   EnumField,
+  NumberFieldOptional,
   StringField,
   StringFieldOptional,
   UUIDField,
@@ -72,11 +73,8 @@ export class MaterialResDto {
   dimensions!: string | null;
 
   @Expose()
-  @StringFieldOptional({
-    nullable: true,
-    description: 'Specific weight (numeric, as string)',
-  })
-  specificWeight!: string | null;
+  @NumberFieldOptional({ nullable: true, description: 'Specific weight' })
+  specificWeight!: number | null;
 
   @Expose()
   @StringFieldOptional({ nullable: true })
