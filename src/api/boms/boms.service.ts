@@ -1,8 +1,21 @@
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
-import { asc, eq, and, inArray, isNull, sql } from 'drizzle-orm';
+import {
+  asc,
+  eq,
+  and,
+  countDistinct,
+  getTableColumns,
+  inArray,
+  isNull,
+  or,
+  sql,
+} from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 
+import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
+import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
+import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database } from '../../database/database.type';
@@ -20,11 +33,15 @@ import {
   UploadType,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
+import { FilesService } from '../files/files.service';
 import { BomItemNodeResDto } from './dto/bom-item-node.res.dto';
 import { BomItemResDto } from './dto/bom-item.res.dto';
+import { BomMaterialResDto } from './dto/bom-material.res.dto';
 import { CreateBomItemReqDto } from './dto/create-bom-item.req.dto';
+import { GetBomMaterialsReqDto } from './dto/get-bom-materials.req.dto';
 import { UpdateBomItemReqDto } from './dto/update-bom-item.req.dto';
 import type {
+  BomTreeFileRow,
   BomTreeNode,
   BomTreeOperationRow,
   BomTreeRow,
@@ -37,26 +54,26 @@ const productUnits = alias(units, 'product_units');
 const materialUnits = alias(units, 'material_units');
 const productImageFiles = alias(files, 'product_image_files');
 const materialImageFiles = alias(files, 'material_image_files');
+// A node's own drawing is a direct, single-source left join (bom_items.drawingFileId), not a
+// 2-source coalesce like image/unit above — one alias is enough.
+const bomItemDrawingFiles = alias(files, 'bom_item_drawing_files');
 
 // Raw shape `baseItemSelect()` returns, before `normalizeImage` collapses the all-null coalesced
-// `image` sub-select to `null` — see `BomTreeRow` for the post-normalize shape.
+// `image` sub-select to `null` — see `BomTreeRow` for the post-normalize shape. Derived from
+// `BomTreeFileRow` (each field individually nullable, matching the per-field SQL `coalesce()`)
+// instead of re-listing the same 7 fields a third time.
 type RawBomItemRow = Omit<BomTreeRow, 'image'> & {
-  image: {
-    id: string | null;
-    originalName: string | null;
-    mimetype: string | null;
-    size: number | null;
-    type: UploadType | null;
-    kind: FileKind | null;
-    createdAt: Date | null;
-  };
+  image: { [K in keyof BomTreeFileRow]: BomTreeFileRow[K] | null };
 };
 
 @Injectable()
 export class BomsService {
   private static readonly MAX_BOM_DEPTH = 50;
 
-  constructor(@Inject(DRIZZLE) private readonly db: Database) {}
+  constructor(
+    @Inject(DRIZZLE) private readonly db: Database,
+    private readonly filesService: FilesService,
+  ) {}
 
   async getBomTree(productId: string): Promise<BomItemResDto[]> {
     await this.ensureProductExists(productId);
@@ -83,6 +100,78 @@ export class BomsService {
 
     return tree.map((node) =>
       plainToInstance(BomItemResDto, node, { excludeExtraneousValues: true }),
+    );
+  }
+
+  /**
+   * A BOM's materials, aggregated across every `itemType = MATERIAL` node in the tree (any
+   * depth) that links to a given material — one row per distinct material, paginated.
+   * `totalQuantity` is a raw SUM across matching nodes, NOT a BOM explosion (no multiplying
+   * through an ancestor WIP's own quantity) — see `BomMaterialResDto`.
+   */
+  async getBomMaterials(
+    productId: string,
+    reqDto: GetBomMaterialsReqDto,
+  ): Promise<OffsetPaginatedDto<BomMaterialResDto>> {
+    await this.ensureProductExists(productId);
+
+    const bom = await this.db.query.boms.findFirst({
+      columns: { id: true },
+      where: eq(boms.productId, productId),
+    });
+
+    // No BOM configured for this product yet — an empty page, not an error (mirrors getBomTree).
+    if (!bom) {
+      return new OffsetPaginatedDto([], new OffsetPaginationDto(0, reqDto));
+    }
+
+    const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
+    const where = and(
+      eq(bomItems.bomId, bom.id),
+      eq(bomItems.itemType, BomItemType.MATERIAL),
+      keyword
+        ? or(
+            unaccentILike(materials.code, keyword),
+            unaccentILike(materials.name, keyword),
+          )
+        : undefined,
+    );
+
+    const [rows, countRows] = await Promise.all([
+      this.db
+        .select({
+          materialId: materials.id,
+          code: materials.code,
+          name: materials.name,
+          unit: getTableColumns(units),
+          image: getTableColumns(files),
+          totalQuantity: sql<number>`sum(${bomItems.quantity})`.mapWith(Number),
+        })
+        .from(bomItems)
+        .innerJoin(materials, eq(bomItems.materialId, materials.id))
+        .innerJoin(units, eq(materials.unitId, units.id))
+        .leftJoin(files, eq(materials.imageFileId, files.id))
+        .where(where)
+        .groupBy(materials.id, units.id, files.id)
+        .orderBy(asc(materials.code))
+        .limit(reqDto.limit)
+        .offset(reqDto.offset),
+      this.db
+        .select({ total: countDistinct(bomItems.materialId) })
+        .from(bomItems)
+        .innerJoin(materials, eq(bomItems.materialId, materials.id))
+        .where(where),
+    ]);
+
+    // A nested selection object whose fields all belong to one left-joined table (`files` here)
+    // is collapsed to a plain `null` by drizzle at the row-mapping layer when that join found no
+    // match — no manual all-null-fields check needed, unlike `baseItemSelect()`'s SQL `coalesce()`
+    // over two *different* possible source tables.
+    return new OffsetPaginatedDto(
+      plainToInstance(BomMaterialResDto, rows, {
+        excludeExtraneousValues: true,
+      }),
+      new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
     );
   }
 
@@ -126,6 +215,10 @@ export class BomsService {
         reqDto.parentId ?? null,
         reqDto.itemId,
       );
+    }
+
+    if (reqDto.drawingFileId) {
+      await this.filesService.linkFiles([reqDto.drawingFileId]);
     }
 
     const { bomId, itemId } = await this.db.transaction(async (tx) => {
@@ -183,6 +276,7 @@ export class BomsService {
           level: itemLevel,
           sortOrder: reqDto.sortOrder ?? 0,
           note: reqDto.note,
+          drawingFileId: reqDto.drawingFileId ?? null,
           createdBy: userId,
         })
         .returning({ id: bomItems.id });
@@ -214,10 +308,36 @@ export class BomsService {
       throw new AppException(ErrorCode.E055, HttpStatus.BAD_REQUEST);
     }
 
+    // Peeled off so the write below can decide, per the *effective* value, whether to link a new
+    // file and/or delete the old one — a plain spread can't express "replace and clean up".
+    const { drawingFileId: requestedDrawingFileId, ...bomItemFields } = reqDto;
+
+    if (requestedDrawingFileId) {
+      await this.filesService.linkFiles([requestedDrawingFileId]);
+    }
+
     await this.db
       .update(bomItems)
-      .set({ ...reqDto, updatedAt: new Date() })
+      .set({
+        ...bomItemFields,
+        ...(requestedDrawingFileId !== undefined
+          ? { drawingFileId: requestedDrawingFileId }
+          : {}),
+        updatedAt: new Date(),
+      })
       .where(and(eq(bomItems.id, itemId), eq(bomItems.bomId, bom.id)));
+
+    // Delete the old drawing only after the new pointer is committed — deleting first would risk
+    // losing both if the write then failed. A failed delete here just leaves an orphaned file
+    // (same "garbage over data loss" tradeoff as `FilesService.linkFiles`'s own ordering), so this
+    // isn't wrapped in a transaction with the update above.
+    if (
+      requestedDrawingFileId !== undefined &&
+      item.drawingFileId &&
+      item.drawingFileId !== requestedDrawingFileId
+    ) {
+      await this.filesService.deleteFileById(item.drawingFileId);
+    }
 
     return this.getBomItemDetail(bom.id, itemId);
   }
@@ -275,6 +395,7 @@ export class BomsService {
         quantity: bomItems.quantity,
         sortOrder: bomItems.sortOrder,
         note: bomItems.note,
+        drawing: getTableColumns(bomItemDrawingFiles),
       })
       .from(bomItems)
       .leftJoin(products, eq(bomItems.productId, products.id))
@@ -288,6 +409,10 @@ export class BomsService {
       .leftJoin(
         materialImageFiles,
         eq(materials.imageFileId, materialImageFiles.id),
+      )
+      .leftJoin(
+        bomItemDrawingFiles,
+        eq(bomItems.drawingFileId, bomItemDrawingFiles.id),
       );
   }
 
@@ -515,9 +640,13 @@ export class BomsService {
   private async ensureBomItemExists(
     bomId: string,
     itemId: string,
-  ): Promise<{ id: string; itemType: BomItemType }> {
+  ): Promise<{
+    id: string;
+    itemType: BomItemType;
+    drawingFileId: string | null;
+  }> {
     const item = await this.db.query.bomItems.findFirst({
-      columns: { id: true, itemType: true },
+      columns: { id: true, itemType: true, drawingFileId: true },
       where: and(eq(bomItems.id, itemId), eq(bomItems.bomId, bomId)),
     });
 

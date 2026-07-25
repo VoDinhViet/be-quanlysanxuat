@@ -35,6 +35,7 @@ export enum UploadType {
   PRODUCT_DOCUMENT = 'PRODUCT_DOCUMENT',
   SUPPLIER_LOGO = 'SUPPLIER_LOGO',
   SUPPLIER_DOCUMENT = 'SUPPLIER_DOCUMENT',
+  BOM_ITEM_DRAWING = 'BOM_ITEM_DRAWING',
 }
 
 export const uploadTypeEnum = pgEnum('upload_type', [
@@ -45,6 +46,7 @@ export const uploadTypeEnum = pgEnum('upload_type', [
   UploadType.PRODUCT_DOCUMENT,
   UploadType.SUPPLIER_LOGO,
   UploadType.SUPPLIER_DOCUMENT,
+  UploadType.BOM_ITEM_DRAWING,
 ]);
 
 /**

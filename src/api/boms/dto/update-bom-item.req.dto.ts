@@ -1,6 +1,7 @@
 import {
   NumberFieldOptional,
   StringFieldOptional,
+  UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
 
 /**
@@ -20,4 +21,13 @@ export class UpdateBomItemReqDto {
 
   @StringFieldOptional({ nullable: true, maxLength: 1000 })
   readonly note?: string | null;
+
+  // Explicit `null` clears the drawing (and deletes the old file); omitted leaves it untouched.
+  @UUIDFieldOptional({
+    nullable: true,
+    description:
+      'Drawing (bản vẽ) file id (from POST /files?type=BOM_ITEM_DRAWING). Replacing it deletes ' +
+      'the previous file; null clears it.',
+  })
+  readonly drawingFileId?: string | null;
 }

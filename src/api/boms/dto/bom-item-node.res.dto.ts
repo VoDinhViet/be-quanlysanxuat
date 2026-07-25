@@ -74,4 +74,13 @@ export class BomItemNodeResDto {
   @Expose()
   @StringFieldOptional({ nullable: true })
   note!: string | null;
+
+  // Independent of `image` above (coalesced from the linked product/material) — this is a
+  // technical drawing specific to this node itself.
+  @Expose()
+  @ClassFieldOptional(() => FileResDto, {
+    nullable: true,
+    description: 'Bản vẽ kỹ thuật riêng của node này',
+  })
+  drawing!: FileResDto | null;
 }

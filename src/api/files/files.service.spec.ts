@@ -410,6 +410,30 @@ describe('FilesService', () => {
     });
   });
 
+  describe('deleteFileById', () => {
+    it('deletes storage bytes and the row without checking who is deleting', async () => {
+      mockDb.query.files.findFirst.mockResolvedValue(buildFileRow());
+
+      await service.deleteFileById('file-1');
+
+      expect(mockStorageProvider.delete).toHaveBeenCalledWith(
+        '2026/07/20/uuid.png',
+      );
+      expect(mockDb.delete).toHaveBeenCalled();
+      expect(mockPermissionsService.getPermissionCodes).not.toHaveBeenCalled();
+    });
+
+    it('throws E042 when the file does not exist', async () => {
+      mockDb.query.files.findFirst.mockResolvedValue(undefined);
+
+      await expect(service.deleteFileById('missing')).rejects.toMatchObject({
+        status: HttpStatus.NOT_FOUND,
+        response: { errorCode: ErrorCode.E042 },
+      });
+      expect(mockStorageProvider.delete).not.toHaveBeenCalled();
+    });
+  });
+
   describe('linkFiles', () => {
     it('resolves without querying or writing when the id list is empty', async () => {
       await service.linkFiles([]);

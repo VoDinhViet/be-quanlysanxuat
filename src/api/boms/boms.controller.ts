@@ -6,17 +6,21 @@ import {
   HttpStatus,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
+import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { CurrentUser } from '../../decorators/current-user.decorator';
 import { ApiAuth, ApiPublic } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
 import { BomItemNodeResDto } from './dto/bom-item-node.res.dto';
 import { BomItemResDto } from './dto/bom-item.res.dto';
+import { BomMaterialResDto } from './dto/bom-material.res.dto';
 import { CreateBomItemReqDto } from './dto/create-bom-item.req.dto';
+import { GetBomMaterialsReqDto } from './dto/get-bom-materials.req.dto';
 import { UpdateBomItemReqDto } from './dto/update-bom-item.req.dto';
 import { BomsService } from './boms.service';
 
@@ -36,6 +40,21 @@ export class BomsController {
   })
   getBom(@UUIDParam('productId') productId: string): Promise<BomItemResDto[]> {
     return this.bomsService.getBomTree(productId);
+  }
+
+  @Get('materials')
+  @Permissions('products:read')
+  @ApiPublic({
+    type: BomMaterialResDto,
+    summary:
+      "List a BOM's materials (mọi cấp), aggregated per material (gộp theo vật tư)",
+    isPaginated: true,
+  })
+  getBomMaterials(
+    @UUIDParam('productId') productId: string,
+    @Query() reqDto: GetBomMaterialsReqDto,
+  ): Promise<OffsetPaginatedDto<BomMaterialResDto>> {
+    return this.bomsService.getBomMaterials(productId, reqDto);
   }
 
   @Post('items')

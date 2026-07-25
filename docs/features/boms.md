@@ -53,26 +53,36 @@ Cây được đọc nguyên khối, nhưng **ghi theo từng node theo thời g
 - Đây là routing khoá theo `bom_items.id`, **không phải** theo sản phẩm mà node đó trỏ tới — cùng một WIP nằm ở hai vị trí khác nhau có thể có routing khác nhau. Chi tiết ở [`routing.md`](routing.md).
 - Response ghi/sửa một node (`BomItemNodeResDto`) **không có** `operations` và `children` — hai trường đó chỉ có khi đọc cả cây (`BomItemResDto`).
 
+### Bản vẽ (drawing) đính kèm từng node
+
+- Mỗi node có thể có **một file bản vẽ kỹ thuật riêng** (`drawingFileId` trên `bom_items`, expose ra API là `drawing`) — **độc lập** với `image` (vốn chỉ coalesce ảnh từ product/material mà node trỏ tới, không phải file riêng của node).
+- Luồng: `POST /files?type=BOM_ITEM_DRAWING` lấy id trước, rồi gửi `drawingFileId` trong `POST`/`PATCH` node. Kiểu `BOM_ITEM_DRAWING` chấp nhận PDF/DOCX/XLSX (giống `MATERIAL_DOCUMENT`).
+- Trên `PATCH`: gửi `drawingFileId` khác id hiện có = **thay bản vẽ**; gửi `null` = xoá bản vẽ hiện có; **bỏ trống** = giữ nguyên.
+- **Khi thay hoặc xoá bản vẽ, file `drawingFileId` CŨ bị xoá thật** (cả bytes lẫn row `files`), không để mồ côi — khác với `imageFileId`/`logoFileId`/`avatarFileId` ở `materials`/`products`/`suppliers`/`users`, nơi file cũ vẫn bị bỏ mồ côi vĩnh viễn khi bị ghi đè (xem "Ngoài phạm vi").
+- Xoá cả node (`DELETE .../items/:itemId`) **không** kéo theo xoá file bản vẽ của nó — hành vi xoá-file-cũ chỉ áp dụng khi *thay* bản vẽ trên node còn tồn tại.
+
 ## API contract
 
 | Method | Path | Auth | Request | Response |
 | ------ | ---- | ---- | ------- | -------- |
 | GET | `/products/:productId/bom` | **public** ⚠️ | — | `200` + `BomItemResDto[]` (cây lồng nhau) |
-| POST | `/products/:productId/bom/items` | `products:bom-manage` | `CreateBomItemReqDto` — `itemType`*, `itemId`*, `quantity`*, `parentId`, `sortOrder`, `note` | `201` + `BomItemNodeResDto` |
-| PATCH | `/products/:productId/bom/items/:itemId` | `products:bom-manage` | `UpdateBomItemReqDto` — `quantity`, `sortOrder`, `note` | `200` + `BomItemNodeResDto` |
+| GET | `/products/:productId/bom/materials` | **public** ⚠️ | `GetBomMaterialsReqDto` — `limit`, `page`, `q` | `200` + `OffsetPaginatedDto<BomMaterialResDto>` (phẳng, gộp theo vật tư) |
+| POST | `/products/:productId/bom/items` | `products:bom-manage` | `CreateBomItemReqDto` — `itemType`*, `itemId`*, `quantity`*, `parentId`, `sortOrder`, `note`, `drawingFileId` | `201` + `BomItemNodeResDto` |
+| PATCH | `/products/:productId/bom/items/:itemId` | `products:bom-manage` | `UpdateBomItemReqDto` — `quantity`, `sortOrder`, `note`, `drawingFileId` | `200` + `BomItemNodeResDto` |
 | DELETE | `/products/:productId/bom/items/:itemId` | `products:bom-manage` | — | `204`, không có body |
 
 (`*` = bắt buộc)
 
-> ⚠️ **`GET .../bom` đang thực sự public dù có `@Permissions('products:read')`** — `@ApiPublic()` áp `Public()`, và cả hai guard toàn cục đều bỏ qua route có metadata đó. Xem ghi chú tương tự trong [`products.md`](products.md).
+> ⚠️ **`GET .../bom` và `GET .../bom/materials` đang thực sự public dù có `@Permissions('products:read')`** — `@ApiPublic()` áp `Public()`, và cả hai guard toàn cục đều bỏ qua route có metadata đó. Xem ghi chú tương tự trong [`products.md`](products.md).
 
 - **Route ghi dùng `products:bom-manage`**, không phải `products:update` — sửa cấu trúc là quyền tách riêng khỏi sửa thông tin sản phẩm.
-- `GET` trả **mảng trần, không phân trang** — nó là một cây, chia trang không có nghĩa.
+- `GET .../bom` trả **mảng trần, không phân trang** — nó là một cây, chia trang không có nghĩa.
+- `GET .../bom/materials` trả **phẳng, gộp theo vật tư, có phân trang** — mỗi vật tư (`itemType = MATERIAL`, mọi cấp trong cây) đúng một dòng, `totalQuantity` là **tổng SL cộng dồn thô** của mọi node MATERIAL trỏ tới vật tư đó (KHÔNG nổ BOM theo cấp — không nhân qua SL của cụm cha, xem "Ngoài phạm vi"). BOM chưa được tạo (sản phẩm chưa có cấu trúc) → trả page rỗng (`data: []`, `totalRecords: 0`), không phải 404. `q` fuzzy-match mã/tên vật tư.
 - `parentId` bỏ trống (hoặc `null`) = thêm node cấp 1 (con trực tiếp của gốc).
 - `sortOrder` mặc định `0` khi không gửi.
-- Mỗi node trong response gồm: `id`, `parentId`, `itemType`, `itemId`, `code`, `name` (Mã/Tên bản vẽ, lấy từ sản phẩm hoặc vật tư mà node trỏ tới), `image`, `unit`, `quantity`, `sortOrder`, `note`, cộng thêm `level`, `children`, `operations` khi đọc cả cây.
-- `code`/`name`/`unit`/`image` được **làm phẳng bằng `coalesce` ngay trong SQL** từ phía product hoặc material — client không cần biết node trỏ vào bảng nào để hiển thị.
-- `image` là `FileResDto` với `url` ký số có hạn (giống `products`), hoặc `null` khi sản phẩm/vật tư đó không có ảnh.
+- Mỗi node trong response `GET .../bom` gồm: `id`, `parentId`, `itemType`, `itemId`, `code`, `name` (Mã/Tên bản vẽ, lấy từ sản phẩm hoặc vật tư mà node trỏ tới), `image`, `unit`, `quantity`, `sortOrder`, `note`, `drawing`, cộng thêm `level`, `children`, `operations` khi đọc cả cây.
+- `code`/`name`/`unit`/`image` được **làm phẳng bằng `coalesce` ngay trong SQL** từ phía product hoặc material — client không cần biết node trỏ vào bảng nào để hiển thị. `drawing` thì **không** coalesce — nó là file riêng của chính node, không đến từ product/material.
+- `image`/`drawing` là `FileResDto` với `url` ký số có hạn (giống `products`), hoặc `null` khi không có file.
 
 ## Trường hợp lỗi
 
@@ -86,6 +96,7 @@ Cây được đọc nguyên khối, nhưng **ghi theo từng node theo thời g
 | Node PRODUCT trỏ tới sản phẩm không phải `WORK_IN_PROGRESS` | `ErrorCode.E053` | 400 |
 | Phát hiện chu trình, hoặc vượt `MAX_BOM_DEPTH` | `ErrorCode.E054` | 409 |
 | SL của node WIP không phải số nguyên | `ErrorCode.E055` | 400 |
+| `drawingFileId` không trỏ tới một file đã tồn tại (chưa upload / đã bị xoá) | `ErrorCode.E042` | 404 |
 | Role của caller thiếu `products:bom-manage` | `ErrorCode.E033` | 403 |
 
 Lưu ý `E007` được dùng cho **hai** tình huống khác nhau khi `POST`: sản phẩm trong URL không tồn tại, và sản phẩm mà node mới trỏ tới không tồn tại. Client không phân biệt được hai ca này qua mã lỗi.
@@ -94,12 +105,21 @@ Lưu ý `E007` được dùng cho **hai** tình huống khác nhau khi `POST`: s
 
 - Di chuyển / đổi cha một node (làm bằng xoá + thêm lại).
 - Ghi hàng loạt cả cây trong một request — mô hình là ghi từng node theo thời gian thực.
-- Tính triển khai nhu cầu vật tư (nổ BOM ra tổng số lượng theo sản lượng).
+- Tính triển khai nhu cầu vật tư (nổ BOM ra tổng số lượng theo sản lượng) — `GET .../bom/materials`'s `totalQuantity` cũng chỉ là cộng dồn thô, không nổ theo cấp.
 - Hiệu lực theo thời gian / phiên bản BOM — phiên bản làm bằng nhân bản cả sản phẩm, xem [`products.md`](products.md).
 - Chống chu trình xuyên nhiều cây BOM.
+- Xoá node không kéo theo xoá file bản vẽ của nó (vẫn mồ côi) — chỉ *thay* bản vẽ trên node còn sống mới xoá file cũ.
+- Hành vi "xoá file cũ khi thay" chỉ áp dụng cho `drawingFileId` của BOM — **không** lan sang `imageFileId`/`logoFileId`/`avatarFileId` ở materials/products/suppliers/users, những nơi này vẫn giữ hành vi cũ (file bị ghi đè để mồ côi vĩnh viễn).
 
 ## Xem thêm
 
 - [`products.md`](products.md) — bảng gốc, và `POST /products/:id/copy` (clone cả cây này).
 - [`routing.md`](routing.md) — routing as-used nhúng trong `operations` của mỗi node.
 - `docs/architecture.md` — sơ đồ ER và thứ tự ghi của cả miền.
+
+## Frontend integration notes
+
+**2026-07-25** — Hai bổ sung, cả hai đều cộng thêm (không phá vỡ hợp đồng cũ):
+
+- `GET /products/:productId/bom/materials` (public, phân trang) — danh sách vật tư trong BOM, gộp theo vật tư, kèm `totalQuantity` cộng dồn thô. Dùng cho màn "Danh sách vật tư" thay vì tự bóc tách cây từ `GET .../bom`.
+- `drawingFileId` (request `POST`/`PATCH` node) / `drawing` (response mọi endpoint đọc/ghi node) — bản vẽ kỹ thuật riêng của từng node, độc lập với `image`. Upload qua `POST /files?type=BOM_ITEM_DRAWING` trước. **Thay bản vẽ (PATCH với id khác) xoá file cũ thật** — khác hành vi `imageFileId` ở các module khác (materials/products/suppliers), nơi file cũ vẫn còn nhưng không còn được trỏ tới.

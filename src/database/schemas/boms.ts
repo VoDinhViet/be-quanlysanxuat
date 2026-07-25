@@ -14,6 +14,7 @@ import {
 } from 'drizzle-orm/pg-core';
 
 import { credentials } from './credentials';
+import { files } from './files';
 import { materials } from './materials';
 import { products } from './products';
 
@@ -98,6 +99,11 @@ export const bomItems = pgTable(
     // from tree position + this.
     sortOrder: integer('sort_order').notNull().default(0),
     note: varchar('note', { length: 1000 }),
+    // A technical drawing specific to this node — independent of `image`, which is coalesced
+    // (read-time, not stored) from whichever product/material the node links to.
+    drawingFileId: uuid('drawing_file_id').references(() => files.id, {
+      onDelete: 'set null',
+    }),
     createdBy: uuid('created_by').references(() => credentials.id, {
       onDelete: 'set null',
     }),
@@ -113,6 +119,7 @@ export const bomItems = pgTable(
     index('idx_bom_items_product_id').on(table.productId),
     index('idx_bom_items_material_id').on(table.materialId),
     index('idx_bom_items_created_by').on(table.createdBy),
+    index('idx_bom_items_drawing_file_id').on(table.drawingFileId),
     index('idx_bom_items_path').on(table.path),
     check(
       'chk_bom_items_item_type_target',
@@ -146,6 +153,10 @@ export const bomItemsRelations = relations(bomItems, ({ one }) => ({
   material: one(materials, {
     fields: [bomItems.materialId],
     references: [materials.id],
+  }),
+  drawingFile: one(files, {
+    fields: [bomItems.drawingFileId],
+    references: [files.id],
   }),
   creator: one(credentials, {
     fields: [bomItems.createdBy],

@@ -48,4 +48,11 @@ export class CreateBomItemReqDto {
 
   @StringFieldOptional({ nullable: true, maxLength: 1000 })
   readonly note?: string | null;
+
+  @UUIDFieldOptional({
+    nullable: true,
+    description:
+      'Drawing (bản vẽ) file id, specific to this node (from POST /files?type=BOM_ITEM_DRAWING)',
+  })
+  readonly drawingFileId?: string | null;
 }

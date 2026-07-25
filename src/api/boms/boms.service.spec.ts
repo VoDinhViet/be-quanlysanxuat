@@ -11,9 +11,11 @@ import {
   UploadType,
 } from '../../database/schemas';
 import { setFileUrlResolver } from '../files/file-url-resolver';
+import { FilesService } from '../files/files.service';
 import type { QueryMockArgs } from '../../test-utils/chainable-mock.util';
-import { chainableMock } from '../../test-utils/chainable-mock.util';
+import { chainable, chainableMock } from '../../test-utils/chainable-mock.util';
 import { CreateBomItemReqDto } from './dto/create-bom-item.req.dto';
+import { GetBomMaterialsReqDto } from './dto/get-bom-materials.req.dto';
 import { UpdateBomItemReqDto } from './dto/update-bom-item.req.dto';
 import { BomsService } from './boms.service';
 
@@ -52,6 +54,7 @@ describe('BomsService', () => {
     delete: jest.Mock;
     transaction: jest.Mock;
   };
+  let mockFilesService: { linkFiles: jest.Mock; deleteFileById: jest.Mock };
 
   /** Rows handed to each `insert(...).values(...)` call, in order. */
   let insertedValues: unknown[];
@@ -134,6 +137,7 @@ describe('BomsService', () => {
     quantity: 1,
     sortOrder: 0,
     note: null,
+    drawing: null,
     ...overrides,
   });
 
@@ -183,6 +187,11 @@ describe('BomsService', () => {
     insertReturningQueue = [];
     updateSetValues = [];
 
+    mockFilesService = {
+      linkFiles: jest.fn(),
+      deleteFileById: jest.fn(),
+    };
+
     mockDb = {
       query: {
         products: { findFirst: jest.fn() },
@@ -207,7 +216,11 @@ describe('BomsService', () => {
     };
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [BomsService, { provide: DRIZZLE, useValue: mockDb }],
+      providers: [
+        BomsService,
+        { provide: DRIZZLE, useValue: mockDb },
+        { provide: FilesService, useValue: mockFilesService },
+      ],
     }).compile();
 
     service = module.get<BomsService>(BomsService);
@@ -326,6 +339,90 @@ describe('BomsService', () => {
     });
   });
 
+  describe('getBomMaterials', () => {
+    const materialRow = (overrides: Partial<Record<string, unknown>> = {}) => ({
+      materialId: 'material-1',
+      code: 'VT-001',
+      name: 'Vật tư 1',
+      unit: unit('A'),
+      image: null,
+      totalQuantity: 5,
+      ...overrides,
+    });
+
+    const buildReqDto = (overrides: Partial<GetBomMaterialsReqDto> = {}) =>
+      Object.assign(new GetBomMaterialsReqDto(), {
+        limit: 10,
+        page: 1,
+        ...overrides,
+      });
+
+    it('throws E007 when the product does not exist', async () => {
+      mockDb.query.products.findFirst.mockResolvedValue(undefined);
+
+      await expect(
+        service.getBomMaterials('missing', buildReqDto()),
+      ).rejects.toMatchObject({
+        status: HttpStatus.NOT_FOUND,
+        response: { errorCode: ErrorCode.E007 },
+      });
+      expect(mockDb.select).not.toHaveBeenCalled();
+    });
+
+    it('returns an empty page without querying rows when the product has no BOM configured yet', async () => {
+      mockDb.query.products.findFirst.mockResolvedValue({ id: 'p1' });
+      mockDb.query.boms.findFirst.mockResolvedValue(undefined);
+
+      const result = await service.getBomMaterials('p1', buildReqDto());
+
+      expect(result.data).toEqual([]);
+      expect(result.pagination.totalRecords).toBe(0);
+      expect(mockDb.select).not.toHaveBeenCalled();
+    });
+
+    it('aggregates one row per material with a numeric totalQuantity', async () => {
+      mockDb.query.products.findFirst.mockResolvedValue({ id: 'p1' });
+      mockDb.query.boms.findFirst.mockResolvedValue({ id: 'bom-1' });
+      mockDb.select = jest
+        .fn()
+        .mockReturnValueOnce(chainable([materialRow({ totalQuantity: 7.5 })]))
+        .mockReturnValueOnce(chainable([{ total: 1 }]));
+
+      const result = await service.getBomMaterials('p1', buildReqDto());
+
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0].totalQuantity).toBe(7.5);
+      expect(result.data[0].image).toBeNull();
+      expect(result.pagination.totalRecords).toBe(1);
+    });
+
+    it('maps a populated image', async () => {
+      mockDb.query.products.findFirst.mockResolvedValue({ id: 'p1' });
+      mockDb.query.boms.findFirst.mockResolvedValue({ id: 'bom-1' });
+      mockDb.select = jest
+        .fn()
+        .mockReturnValueOnce(chainable([materialRow({ image: image('a') })]))
+        .mockReturnValueOnce(chainable([{ total: 1 }]));
+
+      const result = await service.getBomMaterials('p1', buildReqDto());
+
+      expect(result.data[0].image?.id).toBe('file-a');
+    });
+
+    it('queries once for the page and once for the total count, including when filtered by q', async () => {
+      mockDb.query.products.findFirst.mockResolvedValue({ id: 'p1' });
+      mockDb.query.boms.findFirst.mockResolvedValue({ id: 'bom-1' });
+      mockDb.select = jest
+        .fn()
+        .mockReturnValueOnce(chainable([]))
+        .mockReturnValueOnce(chainable([{ total: 0 }]));
+
+      await service.getBomMaterials('p1', buildReqDto({ q: 'thep' }));
+
+      expect(mockDb.select).toHaveBeenCalledTimes(2);
+    });
+  });
+
   describe('addBomItem', () => {
     it('creates the boms header and inserts a top-level PRODUCT item when no header exists yet', async () => {
       mockDb.query.products.findFirst
@@ -362,6 +459,46 @@ describe('BomsService', () => {
         createdBy: 'user-1',
       });
       expect(result.id).toBe('item-1');
+    });
+
+    it('links and writes drawingFileId when provided', async () => {
+      mockDb.query.products.findFirst
+        .mockResolvedValueOnce({ id: 'p1' })
+        .mockResolvedValueOnce({
+          id: 'wip-1',
+          type: ProductType.WORK_IN_PROGRESS,
+        });
+      mockDb.query.boms.findFirst.mockResolvedValueOnce({ id: 'bom-1' });
+      insertReturningQueue = [[{ id: 'item-1' }]];
+      mockDb.select = chainableMock([row({ id: 'item-1' })]);
+
+      await service.addBomItem(
+        'p1',
+        buildCreateReqDto({ drawingFileId: 'drawing-1' }),
+        'user-1',
+      );
+
+      expect(mockFilesService.linkFiles).toHaveBeenCalledWith(['drawing-1']);
+      const itemRow = insertedValues[0] as Record<string, unknown>;
+      expect(itemRow).toMatchObject({ drawingFileId: 'drawing-1' });
+    });
+
+    it('does not link any file when drawingFileId is omitted', async () => {
+      mockDb.query.products.findFirst
+        .mockResolvedValueOnce({ id: 'p1' })
+        .mockResolvedValueOnce({
+          id: 'wip-1',
+          type: ProductType.WORK_IN_PROGRESS,
+        });
+      mockDb.query.boms.findFirst.mockResolvedValueOnce({ id: 'bom-1' });
+      insertReturningQueue = [[{ id: 'item-1' }]];
+      mockDb.select = chainableMock([row({ id: 'item-1' })]);
+
+      await service.addBomItem('p1', buildCreateReqDto(), 'user-1');
+
+      expect(mockFilesService.linkFiles).not.toHaveBeenCalled();
+      const itemRow = insertedValues[0] as Record<string, unknown>;
+      expect(itemRow).toMatchObject({ drawingFileId: null });
     });
 
     it('does not create a header when one already exists, and inserts under parentId', async () => {
@@ -837,6 +974,99 @@ describe('BomsService', () => {
           buildUpdateReqDto({ quantity: 2.5 }),
         ),
       ).resolves.toBeDefined();
+    });
+
+    it('links the new drawing and deletes the old one when replaced', async () => {
+      mockDb.query.products.findFirst.mockResolvedValue({ id: 'p1' });
+      mockDb.query.boms.findFirst.mockResolvedValue({ id: 'bom-1' });
+      mockDb.query.bomItems.findFirst.mockResolvedValue({
+        id: 'item-1',
+        itemType: BomItemType.MATERIAL,
+        drawingFileId: 'old-drawing',
+      });
+      mockDb.select = chainableMock([row({ id: 'item-1' })]);
+
+      await service.updateBomItem(
+        'p1',
+        'item-1',
+        buildUpdateReqDto({ drawingFileId: 'new-drawing' }),
+      );
+
+      expect(mockFilesService.linkFiles).toHaveBeenCalledWith(['new-drawing']);
+      expect(
+        (updateSetValues[0] as Record<string, unknown>).drawingFileId,
+      ).toBe('new-drawing');
+      expect(mockFilesService.deleteFileById).toHaveBeenCalledWith(
+        'old-drawing',
+      );
+    });
+
+    it('links but does not delete when the same drawingFileId is resent', async () => {
+      mockDb.query.products.findFirst.mockResolvedValue({ id: 'p1' });
+      mockDb.query.boms.findFirst.mockResolvedValue({ id: 'bom-1' });
+      mockDb.query.bomItems.findFirst.mockResolvedValue({
+        id: 'item-1',
+        itemType: BomItemType.MATERIAL,
+        drawingFileId: 'same-drawing',
+      });
+      mockDb.select = chainableMock([row({ id: 'item-1' })]);
+
+      await service.updateBomItem(
+        'p1',
+        'item-1',
+        buildUpdateReqDto({ drawingFileId: 'same-drawing' }),
+      );
+
+      expect(mockFilesService.linkFiles).toHaveBeenCalledWith(['same-drawing']);
+      expect(mockFilesService.deleteFileById).not.toHaveBeenCalled();
+    });
+
+    it('clears drawingFileId and deletes the old file when sent as null', async () => {
+      mockDb.query.products.findFirst.mockResolvedValue({ id: 'p1' });
+      mockDb.query.boms.findFirst.mockResolvedValue({ id: 'bom-1' });
+      mockDb.query.bomItems.findFirst.mockResolvedValue({
+        id: 'item-1',
+        itemType: BomItemType.MATERIAL,
+        drawingFileId: 'old-drawing',
+      });
+      mockDb.select = chainableMock([row({ id: 'item-1' })]);
+
+      await service.updateBomItem(
+        'p1',
+        'item-1',
+        buildUpdateReqDto({ drawingFileId: null }),
+      );
+
+      expect(mockFilesService.linkFiles).not.toHaveBeenCalled();
+      expect(
+        (updateSetValues[0] as Record<string, unknown>).drawingFileId,
+      ).toBeNull();
+      expect(mockFilesService.deleteFileById).toHaveBeenCalledWith(
+        'old-drawing',
+      );
+    });
+
+    it('leaves the drawing untouched when drawingFileId is omitted', async () => {
+      mockDb.query.products.findFirst.mockResolvedValue({ id: 'p1' });
+      mockDb.query.boms.findFirst.mockResolvedValue({ id: 'bom-1' });
+      mockDb.query.bomItems.findFirst.mockResolvedValue({
+        id: 'item-1',
+        itemType: BomItemType.MATERIAL,
+        drawingFileId: 'old-drawing',
+      });
+      mockDb.select = chainableMock([row({ id: 'item-1' })]);
+
+      await service.updateBomItem(
+        'p1',
+        'item-1',
+        buildUpdateReqDto({ note: 'unrelated change' }),
+      );
+
+      expect(mockFilesService.linkFiles).not.toHaveBeenCalled();
+      expect(mockFilesService.deleteFileById).not.toHaveBeenCalled();
+      expect(
+        (updateSetValues[0] as Record<string, unknown>).drawingFileId,
+      ).toBeUndefined();
     });
   });
 

@@ -167,6 +167,20 @@ export class FilesService {
   }
 
   /**
+   * Deletes a file's bytes and its `files` row with no uploader/`system:manage` check — for a
+   * consumer service (e.g. `BomsService`) replacing a `*FileId` link it already controls the
+   * write to, where the consumer's own route permission (e.g. `products:bom-manage`) is what
+   * authorizes the change. `deleteFile` is for the direct `DELETE /files/:id` route, where the
+   * caller IS the one deciding to delete and must therefore be checked.
+   */
+  async deleteFileById(fileId: string): Promise<void> {
+    const file = await this.ensureFileExists(fileId);
+
+    await this.storageProvider.delete(file.storageKey);
+    await this.db.delete(files).where(eq(files.id, fileId));
+  }
+
+  /**
    * Called by consumer services (users/materials/products) before writing a `*FileId` link: checks
    * every id exists (`E042`) and stamps `linkedAt`, which takes the file out of reach of
    * `FilesCleanupService`.

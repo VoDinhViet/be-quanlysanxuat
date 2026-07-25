@@ -28,4 +28,5 @@ export const UPLOAD_POLICIES: Record<UploadType, UploadPolicy> = {
   [UploadType.PRODUCT_DOCUMENT]: { kind: FileKind.DOCUMENT },
   [UploadType.SUPPLIER_LOGO]: { kind: FileKind.IMAGE },
   [UploadType.SUPPLIER_DOCUMENT]: { kind: FileKind.DOCUMENT },
+  [UploadType.BOM_ITEM_DRAWING]: { kind: FileKind.DOCUMENT },
 };

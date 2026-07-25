@@ -4,6 +4,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
 import { BomItemType } from '../../database/schemas';
 import { CreateBomItemReqDto } from './dto/create-bom-item.req.dto';
+import { GetBomMaterialsReqDto } from './dto/get-bom-materials.req.dto';
 import { UpdateBomItemReqDto } from './dto/update-bom-item.req.dto';
 import { BomsController } from './boms.controller';
 import { BomsService } from './boms.service';
@@ -12,6 +13,7 @@ describe('BomsController', () => {
   let controller: BomsController;
   let mockService: {
     getBomTree: jest.Mock;
+    getBomMaterials: jest.Mock;
     addBomItem: jest.Mock;
     updateBomItem: jest.Mock;
     deleteBomItem: jest.Mock;
@@ -22,6 +24,7 @@ describe('BomsController', () => {
   beforeEach(async () => {
     mockService = {
       getBomTree: jest.fn(),
+      getBomMaterials: jest.fn(),
       addBomItem: jest.fn(),
       updateBomItem: jest.fn(),
       deleteBomItem: jest.fn(),
@@ -53,6 +56,17 @@ describe('BomsController', () => {
     const result = await controller.getBom('p1');
 
     expect(mockService.getBomTree).toHaveBeenCalledWith('p1');
+    expect(result).toBe(expected);
+  });
+
+  it('getBomMaterials delegates to BomsService.getBomMaterials', async () => {
+    const reqDto = Object.assign(new GetBomMaterialsReqDto(), { q: 'thep' });
+    const expected = { data: [], pagination: {} };
+    mockService.getBomMaterials.mockResolvedValue(expected);
+
+    const result = await controller.getBomMaterials('p1', reqDto);
+
+    expect(mockService.getBomMaterials).toHaveBeenCalledWith('p1', reqDto);
     expect(result).toBe(expected);
   });
 
