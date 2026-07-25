@@ -111,24 +111,22 @@ export class ClientsService {
     }
     await this.ensureClientGroupExists(reqDto.clientGroupId);
 
+    // `contacts` lives in its own table, not a column on `clients` — peel it off so the rest of
+    // the DTO spreads straight onto the row.
+    const { contacts, ...clientFields } = reqDto;
+
     const [client] = await this.db
       .insert(clients)
       .values({
+        ...clientFields,
         code,
-        name: reqDto.name,
-        clientGroupId: reqDto.clientGroupId,
-        taxCode: reqDto.taxCode,
-        phoneNumber: reqDto.phoneNumber,
-        email: reqDto.email,
-        address: reqDto.address,
-        note: reqDto.note,
         status: reqDto.status ?? ClientStatus.ACTIVE,
         createdBy: userId,
       })
       .returning();
 
-    if (reqDto.contacts?.length) {
-      await this.replaceContacts(client.id, reqDto.contacts);
+    if (contacts?.length) {
+      await this.replaceContacts(client.id, contacts);
     }
 
     return this.getClientDetail(client.id);

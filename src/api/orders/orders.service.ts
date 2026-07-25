@@ -223,9 +223,11 @@ export class OrdersService {
       await this.ensureStaffExists(reqDto.staffId);
     }
 
-    const itemRows = reqDto.items?.length
-      ? await this.resolveItemRows(reqDto.items)
-      : [];
+    // `items` lives in its own table, not a column on `orders` — peel it off so the rest of the
+    // DTO spreads straight onto the row.
+    const { items, ...orderFields } = reqDto;
+
+    const itemRows = items?.length ? await this.resolveItemRows(items) : [];
     const totalAmount = this.computeTotalAmount(itemRows);
 
     // The order row and its line items must land together: without this transaction a failing
@@ -234,15 +236,12 @@ export class OrdersService {
       const [order] = await tx
         .insert(orders)
         .values({
+          ...orderFields,
           code,
-          clientId: reqDto.clientId,
           staffId: reqDto.staffId ?? null,
           orderDate: reqDto.orderDate ?? new Date(),
-          deliveryDate: reqDto.deliveryDate,
-          paymentTerms: reqDto.paymentTerms,
           status: reqDto.status ?? OrderStatus.DRAFT,
           totalAmount,
-          note: reqDto.note,
           createdBy: userId,
         })
         .returning();

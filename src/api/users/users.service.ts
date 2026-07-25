@@ -369,12 +369,7 @@ export class UsersService {
     // so `PermissionsService` has never resolved it.
     const [created] = await this.db
       .insert(credentials)
-      .values({
-        username: credential.username,
-        email: credential.email,
-        password,
-        roleId: credential.roleId,
-      })
+      .values({ ...credential, password })
       .returning();
 
     return created.id;
