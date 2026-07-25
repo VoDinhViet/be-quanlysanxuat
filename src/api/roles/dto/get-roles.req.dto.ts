@@ -1,7 +1,12 @@
-import { PageOptionsDto } from '../../../common/dto/offset-pagination/page-options.dto';
+import { StringFieldOptional } from '../../../decorators/field.decorators';
 
 /**
- * Lists roles. Inherits `limit`/`page`/`q`/`order` from `PageOptionsDto`; `q` matches role
- * `code`/`name`. No extra filters yet.
+ * Not paginated on purpose: `roles` is a small, curated catalogue (created/edited through the
+ * role management screen, not bulk data) — same reasoning as `GET /units`.
  */
-export class GetRolesReqDto extends PageOptionsDto {}
+export class GetRolesReqDto {
+  @StringFieldOptional({
+    description: 'Search on code or name (accent-insensitive)',
+  })
+  readonly q?: string;
+}
