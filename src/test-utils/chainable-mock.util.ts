@@ -69,4 +69,5 @@ export type QueryMockArgs = {
   orderBy?: unknown;
   with?: unknown;
   columns?: unknown;
+  extras?: unknown;
 };

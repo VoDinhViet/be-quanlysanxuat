@@ -1,9 +1,11 @@
 import { Exclude, Expose } from 'class-transformer';
 
+import { OrderItemStatus } from '../../../database/schemas';
 import {
   ClassField,
+  EnumField,
   NumberField,
-  StringField,
+  StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
 import { OrderItemProductRefResDto } from './order-item-product-ref.res.dto';
@@ -15,26 +17,37 @@ export class OrderItemResDto {
   id!: string;
 
   @Expose()
+  @NumberField({ description: 'Số lượng' })
+  quantity!: number;
+
+  @Expose()
+  @NumberField({ description: 'Đơn giá' })
+  unitPrice!: number;
+
+  @Expose()
+  @NumberField({ description: 'Chiết khấu (%) trên dòng' })
+  discountPercent!: number;
+
+  @Expose()
+  @NumberField({
+    description:
+      'Thành tiền — server-computed: quantity * unitPrice * (1 - discountPercent/100)',
+  })
+  lineTotal!: number;
+
+  @Expose()
+  @StringFieldOptional({ nullable: true })
+  note!: string | null;
+
+  @Expose()
+  @EnumField(() => OrderItemStatus)
+  status!: OrderItemStatus;
+
+  @Expose()
+  @NumberField({ int: true, description: 'STT — sibling order' })
+  sortOrder!: number;
+
+  @Expose()
   @ClassField(() => OrderItemProductRefResDto)
   product!: OrderItemProductRefResDto;
-
-  @Expose()
-  @StringField({ description: 'Quantity (numeric, serialized as a string)' })
-  quantity!: string;
-
-  @Expose()
-  @StringField({
-    description: 'Unit price (numeric, serialized as a string)',
-  })
-  unitPrice!: string;
-
-  @Expose()
-  @StringField({
-    description: 'quantity × unitPrice (numeric, serialized as a string)',
-  })
-  lineTotal!: string;
-
-  @Expose()
-  @NumberField({ int: true, description: 'Deterministic sibling ordering' })
-  sortOrder!: number;
 }

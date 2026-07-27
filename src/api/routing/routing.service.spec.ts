@@ -18,8 +18,8 @@ interface InsertChain {
   then: (resolve: (value: unknown) => unknown) => unknown;
 }
 
-/** Same idea for `.update().set()` — needed to assert the exact payload (`updatedAt` always
- * present, `sortOrder`/`note` only when provided). */
+/** Same idea for `.update().set()` — needed to assert the exact payload (`sortOrder`/`note`
+ * only when provided; `updated_at` is never in the payload, `$onUpdate` bumps it in Postgres). */
 interface UpdateChain {
   set: jest.Mock;
   where: jest.Mock;
@@ -373,7 +373,7 @@ describe('RoutingService', () => {
       expect(mockDb.update).not.toHaveBeenCalled();
     });
 
-    it('spreads only updatedAt (sortOrder/note left undefined) when neither is provided', async () => {
+    it('passes reqDto straight through (sortOrder/note left undefined) when neither is provided', async () => {
       mockDb.query.routingSteps.findFirst
         .mockResolvedValueOnce({ id: 'step-1' }) // ensureStepExists
         .mockResolvedValueOnce(row({ id: 'step-1' })); // re-fetch after write
@@ -383,10 +383,11 @@ describe('RoutingService', () => {
 
       expect(updateSetValues).toHaveLength(1);
       const setValues = updateSetValues[0] as Record<string, unknown>;
-      // `sortOrder`/`note` are still own keys on the spread object (class fields default to
+      // `sortOrder`/`note` are still own keys on the DTO instance (class fields default to
       // `undefined`), but drizzle drops `undefined` values from the actual SQL `.set()` — asserting
-      // the values, not the key list, is what matters here.
-      expect(setValues.updatedAt).toBeInstanceOf(Date);
+      // the values, not the key list, is what matters here. `updated_at` isn't set here at all
+      // anymore: the column's own `$onUpdate` bumps it once the real statement runs.
+      expect(setValues.updatedAt).toBeUndefined();
       expect(setValues.sortOrder).toBeUndefined();
       expect(setValues.note).toBeUndefined();
     });

@@ -94,9 +94,10 @@ export class OperationsService {
       await this.validateCodeUniqueness(reqDto.code, operationId);
     }
 
+    // `updated_at` is bumped by the column's own `$onUpdate`.
     await this.db
       .update(operations)
-      .set({ ...reqDto, updatedAt: new Date() })
+      .set(reqDto)
       .where(eq(operations.id, operationId));
 
     return this.getOperationDetail(operationId);

@@ -81,9 +81,10 @@ export class RoutingService {
     await this.ensureTargetExists(target);
     await this.ensureStepExists(target, stepId);
 
+    // `updated_at` is bumped by the column's own `$onUpdate`.
     await this.db
       .update(routingSteps)
-      .set({ ...reqDto, updatedAt: new Date() })
+      .set(reqDto)
       .where(and(eq(routingSteps.id, stepId), this.targetWhere(target)));
 
     return this.getStepDetail(target, stepId);

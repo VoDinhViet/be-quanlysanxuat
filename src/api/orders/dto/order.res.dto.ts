@@ -1,17 +1,24 @@
 import { Exclude, Expose } from 'class-transformer';
 
-import { OrderStatus } from '../../../database/schemas';
+import {
+  Currency,
+  OrderDiscountType,
+  OrderStatus,
+  PaymentTerm,
+} from '../../../database/schemas';
 import {
   BooleanField,
-  ClassField,
   ClassFieldOptional,
   DateField,
   DateFieldOptional,
   EnumField,
+  EnumFieldOptional,
+  NumberField,
   StringField,
   StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
+import { OrderAttachmentResDto } from './order-attachment.res.dto';
 import { OrderClientRefResDto } from './order-client-ref.res.dto';
 import { OrderCreatorResDto } from './order-creator.res.dto';
 import { OrderItemResDto } from './order-item.res.dto';
@@ -28,52 +35,112 @@ export class OrderResDto {
   code!: string;
 
   @Expose()
-  @ClassField(() => OrderClientRefResDto)
-  client!: OrderClientRefResDto;
+  @ClassFieldOptional(() => OrderClientRefResDto, { nullable: true })
+  client!: OrderClientRefResDto | null;
+
+  @Expose()
+  @StringFieldOptional({ nullable: true })
+  contactName!: string | null;
+
+  @Expose()
+  @StringFieldOptional({ nullable: true })
+  contactPhone!: string | null;
+
+  @Expose()
+  @StringFieldOptional({ nullable: true })
+  contactEmail!: string | null;
 
   @Expose()
   @ClassFieldOptional(() => OrderStaffRefResDto, { nullable: true })
   staff!: OrderStaffRefResDto | null;
 
   @Expose()
-  @DateField()
+  @DateField({ description: 'Ngày đặt hàng' })
   orderDate!: Date;
 
   @Expose()
-  @DateFieldOptional({ nullable: true })
-  deliveryDate!: Date | null;
+  @DateFieldOptional({ nullable: true, description: 'Ngày giao hàng yêu cầu' })
+  dueDate!: Date | null;
 
   @Expose()
   @StringFieldOptional({ nullable: true })
-  paymentTerms!: string | null;
+  deliveryAddress!: string | null;
+
+  @Expose()
+  @EnumFieldOptional(() => PaymentTerm, { nullable: true })
+  paymentTerm!: PaymentTerm | null;
+
+  @Expose()
+  @EnumField(() => Currency)
+  currency!: Currency;
+
+  @Expose()
+  @NumberField()
+  exchangeRate!: number;
 
   @Expose()
   @EnumField(() => OrderStatus)
   status!: OrderStatus;
 
   @Expose()
-  @StringField({
-    description: 'Sum of item line totals (numeric, serialized as a string)',
+  @NumberField({ description: 'Tổng tiền hàng — server-computed' })
+  subtotal!: number;
+
+  @Expose()
+  @EnumField(() => OrderDiscountType)
+  discountType!: OrderDiscountType;
+
+  @Expose()
+  @NumberField({ description: 'Chiết khấu đơn (input)' })
+  discountValue!: number;
+
+  @Expose()
+  @NumberField({
+    description: 'Chiết khấu đơn quy đổi ra tiền — server-computed',
   })
-  totalAmount!: string;
+  discountAmount!: number;
+
+  @Expose()
+  @NumberField({ description: 'Thuế VAT (%)' })
+  vatPercent!: number;
+
+  @Expose()
+  @NumberField({ description: 'Tiền thuế VAT — server-computed' })
+  vatAmount!: number;
+
+  @Expose()
+  @NumberField({ description: 'Phí vận chuyển' })
+  shippingFee!: number;
+
+  @Expose()
+  @NumberField({
+    description:
+      'TỔNG THANH TOÁN — server-computed: subtotal - discountAmount + vatAmount + shippingFee',
+  })
+  total!: number;
 
   @Expose()
   @BooleanField({
     description:
-      'Derived, not stored: deliveryDate < now && status not in (COMPLETED, CANCELLED)',
+      'Derived, not stored: dueDate < now && status not in (COMPLETED, CANCELLED)',
   })
-  isOverdue!: boolean;
+  expired!: boolean;
 
   @Expose()
   @StringFieldOptional({ nullable: true })
   note!: string | null;
 
   @Expose()
-  @ClassFieldOptional(() => OrderItemResDto, {
-    each: true,
-    description: 'Only populated on GET /orders/:id, omitted on the list',
-  })
-  items?: OrderItemResDto[];
+  @StringFieldOptional({ nullable: true })
+  internalNote!: string | null;
+
+  @Expose()
+  @ClassFieldOptional(() => OrderItemResDto, { each: true })
+  items!: OrderItemResDto[];
+
+  @Expose()
+  @ClassFieldOptional(() => OrderAttachmentResDto, { each: true })
+  attachments!: OrderAttachmentResDto[];
 
   @Expose()
   @ClassFieldOptional(() => OrderCreatorResDto, { nullable: true })

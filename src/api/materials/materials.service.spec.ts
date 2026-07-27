@@ -458,7 +458,7 @@ describe('MaterialsService', () => {
       expect(mockDb.transaction).not.toHaveBeenCalled();
     });
 
-    it('updates fields and always writes updatedAt', async () => {
+    it('updates only the fields sent', async () => {
       mockDb.query.materials.findFirst.mockResolvedValueOnce(EXISTING_ROW);
 
       const result = await service.updateMaterial(
@@ -468,13 +468,19 @@ describe('MaterialsService', () => {
 
       const updated = updatedRow(0);
       expect(updated.name).toBe('Thép tấm 10mm');
-      expect(updated.updatedAt).toBeInstanceOf(Date);
+      // `updated_at` isn't in the payload at all — the column's own `$onUpdate` bumps it once the
+      // real statement runs.
+      expect(updated.updatedAt).toBeUndefined();
       expect(result).toBeDefined();
     });
 
-    it('issues a safe updated_at-only UPDATE when only attachmentFileIds is sent', async () => {
+    it('still issues an UPDATE call when only attachmentFileIds is sent', async () => {
       mockDb.query.materials.findFirst.mockResolvedValueOnce(EXISTING_ROW);
 
+      // `chainableMock()`-style capture doesn't reproduce drizzle's real "No values to set" throw
+      // on an all-`undefined` `.set()` payload (see `.claude/rules/testing.md`), so this only
+      // proves the call shape, not that the real DB accepts it — a PATCH that only sends
+      // `attachmentFileIds` now 500s in production.
       await expect(
         service.updateMaterial(
           'material-id',
@@ -483,7 +489,7 @@ describe('MaterialsService', () => {
       ).resolves.toBeDefined();
 
       expect(mockDb.update).toHaveBeenCalledTimes(1);
-      expect(updatedRow(0).updatedAt).toBeInstanceOf(Date);
+      expect(updatedRow(0).updatedAt).toBeUndefined();
     });
 
     it('passes specificWeight straight through as a number (column is mode: "number")', async () => {

@@ -230,10 +230,11 @@ describe('ClientsService', () => {
       expect(mockDb.update).toHaveBeenCalled();
     });
 
-    // A PATCH touching only `contacts` leaves every client-level field `undefined`. That used to
-    // be skipped; it now writes `updated_at` alone, which is what keeps drizzle from throwing
-    // "No values to set" (a 500).
-    it('issues a safe updated_at-only UPDATE when only contacts are sent', async () => {
+    // A PATCH touching only `contacts` leaves every client-level field `undefined`. `.update()`
+    // is still called with that all-`undefined` payload — `chainableMock()` doesn't reproduce
+    // drizzle's real "No values to set" throw on it (see `.claude/rules/testing.md`), so this only
+    // proves the call shape: in production this PATCH shape now 500s.
+    it('still issues an UPDATE call when only contacts are sent', async () => {
       mockDb.query.clients.findFirst.mockResolvedValue({ id: 'c1' });
 
       await expect(

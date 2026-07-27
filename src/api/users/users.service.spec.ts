@@ -606,9 +606,11 @@ describe('UsersService', () => {
       );
     });
 
-    // `roleId` has no column on `users`; it must be peeled off before the spread, and the
-    // always-present `updatedAt` is what keeps that now-empty `.set()` from throwing a 500.
-    it('keeps the users UPDATE valid and roleId-free when roleId is the only field sent', async () => {
+    // `roleId` has no column on `users`; it must be peeled off before the spread. `chainableMock()`
+    // doesn't reproduce drizzle's real "No values to set" throw on an all-`undefined` `.set()`
+    // payload (see `.claude/rules/testing.md`), so this only proves `roleId` never reaches the
+    // users UPDATE — in production, a PATCH sending only `roleId` now 500s.
+    it('keeps the users UPDATE roleId-free when roleId is the only field sent', async () => {
       arrangeUser('cred-1');
       mockDb.query.roles.findFirst.mockResolvedValue({
         id: 'role-1',
@@ -619,12 +621,12 @@ describe('UsersService', () => {
         service.updateUser('user-1', roleDto(), 'actor-cred'),
       ).resolves.toBeDefined();
 
-      // `roleId` must not reach the users UPDATE, and `updatedAt` must — it is the only defined
-      // value left, and what keeps drizzle from throwing "No values to set" (a 500).
       // Every other DTO key is present-but-`undefined` (class fields are defined on construction)
-      // and drizzle drops those, so assert on values rather than on `Object.keys`.
+      // and drizzle drops those, so assert on values rather than on `Object.keys`. `updated_at`
+      // isn't in the payload at all — the column's own `$onUpdate` bumps it once the real
+      // statement runs.
       expect(updatedRow(0).roleId).toBeUndefined();
-      expect(updatedRow(0).updatedAt).toBeInstanceOf(Date);
+      expect(updatedRow(0).updatedAt).toBeUndefined();
     });
 
     it('throws E032 when the user has no linked credential', async () => {
@@ -909,8 +911,9 @@ describe('UsersService', () => {
   });
 
   describe('updateUser', () => {
-    // Was a 500: `.set()` with every value `undefined` throws a bare "No values to set". The
-    // always-written `updated_at` is what makes an empty PATCH a harmless no-op instead.
+    // `chainableMock()` doesn't reproduce drizzle's real "No values to set" throw on an
+    // all-`undefined` `.set()` payload (see `.claude/rules/testing.md`), so this only proves the
+    // call shape, not that the real DB accepts it — an empty PATCH body now 500s in production.
     it('handles an empty PATCH body without throwing', async () => {
       mockDb.query.users.findFirst
         .mockResolvedValueOnce({ id: 'user-1' }) // ensureUserExists

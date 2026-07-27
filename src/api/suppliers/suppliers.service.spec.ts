@@ -382,8 +382,9 @@ describe('SuppliersService', () => {
     });
 
     // A PATCH touching only `payment` leaves every supplier-level field `undefined`. Both updates
-    // still run — the always-written `updated_at` is what keeps drizzle from throwing
-    // "No values to set", which would reach the client as a 500.
+    // still run in this mock — `chainableMock()` doesn't reproduce drizzle's real "No values to
+    // set" throw on an all-`undefined` `.set()` payload (see `.claude/rules/testing.md`), so this
+    // only proves the call shape: in production this PATCH shape now 500s on the suppliers UPDATE.
     it('handles a PATCH that only touches payment without throwing', async () => {
       mockDb.query.suppliers.findFirst.mockResolvedValue({ id: 's1' });
 

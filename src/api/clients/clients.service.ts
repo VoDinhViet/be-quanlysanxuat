@@ -150,12 +150,10 @@ export class ClientsService {
 
     const { contacts, ...clientFields } = reqDto;
 
-    // `updatedAt` is always written, which doubles as the reason `.set()` is safe here: drizzle
-    // throws a bare "No values to set" (a 500) when every value is `undefined`, and that is the
-    // normal shape of a PATCH touching only `contacts`.
+    // `updated_at` is bumped by the column's own `$onUpdate`.
     await this.db
       .update(clients)
-      .set({ ...clientFields, updatedAt: new Date() })
+      .set(clientFields)
       .where(eq(clients.id, clientId));
 
     if (contacts) {

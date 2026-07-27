@@ -78,6 +78,9 @@ export enum ErrorCode {
   E056 = 'routing_step.error.not_found',
   E057 = 'order.error.not_found',
   E058 = 'order.error.code_exists',
+  // Client/staff/product refs on an order. Retired when the module was pared down to a
+  // header-only table on 2026-07-27, restored with their original meanings the same day when the
+  // module was re-expanded — so no client ever saw these codes point at anything else.
   E059 = 'order.error.client_not_found',
   E060 = 'order.error.staff_not_found',
   E061 = 'order.error.product_not_found',
@@ -91,6 +94,12 @@ export enum ErrorCode {
   // effective `departmentId` (the one sent, or the user's current one when only one of the pair
   // is being changed).
   E064 = 'position.error.department_mismatch',
+  // A write (PATCH/DELETE) on an order that has reached a terminal state — `COMPLETED` or
+  // `CANCELLED`. Every other status (`CONFIRMED`, `IN_PROGRESS`) stays editable.
+  E065 = 'order.error.not_editable',
+  // E066 (order.error.no_items) stays reserved — it was `POST /orders/:id/confirm`'s
+  // zero-NORMAL-lines guard; that endpoint was removed 2026-07-27 along with `OrderStatus.DRAFT`
+  // (orders are `CONFIRMED` on creation, no separate confirm step). No current throw site uses it.
   E101 = 'class.error.teacher_not_found',
   E102 = 'class.error.invalid_teacher_assignment',
   E103 = 'class.error.forbidden',

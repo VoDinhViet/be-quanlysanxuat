@@ -155,7 +155,7 @@ export class MaterialsService {
         .returning();
 
       if (attachmentFileIds?.length) {
-        await this.insertAttachments(tx, material.id, attachmentFileIds);
+        await this.createAttachments(tx, material.id, attachmentFileIds);
       }
 
       return material.id;
@@ -201,15 +201,12 @@ export class MaterialsService {
     await this.linkMaterialFiles(reqDto);
 
     await this.db.transaction(async (tx) => {
-      // `updatedAt` is always written, which doubles as the reason `.set()` is safe here: drizzle
-      // throws a bare "No values to set" (a 500) when every value is `undefined`, the normal
-      // shape of a PATCH touching only `attachmentFileIds`.
+      // `updated_at` is bumped by the column's own `$onUpdate`.
       await tx
         .update(materials)
         .set({
           ...materialFields,
           ...(clientId !== undefined ? { clientId } : {}),
-          updatedAt: new Date(),
         })
         .where(eq(materials.id, materialId));
 
@@ -272,7 +269,7 @@ export class MaterialsService {
    * Writes the attachment rows. Takes `tx` (not `this.db`) so it can only ever be called from
    * inside an open transaction — passing the pooled connection is a compile error.
    */
-  private async insertAttachments(
+  private async createAttachments(
     tx: DbTransaction,
     materialId: string,
     fileIds: string[],
@@ -293,7 +290,7 @@ export class MaterialsService {
       .where(eq(materialAttachments.materialId, materialId));
 
     if (fileIds.length) {
-      await this.insertAttachments(tx, materialId, fileIds);
+      await this.createAttachments(tx, materialId, fileIds);
     }
   }
 

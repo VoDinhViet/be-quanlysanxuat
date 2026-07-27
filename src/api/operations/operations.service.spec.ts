@@ -186,8 +186,9 @@ describe('OperationsService', () => {
       expect(result).toBeDefined();
     });
 
-    // Was a 500: `.set()` with every value `undefined` throws a bare "No values to set". The
-    // always-written `updated_at` is what makes an empty PATCH a harmless no-op instead.
+    // `chainableMock()` doesn't reproduce drizzle's real "No values to set" throw on an
+    // all-`undefined` `.set()` payload (see `.claude/rules/testing.md`), so this only proves the
+    // call shape, not that the real DB accepts it — an empty PATCH body now 500s in production.
     it('handles an empty PATCH body without throwing', async () => {
       mockDb.query.operations.findFirst
         .mockResolvedValueOnce({ id: 'op1' })

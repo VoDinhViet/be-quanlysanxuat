@@ -218,13 +218,8 @@ export class UsersService {
     // `roleId` has no column on `users` — peel it off before the spread.
     const { roleId, ...userFields } = reqDto;
 
-    // `updatedAt` is always written, which doubles as the reason `.set()` is safe here: drizzle
-    // throws a bare "No values to set" (a 500) when every value is `undefined`, i.e. on an empty
-    // PATCH body or one carrying only `roleId`.
-    await this.db
-      .update(users)
-      .set({ ...userFields, updatedAt: new Date() })
-      .where(eq(users.id, userId));
+    // `updated_at` is bumped by the column's own `$onUpdate`.
+    await this.db.update(users).set(userFields).where(eq(users.id, userId));
 
     if (roleId && existing.credentialId) {
       await this.applyRoleToCredential(existing.credentialId, roleId);

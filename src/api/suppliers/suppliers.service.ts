@@ -219,12 +219,10 @@ export class SuppliersService {
       reqDto;
 
     await this.db.transaction(async (tx) => {
-      // `updatedAt` is always written, which doubles as the reason `.set()` is safe here: drizzle
-      // throws a bare "No values to set" (a 500) when every value is `undefined`, and that is the
-      // normal shape of a PATCH touching only `payment`/`representatives`/`attachmentFileIds`.
+      // `updated_at` is bumped by the column's own `$onUpdate`.
       await tx
         .update(suppliers)
-        .set({ ...supplierFields, updatedAt: new Date() })
+        .set(supplierFields)
         .where(eq(suppliers.id, supplierId));
 
       if (payment) {
@@ -232,7 +230,7 @@ export class SuppliersService {
         // actually sent are overwritten, everything else keeps its current value.
         await tx
           .update(supplierPaymentInfo)
-          .set({ ...payment, updatedAt: new Date() })
+          .set(payment)
           .where(eq(supplierPaymentInfo.supplierId, supplierId));
       }
 

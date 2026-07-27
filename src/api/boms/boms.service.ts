@@ -316,6 +316,7 @@ export class BomsService {
       await this.filesService.linkFiles([requestedDrawingFileId]);
     }
 
+    // `updated_at` is bumped by the column's own `$onUpdate`.
     await this.db
       .update(bomItems)
       .set({
@@ -323,7 +324,6 @@ export class BomsService {
         ...(requestedDrawingFileId !== undefined
           ? { drawingFileId: requestedDrawingFileId }
           : {}),
-        updatedAt: new Date(),
       })
       .where(and(eq(bomItems.id, itemId), eq(bomItems.bomId, bom.id)));
 

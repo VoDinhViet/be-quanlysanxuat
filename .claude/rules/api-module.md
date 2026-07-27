@@ -36,18 +36,18 @@ Reference implementation: `src/api/users/users.controller.ts` and `src/api/users
 
   `.values()`/`.set()` are strictly typed, so spreading a field that isn't a column is a compile error rather than a runtime surprise.
 
-- **Every partial UPDATE writes `updatedAt: new Date()` alongside the spread.** This is not cosmetic: `.set()` throws a bare `Error: No values to set` when every value is `undefined`, which reaches the client as a **500**, and that is the normal shape of an empty PATCH body or one touching only a child table (`{ payment: {...} }` on a supplier). The always-present timestamp keeps the statement valid. It also means a no-op PATCH bumps `updated_at` — accepted, since the row was addressed by a write request.
+- **Don't write `updatedAt: new Date()` by hand in `.set()`.** Every table's `updatedAt` column already carries `$onUpdate(() => new Date())` (`.claude/rules/database.md`), and `PgDialect.buildUpdateSet` applies it automatically to any `UPDATE` that actually runs — a hand-written timestamp is redundant.
 
   ```ts
   await this.db
     .update(clients)
-    .set({ ...clientFields, updatedAt: new Date() })
+    .set(clientFields)
     .where(eq(clients.id, clientId));
   ```
 
-  (`$onUpdate` on the column does _not_ cover this — drizzle rejects the empty set before applying it.)
+  Caveat: `$onUpdate` only fires once the statement is built. If **every** key in the `.set()` payload is `undefined` — an empty PATCH body, or one that only touches a child table (`{ contacts: [...] }` on a client, `{ payment: {...} }` on a supplier, `{ roleId }` on a user) — drizzle's `mapUpdateSet` throws a bare `Error: No values to set` first, which reaches the client as a **500**. This repo currently accepts that tradeoff (see `OrdersService.updateOrder`, `ClientsService.updateClient`, ...) rather than guarding every call site; if a specific endpoint needs to support that PATCH shape safely, wrap the `.update()` in `if (Object.values(setValues).some((v) => v !== undefined))`.
 
-- **Don't hand-roll `if (reqDto.field !== undefined) setValues.field = reqDto.field` per column to build a partial-update payload.** It's redundant: Drizzle already drops `undefined` values from `.set()`, `ValidationPipe`'s `whitelist: true` already stripped anything not on the DTO, and the always-present `updatedAt` (above) already keeps the statement non-empty. Spread the DTO straight into `.set()`, same as a create — see `RoutingService.updateStep`/`BomsService.updateBomItem`. Three cases still need an explicit `!== undefined` (or an equivalent narrower check) instead of a plain spread:
+- **Don't hand-roll `if (reqDto.field !== undefined) setValues.field = reqDto.field` per column to build a partial-update payload.** It's redundant: Drizzle already drops `undefined` values from `.set()`, and `ValidationPipe`'s `whitelist: true` already stripped anything not on the DTO. Spread the DTO straight into `.set()`, same as a create — see `RoutingService.updateStep`/`BomsService.updateBomItem`. Three cases still need an explicit `!== undefined` (or an equivalent narrower check) instead of a plain spread:
   - **Replace-all on a child collection where `[]` is a meaningful value** ("clear all") distinct from "field omitted" — spreading can't tell those apart. See `OrdersService.updateOrder`'s `items`.
   - **A field that needs a transform before it can be written** (e.g. a `number` DTO field going into a `numeric`/string column) — peel it off, spread the rest, and write the transformed value only `if (field !== undefined)`. See `BomsService.updateBomItem`'s `quantity`.
   - **A business-rule check that must run only when the field was actually sent**, independent of the write itself (e.g. an integer-only constraint that shouldn't fire on an update that doesn't touch the field). A plain truthy check (`if (reqDto.field)`) is fine here instead when the valid value range excludes falsy (e.g. a required UUID) — reserve `!== undefined` for when `0`/`''`/`false` must still count as "sent".
@@ -76,7 +76,7 @@ Reference implementation: `MaterialsService.createMaterial` (`src/api/materials/
       .values({ ...materialFields, code, createdBy: userId })
       .returning();
     if (attachmentFileIds?.length) {
-      await this.insertAttachments(tx, material.id, attachmentFileIds);
+      await this.createAttachments(tx, material.id, attachmentFileIds);
     }
     return material.id;
   });

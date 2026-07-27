@@ -7,18 +7,18 @@ import {
 } from '../../../decorators/field.decorators';
 
 export class GetOrdersReqDto extends PageOptionsDto {
-  @EnumFieldOptional(() => OrderStatus)
-  readonly status?: OrderStatus;
-
   @UUIDFieldOptional({ description: 'Filter by client id' })
   readonly clientId?: string;
 
-  @UUIDFieldOptional({ description: 'Filter by staff id' })
+  @UUIDFieldOptional({ description: 'Filter by sales staff (users) id' })
   readonly staffId?: string;
 
-  @DateFieldOptional({ description: 'Filter: orderDate >= fromDate' })
+  @EnumFieldOptional(() => OrderStatus)
+  readonly status?: OrderStatus;
+
+  @DateFieldOptional({ description: 'Filter: dueDate >= fromDate' })
   readonly fromDate?: Date;
 
-  @DateFieldOptional({ description: 'Filter: orderDate <= toDate' })
+  @DateFieldOptional({ description: 'Filter: dueDate <= toDate' })
   readonly toDate?: Date;
 }

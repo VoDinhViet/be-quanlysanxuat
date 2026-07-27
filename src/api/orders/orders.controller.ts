@@ -46,7 +46,8 @@ export class OrdersController {
   @Permissions('orders:read')
   @ApiAuth({
     type: OrderStatsResDto,
-    summary: 'Get order stats (total orders/value, count by status, overdue)',
+    summary:
+      'Get order dashboard stats (totals, month/week trends, delivered/in-progress/overdue/completed)',
   })
   getOrderStats(): Promise<OrderStatsResDto> {
     return this.ordersService.getOrderStats();
@@ -80,7 +81,7 @@ export class OrdersController {
   @Permissions('orders:update')
   @ApiAuth({
     type: OrderResDto,
-    summary: 'Update order',
+    summary: 'Update order (blocked once status is COMPLETED or CANCELLED)',
   })
   updateOrder(
     @UUIDParam('id') id: string,
@@ -92,7 +93,8 @@ export class OrdersController {
   @Delete(':id')
   @Permissions('orders:delete')
   @ApiAuth({
-    summary: 'Delete order (soft delete)',
+    summary:
+      'Delete order (soft delete, blocked once status is COMPLETED or CANCELLED)',
     statusCode: HttpStatus.NO_CONTENT,
   })
   deleteOrder(@UUIDParam('id') id: string): Promise<void> {

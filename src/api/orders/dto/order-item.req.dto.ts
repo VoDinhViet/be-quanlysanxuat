@@ -1,29 +1,49 @@
+import { OrderItemStatus } from '../../../database/schemas';
 import {
+  EnumFieldOptional,
   NumberField,
   NumberFieldOptional,
+  StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
 
 /**
- * One product line of an order. `lineTotal` is never accepted here — it's always
- * server-computed as `quantity * unitPrice` (see `OrdersService`).
+ * One line of `items[]` on create/update. No `lineTotal` — every derived amount is computed by
+ * `OrdersService.recalculateTotals` in Postgres, never accepted from the client (see the schema
+ * comment on `orderItems`).
  */
 export class OrderItemReqDto {
-  @UUIDField({ description: 'Product id' })
+  @UUIDField({ description: 'Product id (FINISHED_GOOD or WORK_IN_PROGRESS)' })
   readonly productId!: string;
 
-  // numeric(18,3) column — String()-ified in the service before insert.
-  @NumberField({ isPositive: true, description: 'Quantity' })
+  @NumberField({ isPositive: true, description: 'Số lượng' })
   readonly quantity!: number;
 
-  // numeric(18,2) column — String()-ified in the service before insert.
-  @NumberField({ min: 0, description: 'Unit price' })
-  readonly unitPrice!: number;
+  @NumberFieldOptional({
+    min: 0,
+    description: 'Đơn giá; defaults to 0',
+  })
+  readonly unitPrice?: number;
+
+  @NumberFieldOptional({
+    min: 0,
+    max: 100,
+    description: 'Chiết khấu (%) trên dòng; defaults to 0',
+  })
+  readonly discountPercent?: number;
+
+  @StringFieldOptional({ nullable: true, maxLength: 500 })
+  readonly note?: string | null;
+
+  @EnumFieldOptional(() => OrderItemStatus, {
+    description: 'Trạng thái dòng; defaults to NORMAL',
+  })
+  readonly status?: OrderItemStatus;
 
   @NumberFieldOptional({
     int: true,
     min: 0,
-    description: 'Sibling order; defaults to 0',
+    description: 'STT — sibling order for drag-and-drop; defaults to 0',
   })
   readonly sortOrder?: number;
 }

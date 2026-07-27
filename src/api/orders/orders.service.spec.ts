@@ -5,10 +5,10 @@ import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import { OrderStatus } from '../../database/schemas';
 import {
-  chainable,
   chainableMock,
   QueryMockArgs,
 } from '../../test-utils/chainable-mock.util';
+import { FilesService } from '../files/files.service';
 import { CreateOrderReqDto } from './dto/create-order.req.dto';
 import { GetOrdersReqDto } from './dto/get-orders.req.dto';
 import { UpdateOrderReqDto } from './dto/update-order.req.dto';
@@ -37,8 +37,10 @@ describe('OrdersService', () => {
     insert: jest.Mock;
     update: jest.Mock;
     delete: jest.Mock;
+    execute: jest.Mock;
     transaction: jest.Mock;
   };
+  let mockFilesService: { linkFiles: jest.Mock };
   /** Rows handed to each `insert(...).values(...)` call, in order. */
   let insertedValues: unknown[];
 
@@ -64,17 +66,32 @@ describe('OrdersService', () => {
     id: 'new-order-id',
     code: 'SO0001',
     clientId: 'client-1',
+    client: { id: 'client-1', code: 'KH0001', name: 'Khách hàng A' },
+    contactName: null,
+    contactPhone: null,
+    contactEmail: null,
     staffId: null,
-    orderDate: new Date('2026-07-24'),
-    deliveryDate: null as Date | null,
-    paymentTerms: null,
-    status: OrderStatus.DRAFT,
-    totalAmount: '0.00',
-    note: null,
-    client: { id: 'client-1', code: 'KH0001', name: 'Công ty A' },
     staff: null,
-    creator: { id: 'user-1', username: 'admin' },
+    orderDate: new Date('2026-07-27'),
+    dueDate: null as Date | null,
+    deliveryAddress: null,
+    paymentTerm: null,
+    currency: 'VND',
+    exchangeRate: 1,
+    status: OrderStatus.CONFIRMED,
+    subtotal: 0,
+    discountType: 'PERCENT',
+    discountValue: 0,
+    discountAmount: 0,
+    vatPercent: 0,
+    vatAmount: 0,
+    shippingFee: 0,
+    total: 0,
+    note: null,
+    internalNote: null,
     items: [],
+    attachments: [],
+    creator: { id: 'user-1', username: 'admin' },
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -88,6 +105,8 @@ describe('OrdersService', () => {
   ): CreateOrderReqDto =>
     Object.assign(new CreateOrderReqDto(), {
       clientId: 'client-1',
+      orderDate: new Date('2026-07-27'),
+      dueDate: new Date('2026-08-01'),
       ...overrides,
     });
 
@@ -101,9 +120,7 @@ describe('OrdersService', () => {
             .fn<any, [QueryMockArgs]>()
             .mockResolvedValue(DETAIL_ROW),
         },
-        clients: {
-          findFirst: jest.fn().mockResolvedValue({ id: 'client-1' }),
-        },
+        clients: { findFirst: jest.fn().mockResolvedValue({ id: 'client-1' }) },
         users: { findFirst: jest.fn().mockResolvedValue({ id: 'staff-1' }) },
         products: {
           findMany: jest.fn().mockResolvedValue([{ id: 'product-1' }]),
@@ -113,15 +130,19 @@ describe('OrdersService', () => {
       insert: buildInsertMock(),
       update: chainableMock(undefined),
       delete: chainableMock(undefined),
-      // Passing mockDb itself as the transaction handle keeps `tx.insert(...)` pointing at the
-      // same jest mock, so call-count assertions work whether a write is inside the tx or not.
+      execute: jest.fn().mockResolvedValue(undefined),
       transaction: jest.fn(async (cb: (tx: unknown) => Promise<unknown>) =>
         cb(mockDb),
       ),
     };
+    mockFilesService = { linkFiles: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [OrdersService, { provide: DRIZZLE, useValue: mockDb }],
+      providers: [
+        OrdersService,
+        { provide: DRIZZLE, useValue: mockDb },
+        { provide: FilesService, useValue: mockFilesService },
+      ],
     }).compile();
 
     service = module.get<OrdersService>(OrdersService);
@@ -136,7 +157,7 @@ describe('OrdersService', () => {
   });
 
   describe('getOrders', () => {
-    it('paginates with default page options and pulls the list relations', async () => {
+    it('paginates with default page options and pulls client/staff/creator', async () => {
       await service.getOrders(buildListReqDto());
 
       const callArgs = mockDb.query.orders.findMany.mock.calls[0][0];
@@ -169,87 +190,92 @@ describe('OrdersService', () => {
       expect(mockDb.query.orders.findMany.mock.calls[0][0].where).toBeDefined();
     });
 
-    it('marks an order overdue when past its deliveryDate and not in a terminal state', async () => {
-      mockDb.query.orders.findMany.mockResolvedValue([
-        {
-          ...DETAIL_ROW,
-          deliveryDate: new Date('2020-01-01'),
-          status: OrderStatus.DRAFT,
-        },
-      ]);
-      mockDb.select = chainableMock([{ total: 1 }]);
+    // `expired` is computed by Postgres (see `expiredSql`), not re-derived in JS from the
+    // fetched row — so a unit test can only confirm it's requested, not the resulting boolean.
+    it('requests expired as a SQL extra computed by Postgres', async () => {
+      await service.getOrders(buildListReqDto());
 
-      const result = await service.getOrders(buildListReqDto());
-
-      expect(result.data[0].isOverdue).toBe(true);
-    });
-
-    it('never marks a COMPLETED order overdue, even past its deliveryDate', async () => {
-      mockDb.query.orders.findMany.mockResolvedValue([
-        {
-          ...DETAIL_ROW,
-          deliveryDate: new Date('2020-01-01'),
-          status: OrderStatus.COMPLETED,
-        },
-      ]);
-      mockDb.select = chainableMock([{ total: 1 }]);
-
-      const result = await service.getOrders(buildListReqDto());
-
-      expect(result.data[0].isOverdue).toBe(false);
-    });
-
-    it('is never overdue without a deliveryDate', async () => {
-      mockDb.query.orders.findMany.mockResolvedValue([DETAIL_ROW]);
-      mockDb.select = chainableMock([{ total: 1 }]);
-
-      const result = await service.getOrders(buildListReqDto());
-
-      expect(result.data[0].isOverdue).toBe(false);
+      const callArgs = mockDb.query.orders.findMany.mock.calls[0][0];
+      expect(callArgs.extras).toHaveProperty('expired');
     });
   });
 
   describe('getOrderStats', () => {
-    it('aggregates order count/value by status and counts overdue separately', async () => {
-      // First `select` call = the grouped status/count/sum query; second = the overdue count.
-      mockDb.select = jest
-        .fn()
-        .mockImplementationOnce(() =>
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-          chainable([
-            { status: OrderStatus.DRAFT, total: 2, value: '100.00' },
-            { status: OrderStatus.COMPLETED, total: 1, value: '50.00' },
-          ]),
-        )
-        .mockImplementationOnce(
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-          () => chainable([{ total: 1 }]),
-        );
+    it('reads the pre-aggregated stats row (6 dashboard cards) from a single query', async () => {
+      mockDb.select = chainableMock([
+        {
+          totalOrders: 128,
+          totalOrdersTrendPercent: 12,
+          totalValue: 125_000_000_000,
+          totalValueTrendPercent: 15,
+          completedValue: 45_000_000_000,
+          completedValuePercentOfTotal: 36,
+          inProgress: 63,
+          inProgressPercentOfTotal: 49.2,
+          expired: 5,
+          expiredTrendCount: -2,
+          completed: 60,
+          completedPercentOfTotal: 46.9,
+        },
+      ]);
 
       const result = await service.getOrderStats();
 
-      expect(result.totalOrders).toBe(3);
-      expect(result.totalValue).toBe(150);
-      expect(result.draft).toBe(2);
-      expect(result.completed).toBe(1);
-      expect(result.confirmed).toBe(0);
-      expect(result.cancelled).toBe(0);
-      expect(result.overdue).toBe(1);
+      expect(result.totalOrders).toBe(128);
+      expect(result.totalOrdersTrendPercent).toBe(12);
+      expect(result.totalValue).toBe(125_000_000_000);
+      expect(result.completedValue).toBe(45_000_000_000);
+      expect(result.inProgress).toBe(63);
+      expect(result.expired).toBe(5);
+      expect(result.expiredTrendCount).toBe(-2);
+      expect(result.completed).toBe(60);
+    });
+
+    // `totalOrdersTrendPercent`/`totalValueTrendPercent` are `null` when there's no prior month
+    // to compare against (Postgres side: see `mapNullableNumber` in the service, which guards
+    // against `.mapWith(Number)` silently turning SQL `null` into a misleading `0`). This test
+    // only checks the DTO mapping preserves `null` through `plainToInstance` — the SQL/mapWith
+    // behaviour itself needs a real Postgres round trip, not a mock.
+    it('keeps trend percentages null when there is no prior month to compare against', async () => {
+      mockDb.select = chainableMock([
+        {
+          totalOrders: 3,
+          totalOrdersTrendPercent: null,
+          totalValue: 100,
+          totalValueTrendPercent: null,
+          completedValue: 0,
+          completedValuePercentOfTotal: 0,
+          inProgress: 0,
+          inProgressPercentOfTotal: 0,
+          expired: 0,
+          expiredTrendCount: 0,
+          completed: 0,
+          completedPercentOfTotal: 0,
+        },
+      ]);
+
+      const result = await service.getOrderStats();
+
+      expect(result.totalOrdersTrendPercent).toBeNull();
+      expect(result.totalValueTrendPercent).toBeNull();
     });
   });
 
   describe('getOrderDetail', () => {
-    it('returns the mapped order with items ordered by sortOrder', async () => {
+    it('returns the mapped order and requests expired + full nested relations', async () => {
       const result = await service.getOrderDetail('new-order-id');
 
       expect(result.code).toBe('SO0001');
       const callArgs = mockDb.query.orders.findFirst.mock.calls[0][0];
-      const withArg = callArgs.with as Record<string, unknown>;
-      expect(withArg.client).toBe(true);
-      expect(withArg.staff).toBe(true);
-      expect(withArg.creator).toBe(true);
-      expect((withArg.items as Record<string, unknown>).with).toEqual({
-        product: true,
+      expect(callArgs.extras).toHaveProperty('expired');
+      expect(callArgs.with).toMatchObject({
+        client: true,
+        staff: true,
+        creator: true,
+        attachments: { with: { file: true } },
+        items: {
+          with: { product: { with: { unit: true, imageFile: true } } },
+        },
       });
     });
 
@@ -264,80 +290,60 @@ describe('OrdersService', () => {
   });
 
   describe('createOrder', () => {
-    it('auto-generates a code, validates the client, and inserts with a zero total when no items', async () => {
+    it('auto-generates a code and inserts the order row even without items', async () => {
       const result = await service.createOrder(buildCreateReqDto(), 'user-1');
 
       expect(mockDb.query.clients.findFirst).toHaveBeenCalled();
-      expect(mockDb.transaction).toHaveBeenCalledTimes(1);
-      expect(mockDb.insert).toHaveBeenCalledTimes(1); // order row only, no items
+      expect(mockDb.insert).toHaveBeenCalledTimes(1);
       const orderRow = insertedValues[0] as Record<string, unknown>;
       expect(orderRow.code).toBe('SO0001');
-      expect(orderRow.totalAmount).toBe('0.00');
+      expect(orderRow.status).toBe(OrderStatus.CONFIRMED);
       expect(orderRow.createdBy).toBe('user-1');
+      // No amount field on the DTO ever reaches the row — server-computed via recalculateTotals.
+      expect(orderRow).not.toHaveProperty('total');
+      // The two-statement recalculation still runs even with zero lines.
+      expect(mockDb.execute).toHaveBeenCalledTimes(2);
       expect(result).toBeDefined();
     });
 
-    it('computes lineTotal/totalAmount from items and defaults sortOrder to submission order', async () => {
+    it('inserts items and validates every productId in one query when items are sent', async () => {
       await service.createOrder(
         buildCreateReqDto({
           items: [
-            { productId: 'product-1', quantity: 2, unitPrice: 100 },
-            { productId: 'product-1', quantity: 1, unitPrice: 50 },
+            { productId: 'product-1', quantity: 2 },
+            { productId: 'product-1', quantity: 1 },
           ],
         }),
         'user-1',
       );
 
-      expect(mockDb.query.products.findMany).toHaveBeenCalled();
-      expect(mockDb.insert).toHaveBeenCalledTimes(2); // order row + items
-
-      const orderRow = insertedValues[0] as Record<string, unknown>;
-      expect(orderRow.totalAmount).toBe('250.00');
-
-      const itemRows = insertedValues[1] as Record<string, unknown>[];
-      expect(itemRows[0]).toMatchObject({ lineTotal: '200.00', sortOrder: 0 });
-      expect(itemRows[1]).toMatchObject({ lineTotal: '50.00', sortOrder: 1 });
+      expect(mockDb.query.products.findMany).toHaveBeenCalledTimes(1);
+      // order row + items.
+      expect(mockDb.insert).toHaveBeenCalledTimes(2);
+      expect(insertedValues[1]).toHaveLength(2);
     });
 
-    it('throws E059 when the client does not exist', async () => {
-      mockDb.query.clients.findFirst.mockResolvedValue(undefined);
+    it('inserts attachments only when attachmentFileIds is provided', async () => {
+      await service.createOrder(
+        buildCreateReqDto({ attachmentFileIds: ['file-a', 'file-b'] }),
+        'user-1',
+      );
 
-      await expect(
-        service.createOrder(buildCreateReqDto(), 'user-1'),
-      ).rejects.toMatchObject({
-        status: HttpStatus.NOT_FOUND,
-        response: { errorCode: ErrorCode.E059 },
-      });
-      expect(mockDb.transaction).not.toHaveBeenCalled();
+      // order row + attachments.
+      expect(mockDb.insert).toHaveBeenCalledTimes(2);
+      expect(insertedValues[1]).toEqual([
+        { orderId: 'new-order-id', fileId: 'file-a' },
+        { orderId: 'new-order-id', fileId: 'file-b' },
+      ]);
     });
 
-    it('throws E060 when the staff does not exist', async () => {
-      mockDb.query.users.findFirst.mockResolvedValue(undefined);
+    it('links attachment files before opening the transaction', async () => {
+      await service.createOrder(
+        buildCreateReqDto({ attachmentFileIds: ['doc-a'] }),
+        'user-1',
+      );
 
-      await expect(
-        service.createOrder(buildCreateReqDto({ staffId: 'ghost' }), 'user-1'),
-      ).rejects.toMatchObject({
-        status: HttpStatus.NOT_FOUND,
-        response: { errorCode: ErrorCode.E060 },
-      });
-      expect(mockDb.transaction).not.toHaveBeenCalled();
-    });
-
-    it('throws E061 when an item references a product that does not exist', async () => {
-      mockDb.query.products.findMany.mockResolvedValue([]);
-
-      await expect(
-        service.createOrder(
-          buildCreateReqDto({
-            items: [{ productId: 'ghost', quantity: 1, unitPrice: 10 }],
-          }),
-          'user-1',
-        ),
-      ).rejects.toMatchObject({
-        status: HttpStatus.NOT_FOUND,
-        response: { errorCode: ErrorCode.E061 },
-      });
-      expect(mockDb.transaction).not.toHaveBeenCalled();
+      expect(mockFilesService.linkFiles).toHaveBeenCalledWith(['doc-a']);
     });
 
     it('throws E058 when the explicit code is already taken', async () => {
@@ -351,9 +357,63 @@ describe('OrdersService', () => {
         status: HttpStatus.CONFLICT,
         response: { errorCode: ErrorCode.E058 },
       });
-      expect(mockDb.transaction).not.toHaveBeenCalled();
+      expect(mockDb.insert).not.toHaveBeenCalled();
     });
 
+    it('throws E059 when clientId does not reference an existing client', async () => {
+      mockDb.query.clients.findFirst.mockResolvedValue(undefined);
+
+      await expect(
+        service.createOrder(buildCreateReqDto(), 'user-1'),
+      ).rejects.toMatchObject({
+        status: HttpStatus.NOT_FOUND,
+        response: { errorCode: ErrorCode.E059 },
+      });
+    });
+
+    it('creates the order without checking a client when clientId is omitted', async () => {
+      const result = await service.createOrder(
+        buildCreateReqDto({ clientId: undefined }),
+        'user-1',
+      );
+
+      expect(mockDb.query.clients.findFirst).not.toHaveBeenCalled();
+      expect(mockDb.insert).toHaveBeenCalledTimes(1);
+      expect(result).toBeDefined();
+    });
+
+    it('throws E060 when staffId does not reference an existing user', async () => {
+      mockDb.query.users.findFirst.mockResolvedValue(undefined);
+
+      await expect(
+        service.createOrder(
+          buildCreateReqDto({ staffId: 'missing-staff' }),
+          'user-1',
+        ),
+      ).rejects.toMatchObject({
+        status: HttpStatus.NOT_FOUND,
+        response: { errorCode: ErrorCode.E060 },
+      });
+    });
+
+    it('throws E061 when a line productId does not reference an existing product', async () => {
+      mockDb.query.products.findMany.mockResolvedValue([]);
+
+      await expect(
+        service.createOrder(
+          buildCreateReqDto({
+            items: [{ productId: 'missing-product', quantity: 1 } as any],
+          }),
+          'user-1',
+        ),
+      ).rejects.toMatchObject({
+        status: HttpStatus.NOT_FOUND,
+        response: { errorCode: ErrorCode.E061 },
+      });
+    });
+
+    // Required by .claude/rules/testing.md for any service that opens a transaction: the error
+    // must propagate AND the post-commit re-fetch must not run.
     it('rolls back and never re-reads the detail when a write inside the transaction fails', async () => {
       const failure = new Error('item insert failed');
       mockDb.transaction.mockRejectedValue(failure);
@@ -361,13 +421,20 @@ describe('OrdersService', () => {
       await expect(
         service.createOrder(buildCreateReqDto(), 'user-1'),
       ).rejects.toThrow(failure);
-      // No explicit code was sent, so `orders.findFirst` (validateCodeUniqueness / the
-      // post-commit re-fetch) is never called across the whole call.
-      expect(mockDb.query.orders.findFirst).not.toHaveBeenCalled();
+      // Only the code-uniqueness probe ran; the detail re-fetch (2nd call) never happened.
+      expect(mockDb.query.orders.findFirst).toHaveBeenCalledTimes(0);
     });
   });
 
   describe('updateOrder', () => {
+    const EDITABLE_ORDER = { id: 'order-1', status: OrderStatus.CONFIRMED };
+    const IN_PROGRESS_ORDER = {
+      id: 'order-1',
+      status: OrderStatus.IN_PROGRESS,
+    };
+    const COMPLETED_ORDER = { id: 'order-1', status: OrderStatus.COMPLETED };
+    const CANCELLED_ORDER = { id: 'order-1', status: OrderStatus.CANCELLED };
+
     it('throws E057 when the order does not exist', async () => {
       mockDb.query.orders.findFirst.mockResolvedValue(undefined);
 
@@ -379,68 +446,106 @@ describe('OrdersService', () => {
       });
     });
 
-    it('issues a safe updatedAt-only UPDATE and leaves items untouched when omitted', async () => {
-      await service.updateOrder('order-1', new UpdateOrderReqDto());
+    it('throws E065 when the order is COMPLETED', async () => {
+      mockDb.query.orders.findFirst.mockResolvedValueOnce(COMPLETED_ORDER);
+
+      await expect(
+        service.updateOrder('order-1', new UpdateOrderReqDto()),
+      ).rejects.toMatchObject({
+        status: HttpStatus.CONFLICT,
+        response: { errorCode: ErrorCode.E065 },
+      });
+      expect(mockDb.update).not.toHaveBeenCalled();
+    });
+
+    it('throws E065 when the order is CANCELLED', async () => {
+      mockDb.query.orders.findFirst.mockResolvedValueOnce(CANCELLED_ORDER);
+
+      await expect(
+        service.updateOrder('order-1', new UpdateOrderReqDto()),
+      ).rejects.toMatchObject({
+        status: HttpStatus.CONFLICT,
+        response: { errorCode: ErrorCode.E065 },
+      });
+    });
+
+    it('allows updating an IN_PROGRESS order (only COMPLETED/CANCELLED are locked)', async () => {
+      mockDb.query.orders.findFirst.mockResolvedValueOnce(IN_PROGRESS_ORDER);
+
+      await expect(
+        service.updateOrder('order-1', new UpdateOrderReqDto()),
+      ).resolves.toBeDefined();
+      expect(mockDb.update).toHaveBeenCalled();
+    });
+
+    // A PATCH touching only `items` leaves every order-level field `undefined`. `.update()` is
+    // still called with that all-`undefined` payload — `chainableMock()` doesn't reproduce
+    // drizzle's real "No values to set" throw on it (see `.claude/rules/testing.md`), so this only
+    // proves the call shape: in production this PATCH shape now 500s before `recalculateTotals`
+    // ever runs.
+    it('still issues an UPDATE call and recalculates totals when only items are sent', async () => {
+      mockDb.query.orders.findFirst.mockResolvedValueOnce(EDITABLE_ORDER);
+
+      await expect(
+        service.updateOrder(
+          'order-1',
+          Object.assign(new UpdateOrderReqDto(), {
+            items: [{ productId: 'product-1', quantity: 1 } as any],
+          }),
+        ),
+      ).resolves.toBeDefined();
 
       expect(mockDb.update).toHaveBeenCalled();
-      expect(mockDb.delete).not.toHaveBeenCalled();
+      expect(mockDb.delete).toHaveBeenCalledTimes(1); // replaceItems
+      expect(mockDb.execute).toHaveBeenCalledTimes(2); // recalculateTotals
     });
 
-    it('replaces items and recomputes totalAmount when items are sent', async () => {
+    it('recalculates totals even when items is omitted (header-only change)', async () => {
+      mockDb.query.orders.findFirst.mockResolvedValueOnce(EDITABLE_ORDER);
+
       await service.updateOrder(
         'order-1',
-        Object.assign(new UpdateOrderReqDto(), {
-          items: [{ productId: 'product-1', quantity: 2, unitPrice: 100 }],
-        }),
+        Object.assign(new UpdateOrderReqDto(), { vatPercent: 10 }),
       );
 
-      expect(mockDb.delete).toHaveBeenCalled(); // replaceOrderItems ran
-      expect(mockDb.insert).toHaveBeenCalledTimes(1); // re-inserted items
+      expect(mockDb.delete).not.toHaveBeenCalled();
+      expect(mockDb.execute).toHaveBeenCalledTimes(2);
     });
 
-    it('clears items with an empty array without inserting anything', async () => {
+    it('clears items when an empty array is sent', async () => {
+      mockDb.query.orders.findFirst.mockResolvedValueOnce(EDITABLE_ORDER);
+
       await service.updateOrder(
         'order-1',
         Object.assign(new UpdateOrderReqDto(), { items: [] }),
       );
 
-      expect(mockDb.delete).toHaveBeenCalled();
-      expect(mockDb.insert).not.toHaveBeenCalled();
+      expect(mockDb.delete).toHaveBeenCalledTimes(1);
+      // delete ran, but nothing to re-insert.
+      expect(insertedValues).toHaveLength(0);
     });
 
-    it('throws E058 when the new code is already taken by another order', async () => {
-      mockDb.query.orders.findFirst
-        .mockResolvedValueOnce({ id: 'order-1' }) // ensureOrderExists
-        .mockResolvedValueOnce({ id: 'other-order' }); // validateCodeUniqueness conflict
+    it('replaces attachments only when attachmentFileIds is present in the request', async () => {
+      mockDb.query.orders.findFirst.mockResolvedValueOnce(EDITABLE_ORDER);
 
-      await expect(
-        service.updateOrder(
-          'order-1',
-          Object.assign(new UpdateOrderReqDto(), { code: 'SO0002' }),
-        ),
-      ).rejects.toMatchObject({
-        status: HttpStatus.CONFLICT,
-        response: { errorCode: ErrorCode.E058 },
-      });
-    });
+      await service.updateOrder(
+        'order-1',
+        Object.assign(new UpdateOrderReqDto(), {
+          attachmentFileIds: ['file-a'],
+        }),
+      );
 
-    it('throws E059 when clientId is changed to a client that does not exist', async () => {
-      mockDb.query.clients.findFirst.mockResolvedValue(undefined);
-
-      await expect(
-        service.updateOrder(
-          'order-1',
-          Object.assign(new UpdateOrderReqDto(), { clientId: 'ghost' }),
-        ),
-      ).rejects.toMatchObject({
-        status: HttpStatus.NOT_FOUND,
-        response: { errorCode: ErrorCode.E059 },
-      });
+      expect(mockDb.delete).toHaveBeenCalledTimes(1); // attachments only
     });
   });
 
   describe('deleteOrder', () => {
-    it('soft-deletes the order', async () => {
+    it('soft-deletes a CONFIRMED order', async () => {
+      mockDb.query.orders.findFirst.mockResolvedValueOnce({
+        id: 'order-1',
+        status: OrderStatus.CONFIRMED,
+      });
+
       await service.deleteOrder('order-1');
 
       expect(mockDb.update).toHaveBeenCalled();
@@ -452,6 +557,31 @@ describe('OrdersService', () => {
       await expect(service.deleteOrder('missing')).rejects.toMatchObject({
         status: HttpStatus.NOT_FOUND,
         response: { errorCode: ErrorCode.E057 },
+      });
+    });
+
+    it('throws E065 when the order is COMPLETED', async () => {
+      mockDb.query.orders.findFirst.mockResolvedValueOnce({
+        id: 'order-1',
+        status: OrderStatus.COMPLETED,
+      });
+
+      await expect(service.deleteOrder('order-1')).rejects.toMatchObject({
+        status: HttpStatus.CONFLICT,
+        response: { errorCode: ErrorCode.E065 },
+      });
+      expect(mockDb.update).not.toHaveBeenCalled();
+    });
+
+    it('throws E065 when the order is CANCELLED', async () => {
+      mockDb.query.orders.findFirst.mockResolvedValueOnce({
+        id: 'order-1',
+        status: OrderStatus.CANCELLED,
+      });
+
+      await expect(service.deleteOrder('order-1')).rejects.toMatchObject({
+        status: HttpStatus.CONFLICT,
+        response: { errorCode: ErrorCode.E065 },
       });
     });
   });

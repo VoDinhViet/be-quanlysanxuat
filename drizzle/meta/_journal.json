@@ -365,6 +365,55 @@
       "when": 1784962415058,
       "tag": "0051_careless_redwing",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1785117743876,
+      "tag": "0052_quiet_chamber",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1785118174076,
+      "tag": "0053_rename_orders_total_amount_to_total",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1785120408482,
+      "tag": "0054_drop_order_items_and_order_client_staff_date",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1785120740610,
+      "tag": "0055_charming_onslaught",
+      "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1785124527456,
+      "tag": "0056_perfect_shockwave",
+      "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1785131001081,
+      "tag": "0057_square_nightcrawler",
+      "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1785145772749,
+      "tag": "0058_outstanding_lord_hawal",
+      "breakpoints": true
     }
   ]
 }

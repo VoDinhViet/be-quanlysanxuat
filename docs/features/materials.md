@@ -12,7 +12,7 @@ Quản lý danh mục vật tư ("Vật tư") — nguyên vật liệu dùng là
 - **`unitId` phải thuộc scope `MATERIAL`.** Đơn vị tồn tại nhưng không được gán scope này → `E043` (khác `E011` là đơn vị không tồn tại).
 - **`attachmentFileIds` là replace-all.** Gửi mảng mới (kể cả `[]`) thay hoàn toàn bộ tài liệu đính kèm cũ; không gửi trường này thì giữ nguyên. File phải được xác thực tồn tại và đánh dấu "đã liên kết" (`FilesService.linkFiles`) trước khi transaction ghi mở ra.
 - **Xoá bị chặn khi vật tư đang được dùng trong BOM.** FK `bom_items.materialId` là `onDelete: 'restrict'` — DB tự chặn xoá cứng nếu còn node BOM nào tham chiếu. Service kiểm trước và trả `E041` (409) thay vì để lộ ra một lỗi 500 thô từ vi phạm khoá ngoại.
-- **`PATCH` rỗng vẫn an toàn.** Payload luôn được spread kèm `updatedAt: new Date()`, nên `.set()` không bao giờ rỗng — kể cả một `PATCH` chỉ gửi `attachmentFileIds`.
+- **`PATCH` chỉ gửi `attachmentFileIds` (hoặc body rỗng) sẽ lỗi 500.** `updateMaterial` không còn set tay `updatedAt` (cột đã có `$onUpdate` tự bump khi statement thật sự chạy) và cũng không có guard bù lại, nên khi mọi field khác đều không được gửi, `.set()` nhận toàn `undefined` và drizzle ném `Error: No values to set` thẳng ra client. Client luôn phải kèm ít nhất một field khác `attachmentFileIds`/`type`/`clientId`-cặp trong một `PATCH`.
 
 ## API contract
 

@@ -164,7 +164,7 @@ export class ProductsService {
         .returning();
 
       if (attachmentFileIds?.length) {
-        await this.insertAttachments(tx, product.id, attachmentFileIds);
+        await this.createAttachments(tx, product.id, attachmentFileIds);
       }
 
       return product.id;
@@ -196,12 +196,10 @@ export class ProductsService {
     const { attachmentFileIds, ...productFields } = reqDto;
 
     await this.db.transaction(async (tx) => {
-      // `updatedAt` is always written, which doubles as the reason `.set()` is safe here: drizzle
-      // throws a bare "No values to set" (a 500) when every value is `undefined`, which is the
-      // normal shape of a PATCH touching only `attachmentFileIds`.
+      // `updated_at` is bumped by the column's own `$onUpdate`.
       await tx
         .update(products)
-        .set({ ...productFields, updatedAt: new Date() })
+        .set(productFields)
         .where(eq(products.id, productId));
 
       // Truthiness on the array itself, not `.length`: `[]` means "remove every document",
@@ -293,7 +291,7 @@ export class ProductsService {
         .returning();
 
       if (originalAttachments.length) {
-        await this.insertAttachments(
+        await this.createAttachments(
           tx,
           product.id,
           originalAttachments.map(({ fileId }) => fileId),
@@ -423,7 +421,7 @@ export class ProductsService {
    * Writes the attachment rows. Takes `tx` (not `this.db`) so it can only ever be called from
    * inside an open transaction — passing the pooled connection is a compile error.
    */
-  private async insertAttachments(
+  private async createAttachments(
     tx: DbTransaction,
     productId: string,
     fileIds: string[],

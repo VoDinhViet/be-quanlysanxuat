@@ -30,8 +30,8 @@ interface InsertChain {
   then: (resolve: (value: unknown) => unknown) => unknown;
 }
 
-/** Same idea for `.update().set()` — needed to assert the exact payload (quantity spread as-is,
- * `updatedAt` always present). */
+/** Same idea for `.update().set()` — needed to assert the exact payload (quantity spread as-is;
+ * `updated_at` is never in the payload, `$onUpdate` bumps it in Postgres). */
 interface UpdateChain {
   set: jest.Mock;
   where: jest.Mock;
@@ -848,7 +848,7 @@ describe('BomsService', () => {
   });
 
   describe('updateBomItem', () => {
-    it('writes only the sent fields plus updatedAt', async () => {
+    it('writes only the sent fields', async () => {
       mockDb.query.products.findFirst.mockResolvedValue({ id: 'p1' });
       mockDb.query.boms.findFirst.mockResolvedValue({ id: 'bom-1' });
       mockDb.query.bomItems.findFirst.mockResolvedValue({
@@ -866,12 +866,14 @@ describe('BomsService', () => {
       expect(mockDb.update).toHaveBeenCalledTimes(1);
       const setValues = updateSetValues[0] as Record<string, unknown>;
       expect(setValues.quantity).toBe(3.5);
-      expect(setValues.updatedAt).toBeInstanceOf(Date);
+      // `updated_at` isn't in the payload at all — the column's own `$onUpdate` bumps it once the
+      // real statement runs.
+      expect(setValues.updatedAt).toBeUndefined();
       expect(setValues.sortOrder).toBeUndefined();
       expect(setValues.note).toBeUndefined();
     });
 
-    it('still issues a valid update (updatedAt only) for an effectively empty PATCH', async () => {
+    it('still issues an UPDATE call for an effectively empty PATCH', async () => {
       mockDb.query.products.findFirst.mockResolvedValue({ id: 'p1' });
       mockDb.query.boms.findFirst.mockResolvedValue({ id: 'bom-1' });
       mockDb.query.bomItems.findFirst.mockResolvedValue({
@@ -882,12 +884,13 @@ describe('BomsService', () => {
 
       await service.updateBomItem('p1', 'item-1', buildUpdateReqDto());
 
+      // `chainableMock()` doesn't reproduce drizzle's real "No values to set" throw on an
+      // all-`undefined` `.set()` payload (see `.claude/rules/testing.md`), so this only proves the
+      // call shape, not that the real DB accepts it — an effectively empty PATCH now 500s in
+      // production.
       expect(mockDb.update).toHaveBeenCalledTimes(1);
       const setValues = updateSetValues[0] as Record<string, unknown>;
-      // `sortOrder`/`note`/`quantity` are still own keys on the spread object (class fields default
-      // to `undefined`), but drizzle drops `undefined` values from the actual SQL `.set()` —
-      // asserting the values, not the key list, is what matters here.
-      expect(setValues.updatedAt).toBeInstanceOf(Date);
+      expect(setValues.updatedAt).toBeUndefined();
       expect(setValues.sortOrder).toBeUndefined();
       expect(setValues.note).toBeUndefined();
       expect(setValues.quantity).toBeUndefined();

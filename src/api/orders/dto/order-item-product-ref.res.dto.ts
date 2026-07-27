@@ -1,8 +1,19 @@
 import { Exclude, Expose } from 'class-transformer';
 
-import { StringField, UUIDField } from '../../../decorators/field.decorators';
+import {
+  ClassField,
+  StringField,
+  UUIDField,
+} from '../../../decorators/field.decorators';
+import { FileField } from '../../files/dto/file.field';
+import { FileResDto } from '../../files/dto/file.res.dto';
+import { UnitResDto } from '../../units/dto/unit.res.dto';
 
-/** Lightweight reference to the product a line item points at, nested inside OrderItemResDto. */
+/**
+ * Lightweight reference to the product an order line points at, nested inside OrderItemResDto.
+ * Name/unit/image are read live through this relation, never snapshotted onto `order_items` — see
+ * the schema comment on `orderItems`.
+ */
 @Exclude()
 export class OrderItemProductRefResDto {
   @Expose()
@@ -16,4 +27,12 @@ export class OrderItemProductRefResDto {
   @Expose()
   @StringField()
   name!: string;
+
+  @Expose()
+  @ClassField(() => UnitResDto)
+  unit!: UnitResDto;
+
+  @Expose()
+  @FileField('imageFile', 'Product image')
+  image!: FileResDto | null;
 }
