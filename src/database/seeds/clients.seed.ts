@@ -2,7 +2,7 @@ import * as dotenv from 'dotenv';
 dotenv.config({ path: `.env.${process.env.NODE_ENV || 'development'}` });
 dotenv.config();
 
-import { eq, inArray } from 'drizzle-orm';
+import { asc, eq, inArray } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { seed } from 'drizzle-seed';
 import postgres from 'postgres';
@@ -151,6 +151,14 @@ const STATUSES = [
 
 const CLIENT_GROUP_CODES = ['STRATEGIC', 'REGULAR', 'POTENTIAL'];
 
+// drizzle-seed's own `uuid` generator forces the version nibble to `4` but leaves the variant
+// nibble fully random instead of constraining it to 8/9/a/b, so ~75% of its output fails strict
+// RFC4122 validation (e.g. backend's `@IsUUID()` on create-order's clientId). Override `id` with
+// real `crypto.randomUUID()` values instead of letting drizzle-seed generate them.
+const CLIENT_IDS = Array.from({ length: CLIENT_COUNT }, () =>
+  crypto.randomUUID(),
+);
+
 type SeedDatabase = ReturnType<typeof drizzle<typeof schema>>;
 
 async function main() {
@@ -185,6 +193,11 @@ async function seedClients(db: SeedDatabase) {
     console.log(
       `Clients already seeded (found "${CLIENT_CODES[0]}"). Skipping.`,
     );
+    // Backfill: earlier runs (or a `drizzle-seed` contact count that landed on 0) may have left
+    // a seeded client without any contact, or without exactly one primary — fix both regardless
+    // of the skip above.
+    await ensureClientContacts(db);
+    await ensurePrimaryContact(db);
     return;
   }
 
@@ -200,10 +213,11 @@ async function seedClients(db: SeedDatabase) {
   });
   const createdByIds = admin ? [admin.id] : [];
 
-  await seed(db, { clients, clientContacts }).refine((f) => ({
+  await seed(db, { clients }).refine((f) => ({
     clients: {
       count: CLIENT_COUNT,
       columns: {
+        id: f.valuesFromArray({ values: CLIENT_IDS, isUnique: true }),
         code: f.valuesFromArray({ values: CLIENT_CODES, isUnique: true }),
         name: f.valuesFromArray({ values: COMPANY_NAMES, isUnique: true }),
         clientGroupId: f.valuesFromArray({ values: groupIds }),
@@ -227,29 +241,113 @@ async function seedClients(db: SeedDatabase) {
         // non-null value here would silently make a seeded client invisible to the app.
         deletedAt: f.default({ defaultValue: null }),
       },
-      with: {
-        clientContacts: [
-          { weight: 0.85, count: [1] },
-          { weight: 0.15, count: [2] },
-        ],
-      },
-    },
-    clientContacts: {
-      columns: {
-        name: f.valuesFromArray({ values: CONTACT_NAMES }),
-        position: f.valuesFromArray({ values: CONTACT_POSITIONS }),
-        phoneNumber: f.phoneNumber({ template: '09########' }),
-        email: f.email(),
-        note: f.default({ defaultValue: null }),
-        isPrimary: f.weightedRandom([
-          { weight: 0.7, value: f.default({ defaultValue: true }) },
-          { weight: 0.3, value: f.default({ defaultValue: false }) },
-        ]),
-      },
     },
   }));
 
+  // Contacts are inserted deterministically below instead of via `drizzle-seed`'s `with:` —
+  // that mechanism can't guarantee every client gets at least one contact, nor control which
+  // one is primary (see .claude/rules/database.md, "Seeds" section).
+  await ensureClientContacts(db);
+  await ensurePrimaryContact(db);
+
   console.log(`Seeded ${CLIENT_COUNT} clients (with contacts).`);
+}
+
+/**
+ * Ensures every seeded client (KH0001..KH00{CLIENT_COUNT}) has at least one contact, with
+ * exactly one marked `isPrimary`. Idempotent: only inserts for clients that currently have
+ * zero contacts, so re-running (including as a backfill on an already-seeded database) is safe.
+ * Scoped to `CLIENT_CODES` on purpose — DATABASE_URL points at a shared dev database, so this
+ * must never touch real clients created by users.
+ */
+async function ensureClientContacts(db: SeedDatabase) {
+  const seeded = await db.query.clients.findMany({
+    where: inArray(clients.code, CLIENT_CODES),
+    columns: { id: true, code: true },
+    orderBy: asc(clients.code),
+    with: { contacts: { columns: { id: true }, limit: 1 } },
+  });
+
+  const missing = seeded.filter((c) => c.contacts.length === 0);
+
+  if (missing.length === 0) {
+    console.log('Every seeded client already has at least one contact.');
+    return;
+  }
+
+  const rows = missing.flatMap((client, index) => {
+    const contactCount = index % 4 === 0 ? 2 : 1;
+
+    return Array.from({ length: contactCount }, (_, k) => ({
+      clientId: client.id,
+      name: CONTACT_NAMES[(index * 2 + k) % CONTACT_NAMES.length],
+      position: CONTACT_POSITIONS[(index + k) % CONTACT_POSITIONS.length],
+      phoneNumber: `09${String(10000000 + index * 2 + k).padStart(8, '0')}`,
+      email: `lienhe${index}${k > 0 ? `.${k}` : ''}@example.com`,
+      note: null,
+      // Exactly one primary contact per client: always the first one generated.
+      isPrimary: k === 0,
+    }));
+  });
+
+  await db.insert(clientContacts).values(rows);
+
+  console.log(
+    `Added ${rows.length} contact(s) for ${missing.length} client(s) missing one.`,
+  );
+}
+
+/**
+ * Fixes the primary-contact invariant (exactly one `isPrimary` contact per client) for seeded
+ * clients whose contacts predate this rule — e.g. rows generated by the old `drizzle-seed`
+ * `with:` block, which assigned `isPrimary` via an independent 70/30 random weight per contact
+ * and could leave a client with zero or multiple primaries. Idempotent: only clients whose
+ * primary count is already wrong get touched; the earliest-created contact is promoted to
+ * primary and every other contact is demoted. Scoped to `CLIENT_CODES`, same reason as
+ * `ensureClientContacts`.
+ */
+async function ensurePrimaryContact(db: SeedDatabase) {
+  const seeded = await db.query.clients.findMany({
+    where: inArray(clients.code, CLIENT_CODES),
+    columns: { id: true },
+    with: {
+      contacts: {
+        columns: { id: true, isPrimary: true },
+        orderBy: asc(clientContacts.createdAt),
+      },
+    },
+  });
+
+  const toFix = seeded.filter(
+    (c) => c.contacts.filter((contact) => contact.isPrimary).length !== 1,
+  );
+
+  if (toFix.length === 0) {
+    console.log('Every seeded client already has exactly one primary contact.');
+    return;
+  }
+
+  for (const client of toFix) {
+    const [firstContact, ...restContacts] = client.contacts;
+    const wronglyPrimaryIds = restContacts
+      .filter((c) => c.isPrimary)
+      .map((c) => c.id);
+
+    if (!firstContact.isPrimary) {
+      await db
+        .update(clientContacts)
+        .set({ isPrimary: true })
+        .where(eq(clientContacts.id, firstContact.id));
+    }
+    if (wronglyPrimaryIds.length > 0) {
+      await db
+        .update(clientContacts)
+        .set({ isPrimary: false })
+        .where(inArray(clientContacts.id, wronglyPrimaryIds));
+    }
+  }
+
+  console.log(`Fixed primary contact for ${toFix.length} client(s).`);
 }
 
 if (require.main === module) {
