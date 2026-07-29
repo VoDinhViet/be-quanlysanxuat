@@ -19,17 +19,31 @@ import { products } from './products';
 import { PaymentTerm, paymentTermEnum } from './suppliers';
 import { users } from './users';
 
-// No DRAFT: an order is CONFIRMED the moment it's created — there is no "chưa gửi khách" holding
-// state. See `OrdersService.ensureOrderEditable` for what stays editable after that.
+/**
+ * DRAFT is back (re-added 2026-07-29, reversing the 2026-07-27 "no DRAFT" decision): an order now
+ * starts as DRAFT and needs director-level approval before production planning can see it.
+ *
+ * Rules:
+ * - `AWAITING_PRODUCTION` is reachable only via `OrdersService.approveOrder`, never a plain
+ *   create/update `status` field (`OrdersService.ensureStatusSettable`, `E075`).
+ * - Every other transition — DRAFT → PENDING_CONFIRMATION, and everything from
+ *   AWAITING_PRODUCTION onward — stays as loose as the rest of `orders`, no full state machine.
+ *
+ * See `OrdersService.ensureOrderEditable` for what stays editable.
+ */
 export enum OrderStatus {
-  CONFIRMED = 'CONFIRMED',
+  DRAFT = 'DRAFT',
+  PENDING_CONFIRMATION = 'PENDING_CONFIRMATION',
+  AWAITING_PRODUCTION = 'AWAITING_PRODUCTION',
   IN_PROGRESS = 'IN_PROGRESS',
   COMPLETED = 'COMPLETED',
   CANCELLED = 'CANCELLED',
 }
 
 export const orderStatusEnum = pgEnum('order_status', [
-  OrderStatus.CONFIRMED,
+  OrderStatus.DRAFT,
+  OrderStatus.PENDING_CONFIRMATION,
+  OrderStatus.AWAITING_PRODUCTION,
   OrderStatus.IN_PROGRESS,
   OrderStatus.COMPLETED,
   OrderStatus.CANCELLED,
@@ -80,17 +94,17 @@ export const orderItemStatusEnum = pgEnum('order_item_status', [
 ]);
 
 /**
- * Sales orders ("Đơn hàng"). Every money column here (`subtotal`, `discountAmount`, `vatAmount`,
- * `total`) is server-computed from `order_items` + the discount/VAT/shipping inputs below — see
- * `OrdersService.recalculateTotals`. Never write them directly from a request DTO.
+ * Sales orders ("Đơn hàng").
  *
- * `contactName`/`contactPhone`/`contactEmail` are a snapshot of a `client_contacts` row at the
- * time the order was created, not a foreign key: `ClientsService.replaceContacts` deletes and
- * re-inserts a client's contacts on every client update, so a contact id has no stable identity
- * to point at.
- *
- * "Trễ hạn" (overdue) is intentionally NOT a column: it's derived at read time from `dueDate` vs
- * "now" + `status`, see `OrdersService`.
+ * Rules:
+ * - Every money column (`subtotal`, `discountAmount`, `vatAmount`, `total`) is server-computed
+ *   from `order_items` + the discount/VAT/shipping inputs below — see
+ *   `OrdersService.recalculateTotals`. Never write them directly from a request DTO.
+ * - `contactName`/`contactPhone`/`contactEmail` are a snapshot of a `client_contacts` row at
+ *   create time, not a foreign key — `ClientsService.replaceContacts` deletes and re-inserts a
+ *   client's contacts on every client update, so a contact id has no stable identity to point at.
+ * - "Trễ hạn" (overdue) is intentionally not a column — derived at read time from `dueDate` vs
+ *   "now" + `status`, see `OrdersService`.
  */
 export const orders = pgTable(
   'orders',
@@ -121,7 +135,19 @@ export const orders = pgTable(
     })
       .notNull()
       .default(1),
-    status: orderStatusEnum('status').notNull().default(OrderStatus.CONFIRMED),
+    status: orderStatusEnum('status').notNull().default(OrderStatus.DRAFT),
+    // Approval/rejection — only the most recent event is kept (no history table). Both reference
+    // `credentials.id`, same as `createdBy`: this records who performed the write, not a
+    // business-domain actor like `staffId`.
+    approvedBy: uuid('approved_by').references(() => credentials.id, {
+      onDelete: 'set null',
+    }),
+    approvedAt: timestamp('approved_at'),
+    rejectedBy: uuid('rejected_by').references(() => credentials.id, {
+      onDelete: 'set null',
+    }),
+    rejectedAt: timestamp('rejected_at'),
+    rejectionReason: varchar('rejection_reason', { length: 1000 }),
     // Tổng tiền hàng — sum of non-CANCELLED order_items.lineTotal.
     subtotal: numeric('subtotal', { precision: 18, scale: 2, mode: 'number' })
       .notNull()
@@ -191,10 +217,14 @@ export const orders = pgTable(
 );
 
 /**
- * One line of an order. `lineTotal` is server-computed (see `orders` doc comment) — written by
- * `OrdersService.recalculateTotals`, never by the request DTO. Product name/image/unit are read
- * through the `product` relation, not snapshotted: `products` is soft-deleted and referenced here
- * with `onDelete: 'restrict'`, so a line's product row always exists to join against.
+ * One line of an order.
+ *
+ * Rules:
+ * - `lineTotal` is server-computed (see `orders` doc comment) — written by
+ *   `OrdersService.recalculateTotals`, never by the request DTO.
+ * - Product name/image/unit are read through the `product` relation, not snapshotted:
+ *   `products` is soft-deleted and referenced here with `onDelete: 'restrict'`, so a line's
+ *   product row always exists to join against.
  */
 export const orderItems = pgTable(
   'order_items',
@@ -289,6 +319,14 @@ export const ordersRelations = relations(orders, ({ one, many }) => ({
   }),
   creator: one(credentials, {
     fields: [orders.createdBy],
+    references: [credentials.id],
+  }),
+  approver: one(credentials, {
+    fields: [orders.approvedBy],
+    references: [credentials.id],
+  }),
+  rejecter: one(credentials, {
+    fields: [orders.rejectedBy],
     references: [credentials.id],
   }),
   items: many(orderItems),

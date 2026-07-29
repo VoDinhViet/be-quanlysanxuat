@@ -16,11 +16,14 @@ import {
 import { OrderItemReqDto } from './order-item.req.dto';
 
 /**
- * No `code` field — immutable after creation, same convention as `UpdateMaterialReqDto`. Only
- * applies while the order is still `DRAFT` (`E065` otherwise — see `OrdersService.updateOrder`).
- * `items`/`attachmentFileIds` are replace-all: sending `[]` clears them, omitting the field keeps
- * the existing set. Every derived amount is recomputed server-side after the write, same as
- * `CreateOrderReqDto`.
+ * No `code` field — immutable after creation, same convention as `UpdateMaterialReqDto`.
+ *
+ * Rules:
+ * - Blocked once the order reaches `COMPLETED`/`CANCELLED` (`E065` — see
+ *   `OrdersService.ensureOrderEditable`); every other status stays editable.
+ * - `items`/`attachmentFileIds` are replace-all: sending `[]` clears them, omitting the field
+ *   keeps the existing set.
+ * - Every derived amount is recomputed server-side after the write, same as `CreateOrderReqDto`.
  */
 export class UpdateOrderReqDto {
   @UUIDFieldOptional({ description: 'Client (khách hàng) id' })
@@ -56,7 +59,11 @@ export class UpdateOrderReqDto {
   @EnumFieldOptional(() => Currency)
   readonly currency?: Currency;
 
-  @NumberFieldOptional({ min: 0 })
+  @NumberFieldOptional({
+    min: 0.000001,
+    description:
+      'Must be positive — dashboard totals convert every order to VND via total * exchangeRate.',
+  })
   readonly exchangeRate?: number;
 
   @EnumFieldOptional(() => OrderDiscountType)

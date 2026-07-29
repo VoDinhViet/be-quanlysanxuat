@@ -65,7 +65,11 @@ export class CreateOrderReqDto {
   @EnumFieldOptional(() => Currency, { description: 'Defaults to VND' })
   readonly currency?: Currency;
 
-  @NumberFieldOptional({ min: 0, description: 'Defaults to 1' })
+  @NumberFieldOptional({
+    min: 0.000001,
+    description:
+      'Defaults to 1. Must be positive — dashboard totals convert every order to VND via total * exchangeRate.',
+  })
   readonly exchangeRate?: number;
 
   @EnumFieldOptional(() => OrderDiscountType, {
@@ -94,7 +98,7 @@ export class CreateOrderReqDto {
   readonly shippingFee?: number;
 
   @EnumFieldOptional(() => OrderStatus, {
-    description: 'Defaults to CONFIRMED',
+    description: 'Defaults to DRAFT. Cannot be set to AWAITING_PRODUCTION.',
   })
   readonly status?: OrderStatus;
 

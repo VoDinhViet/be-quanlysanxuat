@@ -2,7 +2,7 @@ import { Exclude, Expose } from 'class-transformer';
 
 import { StringField, UUIDField } from '../../../decorators/field.decorators';
 
-/** Lightweight reference to the user who created an order, nested inside OrderResDto. */
+/** Lightweight reference to a credential (creator/approver/rejecter), nested inside OrderResDto. */
 @Exclude()
 export class OrderCreatorResDto {
   @Expose()

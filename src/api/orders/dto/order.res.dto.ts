@@ -83,6 +83,26 @@ export class OrderResDto {
   status!: OrderStatus;
 
   @Expose()
+  @ClassFieldOptional(() => OrderCreatorResDto, { nullable: true })
+  approver!: OrderCreatorResDto | null;
+
+  @Expose()
+  @DateFieldOptional({ nullable: true })
+  approvedAt!: Date | null;
+
+  @Expose()
+  @ClassFieldOptional(() => OrderCreatorResDto, { nullable: true })
+  rejecter!: OrderCreatorResDto | null;
+
+  @Expose()
+  @DateFieldOptional({ nullable: true })
+  rejectedAt!: Date | null;
+
+  @Expose()
+  @StringFieldOptional({ nullable: true })
+  rejectionReason!: string | null;
+
+  @Expose()
   @NumberField({ description: 'Tổng tiền hàng — server-computed' })
   subtotal!: number;
 
@@ -118,6 +138,13 @@ export class OrderResDto {
       'TỔNG THANH TOÁN — server-computed: subtotal - discountAmount + vatAmount + shippingFee',
   })
   total!: number;
+
+  @Expose()
+  @NumberField({
+    description:
+      'TỔNG THANH TOÁN quy đổi VND — server-computed: total * exchangeRate',
+  })
+  totalVnd!: number;
 
   @Expose()
   @BooleanField({

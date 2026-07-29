@@ -3,7 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
-import { OrderStatus } from '../../database/schemas';
+import { Currency, OrderStatus } from '../../database/schemas';
 import {
   chainableMock,
   QueryMockArgs,
@@ -19,6 +19,12 @@ interface InsertChain {
   values: jest.Mock;
   returning: jest.Mock;
   then: (resolve: (value: unknown) => unknown) => unknown;
+}
+
+/** Minimal stand-in for drizzle's update builder: `.set().where()`. */
+interface UpdateChain {
+  set: jest.Mock;
+  where: jest.Mock;
 }
 
 describe('OrdersService', () => {
@@ -43,6 +49,8 @@ describe('OrdersService', () => {
   let mockFilesService: { linkFiles: jest.Mock };
   /** Rows handed to each `insert(...).values(...)` call, in order. */
   let insertedValues: unknown[];
+  /** Values handed to each `update(...).set(...)` call, in order. */
+  let updatedValues: unknown[];
 
   /**
    * `chainable()` hands back a fresh jest.fn on every property access, so `.values()` arguments
@@ -58,6 +66,19 @@ describe('OrdersService', () => {
         }),
         returning: jest.fn().mockResolvedValue([{ id: 'new-order-id' }]),
         then: (resolve) => resolve(undefined),
+      };
+      return chain;
+    });
+
+  /** Same rationale as `buildInsertMock` — captures what `.set()` was called with. */
+  const buildUpdateMock = () =>
+    jest.fn(() => {
+      const chain: UpdateChain = {
+        set: jest.fn((values: unknown) => {
+          updatedValues.push(values);
+          return chain;
+        }),
+        where: jest.fn().mockResolvedValue(undefined),
       };
       return chain;
     });
@@ -112,6 +133,7 @@ describe('OrdersService', () => {
 
   beforeEach(async () => {
     insertedValues = [];
+    updatedValues = [];
     mockDb = {
       query: {
         orders: {
@@ -128,7 +150,7 @@ describe('OrdersService', () => {
       },
       select: chainableMock([{ total: 0 }]),
       insert: buildInsertMock(),
-      update: chainableMock(undefined),
+      update: buildUpdateMock(),
       delete: chainableMock(undefined),
       execute: jest.fn().mockResolvedValue(undefined),
       transaction: jest.fn(async (cb: (tx: unknown) => Promise<unknown>) =>
@@ -190,13 +212,15 @@ describe('OrdersService', () => {
       expect(mockDb.query.orders.findMany.mock.calls[0][0].where).toBeDefined();
     });
 
-    // `expired` is computed by Postgres (see `expiredSql`), not re-derived in JS from the
-    // fetched row — so a unit test can only confirm it's requested, not the resulting boolean.
-    it('requests expired as a SQL extra computed by Postgres', async () => {
+    // `expired`/`totalVnd` are computed by Postgres (see `expiredSql`/`totalVndSql`), not
+    // re-derived in JS from the fetched row — so a unit test can only confirm they're requested,
+    // not the resulting values.
+    it('requests expired and totalVnd as SQL extras computed by Postgres', async () => {
       await service.getOrders(buildListReqDto());
 
       const callArgs = mockDb.query.orders.findMany.mock.calls[0][0];
       expect(callArgs.extras).toHaveProperty('expired');
+      expect(callArgs.extras).toHaveProperty('totalVnd');
     });
   });
 
@@ -268,6 +292,7 @@ describe('OrdersService', () => {
       expect(result.code).toBe('SO0001');
       const callArgs = mockDb.query.orders.findFirst.mock.calls[0][0];
       expect(callArgs.extras).toHaveProperty('expired');
+      expect(callArgs.extras).toHaveProperty('totalVnd');
       expect(callArgs.with).toMatchObject({
         client: true,
         staff: true,
@@ -304,6 +329,41 @@ describe('OrdersService', () => {
       // The two-statement recalculation still runs even with zero lines.
       expect(mockDb.execute).toHaveBeenCalledTimes(2);
       expect(result).toBeDefined();
+    });
+
+    // getOrderStats/totalVndSql convert every order to VND via `total * exchangeRate` — a
+    // non-1 rate on a VND order would silently corrupt that conversion, so the service pins it
+    // to 1 regardless of what the request sends, whether currency is left to its VND default or
+    // set explicitly.
+    it('pins exchangeRate to 1 for a VND order even if the request sends something else', async () => {
+      await service.createOrder(
+        buildCreateReqDto({ exchangeRate: 25000 }),
+        'user-1',
+      );
+
+      const orderRow = insertedValues[0] as Record<string, unknown>;
+      expect(orderRow.currency).toBeUndefined(); // defaults to VND on the DB column itself.
+      expect(orderRow.exchangeRate).toBe(1);
+    });
+
+    it('pins exchangeRate to 1 when currency is explicitly VND', async () => {
+      await service.createOrder(
+        buildCreateReqDto({ currency: Currency.VND, exchangeRate: 25000 }),
+        'user-1',
+      );
+
+      const orderRow = insertedValues[0] as Record<string, unknown>;
+      expect(orderRow.exchangeRate).toBe(1);
+    });
+
+    it('keeps the request exchangeRate for a non-VND order', async () => {
+      await service.createOrder(
+        buildCreateReqDto({ currency: Currency.USD, exchangeRate: 26235.49 }),
+        'user-1',
+      );
+
+      const orderRow = insertedValues[0] as Record<string, unknown>;
+      expect(orderRow.exchangeRate).toBe(26235.49);
     });
 
     it('inserts items and validates every productId in one query when items are sent', async () => {
@@ -427,7 +487,16 @@ describe('OrdersService', () => {
   });
 
   describe('updateOrder', () => {
-    const EDITABLE_ORDER = { id: 'order-1', status: OrderStatus.CONFIRMED };
+    const EDITABLE_ORDER = {
+      id: 'order-1',
+      status: OrderStatus.CONFIRMED,
+      currency: Currency.VND,
+    };
+    const EDITABLE_USD_ORDER = {
+      id: 'order-1',
+      status: OrderStatus.CONFIRMED,
+      currency: Currency.USD,
+    };
     const IN_PROGRESS_ORDER = {
       id: 'order-1',
       status: OrderStatus.IN_PROGRESS,
@@ -536,6 +605,48 @@ describe('OrdersService', () => {
       );
 
       expect(mockDb.delete).toHaveBeenCalledTimes(1); // attachments only
+    });
+
+    // getOrderStats/totalVndSql convert every order to VND via `total * exchangeRate` — pin it
+    // to 1 whenever the order's effective currency (request value, or the existing row's when
+    // the request doesn't touch `currency`) is VND, exactly like createOrder.
+    it('pins exchangeRate to 1 when the request switches a USD order to VND', async () => {
+      mockDb.query.orders.findFirst.mockResolvedValueOnce(EDITABLE_USD_ORDER);
+
+      await service.updateOrder(
+        'order-1',
+        Object.assign(new UpdateOrderReqDto(), {
+          currency: Currency.VND,
+          exchangeRate: 25000,
+        }),
+      );
+
+      expect(updatedValues[0]).toMatchObject({ exchangeRate: 1 });
+    });
+
+    it('pins exchangeRate to 1 on a header-only change to an existing VND order', async () => {
+      mockDb.query.orders.findFirst.mockResolvedValueOnce(EDITABLE_ORDER);
+
+      await service.updateOrder(
+        'order-1',
+        Object.assign(new UpdateOrderReqDto(), { vatPercent: 10 }),
+      );
+
+      expect(updatedValues[0]).toMatchObject({
+        exchangeRate: 1,
+        vatPercent: 10,
+      });
+    });
+
+    it('keeps the request exchangeRate for a USD order left unchanged', async () => {
+      mockDb.query.orders.findFirst.mockResolvedValueOnce(EDITABLE_USD_ORDER);
+
+      await service.updateOrder(
+        'order-1',
+        Object.assign(new UpdateOrderReqDto(), { exchangeRate: 26500 }),
+      );
+
+      expect(updatedValues[0]).toMatchObject({ exchangeRate: 26500 });
     });
   });
 
