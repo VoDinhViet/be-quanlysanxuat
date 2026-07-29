@@ -71,6 +71,8 @@ Present findings to user:
 
 ## Phase 2: Test Coverage Assessment
 
+> ⏸ While testing is paused repo-wide (`.claude/rules/workflow.md`, from 2026-07-28), skip this phase and every `pnpm test` step in the phases below. Use `npx tsc --noEmit` + `pnpm lint` + manual verification via Swagger as the safety net instead, and take smaller refactoring steps to compensate. The content below is left as-is for when testing resumes.
+
 ### Why Tests Matter
 > "Refactoring without tests is like driving without a seatbelt." — Martin Fowler
 

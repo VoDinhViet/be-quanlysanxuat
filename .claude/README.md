@@ -7,12 +7,14 @@ Tài liệu này giải thích cách dự án tổ chức cấu hình dành cho 
 - **Rule** (`.claude/rules/*.md`, luôn load qua `@import` trong `CLAUDE.md`): convention áp dụng cho **gần như mọi task code** trong repo — vi phạm là bug, không phải "quên dùng công cụ". Ví dụ: `api-module.md`, `dto.md` (đụng tới ở hầu hết mọi module), `errors-pagination.md`, `workflow.md`.
 - **Skill** (`.claude/skills/<name>/SKILL.md`, load khi liên quan): quy trình/năng lực rời rạc, tự chọn lúc dùng, không phải thứ mọi task đều cần — refactor tài liệu, audit `CLAUDE.md`, refactor code theo Fowler...
 
-**Đã audit lại cả 6 rule hiện có (2026-07-24) và quyết định giữ nguyên cả 6 làm rule luôn-load, không chuyển cái nào sang skill:**
+**Đã audit lại cả 6 rule hiện có (2026-07-24) và quyết định giữ nguyên cả 6 làm rule luôn-load, không chuyển cái nào sang skill.** Cập nhật 2026-07-28: quy trình test tạm dừng repo-wide (xem `.claude/rules/workflow.md`), nên trong 6 rule chỉ còn 5 rule được `@import` vào `CLAUDE.md`. Cập nhật 2026-07-29: thêm `code-docs.md` (quy định style doc comment trong code), nâng tổng số rule lên **7**, trong đó **6 rule được `@import`**:
 
 - `workflow.md`, `api-module.md`, `dto.md`, `errors-pagination.md` — áp dụng cho gần như mọi task code trong repo backend này, không phải "task cụ thể" theo nghĩa cần skill riêng.
-- `database.md`, `testing.md` — phạm vi hẹp hơn (chỉ khi đụng schema/test), nhưng: (a) kích thước nhỏ (22 + 105 dòng), chi phí luôn-load không đáng kể; (b) thực tế gần như mọi task code trong repo này đều kết thúc bằng cập nhật test (xem memory "Run typecheck after coding") — nếu chuyển `testing.md` thành skill on-demand, rủi ro nó không tự trigger đúng lúc (sửa service xong quên viết/sửa spec) lớn hơn lợi ích tiết kiệm context.
+- `code-docs.md` — cùng lý do, và phạm vi còn rộng hơn `api-module.md`: áp dụng cho mọi file có doc comment, kể cả những nơi `api-module.md` không chạm tới (`src/database/schemas/`, `src/common/`, `src/decorators/`).
+- `database.md` — phạm vi hẹp hơn (chỉ khi đụng schema), nhưng kích thước nhỏ (22 dòng), chi phí luôn-load không đáng kể.
+- `testing.md` — **không còn được import** kể từ 2026-07-28 (test đang tạm dừng nên lý do cũ "gần như mọi task đều kết thúc bằng cập nhật test" không còn đúng). File vẫn giữ nguyên nội dung làm tham chiếu; khi bật lại quy trình test, cân nhắc import lại theo đúng lý do ban đầu (kích thước nhỏ, rủi ro quên viết/sửa spec nếu để on-demand).
 
-Quyết định này có thể đảo ngược khi dự án lớn hơn/rule phình to hơn — nếu cân nhắc lại, sửa ngay mục này thay vì âm thầm bỏ qua.
+Quyết định này có thể đảo ngược khi dự án lớn hơn/rule phình to hơn, hoặc khi test được bật lại — nếu cân nhắc lại, sửa ngay mục này thay vì âm thầm bỏ qua.
 
 ## Chuẩn `SKILL.md` cho dự án
 

@@ -1,5 +1,7 @@
 # Testing Rules
 
+> **⏸ PAUSED (2026-07-28)** — the testing workflow is paused repo-wide, see `.claude/rules/workflow.md`. This file is intentionally **no longer `@import`ed** by `CLAUDE.md`; the content below is left as-is for reference when testing resumes. Don't write or update specs off this file unless the user explicitly asks.
+
 Reference implementation: `src/api/clients/clients.service.spec.ts` (fullest example: CRUD + child table + partial-update guard) and `src/api/clients/clients.controller.spec.ts`.
 
 ## File naming & location
