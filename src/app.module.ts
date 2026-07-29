@@ -32,6 +32,8 @@ import { OperationsModule } from './api/operations/operations.module';
 import { OrdersModule } from './api/orders/orders.module';
 import { PositionsModule } from './api/positions/positions.module';
 import { ProductGroupsModule } from './api/product-groups/product-groups.module';
+import { ProductionJobsModule } from './api/production-jobs/production-jobs.module';
+import { ProductionOrdersModule } from './api/production-orders/production-orders.module';
 import { ProductsModule } from './api/products/products.module';
 import { RoutingModule } from './api/routing/routing.module';
 import { UnitsModule } from './api/units/units.module';
@@ -72,6 +74,8 @@ import { UsersModule } from './api/users/users.module';
     SuppliersModule,
     SupplierGroupsModule,
     InventoryModule,
+    ProductionJobsModule,
+    ProductionOrdersModule,
     OrdersModule,
   ],
 

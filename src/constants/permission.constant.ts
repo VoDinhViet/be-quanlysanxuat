@@ -1,13 +1,13 @@
 /**
- * The authoritative catalogue of permission codes, written as `resource:action`.
+ * The authoritative catalogue of permission codes, written as `resource:action`. The single
+ * source of truth for *what actions exist* in the system.
  *
- * This is the single source of truth for *what actions exist* in the system. It is a runtime
- * array (not just a type) so it can be used both for compile-time typing (`PermissionCode`)
- * and at runtime — to validate the permission codes assigned to a role and to build the
- * grouped catalogue the frontend renders in the role editor.
- *
- * Roles (stored in the DB) reference these codes; permissions themselves are never created at
- * runtime — adding a new capability means adding a code here and deploying.
+ * Rules:
+ * - It's a runtime array (not just a type) so it can be used both for compile-time typing
+ *   (`PermissionCode`) and at runtime — to validate the permission codes assigned to a role and
+ *   to build the grouped catalogue the frontend renders in the role editor.
+ * - Roles (stored in the DB) reference these codes; permissions themselves are never created at
+ *   runtime — adding a new capability means adding a code here and deploying.
  */
 export const PERMISSION_CODES = [
   'system:manage',
@@ -28,9 +28,6 @@ export const PERMISSION_CODES = [
   'products:copy',
   'products:bom-manage',
   'operations:read',
-  'operations:create',
-  'operations:update',
-  'operations:delete',
   'materials:read',
   'materials:create',
   'materials:update',
@@ -43,6 +40,14 @@ export const PERMISSION_CODES = [
   'orders:create',
   'orders:update',
   'orders:delete',
+  'orders:approve',
+  'inventory:read',
+  'inventory:create',
+  'inventory:update',
+  'inventory:delete',
+  'production:read',
+  'production:create',
+  'production:update',
 ] as const;
 
 export type PermissionCode = (typeof PERMISSION_CODES)[number];

@@ -21,20 +21,25 @@ import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
   clients,
+  Currency,
   orderAttachments,
   orderItems,
   orders,
   OrderStatus,
+  productionOrders,
+  ProductionOrderStatus,
   products,
   users,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { FilesService } from '../files/files.service';
+import { ProductionOrdersService } from '../production-orders/production-orders.service';
 import { CreateOrderReqDto } from './dto/create-order.req.dto';
 import { GetOrdersReqDto } from './dto/get-orders.req.dto';
 import { OrderItemReqDto } from './dto/order-item.req.dto';
 import { OrderResDto } from './dto/order.res.dto';
 import { OrderStatsResDto } from './dto/order-stats.res.dto';
+import { RejectOrderReqDto } from './dto/reject-order.req.dto';
 import { UpdateOrderReqDto } from './dto/update-order.req.dto';
 
 /** `.mapWith(Number)` turns SQL `null` into `0` (`Number(null) === 0`) — wrong for a trend
@@ -44,11 +49,22 @@ function mapNullableNumber(value: unknown): number | null {
   return value === null ? null : Number(value);
 }
 
+/**
+ * Đơn hàng bắt đầu ở `DRAFT`, cần Giám đốc duyệt trước khi đưa vào sản xuất.
+ *
+ * Rules:
+ * - `approveOrder` là con đường duy nhất để đạt `AWAITING_PRODUCTION`.
+ * - Request tạo/sửa không được set thẳng trạng thái đó (`E075`).
+ * - Các chuyển trạng thái khác vẫn tự do.
+ *
+ * See `ensureOrderEditable` để biết giới hạn khi sửa.
+ */
 @Injectable()
 export class OrdersService {
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly filesService: FilesService,
+    private readonly productionOrdersService: ProductionOrdersService,
   ) {}
 
   async getOrders(
@@ -72,8 +88,14 @@ export class OrdersService {
         limit: reqDto.limit,
         offset: reqDto.offset,
         orderBy,
-        extras: { expired: this.expiredSql() },
-        with: { client: true, staff: true, creator: true },
+        extras: { expired: this.expiredSql(), totalVnd: this.totalVndSql() },
+        with: {
+          client: true,
+          staff: true,
+          creator: true,
+          approver: true,
+          rejecter: true,
+        },
       }),
       this.db.select({ total: count() }).from(orders).where(where),
     ]);
@@ -89,19 +111,24 @@ export class OrdersService {
    * per bucket, trend percentages computed via `round(...)` in the same query — so Postgres does
    * every number in one pass instead of the app fetching raw buckets and reducing them in JS.
    *
-   * Two buckets are approximations, since the system keeps no order-status history (only the
-   * *current* status of each row):
-   * - `completedValue` ("Đã giao"): there's no delivery/DO tracking yet, so this is `sum(total)`
-   *   of `COMPLETED` orders, used as a stand-in.
-   * - `expiredTrendCount`: "expired a week ago" is re-evaluated against *today's* status
+   * Rules:
+   * - Two buckets are approximations, since the system keeps no order-status history (only the
+   *   *current* status of each row).
+   * - `completedValue` ("Đã giao") is `sum(total)` of `COMPLETED` orders, standing in for
+   *   delivery/DO tracking the system doesn't have yet.
+   * - `expiredTrendCount` re-evaluates "expired a week ago" against *today's* status
    *   (`dueDate < now() - 7d AND status NOT IN (COMPLETED, CANCELLED)`), not the row's real status
-   *   a week ago. An order that was expired then but has since moved to CANCELLED won't count.
+   *   a week ago — an order expired then but since moved to CANCELLED won't count.
    */
   async getOrderStats(): Promise<OrderStatsResDto> {
     // Repeated verbatim across a few expressions below — every occurrence must stay identical to
     // resolve to the same window, since there's no CTE here to compute it once.
     const thisMonth = sql`${orders.createdAt} >= date_trunc('month', now())`;
     const lastMonth = sql`${orders.createdAt} >= date_trunc('month', now()) - interval '1 month' and ${orders.createdAt} < date_trunc('month', now())`;
+    // Every dashboard total must share one unit — summing `orders.total` directly would add a
+    // USD order and a VND order together. Convert to VND per-row before aggregating; VND has no
+    // sub-unit, so the two money totals below round to 0 decimals.
+    const totalVnd = sql`${orders.total} * ${orders.exchangeRate}`;
 
     const [row] = await this.db
       .select({
@@ -111,23 +138,22 @@ export class OrdersService {
             else (count(*) filter (where ${thisMonth})::numeric - count(*) filter (where ${lastMonth})::numeric)
                  / count(*) filter (where ${lastMonth}) * 100
           end, 1)`.mapWith(mapNullableNumber),
-        totalValue: sql<number>`coalesce(sum(${orders.total}), 0)`.mapWith(
-          Number,
-        ),
+        totalValue:
+          sql<number>`round(coalesce(sum(${totalVnd}), 0), 0)`.mapWith(Number),
         totalValueTrendPercent: sql<number | null>`round(
-          case when coalesce(sum(${orders.total}) filter (where ${lastMonth}), 0) = 0 then null
-            else (coalesce(sum(${orders.total}) filter (where ${thisMonth}), 0)
-                  - coalesce(sum(${orders.total}) filter (where ${lastMonth}), 0))
-                 / coalesce(sum(${orders.total}) filter (where ${lastMonth}), 0) * 100
+          case when coalesce(sum(${totalVnd}) filter (where ${lastMonth}), 0) = 0 then null
+            else (coalesce(sum(${totalVnd}) filter (where ${thisMonth}), 0)
+                  - coalesce(sum(${totalVnd}) filter (where ${lastMonth}), 0))
+                 / coalesce(sum(${totalVnd}) filter (where ${lastMonth}), 0) * 100
           end, 1)`.mapWith(mapNullableNumber),
         completedValue:
-          sql<number>`coalesce(sum(${orders.total}) filter (where ${orders.status} = ${OrderStatus.COMPLETED}), 0)`.mapWith(
+          sql<number>`round(coalesce(sum(${totalVnd}) filter (where ${orders.status} = ${OrderStatus.COMPLETED}), 0), 0)`.mapWith(
             Number,
           ),
         completedValuePercentOfTotal: sql<number>`round(
-          case when coalesce(sum(${orders.total}), 0) = 0 then 0
-            else coalesce(sum(${orders.total}) filter (where ${orders.status} = ${OrderStatus.COMPLETED}), 0)
-                 / sum(${orders.total}) * 100
+          case when coalesce(sum(${totalVnd}), 0) = 0 then 0
+            else coalesce(sum(${totalVnd}) filter (where ${orders.status} = ${OrderStatus.COMPLETED}), 0)
+                 / sum(${totalVnd}) * 100
           end, 1)`.mapWith(Number),
         inProgress:
           sql<number>`count(*) filter (where ${orders.status} = ${OrderStatus.IN_PROGRESS})`.mapWith(
@@ -165,11 +191,13 @@ export class OrdersService {
   async getOrderDetail(orderId: string): Promise<OrderResDto> {
     const order = await this.db.query.orders.findFirst({
       where: and(eq(orders.id, orderId), isNull(orders.deletedAt)),
-      extras: { expired: this.expiredSql() },
+      extras: { expired: this.expiredSql(), totalVnd: this.totalVndSql() },
       with: {
         client: true,
         staff: true,
         creator: true,
+        approver: true,
+        rejecter: true,
         items: {
           with: { product: { with: { unit: true, imageFile: true } } },
           orderBy: [asc(orderItems.sortOrder), asc(orderItems.createdAt)],
@@ -211,6 +239,7 @@ export class OrdersService {
         reqDto.items.map((item) => item.productId),
       );
     }
+    this.ensureStatusSettable(reqDto.status);
 
     await this.linkOrderFiles(reqDto);
 
@@ -226,8 +255,15 @@ export class OrdersService {
         .insert(orders)
         .values({
           ...orderFields,
+          // A VND order's rate is always 1 — `totalVndSql`/`getOrderStats` multiply by
+          // `exchangeRate` to convert every order to one currency, so a stray non-1 rate on a
+          // VND order (client bug, bad input) would silently corrupt every dashboard total.
+          exchangeRate:
+            (orderFields.currency ?? Currency.VND) === Currency.VND
+              ? 1
+              : orderFields.exchangeRate,
           code,
-          status: reqDto.status ?? OrderStatus.CONFIRMED,
+          status: reqDto.status ?? OrderStatus.DRAFT,
           createdBy: userId,
         })
         .returning();
@@ -265,16 +301,34 @@ export class OrdersService {
         reqDto.items.map((item) => item.productId),
       );
     }
+    this.ensureStatusSettable(reqDto.status);
+    if (reqDto.items !== undefined) {
+      await this.ensureItemsNotLockedByProduction(orderId);
+    }
 
     await this.linkOrderFiles(reqDto);
 
     const { items, attachmentFileIds, ...orderFields } = reqDto;
+    // Same VND-always-1 normalization as createOrder, resolved against the row's existing
+    // currency when this request doesn't touch `currency` at all.
+    const currency = orderFields.currency ?? existing.currency;
+    const orderValues =
+      currency === Currency.VND
+        ? { ...orderFields, exchangeRate: 1 }
+        : orderFields;
 
     await this.db.transaction(async (tx) => {
       // `updated_at` is bumped by the column's own `$onUpdate`.
-      await tx.update(orders).set(orderFields).where(eq(orders.id, orderId));
+      await tx.update(orders).set(orderValues).where(eq(orders.id, orderId));
 
       if (items !== undefined) {
+        // `ensureItemsNotLockedByProduction` ở trên đã đảm bảo LSX (nếu có) đang PENDING, chưa
+        // phát hành — xoá header `production_orders` cascade dọn luôn `production_order_items`,
+        // để FK `order_item_id` (restrict) không chặn lệnh xoá của `replaceItems` bên dưới (xem
+        // comment schema trên `productionOrderItems`).
+        await tx
+          .delete(productionOrders)
+          .where(eq(productionOrders.orderId, orderId));
         await this.replaceItems(tx, orderId, items);
       }
       if (attachmentFileIds !== undefined) {
@@ -299,6 +353,67 @@ export class OrdersService {
       .where(eq(orders.id, orderId));
   }
 
+  /**
+   * Duyệt cấp Giám đốc (`orders:approve`) — chỉ hợp lệ khi đang PENDING_CONFIRMATION. Đây là nơi
+   * duy nhất ghi `AWAITING_PRODUCTION` (xem `ensureStatusSettable`).
+   *
+   * Đồng thời sinh sẵn kế hoạch sản xuất (`docs/features/production.md`) cho mọi dòng NORMAL,
+   * trong cùng transaction với việc đổi status — duyệt một PO mà không có kế hoạch để hiển thị ở
+   * màn LSX sẽ là một trạng thái "duyệt nửa vời" không nhất quán.
+   */
+  async approveOrder(orderId: string, userId: string): Promise<OrderResDto> {
+    const existing = await this.ensureOrderExists(orderId);
+    this.ensurePendingConfirmation(existing.status);
+
+    // Đọc trước khi mở transaction (`.claude/rules/api-module.md`) — tính kế hoạch có gọi
+    // `InventoryService`, không có lý do gì phải chạy bên trong transaction của lệnh ghi này.
+    const planItems =
+      await this.productionOrdersService.buildInitialItems(orderId);
+
+    await this.db.transaction(async (tx) => {
+      await tx
+        .update(orders)
+        .set({
+          status: OrderStatus.AWAITING_PRODUCTION,
+          approvedBy: userId,
+          approvedAt: new Date(),
+        })
+        .where(eq(orders.id, orderId));
+
+      await this.productionOrdersService.seedPlan(
+        tx,
+        orderId,
+        planItems,
+        userId,
+      );
+    });
+
+    return this.getOrderDetail(orderId);
+  }
+
+  /** Director-level rejection (`orders:approve`) — only valid from PENDING_CONFIRMATION. Sends
+   * the order back to DRAFT so the sales staff can fix it and resubmit. */
+  async rejectOrder(
+    orderId: string,
+    reqDto: RejectOrderReqDto,
+    userId: string,
+  ): Promise<OrderResDto> {
+    const existing = await this.ensureOrderExists(orderId);
+    this.ensurePendingConfirmation(existing.status);
+
+    await this.db
+      .update(orders)
+      .set({
+        status: OrderStatus.DRAFT,
+        rejectedBy: userId,
+        rejectedAt: new Date(),
+        rejectionReason: reqDto.reason,
+      })
+      .where(eq(orders.id, orderId));
+
+    return this.getOrderDetail(orderId);
+  }
+
   /** "Trễ hạn": derived at read time, never stored — a due date in the past on an order that
    * hasn't reached a terminal state yet. No dueDate at all is never expired. Evaluated in
    * Postgres (via `extras`) rather than re-derived in JS per row after the fetch. */
@@ -306,6 +421,14 @@ export class OrdersService {
     return sql<boolean>`${orders.dueDate} is not null
       and ${orders.status} not in (${OrderStatus.COMPLETED}, ${OrderStatus.CANCELLED})
       and ${orders.dueDate} < now()`.as('expired');
+  }
+
+  /** Order value converted to VND. Computed at read time from the order's own `total` and
+   * `exchangeRate`, so it can never drift from either — no extra column, no backfill. */
+  private totalVndSql() {
+    return sql<number>`round(${orders.total} * ${orders.exchangeRate}, 2)`
+      .mapWith(Number)
+      .as('totalVnd');
   }
 
   /**
@@ -467,21 +590,63 @@ export class OrdersService {
     }
   }
 
-  /** Locked once an order reaches a terminal state — `COMPLETED` or `CANCELLED`. `CONFIRMED` and
-   * `IN_PROGRESS` both stay editable. */
+  /** Chặn sửa `items` khi LSX (`production_orders`, header) của đơn này đã `ISSUED` — phát hành
+   * là chốt một chiều, sửa `order_items` sau đó sẽ làm lệch số liệu `production_jobs` đã sinh.
+   * Header đang `PENDING` (mới là kế hoạch, chưa phát hành) không chặn — `updateOrder` tự xoá
+   * header đó (cascade dọn `production_order_items`) ngay trước khi replace `items`. Đọc thẳng
+   * `production_orders` thay vì thêm một hàm dùng-một-lần vào `ProductionOrdersService` — cùng
+   * cách làm `InventoryService.reservedSubquery` đọc thẳng `order_items` thay vì phụ thuộc vào
+   * `OrdersService`. */
+  private async ensureItemsNotLockedByProduction(
+    orderId: string,
+  ): Promise<void> {
+    const issued = await this.db.query.productionOrders.findFirst({
+      columns: { id: true },
+      where: and(
+        eq(productionOrders.orderId, orderId),
+        eq(productionOrders.status, ProductionOrderStatus.ISSUED),
+      ),
+    });
+
+    if (issued) {
+      throw new AppException(ErrorCode.E080, HttpStatus.CONFLICT);
+    }
+  }
+
+  /** Locked once an order reaches a terminal state — `COMPLETED` or `CANCELLED`. Every other
+   * status (`DRAFT`, `PENDING_CONFIRMATION`, `AWAITING_PRODUCTION`, `IN_PROGRESS`) stays editable. */
   private ensureOrderEditable(status: OrderStatus): void {
     if (status === OrderStatus.COMPLETED || status === OrderStatus.CANCELLED) {
       throw new AppException(ErrorCode.E065, HttpStatus.CONFLICT);
     }
   }
 
-  /** Returns `status` right away (needed by every caller to guard against writing a terminal
-   * order) instead of a second re-fetch. */
+  /** `AWAITING_PRODUCTION` is only ever written by `approveOrder` — a plain `POST /orders`/
+   * `PATCH /orders/:orderId` may not set it directly, so a director's approval can't be
+   * bypassed by just PATCHing the status field. Every other status stays freely settable. */
+  private ensureStatusSettable(status: OrderStatus | undefined): void {
+    if (status === OrderStatus.AWAITING_PRODUCTION) {
+      throw new AppException(ErrorCode.E075, HttpStatus.BAD_REQUEST);
+    }
+  }
+
+  /** `approveOrder`/`rejectOrder` are only valid from PENDING_CONFIRMATION — an order that hasn't
+   * been submitted for approval (still DRAFT), or one already past this gate, can't be
+   * approved/rejected again. */
+  private ensurePendingConfirmation(status: OrderStatus): void {
+    if (status !== OrderStatus.PENDING_CONFIRMATION) {
+      throw new AppException(ErrorCode.E074, HttpStatus.CONFLICT);
+    }
+  }
+
+  /** Returns `status`/`currency` right away (needed by every caller to guard against writing a
+   * terminal order, and by `updateOrder` to resolve the row's effective currency) instead of a
+   * second re-fetch. */
   private async ensureOrderExists(
     orderId: string,
-  ): Promise<{ id: string; status: OrderStatus }> {
+  ): Promise<{ id: string; status: OrderStatus; currency: Currency }> {
     const existing = await this.db.query.orders.findFirst({
-      columns: { id: true, status: true },
+      columns: { id: true, status: true, currency: true },
       where: and(eq(orders.id, orderId), isNull(orders.deletedAt)),
     });
 

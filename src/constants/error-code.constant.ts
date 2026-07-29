@@ -65,6 +65,10 @@ export enum ErrorCode {
   E044 = 'file.error.invalid_signature',
   E045 = 'file.error.url_expired',
   E046 = 'operation.error.not_found',
+  // E047 (operation.error.code_exists) stays reserved — its only throw site was
+  // `OperationsService.createOperation`/`updateOperation`, removed when `operations` became a
+  // read-only catalogue (list only, no create/update/delete). E046 stays live: `RoutingService`
+  // independently throws it when a routing step references a missing operation.
   E047 = 'operation.error.code_exists',
   // E048/E049 (product_revision not_found/number_exists) stay reserved — the product-revisions
   // module was removed in favor of whole-product copy/clone (`POST /products/:id/copy`); no
@@ -100,6 +104,51 @@ export enum ErrorCode {
   // E066 (order.error.no_items) stays reserved — it was `POST /orders/:id/confirm`'s
   // zero-NORMAL-lines guard; that endpoint was removed 2026-07-27 along with `OrderStatus.DRAFT`
   // (orders are `CONFIRMED` on creation, no separate confirm step). No current throw site uses it.
+  E067 = 'stock_receipt.error.not_found',
+  E068 = 'stock_receipt.error.code_exists',
+  // `productId` on a stock receipt line doesn't reference any `products` row.
+  E069 = 'stock_receipt.error.product_not_found',
+  // The `productId` exists but isn't a FINISHED_GOOD — only finished goods are tracked here.
+  E070 = 'stock_receipt.error.product_not_finished_good',
+  // Writing (create or update) this receipt would drive some product's on-hand quantity below
+  // zero. On update, evaluated against the ledger with this receipt's own current lines excluded.
+  E071 = 'stock_receipt.error.insufficient_stock',
+  // `orderItemId` on a line is invalid: sent on a non-OUT receipt, doesn't reference an existing
+  // `order_items` row, or references one whose `productId` doesn't match the line's own.
+  E072 = 'stock_receipt.error.invalid_order_item',
+  // `reason` doesn't belong to `type` (e.g. DELIVERY on an IN receipt) — same rule as the DB
+  // CHECK `chk_stock_receipts_reason_type`, pre-validated here for a clean 400 instead of a raw
+  // constraint-violation 500.
+  E073 = 'stock_receipt.error.reason_type_mismatch',
+  // `POST /orders/:orderId/approve` or `/reject` called on an order whose status isn't
+  // PENDING_CONFIRMATION — only an order actually submitted for approval can be approved/rejected.
+  E074 = 'order.error.invalid_approval_state',
+  // Client tried to set `status: AWAITING_PRODUCTION` directly via `POST /orders`/
+  // `PATCH /orders/:orderId` — that status is only reachable through `OrdersService.approveOrder`
+  // (director-level `orders:approve` permission), never a plain create/update.
+  E075 = 'order.error.status_not_settable_directly',
+  // `PATCH /production-orders/:orderId` hoặc `.../issue` gọi trên một đơn chưa
+  // AWAITING_PRODUCTION — lập kế hoạch sản xuất chỉ áp dụng cho PO đã duyệt.
+  E076 = 'production_order.error.order_not_approved',
+  // Cùng các route trên, nhưng đơn đã có ít nhất một dòng `production_orders` ở trạng thái ISSUED
+  // — phát hành là hành động một chiều, không lập lại kế hoạch/phát hành lại khi đã xong.
+  E077 = 'production_order.error.already_issued',
+  // `orderItemId` trên một dòng `PATCH /production-orders/:orderId` không thuộc đơn này, hoặc
+  // thuộc một dòng CANCELLED.
+  E078 = 'production_order.error.invalid_order_item',
+  // `POST /production-orders/:orderId/issue` gọi trên một đơn không có dòng NORMAL nào.
+  E079 = 'production_order.error.no_items',
+  // `PATCH /orders/:orderId` cố replace `items` trên một đơn mà LSX (`production_orders`, header)
+  // đã `ISSUED` — phát hành là chốt một chiều, sửa `order_items` sau đó sẽ làm lệch số liệu
+  // `production_jobs` đã sinh.
+  E080 = 'order.error.items_locked_by_production',
+  // Header `production_orders` không tồn tại cho một PO đang trong phạm vi LSX
+  // (`ProductionOrdersService.getHeader`) — về lý thuyết không xảy ra vì `OrdersService.approveOrder`
+  // luôn seed header cùng lúc duyệt PO; giữ như một chốt chặn dữ liệu bất nhất, không phải luồng
+  // nghiệp vụ bình thường.
+  E081 = 'production_order.error.not_found',
+  // `GET /production-jobs/:jobId` với id không tồn tại.
+  E082 = 'production_job.error.not_found',
   E101 = 'class.error.teacher_not_found',
   E102 = 'class.error.invalid_teacher_assignment',
   E103 = 'class.error.forbidden',
