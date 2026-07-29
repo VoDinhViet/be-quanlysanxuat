@@ -10,12 +10,10 @@ import {
 
 import { credentials } from './credentials';
 
-/**
- * Which lane a công đoạn (operation) runs in: `INHOUSE` is performed on the factory floor,
- * `OUTSOURCE` is sent to a supplier for processing (gia công ngoài). This is the master flag the
- * "Gia công ngoài" screen filters on (`GET /operations?type=OUTSOURCE`); a routing step later
- * (Phase 2) defaults to this value but may override it per step.
- */
+/** Which lane a công đoạn (operation) runs in: `INHOUSE` is performed on the factory floor,
+ * `OUTSOURCE` is sent to a supplier (gia công ngoài) — the master flag the "Gia công ngoài"
+ * screen filters on (`GET /operations?type=OUTSOURCE`). A routing step defaults to this value
+ * but may override it per step. */
 export enum OperationType {
   INHOUSE = 'INHOUSE',
   OUTSOURCE = 'OUTSOURCE',
@@ -36,12 +34,10 @@ export const operationStatusEnum = pgEnum('operation_status', [
   OperationStatus.INACTIVE,
 ]);
 
-/**
- * Master data for công đoạn (production operations/steps), e.g. Cắt laser, Hàn, Sơn tĩnh điện.
+/** Master data for công đoạn (production operations/steps), e.g. Cắt laser, Hàn, Sơn tĩnh điện.
  * Referenced by routing (`routing_steps`, keyed by a root product OR a specific BOM node) to
- * sequence the steps a product/node goes through. Soft-deleted (not hard-deleted) because routing
- * holds a foreign key to a row here.
- */
+ * sequence the steps a product/node goes through. Soft-deleted, not hard-deleted, because routing
+ * holds a foreign key to a row here. */
 export const operations = pgTable(
   'operations',
   {

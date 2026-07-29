@@ -1,8 +1,19 @@
-import { PageOptionsDto } from '../../../common/dto/offset-pagination/page-options.dto';
 import { OperationStatus, OperationType } from '../../../database/schemas';
-import { EnumFieldOptional } from '../../../decorators/field.decorators';
+import {
+  EnumFieldOptional,
+  StringFieldOptional,
+} from '../../../decorators/field.decorators';
 
-export class GetOperationsReqDto extends PageOptionsDto {
+/**
+ * Not paginated on purpose: `operations` is a small, curated catalogue (công đoạn master data,
+ * read-only via HTTP) — same reasoning as `GET /units`/`GET /countries`/`GET /roles`.
+ */
+export class GetOperationsReqDto {
+  @StringFieldOptional({
+    description: 'Search on name (accent-insensitive)',
+  })
+  readonly q?: string;
+
   @EnumFieldOptional(() => OperationType, {
     description:
       'Filter by type — e.g. type=OUTSOURCE for the "Gia công ngoài" screen',
