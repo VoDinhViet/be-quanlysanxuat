@@ -16,17 +16,20 @@ import { products } from './products';
 
 /**
  * Routing: the sequence of công đoạn (operations) a node of a product's structure goes through,
- * e.g. Cắt laser → Chấn → Hàn → Sơn tĩnh điện. A row is either:
- * - the routing of a **Cấp 0 root product** (`productId` set, `bomItemId` null) — the FG/WIP row
- *   itself, shown as the "STT 0" line of the structure grid; or
- * - the routing of a **specific BOM node** (`bomItemId` set, `productId` null) — as-used: the same
- *   WIP product referenced from two different parents/positions in a BOM tree can carry a
- *   different routing at each position, because the step is tied to *where* it's used, not just
- *   *which* product it is. Only `itemType = PRODUCT` nodes are routable — `MATERIAL` (vật tư) leaf
- *   nodes never have a routing.
- * Exactly one of the two is set per row, enforced by `chk_routing_steps_target`. No uniqueness on
- * `(target, operationId)`: a real routing can revisit the same operation more than once (e.g.
- * Kiểm tra → Gia công → Kiểm tra).
+ * e.g. Cắt laser → Chấn → Hàn → Sơn tĩnh điện.
+ *
+ * Rules:
+ * - A row is either the routing of a **Cấp 0 root product** (`productId` set, `bomItemId` null)
+ *   — the FG/WIP row itself, shown as the "STT 0" line of the structure grid — or of a
+ *   **specific BOM node** (`bomItemId` set, `productId` null): as-used, since the same WIP
+ *   product referenced from two different parents/positions in a BOM tree can carry a different
+ *   routing at each position, because the step is tied to *where* it's used, not just *which*
+ *   product it is.
+ * - Only `itemType = PRODUCT` nodes are routable — `MATERIAL` (vật tư) leaf nodes never have a
+ *   routing.
+ * - Exactly one of `productId`/`bomItemId` is set per row, enforced by `chk_routing_steps_target`.
+ * - No uniqueness on `(target, operationId)`: a real routing can revisit the same operation more
+ *   than once (e.g. Kiểm tra → Gia công → Kiểm tra).
  */
 export const routingSteps = pgTable(
   'routing_steps',

@@ -64,13 +64,13 @@ export class FilesController {
     });
   }
 
-  @Get(':id')
+  @Get(':fileId')
   @ApiAuth({
     type: FileResDto,
     summary: 'Get file metadata',
   })
-  getFile(@UUIDParam('id') id: string): Promise<FileResDto> {
-    return this.filesService.getFileById(id);
+  getFile(@UUIDParam('fileId') fileId: string): Promise<FileResDto> {
+    return this.filesService.getFileById(fileId);
   }
 
   /**
@@ -78,29 +78,29 @@ export class FilesController {
    * `<img src>`, so the signed `exp`/`sig` pair is the credential here and `FileSignatureGuard`
    * is what enforces it. Removing that guard would expose every file to the internet.
    */
-  @Get(':id/download')
+  @Get(':fileId/download')
   @UseGuards(FileSignatureGuard)
   @ApiPublic({
     summary: 'Download file bytes — requires a signed URL, not a bearer token',
   })
   downloadFile(
-    @UUIDParam('id') id: string,
+    @UUIDParam('fileId') fileId: string,
     @Query() reqDto: DownloadFileReqDto,
     @Res({ passthrough: true }) res: Response,
   ): Promise<StreamableFile> {
-    return this.filesService.streamFile(id, reqDto, res);
+    return this.filesService.streamFile(fileId, reqDto, res);
   }
 
-  @Delete(':id')
+  @Delete(':fileId')
   @ApiAuth({
     summary:
       'Delete a file (uploader or system:manage only; removes registry row and bytes)',
     statusCode: HttpStatus.NO_CONTENT,
   })
   deleteFile(
-    @UUIDParam('id') id: string,
+    @UUIDParam('fileId') fileId: string,
     @CurrentUser() payload: JwtPayloadType,
   ): Promise<void> {
-    return this.filesService.deleteFile(id, payload.sub);
+    return this.filesService.deleteFile(fileId, payload.sub);
   }
 }

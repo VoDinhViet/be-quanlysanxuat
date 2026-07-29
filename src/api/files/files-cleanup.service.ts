@@ -14,15 +14,15 @@ import type { StorageProvider } from '../../storage/storage-provider.interface';
  * Deletes uploads that were never linked to an entity — the cost of the upload-then-link flow: a
  * user picks an image, the file lands in the registry, and then the form is abandoned.
  *
- * It sweeps purely on `linkedAt IS NULL`, never by scanning consumer tables for `*_file_id`. That
- * matters: a reverse-lookup sweeper needs one `NOT EXISTS` per referencing table, and the day
- * someone adds a module and forgets a clause, this job starts deleting live data. Here a new module
- * is safe by default, because linking is what marks a file, not who links it.
- *
- * **Requires a long-lived process.** `@nestjs/schedule` timers live in memory, so under the
- * serverless handler exported by `main.ts` this never fires and nothing reports it — an external
- * scheduler (cron hitting a dedicated endpoint, a queue worker, etc.) is needed in that deployment;
- * none is wired up yet.
+ * Rules:
+ * - Sweeps purely on `linkedAt IS NULL`, never by scanning consumer tables for `*_file_id`. A
+ *   reverse-lookup sweeper needs one `NOT EXISTS` per referencing table, and the day someone adds
+ *   a module and forgets a clause, this job starts deleting live data — here a new module is safe
+ *   by default, because linking is what marks a file, not who links it.
+ * - Requires a long-lived process: `@nestjs/schedule` timers live in memory, so under the
+ *   serverless handler exported by `main.ts` this never fires and nothing reports it — an
+ *   external scheduler (cron hitting a dedicated endpoint, a queue worker, etc.) is needed in
+ *   that deployment; none is wired up yet.
  */
 @Injectable()
 export class FilesCleanupService {

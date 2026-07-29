@@ -24,6 +24,7 @@ import type { JwtPayloadType } from '../types/jwt-payload.type';
  * `@Permissions(...)` metadata a route declares and checks the authenticated user's effective
  * permission set (loaded/cached by `PermissionsService`).
  *
+ * Rules:
  * - `@Public()` routes are skipped (they never reach authentication either).
  * - Routes with no `@Permissions(...)` only need a valid session — being authenticated passes.
  * - A user holding `system:manage` (Super Admin) passes every check.

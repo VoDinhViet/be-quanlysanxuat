@@ -7,8 +7,8 @@ import type { UploadConfig } from '../../../config/upload-config.type';
 /**
  * Buffers the upload fully in memory instead of writing straight to disk — `FilesService` needs
  * the raw bytes to run magic-byte detection (`file-type`) and compute the checksum before handing
- * them to the `StorageProvider`, so nothing can be persisted to disk until validation passes.
- * The size cap here is only a coarse ceiling (Multer rejects early via `PayloadTooLargeException`,
+ * them to the `StorageProvider`, so nothing can be persisted to disk until validation passes. The
+ * size cap here is only a coarse ceiling (Multer rejects early via `PayloadTooLargeException`,
  * mapped to `ErrorCode.E017`); the real per-category limit (image vs document) is enforced in
  * `FilesService.upload` once the `category` field is known.
  */

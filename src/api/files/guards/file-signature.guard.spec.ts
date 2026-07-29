@@ -46,9 +46,9 @@ describe('FileSignatureGuard', () => {
   });
 
   it('allows a correctly signed, unexpired URL', () => {
-    expect(guard.canActivate(buildContext({ id: FILE_ID }, validQuery()))).toBe(
-      true,
-    );
+    expect(
+      guard.canActivate(buildContext({ fileId: FILE_ID }, validQuery())),
+    ).toBe(true);
   });
 
   /**
@@ -72,13 +72,13 @@ describe('FileSignatureGuard', () => {
   it('throws E044 when sig is missing', () => {
     const { exp } = validQuery();
 
-    expectRejection(buildContext({ id: FILE_ID }, { exp }), ErrorCode.E044);
+    expectRejection(buildContext({ fileId: FILE_ID }, { exp }), ErrorCode.E044);
   });
 
   it('throws E044 when exp is missing', () => {
     const { sig } = validQuery();
 
-    expectRejection(buildContext({ id: FILE_ID }, { sig }), ErrorCode.E044);
+    expectRejection(buildContext({ fileId: FILE_ID }, { sig }), ErrorCode.E044);
   });
 
   // A non-numeric `exp` must be rejected before it reaches the HMAC — otherwise it would be signed
@@ -88,7 +88,7 @@ describe('FileSignatureGuard', () => {
 
     for (const exp of ['', 'abc', '12abc', '1.5']) {
       expectRejection(
-        buildContext({ id: FILE_ID }, { exp, sig }),
+        buildContext({ fileId: FILE_ID }, { exp, sig }),
         ErrorCode.E044,
       );
     }
@@ -99,7 +99,7 @@ describe('FileSignatureGuard', () => {
     const tampered = `${sig.slice(0, -1)}${sig.at(-1) === 'A' ? 'B' : 'A'}`;
 
     expectRejection(
-      buildContext({ id: FILE_ID }, { exp, sig: tampered }),
+      buildContext({ fileId: FILE_ID }, { exp, sig: tampered }),
       ErrorCode.E044,
     );
   });
@@ -108,7 +108,7 @@ describe('FileSignatureGuard', () => {
     const query = validQuery();
 
     expectRejection(
-      buildContext({ id: '22222222-2222-2222-2222-222222222222' }, query),
+      buildContext({ fileId: '22222222-2222-2222-2222-222222222222' }, query),
       ErrorCode.E044,
     );
   });
@@ -117,7 +117,7 @@ describe('FileSignatureGuard', () => {
   // would confirm to an attacker that the rest of their forgery was structurally correct.
   it('throws E045 (not E044) once a valid signature ages out', () => {
     expectRejection(
-      buildContext({ id: FILE_ID }, validQuery(-10)),
+      buildContext({ fileId: FILE_ID }, validQuery(-10)),
       ErrorCode.E045,
     );
   });

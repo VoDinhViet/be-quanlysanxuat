@@ -185,11 +185,13 @@ export class FilesService {
    * every id exists (`E042`) and stamps `linkedAt`, which takes the file out of reach of
    * `FilesCleanupService`.
    *
-   * **Call this before the write, never after — including before opening a transaction.** If a
-   * later write fails, a file marked linked with nothing pointing at it becomes permanent garbage:
-   * wasteful, but harmless. Reverse the order and a crash between the entity write and this call
-   * leaves a live row referencing an unlinked file, which the sweeper deletes a day later — a
-   * broken image on real data. Failing towards keeping garbage is the whole point of this ordering.
+   * Rules:
+   * - Call this before the write, never after — including before opening a transaction.
+   * - If a later write fails, a file marked linked with nothing pointing at it becomes permanent
+   *   garbage: wasteful, but harmless.
+   * - Reversing the order and a crash between the entity write and this call leaves a live row
+   *   referencing an unlinked file, which the sweeper deletes a day later — a broken image on
+   *   real data. Failing towards keeping garbage is the whole point of this ordering.
    */
   async linkFiles(fileIds: string[]): Promise<void> {
     const uniqueIds = [...new Set(fileIds)];

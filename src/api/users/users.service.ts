@@ -230,12 +230,13 @@ export class UsersService {
 
   /**
    * Assigns a role to a user. The role lives on the user's login `credential` (the JWT subject),
-   * so the user must have a linked credential (E032). Clears the credential's cached permissions
-   * so the change takes effect on the next request.
+   * so the user must have a linked credential (E032).
    *
-   * Privilege escalation guard: assigning a role that grants the god-mode `system:manage` code
-   * (e.g. the seeded ADMIN role) is only allowed if the actor already holds `system:manage` —
-   * otherwise a `roles:update` holder could grant themselves full control (E034).
+   * Rules:
+   * - Clears the credential's cached permissions so the change takes effect on the next request.
+   * - Privilege escalation guard: assigning a role that grants the god-mode `system:manage` code
+   *   (e.g. the seeded ADMIN role) is only allowed if the actor already holds `system:manage` —
+   *   otherwise a `roles:update` holder could grant themselves full control (E034).
    */
   async assignRole(
     userId: string,
@@ -268,7 +269,7 @@ export class UsersService {
    * → the actor isn't escalating their own privileges through it (E034).
    *
    * Shared by all three assignment paths (`POST /users`, `PATCH /users/:userId`,
-   * `PATCH /users/:userId/role`) so none of them can drift away from the others.
+   * `PATCH /users/:userId/role`) so none of them drift away from the others.
    */
   private async resolveRoleForAssignment(
     roleId: string,
@@ -281,12 +282,14 @@ export class UsersService {
 
   /**
    * `POST /users` and `PATCH /users/:userId` are guarded by `users:create`/`users:update`, which
-   * say nothing about roles — so assigning one through them needs `roles:update` checked here
-   * instead, and only when a `roleId` was actually sent. Without this, `users:create` alone would
-   * quietly become "may grant any role".
+   * say nothing about roles.
    *
-   * `system:manage` passes, mirroring `PermissionsGuard` — otherwise a Super Admin would be
-   * blocked by this service despite passing every route guard.
+   * Rules:
+   * - Assigning one through them needs `roles:update` checked here instead, and only when a
+   *   `roleId` was actually sent. Without this, `users:create` alone would quietly become "may
+   *   grant any role".
+   * - `system:manage` passes, mirroring `PermissionsGuard` — otherwise a Super Admin would be
+   *   blocked by this service despite passing every route guard.
    */
   private async ensureActorMayManageRoles(
     actorCredentialId: string,

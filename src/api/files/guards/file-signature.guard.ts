@@ -13,12 +13,11 @@ import { AppException } from '../../../exceptions/app.exception';
 import { isExpired, isSignatureValid } from '../util/file-url.util';
 
 /**
- * Authorizes `GET /files/:id/download` by the `exp`/`sig` query pair instead of a bearer token —
- * the route is `@Public()` precisely so a browser can load it from `<img src>`, which cannot carry
- * an `Authorization` header. The signature is the credential.
- *
- * Order matters: signature first, expiry second. Reporting "expired" for a URL whose signature
- * never validated would tell an attacker their forgery was structurally right.
+ * Authorizes `GET /files/:fileId/download` by the `exp`/`sig` query pair instead of a bearer
+ * token — the route is `@Public()` precisely so a browser can load it from `<img src>`, which
+ * cannot carry an `Authorization` header. The signature is the credential. Order matters:
+ * signature first, expiry second — reporting "expired" for a signature that never validated
+ * would tell an attacker their forgery was structurally right.
  */
 @Injectable()
 export class FileSignatureGuard implements CanActivate {
@@ -27,11 +26,11 @@ export class FileSignatureGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const request = context
       .switchToHttp()
-      .getRequest<Request<{ id: string }>>();
-    const { id } = request.params;
+      .getRequest<Request<{ fileId: string }>>();
+    const { fileId } = request.params;
     const { exp, sig } = request.query;
 
-    if (typeof exp !== 'string' || typeof sig !== 'string' || !id) {
+    if (typeof exp !== 'string' || typeof sig !== 'string' || !fileId) {
       throw new AppException(ErrorCode.E044, HttpStatus.UNAUTHORIZED);
     }
 
@@ -47,7 +46,7 @@ export class FileSignatureGuard implements CanActivate {
       infer: true,
     });
 
-    if (!isSignatureValid(id, expiresAt, sig, secret)) {
+    if (!isSignatureValid(fileId, expiresAt, sig, secret)) {
       throw new AppException(ErrorCode.E044, HttpStatus.UNAUTHORIZED);
     }
 

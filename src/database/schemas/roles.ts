@@ -10,12 +10,14 @@ import {
 import type { PermissionCode } from '../../constants/permission.constant';
 
 /**
- * A role is a named bundle of permission codes. Permissions themselves are a fixed catalogue
- * defined in code (`PERMISSION_CODES`); a role only *references* those codes via the
- * `permissions` array — so an admin can create roles and (re)assign permissions to them at
- * runtime without a deploy, while the set of possible permissions stays code-controlled.
+ * A role is a named bundle of permission codes.
  *
- * `isSystem` roles (e.g. Super Admin) are seeded and protected from edit/delete.
+ * Rules:
+ * - Permissions themselves are a fixed catalogue defined in code (`PERMISSION_CODES`); a role
+ *   only *references* those codes via the `permissions` array — so an admin can create roles and
+ *   (re)assign permissions to them at runtime without a deploy, while the set of possible
+ *   permissions stays code-controlled.
+ * - `isSystem` roles (e.g. Super Admin) are seeded and protected from edit/delete.
  */
 export const roles = pgTable('roles', {
   id: uuid('id').defaultRandom().primaryKey(),

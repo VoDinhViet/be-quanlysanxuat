@@ -103,12 +103,10 @@ export class BomsService {
     );
   }
 
-  /**
-   * A BOM's materials, aggregated across every `itemType = MATERIAL` node in the tree (any
+  /** A BOM's materials, aggregated across every `itemType = MATERIAL` node in the tree (any
    * depth) that links to a given material — one row per distinct material, paginated.
    * `totalQuantity` is a raw SUM across matching nodes, NOT a BOM explosion (no multiplying
-   * through an ancestor WIP's own quantity) — see `BomMaterialResDto`.
-   */
+   * through an ancestor WIP's own quantity) — see `BomMaterialResDto`. */
   async getBomMaterials(
     productId: string,
     reqDto: GetBomMaterialsReqDto,
@@ -449,10 +447,13 @@ export class BomsService {
   /**
    * Batched as-used routing fetch for a tree read: one query for every `PRODUCT` node's own
    * routing (keyed by `bom_items.id`, not the linked product's id), grouped back into a `Map` for
-   * `buildTree` to attach per-node. `MATERIAL` nodes never carry a
-   * `routing_steps` row (enforced by `RoutingService.ensureBomItemRoutable`), so they're excluded
-   * from the query outright rather than relying on an empty match; skips the query entirely when
-   * the tree has no `PRODUCT` node at all.
+   * `buildTree` to attach per-node.
+   *
+   * Rules:
+   * - `MATERIAL` nodes never carry a `routing_steps` row (enforced by
+   *   `RoutingService.ensureBomItemRoutable`), so they're excluded from the query outright rather
+   *   than relying on an empty match.
+   * - Skips the query entirely when the tree has no `PRODUCT` node at all.
    */
   private async loadOperationsByBomItem(
     rows: BomTreeRow[],
@@ -576,12 +577,15 @@ export class BomsService {
   }
 
   /**
-   * Prevents a product from becoming its own ancestor/descendant within the same tree: (a) the
-   * new item can't be the FG root itself, (b) walking up from `parentId` to the root, the new
-   * item's productId can't already appear as an ancestor. Only meaningful for PRODUCT items —
-   * MATERIAL items are leaves and can never be ancestors. Bounded by `MAX_BOM_DEPTH` as a
-   * corrupt-data infinite-loop guard; the repo has no recursive-CTE precedent and real trees are
-   * shallow, so a simple loop is preferred over `WITH RECURSIVE`.
+   * Prevents a product from becoming its own ancestor/descendant within the same tree.
+   *
+   * Rules:
+   * - The new item can't be the FG root itself, and walking up from `parentId` to the root, the
+   *   new item's `productId` can't already appear as an ancestor.
+   * - Only meaningful for PRODUCT items — MATERIAL items are leaves and can never be ancestors.
+   * - Bounded by `MAX_BOM_DEPTH` as a corrupt-data infinite-loop guard; the repo has no
+   *   recursive-CTE precedent and real trees are shallow, so a simple loop is preferred over
+   *   `WITH RECURSIVE`.
    */
   private async checkNoCycle(
     bomId: string | undefined,

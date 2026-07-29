@@ -11,12 +11,12 @@ import { toFileResDto } from './to-file-res.dto.util';
  * rename+map `@Transform` (see `toFileResDto`) with the nullable `@ClassFieldOptional(() =>
  * FileResDto)` shape. Pair it with an explicit `@Expose()`, like every other response-DTO field.
  *
- * Lives here (not in `src/decorators/field.decorators.ts`) on purpose: `FileResDto` already imports
- * from `field.decorators.ts`, so referencing it there would be a circular import.
- *
- * `toClassOnly`: the global ClassSerializerInterceptor serialises the DTO a second time, and on
- * that pass `obj` is the DTO instance (which has no `<relationKey>`), so an unrestricted transform
- * would overwrite the resolved file with null.
+ * Rules:
+ * - Lives here, not in `src/decorators/field.decorators.ts`, on purpose: `FileResDto` already
+ *   imports from `field.decorators.ts`, so referencing it there would be a circular import.
+ * - `toClassOnly`: the global ClassSerializerInterceptor serialises the DTO a second time, and on
+ *   that pass `obj` is the DTO instance (which has no `<relationKey>`), so an unrestricted
+ *   transform would overwrite the resolved file with null.
  */
 export function FileField(
   relationKey: string,

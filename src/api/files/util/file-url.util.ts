@@ -3,13 +3,14 @@ import { createHmac, timingSafeEqual } from 'crypto';
 /**
  * Signed download URLs.
  *
- * Why a signature instead of the bearer token every other route uses: a browser cannot attach an
- * `Authorization` header to `<img src>`. Requiring a token would force the frontend to fetch every
- * image as a blob and lose HTTP caching. The signature travels in the URL, so `src` just works.
- *
- * The trade-off is explicit: anyone holding the URL can read the file until it expires (the
- * "anyone with the link" model). It stops outsiders enumerating storage; it does not stop a user
- * deliberately forwarding a link.
+ * Rules:
+ * - Why a signature instead of the bearer token every other route uses: a browser cannot attach
+ *   an `Authorization` header to `<img src>`. Requiring a token would force the frontend to fetch
+ *   every image as a blob and lose HTTP caching. The signature travels in the URL, so `src` just
+ *   works.
+ * - The trade-off is explicit: anyone holding the URL can read the file until it expires (the
+ *   "anyone with the link" model). It stops outsiders enumerating storage; it does not stop a
+ *   user deliberately forwarding a link.
  */
 
 /**

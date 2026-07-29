@@ -51,14 +51,16 @@ export class SuppliersController {
     return this.suppliersService.getSupplierStats();
   }
 
-  @Get(':id')
+  @Get(':supplierId')
   @Permissions('suppliers:read')
   @ApiPublic({
     type: SupplierResDto,
     summary: 'Get supplier detail',
   })
-  getSupplierDetail(@UUIDParam('id') id: string): Promise<SupplierResDto> {
-    return this.suppliersService.getSupplierDetail(id);
+  getSupplierDetail(
+    @UUIDParam('supplierId') supplierId: string,
+  ): Promise<SupplierResDto> {
+    return this.suppliersService.getSupplierDetail(supplierId);
   }
 
   @Post()
@@ -75,26 +77,26 @@ export class SuppliersController {
     return this.suppliersService.createSupplier(reqDto, payload.sub);
   }
 
-  @Patch(':id')
+  @Patch(':supplierId')
   @Permissions('suppliers:update')
   @ApiAuth({
     type: SupplierResDto,
     summary: 'Update supplier',
   })
   updateSupplier(
-    @UUIDParam('id') id: string,
+    @UUIDParam('supplierId') supplierId: string,
     @Body() reqDto: UpdateSupplierReqDto,
   ): Promise<SupplierResDto> {
-    return this.suppliersService.updateSupplier(id, reqDto);
+    return this.suppliersService.updateSupplier(supplierId, reqDto);
   }
 
-  @Delete(':id')
+  @Delete(':supplierId')
   @Permissions('suppliers:delete')
   @ApiAuth({
     summary: 'Delete supplier (soft delete)',
     statusCode: HttpStatus.NO_CONTENT,
   })
-  deleteSupplier(@UUIDParam('id') id: string): Promise<void> {
-    return this.suppliersService.deleteSupplier(id);
+  deleteSupplier(@UUIDParam('supplierId') supplierId: string): Promise<void> {
+    return this.suppliersService.deleteSupplier(supplierId);
   }
 }

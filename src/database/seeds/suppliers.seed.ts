@@ -50,7 +50,7 @@ interface SupplierSeed {
 }
 
 /**
- * Curated, one per group in `supplier-groups.seed.tgetUnitOptionss` so `GET /suppliers` has something real to
+ * Curated, one per group in `supplier-groups.seed.ts` so `GET /suppliers` has something real to
  * filter/search on right after the reference-data seeds run. All domestic (`countryCode: 'VN'`)
  * and `type: COMPANY` — an `INDIVIDUAL`/`HOUSEHOLD` demo row is plausible too but exercises no
  * different write path worth seeding for.

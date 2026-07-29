@@ -26,12 +26,13 @@ export const productStatusEnum = pgEnum('product_status', [
 ]);
 
 /**
- * FINISHED_GOOD (thành phẩm) is a sellable end product; WORK_IN_PROGRESS (bán thành phẩm) is an
- * intermediate part that only exists as a component inside another product's BOM. Both live in
- * this same `products` table — they share every mechanic (image, BOM, routing) and only
- * differ in how they're used: a FINISHED_GOOD is the root of its own structure tree, a
- * WORK_IN_PROGRESS is referenced as a child node from some other product's BOM tree (`bom_items` —
- * see `boms.ts`). Raw materials (RM) are a different table entirely — see `materials`.
+ * Rules:
+ * - FINISHED_GOOD (thành phẩm) is a sellable end product; WORK_IN_PROGRESS (bán thành phẩm) is
+ *   an intermediate part that only exists as a component inside another product's BOM. Both live
+ *   in this same `products` table, sharing every mechanic (image, BOM, routing), differing only
+ *   in use: a FINISHED_GOOD is the root of its own structure tree, a WORK_IN_PROGRESS is
+ *   referenced as a child node from some other product's BOM tree (`bom_items`, see `boms.ts`).
+ * - Raw materials (RM) are a different table entirely — see `materials`.
  */
 export enum ProductType {
   FINISHED_GOOD = 'FINISHED_GOOD',
@@ -54,10 +55,12 @@ export const products = pgTable(
       onDelete: 'set null',
     }),
     /**
-     * Which product this one was cloned from ("Sao chép từ"), for lineage only — a clone is a fully
-     * independent product (own BOM, own routing), this is display-only provenance. Nullable: most
-     * products aren't clones. Self-referencing forward reference — needs the explicit `AnyPgColumn`
-     * return type to break TypeScript's circular inference within the same table.
+     * Rules:
+     * - Which product this one was cloned from ("Sao chép từ"), for lineage only — a clone is a
+     *   fully independent product (own BOM, own routing), this is display-only provenance.
+     *   Nullable: most products aren't clones.
+     * - Self-referencing forward reference — needs the explicit `AnyPgColumn` return type to
+     *   break TypeScript's circular inference within the same table.
      */
     sourceProductId: uuid('source_product_id').references(
       (): AnyPgColumn => products.id,

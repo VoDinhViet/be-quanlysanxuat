@@ -36,9 +36,12 @@ export const materialStatusEnum = pgEnum('material_status', [
 ]);
 
 /**
- * Materials master data ("vật tư"). No soft delete: a material is either ACTIVE or INACTIVE
- * ("ngừng sử dụng"). `code` is immutable. When `type` is CLIENT, `clientId` is required
- * (enforced in the service).
+ * Materials master data ("vật tư").
+ *
+ * Rules:
+ * - No soft delete: a material is either ACTIVE or INACTIVE ("ngừng sử dụng").
+ * - `code` is immutable.
+ * - When `type` is CLIENT, `clientId` is required (enforced in the service).
  */
 export const materials = pgTable(
   'materials',

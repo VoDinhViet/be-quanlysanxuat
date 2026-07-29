@@ -347,11 +347,14 @@ export class ProductsService {
    * Inserts a fresh `boms` header for `newProductId`, then clones every source `bom_items` row
    * onto it: new ids, `parentId` remapped through the old→new id map, and `path` rebuilt from the
    * *new* parent's path (the old ltree path embeds the old ids, so it can't just be copied).
-   * `productId`/`materialId` on each row still point at the original WIP/material — cloning a BOM
-   * does not recursively clone the products it references. Requires `sourceItems` to already be
-   * ordered parent-before-child (by `level`), so a parent's remapped id/path always exists in the
-   * maps by the time its children are processed. Returns the old→new `bom_items.id` map so the
-   * caller can remap each cloned node's own as-used routing (`routing_steps.bom_item_id`).
+   *
+   * Rules:
+   * - `productId`/`materialId` on each row still point at the original WIP/material — cloning a
+   *   BOM does not recursively clone the products it references.
+   * - Requires `sourceItems` to already be ordered parent-before-child (by `level`), so a
+   *   parent's remapped id/path always exists in the maps by the time its children are processed.
+   * - Returns the old→new `bom_items.id` map so the caller can remap each cloned node's own
+   *   as-used routing (`routing_steps.bom_item_id`).
    */
   private async cloneBomTree(
     tx: DbTransaction,
