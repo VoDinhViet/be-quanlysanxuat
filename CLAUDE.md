@@ -31,9 +31,11 @@ Detailed, enforceable conventions live in `.claude/rules/` and are imported belo
 @.claude/rules/workflow.md
 @.claude/rules/api-module.md
 @.claude/rules/dto.md
+@.claude/rules/code-docs.md
 @.claude/rules/database.md
 @.claude/rules/errors-pagination.md
-@.claude/rules/testing.md
+
+Testing rule (`.claude/rules/testing.md`) is intentionally **not imported** — testing is paused repo-wide as of 2026-07-28 (see `.claude/rules/workflow.md`). The file itself is untouched, kept as reference for when testing resumes: re-add the `@` import line above and remove the paused banner at the top of that file.
 
 On-demand capabilities (doc refactor, CLAUDE.md audit, Fowler-style code refactor) live in `.claude/skills/` — see `.claude/README.md` for the rule-vs-skill standard.
 
@@ -45,9 +47,9 @@ pnpm build                        # nest build
 pnpm lint                         # eslint with --fix
 pnpm format                       # prettier --write on src/ and test/
 
-pnpm test                         # all unit tests (*.spec.ts under src/)
-pnpm test -- users.service        # single test file (matches path/name)
-pnpm test:e2e                     # e2e tests (test/jest-e2e.json)
+pnpm test                         # all unit tests (*.spec.ts under src/) — paused, see workflow.md; run only if explicitly asked
+pnpm test -- users.service        # single test file (matches path/name) — paused, same as above
+pnpm test:e2e                     # e2e tests (test/jest-e2e.json) — paused, same as above
 
 pnpm db:generate                  # generate Drizzle migration from schema changes
 pnpm db:migrate                   # apply migrations (never against shared/prod DBs without approval)
