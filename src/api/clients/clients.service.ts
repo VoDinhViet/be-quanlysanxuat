@@ -1,6 +1,16 @@
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
-import { and, count, desc, eq, inArray, isNull, ne, or } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  inArray,
+  isNull,
+  ne,
+  or,
+} from 'drizzle-orm';
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
@@ -15,13 +25,20 @@ import {
   ClientStatus,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
+import { ClientContactResDto } from './dto/client-contact.res.dto';
+import { ClientOptionResDto } from './dto/client-option.res.dto';
 import { ClientResDto } from './dto/client.res.dto';
 import { CreateClientReqDto } from './dto/create-client.req.dto';
+import { GetClientOptionsReqDto } from './dto/get-client-options.req.dto';
 import { GetClientsReqDto } from './dto/get-clients.req.dto';
 import { UpdateClientReqDto } from './dto/update-client.req.dto';
 
 @Injectable()
 export class ClientsService {
+  // `clients` grows via bulk-seeded/imported data (unlike the hand-curated units/countries/roles
+  // catalogues), so the unpaginated options list needs a hard ceiling.
+  private static readonly OPTIONS_LIMIT = 100;
+
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
 
   async getClients(
@@ -76,6 +93,34 @@ export class ClientsService {
     );
   }
 
+  /** Returns the whole catalogue — see `GetClientOptionsReqDto` for why this isn't paginated. */
+  async getClientOptions(
+    reqDto: GetClientOptionsReqDto,
+  ): Promise<ClientOptionResDto[]> {
+    const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
+
+    const entities = await this.db.query.clients.findMany({
+      where: and(
+        isNull(clients.deletedAt),
+        // Narrower than `getClients`: only `code`/`name`, since those are the only fields this
+        // DTO exposes — matching on taxCode/email/contact name would look like a wrong result.
+        keyword
+          ? or(
+              unaccentILike(clients.code, keyword),
+              unaccentILike(clients.name, keyword),
+            )
+          : undefined,
+      ),
+      // Alphabetical, because this list is rendered straight into a dropdown.
+      orderBy: asc(clients.name),
+      limit: ClientsService.OPTIONS_LIMIT,
+    });
+
+    return plainToInstance(ClientOptionResDto, entities, {
+      excludeExtraneousValues: true,
+    });
+  }
+
   async getClientDetail(clientId: string): Promise<ClientResDto> {
     const client = await this.db.query.clients.findFirst({
       where: and(eq(clients.id, clientId), isNull(clients.deletedAt)),
@@ -91,6 +136,20 @@ export class ClientsService {
     }
 
     return plainToInstance(ClientResDto, client, {
+      excludeExtraneousValues: true,
+    });
+  }
+
+  async getClientContacts(clientId: string): Promise<ClientContactResDto[]> {
+    await this.ensureClientExists(clientId);
+
+    const entities = await this.db.query.clientContacts.findMany({
+      where: eq(clientContacts.clientId, clientId),
+      // Primary contact first, then oldest first.
+      orderBy: [desc(clientContacts.isPrimary), asc(clientContacts.createdAt)],
+    });
+
+    return plainToInstance(ClientContactResDto, entities, {
       excludeExtraneousValues: true,
     });
   }

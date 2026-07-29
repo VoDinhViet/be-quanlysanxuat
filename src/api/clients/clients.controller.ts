@@ -17,8 +17,11 @@ import { ApiAuth, ApiPublic } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
 import { ClientsService } from './clients.service';
+import { ClientContactResDto } from './dto/client-contact.res.dto';
+import { ClientOptionResDto } from './dto/client-option.res.dto';
 import { ClientResDto } from './dto/client.res.dto';
 import { CreateClientReqDto } from './dto/create-client.req.dto';
+import { GetClientOptionsReqDto } from './dto/get-client-options.req.dto';
 import { GetClientsReqDto } from './dto/get-clients.req.dto';
 import { UpdateClientReqDto } from './dto/update-client.req.dto';
 
@@ -40,14 +43,42 @@ export class ClientsController {
     return this.clientsService.getClients(reqDto);
   }
 
-  @Get(':id')
+  @Get('options')
+  @Permissions('clients:read')
+  @ApiPublic({
+    type: ClientOptionResDto,
+    summary: 'List clients for dropdown',
+    isArray: true,
+  })
+  getClientOptions(
+    @Query() reqDto: GetClientOptionsReqDto,
+  ): Promise<ClientOptionResDto[]> {
+    return this.clientsService.getClientOptions(reqDto);
+  }
+
+  @Get(':clientId')
   @Permissions('clients:read')
   @ApiPublic({
     type: ClientResDto,
     summary: 'Get client detail',
   })
-  getClientDetail(@UUIDParam('id') id: string): Promise<ClientResDto> {
-    return this.clientsService.getClientDetail(id);
+  getClientDetail(
+    @UUIDParam('clientId') clientId: string,
+  ): Promise<ClientResDto> {
+    return this.clientsService.getClientDetail(clientId);
+  }
+
+  @Get(':clientId/contacts')
+  @Permissions('clients:read')
+  @ApiPublic({
+    type: ClientContactResDto,
+    summary: 'List contacts for a client',
+    isArray: true,
+  })
+  getClientContacts(
+    @UUIDParam('clientId') clientId: string,
+  ): Promise<ClientContactResDto[]> {
+    return this.clientsService.getClientContacts(clientId);
   }
 
   @Post()
@@ -64,26 +95,26 @@ export class ClientsController {
     return this.clientsService.createClient(reqDto, payload.sub);
   }
 
-  @Patch(':id')
+  @Patch(':clientId')
   @Permissions('clients:update')
   @ApiAuth({
     type: ClientResDto,
     summary: 'Update client',
   })
   updateClient(
-    @UUIDParam('id') id: string,
+    @UUIDParam('clientId') clientId: string,
     @Body() reqDto: UpdateClientReqDto,
   ): Promise<ClientResDto> {
-    return this.clientsService.updateClient(id, reqDto);
+    return this.clientsService.updateClient(clientId, reqDto);
   }
 
-  @Delete(':id')
+  @Delete(':clientId')
   @Permissions('clients:delete')
   @ApiAuth({
     summary: 'Delete client (soft delete)',
     statusCode: HttpStatus.NO_CONTENT,
   })
-  deleteClient(@UUIDParam('id') id: string): Promise<void> {
-    return this.clientsService.deleteClient(id);
+  deleteClient(@UUIDParam('clientId') clientId: string): Promise<void> {
+    return this.clientsService.deleteClient(clientId);
   }
 }
