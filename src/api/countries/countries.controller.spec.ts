@@ -30,7 +30,7 @@ describe('CountriesController', () => {
   describe('getCountries', () => {
     it('delegates to CountriesService.getCountries', async () => {
       const reqDto = new GetCountriesReqDto();
-      const expected = { data: [], pagination: {} };
+      const expected = [{ id: 'c-1' }];
       mockService.getCountries.mockResolvedValue(expected);
 
       const result = await controller.getCountries(reqDto);

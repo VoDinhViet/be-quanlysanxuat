@@ -1,7 +1,6 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 
-import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { ApiPublic } from '../../decorators/http.decorators';
 import { CountriesService } from './countries.service';
 import { CountryResDto } from './dto/country.res.dto';
@@ -16,11 +15,9 @@ export class CountriesController {
   @ApiPublic({
     type: CountryResDto,
     summary: 'List countries',
-    isPaginated: true,
+    isArray: true,
   })
-  getCountries(
-    @Query() reqDto: GetCountriesReqDto,
-  ): Promise<OffsetPaginatedDto<CountryResDto>> {
+  getCountries(@Query() reqDto: GetCountriesReqDto): Promise<CountryResDto[]> {
     return this.countriesService.getCountries(reqDto);
   }
 }
