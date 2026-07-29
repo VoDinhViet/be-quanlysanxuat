@@ -18,3 +18,4 @@ export * from './countries';
 export * from './supplier-groups';
 export * from './suppliers';
 export * from './orders';
+export * from './stock-receipts';

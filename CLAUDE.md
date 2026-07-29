@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 NestJS 11 modular monolith for a production management system ("quản lý sản xuất"). PostgreSQL + Drizzle ORM, Redis, Swagger. Package manager is pnpm.
 
-Current state: 21 API modules under `src/api/` — `auth`, `users`, `roles`, `health`, `files`, `clients`, `client-groups`, `products`, `product-groups`, `boms`, `routing`, `materials`, `material-groups`, `suppliers`, `supplier-groups`, `units`, `departments`, `positions`, `countries`, `operations`, `orders`. RBAC (roles + granular permission codes) is live. `package.json` is still named `be-giasu-ai` — it hasn't been renamed for this project.
+Current state: 22 API modules under `src/api/` — `auth`, `users`, `roles`, `health`, `files`, `clients`, `client-groups`, `products`, `product-groups`, `boms`, `routing`, `materials`, `material-groups`, `suppliers`, `supplier-groups`, `units`, `departments`, `positions`, `countries`, `operations`, `orders`, `inventory`. RBAC (roles + granular permission codes) is live. `package.json` is still named `be-giasu-ai` — it hasn't been renamed for this project.
 
 Removed on purpose (don't recreate unless asked): `uploads` (replaced by `files`). A prior `orders` module existed very early in the project's history and was removed along with most of the scaffold (`eea5926`) — the current `orders` (added 2026-07-24, see below) is an unrelated, fresh greenfield build, not a restoration of that old one (different schema shape: no PO/PR/VAT/approval workflow).
 

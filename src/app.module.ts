@@ -27,6 +27,7 @@ import { CountriesModule } from './api/countries/countries.module';
 import { DepartmentsModule } from './api/departments/departments.module';
 import { FilesModule } from './api/files/files.module';
 import { HealthModule } from './api/health/health.module';
+import { InventoryModule } from './api/inventory/inventory.module';
 import { OperationsModule } from './api/operations/operations.module';
 import { OrdersModule } from './api/orders/orders.module';
 import { PositionsModule } from './api/positions/positions.module';
@@ -70,6 +71,7 @@ import { UsersModule } from './api/users/users.module';
     MaterialsModule,
     SuppliersModule,
     SupplierGroupsModule,
+    InventoryModule,
     OrdersModule,
   ],
 
