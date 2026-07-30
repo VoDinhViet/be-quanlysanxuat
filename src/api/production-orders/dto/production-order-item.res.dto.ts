@@ -1,13 +1,10 @@
 import { Exclude, Expose } from 'class-transformer';
 
 import { OrderItemProductRefResDto } from '../../orders/dto/order-item-product-ref.res.dto';
-import {
-  ClassField,
-  NumberField,
-  UUIDField,
-} from '../../../decorators/field.decorators';
+import { ClassField, NumberField, UUIDField } from '../../../decorators/field.decorators';
 
-/** Một dòng Tab2 của `GET /production-orders/:orderId` — một dòng PO NORMAL kèm bức tranh tồn kho. */
+/** Một dòng của `GET /production-orders/:orderId` — snapshot đã ghi lúc duyệt PO (xem
+ * `docs/features/production.md`), không tính lại live. */
 @Exclude()
 export class ProductionOrderItemResDto {
   @Expose()
@@ -19,25 +16,23 @@ export class ProductionOrderItemResDto {
   product!: OrderItemProductRefResDto;
 
   @Expose()
-  @NumberField({ description: 'SL PO — order_items.quantity' })
+  @NumberField({
+    description: 'SL PO — order_items.quantity tại thời điểm duyệt',
+  })
   orderQty!: number;
 
   @Expose()
-  @NumberField({ description: 'Tồn TP — InventoryService onHand' })
+  @NumberField({ description: 'Tồn TP tại thời điểm duyệt' })
   onHandQty!: number;
 
   @Expose()
   @NumberField({
-    description:
-      'Khả dụng — onHand trừ reserved của mọi PO khác (loại trừ chính PO đang xem)',
+    description: 'Khả dụng tại thời điểm duyệt — onHand trừ reserved của mọi PO khác',
   })
   availableQty!: number;
 
   @Expose()
-  @NumberField({
-    description:
-      'Đề xuất SX — editable; seeded from the formula, saved via PATCH',
-  })
+  @NumberField({ description: 'Đề xuất SX đã chốt lúc duyệt' })
   quantity!: number;
 
   @Expose()

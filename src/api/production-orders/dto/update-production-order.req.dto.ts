@@ -1,7 +1,7 @@
 import { ClassField } from '../../../decorators/field.decorators';
 import { UpdateProductionOrderItemReqDto } from './update-production-order-item.req.dto';
 
-/** "Lưu lại" ở Tab2 — replace-all: mọi dòng PO trạng thái NORMAL đều phải có mặt. */
+/** Partial — chỉ dòng có mặt trong `items` mới bị ghi, dòng không gửi giữ nguyên (khác replace-all). */
 export class UpdateProductionOrderReqDto {
   @ClassField(() => UpdateProductionOrderItemReqDto, { each: true })
   readonly items!: UpdateProductionOrderItemReqDto[];

@@ -1,17 +1,6 @@
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
-import {
-  and,
-  asc,
-  count,
-  desc,
-  eq,
-  gte,
-  inArray,
-  isNull,
-  lte,
-  sql,
-} from 'drizzle-orm';
+import { and, asc, count, desc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
@@ -67,9 +56,7 @@ export class OrdersService {
     private readonly productionOrdersService: ProductionOrdersService,
   ) {}
 
-  async getOrders(
-    reqDto: GetOrdersReqDto,
-  ): Promise<OffsetPaginatedDto<OrderResDto>> {
+  async getOrders(reqDto: GetOrdersReqDto): Promise<OffsetPaginatedDto<OrderResDto>> {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
     const where = and(
       isNull(orders.deletedAt),
@@ -138,8 +125,7 @@ export class OrdersService {
             else (count(*) filter (where ${thisMonth})::numeric - count(*) filter (where ${lastMonth})::numeric)
                  / count(*) filter (where ${lastMonth}) * 100
           end, 1)`.mapWith(mapNullableNumber),
-        totalValue:
-          sql<number>`round(coalesce(sum(${totalVnd}), 0), 0)`.mapWith(Number),
+        totalValue: sql<number>`round(coalesce(sum(${totalVnd}), 0), 0)`.mapWith(Number),
         totalValueTrendPercent: sql<number | null>`round(
           case when coalesce(sum(${totalVnd}) filter (where ${lastMonth}), 0) = 0 then null
             else (coalesce(sum(${totalVnd}) filter (where ${thisMonth}), 0)
@@ -215,10 +201,7 @@ export class OrdersService {
     });
   }
 
-  async createOrder(
-    reqDto: CreateOrderReqDto,
-    userId: string,
-  ): Promise<OrderResDto> {
+  async createOrder(reqDto: CreateOrderReqDto, userId: string): Promise<OrderResDto> {
     // Every check below is a read, so it runs before the transaction opens — the transaction
     // only has to keep the writes together.
     let code = reqDto.code;
@@ -235,9 +218,7 @@ export class OrdersService {
       await this.ensureStaffExists(reqDto.staffId);
     }
     if (reqDto.items?.length) {
-      await this.ensureProductsExist(
-        reqDto.items.map((item) => item.productId),
-      );
+      await this.ensureProductsExist(reqDto.items.map((item) => item.productId));
     }
     this.ensureStatusSettable(reqDto.status);
 
@@ -259,9 +240,7 @@ export class OrdersService {
           // `exchangeRate` to convert every order to one currency, so a stray non-1 rate on a
           // VND order (client bug, bad input) would silently corrupt every dashboard total.
           exchangeRate:
-            (orderFields.currency ?? Currency.VND) === Currency.VND
-              ? 1
-              : orderFields.exchangeRate,
+            (orderFields.currency ?? Currency.VND) === Currency.VND ? 1 : orderFields.exchangeRate,
           code,
           status: reqDto.status ?? OrderStatus.DRAFT,
           createdBy: userId,
@@ -283,10 +262,7 @@ export class OrdersService {
     return this.getOrderDetail(orderId);
   }
 
-  async updateOrder(
-    orderId: string,
-    reqDto: UpdateOrderReqDto,
-  ): Promise<OrderResDto> {
+  async updateOrder(orderId: string, reqDto: UpdateOrderReqDto): Promise<OrderResDto> {
     const existing = await this.ensureOrderExists(orderId);
     this.ensureOrderEditable(existing.status);
 
@@ -297,9 +273,7 @@ export class OrdersService {
       await this.ensureStaffExists(reqDto.staffId);
     }
     if (reqDto.items?.length) {
-      await this.ensureProductsExist(
-        reqDto.items.map((item) => item.productId),
-      );
+      await this.ensureProductsExist(reqDto.items.map((item) => item.productId));
     }
     this.ensureStatusSettable(reqDto.status);
     if (reqDto.items !== undefined) {
@@ -313,9 +287,7 @@ export class OrdersService {
     // currency when this request doesn't touch `currency` at all.
     const currency = orderFields.currency ?? existing.currency;
     const orderValues =
-      currency === Currency.VND
-        ? { ...orderFields, exchangeRate: 1 }
-        : orderFields;
+      currency === Currency.VND ? { ...orderFields, exchangeRate: 1 } : orderFields;
 
     await this.db.transaction(async (tx) => {
       // `updated_at` is bumped by the column's own `$onUpdate`.
@@ -323,12 +295,10 @@ export class OrdersService {
 
       if (items !== undefined) {
         // `ensureItemsNotLockedByProduction` ở trên đã đảm bảo LSX (nếu có) đang PENDING, chưa
-        // phát hành — xoá header `production_orders` cascade dọn luôn `production_order_items`,
-        // để FK `order_item_id` (restrict) không chặn lệnh xoá của `replaceItems` bên dưới (xem
+        // duyệt — xoá header `production_orders` cascade dọn luôn `production_order_items`, để
+        // FK `order_item_id` (restrict) không chặn lệnh xoá của `replaceItems` bên dưới (xem
         // comment schema trên `productionOrderItems`).
-        await tx
-          .delete(productionOrders)
-          .where(eq(productionOrders.orderId, orderId));
+        await tx.delete(productionOrders).where(eq(productionOrders.orderId, orderId));
         await this.replaceItems(tx, orderId, items);
       }
       if (attachmentFileIds !== undefined) {
@@ -347,10 +317,7 @@ export class OrdersService {
     const existing = await this.ensureOrderExists(orderId);
     this.ensureOrderEditable(existing.status);
 
-    await this.db
-      .update(orders)
-      .set({ deletedAt: new Date() })
-      .where(eq(orders.id, orderId));
+    await this.db.update(orders).set({ deletedAt: new Date() }).where(eq(orders.id, orderId));
   }
 
   /**
@@ -365,10 +332,8 @@ export class OrdersService {
     const existing = await this.ensureOrderExists(orderId);
     this.ensurePendingConfirmation(existing.status);
 
-    // Đọc trước khi mở transaction (`.claude/rules/api-module.md`) — tính kế hoạch có gọi
-    // `InventoryService`, không có lý do gì phải chạy bên trong transaction của lệnh ghi này.
-    const planItems =
-      await this.productionOrdersService.buildInitialItems(orderId);
+    // Chỉ đọc — chạy trước transaction theo `.claude/rules/api-module.md`.
+    const planItems = await this.productionOrdersService.getInitialPlanItems(orderId);
 
     await this.db.transaction(async (tx) => {
       await tx
@@ -380,12 +345,7 @@ export class OrdersService {
         })
         .where(eq(orders.id, orderId));
 
-      await this.productionOrdersService.seedPlan(
-        tx,
-        orderId,
-        planItems,
-        userId,
-      );
+      await this.productionOrdersService.seedPlan(tx, orderId, planItems, userId);
     });
 
     return this.getOrderDetail(orderId);
@@ -437,10 +397,7 @@ export class OrdersService {
    * the non-CANCELLED lines' sum into the header's discount/VAT/total columns. Must run inside the
    * same transaction as whatever write touched `order_items`/the discount-VAT-shipping inputs.
    */
-  private async recalculateTotals(
-    tx: DbTransaction,
-    orderId: string,
-  ): Promise<void> {
+  private async recalculateTotals(tx: DbTransaction, orderId: string): Promise<void> {
     await tx.execute(sql`
       UPDATE order_items
       SET line_total = round(quantity * unit_price * (1 - discount_percent / 100), 2)
@@ -480,9 +437,7 @@ export class OrdersService {
    * Validates every file id the request carries and marks them linked, so the orphan sweeper
    * leaves them alone. Runs **before** the transaction on purpose — see `FilesService.linkFiles`.
    */
-  private async linkOrderFiles(
-    reqDto: CreateOrderReqDto | UpdateOrderReqDto,
-  ): Promise<void> {
+  private async linkOrderFiles(reqDto: CreateOrderReqDto | UpdateOrderReqDto): Promise<void> {
     await this.filesService.linkFiles(reqDto.attachmentFileIds ?? []);
   }
 
@@ -496,9 +451,7 @@ export class OrdersService {
     orderId: string,
     items: OrderItemReqDto[],
   ): Promise<void> {
-    await tx
-      .insert(orderItems)
-      .values(items.map((item) => ({ ...item, orderId })));
+    await tx.insert(orderItems).values(items.map((item) => ({ ...item, orderId })));
   }
 
   /** Replace-all. `tx` is required so a caller cannot accidentally write outside the transaction. */
@@ -519,9 +472,7 @@ export class OrdersService {
     orderId: string,
     fileIds: string[],
   ): Promise<void> {
-    await tx
-      .insert(orderAttachments)
-      .values(fileIds.map((fileId) => ({ orderId, fileId })));
+    await tx.insert(orderAttachments).values(fileIds.map((fileId) => ({ orderId, fileId })));
   }
 
   /** Replace-all. `tx` is required so a caller cannot accidentally write outside the transaction. */
@@ -530,9 +481,7 @@ export class OrdersService {
     orderId: string,
     fileIds: string[],
   ): Promise<void> {
-    await tx
-      .delete(orderAttachments)
-      .where(eq(orderAttachments.orderId, orderId));
+    await tx.delete(orderAttachments).where(eq(orderAttachments.orderId, orderId));
 
     if (fileIds.length) {
       await this.createAttachments(tx, orderId, fileIds);
@@ -590,25 +539,23 @@ export class OrdersService {
     }
   }
 
-  /** Chặn sửa `items` khi LSX (`production_orders`, header) của đơn này đã `ISSUED` — phát hành
-   * là chốt một chiều, sửa `order_items` sau đó sẽ làm lệch số liệu `production_jobs` đã sinh.
-   * Header đang `PENDING` (mới là kế hoạch, chưa phát hành) không chặn — `updateOrder` tự xoá
-   * header đó (cascade dọn `production_order_items`) ngay trước khi replace `items`. Đọc thẳng
-   * `production_orders` thay vì thêm một hàm dùng-một-lần vào `ProductionOrdersService` — cùng
-   * cách làm `InventoryService.reservedSubquery` đọc thẳng `order_items` thay vì phụ thuộc vào
+  /** Chặn sửa `items` khi LSX (`production_orders`, header) của đơn này đã `APPROVED` — duyệt LSX
+   * là chốt kế hoạch một chiều, sửa `order_items` sau đó sẽ làm lệch số liệu đã ghi. Header đang
+   * `PENDING` (chưa duyệt) không chặn — `updateOrder` tự xoá header đó (cascade dọn
+   * `production_order_items`) ngay trước khi replace `items`. Đọc thẳng `production_orders` thay
+   * vì thêm một hàm dùng-một-lần vào `ProductionOrdersService` — cùng cách làm
+   * `InventoryService.reservedSubquery` đọc thẳng `order_items` thay vì phụ thuộc vào
    * `OrdersService`. */
-  private async ensureItemsNotLockedByProduction(
-    orderId: string,
-  ): Promise<void> {
-    const issued = await this.db.query.productionOrders.findFirst({
+  private async ensureItemsNotLockedByProduction(orderId: string): Promise<void> {
+    const approved = await this.db.query.productionOrders.findFirst({
       columns: { id: true },
       where: and(
         eq(productionOrders.orderId, orderId),
-        eq(productionOrders.status, ProductionOrderStatus.ISSUED),
+        eq(productionOrders.status, ProductionOrderStatus.APPROVED),
       ),
     });
 
-    if (issued) {
+    if (approved) {
       throw new AppException(ErrorCode.E080, HttpStatus.CONFLICT);
     }
   }

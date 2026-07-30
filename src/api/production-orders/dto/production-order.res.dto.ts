@@ -16,9 +16,15 @@ import {
 @Exclude()
 export class ProductionOrderResDto {
   @Expose()
+  @UUIDField({
+    description: 'Production order id — dùng cho GET /production-orders/:productionOrdersId',
+  })
+  id!: string;
+
+  @Expose()
   @StringFieldOptional({
     nullable: true,
-    description: 'Mã LSX — null khi còn PENDING (chưa "Tạo LSX")',
+    description: 'Mã LSX — null cho tới khi duyệt (APPROVED)',
   })
   code!: string | null;
 

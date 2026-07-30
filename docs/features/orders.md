@@ -54,18 +54,19 @@ PENDING_CONFIRMATION (Chờ xác nhận)
    │ POST .../approve (orders:approve)   │ POST .../reject (orders:approve, bắt buộc reason)
    ▼                                     ▼
 AWAITING_PRODUCTION                   DRAFT (quay lại, kèm rejectionReason)
-(Chờ sản xuất)
-   │ POST /production-orders/:orderId/issue ("Tạo LSX" — xem docs/features/production.md)
+(Chờ sản xuất, LSX sinh sẵn PENDING)
+   │ POST /production-orders/:id/approve
+   │ (module production, production:approve)
    ▼
 IN_PROGRESS → COMPLETED / CANCELLED (như cũ, qua PATCH)
 ```
 
-**Chốt cứng duy nhất: `AWAITING_PRODUCTION` chỉ đạt được qua `POST /orders/:orderId/approve`.** `OrdersService.ensureStatusSettable` chặn `POST /orders`/`PATCH /orders/:orderId` set thẳng `status=AWAITING_PRODUCTION` (`E075`) — nếu không chặn, bất kỳ ai có quyền `orders:update` (không riêng Giám đốc) đều bỏ qua được bước duyệt. Mọi transition khác (kể cả `DRAFT → PENDING_CONFIRMATION`, và Huỷ từ bất kỳ trạng thái nào) vẫn lỏng như trước — không có state machine chi tiết cho các bước đó, xem "Ngoài phạm vi". **`AWAITING_PRODUCTION → IN_PROGRESS` không còn qua `PATCH`** (2026-07-29, cùng ngày module LSX được xây) — chỉ đạt được qua "Tạo LSX", xem `docs/features/production.md`.
+**Chốt cứng duy nhất: `AWAITING_PRODUCTION` chỉ đạt được qua `POST /orders/:orderId/approve`.** `OrdersService.ensureStatusSettable` chặn `POST /orders`/`PATCH /orders/:orderId` set thẳng `status=AWAITING_PRODUCTION` (`E075`) — nếu không chặn, bất kỳ ai có quyền `orders:update` (không riêng Giám đốc) đều bỏ qua được bước duyệt. Mọi transition khác (kể cả `DRAFT → PENDING_CONFIRMATION`, và Huỷ từ bất kỳ trạng thái nào) vẫn lỏng như trước — không có state machine chi tiết cho các bước đó, xem "Ngoài phạm vi". **`AWAITING_PRODUCTION` chỉ rời đi qua đúng một route, thuộc module `production` chứ không phải `orders`**: `POST /production-orders/:productionOrdersId/approve` (→ `IN_PROGRESS`) — thay thế "Tạo LSX" cũ đã bỏ 2026-07-30, xem `docs/features/production.md`.
 
 - **`orders:approve` là permission riêng**, tách khỏi `orders:update` — đúng yêu cầu "duyệt/từ chối là quyền Giám đốc trở lên". `POST .../approve`/`POST .../reject` chỉ hợp lệ khi đơn đang `PENDING_CONFIRMATION`, nếu không ném `E074`.
 - **Từ chối bắt buộc lý do** (`RejectOrderReqDto.reason`), lưu vào `orders.rejectionReason` cùng `rejectedBy`/`rejectedAt` — chỉ giữ lần từ chối gần nhất, không phải bảng lịch sử. Tương tự, duyệt ghi `approvedBy`/`approvedAt` (cũng chỉ lần gần nhất).
-- **`approveOrder` đồng thời sinh sẵn LSX** — 1 header `production_orders` (`status = PENDING`) + các dòng quyết định sản xuất `production_order_items` (một dòng mỗi dòng PO `NORMAL`) — trong cùng transaction với việc chuyển status — xem `docs/features/production.md`. Đây là hồ sơ quyết định ban đầu cho màn LSX, không phải dữ liệu hiển thị (LSX luôn tính lại tồn/khả dụng live).
-- **Sửa/xoá được ở mọi trạng thái trừ `COMPLETED`/`CANCELLED`** — với một ngoại lệ mới: `PATCH` đổi `items` bị chặn (`E080`) nếu LSX (`production_orders`, header) của đơn đã `ISSUED`, vì FK `restrict` sẽ nổ 500 nếu không chặn ở tầng service (LSX chỉ đang `PENDING`, chưa phát hành, thì không chặn — `updateOrder` tự xoá header đó, cascade dọn `production_order_items`, trước khi thay `items`). `PATCH`/`DELETE` trên một đơn đã ở trạng thái kết thúc vẫn trả `E065` (409) như cũ — logic này giữ nguyên y hệt trước 2026-07-29, chỉ đổi tập giá trị enum đứng sau nó (`DRAFT`/`PENDING_CONFIRMATION`/`AWAITING_PRODUCTION`/`IN_PROGRESS` đều sửa/xoá được).
+- **`approveOrder` đồng thời sinh sẵn LSX** — 1 header `production_orders` (`status = PENDING`) + các dòng quyết định sản xuất `production_order_items` (một dòng mỗi dòng PO `NORMAL`) — trong cùng transaction với việc chuyển status — xem `docs/features/production.md`. Đây là hồ sơ quyết định ban đầu cho màn LSX; sửa được số lượng sản xuất từng dòng trong lúc LSX còn `PENDING` (`PATCH /production-orders/:productionOrdersId`), rồi Giám đốc/quản lý sản xuất duyệt LSX đó ở bước tiếp theo — hiện chưa có cách huỷ duyệt nếu duyệt nhầm (tạm hoãn).
+- **Sửa/xoá được ở mọi trạng thái trừ `COMPLETED`/`CANCELLED`** — với một ngoại lệ mới: `PATCH` đổi `items` bị chặn (`E080`) nếu LSX (`production_orders`, header) của đơn đã `APPROVED`, vì FK `restrict` sẽ nổ 500 nếu không chặn ở tầng service (LSX đang `PENDING` thì không chặn — `updateOrder` tự xoá header đó, cascade dọn `production_order_items`, trước khi thay `items`). `PATCH`/`DELETE` trên một đơn đã ở trạng thái kết thúc vẫn trả `E065` (409) như cũ — logic này giữ nguyên y hệt trước 2026-07-29, chỉ đổi tập giá trị enum đứng sau nó (`DRAFT`/`PENDING_CONFIRMATION`/`AWAITING_PRODUCTION`/`IN_PROGRESS` đều sửa/xoá được).
 
 ### Dòng sản phẩm: replace-all, có `sortOrder`
 
@@ -83,16 +84,16 @@ Không đổi so với bản gốc: khác phần lớn module master-data, **m�
 
 ## API contract
 
-| Method | Path | Permission | Request | Response |
-| ------ | ---- | ---------- | ------- | -------- |
-| GET | `/orders` | `orders:read` | `GetOrdersReqDto` — `limit`, `page`, `q`, `order`, `status`, `clientId`, `staffId`, `fromDate`, `toDate` | `200` + `OrderResDto` phân trang |
-| GET | `/orders/stats` | `orders:read` | — | `200` + `OrderStatsResDto` (6 thẻ dashboard, xem mục riêng bên dưới) |
-| GET | `/orders/:orderId` | `orders:read` | — | `200` + `OrderResDto` (kèm `items`, `attachments`) |
-| POST | `/orders` | `orders:create` | `CreateOrderReqDto` — `orderDate`*, `dueDate`*, `clientId` (tạm thời optional, xem quy tắc), `contactName`, `contactPhone`, `contactEmail`, `staffId`, `deliveryAddress`, `paymentTerm`, `currency`, `exchangeRate`, `discountType`, `discountValue`, `vatPercent`, `shippingFee`, `status` (không nhận `AWAITING_PRODUCTION`, `E075`; mặc định `DRAFT`), `note`, `internalNote`, `items[]`, `attachmentFileIds[]` | `201` + `OrderResDto` |
-| PATCH | `/orders/:orderId` | `orders:update` | `UpdateOrderReqDto` — như trên trừ `code` (bất biến), tất cả tuỳ chọn; chặn khi đơn đã `COMPLETED`/`CANCELLED`; `status` không nhận `AWAITING_PRODUCTION` (`E075`) | `200` + `OrderResDto` |
-| DELETE | `/orders/:orderId` | `orders:delete` | — | `204`, không có body; chặn khi đơn đã `COMPLETED`/`CANCELLED` |
-| POST | `/orders/:orderId/approve` | `orders:approve` | — | `200` + `OrderResDto`; chỉ hợp lệ khi đơn `PENDING_CONFIRMATION` (`E074`) |
-| POST | `/orders/:orderId/reject` | `orders:approve` | `RejectOrderReqDto` — `reason*` | `200` + `OrderResDto`; chỉ hợp lệ khi đơn `PENDING_CONFIRMATION` (`E074`) |
+| Method | Path                       | Permission       | Request                                                                                                                                                                                                                                                                                                                                                                                                            | Response                                                                  |
+| ------ | -------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------- |
+| GET    | `/orders`                  | `orders:read`    | `GetOrdersReqDto` — `limit`, `page`, `q`, `order`, `status`, `clientId`, `staffId`, `fromDate`, `toDate`                                                                                                                                                                                                                                                                                                           | `200` + `OrderResDto` phân trang                                          |
+| GET    | `/orders/stats`            | `orders:read`    | —                                                                                                                                                                                                                                                                                                                                                                                                                  | `200` + `OrderStatsResDto` (6 thẻ dashboard, xem mục riêng bên dưới)      |
+| GET    | `/orders/:orderId`         | `orders:read`    | —                                                                                                                                                                                                                                                                                                                                                                                                                  | `200` + `OrderResDto` (kèm `items`, `attachments`)                        |
+| POST   | `/orders`                  | `orders:create`  | `CreateOrderReqDto` — `orderDate`_, `dueDate`_, `clientId` (tạm thời optional, xem quy tắc), `contactName`, `contactPhone`, `contactEmail`, `staffId`, `deliveryAddress`, `paymentTerm`, `currency`, `exchangeRate`, `discountType`, `discountValue`, `vatPercent`, `shippingFee`, `status` (không nhận `AWAITING_PRODUCTION`, `E075`; mặc định `DRAFT`), `note`, `internalNote`, `items[]`, `attachmentFileIds[]` | `201` + `OrderResDto`                                                     |
+| PATCH  | `/orders/:orderId`         | `orders:update`  | `UpdateOrderReqDto` — như trên trừ `code` (bất biến), tất cả tuỳ chọn; chặn khi đơn đã `COMPLETED`/`CANCELLED`; `status` không nhận `AWAITING_PRODUCTION` (`E075`)                                                                                                                                                                                                                                                 | `200` + `OrderResDto`                                                     |
+| DELETE | `/orders/:orderId`         | `orders:delete`  | —                                                                                                                                                                                                                                                                                                                                                                                                                  | `204`, không có body; chặn khi đơn đã `COMPLETED`/`CANCELLED`             |
+| POST   | `/orders/:orderId/approve` | `orders:approve` | —                                                                                                                                                                                                                                                                                                                                                                                                                  | `200` + `OrderResDto`; chỉ hợp lệ khi đơn `PENDING_CONFIRMATION` (`E074`) |
+| POST   | `/orders/:orderId/reject`  | `orders:approve` | `RejectOrderReqDto` — `reason*`                                                                                                                                                                                                                                                                                                                                                                                    | `200` + `OrderResDto`; chỉ hợp lệ khi đơn `PENDING_CONFIRMATION` (`E074`) |
 
 (`*` = bắt buộc)
 
@@ -107,22 +108,23 @@ Không đổi so với bản gốc: khác phần lớn module master-data, **m�
 
 Một câu truy vấn duy nhất (`OrdersService.getOrderStats`), mỗi field là một `count(*)`/`sum(*) filter (where ...)` hoặc `round(...)` riêng — Postgres tính hết trong một lượt, không gộp nhóm rồi rút gọn bằng JS.
 
-| Field | Thẻ | Công thức |
-| --- | --- | --- |
-| `totalOrders` | Tổng đơn hàng | `count(*)` |
-| `totalOrdersTrendPercent` | % so với tháng trước | `(số đơn tạo tháng này − số đơn tạo tháng trước) / số đơn tạo tháng trước × 100`, theo `createdAt`, khung tháng theo lịch (`date_trunc('month', now())`); `null` nếu tháng trước không có đơn nào |
-| `totalValue` | Tổng giá trị | `sum(total)` |
-| `totalValueTrendPercent` | % so với tháng trước | như trên, theo `sum(total)`; `null` nếu tháng trước = 0 |
-| `completedValue` | Đã giao | `sum(total)` của các đơn `status = COMPLETED` |
-| `completedValuePercentOfTotal` | % so với tổng giá trị | `completedValue / totalValue × 100`, `0` nếu `totalValue = 0` |
-| `inProgress` | Đang thực hiện | `count(*) where status = IN_PROGRESS` |
-| `inProgressPercentOfTotal` | % so với tổng số đơn | `inProgress / totalOrders × 100`, `0` nếu `totalOrders = 0` |
-| `expired` | Trễ hạn | `dueDate < now() AND status NOT IN (COMPLETED, CANCELLED)` — công thức giống hệt `OrderResDto.expired` |
-| `expiredTrendCount` | Số chênh so với tuần trước | `expired hiện tại − expired "tuần trước"` (xấp xỉ, xem bên dưới) |
-| `completed` | Hoàn thành | `count(*) where status = COMPLETED` |
-| `completedPercentOfTotal` | % so với tổng số đơn | `completed / totalOrders × 100`, `0` nếu `totalOrders = 0` |
+| Field                          | Thẻ                        | Công thức                                                                                                                                                                                         |
+| ------------------------------ | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `totalOrders`                  | Tổng đơn hàng              | `count(*)`                                                                                                                                                                                        |
+| `totalOrdersTrendPercent`      | % so với tháng trước       | `(số đơn tạo tháng này − số đơn tạo tháng trước) / số đơn tạo tháng trước × 100`, theo `createdAt`, khung tháng theo lịch (`date_trunc('month', now())`); `null` nếu tháng trước không có đơn nào |
+| `totalValue`                   | Tổng giá trị               | `sum(total)`                                                                                                                                                                                      |
+| `totalValueTrendPercent`       | % so với tháng trước       | như trên, theo `sum(total)`; `null` nếu tháng trước = 0                                                                                                                                           |
+| `completedValue`               | Đã giao                    | `sum(total)` của các đơn `status = COMPLETED`                                                                                                                                                     |
+| `completedValuePercentOfTotal` | % so với tổng giá trị      | `completedValue / totalValue × 100`, `0` nếu `totalValue = 0`                                                                                                                                     |
+| `inProgress`                   | Đang thực hiện             | `count(*) where status = IN_PROGRESS`                                                                                                                                                             |
+| `inProgressPercentOfTotal`     | % so với tổng số đơn       | `inProgress / totalOrders × 100`, `0` nếu `totalOrders = 0`                                                                                                                                       |
+| `expired`                      | Trễ hạn                    | `dueDate < now() AND status NOT IN (COMPLETED, CANCELLED)` — công thức giống hệt `OrderResDto.expired`                                                                                            |
+| `expiredTrendCount`            | Số chênh so với tuần trước | `expired hiện tại − expired "tuần trước"` (xấp xỉ, xem bên dưới)                                                                                                                                  |
+| `completed`                    | Hoàn thành                 | `count(*) where status = COMPLETED`                                                                                                                                                               |
+| `completedPercentOfTotal`      | % so với tổng số đơn       | `completed / totalOrders × 100`, `0` nếu `totalOrders = 0`                                                                                                                                        |
 
-**Hai field là xấp xỉ**, vì hệ thống không lưu lịch sử đổi trạng thái (chỉ có trạng thái *hiện tại* của mỗi dòng):
+**Hai field là xấp xỉ**, vì hệ thống không lưu lịch sử đổi trạng thái (chỉ có trạng thái _hiện tại_ của mỗi dòng):
+
 - **`completedValue`** ("Đã giao"): chưa có bảng giao hàng/DO thật, tạm coi mọi đơn `COMPLETED` là "đã giao".
 - **`expiredTrendCount`**: "trễ hạn tuần trước" được tính lại bằng `dueDate < now() - interval '7 days' AND status NOT IN (COMPLETED, CANCELLED)`, dùng **trạng thái hiện tại** chứ không phải trạng thái thật tại thời điểm 7 ngày trước. Một đơn từng trễ hạn nhưng sau đó chuyển `CANCELLED` sẽ không được tính vào "tuần trước", dù thực tế lúc đó nó đang trễ hạn.
 
@@ -130,20 +132,20 @@ Một câu truy vấn duy nhất (`OrdersService.getOrderStats`), mỗi field l�
 
 ## Trường hợp lỗi
 
-| Trường hợp | ErrorCode | HTTP status |
-| ---------- | --------- | ----------- |
-| Không tìm thấy đơn hàng | `ErrorCode.E057` | 404 |
-| `code` đã tồn tại (chỉ khi tạo, `code` truyền lên) | `ErrorCode.E058` | 409 |
-| Khách hàng (`clientId`) không tồn tại — chỉ kiểm khi `clientId` được gửi | `ErrorCode.E059` | 404 |
-| Nhân viên kinh doanh (`staffId`) không tồn tại | `ErrorCode.E060` | 404 |
-| Một `productId` trong `items` không tồn tại | `ErrorCode.E061` | 404 |
-| `PATCH`/`DELETE` trên đơn đã `COMPLETED`/`CANCELLED` | `ErrorCode.E065` | 409 |
-| File đính kèm không tồn tại trong registry | `ErrorCode.E042` | 404 |
-| `POST .../approve`/`POST .../reject` trên đơn không ở `PENDING_CONFIRMATION` | `ErrorCode.E074` | 409 |
-| `POST /orders`/`PATCH /orders/:orderId` cố set `status=AWAITING_PRODUCTION` trực tiếp (phải qua `POST .../approve`) | `ErrorCode.E075` | 400 |
-| `PATCH /orders/:orderId` đổi `items` trên đơn đã có dòng phát hành LSX | `ErrorCode.E080` | 409 |
-| Role của caller thiếu quyền mà route yêu cầu | `ErrorCode.E033` | 403 |
-| Không gửi bearer token | — | 401 |
+| Trường hợp                                                                                                          | ErrorCode        | HTTP status |
+| ------------------------------------------------------------------------------------------------------------------- | ---------------- | ----------- |
+| Không tìm thấy đơn hàng                                                                                             | `ErrorCode.E057` | 404         |
+| `code` đã tồn tại (chỉ khi tạo, `code` truyền lên)                                                                  | `ErrorCode.E058` | 409         |
+| Khách hàng (`clientId`) không tồn tại — chỉ kiểm khi `clientId` được gửi                                            | `ErrorCode.E059` | 404         |
+| Nhân viên kinh doanh (`staffId`) không tồn tại                                                                      | `ErrorCode.E060` | 404         |
+| Một `productId` trong `items` không tồn tại                                                                         | `ErrorCode.E061` | 404         |
+| `PATCH`/`DELETE` trên đơn đã `COMPLETED`/`CANCELLED`                                                                | `ErrorCode.E065` | 409         |
+| File đính kèm không tồn tại trong registry                                                                          | `ErrorCode.E042` | 404         |
+| `POST .../approve`/`POST .../reject` trên đơn không ở `PENDING_CONFIRMATION`                                        | `ErrorCode.E074` | 409         |
+| `POST /orders`/`PATCH /orders/:orderId` cố set `status=AWAITING_PRODUCTION` trực tiếp (phải qua `POST .../approve`) | `ErrorCode.E075` | 400         |
+| `PATCH /orders/:orderId` đổi `items` trên đơn có LSX đã duyệt (`APPROVED`)                                          | `ErrorCode.E080` | 409         |
+| Role của caller thiếu quyền mà route yêu cầu                                                                        | `ErrorCode.E033` | 403         |
+| Không gửi bearer token                                                                                              | —                | 401         |
 
 `E066` (`order.error.no_items`) từng gắn với `POST /orders/:id/confirm` — endpoint đó đã bị gỡ cùng với `DRAFT` (2026-07-27), mã này để trống không tái sử dụng (xem comment tại `ErrorCode.E066` trong `error-code.constant.ts`).
 
@@ -151,7 +153,7 @@ Thứ tự kiểm khi `POST`: mã trùng (`E058`) → khách hàng tồn tại (
 
 ## Ngoài phạm vi
 
-- `IN_PROGRESS → COMPLETED` bằng một endpoint riêng (gắn với sản xuất/giao hàng thực tế) — chưa có API chuyên dụng, vẫn qua `PATCH /orders/:orderId` với `status` tường minh. (`AWAITING_PRODUCTION → IN_PROGRESS` đã có API riêng — "Tạo LSX", xem `docs/features/production.md`.)
+- `IN_PROGRESS → COMPLETED` bằng một endpoint riêng (gắn với sản xuất/giao hàng thực tế) — chưa có API chuyên dụng, vẫn qua `PATCH /orders/:orderId` với `status` tường minh. (`AWAITING_PRODUCTION → IN_PROGRESS` đã có API riêng — duyệt LSX; không có route nào đưa đơn ngược lại `DRAFT` từ `AWAITING_PRODUCTION`/`IN_PROGRESS` — xem `docs/features/production.md`.)
 - Giới hạn Huỷ (`CANCELLED`) chỉ đạt được từ một số trạng thái nhất định — hiện `PATCH status=CANCELLED` tự do từ mọi trạng thái không phải `COMPLETED`/`CANCELLED`, không có luật riêng.
 - Bảng lịch sử duyệt/từ chối — `approvedBy`/`approvedAt`/`rejectedBy`/`rejectedAt`/`rejectionReason` chỉ giữ **lần gần nhất**; một đơn bị từ chối, sửa, rồi từ chối lần hai sẽ ghi đè lý do lần đầu.
 - **`GET /orders/stats` chưa cập nhật theo bộ trạng thái mới** — 6 thẻ dashboard vẫn tính trên `CONFIRMED`/`IN_PROGRESS`/`COMPLETED`/`CANCELLED` kiểu cũ (trong đó `CONFIRMED` không còn là giá trị hợp lệ của `status`), không có thẻ riêng cho `DRAFT`/`PENDING_CONFIRMATION`/`AWAITING_PRODUCTION`. Cần một lượt sửa riêng.
@@ -166,7 +168,7 @@ Thứ tự kiểm khi `POST`: mã trùng (`E058`) → khách hàng tồn tại (
 
 ## Xem thêm
 
-- `production` — module LSX đọc PO đã duyệt (`AWAITING_PRODUCTION`/`IN_PROGRESS`), quyết định "Tạo LSX" là nơi duy nhất chuyển `AWAITING_PRODUCTION → IN_PROGRESS`; xem `docs/features/production.md`.
+- `production` — module LSX đọc PO đã duyệt (`AWAITING_PRODUCTION`/`IN_PROGRESS`); duyệt LSX (`POST /production-orders/:id/approve`) là con đường duy nhất chuyển `AWAITING_PRODUCTION → IN_PROGRESS`, thay thế "Tạo LSX" cũ đã bỏ 2026-07-30; xem `docs/features/production.md`.
 - `clients` — nguồn `clientId`/liên hệ tại thời điểm chọn (không FK bền tới liên hệ, xem trên).
 - `products` — nguồn `productId` mỗi dòng; `products.md` mô tả `type`/`unitId`/vòng đời sản phẩm.
 - `users` — nguồn `staffId` (Nhân viên kinh doanh); khác các FK "người thực hiện" khác trong hệ thống vốn trỏ `credentials.id`, đây là FK nghiệp vụ đầu tiên trỏ thẳng `users.id`.
@@ -175,9 +177,13 @@ Thứ tự kiểm khi `POST`: mã trùng (`E058`) → khách hàng tồn tại (
 
 ## Frontend integration notes
 
+**2026-07-30 (cuối ngày) — thêm route Duyệt LSX, lấp lại khoảng trống `AWAITING_PRODUCTION → IN_PROGRESS` mà đợt bỏ "Tạo LSX" bên dưới để lại.** Không đổi gì trực tiếp trên `orders` (route/DTO/field giữ nguyên) — thay đổi nằm ở module `production`: `POST /production-orders/:productionOrdersId/approve` nay là con đường duy nhất chuyển `AWAITING_PRODUCTION → IN_PROGRESS` (xem `docs/features/production.md`). Chưa có route huỷ duyệt — một LSX đã `APPROVED` hiện là điểm cuối, tạm hoãn đợt này. FE có thể gắn lại luồng "sau khi duyệt PO, chờ LSX được duyệt để vào sản xuất" trên màn chi tiết đơn.
+
+**2026-07-30 (đợt trước, trong ngày) — bỏ "Tạo LSX" (module `production`), ảnh hưởng gián tiếp tới luồng đơn hàng.** Không đổi gì trực tiếp trên `orders` (route/DTO/field giữ nguyên), nhưng `POST /production-orders/:orderId/issue` ("Tạo LSX") — con đường duy nhất từng chuyển `AWAITING_PRODUCTION → IN_PROGRESS` — đã bị xoá cùng các route ghi khác của LSX (xem `docs/features/production.md`). Ngay sau đó cùng ngày, khoảng trống này đã được lấp lại bằng route Duyệt LSX (xem mục ngay trên) — mục này giữ lại như hồ sơ lịch sử của khoảng thời gian ở giữa. FE cần gỡ nút "Tạo LSX" cũ trên màn LSX, thay bằng nút "Duyệt LSX" mới.
+
 **2026-07-29 (tối) — module LSX (`production-orders` + `production-jobs`), additive.** Không phải breaking change — mọi route/DTO/field hiện có của `orders` giữ nguyên. Ảnh hưởng FE cần biết:
 
-- `POST /orders/:orderId/approve` nay đồng thời sinh sẵn LSX cho đơn (header + dòng quyết định sản xuất) — response `OrderResDto` không đổi, nhưng ngay sau đó `GET /production-orders/:orderId` đã có dữ liệu (không cần chờ một bước "tạo kế hoạch" riêng).
+- `POST /orders/:orderId/approve` nay đồng thời sinh sẵn LSX cho đơn (header + dòng quyết định sản xuất) — response `OrderResDto` không đổi. `GET /production-orders/:orderId` từng đọc lại dữ liệu này (Tab1/Tab2) nhưng đã bỏ 2026-07-30 cùng mọi API ghi/đọc chi tiết của LSX (xem `docs/features/production.md`) — dữ liệu ghi ra hiện không còn API nào đọc lại.
 - `AWAITING_PRODUCTION → IN_PROGRESS` nay **chỉ** đạt được qua `POST /production-orders/:orderId/issue` ("Tạo LSX") — `PATCH /orders/:orderId` với `status=IN_PROGRESS` trên một đơn đang `AWAITING_PRODUCTION` không còn là đường đi được thiết kế cho luồng LSX (endpoint đó vẫn kỹ thuật tồn tại, nhưng FE nên chuyển màn LSX qua route mới).
 - `PATCH /orders/:orderId` với `items` trên một đơn đã có LSX phát hành nay trả `E080` (409) thay vì áp dụng thay đổi — FE nên ẩn/khoá phần sửa dòng sản phẩm trên màn chi tiết đơn khi đơn đã "Đã tạo LSX".
 - Toàn bộ API mới nằm ở 2 module riêng: `/production-orders*` (màn chính LSX, theo PO) và `/production-jobs*` (menu "Quản lý sản xuất", theo Job — **1 sản phẩm = 1 Job**, gộp mọi dòng PO cùng sản phẩm trong một LSX). Bảng lỗi/công thức tính "Đề xuất SX" nằm ở `docs/features/production.md`.

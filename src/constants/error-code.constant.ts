@@ -127,28 +127,37 @@ export enum ErrorCode {
   // `PATCH /orders/:orderId` — that status is only reachable through `OrdersService.approveOrder`
   // (director-level `orders:approve` permission), never a plain create/update.
   E075 = 'order.error.status_not_settable_directly',
-  // `PATCH /production-orders/:orderId` hoặc `.../issue` gọi trên một đơn chưa
-  // AWAITING_PRODUCTION — lập kế hoạch sản xuất chỉ áp dụng cho PO đã duyệt.
+  // `POST /production-orders/:productionOrdersId/approve` gọi trên một LSX mà PO gốc không còn
+  // `AWAITING_PRODUCTION`. Trước 2026-07-30 (bản `PATCH`/`issue` cũ) cùng ý nghĩa nhưng không có
+  // nhánh throw nào — sống lại cùng luồng duyệt LSX mới.
   E076 = 'production_order.error.order_not_approved',
-  // Cùng các route trên, nhưng đơn đã có ít nhất một dòng `production_orders` ở trạng thái ISSUED
-  // — phát hành là hành động một chiều, không lập lại kế hoạch/phát hành lại khi đã xong.
+  // Dự phòng — gắn với "Tạo LSX" (`issueProductionOrders`) đã bỏ 2026-07-30. Luồng thay thế
+  // (`approveProductionOrder`) dùng `E083` cho ca tương đương, không tái dùng mã này.
   E077 = 'production_order.error.already_issued',
-  // `orderItemId` trên một dòng `PATCH /production-orders/:orderId` không thuộc đơn này, hoặc
-  // thuộc một dòng CANCELLED.
+  // `PATCH /production-orders/:productionOrdersId` gửi `orderItemId` không thuộc chính LSX đó.
+  // Trước 2026-07-30 gắn với `PATCH` "Lưu lại" cũ (đã bỏ), không có nhánh throw — sống lại cùng
+  // route `updateProductionOrder` mới (khác khoá tra cứu + semantics partial, xem
+  // `docs/features/production.md`).
   E078 = 'production_order.error.invalid_order_item',
-  // `POST /production-orders/:orderId/issue` gọi trên một đơn không có dòng NORMAL nào.
+  // Dự phòng — gắn với `POST /production-orders/:orderId/issue` đã bỏ 2026-07-30.
   E079 = 'production_order.error.no_items',
   // `PATCH /orders/:orderId` cố replace `items` trên một đơn mà LSX (`production_orders`, header)
-  // đã `ISSUED` — phát hành là chốt một chiều, sửa `order_items` sau đó sẽ làm lệch số liệu
-  // `production_jobs` đã sinh.
+  // đã `APPROVED` — duyệt LSX là chốt kế hoạch, sửa `order_items` sau đó sẽ làm lệch số liệu đã
+  // ghi. Trước 2026-07-30 kiểm tra `ISSUED` (gắn với "Tạo LSX", đã bỏ) — nay kiểm tra `APPROVED`
+  // (gắn với `approveProductionOrder`), sống lại cùng luồng duyệt LSX mới.
   E080 = 'order.error.items_locked_by_production',
-  // Header `production_orders` không tồn tại cho một PO đang trong phạm vi LSX
-  // (`ProductionOrdersService.getHeader`) — về lý thuyết không xảy ra vì `OrdersService.approveOrder`
-  // luôn seed header cùng lúc duyệt PO; giữ như một chốt chặn dữ liệu bất nhất, không phải luồng
-  // nghiệp vụ bình thường.
+  // Header `production_orders` không tồn tại cho một PO đang trong phạm vi LSX — về lý thuyết
+  // không xảy ra vì `OrdersService.approveOrder` luôn seed header cùng lúc duyệt PO; giữ như một
+  // chốt chặn dữ liệu bất nhất, không phải luồng nghiệp vụ bình thường.
   E081 = 'production_order.error.not_found',
   // `GET /production-jobs/:jobId` với id không tồn tại.
   E082 = 'production_job.error.not_found',
+  // `POST /production-orders/:productionOrdersId/approve` gọi trên một LSX không còn `PENDING`
+  // (đã `APPROVED` từ trước) — duyệt chỉ hợp lệ một lần.
+  E083 = 'production_order.error.invalid_approval_state',
+  // `PATCH /production-orders/:productionOrdersId` gọi trên một LSX không còn `PENDING` (đã
+  // `APPROVED`) — sửa số lượng sản xuất chỉ hợp lệ trước khi chốt LSX.
+  E084 = 'production_order.error.not_editable',
   E101 = 'class.error.teacher_not_found',
   E102 = 'class.error.invalid_teacher_assignment',
   E103 = 'class.error.forbidden',
