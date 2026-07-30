@@ -13,6 +13,7 @@ import { clients } from './clients';
 import { credentials } from './credentials';
 import { files } from './files';
 import { materialGroups } from './material-groups';
+import { suppliers } from './suppliers';
 import { units } from './units';
 
 export enum MaterialType {
@@ -42,6 +43,8 @@ export const materialStatusEnum = pgEnum('material_status', [
  * - No soft delete: a material is either ACTIVE or INACTIVE ("ngừng sử dụng").
  * - `code` is immutable.
  * - When `type` is CLIENT, `clientId` is required (enforced in the service).
+ * - `minStock`/`supplierId` chỉ phục vụ tồn kho vật tư (`InventoryService.getMaterialInventory`)
+ *   — xem `docs/features/inventory.md`.
  */
 export const materials = pgTable(
   'materials',
@@ -66,6 +69,16 @@ export const materials = pgTable(
       .notNull()
       .default(MaterialStatus.ACTIVE),
     note: varchar('note', { length: 1000 }),
+    minStock: numeric('min_stock', {
+      precision: 18,
+      scale: 3,
+      mode: 'number',
+    })
+      .notNull()
+      .default(0),
+    supplierId: uuid('supplier_id').references(() => suppliers.id, {
+      onDelete: 'set null',
+    }),
 
     // Extended information (all optional)
     materialGrade: varchar('material_grade', { length: 255 }),
@@ -98,6 +111,7 @@ export const materials = pgTable(
     index('idx_materials_created_by').on(table.createdBy),
     index('idx_materials_status').on(table.status),
     index('idx_materials_type').on(table.type),
+    index('idx_materials_supplier_id').on(table.supplierId),
   ],
 );
 
@@ -135,6 +149,10 @@ export const materialsRelations = relations(materials, ({ one, many }) => ({
   client: one(clients, {
     fields: [materials.clientId],
     references: [clients.id],
+  }),
+  supplier: one(suppliers, {
+    fields: [materials.supplierId],
+    references: [suppliers.id],
   }),
   creator: one(credentials, {
     fields: [materials.createdBy],

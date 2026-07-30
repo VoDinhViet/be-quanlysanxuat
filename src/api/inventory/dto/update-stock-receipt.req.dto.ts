@@ -11,10 +11,11 @@ import {
 import { StockReceiptItemReqDto } from './stock-receipt-item.req.dto';
 
 /**
- * No `code` field — immutable after creation, same convention as `UpdateOrderReqDto`. `items` is
- * replace-all: sending `[]` clears every line, omitting the field keeps the existing set. When
- * only one of `type`/`reason` is sent, the pair is re-validated against the row's *effective*
- * value for the other (same idea as `MaterialsService.updateMaterial`'s (type, clientId) check).
+ * No `code`/`subject` field — cả hai bất biến sau khi tạo, cùng khuôn `UpdateOrderReqDto`.
+ * `items` is replace-all: sending `[]` clears every line, omitting the field keeps the existing
+ * set. When only one of `type`/`reason` is sent, the pair is re-validated against the row's
+ * *effective* value for the other (same idea as `MaterialsService.updateMaterial`'s
+ * (type, clientId) check).
  */
 export class UpdateStockReceiptReqDto {
   @EnumFieldOptional(() => StockReceiptType)

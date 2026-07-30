@@ -1,11 +1,12 @@
 import { Exclude, Expose } from 'class-transformer';
 
 import {
-  ClassField,
+  ClassFieldOptional,
   NumberField,
   UUIDField,
   UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
+import { MaterialRefResDto } from '../../materials/dto/material-ref.res.dto';
 import { ProductRefResDto } from '../../products/dto/product-ref.res.dto';
 
 @Exclude()
@@ -26,6 +27,10 @@ export class StockReceiptItemResDto {
   orderItemId!: string | null;
 
   @Expose()
-  @ClassField(() => ProductRefResDto)
-  product!: ProductRefResDto;
+  @ClassFieldOptional(() => ProductRefResDto, { nullable: true })
+  product!: ProductRefResDto | null;
+
+  @Expose()
+  @ClassFieldOptional(() => MaterialRefResDto, { nullable: true })
+  material!: MaterialRefResDto | null;
 }

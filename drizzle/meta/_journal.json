@@ -463,6 +463,13 @@
       "when": 1785391224580,
       "tag": "0065_brief_ultimatum",
       "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1785397454764,
+      "tag": "0066_purple_mentallo",
+      "breakpoints": true
     }
   ]
 }

@@ -13,14 +13,15 @@ Quản lý danh mục vật tư ("Vật tư") — nguyên vật liệu dùng là
 - **`attachmentFileIds` là replace-all.** Gửi mảng mới (kể cả `[]`) thay hoàn toàn bộ tài liệu đính kèm cũ; không gửi trường này thì giữ nguyên. File phải được xác thực tồn tại và đánh dấu "đã liên kết" (`FilesService.linkFiles`) trước khi transaction ghi mở ra.
 - **Xoá bị chặn khi vật tư đang được dùng trong BOM.** FK `bom_items.materialId` là `onDelete: 'restrict'` — DB tự chặn xoá cứng nếu còn node BOM nào tham chiếu. Service kiểm trước và trả `E041` (409) thay vì để lộ ra một lỗi 500 thô từ vi phạm khoá ngoại.
 - **`PATCH` chỉ gửi `attachmentFileIds` (hoặc body rỗng) sẽ lỗi 500.** `updateMaterial` không còn set tay `updatedAt` (cột đã có `$onUpdate` tự bump khi statement thật sự chạy) và cũng không có guard bù lại, nên khi mọi field khác đều không được gửi, `.set()` nhận toàn `undefined` và drizzle ném `Error: No values to set` thẳng ra client. Client luôn phải kèm ít nhất một field khác `attachmentFileIds`/`type`/`clientId`-cặp trong một `PATCH`.
+- **`minStock`/`supplierId` (2026-07-30)** — hai cột phục vụ màn "Tồn kho vật tư" (`docs/features/inventory.md`): `minStock` (định mức tồn tối thiểu, `numeric`, mặc định `0`, không bắt buộc dương) là ngưỡng `WARNING` của `MaterialStockStatus`; `supplierId` (nullable, FK `suppliers`, `onDelete: 'set null'`) là **nhà cung cấp chính**, không phải bảng nhiều-nhiều — chỉ kiểm tồn tại khi được gửi (`ensureSupplierExists`, `E019`/404), cùng khuôn `ensureUnitExists`. Cả hai chỉ là cột thường trên `materials`, không có luật ràng buộc chéo với `type`/`clientId`.
 
 ## API contract
 
 | Method | Path | Permission | Request | Response |
 | ------ | ---- | ---------- | ------- | -------- |
-| GET | `/materials` | `materials:read` | `GetMaterialsReqDto` — `limit`, `page`, `q`, `order`, `type`, `materialGroupId`, `clientId`, `status` | `200` + `MaterialResDto` phân trang |
+| GET | `/materials` | `materials:read` | `GetMaterialsReqDto` — `limit`, `page`, `q`, `order`, `type`, `materialGroupId`, `clientId`, `supplierId`, `status` | `200` + `MaterialResDto` phân trang |
 | GET | `/materials/:materialId` | `materials:read` | — | `200` + `MaterialResDto` |
-| POST | `/materials` | `materials:create` | `CreateMaterialReqDto` — `name`*, `unitId`*, `materialGroupId`*, `code`, `type`, `clientId`, `imageFileId`, `status`, `note`, thông tin mở rộng, `attachmentFileIds` | `201` + `MaterialResDto` |
+| POST | `/materials` | `materials:create` | `CreateMaterialReqDto` — `name`*, `unitId`*, `materialGroupId`*, `code`, `type`, `clientId`, `supplierId`, `minStock`, `imageFileId`, `status`, `note`, thông tin mở rộng, `attachmentFileIds` | `201` + `MaterialResDto` |
 | PATCH | `/materials/:materialId` | `materials:update` | `UpdateMaterialReqDto` — như trên trừ `code` (bất biến), tất cả tuỳ chọn | `200` + `MaterialResDto` |
 | DELETE | `/materials/:materialId` | `materials:delete` | — | `204`, không có body |
 
@@ -28,7 +29,7 @@ Quản lý danh mục vật tư ("Vật tư") — nguyên vật liệu dùng là
 
 - `q` khớp mờ (`unaccent` ILIKE) `code`, `name`, và tên nhóm vật tư (`material_groups.name`).
 - Danh sách sắp xếp **mới nhất trước** (`created_at DESC`).
-- `MaterialResDto` gồm thông tin cơ bản (`code`, `name`, `type`, `status`, `unit`, `group`, `client`, `image`) và thông tin mở rộng tuỳ chọn (`materialGrade`, `technicalStandard`, `dimensions`, `specificWeight`, `colorSurface`, `description`, `origin`, `leadTime`) cùng `attachments` (chỉ có đầy đủ ở `GET .../:materialId` và ngay sau `POST`/`PATCH` — danh sách không load quan hệ này).
+- `MaterialResDto` gồm thông tin cơ bản (`code`, `name`, `type`, `status`, `unit`, `group`, `client`, `supplier` — nhà cung cấp chính, nullable — `minStock`, `image`) và thông tin mở rộng tuỳ chọn (`materialGrade`, `technicalStandard`, `dimensions`, `specificWeight`, `colorSurface`, `description`, `origin`, `leadTime`) cùng `attachments` (chỉ có đầy đủ ở `GET .../:materialId` và ngay sau `POST`/`PATCH` — danh sách không load quan hệ này).
 - Sau `POST`/`PATCH`, service đọc lại dòng vừa ghi bằng `getMaterialDetail(id)` rồi mới map — response luôn phản ánh trạng thái đã lưu.
 
 ## Trường hợp lỗi
@@ -42,12 +43,13 @@ Quản lý danh mục vật tư ("Vật tư") — nguyên vật liệu dùng là
 | Nhóm vật tư (`materialGroupId`) không tồn tại | `ErrorCode.E037` | 404 |
 | `type = CLIENT` nhưng không có `clientId` hiệu lực | `ErrorCode.E040` | 400 |
 | Client (`clientId`) không tồn tại | `ErrorCode.E009` | 404 |
+| Nhà cung cấp (`supplierId`) không tồn tại (chỉ khi gửi) | `ErrorCode.E019` | 404 |
 | Xoá vật tư đang được dùng trong ít nhất một node BOM | `ErrorCode.E041` | 409 |
 | File đính kèm/ảnh không tồn tại trong registry | `ErrorCode.E042` | 404 |
 | Role của caller thiếu quyền mà route yêu cầu | `ErrorCode.E033` | 403 |
 | Không gửi bearer token | — | 401 |
 
-Thứ tự kiểm khi `POST`: mã trùng (`E036`) → đơn vị tồn tại + đúng scope (`E011`/`E043`) → nhóm vật tư tồn tại (`E037`) → `type`/`clientId` hợp lệ (`E040`/`E009`) → file hợp lệ (`E042`). Khi `PATCH`: vật tư tồn tại (`E035`) → đơn vị (nếu gửi, `E011`/`E043`) → nhóm vật tư (nếu gửi, `E037`) → cặp `type`/`clientId` hiệu lực (nếu một trong hai được gửi, `E040`/`E009`) → file hợp lệ (`E042`). Khi `DELETE`: tồn tại (`E035`) → không bị dùng trong BOM (`E041`).
+Thứ tự kiểm khi `POST`: mã trùng (`E036`) → đơn vị tồn tại + đúng scope (`E011`/`E043`) → nhóm vật tư tồn tại (`E037`) → `type`/`clientId` hợp lệ (`E040`/`E009`) → nhà cung cấp tồn tại nếu gửi (`E019`) → file hợp lệ (`E042`). Khi `PATCH`: vật tư tồn tại (`E035`) → đơn vị (nếu gửi, `E011`/`E043`) → nhóm vật tư (nếu gửi, `E037`) → cặp `type`/`clientId` hiệu lực (nếu một trong hai được gửi, `E040`/`E009`) → nhà cung cấp nếu gửi (`E019`) → file hợp lệ (`E042`). Khi `DELETE`: tồn tại (`E035`) → không bị dùng trong BOM (`E041`).
 
 ## Ngoài phạm vi
 
@@ -64,6 +66,14 @@ Thứ tự kiểm khi `POST`: mã trùng (`E036`) → đơn vị tồn tại + �
 ## Frontend integration notes
 
 **2026-07-25 — hoàn thiện CRUD.** Trước đây `materials` chỉ có `GET` (list) và `POST` (create). Nay có thêm:
+
 - `GET /materials/:materialId` — chi tiết đầy đủ (kèm `attachments`, danh sách không có).
 - `PATCH /materials/:materialId` — sửa. Không nhận `code`. `attachmentFileIds` là replace-all (gửi `[]` để xoá hết).
 - `DELETE /materials/:materialId` — **xoá cứng** (không phải soft delete), trả `409` (`E041`) nếu vật tư đang được dùng trong một BOM.
+
+**2026-07-30 — thêm `minStock`/`supplierId`, additive.** Phục vụ màn "Tồn kho vật tư" (`GET /inventory/materials`, xem `docs/features/inventory.md`):
+
+- `CreateMaterialReqDto`/`UpdateMaterialReqDto` thêm `minStock?` (số, mặc định `0` nếu không gửi khi tạo) và `supplierId?` (nullable — NCC chính).
+- `MaterialResDto` thêm `minStock` (luôn có giá trị) và `supplier` (nullable, `SupplierRefResDto`).
+- `GetMaterialsReqDto` thêm filter `supplierId?`.
+- `supplierId` rác (không tồn tại/đã xoá mềm) trả `404` (`E019`) — không ảnh hưởng client cũ vì field là tuỳ chọn, không gửi thì không kiểm.

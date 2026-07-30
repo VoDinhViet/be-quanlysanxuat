@@ -18,4 +18,7 @@ export class GetMaterialsReqDto extends PageOptionsDto {
 
   @EnumFieldOptional(() => MaterialStatus)
   readonly status?: MaterialStatus;
+
+  @UUIDFieldOptional({ description: 'Filter by supplier id' })
+  readonly supplierId?: string;
 }

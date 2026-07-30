@@ -2,6 +2,7 @@ import { Exclude, Expose } from 'class-transformer';
 
 import {
   StockReceiptReason,
+  StockReceiptSubject,
   StockReceiptType,
 } from '../../../database/schemas';
 import {
@@ -24,6 +25,10 @@ export class StockReceiptResDto {
   @Expose()
   @StringField({ description: 'Mã phiếu' })
   code!: string;
+
+  @Expose()
+  @EnumField(() => StockReceiptSubject)
+  subject!: StockReceiptSubject;
 
   @Expose()
   @EnumField(() => StockReceiptType)

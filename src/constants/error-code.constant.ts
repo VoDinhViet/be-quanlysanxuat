@@ -158,6 +158,13 @@ export enum ErrorCode {
   // `PATCH /production-orders/:productionOrdersId` gọi trên một LSX không còn `PENDING` (đã
   // `APPROVED`) — sửa số lượng sản xuất chỉ hợp lệ trước khi chốt LSX.
   E084 = 'production_order.error.not_editable',
+  // `materialId` trên dòng phiếu nhập/xuất kho vật tư không tồn tại.
+  E085 = 'stock_receipt.error.material_not_found',
+  // Dòng phiếu gửi sai loại so với `subject` của phiếu cha (`stock_receipts.subject`) — phiếu vật
+  // tư mà dòng gửi `productId`, phiếu thành phẩm mà dòng gửi `materialId`, gửi cả hai, hoặc không
+  // gửi gì. `chk_stock_receipt_items_target` chỉ đảm bảo "đúng một trong hai", không đảm bảo khớp
+  // đúng `subject` — đó là phần việc của mã lỗi này.
+  E086 = 'stock_receipt.error.line_target_mismatch',
   E101 = 'class.error.teacher_not_found',
   E102 = 'class.error.invalid_teacher_assignment',
   E103 = 'class.error.forbidden',

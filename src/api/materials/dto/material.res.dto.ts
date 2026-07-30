@@ -6,6 +6,7 @@ import {
   ClassFieldOptional,
   DateField,
   EnumField,
+  NumberField,
   NumberFieldOptional,
   StringField,
   StringFieldOptional,
@@ -13,6 +14,7 @@ import {
 } from '../../../decorators/field.decorators';
 import { FileField } from '../../files/dto/file.field';
 import { FileResDto } from '../../files/dto/file.res.dto';
+import { SupplierRefResDto } from '../../suppliers/dto/supplier-ref.res.dto';
 import { MaterialAttachmentResDto } from './material-attachment.res.dto';
 import { MaterialCreatorResDto } from './material-creator.res.dto';
 import { MaterialRefResDto } from './material-ref.res.dto';
@@ -52,12 +54,20 @@ export class MaterialResDto {
   client!: MaterialRefResDto | null;
 
   @Expose()
+  @ClassFieldOptional(() => SupplierRefResDto, { nullable: true })
+  supplier!: SupplierRefResDto | null;
+
+  @Expose()
   @FileField('imageFile', 'Image file')
   image!: FileResDto | null;
 
   @Expose()
   @StringFieldOptional({ nullable: true })
   note!: string | null;
+
+  @Expose()
+  @NumberField({ description: 'Định mức tồn tối thiểu' })
+  minStock!: number;
 
   // Extended information (all optional)
   @Expose()

@@ -84,4 +84,17 @@ export class CreateMaterialReqDto {
     description: 'Attachment file ids (from POST /files, kind=DOCUMENT)',
   })
   readonly attachmentFileIds?: string[];
+
+  @NumberFieldOptional({
+    min: 0,
+    description:
+      'Định mức tồn tối thiểu — dùng tính trạng thái tồn kho vật tư. Mặc định 0',
+  })
+  readonly minStock?: number;
+
+  @UUIDFieldOptional({
+    nullable: true,
+    description: 'NCC chính (nullable)',
+  })
+  readonly supplierId?: string | null;
 }

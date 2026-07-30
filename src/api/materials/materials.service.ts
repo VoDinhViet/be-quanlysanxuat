@@ -16,6 +16,7 @@ import {
   materials,
   MaterialStatus,
   MaterialType,
+  suppliers,
   units,
   UnitScope,
 } from '../../database/schemas';
@@ -30,6 +31,7 @@ const MATERIAL_DETAIL_WITH = {
   unit: true,
   group: true,
   client: true,
+  supplier: true,
   creator: true,
   imageFile: true,
   attachments: { with: { file: true } },
@@ -66,6 +68,9 @@ export class MaterialsService {
         : undefined,
       reqDto.clientId ? eq(materials.clientId, reqDto.clientId) : undefined,
       reqDto.status ? eq(materials.status, reqDto.status) : undefined,
+      reqDto.supplierId
+        ? eq(materials.supplierId, reqDto.supplierId)
+        : undefined,
     );
 
     const [entities, countRows] = await Promise.all([
@@ -78,6 +83,7 @@ export class MaterialsService {
           unit: true,
           group: true,
           client: true,
+          supplier: true,
           creator: true,
           imageFile: true,
         },
@@ -124,6 +130,9 @@ export class MaterialsService {
 
     await this.ensureUnitExists(reqDto.unitId);
     await this.ensureMaterialGroupExists(reqDto.materialGroupId);
+    if (reqDto.supplierId) {
+      await this.ensureSupplierExists(reqDto.supplierId);
+    }
 
     const type = reqDto.type ?? MaterialType.INTERNAL;
     const clientId = await this.resolveClientLink(
@@ -175,6 +184,9 @@ export class MaterialsService {
     }
     if (reqDto.materialGroupId) {
       await this.ensureMaterialGroupExists(reqDto.materialGroupId);
+    }
+    if (reqDto.supplierId) {
+      await this.ensureSupplierExists(reqDto.supplierId);
     }
 
     // `attachmentFileIds` replace-all lives in its own table; `clientId` needs re-validating
@@ -352,6 +364,17 @@ export class MaterialsService {
 
     if (!existing) {
       throw new AppException(ErrorCode.E009, HttpStatus.NOT_FOUND);
+    }
+  }
+
+  private async ensureSupplierExists(supplierId: string): Promise<void> {
+    const existing = await this.db.query.suppliers.findFirst({
+      columns: { id: true },
+      where: and(eq(suppliers.id, supplierId), isNull(suppliers.deletedAt)),
+    });
+
+    if (!existing) {
+      throw new AppException(ErrorCode.E019, HttpStatus.NOT_FOUND);
     }
   }
 

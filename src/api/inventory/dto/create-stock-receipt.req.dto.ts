@@ -1,5 +1,6 @@
 import {
   StockReceiptReason,
+  StockReceiptSubject,
   StockReceiptType,
 } from '../../../database/schemas';
 import {
@@ -11,15 +12,22 @@ import {
 import { StockReceiptItemReqDto } from './stock-receipt-item.req.dto';
 
 /**
- * `reason` must belong to `type` (see `StockReceiptsService.ensureReasonMatchesType`) — IN takes
- * PRODUCTION/OPENING/STOCKTAKE/OTHER, OUT takes DELIVERY/STOCKTAKE/OTHER.
+ * `reason` phải khớp cả `subject` lẫn `type` (xem
+ * `StockReceiptsService.ensureReasonMatchesSubjectAndType`) — bảng đầy đủ ở doc comment của
+ * `stockReceipts` trong `src/database/schemas/stock-receipts.ts`.
  */
 export class CreateStockReceiptReqDto {
   @StringFieldOptional({
     maxLength: 50,
-    description: 'Mã phiếu; tự sinh (PNxxxx/PXxxxx) nếu không truyền',
+    description:
+      'Mã phiếu; tự sinh (PNxxxx/PXxxxx hoặc PNVTxxxx/PXVTxxxx) nếu không truyền',
   })
   readonly code?: string;
+
+  @EnumField(() => StockReceiptSubject, {
+    description: 'Kho thành phẩm hay kho vật tư — bất biến sau khi tạo',
+  })
+  readonly subject!: StockReceiptSubject;
 
   @EnumField(() => StockReceiptType)
   readonly type!: StockReceiptType;
