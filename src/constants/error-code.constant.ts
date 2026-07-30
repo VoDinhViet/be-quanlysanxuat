@@ -165,6 +165,16 @@ export enum ErrorCode {
   // gửi gì. `chk_stock_receipt_items_target` chỉ đảm bảo "đúng một trong hai", không đảm bảo khớp
   // đúng `subject` — đó là phần việc của mã lỗi này.
   E086 = 'stock_receipt.error.line_target_mismatch',
+  // `start`/`report`/`pause`/`resume`/`complete`/`cancel` gọi trên một Job đang không ở trạng thái
+  // hợp lệ cho hành động đó (xem bảng chuyển trạng thái ở `docs/features/production.md`).
+  E087 = 'production_job.error.invalid_status_transition',
+  // `POST /production-jobs/:jobId/report` mà `producedQty + rejectedQty` cộng dồn (đã cộng cả các
+  // lần báo trước) vượt quá `quantity` của Job — kiểm ở service để ra 400 sạch thay vì để lộ lỗi
+  // constraint `chk_production_jobs_report_qty` 500 thô.
+  E088 = 'production_job.error.report_exceeds_quantity',
+  // `POST /production-jobs/:jobId/report` mà cả `producedQty` lẫn `rejectedQty` đều không gửi
+  // hoặc đều bằng 0 — một lần báo phải ghi nhận được ít nhất một trong hai.
+  E089 = 'production_job.error.empty_report',
   E101 = 'class.error.teacher_not_found',
   E102 = 'class.error.invalid_teacher_assignment',
   E103 = 'class.error.forbidden',

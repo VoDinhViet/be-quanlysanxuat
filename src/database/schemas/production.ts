@@ -53,7 +53,9 @@ export const productionOrders = pgTable(
       .notNull()
       .unique()
       .references(() => orders.id, { onDelete: 'restrict' }),
-    status: productionOrderStatusEnum('status').notNull().default(ProductionOrderStatus.PENDING),
+    status: productionOrderStatusEnum('status')
+      .notNull()
+      .default(ProductionOrderStatus.PENDING),
     approvedBy: uuid('approved_by').references(() => credentials.id, {
       onDelete: 'set null',
     }),
@@ -135,11 +137,31 @@ export const productionOrderItems = pgTable(
       .$onUpdate(() => new Date()),
   },
   (table) => [
-    index('idx_production_order_items_production_order_id').on(table.productionOrderId),
+    index('idx_production_order_items_production_order_id').on(
+      table.productionOrderId,
+    ),
     index('idx_production_order_items_product_id').on(table.productId),
     check('chk_production_order_items_quantity', sql`quantity >= 0`),
   ],
 );
+
+/** Vòng đời một Job sau khi được sinh ra (thêm 2026-07-30, xem `docs/features/production.md`).
+ * `PAUSED` quay lại `IN_PROGRESS` được (`resumeJob`); `COMPLETED`/`CANCELLED` là điểm cuối. */
+export enum ProductionJobStatus {
+  PENDING = 'PENDING',
+  IN_PROGRESS = 'IN_PROGRESS',
+  PAUSED = 'PAUSED',
+  COMPLETED = 'COMPLETED',
+  CANCELLED = 'CANCELLED',
+}
+
+export const productionJobStatusEnum = pgEnum('production_job_status', [
+  ProductionJobStatus.PENDING,
+  ProductionJobStatus.IN_PROGRESS,
+  ProductionJobStatus.PAUSED,
+  ProductionJobStatus.COMPLETED,
+  ProductionJobStatus.CANCELLED,
+]);
 
 /**
  * Job sản xuất — 1 sản phẩm (FG) = 1 Job trong một LSX. Số lượng gộp từ mọi dòng
@@ -149,6 +171,14 @@ export const productionOrderItems = pgTable(
  * `ProductionOrdersService.issueProductionOrders`) đã bỏ 2026-07-30; sống lại cùng ngày qua
  * `ProductionJobsService.createJobs`, gọi từ `ProductionOrdersService.approveProductionOrder`
  * (chốt LSX sang `APPROVED`) thay vì phát hành — xem `docs/features/production.md`.
+ *
+ * Rules:
+ * - `status`/`producedQty`/`rejectedQty` thêm 2026-07-30 — vòng đời + sản lượng ở mức Job, chưa
+ *   chia theo công đoạn (`routing_steps`), xem `docs/features/production.md`.
+ * - `producedQty`/`rejectedQty` cộng dồn qua từng lần báo (`reportJob`), không phải ghi đè —
+ *   `chk_production_jobs_report_qty` chặn tổng vượt `quantity`.
+ * - Không có cột `pauseReason` — tạm dừng lặp lại được nên một cột sẽ bị ghi đè mất lịch sử; lý do
+ *   tạm dừng nằm trong `content` của `production_job_logs`.
  */
 export const productionJobs = pgTable(
   'production_jobs',
@@ -166,6 +196,37 @@ export const productionJobs = pgTable(
       scale: 3,
       mode: 'number',
     }).notNull(),
+    status: productionJobStatusEnum('status')
+      .notNull()
+      .default(ProductionJobStatus.PENDING),
+    // Cộng dồn qua từng lần báo (`reportJob`) — xem doc comment trên.
+    producedQty: numeric('produced_qty', {
+      precision: 18,
+      scale: 3,
+      mode: 'number',
+    })
+      .notNull()
+      .default(0),
+    rejectedQty: numeric('rejected_qty', {
+      precision: 18,
+      scale: 3,
+      mode: 'number',
+    })
+      .notNull()
+      .default(0),
+    startedBy: uuid('started_by').references(() => credentials.id, {
+      onDelete: 'set null',
+    }),
+    startedAt: timestamp('started_at'),
+    completedBy: uuid('completed_by').references(() => credentials.id, {
+      onDelete: 'set null',
+    }),
+    completedAt: timestamp('completed_at'),
+    cancelledBy: uuid('cancelled_by').references(() => credentials.id, {
+      onDelete: 'set null',
+    }),
+    cancelledAt: timestamp('cancelled_at'),
+    cancelReason: varchar('cancel_reason', { length: 1000 }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at')
       .defaultNow()
@@ -173,10 +234,67 @@ export const productionJobs = pgTable(
       .$onUpdate(() => new Date()),
   },
   (table) => [
-    unique('uq_production_jobs_order_product').on(table.productionOrderId, table.productId),
+    unique('uq_production_jobs_order_product').on(
+      table.productionOrderId,
+      table.productId,
+    ),
     index('idx_production_jobs_product_id').on(table.productId),
+    index('idx_production_jobs_status').on(table.status),
     check('chk_production_jobs_quantity', sql`quantity > 0`),
+    check(
+      'chk_production_jobs_report_qty',
+      sql`produced_qty >= 0 AND rejected_qty >= 0 AND produced_qty + rejected_qty <= quantity`,
+    ),
+    check(
+      'chk_production_jobs_status_fields',
+      sql`(status = 'PENDING' AND started_at IS NULL AND completed_at IS NULL AND cancelled_at IS NULL)
+          OR (status = 'IN_PROGRESS')
+          OR (status = 'PAUSED')
+          OR (status = 'COMPLETED' AND completed_at IS NOT NULL)
+          OR (status = 'CANCELLED' AND cancelled_at IS NOT NULL)`,
+    ),
   ],
+);
+
+/** "Hành động" ghi log trên một Job — mở rộng khi có thêm đường ghi mới trên `productionJobs`. */
+export enum ProductionJobLogAction {
+  STARTED = 'STARTED',
+  REPORTED = 'REPORTED',
+  PAUSED = 'PAUSED',
+  RESUMED = 'RESUMED',
+  COMPLETED = 'COMPLETED',
+  CANCELLED = 'CANCELLED',
+}
+
+export const productionJobLogActionEnum = pgEnum('production_job_log_action', [
+  ProductionJobLogAction.STARTED,
+  ProductionJobLogAction.REPORTED,
+  ProductionJobLogAction.PAUSED,
+  ProductionJobLogAction.RESUMED,
+  ProductionJobLogAction.COMPLETED,
+  ProductionJobLogAction.CANCELLED,
+]);
+
+/**
+ * Lịch sử thao tác trên một Job — cùng khuôn `production_order_logs` (append-only, không có
+ * `updatedAt`, một dòng log không bao giờ bị `UPDATE`). `ProductionJobsService.logAction` là nơi
+ * ghi duy nhất, luôn gọi trong cùng transaction với hành động đang log.
+ */
+export const productionJobLogs = pgTable(
+  'production_job_logs',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    jobId: uuid('job_id')
+      .notNull()
+      .references(() => productionJobs.id, { onDelete: 'cascade' }),
+    action: productionJobLogActionEnum('action').notNull(),
+    content: varchar('content', { length: 1000 }).notNull(),
+    performedBy: uuid('performed_by').references(() => credentials.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [index('idx_production_job_logs_job_id').on(table.jobId)],
 );
 
 /** "Hành động" ghi log trên một LSX — mở rộng khi có thêm đường ghi mới trên `productionOrders`
@@ -187,11 +305,14 @@ export enum ProductionOrderLogAction {
   APPROVED = 'APPROVED',
 }
 
-export const productionOrderLogActionEnum = pgEnum('production_order_log_action', [
-  ProductionOrderLogAction.CREATED,
-  ProductionOrderLogAction.QUANTITY_UPDATED,
-  ProductionOrderLogAction.APPROVED,
-]);
+export const productionOrderLogActionEnum = pgEnum(
+  'production_order_log_action',
+  [
+    ProductionOrderLogAction.CREATED,
+    ProductionOrderLogAction.QUANTITY_UPDATED,
+    ProductionOrderLogAction.APPROVED,
+  ],
+);
 
 /**
  * Lịch sử thao tác trên một LSX — thời gian (`createdAt`), người thực hiện (`performedBy`), nội
@@ -216,63 +337,108 @@ export const productionOrderLogs = pgTable(
       .references(() => productionOrders.id, { onDelete: 'cascade' }),
     action: productionOrderLogActionEnum('action').notNull(),
     content: varchar('content', { length: 1000 }).notNull(),
-    performedBy: uuid('performed_by').references(() => credentials.id, { onDelete: 'set null' }),
+    performedBy: uuid('performed_by').references(() => credentials.id, {
+      onDelete: 'set null',
+    }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
-  (table) => [index('idx_production_order_logs_production_order_id').on(table.productionOrderId)],
+  (table) => [
+    index('idx_production_order_logs_production_order_id').on(
+      table.productionOrderId,
+    ),
+  ],
 );
 
-export const productionOrdersRelations = relations(productionOrders, ({ one, many }) => ({
-  order: one(orders, {
-    fields: [productionOrders.orderId],
-    references: [orders.id],
+export const productionOrdersRelations = relations(
+  productionOrders,
+  ({ one, many }) => ({
+    order: one(orders, {
+      fields: [productionOrders.orderId],
+      references: [orders.id],
+    }),
+    approver: one(credentials, {
+      fields: [productionOrders.approvedBy],
+      references: [credentials.id],
+    }),
+    creator: one(credentials, {
+      fields: [productionOrders.createdBy],
+      references: [credentials.id],
+    }),
+    items: many(productionOrderItems),
+    jobs: many(productionJobs),
+    logs: many(productionOrderLogs),
   }),
-  approver: one(credentials, {
-    fields: [productionOrders.approvedBy],
-    references: [credentials.id],
-  }),
-  creator: one(credentials, {
-    fields: [productionOrders.createdBy],
-    references: [credentials.id],
-  }),
-  items: many(productionOrderItems),
-  jobs: many(productionJobs),
-  logs: many(productionOrderLogs),
-}));
+);
 
-export const productionOrderItemsRelations = relations(productionOrderItems, ({ one }) => ({
-  productionOrder: one(productionOrders, {
-    fields: [productionOrderItems.productionOrderId],
-    references: [productionOrders.id],
+export const productionOrderItemsRelations = relations(
+  productionOrderItems,
+  ({ one }) => ({
+    productionOrder: one(productionOrders, {
+      fields: [productionOrderItems.productionOrderId],
+      references: [productionOrders.id],
+    }),
+    orderItem: one(orderItems, {
+      fields: [productionOrderItems.orderItemId],
+      references: [orderItems.id],
+    }),
+    product: one(products, {
+      fields: [productionOrderItems.productId],
+      references: [products.id],
+    }),
   }),
-  orderItem: one(orderItems, {
-    fields: [productionOrderItems.orderItemId],
-    references: [orderItems.id],
-  }),
-  product: one(products, {
-    fields: [productionOrderItems.productId],
-    references: [products.id],
-  }),
-}));
+);
 
-export const productionJobsRelations = relations(productionJobs, ({ one }) => ({
-  productionOrder: one(productionOrders, {
-    fields: [productionJobs.productionOrderId],
-    references: [productionOrders.id],
+export const productionJobsRelations = relations(
+  productionJobs,
+  ({ one, many }) => ({
+    productionOrder: one(productionOrders, {
+      fields: [productionJobs.productionOrderId],
+      references: [productionOrders.id],
+    }),
+    product: one(products, {
+      fields: [productionJobs.productId],
+      references: [products.id],
+    }),
+    starter: one(credentials, {
+      fields: [productionJobs.startedBy],
+      references: [credentials.id],
+    }),
+    completer: one(credentials, {
+      fields: [productionJobs.completedBy],
+      references: [credentials.id],
+    }),
+    canceller: one(credentials, {
+      fields: [productionJobs.cancelledBy],
+      references: [credentials.id],
+    }),
+    logs: many(productionJobLogs),
   }),
-  product: one(products, {
-    fields: [productionJobs.productId],
-    references: [products.id],
-  }),
-}));
+);
 
-export const productionOrderLogsRelations = relations(productionOrderLogs, ({ one }) => ({
-  productionOrder: one(productionOrders, {
-    fields: [productionOrderLogs.productionOrderId],
-    references: [productionOrders.id],
+export const productionJobLogsRelations = relations(
+  productionJobLogs,
+  ({ one }) => ({
+    job: one(productionJobs, {
+      fields: [productionJobLogs.jobId],
+      references: [productionJobs.id],
+    }),
+    performer: one(credentials, {
+      fields: [productionJobLogs.performedBy],
+      references: [credentials.id],
+    }),
   }),
-  performer: one(credentials, {
-    fields: [productionOrderLogs.performedBy],
-    references: [credentials.id],
+);
+
+export const productionOrderLogsRelations = relations(
+  productionOrderLogs,
+  ({ one }) => ({
+    productionOrder: one(productionOrders, {
+      fields: [productionOrderLogs.productionOrderId],
+      references: [productionOrders.id],
+    }),
+    performer: one(credentials, {
+      fields: [productionOrderLogs.performedBy],
+      references: [credentials.id],
+    }),
   }),
-}));
+);

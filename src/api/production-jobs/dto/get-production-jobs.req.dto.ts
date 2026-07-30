@@ -1,6 +1,8 @@
 import { PageOptionsDto } from '../../../common/dto/offset-pagination/page-options.dto';
+import { ProductionJobStatus } from '../../../database/schemas';
 import {
   DateFieldOptional,
+  EnumFieldOptional,
   UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
 
@@ -8,6 +10,9 @@ import {
 export class GetProductionJobsReqDto extends PageOptionsDto {
   @UUIDFieldOptional({ description: 'Filter by source order id' })
   readonly orderId?: string;
+
+  @EnumFieldOptional(() => ProductionJobStatus)
+  readonly status?: ProductionJobStatus;
 
   @UUIDFieldOptional({ description: 'Filter by product id' })
   readonly productId?: string;

@@ -128,6 +128,33 @@ Bản này không có endpoint xoá một LSX hay một Job. Sửa số lượng
 - Sửa dòng PO nguồn (`PATCH /orders/:orderId` với `items`) sau khi LSX của đơn đó đã `APPROVED` bị chặn ở tầng service (`E080`, 409), tránh nổ 500 thô từ constraint. Nhánh này sống lại cùng luồng duyệt mới (trước đó kiểm tra `ISSUED`, một trạng thái không còn ai ghi — xem "Bỏ hai API ghi cũ").
 - Một LSX đang `PENDING` (kế hoạch, chưa duyệt) **không** chặn sửa `items` — `OrdersService.updateOrder` tự xoá header `production_orders` của đơn đó ngay trong transaction (cascade dọn `production_order_items`), trước khi `order_items` bị replace-all. Hệ quả: sửa `items` của một PO đang ở trạng thái này xoá sạch hồ sơ LSX đã lưu; duyệt lại (nếu PO quay về được `PENDING_CONFIRMATION`) sẽ tính lại Đề xuất SX từ đầu cho bộ dòng mới.
 
+Vẫn không có endpoint **xoá** một LSX hay một Job — nhưng một Job giờ có vòng đời riêng để đóng lại (`cancelJob`, xem ngay dưới đây), không còn là "chỉ đọc" như trước 2026-07-30.
+
+### Vòng đời Job + báo sản lượng (2026-07-30)
+
+Trước ngày này, `production_jobs` chỉ đọc được — sinh ra khi duyệt LSX (`createJobs`) rồi không có đường ghi nào khác. Đợt này lấp khoảng trống "theo dõi tiến độ Job" ở **mức Job** (chưa chia theo công đoạn `routing_steps` — xem "Ngoài phạm vi"): `ProductionJobsService` thêm 6 route ghi + 1 route đọc log, tất cả dưới `/production-jobs/:jobId/*`.
+
+Chuyển trạng thái hợp lệ (`E087` nếu gọi sai):
+
+| Từ | Hành động | Sang | Ghi thêm |
+| --- | --- | --- | --- |
+| `PENDING` | `start` | `IN_PROGRESS` | `startedBy`/`startedAt` |
+| `IN_PROGRESS` | `report` | `IN_PROGRESS` (không đổi status) | cộng dồn `producedQty`/`rejectedQty` |
+| `IN_PROGRESS` | `pause` | `PAUSED` | — |
+| `PAUSED` | `resume` | `IN_PROGRESS` | — |
+| `IN_PROGRESS`/`PAUSED` | `complete` | `COMPLETED` | `completedBy`/`completedAt` |
+| `PENDING`/`IN_PROGRESS`/`PAUSED` | `cancel` | `CANCELLED` | `cancelledBy`/`cancelledAt`/`cancelReason` |
+
+`COMPLETED`/`CANCELLED` là điểm cuối — không có route đưa Job quay lại từ hai trạng thái này.
+
+- **Báo sản lượng cộng dồn, không ghi đè**: mỗi lần `report` cộng `producedQty`/`rejectedQty` thêm vào số đã có — hai lần báo `{producedQty: 10}` cho ra tổng `20`, không phải `10`. Phải gửi ít nhất một trong hai giá trị > 0 (`E089`); tổng cộng dồn sau khi cộng không được vượt `quantity` của Job (`E088`, kiểm ở service để ra 400 sạch thay vì để lộ lỗi constraint `chk_production_jobs_report_qty` 500 thô).
+- **`complete` cho phép kết thúc sớm**: `producedQty < quantity` vẫn hoàn thành được — không bắt buộc phải báo đủ số. Số còn thiếu đơn giản là không được sản xuất, không phải lỗi.
+- **Không tự động nhập kho thành phẩm khi `complete`.** Thủ kho vẫn tự `POST /stock-receipts` (`subject=FINISHED_GOOD`, `reason=PRODUCTION`) như hiện tại — tự động hoá việc này cân nhắc lúc thiết kế nhưng chủ động để ngoài phạm vi đợt này (rủi ro lệch số nếu `producedQty` báo sai rồi mới sửa), xem "Ngoài phạm vi".
+- **Không tự động chuyển `orders.status → COMPLETED`** khi mọi Job của một LSX đều `COMPLETED`. `OrderStatus.COMPLETED` đang được `GET /orders/stats` dùng làm proxy cho "đã giao" (xem `docs/features/orders.md`) — sản xuất xong chưa phải giao xong, tự chuyển status ở đây sẽ làm proxy đó sai sớm hơn thực tế.
+- **`cancel` dùng quyền `production:approve`**, khác 5 route còn lại (`production:update`) — huỷ một Job đã duyệt (đã tốn công sinh ra từ một LSX `APPROVED`) là quyết định cấp quản lý, cùng mức với duyệt LSX. `reason` bắt buộc, ghi vào cả `cancelReason` lẫn nội dung log.
+- **Không có cột `pauseReason`** — tạm dừng lặp lại được (`pause`/`resume` nhiều lần) nên một cột sẽ bị ghi đè mất lịch sử các lần dừng trước; lý do tạm dừng chỉ nằm trong nội dung log (`production_job_logs`).
+- **Log Job** (`ProductionJobsService.logAction`, cùng khuôn `ProductionOrdersService.logAction` của LSX) — mỗi hành động ở bảng trên ghi đúng 1 dòng `production_job_logs` trong cùng transaction (log và hành động cùng commit hoặc cùng rollback), đọc qua `GET /production-jobs/:jobId/logs`.
+
 ## Mô hình dữ liệu
 
 **`production_orders`** — header, 1-1 với một `orders` (unique trên `orderId`, `onDelete: 'restrict'`):
@@ -155,13 +182,28 @@ CHECK `chk_production_order_items_quantity`: `quantity >= 0`.
 
 **`production_jobs`** — 1 sản phẩm (FG) = 1 Job trong một LSX, `onDelete: 'cascade'` từ `production_orders`, unique `(productionOrderId, productId)`, sinh qua `createJobs` khi duyệt LSX (xem "Sinh Job khi duyệt LSX"):
 
-| Cột                              | Ghi chú                                                         |
-| -------------------------------- | --------------------------------------------------------------- |
-| `code`                           | `JOBxxxx`, notNull, unique                                      |
-| `productionOrderId`, `productId` |                                                                 |
-| `quantity`                       | Σ Đề xuất SX của SP đó trong LSX tại thời điểm duyệt (luôn > 0) |
+| Cột                                         | Ghi chú                                                         |
+| -------------------------------------------- | --------------------------------------------------------------- |
+| `code`                                      | `JOBxxxx`, notNull, unique                                      |
+| `productionOrderId`, `productId`            |                                                                 |
+| `quantity`                                  | Σ Đề xuất SX của SP đó trong LSX tại thời điểm duyệt (luôn > 0) |
+| `status`                                    | `PENDING` (default) \| `IN_PROGRESS` \| `PAUSED` \| `COMPLETED` \| `CANCELLED` — thêm 2026-07-30, xem "Vòng đời Job + báo sản lượng" |
+| `producedQty`, `rejectedQty`                | `numeric`, default `0` — cộng dồn qua từng lần `report`, thêm 2026-07-30 |
+| `startedBy`/`startedAt`                     | nullable, ghi khi `start`                                       |
+| `completedBy`/`completedAt`                 | nullable, ghi khi `complete`                                    |
+| `cancelledBy`/`cancelledAt`, `cancelReason` | nullable, ghi khi `cancel`                                      |
 
-CHECK `chk_production_jobs_quantity`: `quantity > 0`.
+CHECK `chk_production_jobs_quantity`: `quantity > 0`. CHECK `chk_production_jobs_report_qty` (thêm 2026-07-30): `produced_qty >= 0 AND rejected_qty >= 0 AND produced_qty + rejected_qty <= quantity`. CHECK `chk_production_jobs_status_fields` (thêm 2026-07-30): `PENDING` thì `started_at`/`completed_at`/`cancelled_at` đều NULL; `COMPLETED` thì `completed_at` NOT NULL; `CANCELLED` thì `cancelled_at` NOT NULL — không ràng buộc gì thêm cho `IN_PROGRESS`/`PAUSED` (đơn giản hoá có chủ đích).
+
+**`production_job_logs`** (thêm 2026-07-30) — lịch sử thao tác trên một Job, cùng khuôn `production_order_logs` (append-only, không có `updatedAt`), `onDelete: 'cascade'` từ `production_jobs`. Ghi qua `ProductionJobsService.logAction`, đọc qua `GET /production-jobs/:jobId/logs`:
+
+| Cột           | Ghi chú                                                                      |
+| -------------- | -------------------------------------------------------------------------- |
+| `jobId`       |                                                                              |
+| `action`      | `STARTED` \| `REPORTED` \| `PAUSED` \| `RESUMED` \| `COMPLETED` \| `CANCELLED` |
+| `content`     | `varchar(1000)`, mô tả tiếng Việt sẵn để hiển thị, sinh lúc ghi             |
+| `performedBy` | nullable (`set null` nếu credential bị xoá) — ai thực hiện hành động       |
+| `createdAt`   | thời điểm thực hiện                                                         |
 
 **`production_order_logs`** — lịch sử thao tác, `onDelete: 'cascade'` từ `production_orders`, append-only (không có `updatedAt`, cùng khuôn `order_attachments`/`client_contacts`). Ghi qua `ProductionOrdersService.logAction`, đọc qua `GET /production-orders/:productionOrdersId/logs` (xem "Log LSX"):
 
@@ -180,7 +222,7 @@ Không có cột `stockReceiptId` ở đâu — đường nối LSX ↔ phiếu 
 Hai module tách biệt (đảo từ "1 module duy nhất" của bản gộp `production_orders`/`production_plans` trước đó — Job là một khái niệm/vòng đời khác, "Quản lý sản xuất" là màn hình việc-làm-thực-tế của xưởng, không phải một hình dạng đọc khác của cùng LSX):
 
 - **`ProductionOrdersController`/`Service`** (`src/api/production-orders/`) — phía đọc: `getProductionOrders` (list, `GET /production-orders`), `getProductionOrdersById` (snapshot chi tiết, `GET /production-orders/:productionOrdersId`, xem "Đọc lại chi tiết bằng snapshot"), `getProductionOrderLogs` (lịch sử thao tác, `GET .../logs`, xem "Log LSX"); phía ghi: `updateProductionOrder` (xem "Sửa số lượng sản xuất") và `approveProductionOrder` (xem "Luồng duyệt LSX") — cả hai cùng `seedPlan` đều gọi `logAction` (private) để ghi log; cộng 2 method public chỉ phục vụ `OrdersService.approveOrder` khi duyệt PO: `getInitialPlanItems` (tính Đề xuất SX ban đầu) rồi `seedPlan` (ghi header + dòng quyết định + log `CREATED`). `issueProductionOrders` (route `.../issue` cũ) đã bỏ, không quay lại dưới tên đó (xem "Bỏ hai API ghi cũ").
-- **`ProductionJobsController`/`Service`** (`src/api/production-jobs/`) — "Quản lý sản xuất" (theo Job): `getProductionJobs`/`getProductionJobDetail` (đọc, qua route riêng) + `createJobs` (ghi, chỉ gọi được từ transaction duyệt LSX của `ProductionOrdersService.approveProductionOrder` — module này không tự có route ghi ở `/production-jobs*`).
+- **`ProductionJobsController`/`Service`** (`src/api/production-jobs/`) — "Quản lý sản xuất" (theo Job): `getProductionJobs`/`getProductionJobDetail`/`getProductionJobLogs` (đọc) + `createJobs` (tạo mới, chỉ gọi được từ transaction duyệt LSX của `ProductionOrdersService.approveProductionOrder` — không có route tạo Job riêng) + `startJob`/`reportJob`/`pauseJob`/`resumeJob`/`completeJob`/`cancelJob` (vòng đời sau khi Job đã tồn tại, **có** route riêng ở `/production-jobs/:jobId/*`, thêm 2026-07-30 — xem "Vòng đời Job + báo sản lượng").
 
 `ProductionOrdersModule` từng không import `ProductionJobsModule` (tách 2026-07-30 lúc "Tạo LSX" bị bỏ) — import lại cùng ngày để `approveProductionOrder` gọi được `createJobs`.
 
@@ -193,8 +235,17 @@ Hai module tách biệt (đảo từ "1 module duy nhất" của bản gộp `pr
 | PATCH  | `/production-orders/:productionOrdersId`         | `production:update`  | `UpdateProductionOrderReqDto` — `items` (partial, chỉ dòng cần sửa) `{ orderItemId, quantity }[]`, chỉ hợp lệ khi LSX còn `PENDING`                                       | `200` + `ProductionOrderDetailResDto` — sửa `quantity`/`fromStockQty` từng dòng (xem "Sửa số lượng sản xuất")                                                      |
 | POST   | `/production-orders/:productionOrdersId/approve` | `production:approve` | —                                                                                                                                                                         | `200` + `ProductionOrderDetailResDto` — chốt LSX (`PENDING → APPROVED`), đẩy PO gốc sang `IN_PROGRESS`, sinh Job (xem "Luồng duyệt LSX"/"Sinh Job khi duyệt LSX")  |
 | GET    | `/production-orders/:productionOrdersId/logs`    | `production:read`    | `GetProductionOrderLogsReqDto` — `limit`, `page`                                                                                                                          | `200` + `ProductionOrderLogResDto` phân trang — lịch sử thao tác, mới nhất trước (xem "Log LSX")                                                                   |
-| GET    | `/production-jobs`                               | `production:read`    | `GetProductionJobsReqDto` — `limit`, `page`, `q` (khớp mờ mã Job/mã LSX/mã PO/mã-tên SP), `orderId`, `productId`, `clientId`, `fromDate`/`toDate` (theo `dueDate` của PO) | `200` + `ProductionJobResDto` phân trang — **"Quản lý sản xuất"**, 1 dòng/Job                                                                                      |
+| GET    | `/production-jobs`                               | `production:read`    | `GetProductionJobsReqDto` — `limit`, `page`, `q` (khớp mờ mã Job/mã LSX/mã PO/mã-tên SP), `orderId`, `productId`, `status`, `clientId`, `fromDate`/`toDate` (theo `dueDate` của PO) | `200` + `ProductionJobResDto` phân trang — **"Quản lý sản xuất"**, 1 dòng/Job                                                                          |
 | GET    | `/production-jobs/:jobId`                        | `production:read`    | —                                                                                                                                                                         | `200` + `ProductionJobResDto`                                                                                                                                      |
+| POST   | `/production-jobs/:jobId/start`                  | `production:update`  | —                                                                                                                                                                         | `200` + `ProductionJobResDto` — `PENDING → IN_PROGRESS`                                                                                                            |
+| POST   | `/production-jobs/:jobId/report`                 | `production:update`  | `ReportProductionJobReqDto` — `producedQty?`, `rejectedQty?`, `note?`                                                                                                     | `200` + `ProductionJobResDto` — cộng dồn `producedQty`/`rejectedQty`                                                                                                |
+| POST   | `/production-jobs/:jobId/pause`                  | `production:update`  | `PauseProductionJobReqDto` — `reason?`                                                                                                                                    | `200` + `ProductionJobResDto` — `IN_PROGRESS → PAUSED`                                                                                                             |
+| POST   | `/production-jobs/:jobId/resume`                 | `production:update`  | —                                                                                                                                                                         | `200` + `ProductionJobResDto` — `PAUSED → IN_PROGRESS`                                                                                                             |
+| POST   | `/production-jobs/:jobId/complete`               | `production:update`  | —                                                                                                                                                                         | `200` + `ProductionJobResDto` — `IN_PROGRESS`/`PAUSED → COMPLETED`, cho phép kết thúc sớm                                                                          |
+| POST   | `/production-jobs/:jobId/cancel`                 | `production:approve` | `CancelProductionJobReqDto` — `reason*`                                                                                                                                   | `200` + `ProductionJobResDto` — huỷ Job, quyết định cấp quản lý                                                                                                    |
+| GET    | `/production-jobs/:jobId/logs`                   | `production:read`    | `GetProductionJobLogsReqDto` — `limit`, `page`                                                                                                                            | `200` + `ProductionJobLogResDto` phân trang — lịch sử thao tác Job, mới nhất trước                                                                                 |
+
+(`*` = bắt buộc)
 
 Đã bỏ 2026-07-30, không quay lại dưới tên đó (xem "Bỏ hai API ghi cũ"): `PATCH /production-orders/:orderId` ("Lưu lại", khoá theo `orders.id`), `POST /production-orders/:orderId/issue` ("Tạo LSX"). `PATCH /production-orders/:productionOrdersId` ở trên là route mới, khác khoá + semantics, không phải route cũ quay lại.
 
@@ -213,6 +264,9 @@ Hai module tách biệt (đảo từ "1 module duy nhất" của bản gộp `pr
 | Không tìm thấy Job (`GET /production-jobs/:jobId`)                                            | `ErrorCode.E082` | 404         |
 | `.../approve` gọi trên một LSX không còn `PENDING` (đã `APPROVED` từ trước)                   | `ErrorCode.E083` | 409         |
 | `PATCH /production-orders/:productionOrdersId` gọi trên một LSX không còn `PENDING`           | `ErrorCode.E084` | 409         |
+| `start`/`report`/`pause`/`resume`/`complete`/`cancel` gọi trên một Job không ở trạng thái hợp lệ cho hành động đó | `ErrorCode.E087` | 409 |
+| `report` mà `producedQty + rejectedQty` cộng dồn vượt `quantity` của Job                       | `ErrorCode.E088` | 400         |
+| `report` mà cả `producedQty` lẫn `rejectedQty` đều không gửi hoặc đều bằng 0                    | `ErrorCode.E089` | 400         |
 | Role của caller thiếu quyền mà route yêu cầu                                                  | `ErrorCode.E033` | 403         |
 | Không gửi bearer token                                                                        | —                | 401         |
 
@@ -220,7 +274,9 @@ Hai module tách biệt (đảo từ "1 module duy nhất" của bản gộp `pr
 
 ## Ngoài phạm vi
 
-Huỷ duyệt LSX (đưa `APPROVED` quay lại `PENDING`) — tạm hoãn đợt này, đã cân nhắc lúc thiết kế (không thêm cột DB riêng cho ca này để dễ bổ sung sau) nhưng chưa lộ route · Ghi nhận xuất kho khi duyệt LSX (khác "Tạo LSX" cũ đã bỏ 2026-07-30 — `approveProductionOrder` sinh Job nhưng chưa lập phiếu xuất kho) · Kiểm tra tồn kho tổng hợp trước khi duyệt (ca 2 dòng PO khác nhau cùng sản phẩm cộng dồn "Lấy từ tồn" vượt tồn thực tế — cân nhắc lúc thiết kế Job, chủ động để ngoài phạm vi, xem "Sinh Job khi duyệt LSX") · làm mới `onHandQty`/`availableQty`/`orderQty` theo tồn hiện tại khi sửa số lượng hoặc khi đọc chi tiết (cả hai đều chỉ là snapshot tĩnh, xem "Sửa số lượng sản xuất"/"Đọc lại chi tiết bằng snapshot") · theo dõi tiến độ Job (chưa có `status` trên `production_jobs`) · gắn công đoạn từ `routing_steps` · nhập kho thành phẩm từ sản xuất · báo cáo sản lượng · xoá một LSX/Job, hoặc sửa từng dòng quyết định của một LSX `APPROVED` · Job cho bán thành phẩm (WIP) / nổ BOM xuống vật tư · note riêng cho LSX · cập nhật `GET /orders/stats` theo bộ trạng thái mới (đã là TODO riêng sẵn có, xem `orders.md`).
+Huỷ duyệt LSX (đưa `APPROVED` quay lại `PENDING`) — tạm hoãn đợt này, đã cân nhắc lúc thiết kế (không thêm cột DB riêng cho ca này để dễ bổ sung sau) nhưng chưa lộ route · Ghi nhận xuất kho khi duyệt LSX (khác "Tạo LSX" cũ đã bỏ 2026-07-30 — `approveProductionOrder` sinh Job nhưng chưa lập phiếu xuất kho) · Kiểm tra tồn kho tổng hợp trước khi duyệt (ca 2 dòng PO khác nhau cùng sản phẩm cộng dồn "Lấy từ tồn" vượt tồn thực tế — cân nhắc lúc thiết kế Job, chủ động để ngoài phạm vi, xem "Sinh Job khi duyệt LSX") · làm mới `onHandQty`/`availableQty`/`orderQty` theo tồn hiện tại khi sửa số lượng hoặc khi đọc chi tiết (cả hai đều chỉ là snapshot tĩnh, xem "Sửa số lượng sản xuất"/"Đọc lại chi tiết bằng snapshot") · gắn công đoạn từ `routing_steps` (tiến độ theo từng công đoạn, không chỉ ở mức Job) · nhập kho thành phẩm tự động khi Job hoàn thành (vẫn lập phiếu tay như hiện tại, xem "Vòng đời Job + báo sản lượng") · phiếu lãnh/xuất vật tư theo Job (mở khoá "Đã giữ"/"Có thể xuất" ở màn tồn kho vật tư, xem `docs/features/inventory.md`) · tự động chuyển `orders.status → COMPLETED` khi mọi Job của một LSX xong · xoá một LSX/Job, hoặc sửa từng dòng quyết định của một LSX `APPROVED` · Job cho bán thành phẩm (WIP) / nổ BOM xuống vật tư · gán tổ/máy/nhân công cho Job · báo cáo sản lượng/hiệu suất · note riêng cho LSX · cập nhật `GET /orders/stats` theo bộ trạng thái mới (đã là TODO riêng sẵn có, xem `orders.md`).
+
+(Theo dõi tiến độ Job ở **mức Job** — vòng đời `status` + `producedQty`/`rejectedQty` — đã được xây 2026-07-30, xem "Vòng đời Job + báo sản lượng"; không còn nằm ngoài phạm vi. Phần còn lại — theo từng công đoạn — vẫn ngoài phạm vi, xem gạch đầu dòng trên.)
 
 ## Frontend integration notes
 
@@ -255,6 +311,14 @@ Route đổi thành `GET /production-orders/:productionOrdersId` (khoá theo `pr
 
 - Route mới: `GET /production-orders/:productionOrdersId/logs` (phân trang, mới nhất trước), quyền `production:read`. Gợi ý FE thêm tab/section "Lịch sử" trên màn chi tiết LSX, hiển thị `content` trực tiếp (đã là câu tiếng Việt sẵn, không cần FE tự dựng từ dữ liệu thô).
 - Không đổi request/response shape của `PATCH`/`.../approve` — chỉ có thêm dữ liệu log phía sau, gọi các route đó như cũ.
+
+**2026-07-30 (đợt riêng, sau tất cả các đợt trên) — Vòng đời Job + báo sản lượng, additive:**
+
+- 7 route mới dưới `/production-jobs/:jobId/*`: `start`/`report`/`pause`/`resume`/`complete`/`cancel` (POST, ghi) và `logs` (GET, phân trang) — xem "API contract" và "Vòng đời Job + báo sản lượng". Gợi ý FE thêm các nút hành động lên màn chi tiết Job, hiện/ẩn theo `status` hiện tại (bảng chuyển trạng thái hợp lệ ở mục trên).
+- `ProductionJobResDto` thêm 6 field: `status`, `producedQty`, `rejectedQty`, `remainingQty`, `startedAt`, `completedAt` — **additive**, không đổi/xoá field cũ nào (`GET /production-jobs`/`GET /production-jobs/:jobId` vẫn giữ nguyên shape trước đó, chỉ có thêm field).
+- `GetProductionJobsReqDto` thêm filter `status?`.
+- Job mới sinh ra khi duyệt LSX (`createJobs`) luôn ở `status: PENDING` — không đổi hành vi duyệt LSX, chỉ có thêm trạng thái ban đầu để client hiển thị đúng ngay từ đầu.
+- Client cần tự quyết định khi nào gọi `complete` dù `producedQty < quantity` (kết thúc sớm hợp lệ) — server không cảnh báo, không chặn.
 
 ## Xem thêm
 
