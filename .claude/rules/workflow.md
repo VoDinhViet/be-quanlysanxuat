@@ -1,9 +1,11 @@
 # Workflow Rules
 
-- Package manager is **pnpm**. Never use `npm` or `yarn` commands in this repo.
-- Don't run `pnpm build`/`pnpm lint`/`pnpm format` after every small edit (a rename, a one-line tweak) — it's slow and the user finds it disruptive. Only run them once at the end of a larger unit of work, before declaring a non-trivial task done, or when the user explicitly asks.
-- Testing is paused repo-wide — don't create/update `*.spec.ts`, don't run `pnpm test*`, unless explicitly asked. Detail (including how to resume): `.claude/rules/testing.md`.
-- **Never run `pnpm db:migrate` against a shared/prod database** without explicit user approval.
-- Drizzle schema changes follow edit → re-export in `schemas/index.ts` → `pnpm db:generate` → `pnpm db:migrate`, in that order — full detail in `.claude/rules/database.md`.
-- Talk to the user in Vietnamese. Write code (identifiers) and commit messages in English. **Write code comments in Vietnamese** — style covered in `.claude/rules/code-docs.md`. Follow Conventional Commits for commit messages (`feat:`, `fix:`, `refactor:`, ...).
-- Before implementing a new feature (or a non-trivial change to business rules of an existing one), write or update a short spec at `docs/features/<feature>.md`. No fixed template — capture whatever the feature actually needs (typically: business rules, the API contract, error cases, and a "Frontend integration notes" section for the current breaking-change surface), not implementation details, which the other rule files already cover. Skip this for pure bug fixes or refactors that don't change behavior. Cross-module facts (how two modules' data connects, write order across modules) belong in `docs/architecture.md` instead, not repeated per feature doc. Use the `feature-doc` skill (`.claude/skills/`) to check an existing spec against its own module's code.
+- MUST use **pnpm**. MUST NOT run `npm` or `yarn`.
+- MUST NOT run `pnpm build`/`lint`/`format` after every small edit — only once at the end of a larger unit of work, or when asked.
+- MUST NOT create/update `*.spec.ts` or run `pnpm test*` unless explicitly asked (testing paused repo-wide — see `.claude/rules/testing.md`).
+- MUST NOT run `pnpm db:migrate` against a shared/prod database without explicit user approval.
+- MUST talk to the user in **Vietnamese**; MUST write identifiers and commit messages in **English**; MUST write code comments in **Vietnamese** (`.claude/rules/code-docs.md`).
+- MUST follow Conventional Commits (`feat:`, `fix:`, `refactor:`, ...). MUST NOT commit unless asked.
+- MUST write/update `docs/features/<feature>.md` before implementing a new feature or changing an existing feature's business rules. Skip for pure bug fixes and behavior-preserving refactors.
+- MUST put cross-module facts (how two modules' data connects, write order spanning modules) in `docs/architecture.md`, not in a feature doc.
+- MUST NOT put business rules in `.claude/rules/*` or `CLAUDE.md` — they belong in `docs/features/<feature>.md`.

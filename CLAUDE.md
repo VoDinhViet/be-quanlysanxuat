@@ -36,25 +36,19 @@ pnpm db:generate                  # sinh migration từ thay đổi schema
 pnpm db:migrate                   # áp migration — không chạy vào DB dùng chung/prod khi chưa được duyệt
 pnpm db:studio
 
-pnpm db:seed:<name>                # credentials, client-groups, clients, countries, units,
-                                    # material-groups, materials, supplier-groups, suppliers,
-                                    # product-groups, products, operations — xem package.json
+pnpm db:seed:<name>                # xem package.json cho danh sách đầy đủ
 ```
 
 ## Request pipeline
 
-Cấu hình ở `src/main.ts`. Prefix toàn cục `api` + URI versioning (`/api/v1/...` khi controller khai
-version) — `GET /` và `GET /health` bị loại khỏi prefix (`app.setGlobalPrefix('api', { exclude })`)
-nên health check nằm ở `/health`, không phải `/api/health`. `ValidationPipe` toàn cục
-(`whitelist: true`, `transform: true`, lỗi validate trả 422). `ClassSerializerInterceptor` +
-`GlobalExceptionFilter` toàn cục.
+`src/app.module.ts` đăng ký `JwtAuthGuard` rồi `PermissionsGuard` làm `APP_GUARD`, đúng thứ tự đó —
+**mọi route mặc định cần bearer token hợp lệ**. Đánh dấu `@Public()`/`@ApiPublic()` để bỏ qua cả
+hai; khai quyền bằng `@Permissions('resource:action')` (role có `system:manage` qua mọi kiểm tra);
+`@CurrentUser()` trả `undefined` trên route public.
 
-**Guard mặc định an toàn**: `JwtAuthGuard` rồi `PermissionsGuard` đăng ký `APP_GUARD` trong
-`src/app.module.ts`, theo đúng thứ tự đó. Mọi route mặc định cần bearer token hợp lệ; đánh dấu
-`@Public()`/`@ApiPublic()` để bỏ qua cả hai. Route khai quyền cần bằng `@Permissions('resource:action')`,
-`PermissionsGuard` enforce nó — role có `system:manage` qua mọi kiểm tra. `@CurrentUser()` trả
-`undefined` trên route `@Public()`. `main.ts` export một handler kiểu serverless (cached Express
-instance) và cũng `listen(PORT)` khi chạy trực tiếp.
+`ValidationPipe` toàn cục: `whitelist: true` (field lạ bị âm thầm loại bỏ, không lỗi), `transform: true`,
+lỗi validate trả 422. Prefix toàn cục `api`, trừ `GET /`/`GET /health` — health check ở `/health`,
+không phải `/api/health`.
 
 ## Modules
 
@@ -72,7 +66,7 @@ là tên file dưới `docs/features/`, `—` nghĩa là chưa có.
 | `clients` | clients | contact là xoá+chèn lại toàn bộ mỗi lần sửa — id contact không ổn định |
 | `client-groups` | master-data | |
 | `products` | products | `POST /:id/copy` deep-clone cả row + BOM + routing |
-| `product-groups` | master-data | |
+| `product-groups` | — | |
 | `boms` | boms | mount ở `/products/:productId/bom` |
 | `routing` | routing | mount ở `/products/:productId/operations` **và** `.../bom/items/:itemId/operations` |
 | `materials` | materials | |
@@ -99,24 +93,13 @@ là tên file dưới `docs/features/`, `—` nghĩa là chưa có.
 
 ## Standing decisions
 
-Chỉ giữ quyết định còn **cấm** hoặc **đảo ngược** điều gì đó, nên vẫn ảnh hưởng cách viết code hôm
-nay — mỗi dòng có ngày. Toàn bộ lịch sử khác (đổi tên, redesign, rollback rồi lại rollback) nằm trong
-`git log`, không lặp lại ở đây.
+Chỉ giữ ràng buộc còn **cấm** hoặc **bắt buộc** hôm nay — không phải nhật ký thay đổi. Lịch sử đầy
+đủ (đổi tên, redesign, rollback) nằm trong `git log` và trong từng `docs/features/<x>.md`.
 
-- **2026-07-28 — testing tạm dừng toàn repo.** Không tạo/sửa `*.spec.ts` mới, không chạy
-  `pnpm test*` trừ khi được yêu cầu rõ. `.claude/rules/testing.md` chủ ý không import.
-- **2026-07-29 — comment trong code viết tiếng Việt** (identifier + commit message vẫn tiếng Anh).
-  Kiểu viết: `.claude/rules/code-docs.md`.
-- **2026-07-24 — `product-revisions` đã xoá; versioning = clone cả product** (`POST /products/:id/copy`).
-  Đừng tạo lại `product_revisions`/`currentRevisionId`.
-- **2026-07-29 — `OrderStatus.DRAFT` đã quay lại** sau khi bị bỏ vài ngày trước đó. Đọc enum thật từ
-  `src/database/schemas/orders.ts`, đừng nhớ hoặc chép từ doc cũ.
-- **`uploads` đã bị `files` thay thế.** Đừng tạo lại.
-
-## Gotchas
-
-- `orders.staffId` là FK nghiệp vụ **duy nhất** trỏ `users.id` — mọi FK "ai đã làm việc này" khác
-  (`createdBy`, `approvedBy`, `startedBy`, ...) trỏ `credentials.id`.
-- `src/common/{offset,cursor}-pagination/`, `common/error.dto.ts`, `common/error-detail.dto.ts`,
-  `common/base.res.dto.ts` là **code chết — 0 nơi import**. Bản đang dùng nằm ở `src/common/dto/`.
-- `uploads/` phục vụ tĩnh ở `/uploads/` và bị git-ignore.
+- **Testing tạm dừng repo-wide (2026-07-28).** Không tạo/sửa `*.spec.ts`, không chạy `pnpm test*`
+  trừ khi được yêu cầu rõ. `.claude/rules/testing.md` chủ ý không import — đọc file đó để biết cách
+  bật lại.
+- **Enum trạng thái (`OrderStatus`, `ProductionOrderStatus`, `ProductionJobStatus`, ...) đổi khá
+  thường xuyên** — luôn đọc giá trị thật từ `src/database/schemas/*.ts` trước khi viết code hay trả
+  lời, đừng tin mô tả bằng lời ở bất kỳ đâu, kể cả doc này.
+- **`uploads` đã bị `files` thay thế** — đừng tạo lại module đó.

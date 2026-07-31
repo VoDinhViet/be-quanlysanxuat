@@ -1,17 +1,27 @@
 # Database (Drizzle) Rules
 
-Reference implementation: `src/database/schemas/users.ts`.
+Reference: `src/database/schemas/users.ts`, `src/database/schemas/clients.ts` (soft delete).
 
-- Schemas live in `src/database/schemas/`, declared with `pgTable('snake_case_name', {...})`.
-- DB column names are **snake_case**, TS object keys are **camelCase**: `fullName: varchar('full_name', { length: 255 })`.
-- Primary key: `id: uuid('id').defaultRandom().primaryKey()`.
-- Timestamps: `createdAt: timestamp('created_at').defaultNow().notNull()` and `updatedAt: timestamp('updated_at').defaultNow().notNull().$onUpdate(() => new Date())` — the `$onUpdate` hook is what makes `.claude/rules/api-module.md`'s "don't hand-write `updatedAt`" rule safe.
-- Enums are declared as a paired TS `enum` + `pgEnum('snake_name', [...])`, e.g. `UserStatus` / `userStatusEnum`.
-- Every new/changed schema file **must** be re-exported from `src/database/schemas/index.ts` — `drizzle-kit` only reads that file. Then run `pnpm db:generate` followed by `pnpm db:migrate`.
-- **Reality check — no soft delete exists yet**: the `users` table has no `deletedAt` column and no query filters with `isNull(deletedAt)`. Do not assume this pattern is already in place for other tables; if a module needs soft delete, decide and implement the column + filter explicitly rather than assuming it's already there.
+- MUST declare schemas in `src/database/schemas/` with `pgTable('snake_case_name', {...})`.
+- MUST use snake_case DB column names with camelCase TS keys: `fullName: varchar('full_name', { length: 255 })`.
+- MUST use `id: uuid('id').defaultRandom().primaryKey()` as the primary key.
+- MUST declare timestamps as `createdAt: timestamp('created_at').defaultNow().notNull()` and `updatedAt: timestamp('updated_at').defaultNow().notNull().$onUpdate(() => new Date())`.
+- MUST declare enums as a paired TS `enum` + `pgEnum('snake_name', [...])` (e.g. `UserStatus` / `userStatusEnum`).
+- MUST re-export every new/changed schema file from `src/database/schemas/index.ts` — `drizzle-kit` reads only that file — then run `pnpm db:generate` followed by `pnpm db:migrate`, in that order.
+- MUST NOT hand-edit a generated migration except to add a data migration (e.g. backfilling a column, remapping enum values before a cast).
+
+## Soft delete
+
+Eight tables carry `deletedAt`: `clients`, `orders`, `products`, `stock_receipts`, `suppliers` (deleted via API) plus `users`, `roles`, `operations` (column + read filters only, no delete route). Every other table hard-deletes.
+
+- MUST declare it as a nullable `deletedAt: timestamp('deleted_at')` — no default, no `notNull`.
+- MUST delete by `.set({ deletedAt: new Date() })` on a table that has the column. MUST NOT call `db.delete()` on one.
+- MUST filter every read with `isNull(<table>.deletedAt)` — list, detail, existence checks, and FK-validation lookups alike. Forgetting it leaks deleted rows.
+- Uniqueness on these tables is a plain `.unique()` on the column, **not** scoped to live rows — a soft-deleted row keeps holding its `code`, so that code can never be reused. MUST NOT switch it to a partial unique index without asking; that changes behaviour for existing data.
+- MUST NOT add `deletedAt` to a new table unless the module actually needs it — decide explicitly.
+- MUST NOT read a partial index ending in ``.where(sql`deleted_at IS NULL`)`` (e.g. `idx_clients_status`) as enforcing anything — those exist for query performance only.
 
 ## Seeds
 
-`<name>.seed.ts` in `src/database/seeds/`, plus a matching `db:seed:<name>` script in
-`package.json`. Seeds **must be idempotent**. Before writing one, read `.claude/rules/seeds.md` for
-the skeleton and the two idempotency patterns (curated data vs `drizzle-seed` bulk data).
+- MUST name seed files `<name>.seed.ts` in `src/database/seeds/` and add a matching `db:seed:<name>` script to `package.json`.
+- MUST make every seed idempotent. Read `.claude/rules/seeds.md` before writing one.
