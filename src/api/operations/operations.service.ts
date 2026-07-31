@@ -17,7 +17,6 @@ export class OperationsService {
 
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
 
-  /** Returns the whole catalogue (capped at `OperationsService.LIMIT`) — see `GetOperationsReqDto` for why this isn't paginated. */
   async getOperations(reqDto: GetOperationsReqDto): Promise<OperationResDto[]> {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
 

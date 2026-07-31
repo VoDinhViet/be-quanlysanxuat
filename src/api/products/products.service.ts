@@ -231,7 +231,7 @@ export class ProductsService {
     const original = await this.ensureProductExists(productId);
     const code = await this.generateProductCode();
 
-    // Every read happens before the transaction opens — see `.claude/rules/api-module.md`.
+    // Every read happens before the transaction opens — see `.claude/rules/service.md`.
 
     // The copy points at the same file rows as the original — `files` is a registry, and both
     // products referencing one row is exactly what it is for. Skipping this would silently give

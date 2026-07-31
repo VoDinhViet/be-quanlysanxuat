@@ -18,12 +18,8 @@ import { buildSignedFileUrl } from './util/file-url.util';
 export class FilesModule implements OnModuleInit {
   constructor(private readonly configService: ConfigService<AllConfigType>) {}
 
-  /**
-   * Binds the module-level URL resolver used by `FileResDto` (which is mapped by class-transformer,
-   * outside DI — see `file-url-resolver.ts`). Every `FileResDto` produced after boot renders `url`
-   * as a link signed with the configured secret and expiring `upload.urlTtl` seconds from *mapping*
-   * time, so the clock starts when the client is handed the URL.
-   */
+  /** Gắn resolver URL cho `FileResDto` (map bởi class-transformer, ngoài DI — xem
+   * `file-url-resolver.ts`). Hạn `url` ký tính từ lúc map, không phải lúc client dùng link. */
   onModuleInit(): void {
     const secret = this.configService.getOrThrow('upload.urlSecret', {
       infer: true,

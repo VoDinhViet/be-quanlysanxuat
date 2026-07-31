@@ -62,8 +62,6 @@ export class UsersController {
     return this.usersService.getUserDetail(userId);
   }
 
-  // Sending `credential.roleId` additionally requires `roles:update` — checked in the service
-  // (E033), not here, because the requirement is conditional on the field being present.
   @Post()
   @Permissions('users:create')
   @ApiAuth({
@@ -78,8 +76,6 @@ export class UsersController {
     return this.usersService.createUser(reqDto, payload.sub);
   }
 
-  // Sending `roleId` additionally requires `roles:update` — checked in the service (E033), not
-  // here, because the requirement is conditional on the field being present.
   @Patch(':userId')
   @Permissions('users:update')
   @ApiAuth({

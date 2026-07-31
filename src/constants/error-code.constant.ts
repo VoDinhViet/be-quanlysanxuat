@@ -137,7 +137,7 @@ export enum ErrorCode {
   // `PATCH /production-orders/:productionOrdersId` gửi `orderItemId` không thuộc chính LSX đó.
   // Trước 2026-07-30 gắn với `PATCH` "Lưu lại" cũ (đã bỏ), không có nhánh throw — sống lại cùng
   // route `updateProductionOrder` mới (khác khoá tra cứu + semantics partial, xem
-  // `docs/features/production.md`).
+  // `docs/workflows/production-order-approval.md`).
   E078 = 'production_order.error.invalid_order_item',
   // Dự phòng — gắn với `POST /production-orders/:orderId/issue` đã bỏ 2026-07-30.
   E079 = 'production_order.error.no_items',
@@ -165,16 +165,13 @@ export enum ErrorCode {
   // gửi gì. `chk_stock_receipt_items_target` chỉ đảm bảo "đúng một trong hai", không đảm bảo khớp
   // đúng `subject` — đó là phần việc của mã lỗi này.
   E086 = 'stock_receipt.error.line_target_mismatch',
-  // `start`/`report`/`pause`/`resume`/`complete`/`cancel` gọi trên một Job đang không ở trạng thái
-  // hợp lệ cho hành động đó (xem bảng chuyển trạng thái ở `docs/features/production.md`).
+  // `start` gọi trên một Job đang không ở trạng thái hợp lệ cho hành động đó (xem sơ đồ chuyển
+  // trạng thái ở `docs/domains/production.md`, mục Lifecycle).
   E087 = 'production_job.error.invalid_status_transition',
-  // `POST /production-jobs/:jobId/report` mà `producedQty + rejectedQty` cộng dồn (đã cộng cả các
-  // lần báo trước) vượt quá `quantity` của Job — kiểm ở service để ra 400 sạch thay vì để lộ lỗi
-  // constraint `chk_production_jobs_report_qty` 500 thô.
-  E088 = 'production_job.error.report_exceeds_quantity',
-  // `POST /production-jobs/:jobId/report` mà cả `producedQty` lẫn `rejectedQty` đều không gửi
-  // hoặc đều bằng 0 — một lần báo phải ghi nhận được ít nhất một trong hai.
-  E089 = 'production_job.error.empty_report',
+  // E088/E089 (production_job.error.report_exceeds_quantity/empty_report) stay reserved — their
+  // only throw site was `ProductionJobsService.reportJob`, removed cùng lúc bỏ theo dõi sản lượng
+  // qua API (`producedQty`/`rejectedQty` đã bỏ khỏi `production_jobs`). Tạm hoãn, xem
+  // `docs/domains/production.md`.
   E101 = 'class.error.teacher_not_found',
   E102 = 'class.error.invalid_teacher_assignment',
   E103 = 'class.error.forbidden',

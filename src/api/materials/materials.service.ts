@@ -16,6 +16,7 @@ import {
   materials,
   MaterialStatus,
   MaterialType,
+  productionJobMaterials,
   suppliers,
   units,
   UnitScope,
@@ -99,7 +100,6 @@ export class MaterialsService {
     );
   }
 
-  /** Reads back a material with everything a `MaterialResDto` needs. */
   async getMaterialDetail(materialId: string): Promise<MaterialResDto> {
     const material = await this.db.query.materials.findFirst({
       where: eq(materials.id, materialId),
@@ -119,8 +119,6 @@ export class MaterialsService {
     reqDto: CreateMaterialReqDto,
     userId: string,
   ): Promise<MaterialResDto> {
-    // Every check below is a read, so it runs before the transaction opens — the transaction
-    // only has to keep the writes together.
     let code = reqDto.code;
     if (code) {
       await this.validateCodeUniqueness(code);
@@ -141,15 +139,14 @@ export class MaterialsService {
     );
     const status = reqDto.status ?? MaterialStatus.ACTIVE;
 
-    // `attachmentFileIds` lives in its own table, not a column on `materials` — peel it off so
-    // the rest of the DTO spreads straight onto the row. `specificWeight` needs no transform:
-    // the column is declared `mode: 'number'`, so drizzle converts it to/from `numeric` itself.
+    // `specificWeight` không cần transform: cột khai `mode: 'number'`, drizzle tự đổi qua lại
+    // `numeric`.
     const { attachmentFileIds, ...materialFields } = reqDto;
 
     await this.linkMaterialFiles(reqDto);
 
-    // The material row and its attachments must land together: without this transaction a
-    // failing attachment insert would leave a committed material with no documents.
+    // Material và attachment phải vào cùng lúc — nếu không, insert attachment lỗi sẽ để lại một
+    // material đã commit nhưng thiếu tài liệu.
     const materialId = await this.db.transaction(async (tx) => {
       const [material] = await tx
         .insert(materials)
@@ -189,19 +186,15 @@ export class MaterialsService {
       await this.ensureSupplierExists(reqDto.supplierId);
     }
 
-    // `attachmentFileIds` replace-all lives in its own table; `clientId` needs re-validating
-    // against the *effective* type before it can be written — peel both off so the rest of the
-    // DTO spreads straight onto the row. `specificWeight` needs no transform (see `createMaterial`).
     const {
       attachmentFileIds,
       clientId: requestedClientId,
       ...materialFields
     } = reqDto;
 
-    // Re-validate the (type, clientId) pair whenever either side changes — including when only
-    // one of the two is sent, against the other's *effective* value (the new one if sent, else
-    // the material's current one). Same idea as `UsersService.updateUser`'s (department,
-    // position) re-validation.
+    // Validate lại cặp (type, clientId) mỗi khi một trong hai đổi — kể cả khi chỉ gửi một field,
+    // so với giá trị *hiệu lực* của field còn lại (giá trị mới nếu gửi, không thì giá trị hiện
+    // tại). Cùng cách làm với (department, position) ở `UsersService.updateUser`.
     let clientId: string | null | undefined;
     if (reqDto.type || requestedClientId !== undefined) {
       clientId = await this.resolveClientLink(
@@ -213,7 +206,6 @@ export class MaterialsService {
     await this.linkMaterialFiles(reqDto);
 
     await this.db.transaction(async (tx) => {
-      // `updated_at` is bumped by the column's own `$onUpdate`.
       await tx
         .update(materials)
         .set({
@@ -230,12 +222,9 @@ export class MaterialsService {
     return this.getMaterialDetail(materialId);
   }
 
-  /**
-   * Hard delete — `materials` has no soft delete (see schema comment: a material is either
-   * ACTIVE or INACTIVE, never "deleted"). Blocked when the material is still referenced by a BOM
-   * node (E041); the FK is `onDelete: 'restrict'`, so an unchecked delete would otherwise surface
-   * as a raw 500 instead of a clean 409.
-   */
+  /** Hard delete — `materials` không có soft delete. Chặn khi vật tư còn được tham chiếu bởi một
+   * node BOM hoặc một `production_job_materials` (`E041`) — cả hai FK `restrict`, không kiểm
+   * trước sẽ lộ 500 thô thay vì 409 sạch. */
   async deleteMaterial(materialId: string): Promise<void> {
     await this.ensureMaterialExists(materialId);
     await this.ensureMaterialNotInUse(materialId);
@@ -243,10 +232,8 @@ export class MaterialsService {
     await this.db.delete(materials).where(eq(materials.id, materialId));
   }
 
-  /**
-   * type=CLIENT requires a client (E040) that must exist; type=INTERNAL never carries a
-   * client (any provided clientId is cleared). Returns the effective clientId to persist.
-   */
+  /** `type=CLIENT` bắt buộc có client tồn tại (E040); `type=INTERNAL` luôn xoá `clientId` dù có
+   * gửi lên. Trả về `clientId` hiệu lực để ghi. */
   private async resolveClientLink(
     type: MaterialType,
     clientId: string | null,
@@ -262,10 +249,7 @@ export class MaterialsService {
     return null;
   }
 
-  /**
-   * Validates every file id the request carries and marks them linked, so the orphan sweeper
-   * leaves them alone. Runs **before** the transaction on purpose — see `FilesService.linkFiles`.
-   */
+  /** Xem `FilesService.linkFiles` — phải gọi trước khi mở transaction. */
   private async linkMaterialFiles(
     reqDto: CreateMaterialReqDto | UpdateMaterialReqDto,
   ): Promise<void> {
@@ -277,10 +261,8 @@ export class MaterialsService {
     await this.filesService.linkFiles(fileIds);
   }
 
-  /**
-   * Writes the attachment rows. Takes `tx` (not `this.db`) so it can only ever be called from
-   * inside an open transaction — passing the pooled connection is a compile error.
-   */
+  /** Nhận `tx` (không phải `this.db`) nên chỉ gọi được từ trong một transaction đang mở — truyền
+   * connection pool thường sẽ là lỗi compile. */
   private async createAttachments(
     tx: DbTransaction,
     materialId: string,
@@ -291,7 +273,7 @@ export class MaterialsService {
       .values(fileIds.map((fileId) => ({ materialId, fileId })));
   }
 
-  /** Replace-all. `tx` is required so a caller cannot accidentally write outside the transaction. */
+  /** Replace-all. Bắt buộc truyền `tx` để tránh ghi ra ngoài transaction. */
   private async replaceAttachments(
     tx: DbTransaction,
     materialId: string,
@@ -324,10 +306,8 @@ export class MaterialsService {
     }
   }
 
-  /**
-   * The unit must exist *and* be flagged as usable on materials — filtering the dropdown with
-   * `GET /units?scope=MATERIAL` is cosmetic on its own, a client can still post any unit id.
-   */
+  /** Unit phải tồn tại *và* được đánh dấu dùng được cho materials — lọc dropdown qua
+   * `GET /units?scope=MATERIAL` chỉ là cosmetic, client vẫn post được unit id bất kỳ. */
   private async ensureUnitExists(unitId: string): Promise<void> {
     const existing = await this.db.query.units.findFirst({
       columns: { id: true },
@@ -378,8 +358,6 @@ export class MaterialsService {
     }
   }
 
-  /** Returns the columns callers need right after (`type`/`clientId`, to compute the "effective"
-   * pair on a partial update) instead of a second re-fetch. */
   private async ensureMaterialExists(materialId: string): Promise<{
     id: string;
     type: MaterialType;
@@ -397,18 +375,19 @@ export class MaterialsService {
     return existing;
   }
 
-  /**
-   * Blocks hard-delete when the material is referenced by at least one BOM node — the FK is
-   * `onDelete: 'restrict'` (see `bom_items.materialId`), so an unchecked delete would otherwise
-   * surface as a raw 500 instead of a clean 409.
-   */
   private async ensureMaterialNotInUse(materialId: string): Promise<void> {
-    const used = await this.db.query.bomItems.findFirst({
-      columns: { id: true },
-      where: eq(bomItems.materialId, materialId),
-    });
+    const [usedInBom, usedInJob] = await Promise.all([
+      this.db.query.bomItems.findFirst({
+        columns: { id: true },
+        where: eq(bomItems.materialId, materialId),
+      }),
+      this.db.query.productionJobMaterials.findFirst({
+        columns: { id: true },
+        where: eq(productionJobMaterials.materialId, materialId),
+      }),
+    ]);
 
-    if (used) {
+    if (usedInBom || usedInJob) {
       throw new AppException(ErrorCode.E041, HttpStatus.CONFLICT);
     }
   }

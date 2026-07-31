@@ -19,11 +19,6 @@ import { RoutingStepResDto } from './dto/routing-step.res.dto';
 import { UpdateRoutingStepReqDto } from './dto/update-routing-step.req.dto';
 import { RoutingService } from './routing.service';
 
-// As-used routing for one specific BOM node ("Cấp 1+"): the same WIP product referenced from two
-// different parents/positions in a tree can carry a different routing at each position, because
-// the step is tied to *where* it's used, not just *which* product it is. `:itemId` is scoped to
-// `:productId`'s own BOM (same convention as `BomsController`'s `.../bom/items/:itemId`). For the
-// Cấp 0 root product's own routing, see `RoutingController`.
 @ApiTags('Routing')
 @Controller('products/:productId/bom/items/:itemId/operations')
 export class BomItemRoutingController {

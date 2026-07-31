@@ -9,13 +9,6 @@ import {
   UUIDField,
 } from '../../../decorators/field.decorators';
 
-/**
- * One step of a routing ("Công đoạn") — an operation plus its position ("STT chạy") in the
- * sequence. Shared shape for both routing kinds (Cấp 0 root product, and as-used per BOM node) —
- * the DTO itself doesn't expose which target it belongs to, that's implicit in which endpoint
- * returned it. `operation` is the lightweight ref already used elsewhere (`OperationRefResDto`);
- * relation key matches the property name, so no rename transform needed.
- */
 @Exclude()
 export class RoutingStepResDto {
   @Expose()

@@ -10,8 +10,6 @@ import {
 } from '../../../decorators/field.decorators';
 import { OrderClientRefResDto } from './order-client-ref.res.dto';
 
-/** Lightweight reference to the order a resource belongs to, nested inside another module's
- * response DTO (e.g. `ProductionOrderDetailResDto`). */
 @Exclude()
 export class OrderRefResDto {
   @Expose()

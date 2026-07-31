@@ -44,21 +44,14 @@ import { InventoryItemResDto } from './dto/inventory-item.res.dto';
 import { MaterialInventoryItemResDto } from './dto/material-inventory-item.res.dto';
 import { MaterialStockStatus } from './inventory.constant';
 
-/**
- * Read-only stock levels for finished goods. Nothing here is stored: every number is computed at
- * read time from `stock_receipt_items` (the ledger `StockReceiptsService` writes to) and
- * `order_items`, so it can never drift from the data that produced it — see the doc comment on
- * `stock_receipts` in `src/database/schemas/stock-receipts.ts`.
- */
+/** Đọc tồn thành phẩm, không lưu gì — mọi số tính lúc đọc từ `stock_receipt_items` (sổ
+ * `StockReceiptsService` ghi) và `order_items`, nên không bao giờ lệch nguồn. */
 @Injectable()
 export class InventoryService {
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
 
-  /**
-   * Lists every ACTIVE finished good — including ones that have never had a single receipt — not
-   * just products that happen to have stock movement. Pagination/filtering runs against `products`
-   * directly; `onHand`/`reserved` are then looked up only for the current page's ids.
-   */
+  /** Liệt kê mọi FG ACTIVE, kể cả sản phẩm chưa từng có phiếu nào — không chỉ sản phẩm có phát
+   * sinh kho. Phân trang/lọc chạy trên `products`, `onHand`/`reserved` chỉ tra cho trang hiện tại. */
   async getInventory(
     reqDto: GetInventoryReqDto,
   ): Promise<OffsetPaginatedDto<InventoryItemResDto>> {
@@ -114,19 +107,9 @@ export class InventoryService {
     );
   }
 
-  /**
-   * Tồn kho vật tư — song song `getInventory` (thành phẩm) nhưng **không thể** phân trang trên
-   * `materials` rồi tra tồn riêng cho từng trang như `getInventory` đang làm: filter `status`
-   * (giá trị tính, không phải cột thật) phải chạy ngay trong `WHERE`, nên toàn bộ join + tính toán
-   * nằm gọn trong một câu `.select()` duy nhất, dùng lại `where` cho cả trang dữ liệu lẫn `count()`.
-   *
-   * Rules:
-   * - `reserved` luôn `0` (chưa có Phiếu lãnh vật tư) — `issuable = onHand − reserved` nên bằng
-   *   `onHand`. `bomDemand` luôn `0` (chưa nổ BOM) — `available = onHand − bomDemand` nên cũng
-   *   bằng `onHand`. Cả hai là chỗ cắm sẵn cho các đợt sau, xem `docs/features/inventory.md`.
-   * - `status` không tính trong SQL — suy trực tiếp từ `available`/`minStock` đã có sẵn trên mỗi
-   *   dòng (`materialStockStatus`), khớp đúng ngưỡng của `materialStatusCondition` dùng để lọc.
-   */
+  /** Không thể phân trang trên `materials` rồi tra tồn riêng như `getInventory` — filter `status`
+   * (giá trị tính, không phải cột thật) phải chạy trong `WHERE`, nên toàn bộ join + tính toán nằm
+   * trong một `.select()` duy nhất, dùng chung `where` cho cả trang lẫn `count()`. */
   async getMaterialInventory(
     reqDto: GetMaterialInventoryReqDto,
   ): Promise<OffsetPaginatedDto<MaterialInventoryItemResDto>> {
@@ -211,9 +194,7 @@ export class InventoryService {
     );
   }
 
-  /** `SHORTAGE`/`WARNING`/`NORMAL` — ba nhánh đúng-một-trong-ba, khớp ngưỡng của
-   * `materialStockStatus` dùng để hiển thị. Trả boolean SQL trực tiếp (không qua CASE) vì đây chỉ
-   * phục vụ lọc `WHERE`, không cần hiển thị giá trị. */
+  /** Trả boolean SQL trực tiếp (không qua CASE) — chỉ phục vụ lọc `WHERE`, không cần hiển thị. */
   private materialStatusCondition(
     availableSql: () => SQL<number>,
     status: MaterialStockStatus,
@@ -228,8 +209,7 @@ export class InventoryService {
     }
   }
 
-  /** Cùng ba ngưỡng với `materialStatusCondition`, tính trong JS từ hai số đã có sẵn trên mỗi dòng
-   * thay vì lặp lại CASE expression trong SQL. */
+  /** Cùng ba ngưỡng với `materialStatusCondition`, tính trong JS. */
   private materialStockStatus(
     available: number,
     minStock: number,
@@ -243,10 +223,9 @@ export class InventoryService {
     return MaterialStockStatus.NORMAL;
   }
 
-  /** Per-material net quantity across every non-deleted receipt whose line carries a `materialId`
-   * (finished-good lines leave it null, so they group under one `NULL` bucket that never joins —
-   * `materials.id` is never null, same reasoning as `stockSubquery`). `asOfDate`, when given,
-   * tính tồn tại thời điểm 23:59 ngày đó — chỉ gộp phiếu có `receiptDate <= asOfDate`. */
+  /** Tồn ròng theo vật tư qua mọi phiếu chưa xoá có `materialId` (dòng thành phẩm để null, gộp
+   * vào một bucket NULL không bao giờ join tới). `asOfDate` tính tồn tại thời điểm 23:59 ngày đó —
+   * chỉ gộp phiếu có `receiptDate <= asOfDate`. */
   private materialStockSubquery(asOfDate?: Date) {
     return this.db
       .select({
@@ -271,20 +250,10 @@ export class InventoryService {
       .as('material_stock');
   }
 
-  /**
-   * Công thức tính tồn kho và số đã giữ cho từng sản phẩm.
-   *
-   * Rules:
-   * - Tồn kho (`onHand`) = Σ IN − Σ OUT trên mọi phiếu chưa xoá mềm.
-   * - Đã giữ (`reserved`) = Σ `max(orderedQty − deliveredQty, 0)` trên các dòng đơn hàng đang mở
-   *   (`AWAITING_PRODUCTION`/`IN_PROGRESS`), với `deliveredQty` là tổng các dòng phiếu OUT gắn với
-   *   dòng đơn hàng đó qua `orderItemId`.
-   * - `excludeOrderId` loại một đơn khỏi `reserved` khi tính "Khả dụng" cho chính đơn đó — đơn này
-   *   đã tự tính vào `reserved` nên nếu không loại trừ sẽ bị trừ hai lần vào nhu cầu của chính nó.
-   *   Chỉ `ProductionOrdersService` truyền tham số này; `GET /inventory` luôn để trống.
-   *
-   * See `docs/features/production.md`.
-   */
+  /** `excludeOrderId` loại một đơn khỏi `reserved` khi tính Khả dụng cho chính đơn đó — đơn này đã
+   * tự giữ chỗ nên không loại trừ sẽ bị trừ nhu cầu của nó hai lần. Chỉ `ProductionOrdersService`
+   * truyền tham số này; `GET /inventory` luôn để trống. Công thức đầy đủ:
+   * `docs/workflows/production-order-approval.md`. */
   async getStockLevels(
     productIds: string[],
     excludeOrderId?: string,
@@ -317,7 +286,7 @@ export class InventoryService {
     );
   }
 
-  /** Per-product net quantity across every non-deleted receipt: IN adds, OUT subtracts. */
+  /** Tồn ròng theo sản phẩm qua mọi phiếu chưa xoá: IN cộng, OUT trừ. */
   private stockSubquery() {
     return this.db
       .select({
@@ -337,7 +306,7 @@ export class InventoryService {
       .as('stock');
   }
 
-  /** Per order line, how much has actually left the warehouse against it (OUT receipts only). */
+  /** Mỗi dòng đơn hàng đã thực xuất kho bao nhiêu (chỉ tính phiếu OUT). */
   private deliveredSubquery() {
     return this.db
       .select({
@@ -361,14 +330,9 @@ export class InventoryService {
       .as('delivered');
   }
 
-  /**
-   * Per product, how much of its still-open order demand hasn't shipped yet. "Open" means
-   * approved (or further along) — `AWAITING_PRODUCTION`/`IN_PROGRESS` — now that `orders` has a
-   * real approval gate (`OrdersService.approveOrder`). A `DRAFT`/`PENDING_CONFIRMATION` order
-   * hasn't been approved by a director yet, so it doesn't hold stock against it.
-   *
-   * `excludeOrderId` loại hẳn một đơn khỏi tổng — xem doc comment của `getStockLevels`.
-   */
+  /** Với mỗi sản phẩm, phần nhu cầu đơn đang mở chưa giao. "Mở" nghĩa là đã qua cổng duyệt
+   * (`AWAITING_PRODUCTION`/`IN_PROGRESS`) — đơn `DRAFT`/`PENDING_CONFIRMATION` chưa được Giám đốc
+   * duyệt nên chưa giữ chỗ tồn. `excludeOrderId` xem `getStockLevels`. */
   private reservedSubquery(excludeOrderId?: string) {
     const delivered = this.deliveredSubquery();
 

@@ -6,7 +6,6 @@ import {
   UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
 
-/** Query cho "Quản lý sản xuất" — mỗi dòng một Job, xem `ProductionJobResDto`. */
 export class GetProductionJobsReqDto extends PageOptionsDto {
   @UUIDFieldOptional({ description: 'Filter by source order id' })
   readonly orderId?: string;

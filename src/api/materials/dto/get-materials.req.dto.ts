@@ -5,7 +5,6 @@ import {
   UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
 
-/** Lists materials. Inherits `limit`/`page`/`q`/`order`; `q` fuzzy-matches code/name/group name. */
 export class GetMaterialsReqDto extends PageOptionsDto {
   @EnumFieldOptional(() => MaterialType)
   readonly type?: MaterialType;

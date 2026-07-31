@@ -15,13 +15,6 @@ import {
 } from '../../../decorators/field.decorators';
 import { OrderItemReqDto } from './order-item.req.dto';
 
-/**
- * Every derived amount (`subtotal`, `discountAmount`, `vatAmount`, `total`, and each line's
- * `lineTotal`) is server-computed by `OrdersService.recalculateTotals` — there is deliberately no
- * field for any of them here. `contactName`/`contactPhone`/`contactEmail` are a snapshot picked
- * from a `client_contacts` row at submit time, not a foreign key (see the schema comment on
- * `orders`).
- */
 export class CreateOrderReqDto {
   @StringFieldOptional({
     maxLength: 50,

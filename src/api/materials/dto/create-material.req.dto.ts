@@ -23,7 +23,6 @@ export class CreateMaterialReqDto {
   })
   readonly type?: MaterialType;
 
-  // Required only when type is CLIENT (enforced in the service, E040).
   @UUIDFieldOptional({
     nullable: true,
     description: 'Client id (required when type=CLIENT)',
@@ -50,7 +49,6 @@ export class CreateMaterialReqDto {
   @StringFieldOptional({ maxLength: 1000, nullable: true })
   readonly note?: string | null;
 
-  // Extended information (all optional)
   @StringFieldOptional({ maxLength: 255, nullable: true })
   readonly materialGrade?: string | null;
 

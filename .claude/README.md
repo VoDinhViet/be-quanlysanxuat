@@ -4,17 +4,19 @@ Tài liệu này giải thích cách dự án tổ chức cấu hình dành cho 
 
 ## Rule vs Skill — khi nào dùng cái nào
 
-- **Rule** (`.claude/rules/*.md`, luôn load qua `@import` trong `CLAUDE.md`): convention áp dụng cho **gần như mọi task code** trong repo — vi phạm là bug, không phải "quên dùng công cụ". Ví dụ: `api-module.md`, `dto.md` (đụng tới ở hầu hết mọi module), `errors-pagination.md`, `workflow.md`.
-- **Skill** (`.claude/skills/<name>/SKILL.md`, load khi liên quan): quy trình/năng lực rời rạc, tự chọn lúc dùng, không phải thứ mọi task đều cần — refactor tài liệu, audit `CLAUDE.md`, refactor code theo Fowler...
+- **Rule** (`.claude/rules/*.md`): convention áp dụng cho **gần như mọi task code** trong repo — vi phạm là bug, không phải "quên dùng công cụ". Đặt tên theo **thứ đang sửa**, không theo loại task. 6/8 file luôn `@import` vào `CLAUDE.md` (`general`, `documentation`, `api`, `service`, `database`, `security`); 2 file còn lại **không** import, chỉ đọc đúng lúc rơi vào tình huống đó — mỗi file có một dòng trỏ tới nó nằm trong rule đã import quản lý khoảnh khắc đó: `transactions.md` (từ `service.md`), `seeds.md` (từ `database.md`). Bảng đầy đủ ở `CLAUDE.md` mục Rules.
+- **Skill** (`.claude/skills/<name>/SKILL.md`, load khi liên quan): **quy trình** cho một loại task lặp lại — "gặp task này thì làm theo thứ tự này". Tự chọn lúc dùng, không phải thứ mọi task đều cần.
 
-**Đã audit lại cả 6 rule hiện có (2026-07-24) và quyết định giữ nguyên cả 6 làm rule luôn-load, không chuyển cái nào sang skill.** Cập nhật 2026-07-28: quy trình test tạm dừng repo-wide (xem `.claude/rules/workflow.md`), nên trong 6 rule chỉ còn 5 rule được `@import` vào `CLAUDE.md`. Cập nhật 2026-07-29: thêm `code-docs.md` (quy định style doc comment trong code), nâng tổng số rule lên **7**, trong đó **6 rule được `@import`**:
+Ranh giới bốn nơi, không được lẫn:
 
-- `workflow.md`, `api-module.md`, `dto.md`, `errors-pagination.md` — áp dụng cho gần như mọi task code trong repo backend này, không phải "task cụ thể" theo nghĩa cần skill riêng.
-- `code-docs.md` — cùng lý do, và phạm vi còn rộng hơn `api-module.md`: áp dụng cho mọi file có doc comment, kể cả những nơi `api-module.md` không chạm tới (`src/database/schemas/`, `src/common/`, `src/decorators/`).
-- `database.md` — phạm vi hẹp hơn (chỉ khi đụng schema), nhưng kích thước nhỏ (22 dòng), chi phí luôn-load không đáng kể.
-- `testing.md` — **không còn được import** kể từ 2026-07-28 (test đang tạm dừng nên lý do cũ "gần như mọi task đều kết thúc bằng cập nhật test" không còn đúng). File vẫn giữ nguyên nội dung làm tham chiếu; khi bật lại quy trình test, cân nhắc import lại theo đúng lý do ban đầu (kích thước nhỏ, rủi ro quên viết/sửa spec nếu để on-demand).
+| Nơi | Chứa | Ví dụ |
+| --- | --- | --- |
+| `CLAUDE.md` | **bản đồ** | có những module nào, doc nằm ở đâu |
+| `.claude/rules/` | **ràng buộc** | MUST/MUST NOT, vi phạm là bug |
+| `docs/` | **kiến thức** | vì sao hệ thống hoạt động như vậy |
+| `.claude/skills/` | **quy trình** | làm theo thứ tự nào, validate bằng gì |
 
-Quyết định này có thể đảo ngược khi dự án lớn hơn/rule phình to hơn, hoặc khi test được bật lại — nếu cân nhắc lại, sửa ngay mục này thay vì âm thầm bỏ qua.
+Skill **không** được chứa business knowledge, kiến trúc, mô tả DB hay coding rule — chỉ **trỏ** sang `docs/` và `.claude/rules/`. Một skill dài quá ~120 dòng gần như chắc chắn đang chép kiến thức vào nhầm chỗ.
 
 ## Chuẩn `SKILL.md` cho dự án
 
@@ -22,20 +24,21 @@ Rút gọn từ chuẩn Agent Skills (tham khảo [luongnv89/claude-howto](https
 
 - Vị trí: `.claude/skills/<kebab-case-name>/SKILL.md`. `name` trong frontmatter phải khớp tên thư mục.
 - Frontmatter bắt buộc: `name` (kebab-case, không chứa "claude"/"anthropic") + `description` (nêu rõ skill làm gì **và** dùng khi nào — quyết định việc Claude có tự invoke đúng lúc hay không).
-- Frontmatter tuỳ chọn: `argument-hint` khi skill nhận input dạng `$ARGUMENTS` (vd `"[feature]"`, `"[feature|commit-range]"`).
-- Không dùng field `tags` — không thuộc chuẩn (tồn tại thừa ở bản `doc-refactor.md` cũ dạng command, đã bỏ khi migrate sang skill).
+- Frontmatter tuỳ chọn: `argument-hint` khi skill nhận input dạng `$ARGUMENTS` (vd `"[feature]"`).
+- Không dùng field `tags` — không thuộc chuẩn.
 - Resource phụ (checklist dài, bảng tham chiếu, template) đặt ở `references/`, `templates/` cạnh `SKILL.md` — chỉ đọc khi skill thực sự cần, không nhồi vào thân `SKILL.md`.
-- Ngôn ngữ: skill mang tính quy trình riêng của dự án (đụng tới `docs/features/*.md`, convention nội bộ) viết **tiếng Việt**, theo style Bối cảnh / Input / Việc cần làm (xem `doc-refactor/SKILL.md`). Skill mang tính tham khảo tổng quát, ngôn ngữ-agnostic (vd catalog code smell của Fowler) giữ **tiếng Anh** nguyên bản.
+- Thân bài theo đúng 5 mục, thứ tự này: `## When to use` · `## Required context` · `## Workflow` · `## Validation` · `## Related docs`. Thêm `## Ràng buộc` khi có giới hạn riêng.
+- `Required context` chỉ **liệt kê đường dẫn cần đọc**, không tóm tắt nội dung của chúng.
+- `Validation` ghi lệnh chạy thật. **Không** liệt kê `pnpm test*` (`docs/decisions/testing-paused.md`).
+- Ngôn ngữ: viết **tiếng Việt** (skill là quy trình riêng của dự án); tên file/symbol trong backtick giữ tiếng Anh.
 
 ## Skill hiện có
 
 | Skill | Vai trò |
 | ----- | ------- |
-| `doc-refactor` | Viết mới/tái cấu trúc macro-level 1 file `docs/features/<feature>.md` — không theo khung cố định, tự điều chỉnh mục theo nhu cầu thực tế của feature, phát hiện tên gọi cũ còn sót. |
-| `doc-generator` | Audit micro-level: đối chiếu bảng "API contract" trong `docs/features/<feature>.md` với controller/DTO/`ErrorCode` thật trong `src/api/<feature>/`. |
-| `code-refactor` | Refactor code theo phương pháp Fowler (không phải tài liệu) — 6 phase, có test làm lưới an toàn. |
-| `claude-md` | Tạo/audit `CLAUDE.md` theo Golden Rules (Less is More, Universal Applicability...). |
+| `domain-doc` | Viết mới hoặc audit `docs/domains/*.md` / `docs/workflows/*.md` so với source thật — business rule, bất biến, trình tự, `ErrorCode` có còn khớp code không, nội dung nằm đúng tầng chưa. |
+| `new-api-module` | Trình tự thêm module API mới: doc → schema → migration → module → `app.module.ts` → `ErrorCode` → `PERMISSION_CODES` + seed quyền. Tồn tại vì **thứ tự**, không phải vì convention. |
 
-`.claude/commands/` không còn tồn tại — toàn bộ đã chuyển sang `.claude/skills/` (kể cả `frontend-notes` cũ, đã xoá; nếu cần lại quy trình đó, viết một skill mới theo đúng chuẩn ở trên).
+`.claude/commands/` không còn tồn tại — toàn bộ đã chuyển sang `.claude/skills/`. Nếu cần một quy trình riêng của dự án chưa có skill tương ứng, viết mới theo đúng chuẩn ở trên thay vì làm tay lặp lại.
 
 > Áp dụng ý tưởng từ [luongnv89/claude-howto](https://github.com/luongnv89/claude-howto) (MIT License).

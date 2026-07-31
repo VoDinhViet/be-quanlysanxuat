@@ -1,0 +1,123 @@
+# Điều chỉnh & duyệt Lệnh sản xuất (LSX)
+
+Chặng giữa: hồ sơ LSX đã được sinh sẵn lúc duyệt đơn, xưởng xem lại số lượng rồi chốt. Khái niệm ba
+tầng và bất biến ở `docs/domains/production.md`.
+
+## Trigger
+
+- `PATCH /production-orders/:productionOrdersId` — sửa số lượng sản xuất *(tuỳ chọn, lặp lại được)*.
+- `POST /production-orders/:productionOrdersId/approve` — chốt LSX *(một lần, không lùi được)*.
+
+Không có route tạo LSX: LSX chỉ ra đời từ `docs/workflows/order-approval.md`.
+
+## Actor
+
+Sửa số lượng: `production:update`. Duyệt: `production:approve` — hai quyền tách rời.
+
+⚠️ Không role seed nào có `production:*`; hiện chỉ `ADMIN` chạy được (xem
+`docs/domains/identity-access.md`).
+
+## Preconditions
+
+| Điều kiện | Sửa SL | Duyệt |
+| --- | --- | --- |
+| LSX tồn tại | `E081` | `E081` |
+| Đơn gốc chưa xoá mềm | `E057` | `E057` |
+| LSX đang `PENDING` | `E084` | `E083` |
+| Đơn gốc đang `AWAITING_PRODUCTION` | *(không kiểm)* | `E076` |
+| `orderItemId` gửi lên thuộc đúng LSX này | `E078` | — |
+
+## Flow
+
+### Sửa số lượng (partial)
+
+1. Đọc LSX kèm các dòng quyết định sản xuất, kiểm precondition.
+2. **Ngoài transaction** — map từng `orderItemId` gửi lên về dòng tương ứng, tính lại
+   `fromStockQty` từ `orderQty` và số lượng mới. Chỉ dòng được gửi bị đụng; dòng không gửi giữ
+   nguyên.
+3. Lấy tên sản phẩm (1 query gộp) để dựng nội dung log dạng `Tên SP 10 → 6`.
+4. **Transaction**: N lệnh `UPDATE` + 1 dòng log `QUANTITY_UPDATED`.
+
+Gửi `items: []` → không mở transaction, không ghi log. Gửi cùng `orderItemId` hai lần trong một
+request → lệnh sau thắng.
+
+**Chỉ `fromStockQty` được tính lại.** `onHandQty`/`availableQty` giữ nguyên snapshot cũ — sửa số
+lượng **không** hỏi lại tồn kho.
+
+### Duyệt
+
+1. Đọc LSX join đơn gốc, kiểm bốn precondition.
+2. **Ngoài transaction** — đọc lại các dòng quyết định sản xuất và **gộp số lượng theo
+   `productId`**, bỏ sản phẩm số lượng 0. Đây là chỗ ba dòng đơn cùng một sản phẩm thu về một Job.
+3. **Transaction**:
+   - Sinh mã `LSXxxxx` (đếm số LSX đã duyệt + 1), ghi `APPROVED` + `approvedBy`/`approvedAt`.
+   - Đẩy đơn gốc `AWAITING_PRODUCTION` → `IN_PROGRESS`.
+   - Sinh Job: mỗi sản phẩm một dòng, mã `JOBxxxx` cấp liên tiếp từ tổng số Job toàn bảng.
+   - Copy routing Cấp 0 của từng sản phẩm sang `production_job_steps` (đóng băng, không route sửa).
+   - Copy BOM (gộp theo vật tư) sang `production_job_materials`, nhân định mức với SL Job
+     (`requiredQty = unitQty × quantity`) — sửa được sau đó qua
+     `docs/workflows/production-job-execution.md`.
+   - 1 dòng log `APPROVED` ghi kèm số Job đã sinh.
+
+## State changes
+
+| Entity | Trước | Sau |
+| --- | --- | --- |
+| `production_orders` | `PENDING`, `code` NULL | `APPROVED`, có `code` |
+| `orders` | `AWAITING_PRODUCTION` | `IN_PROGRESS` |
+| `production_jobs` | *(chưa có)* | `PENDING` |
+| `production_job_steps` | *(chưa có)* | N dòng/Job (copy routing Cấp 0) |
+| `production_job_materials` | *(chưa có)* | N dòng/Job (copy BOM × SL Job) |
+
+## Side effects
+
+- N `production_jobs` (N = số sản phẩm phân biệt có SL > 0). Không sản phẩm nào SL > 0 → **không
+  Job nào**, vẫn là duyệt hợp lệ.
+- Mỗi Job kèm theo bản copy công đoạn + vật tư. Sản phẩm không có routing → Job đó không có bước
+  nào; sản phẩm không có BOM (hoặc BOM không có node MATERIAL) → Job đó không có vật tư nào — cả hai
+  đều **không phải lỗi**.
+- 1 `production_order_logs`.
+- **Khoá gián tiếp**: từ giờ `PATCH /orders/:orderId` với `items` bị chặn (`E080`).
+
+**Không** lập phiếu xuất kho cho phần "Lấy từ tồn", **không** kiểm tồn kho tổng hợp trước khi
+duyệt. Hai điểm này ngoài phạm vi có chủ đích — xem `docs/domains/production.md`.
+
+## Transaction boundary
+
+Cả hai flow mở transaction sau phần đọc. Transaction duyệt bao **năm bảng ở hai domain**
+(`production_orders`, `orders`, `production_jobs`, `production_job_steps`,
+`production_job_materials`) — đây là transaction rộng nhất hệ thống, và là lý do `createJobs` bắt
+buộc nhận `tx`.
+
+Sinh mã nằm **trong** transaction nhưng vẫn là đếm-rồi-cộng-1: hai lượt duyệt song song có thể ra
+cùng mã, unique constraint là chốt chặn thật (biểu hiện: 500 thô, không phải mã lỗi sạch).
+
+## Failure cases
+
+| Tình huống | Mã | Kết quả |
+| --- | --- | --- |
+| LSX không tồn tại | `E081` | 404 |
+| Đơn gốc đã xoá mềm | `E057` | 404 |
+| LSX không còn `PENDING` (đã duyệt) | `E083` | 409 — duyệt hai lần bị chặn ở đây |
+| Đơn gốc không còn `AWAITING_PRODUCTION` | `E076` | 409 |
+| LSX không còn `PENDING` khi sửa SL | `E084` | 409 |
+| `orderItemId` lạ | `E078` | 400, **không dòng nào được ghi** |
+| Trùng mã `LSXxxxx`/`JOBxxxx` | — | 500 thô, rollback |
+
+Rollback để lại trạng thái nhất quán: hoặc cả LSX+đơn+Job cùng đổi, hoặc không gì đổi.
+
+## Business rules
+
+- Vì sao Job gộp theo sản phẩm còn dòng quyết định sản xuất giữ 1-1 với dòng đơn →
+  `docs/domains/production.md`.
+- Vì sao `APPROVED` chưa có đường lùi → cùng file, mục Lifecycle.
+
+## Related domains
+
+`production` ↔ `orders` (đổi trạng thái hai chiều). Không đụng `inventory` ở bước này.
+
+Bước trước: `docs/workflows/order-approval.md` · Bước sau:
+`docs/workflows/production-job-execution.md`.
+
+Code: `ProductionOrdersService.updateProductionOrder`/`approveProductionOrder`,
+`ProductionJobsService.createJobs`.

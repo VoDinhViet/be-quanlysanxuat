@@ -39,9 +39,8 @@ import { StockReceiptItemReqDto } from './dto/stock-receipt-item.req.dto';
 import { StockReceiptResDto } from './dto/stock-receipt.res.dto';
 import { UpdateStockReceiptReqDto } from './dto/update-stock-receipt.req.dto';
 
-/** Reason values allowed per (subject, type) — mirrors the DB CHECK
- * `chk_stock_receipts_reason_type` (see `stock-receipts.ts`), pre-validated here for a clean
- * `E073` instead of a raw 500. */
+/** Giá trị `reason` hợp lệ theo từng (subject, type) — khớp CHECK `chk_stock_receipts_reason_type`
+ * (xem `stock-receipts.ts`), validate trước ở đây để trả `E073` sạch thay vì 500 thô. */
 const VALID_REASONS: Record<
   StockReceiptSubject,
   Record<StockReceiptType, StockReceiptReason[]>
@@ -169,8 +168,6 @@ export class StockReceiptsService {
     reqDto: CreateStockReceiptReqDto,
     userId: string,
   ): Promise<StockReceiptResDto> {
-    // Every check below is a read, so it runs before the transaction opens — the transaction only
-    // has to keep the writes together.
     let code = reqDto.code;
     if (code) {
       await this.validateCodeUniqueness(code);
@@ -193,9 +190,8 @@ export class StockReceiptsService {
 
     const { items, ...receiptFields } = reqDto;
 
-    // The receipt row and its lines must land together — without this transaction a failing line
-    // insert would leave a committed receipt with no lines, silently contributing nothing to the
-    // ledger it was meant to record.
+    // Phiếu và các dòng phải vào cùng lúc — nếu không, insert dòng lỗi sẽ để lại một phiếu đã
+    // commit nhưng không dòng nào, âm thầm không đóng góp gì vào sổ kho.
     const receiptId = await this.db.transaction(async (tx) => {
       const [receipt] = await tx
         .insert(stockReceipts)
@@ -219,6 +215,8 @@ export class StockReceiptsService {
     const existing = await this.ensureReceiptExists(receiptId);
     const effectiveType = reqDto.type ?? existing.type;
 
+    // Validate lại cặp (type, reason) khi một trong hai đổi — kể cả khi chỉ gửi một field, so với
+    // giá trị hiệu lực của field còn lại (giống (type, clientId) ở `MaterialsService.updateMaterial`).
     if (reqDto.type || reqDto.reason) {
       this.ensureReasonMatchesSubjectAndType(
         existing.subject,
@@ -245,7 +243,6 @@ export class StockReceiptsService {
     const { items, ...receiptFields } = reqDto;
 
     await this.db.transaction(async (tx) => {
-      // `updated_at` is bumped by the column's own `$onUpdate`.
       await tx
         .update(stockReceipts)
         .set(receiptFields)
@@ -259,8 +256,7 @@ export class StockReceiptsService {
     return this.getStockReceiptDetail(receiptId);
   }
 
-  /** Soft delete — a receipt is freely deletable, no `orders`-style terminal-status lock. Deleted
-   * receipts drop out of every `InventoryService` computation via the `deletedAt IS NULL` filter. */
+  /** Bản ghi xoá mềm rớt khỏi mọi tính toán của `InventoryService` qua filter `deletedAt IS NULL`. */
   async deleteStockReceipt(receiptId: string): Promise<void> {
     await this.ensureReceiptExists(receiptId);
 
@@ -280,7 +276,7 @@ export class StockReceiptsService {
       .values(items.map((item) => ({ ...item, receiptId })));
   }
 
-  /** Replace-all. `tx` is required so a caller cannot accidentally write outside the transaction. */
+  /** Replace-all. Bắt buộc truyền `tx` để tránh ghi ra ngoài transaction. */
   private async replaceItems(
     tx: DbTransaction,
     receiptId: string,
@@ -377,9 +373,8 @@ export class StockReceiptsService {
     }
   }
 
-  /** Every `productId` must exist and be a FINISHED_GOOD (E069/E070); every `orderItemId` (only
-   * meaningful on an OUT receipt) must reference a real order line whose own `productId` matches
-   * the item's (E072). Checks every line in two round-trips (`inArray`) instead of one per line. */
+  /** `productId` phải là FINISHED_GOOD tồn tại; `orderItemId` (chỉ có nghĩa trên phiếu OUT) phải
+   * khớp đúng `productId` của dòng đơn hàng đó. */
   private async ensureProductItemsValid(
     type: StockReceiptType,
     items: StockReceiptItemReqDto[],
@@ -439,9 +434,8 @@ export class StockReceiptsService {
     }
   }
 
-  /** Every `materialId` must exist (E085). `orderItemId` has no meaning on a material line — it's
-   * the delivery link for a sales order's finished-good demand, so any value here is rejected
-   * (E072), regardless of `type`. */
+  /** `materialId` phải tồn tại (`E085`). `orderItemId` vô nghĩa trên dòng vật tư — đó là liên kết
+   * giao hàng cho nhu cầu thành phẩm, nên có giá trị là bị từ chối (`E072`), bất kể `type`. */
   private async ensureMaterialItemsValid(
     items: StockReceiptItemReqDto[],
   ): Promise<void> {
@@ -466,13 +460,10 @@ export class StockReceiptsService {
     }
   }
 
-  /**
-   * Refuses a write that would drive any product's/material's on-hand quantity below zero. On
-   * update, `excludeReceiptId` drops this receipt's own current lines out of the on-hand
-   * computation first — since `updateStockReceipt` replaces them wholesale, checking against the
-   * ledger *including* the old lines would double-count them. Groups by (productId, materialId)
-   * rather than `productId` alone so vật tư cũng được bảo vệ bởi cùng bất biến.
-   */
+  /** Từ chối write nào kéo tồn (thành phẩm/vật tư) xuống dưới 0. Lúc update, `excludeReceiptId`
+   * loại các dòng hiện tại của chính phiếu này khỏi phép tính trước — vì `updateStockReceipt`
+   * thay hết dòng, tính cả dòng cũ sẽ đếm trùng. Gộp theo (productId, materialId) để vật tư cũng
+   * được bảo vệ bởi cùng bất biến. */
   private async ensureSufficientStock(
     items: StockReceiptItemReqDto[],
     excludeReceiptId?: string,
@@ -534,9 +525,8 @@ export class StockReceiptsService {
     }
   }
 
-  /** `productId`/`materialId` là đúng-một-trong-hai trên cùng một dòng, không bao giờ cùng có mặt
-   * hay cùng vắng mặt (xem `chk_stock_receipt_items_target`) — gộp thành một khoá duy nhất để
-   * `ensureSufficientStock` dùng chung một Map cho cả hai loại tồn. */
+  /** Gộp `productId`/`materialId` thành một khoá — `ensureSufficientStock` dùng chung một Map cho
+   * cả hai loại tồn. */
   private stockLineKey(item: {
     productId?: string | null;
     materialId?: string | null;

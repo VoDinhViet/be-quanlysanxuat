@@ -93,7 +93,6 @@ export class ClientsService {
     );
   }
 
-  /** Returns the whole catalogue — see `GetClientOptionsReqDto` for why this isn't paginated. */
   async getClientOptions(
     reqDto: GetClientOptionsReqDto,
   ): Promise<ClientOptionResDto[]> {

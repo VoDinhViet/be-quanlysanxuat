@@ -6,7 +6,6 @@ import {
   UUIDField,
 } from '../../../decorators/field.decorators';
 
-/** Lightweight reference to a country, nested inside SupplierResDto. */
 @Exclude()
 export class CountryRefResDto {
   @Expose()

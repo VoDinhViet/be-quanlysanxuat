@@ -43,8 +43,7 @@ import { ProductionOrderLogResDto } from './dto/production-order-log.res.dto';
 import { ProductionOrderResDto } from './dto/production-order.res.dto';
 import { UpdateProductionOrderReqDto } from './dto/update-production-order.req.dto';
 
-/** Số liệu đã chốt/tính toán của một dòng PO — hình dạng chung mà mọi hàm đọc/ghi bên dưới tính
- * ra, không phân biệt LSX đang `PENDING` hay `ISSUED`. */
+/** Số liệu đã chốt/tính toán của một dòng PO — hình dạng chung cho mọi hàm đọc/ghi bên dưới. */
 interface PlanItem {
   orderItemId: string;
   productId: string;
@@ -55,32 +54,9 @@ interface PlanItem {
   fromStockQty: number;
 }
 
-const ORDERS_IN_SCOPE = [OrderStatus.AWAITING_PRODUCTION, OrderStatus.IN_PROGRESS];
-
-/**
- * "LSX" — lập kế hoạch sản xuất cho một PO đã duyệt (xem `src/database/schemas/production.ts` và
- * `docs/features/production.md`): `production_orders` (header, 1 đơn hàng = 1 LSX) +
- * `production_order_items` (phần con "quyết định sản xuất", 1 dòng cho mỗi dòng PO), sinh sẵn khi
- * duyệt PO (`OrdersService.approveOrder` gọi `getInitialPlanItems` rồi `seedPlan`).
- *
- * Rules:
- * - `getProductionOrdersById` đọc lại header + snapshot đã ghi (không tính lại live) — khác bản
- *   Tab2 cũ (`getProductionOrderDetail`) đã bỏ 2026-07-30 cùng bước phát hành cũ
- *   (`issueProductionOrders`, sinh Job/`ProductionJobsService`, xuất kho).
- * - `updateProductionOrder` sửa số lượng sản xuất từng dòng (nhập tay) — chỉ khi LSX còn
- *   `PENDING`, partial (dòng không gửi giữ nguyên), tính lại `fromStockQty` nhưng không refresh
- *   tồn kho. Thay cho `PATCH` "Lưu lại" cũ đã bỏ 2026-07-30 — khác khoá (`productionOrdersId`)
- *   và khác semantics (partial, không phải replace-all).
- * - `approveProductionOrder` (chỉ hợp lệ từ `PENDING`) thay thế "Tạo LSX" ở trên — chốt status/mã,
- *   đẩy ngược `orders.status` (`IN_PROGRESS`), và sinh Job (`ProductionJobsService.createJobs`,
- *   1 sản phẩm SL > 0 = 1 Job) trong cùng transaction. Vẫn không lập phiếu xuất kho. Chưa có route
- *   huỷ duyệt (đưa `APPROVED` quay lại `PENDING`) — tạm hoãn, xem `docs/features/production.md`.
- * - Cả 3 đường ghi trên (`seedPlan`/`updateProductionOrder`/`approveProductionOrder`) đều gọi
- *   `logAction` trong cùng transaction, ghi lại thời gian/người thực hiện/nội dung vào
- *   `production_order_logs` — đọc lại qua `getProductionOrderLogs`. `updateProductionOrder` nhận
- *   lại tham số `userId` (đã bỏ lúc mới thêm route vì `production_order_items` không có
- *   `updatedBy`) — nay cần để biết ai sửa số lượng.
- */
+/** "LSX" — lập kế hoạch sản xuất cho một PO đã duyệt: `production_orders` (header, 1 đơn = 1 LSX)
+ * + `production_order_items` (quyết định sản xuất, 1 dòng/dòng PO). Vòng đời, business rule, luồng
+ * ghi log: `docs/domains/production.md`, `docs/workflows/production-order-approval.md`. */
 @Injectable()
 export class ProductionOrdersService {
   constructor(
@@ -89,21 +65,19 @@ export class ProductionOrdersService {
     private readonly productionJobsService: ProductionJobsService,
   ) {}
 
-  // ---------------------------------------------------------------------------------------------
-  // Theo PO — màn hình chính LSX
-  // ---------------------------------------------------------------------------------------------
-
   async getProductionOrders(
     reqDto: GetProductionOrdersReqDto,
   ): Promise<OffsetPaginatedDto<ProductionOrderResDto>> {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
-    // `production_orders` là base table (không phải `orders`) — mỗi PO trong phạm vi LSX luôn có
-    // đúng 1 header nhờ `OrdersService.approveOrder` seed sẵn, nên inner join không bỏ sót PO nào.
+    // production_orders là base table (không phải orders) — mỗi PO trong phạm vi LSX luôn có đúng
+    // 1 header (OrdersService.approveOrder seed sẵn), nên inner join không bỏ sót PO nào.
     const where = and(
       isNull(orders.deletedAt),
-      inArray(orders.status, ORDERS_IN_SCOPE),
       keyword
-        ? or(unaccentILike(orders.code, keyword), unaccentILike(productionOrders.code, keyword))
+        ? or(
+            unaccentILike(orders.code, keyword),
+            unaccentILike(productionOrders.code, keyword),
+          )
         : undefined,
       reqDto.clientId ? eq(orders.clientId, reqDto.clientId) : undefined,
       reqDto.fromDate ? gte(orders.dueDate, reqDto.fromDate) : undefined,
@@ -151,12 +125,11 @@ export class ProductionOrdersService {
     );
   }
 
-  /**
-   * Snapshot dòng quyết định sản xuất đã ghi lúc duyệt PO — 1 query Drizzle thẳng trên
-   * `production_orders` (khoá bằng chính `id` của nó, không qua `orders`), không tính lại live
-   * qua `InventoryService` (khác bản Tab2 cũ đã bỏ 2026-07-30, xem `docs/features/production.md`).
-   */
-  async getProductionOrdersById(productionOrdersId: string): Promise<ProductionOrderDetailResDto> {
+  /** Snapshot dòng quyết định sản xuất đã ghi lúc duyệt PO — query thẳng trên `production_orders`
+   * (khoá theo `id` của nó, không qua `orders`), không tính lại live qua `InventoryService`. */
+  async getProductionOrdersById(
+    productionOrdersId: string,
+  ): Promise<ProductionOrderDetailResDto> {
     const productionOrder = await this.db.query.productionOrders.findFirst({
       where: eq(productionOrders.id, productionOrdersId),
       with: {
@@ -175,21 +148,9 @@ export class ProductionOrdersService {
     });
   }
 
-  /**
-   * Sửa số lượng sản xuất từng dòng (`production:update`), nhập tay — chỉ hợp lệ khi LSX còn
-   * `PENDING` (`E084` nếu đã `APPROVED`).
-   *
-   * Rules:
-   * - Partial: chỉ dòng có mặt trong `reqDto.items` bị ghi, dòng không gửi giữ nguyên. `items: []`
-   *   là no-op hợp lệ, không throw, không ghi log.
-   * - `orderItemId` không thuộc LSX này → `E078`. Trùng `orderItemId` trong cùng request: dòng
-   *   cuối thắng (2 lệnh UPDATE nối tiếp trên cùng row).
-   * - Chỉ tính lại `fromStockQty` (= `max(0, orderQty - quantity mới)`) — `orderQty`/`onHandQty`/
-   *   `availableQty` giữ nguyên snapshot cũ, không gọi lại `InventoryService` (đúng phạm vi "chỉ
-   *   cập nhật số lượng", refresh tồn kho vẫn ngoài phạm vi, xem `docs/features/production.md`).
-   * - Ghi 1 dòng `production_order_logs` (`QUANTITY_UPDATED`) liệt kê từng dòng đổi (tên SP, số cũ
-   *   → số mới) — cần 1 query `products` phụ để lấy tên, chỉ chạy khi thực sự có `updates`.
-   */
+  /** Sửa số lượng sản xuất từng dòng, nhập tay — chỉ khi LSX còn `PENDING` (`E084`). Partial: chỉ
+   * dòng gửi lên bị ghi, dòng khác giữ nguyên. Chỉ tính lại `fromStockQty` — không refresh tồn kho
+   * (`docs/workflows/production-order-approval.md`). */
   async updateProductionOrder(
     productionOrdersId: string,
     reqDto: UpdateProductionOrderReqDto,
@@ -201,7 +162,13 @@ export class ProductionOrdersService {
       with: {
         order: { columns: { deletedAt: true } },
         items: {
-          columns: { id: true, orderItemId: true, orderQty: true, quantity: true, productId: true },
+          columns: {
+            id: true,
+            orderItemId: true,
+            orderQty: true,
+            quantity: true,
+            productId: true,
+          },
         },
       },
     });
@@ -215,9 +182,9 @@ export class ProductionOrdersService {
       throw new AppException(ErrorCode.E084, HttpStatus.CONFLICT);
     }
 
-    // Dựng sẵn payload (và validate orderItemId) trước khi mở transaction — theo
-    // `.claude/rules/api-module.md`: mọi check chỉ-đọc chạy trước, transaction chỉ bọc phần ghi.
-    const rowByOrderItemId = new Map(productionOrder.items.map((row) => [row.orderItemId, row]));
+    const rowByOrderItemId = new Map(
+      productionOrder.items.map((row) => [row.orderItemId, row]),
+    );
     const updates = reqDto.items.map((item) => {
       const row = rowByOrderItemId.get(item.orderItemId);
       if (!row) {
@@ -234,12 +201,16 @@ export class ProductionOrdersService {
 
     if (updates.length) {
       // Tên SP chỉ để dựng nội dung log — 1 query gộp theo productId duy nhất, không lặp theo dòng.
-      const productIds = [...new Set(updates.map((update) => update.productId))];
+      const productIds = [
+        ...new Set(updates.map((update) => update.productId)),
+      ];
       const productRows = await this.db
         .select({ id: products.id, name: products.name })
         .from(products)
         .where(inArray(products.id, productIds));
-      const nameByProductId = new Map(productRows.map((product) => [product.id, product.name]));
+      const nameByProductId = new Map(
+        productRows.map((product) => [product.id, product.name]),
+      );
       const content = `Cập nhật SL sản xuất: ${updates
         .map(
           (update) =>
@@ -251,7 +222,10 @@ export class ProductionOrdersService {
         for (const update of updates) {
           await tx
             .update(productionOrderItems)
-            .set({ quantity: update.quantity, fromStockQty: update.fromStockQty })
+            .set({
+              quantity: update.quantity,
+              fromStockQty: update.fromStockQty,
+            })
             .where(eq(productionOrderItems.id, update.id));
         }
         await this.logAction(
@@ -267,13 +241,9 @@ export class ProductionOrdersService {
     return this.getProductionOrdersById(productionOrdersId);
   }
 
-  /**
-   * Duyệt LSX (`production:approve`) — chỉ hợp lệ khi đang `PENDING` và PO gốc vẫn
-   * `AWAITING_PRODUCTION`. Chốt mã `LSXxxxx` + `approvedBy`/`approvedAt`, đẩy PO gốc sang
-   * `IN_PROGRESS`, và sinh Job (1 sản phẩm SL > 0 = 1 Job, gộp toàn LSX theo `productId`) — tất cả
-   * trong cùng transaction. Vẫn **không** lập phiếu xuất kho, **không** kiểm tra tồn kho tổng hợp
-   * trước khi duyệt (2 điểm ngoài phạm vi, xem `docs/features/production.md`).
-   */
+  /** Chỉ hợp lệ khi đang `PENDING` và PO gốc vẫn `AWAITING_PRODUCTION`. Trong cùng transaction:
+   * chốt mã `LSXxxxx`, đẩy PO gốc sang `IN_PROGRESS`, sinh Job. Không lập phiếu xuất kho, không
+   * kiểm tồn kho tổng hợp trước duyệt (`docs/domains/production.md`, mục Invariants). */
   async approveProductionOrder(
     productionOrdersId: string,
     userId: string,
@@ -302,8 +272,8 @@ export class ProductionOrdersService {
       throw new AppException(ErrorCode.E076, HttpStatus.CONFLICT);
     }
 
-    // Gộp SL theo sản phẩm cho Job — chỉ giữ sản phẩm SL > 0 (khớp `chk_production_jobs_quantity`).
-    // Đọc trước khi mở transaction, cùng số liệu đã lưu (kể cả đã sửa tay qua `updateProductionOrder`).
+    // Gộp SL theo sản phẩm cho Job — chỉ giữ SL > 0 (khớp `chk_production_jobs_quantity`), theo
+    // số liệu đã lưu (kể cả đã sửa tay qua `updateProductionOrder`).
     const items = await this.db
       .select({
         productId: productionOrderItems.productId,
@@ -336,11 +306,17 @@ export class ProductionOrdersService {
         .update(orders)
         .set({ status: OrderStatus.IN_PROGRESS })
         .where(eq(orders.id, productionOrder.orderId));
-      await this.productionJobsService.createJobs(tx, productionOrdersId, quantityByProduct);
+      await this.productionJobsService.createJobs(
+        tx,
+        productionOrdersId,
+        quantityByProduct,
+      );
 
       const jobCount = quantityByProduct.size;
       const content =
-        jobCount > 0 ? `Duyệt LSX ${code}, sinh ${jobCount} Job` : `Duyệt LSX ${code}`;
+        jobCount > 0
+          ? `Duyệt LSX ${code}, sinh ${jobCount} Job`
+          : `Duyệt LSX ${code}`;
       await this.logAction(
         tx,
         productionOrdersId,
@@ -355,7 +331,9 @@ export class ProductionOrdersService {
 
   /** Khuôn `OrdersService.generateOrderCode`/`MaterialsService.generateMaterialCode` — vẫn TOCTOU
    * như mọi generator khác trong repo, unique constraint trên `code` là chốt chặn thật. */
-  private async generateProductionOrderCode(tx: DbTransaction): Promise<string> {
+  private async generateProductionOrderCode(
+    tx: DbTransaction,
+  ): Promise<string> {
     const [totalRows] = await tx
       .select({ total: count() })
       .from(productionOrders)
@@ -363,13 +341,9 @@ export class ProductionOrdersService {
     return `LSX${String((totalRows?.total ?? 0) + 1).padStart(4, '0')}`;
   }
 
-  /**
-   * Đề xuất SX ban đầu cho mọi dòng NORMAL của một PO, tại thời điểm duyệt — áp công thức ở
-   * `docs/features/production.md` (Khả dụng loại trừ chính đơn này qua `excludeOrderId`), không
-   * có override (khái niệm "quyết định đã lưu để đọc lại" gắn với "Lưu lại", đã bỏ 2026-07-30),
-   * chỉ suggested mặc định. Chỉ đọc — `OrdersService.approveOrder` gọi trước khi mở transaction
-   * rồi mới `seedPlan`.
-   */
+  /** Đề xuất SX ban đầu cho mọi dòng NORMAL của một PO, tại thời điểm duyệt — công thức ở
+   * `docs/domains/production.md` (loại trừ chính đơn này qua `excludeOrderId`). Chỉ đọc — gọi
+   * trước khi `OrdersService.approveOrder` mở transaction rồi mới `seedPlan`. */
   async getInitialPlanItems(orderId: string): Promise<PlanItem[]> {
     // Nguồn: mọi dòng PO status = NORMAL của đơn này — dòng CANCELLED không cần sản xuất.
     const normalOrderItems = await this.db
@@ -379,17 +353,27 @@ export class ProductionOrdersService {
         quantity: orderItems.quantity,
       })
       .from(orderItems)
-      .where(and(eq(orderItems.orderId, orderId), eq(orderItems.status, OrderItemStatus.NORMAL)));
+      .where(
+        and(
+          eq(orderItems.orderId, orderId),
+          eq(orderItems.status, OrderItemStatus.NORMAL),
+        ),
+      );
     // Không có dòng NORMAL nào thì không có gì để tính — thoát sớm, khỏi gọi InventoryService dư.
     if (!normalOrderItems.length) {
       return [];
     }
 
     // Gom productId duy nhất — 1 query tồn kho cho mọi sản phẩm thay vì mỗi dòng PO một query.
-    const productIds = [...new Set(normalOrderItems.map((item) => item.productId))];
+    const productIds = [
+      ...new Set(normalOrderItems.map((item) => item.productId)),
+    ];
     // `excludeOrderId = orderId`: PO đang xét đã tự giữ chỗ trong `reserved`, phải loại trừ chính
-    // nó ra để không bị trừ nhu cầu của nó hai lần (xem docs/features/production.md).
-    const stockByProduct = await this.inventoryService.getStockLevels(productIds, orderId);
+    // nó ra để không bị trừ nhu cầu của nó hai lần (xem docs/domains/production.md).
+    const stockByProduct = await this.inventoryService.getStockLevels(
+      productIds,
+      orderId,
+    );
 
     return normalOrderItems.map((item) => {
       // Sản phẩm chưa từng có phiếu kho nào → coi như tồn 0, không phải lỗi.
@@ -400,7 +384,8 @@ export class ProductionOrdersService {
       // Khả dụng = Tồn TP − đã giữ chỗ (của các đơn khác).
       const available = stock.onHand - stock.reserved;
       // Đề xuất SX: Khả dụng đủ thì chỉ SX phần thiếu; Khả dụng âm (đã hụt sẵn) thì SX đủ cả SL PO.
-      const suggested = available >= 0 ? Math.max(0, item.quantity - available) : item.quantity;
+      const suggested =
+        available >= 0 ? Math.max(0, item.quantity - available) : item.quantity;
 
       return {
         orderItemId: item.id,
@@ -415,20 +400,18 @@ export class ProductionOrdersService {
     });
   }
 
-  /**
-   * Ghi header (`PENDING`) + các dòng quyết định sản xuất — replace-all theo `orderId`, nên duyệt
-   * lại một PO từng bị từ chối rồi gửi lại sẽ ghi đè kế hoạch cũ thay vì đụng constraint unique
-   * trên `orderId`/`orderItemId`. Xoá header cascade dọn luôn `production_order_items` (và
-   * `production_jobs`, dù ở nhánh `PENDING` không bao giờ có job). Bắt buộc truyền `tx` để hàm
-   * này chỉ chạy được bên trong một transaction đang mở (của `OrdersService.approveOrder`).
-   */
+  /** Ghi header (`PENDING`) + các dòng quyết định sản xuất — replace-all theo `orderId`, nên duyệt
+   * lại một PO từng bị từ chối sẽ ghi đè kế hoạch cũ, không đụng unique constraint. Bắt buộc
+   * truyền `tx` — chỉ chạy được trong transaction đang mở của `OrdersService.approveOrder`. */
   async seedPlan(
     tx: DbTransaction,
     orderId: string,
     items: PlanItem[],
     userId: string,
   ): Promise<void> {
-    await tx.delete(productionOrders).where(eq(productionOrders.orderId, orderId));
+    await tx
+      .delete(productionOrders)
+      .where(eq(productionOrders.orderId, orderId));
 
     const [createdProductionOrders] = await tx
       .insert(productionOrders)
@@ -459,11 +442,7 @@ export class ProductionOrdersService {
     );
   }
 
-  /**
-   * Lịch sử thao tác LSX (`production:read`) — sắp mới nhất trước, kèm người thực hiện
-   * (`performer`, `null` nếu credential đã bị xoá). Trả `E081` nếu header không tồn tại — cùng mã
-   * lỗi các route khác của module này dùng cho ca này.
-   */
+  /** `performer` null nếu credential đã bị xoá; `E081` nếu header không tồn tại. */
   async getProductionOrderLogs(
     productionOrdersId: string,
     reqDto: GetProductionOrderLogsReqDto,
@@ -489,7 +468,9 @@ export class ProductionOrdersService {
     ]);
 
     return new OffsetPaginatedDto(
-      plainToInstance(ProductionOrderLogResDto, rows, { excludeExtraneousValues: true }),
+      plainToInstance(ProductionOrderLogResDto, rows, {
+        excludeExtraneousValues: true,
+      }),
       new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
     );
   }

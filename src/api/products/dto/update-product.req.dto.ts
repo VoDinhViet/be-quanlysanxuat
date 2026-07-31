@@ -5,10 +5,6 @@ import {
   UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
 
-/**
- * No `revision` field — versioning is done by cloning the whole product via
- * `POST /products/:id/copy`, not by editing a version-history sub-resource.
- */
 export class UpdateProductReqDto {
   @StringFieldOptional({ description: 'Product name', maxLength: 255 })
   name?: string;

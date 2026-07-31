@@ -1,6 +1,17 @@
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
-import { and, asc, count, desc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  gte,
+  inArray,
+  isNull,
+  lte,
+  sql,
+} from 'drizzle-orm';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
@@ -31,23 +42,14 @@ import { OrderStatsResDto } from './dto/order-stats.res.dto';
 import { RejectOrderReqDto } from './dto/reject-order.req.dto';
 import { UpdateOrderReqDto } from './dto/update-order.req.dto';
 
-/** `.mapWith(Number)` turns SQL `null` into `0` (`Number(null) === 0`) — wrong for a trend
- * percentage that means "no prior period to compare against". Use this `.mapWith` instead
- * wherever the expression can genuinely return SQL `null`. */
+/** `.mapWith(Number)` biến SQL `null` thành `0` (`Number(null) === 0`) — sai cho % trend nghĩa là
+ * "chưa có kỳ trước để so sánh". Dùng `.mapWith` này ở mọi biểu thức có thể thật sự trả `null`. */
 function mapNullableNumber(value: unknown): number | null {
   return value === null ? null : Number(value);
 }
 
-/**
- * Đơn hàng bắt đầu ở `DRAFT`, cần Giám đốc duyệt trước khi đưa vào sản xuất.
- *
- * Rules:
- * - `approveOrder` là con đường duy nhất để đạt `AWAITING_PRODUCTION`.
- * - Request tạo/sửa không được set thẳng trạng thái đó (`E075`).
- * - Các chuyển trạng thái khác vẫn tự do.
- *
- * See `ensureOrderEditable` để biết giới hạn khi sửa.
- */
+/** Đơn hàng: `DRAFT` → ... → `AWAITING_PRODUCTION` (duyệt Giám đốc) → `IN_PROGRESS`. Vòng đời +
+ * business rule đầy đủ: `docs/domains/orders.md`, `docs/workflows/order-approval.md`. */
 @Injectable()
 export class OrdersService {
   constructor(
@@ -56,7 +58,9 @@ export class OrdersService {
     private readonly productionOrdersService: ProductionOrdersService,
   ) {}
 
-  async getOrders(reqDto: GetOrdersReqDto): Promise<OffsetPaginatedDto<OrderResDto>> {
+  async getOrders(
+    reqDto: GetOrdersReqDto,
+  ): Promise<OffsetPaginatedDto<OrderResDto>> {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
     const where = and(
       isNull(orders.deletedAt),
@@ -93,28 +97,16 @@ export class OrdersService {
     );
   }
 
-  /**
-   * Dashboard cards. One conditional-aggregation query — `count(*)`/`sum(*) filter (where ...)`
-   * per bucket, trend percentages computed via `round(...)` in the same query — so Postgres does
-   * every number in one pass instead of the app fetching raw buckets and reducing them in JS.
-   *
-   * Rules:
-   * - Two buckets are approximations, since the system keeps no order-status history (only the
-   *   *current* status of each row).
-   * - `completedValue` ("Đã giao") is `sum(total)` of `COMPLETED` orders, standing in for
-   *   delivery/DO tracking the system doesn't have yet.
-   * - `expiredTrendCount` re-evaluates "expired a week ago" against *today's* status
-   *   (`dueDate < now() - 7d AND status NOT IN (COMPLETED, CANCELLED)`), not the row's real status
-   *   a week ago — an order expired then but since moved to CANCELLED won't count.
-   */
+  /** `expiredTrendCount` so "trễ hạn cách đây 1 tuần" với *trạng thái hôm nay*, không phải trạng
+   * thái thật của dòng đó lúc 1 tuần trước — đơn trễ khi đó nhưng đã chuyển `CANCELLED` sẽ không
+   * được tính, vì hệ thống không giữ lịch sử trạng thái. Xem mô tả từng field ở `OrderStatsResDto`. */
   async getOrderStats(): Promise<OrderStatsResDto> {
-    // Repeated verbatim across a few expressions below — every occurrence must stay identical to
-    // resolve to the same window, since there's no CTE here to compute it once.
+    // Lặp lại y hệt ở vài biểu thức bên dưới — mọi chỗ lặp phải giữ đúng nguyên văn để cùng trỏ
+    // một khung thời gian, vì không có CTE ở đây để tính một lần.
     const thisMonth = sql`${orders.createdAt} >= date_trunc('month', now())`;
     const lastMonth = sql`${orders.createdAt} >= date_trunc('month', now()) - interval '1 month' and ${orders.createdAt} < date_trunc('month', now())`;
-    // Every dashboard total must share one unit — summing `orders.total` directly would add a
-    // USD order and a VND order together. Convert to VND per-row before aggregating; VND has no
-    // sub-unit, so the two money totals below round to 0 decimals.
+    // Mọi tổng dashboard phải cùng một đơn vị — cộng thẳng orders.total sẽ gộp đơn USD với đơn
+    // VND. Đổi ra VND từng dòng trước khi aggregate; VND không có phần thập phân nên làm tròn 0.
     const totalVnd = sql`${orders.total} * ${orders.exchangeRate}`;
 
     const [row] = await this.db
@@ -125,7 +117,8 @@ export class OrdersService {
             else (count(*) filter (where ${thisMonth})::numeric - count(*) filter (where ${lastMonth})::numeric)
                  / count(*) filter (where ${lastMonth}) * 100
           end, 1)`.mapWith(mapNullableNumber),
-        totalValue: sql<number>`round(coalesce(sum(${totalVnd}), 0), 0)`.mapWith(Number),
+        totalValue:
+          sql<number>`round(coalesce(sum(${totalVnd}), 0), 0)`.mapWith(Number),
         totalValueTrendPercent: sql<number | null>`round(
           case when coalesce(sum(${totalVnd}) filter (where ${lastMonth}), 0) = 0 then null
             else (coalesce(sum(${totalVnd}) filter (where ${thisMonth}), 0)
@@ -201,9 +194,10 @@ export class OrdersService {
     });
   }
 
-  async createOrder(reqDto: CreateOrderReqDto, userId: string): Promise<OrderResDto> {
-    // Every check below is a read, so it runs before the transaction opens — the transaction
-    // only has to keep the writes together.
+  async createOrder(
+    reqDto: CreateOrderReqDto,
+    userId: string,
+  ): Promise<OrderResDto> {
     let code = reqDto.code;
     if (code) {
       await this.validateCodeUniqueness(code);
@@ -218,29 +212,30 @@ export class OrdersService {
       await this.ensureStaffExists(reqDto.staffId);
     }
     if (reqDto.items?.length) {
-      await this.ensureProductsExist(reqDto.items.map((item) => item.productId));
+      await this.ensureProductsExist(
+        reqDto.items.map((item) => item.productId),
+      );
     }
     this.ensureStatusSettable(reqDto.status);
 
     await this.linkOrderFiles(reqDto);
 
-    // `items`/`attachmentFileIds` live in their own tables, not columns on `orders` — peel them
-    // off so the rest of the DTO spreads straight onto the row.
     const { items, attachmentFileIds, ...orderFields } = reqDto;
 
-    // The order row, its lines, its attachments, and the totals derived from those lines must all
-    // land together — without this transaction a failing line insert would leave a committed
-    // order with a `total` of 0 that never gets recomputed.
+    // Order, dòng, đính kèm và total dẫn xuất từ dòng phải vào cùng lúc — nếu không, insert dòng
+    // lỗi sẽ để lại một order đã commit với `total = 0` không bao giờ được tính lại.
     const orderId = await this.db.transaction(async (tx) => {
       const [order] = await tx
         .insert(orders)
         .values({
           ...orderFields,
-          // A VND order's rate is always 1 — `totalVndSql`/`getOrderStats` multiply by
-          // `exchangeRate` to convert every order to one currency, so a stray non-1 rate on a
-          // VND order (client bug, bad input) would silently corrupt every dashboard total.
+          // Đơn VND luôn có rate = 1 — totalVndSql/getOrderStats nhân exchangeRate để quy mọi
+          // đơn về một đơn vị, nên một rate lệch trên đơn VND (bug client, input sai) sẽ âm thầm
+          // làm sai mọi tổng dashboard.
           exchangeRate:
-            (orderFields.currency ?? Currency.VND) === Currency.VND ? 1 : orderFields.exchangeRate,
+            (orderFields.currency ?? Currency.VND) === Currency.VND
+              ? 1
+              : orderFields.exchangeRate,
           code,
           status: reqDto.status ?? OrderStatus.DRAFT,
           createdBy: userId,
@@ -262,7 +257,10 @@ export class OrdersService {
     return this.getOrderDetail(orderId);
   }
 
-  async updateOrder(orderId: string, reqDto: UpdateOrderReqDto): Promise<OrderResDto> {
+  async updateOrder(
+    orderId: string,
+    reqDto: UpdateOrderReqDto,
+  ): Promise<OrderResDto> {
     const existing = await this.ensureOrderExists(orderId);
     this.ensureOrderEditable(existing.status);
 
@@ -273,7 +271,9 @@ export class OrdersService {
       await this.ensureStaffExists(reqDto.staffId);
     }
     if (reqDto.items?.length) {
-      await this.ensureProductsExist(reqDto.items.map((item) => item.productId));
+      await this.ensureProductsExist(
+        reqDto.items.map((item) => item.productId),
+      );
     }
     this.ensureStatusSettable(reqDto.status);
     if (reqDto.items !== undefined) {
@@ -283,14 +283,15 @@ export class OrdersService {
     await this.linkOrderFiles(reqDto);
 
     const { items, attachmentFileIds, ...orderFields } = reqDto;
-    // Same VND-always-1 normalization as createOrder, resolved against the row's existing
-    // currency when this request doesn't touch `currency` at all.
+    // Cùng chuẩn hoá VND-luôn-1 như createOrder, so với currency hiện tại của dòng khi request
+    // không đụng tới `currency`.
     const currency = orderFields.currency ?? existing.currency;
     const orderValues =
-      currency === Currency.VND ? { ...orderFields, exchangeRate: 1 } : orderFields;
+      currency === Currency.VND
+        ? { ...orderFields, exchangeRate: 1 }
+        : orderFields;
 
     await this.db.transaction(async (tx) => {
-      // `updated_at` is bumped by the column's own `$onUpdate`.
       await tx.update(orders).set(orderValues).where(eq(orders.id, orderId));
 
       if (items !== undefined) {
@@ -298,15 +299,17 @@ export class OrdersService {
         // duyệt — xoá header `production_orders` cascade dọn luôn `production_order_items`, để
         // FK `order_item_id` (restrict) không chặn lệnh xoá của `replaceItems` bên dưới (xem
         // comment schema trên `productionOrderItems`).
-        await tx.delete(productionOrders).where(eq(productionOrders.orderId, orderId));
+        await tx
+          .delete(productionOrders)
+          .where(eq(productionOrders.orderId, orderId));
         await this.replaceItems(tx, orderId, items);
       }
       if (attachmentFileIds !== undefined) {
         await this.replaceAttachments(tx, orderId, attachmentFileIds);
       }
 
-      // Always recompute, even when `items` wasn't sent: discountType/discountValue/vatPercent/
-      // shippingFee alone can change the header totals without touching a single line.
+      // Luôn tính lại kể cả khi không gửi `items`: riêng discountType/discountValue/vatPercent/
+      // shippingFee cũng đủ đổi total header mà không đụng dòng nào.
       await this.recalculateTotals(tx, orderId);
     });
 
@@ -317,23 +320,20 @@ export class OrdersService {
     const existing = await this.ensureOrderExists(orderId);
     this.ensureOrderEditable(existing.status);
 
-    await this.db.update(orders).set({ deletedAt: new Date() }).where(eq(orders.id, orderId));
+    await this.db
+      .update(orders)
+      .set({ deletedAt: new Date() })
+      .where(eq(orders.id, orderId));
   }
 
-  /**
-   * Duyệt cấp Giám đốc (`orders:approve`) — chỉ hợp lệ khi đang PENDING_CONFIRMATION. Đây là nơi
-   * duy nhất ghi `AWAITING_PRODUCTION` (xem `ensureStatusSettable`).
-   *
-   * Đồng thời sinh sẵn kế hoạch sản xuất (`docs/features/production.md`) cho mọi dòng NORMAL,
-   * trong cùng transaction với việc đổi status — duyệt một PO mà không có kế hoạch để hiển thị ở
-   * màn LSX sẽ là một trạng thái "duyệt nửa vời" không nhất quán.
-   */
+  /** Nơi duy nhất ghi `AWAITING_PRODUCTION` (xem `ensureStatusSettable`) — đồng thời sinh sẵn kế
+   * hoạch sản xuất trong cùng transaction, để không có trạng thái "duyệt nửa vời" không kế hoạch. */
   async approveOrder(orderId: string, userId: string): Promise<OrderResDto> {
     const existing = await this.ensureOrderExists(orderId);
     this.ensurePendingConfirmation(existing.status);
 
-    // Chỉ đọc — chạy trước transaction theo `.claude/rules/api-module.md`.
-    const planItems = await this.productionOrdersService.getInitialPlanItems(orderId);
+    const planItems =
+      await this.productionOrdersService.getInitialPlanItems(orderId);
 
     await this.db.transaction(async (tx) => {
       await tx
@@ -345,14 +345,18 @@ export class OrdersService {
         })
         .where(eq(orders.id, orderId));
 
-      await this.productionOrdersService.seedPlan(tx, orderId, planItems, userId);
+      await this.productionOrdersService.seedPlan(
+        tx,
+        orderId,
+        planItems,
+        userId,
+      );
     });
 
     return this.getOrderDetail(orderId);
   }
 
-  /** Director-level rejection (`orders:approve`) — only valid from PENDING_CONFIRMATION. Sends
-   * the order back to DRAFT so the sales staff can fix it and resubmit. */
+  /** Về lại `DRAFT` để sales sửa và gửi duyệt lại. */
   async rejectOrder(
     orderId: string,
     reqDto: RejectOrderReqDto,
@@ -374,30 +378,29 @@ export class OrdersService {
     return this.getOrderDetail(orderId);
   }
 
-  /** "Trễ hạn": derived at read time, never stored — a due date in the past on an order that
-   * hasn't reached a terminal state yet. No dueDate at all is never expired. Evaluated in
-   * Postgres (via `extras`) rather than re-derived in JS per row after the fetch. */
+  /** "Trễ hạn": tính lúc đọc, không lưu — dueDate quá hạn trên đơn chưa tới trạng thái cuối. Không
+   * có `dueDate` thì không bao giờ trễ. Tính trong Postgres (`extras`), không lặp lại trong JS. */
   private expiredSql() {
     return sql<boolean>`${orders.dueDate} is not null
       and ${orders.status} not in (${OrderStatus.COMPLETED}, ${OrderStatus.CANCELLED})
       and ${orders.dueDate} < now()`.as('expired');
   }
 
-  /** Order value converted to VND. Computed at read time from the order's own `total` and
-   * `exchangeRate`, so it can never drift from either — no extra column, no backfill. */
+  /** Quy đổi `total` sang VND lúc đọc từ `total`/`exchangeRate` của chính đơn — không thêm cột,
+   * không backfill, nên không bao giờ lệch với hai giá trị gốc. */
   private totalVndSql() {
     return sql<number>`round(${orders.total} * ${orders.exchangeRate}, 2)`
       .mapWith(Number)
       .as('totalVnd');
   }
 
-  /**
-   * Recomputes every server-owned money column from `order_items` in two statements, entirely in
-   * Postgres — no arithmetic happens in JS. First refreshes each line's `lineTotal`, then folds
-   * the non-CANCELLED lines' sum into the header's discount/VAT/total columns. Must run inside the
-   * same transaction as whatever write touched `order_items`/the discount-VAT-shipping inputs.
-   */
-  private async recalculateTotals(tx: DbTransaction, orderId: string): Promise<void> {
+  /** Tính lại mọi cột tiền do server sở hữu, từ `order_items`, hai câu SQL: refresh `lineTotal`
+   * từng dòng, rồi gộp tổng các dòng không `CANCELLED` vào discount/VAT/total header. Bắt buộc
+   * chạy trong cùng transaction với write vừa đụng `order_items` hoặc discount/VAT/shipping. */
+  private async recalculateTotals(
+    tx: DbTransaction,
+    orderId: string,
+  ): Promise<void> {
     await tx.execute(sql`
       UPDATE order_items
       SET line_total = round(quantity * unit_price * (1 - discount_percent / 100), 2)
@@ -433,28 +436,25 @@ export class OrdersService {
     `);
   }
 
-  /**
-   * Validates every file id the request carries and marks them linked, so the orphan sweeper
-   * leaves them alone. Runs **before** the transaction on purpose — see `FilesService.linkFiles`.
-   */
-  private async linkOrderFiles(reqDto: CreateOrderReqDto | UpdateOrderReqDto): Promise<void> {
+  /** Xem `FilesService.linkFiles` — phải gọi trước khi mở transaction. */
+  private async linkOrderFiles(
+    reqDto: CreateOrderReqDto | UpdateOrderReqDto,
+  ): Promise<void> {
     await this.filesService.linkFiles(reqDto.attachmentFileIds ?? []);
   }
 
-  /**
-   * Writes the line rows. Takes `tx` (not `this.db`) so it can only ever be called from inside an
-   * open transaction — passing the pooled connection is a compile error. `lineTotal` is left to
-   * the column's own default; `recalculateTotals` fills in the real value right after.
-   */
+  /** `lineTotal` để mặc định của cột — `recalculateTotals` điền giá trị thật ngay sau. */
   private async createItems(
     tx: DbTransaction,
     orderId: string,
     items: OrderItemReqDto[],
   ): Promise<void> {
-    await tx.insert(orderItems).values(items.map((item) => ({ ...item, orderId })));
+    await tx
+      .insert(orderItems)
+      .values(items.map((item) => ({ ...item, orderId })));
   }
 
-  /** Replace-all. `tx` is required so a caller cannot accidentally write outside the transaction. */
+  /** Replace-all. Bắt buộc truyền `tx` để tránh ghi ra ngoài transaction. */
   private async replaceItems(
     tx: DbTransaction,
     orderId: string,
@@ -472,16 +472,20 @@ export class OrdersService {
     orderId: string,
     fileIds: string[],
   ): Promise<void> {
-    await tx.insert(orderAttachments).values(fileIds.map((fileId) => ({ orderId, fileId })));
+    await tx
+      .insert(orderAttachments)
+      .values(fileIds.map((fileId) => ({ orderId, fileId })));
   }
 
-  /** Replace-all. `tx` is required so a caller cannot accidentally write outside the transaction. */
+  /** Replace-all. Bắt buộc truyền `tx` để tránh ghi ra ngoài transaction. */
   private async replaceAttachments(
     tx: DbTransaction,
     orderId: string,
     fileIds: string[],
   ): Promise<void> {
-    await tx.delete(orderAttachments).where(eq(orderAttachments.orderId, orderId));
+    await tx
+      .delete(orderAttachments)
+      .where(eq(orderAttachments.orderId, orderId));
 
     if (fileIds.length) {
       await this.createAttachments(tx, orderId, fileIds);
@@ -526,7 +530,6 @@ export class OrdersService {
     }
   }
 
-  /** Checks every `productId` in one `inArray` query instead of one round-trip per line. */
   private async ensureProductsExist(productIds: string[]): Promise<void> {
     const uniqueIds = [...new Set(productIds)];
     const found = await this.db.query.products.findMany({
@@ -539,14 +542,13 @@ export class OrdersService {
     }
   }
 
-  /** Chặn sửa `items` khi LSX (`production_orders`, header) của đơn này đã `APPROVED` — duyệt LSX
-   * là chốt kế hoạch một chiều, sửa `order_items` sau đó sẽ làm lệch số liệu đã ghi. Header đang
-   * `PENDING` (chưa duyệt) không chặn — `updateOrder` tự xoá header đó (cascade dọn
-   * `production_order_items`) ngay trước khi replace `items`. Đọc thẳng `production_orders` thay
-   * vì thêm một hàm dùng-một-lần vào `ProductionOrdersService` — cùng cách làm
-   * `InventoryService.reservedSubquery` đọc thẳng `order_items` thay vì phụ thuộc vào
-   * `OrdersService`. */
-  private async ensureItemsNotLockedByProduction(orderId: string): Promise<void> {
+  /** Chặn sửa `items` khi LSX của đơn này đã `APPROVED` — duyệt LSX là chốt kế hoạch một chiều.
+   * Header `PENDING` không chặn — `updateOrder` tự xoá header đó trước khi replace `items`. Đọc
+   * thẳng `production_orders` thay vì gọi qua `ProductionOrdersService`, cùng cách
+   * `InventoryService.reservedSubquery` đọc thẳng `order_items`. */
+  private async ensureItemsNotLockedByProduction(
+    orderId: string,
+  ): Promise<void> {
     const approved = await this.db.query.productionOrders.findFirst({
       columns: { id: true },
       where: and(
@@ -560,35 +562,29 @@ export class OrdersService {
     }
   }
 
-  /** Locked once an order reaches a terminal state — `COMPLETED` or `CANCELLED`. Every other
-   * status (`DRAFT`, `PENDING_CONFIRMATION`, `AWAITING_PRODUCTION`, `IN_PROGRESS`) stays editable. */
+  /** Khoá khi đơn đã tới trạng thái cuối — `COMPLETED` hoặc `CANCELLED`. Mọi trạng thái khác vẫn
+   * sửa được. */
   private ensureOrderEditable(status: OrderStatus): void {
     if (status === OrderStatus.COMPLETED || status === OrderStatus.CANCELLED) {
       throw new AppException(ErrorCode.E065, HttpStatus.CONFLICT);
     }
   }
 
-  /** `AWAITING_PRODUCTION` is only ever written by `approveOrder` — a plain `POST /orders`/
-   * `PATCH /orders/:orderId` may not set it directly, so a director's approval can't be
-   * bypassed by just PATCHing the status field. Every other status stays freely settable. */
+  /** `AWAITING_PRODUCTION` chỉ do `approveOrder` ghi — `POST`/`PATCH /orders` không được set thẳng,
+   * để duyệt của Giám đốc không bị lách qua PATCH status. Trạng thái khác tự do. */
   private ensureStatusSettable(status: OrderStatus | undefined): void {
     if (status === OrderStatus.AWAITING_PRODUCTION) {
       throw new AppException(ErrorCode.E075, HttpStatus.BAD_REQUEST);
     }
   }
 
-  /** `approveOrder`/`rejectOrder` are only valid from PENDING_CONFIRMATION — an order that hasn't
-   * been submitted for approval (still DRAFT), or one already past this gate, can't be
-   * approved/rejected again. */
+  /** `approveOrder`/`rejectOrder` chỉ hợp lệ từ `PENDING_CONFIRMATION`. */
   private ensurePendingConfirmation(status: OrderStatus): void {
     if (status !== OrderStatus.PENDING_CONFIRMATION) {
       throw new AppException(ErrorCode.E074, HttpStatus.CONFLICT);
     }
   }
 
-  /** Returns `status`/`currency` right away (needed by every caller to guard against writing a
-   * terminal order, and by `updateOrder` to resolve the row's effective currency) instead of a
-   * second re-fetch. */
   private async ensureOrderExists(
     orderId: string,
   ): Promise<{ id: string; status: OrderStatus; currency: Currency }> {

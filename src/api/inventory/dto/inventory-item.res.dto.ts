@@ -12,11 +12,6 @@ import {
 import { ProductRefResDto } from '../../products/dto/product-ref.res.dto';
 import { UnitResDto } from '../../units/dto/unit.res.dto';
 
-/**
- * One finished-good's stock levels for `GET /inventory`. `onHand`/`reserved`/`available` are
- * never stored — computed at read time by `InventoryService.getStockLevels` from
- * `stock_receipt_items`/`order_items`, so they can never drift from the ledger that produced them.
- */
 @Exclude()
 export class InventoryItemResDto {
   @Expose()

@@ -6,7 +6,6 @@ import {
   UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
 
-/** No `code` field — immutable after creation (see `materials` schema comment). */
 export class UpdateMaterialReqDto {
   @StringFieldOptional({ maxLength: 255 })
   readonly name?: string;
@@ -20,7 +19,6 @@ export class UpdateMaterialReqDto {
   @EnumFieldOptional(() => MaterialType)
   readonly type?: MaterialType;
 
-  // Required only when the effective type is CLIENT (enforced in the service, E040).
   @UUIDFieldOptional({
     nullable: true,
     description: 'Client id (required when effective type is CLIENT)',
@@ -39,7 +37,6 @@ export class UpdateMaterialReqDto {
   @StringFieldOptional({ maxLength: 1000, nullable: true })
   readonly note?: string | null;
 
-  // Extended information (all optional)
   @StringFieldOptional({ maxLength: 255, nullable: true })
   readonly materialGrade?: string | null;
 

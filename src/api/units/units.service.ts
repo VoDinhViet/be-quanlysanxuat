@@ -13,7 +13,6 @@ import { UnitResDto } from './dto/unit.res.dto';
 export class UnitsService {
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
 
-  /** Returns the whole catalogue — see `GetUnitsReqDto` for why this isn't paginated. */
   async getUnits(reqDto: GetUnitsReqDto): Promise<UnitResDto[]> {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
 

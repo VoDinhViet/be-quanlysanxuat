@@ -11,11 +11,6 @@ import {
 } from '../../../decorators/field.decorators';
 import { StockReceiptItemReqDto } from './stock-receipt-item.req.dto';
 
-/**
- * `reason` phải khớp cả `subject` lẫn `type` (xem
- * `StockReceiptsService.ensureReasonMatchesSubjectAndType`) — bảng đầy đủ ở doc comment của
- * `stockReceipts` trong `src/database/schemas/stock-receipts.ts`.
- */
 export class CreateStockReceiptReqDto {
   @StringFieldOptional({
     maxLength: 50,

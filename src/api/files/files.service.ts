@@ -35,10 +35,10 @@ export class FilesService {
     'image/gif',
   ];
 
-  // Legacy binary Office formats (application/msword, application/vnd.ms-excel) are deliberately
-  // excluded — `file-type` has no magic-byte signature for the old OLE2/CFB container, so a
-  // genuine .doc/.xls would be indistinguishable from a spoofed one. Modern Office defaults to
-  // the OOXML formats below, which are detectable.
+  // Cố ý loại định dạng Office nhị phân cũ (application/msword, application/vnd.ms-excel) —
+  // `file-type` không có magic-byte signature cho container OLE2/CFB cũ, nên .doc/.xls thật không
+  // phân biệt được với file giả mạo đổi tên. Office hiện đại mặc định dùng OOXML bên dưới, phát
+  // hiện được.
   private static readonly DOCUMENT_MIME_TYPES = [
     'application/pdf',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -52,6 +52,9 @@ export class FilesService {
     private readonly permissionsService: PermissionsService,
   ) {}
 
+  /** `type` (`UploadOptions`) đến từ query param của controller, không phải multipart field — vì
+   * guard chạy trước `FileInterceptor` parse body, dọn đường cho check quyền theo từng loại sau
+   * này mà FE không phải đổi gì. */
   async upload(
     file: Express.Multer.File | undefined,
     options: UploadOptions,
@@ -60,8 +63,8 @@ export class FilesService {
       throw new AppException(ErrorCode.E016, HttpStatus.BAD_REQUEST);
     }
 
-    // `kind` comes from the policy, never from the client — otherwise a caller could ask for
-    // USER_AVATAR while claiming DOCUMENT and slip a PDF past the image allowlist.
+    // `kind` đến từ policy, không bao giờ từ client — nếu không, caller có thể xin USER_AVATAR
+    // nhưng khai DOCUMENT để lách allowlist ảnh bằng một PDF.
     const { kind } = UPLOAD_POLICIES[options.type];
     const allowedMimeTypes =
       kind === FileKind.IMAGE
@@ -78,9 +81,8 @@ export class FilesService {
       throw new AppException(ErrorCode.E017, HttpStatus.PAYLOAD_TOO_LARGE);
     }
 
-    // Trust the file's actual bytes, not the client-declared mimetype (trivially spoofable by
-    // renaming a file) — this is the whole point of validating here instead of via Multer's
-    // `fileFilter`, which only sees the declared mimetype.
+    // Tin vào byte thật của file, không tin mimetype client khai (giả mạo được bằng cách đổi tên)
+    // — đây là lý do validate ở đây thay vì qua `fileFilter` của Multer, thứ chỉ thấy mimetype khai.
     const detected = await detectFileType(file.buffer);
     if (!detected || !allowedMimeTypes.includes(detected.mime)) {
       throw new AppException(ErrorCode.E016, HttpStatus.BAD_REQUEST);
@@ -117,11 +119,8 @@ export class FilesService {
     return this.toResDto(file);
   }
 
-  /**
-   * Streams the bytes behind an already-signature-verified request (`FileSignatureGuard`).
-   * Streams rather than buffering: a 10MB document times N concurrent downloads would otherwise
-   * sit in memory all at once.
-   */
+  /** Stream thay vì buffer toàn bộ: một tài liệu 10MB nhân N lượt tải đồng thời sẽ nằm hết trong
+   * RAM cùng lúc nếu buffer. Request đã qua `FileSignatureGuard` xác minh chữ ký. */
   async streamFile(
     fileId: string,
     reqDto: DownloadFileReqDto,
@@ -136,8 +135,8 @@ export class FilesService {
         file.kind,
         file.originalName,
       ),
-      // Bounded by the signature's own lifetime — caching past `exp` would just cache a URL that
-      // no longer works. `private` because the URL is a capability, not public content.
+      // Giới hạn theo đúng vòng đời chữ ký — cache quá `exp` chỉ cache một URL đã hết hạn.
+      // `private` vì URL là một capability, không phải nội dung công khai.
       'Cache-Control': `private, max-age=${secondsUntil(reqDto.exp)}`,
     });
 
@@ -146,10 +145,8 @@ export class FilesService {
     );
   }
 
-  /**
-   * Only the uploader or a `system:manage` holder may delete. Without this any authenticated user
-   * could wipe every file in the registry — bytes included, with no way back.
-   */
+  /** Chỉ người tải lên hoặc người có `system:manage` được xoá — nếu không, bất kỳ user đăng nhập
+   * nào cũng xoá được mọi file trong registry, không có đường lùi. */
   async deleteFile(fileId: string, actorCredentialId: string): Promise<void> {
     const file = await this.ensureFileExists(fileId);
 
@@ -166,13 +163,9 @@ export class FilesService {
     await this.db.delete(files).where(eq(files.id, fileId));
   }
 
-  /**
-   * Deletes a file's bytes and its `files` row with no uploader/`system:manage` check — for a
-   * consumer service (e.g. `BomsService`) replacing a `*FileId` link it already controls the
-   * write to, where the consumer's own route permission (e.g. `products:bom-manage`) is what
-   * authorizes the change. `deleteFile` is for the direct `DELETE /files/:id` route, where the
-   * caller IS the one deciding to delete and must therefore be checked.
-   */
+  /** Không check uploader/`system:manage` — dành cho service tiêu thụ (vd `BomsService`) thay một
+   * link `*FileId` mà quyền route của chính nó đã cho phép. `deleteFile` mới là route
+   * `DELETE /files/:id` trực tiếp, nơi caller tự quyết định xoá nên bắt buộc phải check. */
   async deleteFileById(fileId: string): Promise<void> {
     const file = await this.ensureFileExists(fileId);
 
@@ -180,19 +173,10 @@ export class FilesService {
     await this.db.delete(files).where(eq(files.id, fileId));
   }
 
-  /**
-   * Called by consumer services (users/materials/products) before writing a `*FileId` link: checks
-   * every id exists (`E042`) and stamps `linkedAt`, which takes the file out of reach of
-   * `FilesCleanupService`.
-   *
-   * Rules:
-   * - Call this before the write, never after — including before opening a transaction.
-   * - If a later write fails, a file marked linked with nothing pointing at it becomes permanent
-   *   garbage: wasteful, but harmless.
-   * - Reversing the order and a crash between the entity write and this call leaves a live row
-   *   referencing an unlinked file, which the sweeper deletes a day later — a broken image on
-   *   real data. Failing towards keeping garbage is the whole point of this ordering.
-   */
+  /** Gọi bởi service tiêu thụ (users/materials/products...) trước khi ghi một `*FileId` — kiểm tồn
+   * tại (`E042`) và đánh dấu `linkedAt` để `FilesCleanupService` bỏ qua. Bắt buộc gọi trước write,
+   * kể cả trước khi mở transaction — đảo thứ tự có thể để lại row sống trỏ file chưa link, bị
+   * sweeper xoá sau (ảnh vỡ trên dữ liệu thật). */
   async linkFiles(fileIds: string[]): Promise<void> {
     const uniqueIds = [...new Set(fileIds)];
     if (uniqueIds.length === 0) {
@@ -208,7 +192,7 @@ export class FilesService {
       throw new AppException(ErrorCode.E042, HttpStatus.NOT_FOUND);
     }
 
-    // `isNull` keeps `linkedAt` meaning "first time it was used" — re-linking must not move it.
+    // `isNull` giữ đúng nghĩa `linkedAt` = "lần đầu được dùng" — link lại không được dịch nó.
     await this.db
       .update(files)
       .set({ linkedAt: new Date() })
@@ -227,12 +211,9 @@ export class FilesService {
     return file;
   }
 
-  /**
-   * Images render inline so `<img src>` works; documents download. The filename is emitted twice on
-   * purpose: `filename=` as an ASCII-stripped fallback for old clients, and RFC 5987 `filename*=`
-   * carrying the real value — original names here are Vietnamese, and a plain `filename=` would
-   * mangle every diacritic.
-   */
+  /** Ảnh `inline` để `<img src>` dùng được; tài liệu `attachment` để tải xuống. Tên file phát hai
+   * lần cố ý: `filename=` là fallback ASCII cho client cũ, RFC 5987 `filename*=` mang giá trị thật
+   * — tên gốc ở đây là tiếng Việt, `filename=` thường sẽ làm hỏng mọi dấu. */
   private buildContentDisposition(
     kind: FileKind,
     originalName: string,

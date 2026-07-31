@@ -6,7 +6,6 @@ import {
   UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
 
-/** Query cho màn hình chính LSX — mỗi dòng một PO, xem `ProductionOrderResDto`. */
 export class GetProductionOrdersReqDto extends PageOptionsDto {
   @EnumFieldOptional(() => ProductionOrderStatus, {
     description: 'PENDING (Chờ duyệt) | APPROVED (Đã duyệt)',
