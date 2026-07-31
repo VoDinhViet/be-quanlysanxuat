@@ -24,8 +24,6 @@ import { GetBomMaterialsReqDto } from './dto/get-bom-materials.req.dto';
 import { UpdateBomItemReqDto } from './dto/update-bom-item.req.dto';
 import { BomsService } from './boms.service';
 
-// Path is a plain literal string prefix (not `RouterModule`), consistent with the other
-// products/:productId-nested modules (RoutingController).
 @ApiTags('Boms')
 @Controller('products/:productId/bom')
 export class BomsController {

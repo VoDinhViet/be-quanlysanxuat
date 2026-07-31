@@ -4,11 +4,6 @@ import {
   UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
 
-/**
- * Edits an existing node's basic info — the mockup only supports inline SL editing, no
- * move/re-parent. `itemType`/`itemId`/`parentId` are immutable (delete + re-add to change
- * identity or position in the tree).
- */
 export class UpdateBomItemReqDto {
   @NumberFieldOptional({
     isPositive: true,
@@ -22,7 +17,6 @@ export class UpdateBomItemReqDto {
   @StringFieldOptional({ nullable: true, maxLength: 1000 })
   readonly note?: string | null;
 
-  // Explicit `null` clears the drawing (and deletes the old file); omitted leaves it untouched.
   @UUIDFieldOptional({
     nullable: true,
     description:

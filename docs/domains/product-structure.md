@@ -61,8 +61,11 @@ Xoá sản phẩm là **xoá mềm và không kiểm tham chiếu**. Các FK `re
 
 **Điều quan trọng nhất: hiện chưa có gì bung BOM ra để tính nhu cầu vật tư.**
 
-- **Production** chỉ nhận từ domain này đúng `products.id` + một số lượng. Không module sản xuất nào tham chiếu `boms`/`bom_items`/`routing_steps`. Job không có chia nhỏ theo công đoạn.
-- `GET /products/:id/bom/materials` là một phép `SUM` gộp theo vật tư trên mọi node MATERIAL ở mọi độ sâu — **không nhân qua số lượng của các node cha**, nên nó *không* phải BOM explosion.
+- **Production** đọc `routing_steps` (Cấp 0 của FG) và `bom_items` (node MATERIAL) **một lần**, lúc
+  duyệt LSX, để copy sang `production_job_steps`/`production_job_materials` của Job — xem
+  `docs/domains/production.md`. Ngoài thời điểm đó, không module sản xuất nào tham chiếu
+  `boms`/`bom_items`/`routing_steps` nữa; Job không chia nhỏ tiến độ theo công đoạn.
+- `GET /products/:id/bom/materials` là một phép `SUM` gộp theo vật tư trên mọi node MATERIAL ở mọi độ sâu — **không nhân qua số lượng của các node cha**, nên nó *không* phải BOM explosion. Bản copy vật tư của Job (`production_job_materials.unitQty`) dùng đúng phép `SUM` này nên thừa hưởng nguyên giới hạn — không phải BOM explosion.
 - **Inventory** chỉ thấy sản phẩm FG + ACTIVE; WIP không có mặt trong kho. Chiều ngược lại: không xoá được vật tư đang nằm trong bất kỳ node BOM nào.
 - **Orders** tham chiếu `products.id` trên từng dòng, và cố ý **không snapshot** tên/ảnh — luôn đọc qua quan hệ.
 
@@ -79,6 +82,5 @@ Xoá sản phẩm là **xoá mềm và không kiểm tham chiếu**. Các FK `re
 
 ## Related docs
 
-- `docs/features/products.md`, `boms.md`, `routing.md` — API contract, error code.
-- `docs/features/master-data.md` — danh mục `operations`.
+- `docs/workflows/product-setup.md` — thứ tự dựng sản phẩm → BOM → công đoạn → nhân bản.
 - `docs/architecture.md` — vị trí cụm này trong sơ đồ ER tổng.

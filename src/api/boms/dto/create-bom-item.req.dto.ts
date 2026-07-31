@@ -8,12 +8,6 @@ import {
   UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
 
-/**
- * Adds one node ("[+]" popup) as a child of `parentId`, or a top-level item (direct child of the
- * FG root) when `parentId` is omitted. `itemType` + a single `itemId` (rather than separate
- * `productId`/`materialId`) is structurally exactly-one-of — the popup only ever picks one Mã, so
- * there is no request shape that could send both or neither.
- */
 export class CreateBomItemReqDto {
   @EnumField(() => BomItemType, { description: 'WIP → PRODUCT, RM → MATERIAL' })
   readonly itemType!: BomItemType;
@@ -31,8 +25,6 @@ export class CreateBomItemReqDto {
   })
   readonly parentId?: string | null;
 
-  // numeric(12,3) column — String()-ified in the service before insert. WIP items must be a whole
-  // number (cross-field, depends on itemType — enforced in the service, not here).
   @NumberField({
     isPositive: true,
     description: 'SL — WIP: số nguyên, RM: có thể thập phân',

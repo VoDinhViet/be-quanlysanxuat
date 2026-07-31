@@ -88,6 +88,6 @@ Không phải invariant dù dễ tưởng:
 
 ## Related docs
 
-- `docs/features/orders.md` — API contract, error code, shape từng DTO.
+- `docs/workflows/order-approval.md` — trình tự chạy của bước duyệt/từ chối.
 - `docs/domains/production.md` — điều xảy ra ngay sau khi duyệt đơn.
 - `docs/domains/inventory.md` — cách đơn đã duyệt tạo ra `reserved`.

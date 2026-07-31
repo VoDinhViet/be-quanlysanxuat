@@ -69,7 +69,6 @@ export class MaterialResDto {
   @NumberField({ description: 'Định mức tồn tối thiểu' })
   minStock!: number;
 
-  // Extended information (all optional)
   @Expose()
   @StringFieldOptional({ nullable: true })
   materialGrade!: string | null;

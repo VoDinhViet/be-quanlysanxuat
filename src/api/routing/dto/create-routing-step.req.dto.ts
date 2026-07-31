@@ -4,11 +4,6 @@ import {
   UUIDField,
 } from '../../../decorators/field.decorators';
 
-/**
- * Adds one step ("[+]" in the Routing popup) to a routing (Cấp 0 root product, or a specific BOM
- * node — whichever endpoint this is posted to). `operationId` is immutable once added — changing
- * the operation of a step means delete + re-add, same convention as `CreateBomItemReqDto`.
- */
 export class CreateRoutingStepReqDto {
   @UUIDField({ description: 'Master operation (công đoạn) id' })
   readonly operationId!: string;

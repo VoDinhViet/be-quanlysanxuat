@@ -12,12 +12,12 @@ import {
   UUIDField,
 } from '../../../decorators/field.decorators';
 
-/** Một dòng của `GET /production-orders` — màn hình chính LSX, mỗi dòng một PO đã duyệt. */
 @Exclude()
 export class ProductionOrderResDto {
   @Expose()
   @UUIDField({
-    description: 'Production order id — dùng cho GET /production-orders/:productionOrdersId',
+    description:
+      'Production order id — dùng cho GET /production-orders/:productionOrdersId',
   })
   id!: string;
 

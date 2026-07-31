@@ -5,11 +5,6 @@ import {
   NumberFieldOptional,
 } from '../../../decorators/field.decorators';
 
-/**
- * The 6 dashboard cards ("Tổng đơn hàng", "Tổng giá trị", "Đã giao", "Đang thực hiện", "Trễ hạn",
- * "Hoàn thành") — see `OrdersService.getOrderStats` for the exact formulas and the two documented
- * approximations (`completedValue`, `expiredTrendCount`).
- */
 @Exclude()
 export class OrderStatsResDto {
   @Expose()

@@ -7,11 +7,6 @@ import {
   UUIDField,
 } from '../../../decorators/field.decorators';
 
-/**
- * Lightweight reference to an operation, for nesting inside a routing step
- * (`routing_steps` — see `RoutingStepResDto`) or any other entity that points at an
- * operation by id.
- */
 @Exclude()
 export class OperationRefResDto {
   @Expose()

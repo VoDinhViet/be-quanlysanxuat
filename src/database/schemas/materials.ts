@@ -44,7 +44,7 @@ export const materialStatusEnum = pgEnum('material_status', [
  * - `code` is immutable.
  * - When `type` is CLIENT, `clientId` is required (enforced in the service).
  * - `minStock`/`supplierId` chỉ phục vụ tồn kho vật tư (`InventoryService.getMaterialInventory`)
- *   — xem `docs/features/inventory.md`.
+ *   — xem `docs/domains/inventory.md`.
  */
 export const materials = pgTable(
   'materials',

@@ -1,6 +1,6 @@
 # Kiến trúc miền dữ liệu
 
-Bản đồ xuyên suốt các bảng chính và cách chúng nối với nhau — khác `docs/features/<x>.md` (business
+Bản đồ xuyên suốt các bảng chính và cách chúng nối với nhau — khác `docs/domains/<x>.md` (business
 rules + API contract của từng module), file này chỉ trả lời "cái gì trỏ vào cái gì" và "ghi theo thứ
 tự nào khi một thao tác chạm nhiều module". Đọc trước khi sửa bất kỳ luồng nào chạm ≥ 2 module.
 
@@ -34,6 +34,8 @@ erDiagram
     PRODUCTION_ORDER_ITEMS }o--|| ORDER_ITEMS : "1-1"
     PRODUCTION_ORDERS ||--o{ PRODUCTION_JOBS : "1 FG/LSX = 1 Job"
     PRODUCTION_JOBS }o--|| PRODUCTS : "sản phẩm FG"
+    PRODUCTION_JOBS ||--o{ PRODUCTION_JOB_STEPS : "snapshot công đoạn"
+    PRODUCTION_JOBS ||--o{ PRODUCTION_JOB_MATERIALS : "snapshot vật tư"
 
     STOCK_RECEIPTS ||--o{ STOCK_RECEIPT_ITEMS : gồm
     STOCK_RECEIPT_ITEMS }o--o| PRODUCTS : "dòng thành phẩm"
@@ -42,29 +44,50 @@ erDiagram
 
 Master data (`client-groups`, `supplier-groups`, `material-groups`, `product-groups`, `countries`,
 `departments`, `positions`, `units`, `operations`) chỉ được tham chiếu, không tham chiếu ngược — bỏ
-khỏi sơ đồ trên cho gọn, xem `docs/features/master-data.md`.
+khỏi sơ đồ trên cho gọn, xem `docs/domains/partners.md`.
 
 ## Thứ tự ghi của các luồng bắc cầu nhiều module
 
-**Tạo/sửa sản phẩm** (`ProductsService`): row `products` → `product_attachments` (nếu có) → cây
-`boms`/`bom_items` (tạo BOM rỗng cùng lúc tạo product) → `routing_steps` viết riêng theo từng node
-qua `/products/:productId/bom/items/:itemId/operations*`. `POST /products/:id/copy` lặp lại đúng thứ
-tự này cho toàn bộ cây, ghi `sourceProductId` vào bản clone.
+**Tạo sản phẩm** (`ProductsService.createProduct`): row `products` → `product_attachments` (nếu có),
+cả hai trong một transaction. **`boms`/`bom_items` KHÔNG được tạo ở bước này** — BOM sinh ra lười
+(get-or-create) ngay trong transaction ghi node đầu tiên qua `POST /products/:productId/bom/items`.
+`routing_steps` viết riêng theo từng node qua `/products/:productId/bom/items/:itemId/operations*`.
+`POST /products/:id/copy` đọc trước toàn bộ cây (đính kèm, BOM, routing Cấp 0 + as-used) rồi ghi lại
+tất cả — kể cả header `boms` — trong một transaction, ghi `sourceProductId` vào bản clone. Chi tiết
+từng bước: `docs/workflows/product-setup.md`.
 
-**Duyệt đơn hàng** (`OrdersService.approveOrder`, `DRAFT`/`PENDING_CONFIRMATION` → `AWAITING_PRODUCTION`):
-đọc `InventoryService.getStockLevels` (chỉ đọc, chạy trước transaction) → trong transaction: update
-`orders.status` → `ProductionOrdersService.seedPlan` tạo `production_orders` (header, `PENDING`) +
+**Duyệt đơn hàng** (`OrdersService.approveOrder`, chỉ hợp lệ từ `PENDING_CONFIRMATION` — `E074` nếu
+không, `DRAFT` chưa gửi duyệt thì chưa duyệt được): đọc `InventoryService.getStockLevels` (chỉ đọc,
+chạy trước transaction) → trong transaction: update `orders.status = AWAITING_PRODUCTION` →
+`ProductionOrdersService.seedPlan` tạo `production_orders` (header, `PENDING`) +
 `production_order_items` (1-1 với `order_items`, Đề xuất SX = onHand − reserved, trừ demand của
-chính PO này).
+chính PO này). Chi tiết từng bước: `docs/workflows/order-approval.md`.
 
 **Duyệt LSX** (`ProductionOrdersService.approveProductionOrder`, `PENDING` → `APPROVED`): đọc
 `production_order_items`, gộp SL theo `productId` (chỉ giữ SL > 0) → trong transaction: sinh mã
 `LSXxxxx`, update `production_orders.status` → update `orders.status = IN_PROGRESS` →
-`ProductionJobsService.createJobs` tạo 1 `production_jobs` row/sản phẩm.
+`ProductionJobsService.createJobs` tạo 1 `production_jobs` row/sản phẩm, rồi copy routing Cấp 0 của
+sản phẩm đó sang `production_job_steps` và BOM (gộp theo vật tư × SL Job) sang
+`production_job_materials` — cùng trong transaction này.
+
+## Chuỗi import module (NestJS DI)
+
+Không vòng phụ thuộc nào trong chuỗi dưới — mỗi mũi tên là một chiều `imports` duy nhất:
+
+`OrdersModule → ProductionOrdersModule → ProductionJobsModule`. `ProductionOrdersModule` chỉ
+import `AuthModule`/`InventoryModule` (không import ngược `OrdersModule`), nên
+`OrdersService.approveOrder` gọi thẳng `ProductionOrdersService` mà không vòng. Tương tự
+`ProductionOrdersService.approveProductionOrder` gọi `ProductionJobsService.createJobs` — chỉ vì
+`ProductionJobsModule` không import ngược `ProductionOrdersModule`.
+
+`BomsModule`/`RoutingModule` không import `ProductsModule` — cả hai truy vấn
+`products`/`boms`/`bom_items`/`routing_steps`/`operations` thẳng qua `DRIZZLE`, không qua service
+của module khác. `BomsModule` import `FilesModule` để link/xoá file bản vẽ của node;
+`RoutingModule` không cần vì routing không mang file riêng.
 
 ## Bất biến xuyên module
 
-Những sự thật này không nằm trọn trong một `docs/features/<x>.md` nào — mỗi cái nối ≥ 2 module.
+Những sự thật này không nằm trọn trong một `docs/domains/<x>.md` nào — mỗi cái nối ≥ 2 module.
 
 - **`orders` snapshot liên hệ, không FK.** `contactName`/`contactPhone`/`contactEmail` trên
   `orders` là bản chụp một dòng `client_contacts` tại thời điểm submit, không phải FK — vì
@@ -86,12 +109,13 @@ Những sự thật này không nằm trọn trong một `docs/features/<x>.md` 
   trong cùng LSX đó — Job là đơn vị công việc thực tế của xưởng, không phải đơn vị kế toán kho nên
   không giữ 1-1 với `orderItemId`.
 - **File đính kèm luôn qua registry `files`**, không bao giờ là URL trần — ngoại lệ duy nhất là
-  `countries.logoUrl` (danh mục nhỏ, không cần registry). Mọi module khác (`products`, `materials`,
-  `orders`, `suppliers`) dùng `*_attachment_file_ids`/`*FileId` trỏ `files.id`.
+  `countries.logoUrl` (danh mục nhỏ, không cần registry). Sáu bảng khác (`products`, `materials`,
+  `orders`, `suppliers`, `boms` — `drawingFileId` trên `bom_items`, `users` — `avatarFileId`) dùng
+  `*_attachment_file_ids`/`*FileId` trỏ `files.id`. Chi tiết: `docs/decisions/files-registry.md`.
 - **`orders.staffId` là FK nghiệp vụ duy nhất trỏ `users.id`** — mọi FK "ai đã làm việc này" khác
   (`createdBy`, `approvedBy`, `startedBy`, ...) trỏ `credentials.id`.
 
 ## Xem thêm
 
-- `docs/features/<x>.md` — business rules + API contract từng module.
+- `docs/workflows/<flow>.md` — trình tự chạy của từng luồng nghiệp vụ đầu-cuối.
 - `.claude/rules/database.md` — quy ước viết schema (naming, timestamp, enum).

@@ -1,10 +1,12 @@
 import { Exclude, Expose } from 'class-transformer';
 
 import { OrderItemProductRefResDto } from '../../orders/dto/order-item-product-ref.res.dto';
-import { ClassField, NumberField, UUIDField } from '../../../decorators/field.decorators';
+import {
+  ClassField,
+  NumberField,
+  UUIDField,
+} from '../../../decorators/field.decorators';
 
-/** Một dòng của `GET /production-orders/:orderId` — snapshot đã ghi lúc duyệt PO (xem
- * `docs/features/production.md`), không tính lại live. */
 @Exclude()
 export class ProductionOrderItemResDto {
   @Expose()
@@ -27,7 +29,8 @@ export class ProductionOrderItemResDto {
 
   @Expose()
   @NumberField({
-    description: 'Khả dụng tại thời điểm duyệt — onHand trừ reserved của mọi PO khác',
+    description:
+      'Khả dụng tại thời điểm duyệt — onHand trừ reserved của mọi PO khác',
   })
   availableQty!: number;
 

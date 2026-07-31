@@ -13,7 +13,6 @@ import { GetCountriesReqDto } from './dto/get-countries.req.dto';
 export class CountriesService {
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
 
-  /** Returns the whole catalogue — see `GetCountriesReqDto` for why this isn't paginated. */
   async getCountries(reqDto: GetCountriesReqDto): Promise<CountryResDto[]> {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
 

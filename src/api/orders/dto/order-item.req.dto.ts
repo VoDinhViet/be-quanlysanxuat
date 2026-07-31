@@ -7,11 +7,6 @@ import {
   UUIDField,
 } from '../../../decorators/field.decorators';
 
-/**
- * One line of `items[]` on create/update. No `lineTotal` — every derived amount is computed by
- * `OrdersService.recalculateTotals` in Postgres, never accepted from the client (see the schema
- * comment on `orderItems`).
- */
 export class OrderItemReqDto {
   @UUIDField({ description: 'Product id (FINISHED_GOOD or WORK_IN_PROGRESS)' })
   readonly productId!: string;

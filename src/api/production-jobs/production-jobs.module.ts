@@ -8,8 +8,6 @@ import { ProductionJobsService } from './production-jobs.service';
   imports: [AuthModule],
   controllers: [ProductionJobsController],
   providers: [ProductionJobsService],
-  // Export để `ProductionOrdersModule` inject vào `ProductionOrdersService.approveProductionOrder`
-  // (sinh Job khi duyệt LSX, 2026-07-30) — xem docs/features/production.md.
   exports: [ProductionJobsService],
 })
 export class ProductionJobsModule {}

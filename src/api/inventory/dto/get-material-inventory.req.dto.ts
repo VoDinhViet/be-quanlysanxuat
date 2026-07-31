@@ -7,7 +7,6 @@ import {
 } from '../../../decorators/field.decorators';
 import { MaterialStockStatus } from '../inventory.constant';
 
-/** Lists material stock levels. `asOfDate` tính tồn tại thời điểm 23:59 ngày đó; bỏ trống = hiện tại. */
 export class GetMaterialInventoryReqDto extends PageOptionsDto {
   @UUIDFieldOptional({ description: 'Filter by material group id' })
   readonly materialGroupId?: string;

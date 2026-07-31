@@ -57,10 +57,6 @@ export class UpdateUserReqDto {
   @EnumFieldOptional(() => UserStatus)
   status?: UserStatus;
 
-  // Written to the user's login `credentials` row, NOT to `users` — peel it off before spreading
-  // this DTO into `.set(users)`. Requires the caller to hold `roles:update` on top of
-  // `users:update` (enforced in `UsersService`, E033), and the user to have a linked credential
-  // (E032). Same rules as the dedicated `PATCH /users/:userId/role`.
   @UUIDFieldOptional({
     description: "Role id to assign to this user's login credential",
   })

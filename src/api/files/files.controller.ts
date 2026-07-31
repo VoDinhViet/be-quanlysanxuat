@@ -31,11 +31,6 @@ import { FilesService } from './files.service';
 export class FilesController {
   constructor(private readonly filesService: FilesService) {}
 
-  /**
-   * No `@Permissions(...)`: any authenticated user may upload any type for now. That is a
-   * deliberate simplification (see `UPLOAD_POLICIES` in `upload-policy.ts` for how to turn
-   * per-type permissions on) — not an omission to be "fixed" by copying a permission from elsewhere.
-   */
   @Post()
   @UseInterceptors(FileInterceptor('file', multerOptions))
   @ApiConsumes('multipart/form-data')
@@ -73,11 +68,6 @@ export class FilesController {
     return this.filesService.getFileById(fileId);
   }
 
-  /**
-   * `@Public()` (via `@ApiPublic`) on purpose: a browser cannot put an `Authorization` header on
-   * `<img src>`, so the signed `exp`/`sig` pair is the credential here and `FileSignatureGuard`
-   * is what enforces it. Removing that guard would expose every file to the internet.
-   */
   @Get(':fileId/download')
   @UseGuards(FileSignatureGuard)
   @ApiPublic({

@@ -11,12 +11,6 @@ import {
 import { OrderRefResDto } from '../../orders/dto/order-ref.res.dto';
 import { ProductionOrderItemResDto } from './production-order-item.res.dto';
 
-/**
- * `GET /production-orders/:productionOrdersId` — snapshot đã ghi lúc duyệt PO, cũng là response
- * của `approveProductionOrder`/`cancelProductionOrder` (xem `docs/features/production.md`).
- * `order` lồng nhau thay vì phẳng như `ProductionOrderResDto` (màn danh sách) — không extends DTO
- * đó vì hai bên cần khác shape cho cùng thông tin order.
- */
 @Exclude()
 export class ProductionOrderDetailResDto {
   @Expose()
@@ -37,7 +31,8 @@ export class ProductionOrderDetailResDto {
   @Expose()
   @DateFieldOptional({
     nullable: true,
-    description: 'Thời điểm duyệt LSX — null khi còn PENDING (kể cả sau khi huỷ duyệt)',
+    description:
+      'Thời điểm duyệt LSX — null khi còn PENDING (kể cả sau khi huỷ duyệt)',
   })
   approvedAt!: Date | null;
 

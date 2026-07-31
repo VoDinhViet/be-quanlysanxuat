@@ -1,4 +1,13 @@
-import { Body, Controller, Delete, Get, HttpStatus, Patch, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpStatus,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
@@ -27,7 +36,9 @@ export class OrdersController {
     summary: 'List orders',
     isPaginated: true,
   })
-  getOrders(@Query() reqDto: GetOrdersReqDto): Promise<OffsetPaginatedDto<OrderResDto>> {
+  getOrders(
+    @Query() reqDto: GetOrdersReqDto,
+  ): Promise<OffsetPaginatedDto<OrderResDto>> {
     return this.ordersService.getOrders(reqDto);
   }
 
@@ -83,7 +94,8 @@ export class OrdersController {
   @Delete(':orderId')
   @Permissions('orders:delete')
   @ApiAuth({
-    summary: 'Delete order (soft delete, blocked once status is COMPLETED or CANCELLED)',
+    summary:
+      'Delete order (soft delete, blocked once status is COMPLETED or CANCELLED)',
     statusCode: HttpStatus.NO_CONTENT,
   })
   deleteOrder(@UUIDParam('orderId') orderId: string): Promise<void> {
@@ -94,7 +106,8 @@ export class OrdersController {
   @Permissions('orders:approve')
   @ApiAuth({
     type: OrderResDto,
-    summary: 'Approve an order (director-level) — PENDING_CONFIRMATION → AWAITING_PRODUCTION',
+    summary:
+      'Approve an order (director-level) — PENDING_CONFIRMATION → AWAITING_PRODUCTION',
   })
   approveOrder(
     @UUIDParam('orderId') orderId: string,
@@ -107,7 +120,8 @@ export class OrdersController {
   @Permissions('orders:approve')
   @ApiAuth({
     type: OrderResDto,
-    summary: 'Reject an order (director-level) — PENDING_CONFIRMATION → DRAFT, reason required',
+    summary:
+      'Reject an order (director-level) — PENDING_CONFIRMATION → DRAFT, reason required',
   })
   rejectOrder(
     @UUIDParam('orderId') orderId: string,

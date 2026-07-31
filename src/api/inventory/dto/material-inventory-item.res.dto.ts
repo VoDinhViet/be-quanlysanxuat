@@ -14,16 +14,6 @@ import { MaterialRefResDto } from '../../materials/dto/material-ref.res.dto';
 import { SupplierRefResDto } from '../../suppliers/dto/supplier-ref.res.dto';
 import { MaterialStockStatus } from '../inventory.constant';
 
-/**
- * One material's stock levels for `GET /inventory/materials`.
- *
- * Rules:
- * - `reserved`/`bomDemand` luôn `0` ở đợt này — chưa có Phiếu lãnh vật tư, chưa nổ BOM.
- * - `issuable = onHand − reserved`, `available = onHand − bomDemand` — hai công thức khác nhau,
- *   trùng giá trị chỉ vì `reserved`/`bomDemand` đang là `0`.
- *
- * See `docs/features/inventory.md`.
- */
 @Exclude()
 export class MaterialInventoryItemResDto {
   @Expose()

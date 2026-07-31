@@ -8,9 +8,6 @@ import {
 } from '../../../decorators/field.decorators';
 import { RoleRefResDto } from './credential.res.dto';
 
-/** ERP credential summary nested inside UserResDto; never includes the password. Reuses
- * `RoleRefResDto` (also nested in `CredentialResDto` for `GET /users/me`) for `role`, so both
- * endpoints expose the same `{id, code, name}` shape. */
 @Exclude()
 export class UserCredentialResDto {
   @Expose()

@@ -48,20 +48,18 @@ import type {
 } from './types/bom-tree.type';
 import { formatLtreeNodeId } from './utils/ltree.util';
 
-// Aliased twice: a row's item is either a product or a material (never both), so its unit/image
-// comes from whichever side the left joins actually populated.
+// Alias 2 lần: item của một node hoặc là product hoặc là material (không bao giờ cả hai), nên
+// unit/image lấy từ bên nào left join khớp.
 const productUnits = alias(units, 'product_units');
 const materialUnits = alias(units, 'material_units');
 const productImageFiles = alias(files, 'product_image_files');
 const materialImageFiles = alias(files, 'material_image_files');
-// A node's own drawing is a direct, single-source left join (bom_items.drawingFileId), not a
-// 2-source coalesce like image/unit above — one alias is enough.
+// Bản vẽ riêng của node là left join một nguồn duy nhất (bom_items.drawingFileId), không coalesce
+// 2 nguồn như image/unit ở trên — một alias là đủ.
 const bomItemDrawingFiles = alias(files, 'bom_item_drawing_files');
 
-// Raw shape `baseItemSelect()` returns, before `normalizeImage` collapses the all-null coalesced
-// `image` sub-select to `null` — see `BomTreeRow` for the post-normalize shape. Derived from
-// `BomTreeFileRow` (each field individually nullable, matching the per-field SQL `coalesce()`)
-// instead of re-listing the same 7 fields a third time.
+// Dạng thô `baseItemSelect()` trả về, trước khi `normalizeImage` gộp sub-select `image` coalesce
+// toàn null thành `null` — xem `BomTreeRow` cho dạng sau normalize.
 type RawBomItemRow = Omit<BomTreeRow, 'image'> & {
   image: { [K in keyof BomTreeFileRow]: BomTreeFileRow[K] | null };
 };
@@ -83,7 +81,7 @@ export class BomsService {
       where: eq(boms.productId, productId),
     });
 
-    // No BOM configured for this product yet — a normal state, not an error.
+    // Chưa cấu hình BOM cho sản phẩm này — trạng thái bình thường, không phải lỗi.
     if (!bom) {
       return [];
     }
@@ -103,10 +101,8 @@ export class BomsService {
     );
   }
 
-  /** A BOM's materials, aggregated across every `itemType = MATERIAL` node in the tree (any
-   * depth) that links to a given material — one row per distinct material, paginated.
-   * `totalQuantity` is a raw SUM across matching nodes, NOT a BOM explosion (no multiplying
-   * through an ancestor WIP's own quantity) — see `BomMaterialResDto`. */
+  /** `totalQuantity` là SUM thô qua mọi node `MATERIAL` (mọi cấp) trỏ tới vật tư đó — KHÔNG nhân
+   * qua SL của WIP tổ tiên (không phải BOM explosion). */
   async getBomMaterials(
     productId: string,
     reqDto: GetBomMaterialsReqDto,
@@ -118,7 +114,7 @@ export class BomsService {
       where: eq(boms.productId, productId),
     });
 
-    // No BOM configured for this product yet — an empty page, not an error (mirrors getBomTree).
+    // Chưa cấu hình BOM — trả trang rỗng, không phải lỗi (giống getBomTree).
     if (!bom) {
       return new OffsetPaginatedDto([], new OffsetPaginationDto(0, reqDto));
     }
@@ -161,10 +157,8 @@ export class BomsService {
         .where(where),
     ]);
 
-    // A nested selection object whose fields all belong to one left-joined table (`files` here)
-    // is collapsed to a plain `null` by drizzle at the row-mapping layer when that join found no
-    // match — no manual all-null-fields check needed, unlike `baseItemSelect()`'s SQL `coalesce()`
-    // over two *different* possible source tables.
+    // Select lồng chỉ thuộc một bảng left-join (`files`) tự động về `null` khi join không khớp —
+    // khác `baseItemSelect()` phải tự `coalesce()` vì có 2 bảng nguồn khác nhau.
     return new OffsetPaginatedDto(
       plainToInstance(BomMaterialResDto, rows, {
         excludeExtraneousValues: true,
@@ -173,10 +167,6 @@ export class BomsService {
     );
   }
 
-  /**
-   * Adds one node ("[+]" popup) as a child of `reqDto.parentId`, or a top-level item (direct
-   * child of the FG root) when omitted.
-   */
   async addBomItem(
     productId: string,
     reqDto: CreateBomItemReqDto,
@@ -199,7 +189,7 @@ export class BomsService {
     });
 
     if (reqDto.parentId) {
-      // No BOM at all yet means no bom_items row could possibly match this parentId.
+      // Chưa có BOM thì chắc chắn không có dòng bom_items nào khớp parentId này.
       if (!existingBom) {
         throw new AppException(ErrorCode.E051, HttpStatus.NOT_FOUND);
       }
@@ -285,9 +275,7 @@ export class BomsService {
     return this.getBomItemDetail(bomId, itemId);
   }
 
-  /**
-   * Edits an existing node's SL (inline edit)/note/order.
-   */
+  /** Chỉ sửa SL/note/drawing — `itemType`/`itemId`/`parentId` bất biến, đổi thì xoá + thêm lại. */
   async updateBomItem(
     productId: string,
     itemId: string,
@@ -306,15 +294,14 @@ export class BomsService {
       throw new AppException(ErrorCode.E055, HttpStatus.BAD_REQUEST);
     }
 
-    // Peeled off so the write below can decide, per the *effective* value, whether to link a new
-    // file and/or delete the old one — a plain spread can't express "replace and clean up".
+    // Peel riêng để bên dưới quyết định theo giá trị *hiệu lực*: link file mới và/hoặc xoá file
+    // cũ — spread thường không diễn đạt được "thay và dọn rác" cùng lúc.
     const { drawingFileId: requestedDrawingFileId, ...bomItemFields } = reqDto;
 
     if (requestedDrawingFileId) {
       await this.filesService.linkFiles([requestedDrawingFileId]);
     }
 
-    // `updated_at` is bumped by the column's own `$onUpdate`.
     await this.db
       .update(bomItems)
       .set({
@@ -325,10 +312,9 @@ export class BomsService {
       })
       .where(and(eq(bomItems.id, itemId), eq(bomItems.bomId, bom.id)));
 
-    // Delete the old drawing only after the new pointer is committed — deleting first would risk
-    // losing both if the write then failed. A failed delete here just leaves an orphaned file
-    // (same "garbage over data loss" tradeoff as `FilesService.linkFiles`'s own ordering), so this
-    // isn't wrapped in a transaction with the update above.
+    // Chỉ xoá file cũ sau khi con trỏ mới đã commit — xoá trước có thể mất cả hai nếu write sau
+    // đó lỗi. Xoá lỗi ở đây chỉ để lại rác (đánh đổi giống `FilesService.linkFiles`), nên không
+    // gộp transaction với update ở trên.
     if (
       requestedDrawingFileId !== undefined &&
       item.drawingFileId &&
@@ -340,9 +326,6 @@ export class BomsService {
     return this.getBomItemDetail(bom.id, itemId);
   }
 
-  /**
-   * Deletes one node ("[X]").
-   */
   async deleteBomItem(productId: string, itemId: string): Promise<void> {
     await this.ensureProductExists(productId);
 
@@ -354,11 +337,10 @@ export class BomsService {
       .where(and(eq(bomItems.id, itemId), eq(bomItems.bomId, bom.id)));
   }
 
-  /**
-   * The flat, coalesced select shared by the tree read and the single-node re-fetch after a
-   * write — only the `.where()` differs between callers. `productId`/`materialId` are mutually
-   * exclusive, so at most one side's left joins match per row; `coalesce()` picks whichever did.
-   */
+  /** Select phẳng dùng chung cho đọc cây và re-fetch một node sau write — chỉ khác `.where()`.
+   * `productId`/`materialId` loại trừ nhau nên tối đa một bên left join khớp; `coalesce()` chọn
+   * đúng bên đó. Row đã phẳng sẵn nên DTO đọc field này dùng `ClassFieldOptional` thường, không
+   * cần `FileField` (không phải Drizzle relational `with:` result). */
   private baseItemSelect() {
     return this.db
       .select({
@@ -414,9 +396,8 @@ export class BomsService {
       );
   }
 
-  /** Collapses the all-null coalesced `image` sub-select to `null` (no image on either side) —
-   * every non-id column comes from the same matched `files` row, so `id` truthy is sufficient to
-   * know the whole sub-object is populated. */
+  /** Gộp sub-select `image` coalesce toàn null thành `null` — mọi cột (trừ id) đến từ cùng một
+   * dòng `files` khớp, nên `id` có giá trị là đủ để biết cả sub-object đã có dữ liệu. */
   private normalizeImage(row: RawBomItemRow): BomTreeRow {
     return {
       ...row,
@@ -426,7 +407,6 @@ export class BomsService {
     };
   }
 
-  /** Re-fetches a single node after a write — never build the response DTO inside a transaction. */
   private async getBomItemDetail(
     bomId: string,
     itemId: string,
@@ -444,17 +424,10 @@ export class BomsService {
     });
   }
 
-  /**
-   * Batched as-used routing fetch for a tree read: one query for every `PRODUCT` node's own
-   * routing (keyed by `bom_items.id`, not the linked product's id), grouped back into a `Map` for
-   * `buildTree` to attach per-node.
-   *
-   * Rules:
-   * - `MATERIAL` nodes never carry a `routing_steps` row (enforced by
-   *   `RoutingService.ensureBomItemRoutable`), so they're excluded from the query outright rather
-   *   than relying on an empty match.
-   * - Skips the query entirely when the tree has no `PRODUCT` node at all.
-   */
+  /** Fetch gộp routing as-used cho một lượt đọc cây: một query cho mọi node `PRODUCT` (khoá theo
+   * `bom_items.id`, không phải id sản phẩm liên kết), gom vào `Map` cho `buildTree` gắn theo node.
+   * Node `MATERIAL` không có `routing_steps` (`RoutingService.ensureBomItemRoutable` đảm bảo) nên
+   * loại khỏi query luôn, không dựa vào việc query trả rỗng. */
   private async loadOperationsByBomItem(
     rows: BomTreeRow[],
   ): Promise<Map<string, BomTreeOperationRow[]>> {
@@ -474,8 +447,8 @@ export class BomsService {
     });
 
     for (const step of steps) {
-      // Always set here by construction (query is scoped to bom_item_id targets), but the
-      // column itself is nullable at the schema level (XOR with product_id) — narrow before use.
+      // Luôn có giá trị theo cách query được scope (chỉ lấy target bom_item_id), nhưng cột vẫn
+      // nullable ở tầng schema (XOR với product_id) — narrow trước khi dùng.
       if (!step.bomItemId) {
         continue;
       }
@@ -487,12 +460,9 @@ export class BomsService {
     return grouped;
   }
 
-  /**
-   * Nests the already-SQL-sorted flat rows by `parentId` — no recursive DB query, no re-sorting
-   * (the query's `ORDER BY` already leaves each parent's children in the right relative order once
-   * grouped). Just stamps a 1-based `level` (root's direct children = 1) on the way down, and
-   * attaches each node's own as-used routing (`[]` for a `MATERIAL` node).
-   */
+  /** Lồng cây từ các dòng phẳng đã sort sẵn bằng SQL theo `parentId` — không query đệ quy, không
+   * sort lại. Chỉ đánh `level` 1-based khi đi xuống, gắn routing as-used của từng node (`[]` cho
+   * node `MATERIAL`). */
   private buildTree(
     rows: BomTreeRow[],
     operationsByBomItem: Map<string, BomTreeOperationRow[]>,
@@ -526,9 +496,7 @@ export class BomsService {
     }
   }
 
-  /** A WIP child item's `productId` must reference an existing, non-deleted,
-   * `type = WORK_IN_PROGRESS` product — the FINISHED_GOOD root can't be nested as its own (or
-   * anyone else's) child. */
+  /** FG không được lồng làm con (của chính nó hay sản phẩm khác) — chỉ WIP mới được. */
   private async ensureProductIsWip(productId: string): Promise<void> {
     const product = await this.db.query.products.findFirst({
       columns: { id: true, type: true },
@@ -544,7 +512,7 @@ export class BomsService {
     }
   }
 
-  /** `materials` has no soft delete (no `deletedAt` column) — existence is a plain id lookup. */
+  /** `materials` không có soft delete (không cột `deletedAt`) — chỉ cần tra id thuần. */
   private async ensureMaterialExists(materialId: string): Promise<void> {
     const material = await this.db.query.materials.findFirst({
       columns: { id: true },
@@ -556,8 +524,6 @@ export class BomsService {
     }
   }
 
-  /** `parentId` must reference an existing `bom_items` row within THIS bom, and must not be a
-   * MATERIAL leaf (a vật tư line can't have children). */
   private async ensureParentValid(
     bomId: string,
     parentId: string,
@@ -576,17 +542,9 @@ export class BomsService {
     }
   }
 
-  /**
-   * Prevents a product from becoming its own ancestor/descendant within the same tree.
-   *
-   * Rules:
-   * - The new item can't be the FG root itself, and walking up from `parentId` to the root, the
-   *   new item's `productId` can't already appear as an ancestor.
-   * - Only meaningful for PRODUCT items — MATERIAL items are leaves and can never be ancestors.
-   * - Bounded by `MAX_BOM_DEPTH` as a corrupt-data infinite-loop guard; the repo has no
-   *   recursive-CTE precedent and real trees are shallow, so a simple loop is preferred over
-   *   `WITH RECURSIVE`.
-   */
+  /** Chặn một sản phẩm trở thành tổ tiên/hậu duệ của chính nó trong cùng cây. Giới hạn bởi
+   * `MAX_BOM_DEPTH` để chặn vòng lặp vô hạn nếu dữ liệu hỏng — cây thật nông và repo không có
+   * tiền lệ CTE đệ quy, nên cố ý dùng loop thay vì `WITH RECURSIVE`. */
   private async checkNoCycle(
     bomId: string | undefined,
     rootProductId: string,

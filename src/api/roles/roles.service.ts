@@ -13,7 +13,6 @@ import { RoleResDto } from './dto/role.res.dto';
 export class RolesService {
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
 
-  /** Returns the whole catalogue — see `GetRolesReqDto` for why this isn't paginated. */
   async getRoles(reqDto: GetRolesReqDto): Promise<RoleResDto[]> {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
 

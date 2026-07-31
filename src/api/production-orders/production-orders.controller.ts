@@ -18,7 +18,9 @@ import { ProductionOrdersService } from './production-orders.service';
 @ApiTags('Production Orders')
 @Controller('production-orders')
 export class ProductionOrdersController {
-  constructor(private readonly productionOrdersService: ProductionOrdersService) {}
+  constructor(
+    private readonly productionOrdersService: ProductionOrdersService,
+  ) {}
 
   @Get()
   @Permissions('production:read')
@@ -42,14 +44,17 @@ export class ProductionOrdersController {
   getProductionOrdersById(
     @UUIDParam('productionOrdersId') productionOrdersId: string,
   ): Promise<ProductionOrderDetailResDto> {
-    return this.productionOrdersService.getProductionOrdersById(productionOrdersId);
+    return this.productionOrdersService.getProductionOrdersById(
+      productionOrdersId,
+    );
   }
 
   @Patch(':productionOrdersId')
   @Permissions('production:update')
   @ApiAuth({
     type: ProductionOrderDetailResDto,
-    summary: 'Update production quantity per line (manual input) — only while LSX is PENDING',
+    summary:
+      'Update production quantity per line (manual input) — only while LSX is PENDING',
   })
   updateProductionOrder(
     @UUIDParam('productionOrdersId') productionOrdersId: string,
@@ -74,7 +79,10 @@ export class ProductionOrdersController {
     @UUIDParam('productionOrdersId') productionOrdersId: string,
     @Query() reqDto: GetProductionOrderLogsReqDto,
   ): Promise<OffsetPaginatedDto<ProductionOrderLogResDto>> {
-    return this.productionOrdersService.getProductionOrderLogs(productionOrdersId, reqDto);
+    return this.productionOrdersService.getProductionOrderLogs(
+      productionOrdersId,
+      reqDto,
+    );
   }
 
   @Post(':productionOrdersId/approve')
@@ -87,6 +95,9 @@ export class ProductionOrdersController {
     @UUIDParam('productionOrdersId') productionOrdersId: string,
     @CurrentUser() payload: JwtPayloadType,
   ): Promise<ProductionOrderDetailResDto> {
-    return this.productionOrdersService.approveProductionOrder(productionOrdersId, payload.sub);
+    return this.productionOrdersService.approveProductionOrder(
+      productionOrdersId,
+      payload.sub,
+    );
   }
 }

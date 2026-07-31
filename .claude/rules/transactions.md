@@ -1,6 +1,6 @@
 # Transaction Rules
 
-Not `@import`ed — read when a service needs a transaction. Pointer: `.claude/rules/api-module.md`, Services.
+Not `@import`ed — read when a service needs a transaction. Pointer: `.claude/rules/service.md`, Writes.
 
 Reference: `MaterialsService.createMaterial` (simplest), `OrdersService` (fullest). Seven services use `db.transaction`: `boms`, `inventory` (`stock-receipts.service.ts`), `materials`, `orders`, `production-orders`, `products`, `suppliers`.
 

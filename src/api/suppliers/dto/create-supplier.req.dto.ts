@@ -14,7 +14,6 @@ import { SupplierPaymentReqDto } from './supplier-payment.req.dto';
 import { SupplierRepresentativeReqDto } from './supplier-representative.req.dto';
 
 export class CreateSupplierReqDto {
-  // 1. Supplier information
   @StringField({ description: 'Supplier name', maxLength: 255 })
   name!: string;
 
@@ -54,11 +53,9 @@ export class CreateSupplierReqDto {
   @UUIDFieldOptional({ description: 'Country id', nullable: true })
   countryId?: string | null;
 
-  // 2. Payment information
   @ClassFieldOptional(() => SupplierPaymentReqDto)
   payment?: SupplierPaymentReqDto;
 
-  // 3. Other information
   @NumberFieldOptional({
     description: 'Rating (0-5)',
     nullable: true,

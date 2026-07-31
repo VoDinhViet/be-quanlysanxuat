@@ -77,6 +77,6 @@ Không phải invariant dù dễ tưởng:
 
 ## Related docs
 
-- `docs/features/inventory.md` — API contract, error code, công thức đầy đủ.
+- `docs/workflows/stock-movement.md` — trình tự lập/sửa/xoá phiếu và sáu tình huống nghiệp vụ.
 - `docs/domains/orders.md` — nguồn của `reserved`.
 - `docs/domains/production.md` — nơi tiêu thụ `onHand`/`reserved`.

@@ -80,6 +80,6 @@ Ba điều **không** phải invariant dù trông có vẻ:
 
 ## Related docs
 
-- `docs/features/users.md`, `docs/features/roles.md` — API contract, error code.
+- `.claude/skills/new-api-module/SKILL.md` — nơi một permission mới phải được khai báo và cấp.
 - `docs/domains/orders.md` — nơi dùng `staffId`.
-- `.claude/rules/api-module.md` — quy tắc khai `@Permissions` khi viết route mới.
+- `.claude/rules/service.md` — quy tắc khai `@Permissions` khi viết route mới.

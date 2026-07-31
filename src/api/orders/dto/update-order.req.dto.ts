@@ -15,16 +15,6 @@ import {
 } from '../../../decorators/field.decorators';
 import { OrderItemReqDto } from './order-item.req.dto';
 
-/**
- * No `code` field — immutable after creation, same convention as `UpdateMaterialReqDto`.
- *
- * Rules:
- * - Blocked once the order reaches `COMPLETED`/`CANCELLED` (`E065` — see
- *   `OrdersService.ensureOrderEditable`); every other status stays editable.
- * - `items`/`attachmentFileIds` are replace-all: sending `[]` clears them, omitting the field
- *   keeps the existing set.
- * - Every derived amount is recomputed server-side after the write, same as `CreateOrderReqDto`.
- */
 export class UpdateOrderReqDto {
   @UUIDFieldOptional({ description: 'Client (khách hàng) id' })
   readonly clientId?: string;

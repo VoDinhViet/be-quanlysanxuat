@@ -17,12 +17,9 @@ import { CreateRoutingStepReqDto } from './dto/create-routing-step.req.dto';
 import { RoutingStepResDto } from './dto/routing-step.res.dto';
 import { UpdateRoutingStepReqDto } from './dto/update-routing-step.req.dto';
 
-/**
- * Which routing a call is about: the Cấp 0 root product's own routing (`bomItemId` omitted), or
- * one specific BOM node's as-used routing (`bomItemId` set). `productId` is always present — for
- * the node case it's the URL's owning product, used to scope the node so a `bomItemId` from a
- * different product's tree can't be reached through this product's URL.
- */
+/** Routing Cấp 0 của chính sản phẩm gốc (`bomItemId` bỏ trống), hoặc routing as-used của một node
+ * BOM cụ thể (`bomItemId` có giá trị). `productId` luôn có — ở ca node, dùng để scope theo đúng
+ * cây, chặn `bomItemId` của cây sản phẩm khác lọt qua URL này. */
 type RoutingTarget = { productId: string; bomItemId?: string };
 
 @Injectable()
@@ -45,10 +42,6 @@ export class RoutingService {
     );
   }
 
-  /**
-   * Adds one step ("[+]" in the Routing popup). Every read-only check runs before the single
-   * insert — no transaction needed.
-   */
   async addStep(
     target: RoutingTarget,
     reqDto: CreateRoutingStepReqDto,
@@ -72,7 +65,7 @@ export class RoutingService {
     return this.getStepDetail(target, step.id);
   }
 
-  /** Edits an existing step's STT chạy / note. `operationId` is immutable. */
+  /** `operationId` bất biến — đổi công đoạn của một bước nghĩa là xoá + thêm lại. */
   async updateStep(
     target: RoutingTarget,
     stepId: string,
@@ -81,7 +74,6 @@ export class RoutingService {
     await this.ensureTargetExists(target);
     await this.ensureStepExists(target, stepId);
 
-    // `updated_at` is bumped by the column's own `$onUpdate`.
     await this.db
       .update(routingSteps)
       .set(reqDto)
@@ -90,7 +82,6 @@ export class RoutingService {
     return this.getStepDetail(target, stepId);
   }
 
-  /** Deletes one step ("[X]" in the Routing popup). */
   async deleteStep(target: RoutingTarget, stepId: string): Promise<void> {
     await this.ensureTargetExists(target);
     await this.ensureStepExists(target, stepId);
@@ -100,7 +91,6 @@ export class RoutingService {
       .where(and(eq(routingSteps.id, stepId), this.targetWhere(target)));
   }
 
-  /** `bomItemId` set → scope by node; otherwise scope by the Cấp 0 root product. */
   private targetWhere(target: RoutingTarget) {
     return target.bomItemId
       ? eq(routingSteps.bomItemId, target.bomItemId)
@@ -125,9 +115,8 @@ export class RoutingService {
     }
   }
 
-  /** A routable node must (a) exist within `productId`'s own BOM — a `bomItemId` belonging to a
-   * different product's tree can't be reached through this product's URL — and (b) be a PRODUCT
-   * node; a MATERIAL leaf (vật tư) never carries its own routing. */
+  /** Node gắn được routing phải (a) thuộc đúng BOM của `productId` — chặn `bomItemId` của cây
+   * sản phẩm khác lọt qua URL này — và (b) là node PRODUCT; lá MATERIAL không mang routing. */
   private async ensureBomItemRoutable(
     productId: string,
     bomItemId: string,
@@ -146,9 +135,8 @@ export class RoutingService {
     }
   }
 
-  /** Same existence check as `OperationsService.ensureOperationExists` — not reused via DI
-   * (the service isn't imported here) to keep this module standalone, same reasoning as
-   * `BomsService.ensureMaterialExists` querying `materials` directly. */
+  /** Trùng check tồn tại với `OperationsService.ensureOperationExists` — cố ý không inject qua DI
+   * để module này đứng độc lập, giống cách `BomsService.ensureMaterialExists` tự query. */
   private async ensureOperationExists(operationId: string): Promise<void> {
     const existing = await this.db.query.operations.findFirst({
       columns: { id: true },
@@ -160,8 +148,7 @@ export class RoutingService {
     }
   }
 
-  /** Scoped to `target` so a step id belonging to a different routing can't be edited/deleted
-   * through this one's URL. */
+  /** Scope theo `target` — chặn sửa/xoá một step thuộc routing khác qua URL này. */
   private async ensureStepExists(
     target: RoutingTarget,
     stepId: string,
@@ -176,8 +163,6 @@ export class RoutingService {
     }
   }
 
-  /** Re-fetches a single step after a write — never build the response DTO from a `.returning()`
-   * result directly, per `.claude/rules/api-module.md`. */
   private async getStepDetail(
     target: RoutingTarget,
     stepId: string,

@@ -60,7 +60,9 @@ export type PermissionCode = (typeof PERMISSION_CODES)[number];
 export const SUPER_PERMISSION: PermissionCode = 'system:manage';
 
 /** Runtime `Set` for O(1) membership checks when validating role permission payloads. */
-export const PERMISSION_CODE_SET: ReadonlySet<string> = new Set(PERMISSION_CODES);
+export const PERMISSION_CODE_SET: ReadonlySet<string> = new Set(
+  PERMISSION_CODES,
+);
 
 export const isPermissionCode = (value: string): value is PermissionCode =>
   PERMISSION_CODE_SET.has(value);

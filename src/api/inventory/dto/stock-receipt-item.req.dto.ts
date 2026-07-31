@@ -3,10 +3,6 @@ import {
   UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
 
-/**
- * One line of `items[]` on create/update. Đúng một trong `productId`/`materialId` được gửi, khớp
- * `subject` của phiếu cha (`E086` nếu không) — xem `StockReceiptsService.ensureItemsValid`.
- */
 export class StockReceiptItemReqDto {
   @UUIDFieldOptional({
     description:

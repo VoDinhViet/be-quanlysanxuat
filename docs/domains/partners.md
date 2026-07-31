@@ -21,7 +21,7 @@ Dữ liệu nền mà các domain nghiệp vụ trỏ FK vào: khách hàng, nh�
 | `clients` (+ `client_contacts`) | Khách hàng và danh bạ liên hệ | `orders.clientId`; snapshot liên hệ trên `orders` |
 | `suppliers` (+ payment info, representatives, attachments) | Nhà cung cấp | `materials.supplierId` (NCC chính) |
 | `materials` | Vật tư | `bom_items.materialId`, `stock_receipt_items.materialId` |
-| 7 catalogue nhỏ | Phân loại + cơ cấu tổ chức | Xem `docs/features/master-data.md` |
+| 7 catalogue nhỏ | Phân loại + cơ cấu tổ chức | `clients`/`suppliers`/`materials`/`users`/`routing` |
 
 `supplier_payment_info` là **1-1** và merge từng phần khi update; `supplier_representatives` và các bảng attachment là **replace-all**.
 
@@ -42,6 +42,9 @@ Dữ liệu nền mà các domain nghiệp vụ trỏ FK vào: khách hàng, nh�
 ## Invariants
 
 - Một vật tư đang được dùng trong bất kỳ node BOM nào thì không xoá được.
+- Một vật tư đang nằm trong danh sách vật tư của bất kỳ Job nào (`production_job_materials`, kể cả
+  vật tư người dùng thêm tay ngoài BOM) cũng không xoá được — cùng mã lỗi `E041`, xem
+  `docs/domains/production.md`.
 - Mã của các bảng xoá mềm là unique **trên toàn bảng, không chỉ dòng còn sống** — nên mã của một bản ghi đã xoá mềm **không bao giờ dùng lại được**.
 
 Không phải invariant dù dễ tưởng:
@@ -68,6 +71,6 @@ Không phải invariant dù dễ tưởng:
 
 ## Related docs
 
-- `docs/features/master-data.md` — bảy danh mục nhỏ.
-- `docs/features/suppliers.md`, `clients.md`, `materials.md` — API contract từng module.
+- `docs/decisions/no-procurement.md` — vì sao không có mua hàng, và điểm cắm nếu sau này làm.
+- `docs/workflows/stock-movement.md` — nơi `materials` được nhập/xuất kho.
 - `docs/domains/orders.md` — vì sao liên hệ phải snapshot.
