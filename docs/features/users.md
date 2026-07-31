@@ -25,7 +25,7 @@ Một nhân viên có thể không có tài khoản (`users.credentialId` nullab
 ### Phòng ban và chức vụ
 
 - Cả `departmentId` lẫn `positionId` đều **bắt buộc** khi tạo, và `onDelete: restrict` ở tầng DB.
-- **Chức vụ phải thuộc đúng phòng ban đó** → lệch thì `E064` (400). Xem [`positions.md`](positions.md).
+- **Chức vụ phải thuộc đúng phòng ban đó** → lệch thì `E064` (400). Xem [`master-data.md`](master-data.md).
 - Khi `PATCH`, phép kiểm chạy lại nếu **một trong hai** được gửi, đối chiếu với giá trị *hiệu lực* của phía kia (giá trị mới nếu có gửi, không thì lấy giá trị hiện tại của nhân viên).
 - **Đổi mỗi `departmentId` mà không đổi `positionId` thì luôn luôn `E064`** — theo thiết kế, vì một chức vụ chỉ thuộc một phòng ban. Form đổi phòng ban bắt buộc phải gửi kèm chức vụ mới.
 
@@ -141,5 +141,5 @@ Thứ tự kiểm là **`E032` → `E033` → `E027` → `E034`** (với `POST` 
 ## Xem thêm
 
 - [`roles.md`](roles.md) — danh mục vai trò, catalogue quyền, và cùng luật chống leo thang `E034`.
-- [`departments.md`](departments.md), [`positions.md`](positions.md) — hai danh mục ràng buộc nhau qua `E064`.
+- [`master-data.md`](master-data.md) — Departments/Positions, hai danh mục ràng buộc nhau qua `E064`.
 - `auth` — đăng nhập và `E018`. Chưa có doc; xem `src/api/auth/`.

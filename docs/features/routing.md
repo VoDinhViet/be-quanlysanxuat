@@ -34,15 +34,7 @@ Mỗi dòng `routing_steps` gắn với **đúng một** trong hai thứ, ràng 
 - `POST /products/:id/copy` clone cả routing Cấp 0 lẫn routing as-used của từng node, ánh xạ `bomItemId` sang id node mới. Xem [`products.md`](products.md).
 - Thêm một bước chỉ là **một câu lệnh insert**, mọi phép kiểm chạy trước — không cần transaction.
 
-### Lịch sử tên gọi
-
-Module này đã đổi tên hai lần trong 2026-07; đừng tìm các tên cũ trong code:
-
-| Thời điểm | Tên | Khoá theo |
-| --------- | --- | --------- |
-| 2026-07-22 | `revision-operations` | revision |
-| 2026-07-24 | `product-operations` | product |
-| 2026-07-24 | **`routing`** (hiện hành) | product **hoặc** bom item |
+Module này từng có tên `revision-operations`/`product-operations` — đừng tìm các tên đó trong code, chỉ `routing` là hiện hành.
 
 ## API contract
 
@@ -102,5 +94,5 @@ Thứ tự kiểm: sản phẩm (`E007`) → node nếu là route as-used (`E062
 
 - [`boms.md`](boms.md) — cây cấu trúc, nơi `operations` được nhúng sẵn theo node.
 - [`products.md`](products.md) — bảng gốc, và cách nhân bản clone luôn routing.
-- `operations` — danh mục công đoạn gốc (`INHOUSE`/`OUTSOURCE`). Chưa có doc; xem `src/api/operations/`.
+- [`master-data.md`](master-data.md) — `operations`, danh mục công đoạn gốc (`INHOUSE`/`OUTSOURCE`).
 - `docs/architecture.md` — sơ đồ ER và thứ tự ghi của cả miền.

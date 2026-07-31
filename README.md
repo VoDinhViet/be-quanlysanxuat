@@ -1,143 +1,46 @@
-# Quan Ly San Xuat API
+# Quản Lý Sản Xuất API
 
-Backend API for the production management system.
+Backend cho hệ thống quản lý sản xuất. NestJS 11 modular monolith — PostgreSQL + Drizzle ORM, Redis, JWT + RBAC, Swagger. Package manager: **pnpm**.
 
-This project is a NestJS 11 modular monolith using PostgreSQL, Drizzle ORM, JWT authentication, RBAC permissions, Redis, Swagger, and Jest.
+## Yêu cầu
 
-## Tech Stack
+Node.js, pnpm, PostgreSQL, Redis đang chạy.
 
-- Runtime: Node.js
-- Package manager: pnpm
-- Framework: NestJS 11
-- Language: TypeScript
-- Database: PostgreSQL
-- ORM: Drizzle ORM
-- Migration tool: Drizzle Kit
-- Auth: JWT with `@nestjs/jwt`
-- Validation: `class-validator`, `class-transformer`
-- API docs: Swagger
-- Tests: Jest, Supertest
-
-## Requirements
-
-- Node.js
-- pnpm
-- PostgreSQL
-- Redis
-
-## Setup
-
-Install dependencies:
+## Cài đặt
 
 ```bash
 pnpm install
-```
-
-Create environment file:
-
-```bash
 cp .env.example .env
 ```
 
-Update these values in `.env`:
+Điền các giá trị trong `.env` (`DATABASE_URL`, `REDIS_URL`, `AUTH_JWT_SECRET`, ...) — xem `.env.example` cho danh sách đầy đủ. Env nạp từ `.env.${NODE_ENV}` trước, `.env` sau.
 
-```text
-PORT=8003
-DATABASE_URL=postgresql://user:password@localhost:5432/db
-DATABASE_SSL_MODE=false
-FRONTEND_DOMAIN=http://localhost:3000
-BACKEND_DOMAIN=http://localhost:8003
-AUTH_JWT_SECRET=secret
-AUTH_JWT_TOKEN_EXPIRES_IN=7d
-AUTH_REFRESH_SECRET=refresh_secret
-AUTH_REFRESH_TOKEN_EXPIRES_IN=7d
-REDIS_URL=redis://localhost:6379
-```
-
-## Run
-
-Development:
+## Chạy
 
 ```bash
-pnpm.cmd run start:dev
+pnpm start:dev      # dev, watch mode
+pnpm build && pnpm start:prod
 ```
 
-Production build:
-
-```bash
-pnpm.cmd run build
-pnpm.cmd run start:prod
-```
-
-Default local API:
-
-```text
-http://localhost:8003/api
-```
-
-Swagger docs are available outside production:
-
-```text
-http://localhost:8003/api-docs
-```
+API mặc định ở `http://localhost:3000/api` (cổng lấy từ biến môi trường `PORT` nếu có set, xem `.env.example`); Swagger UI ở `http://localhost:3000/api-docs` (ngoài production).
 
 ## Database
 
-Generate migrations:
-
 ```bash
-pnpm.cmd db:generate
+pnpm db:generate    # sinh migration từ thay đổi schema
+pnpm db:migrate     # áp migration — KHÔNG chạy vào DB dùng chung/prod khi chưa được duyệt
+pnpm db:studio
+pnpm db:seed:<name> # xem package.json cho danh sách đầy đủ
 ```
-
-Run migrations:
-
-```bash
-pnpm.cmd db:migrate
-```
-
-Open Drizzle Studio:
-
-```bash
-pnpm.cmd db:studio
-```
-
-Do not run migrations against shared or production databases without explicit approval.
 
 ## Scripts
 
 ```bash
-pnpm.cmd run build
-pnpm.cmd run start:dev
-pnpm.cmd run lint
-pnpm.cmd run format
-pnpm.cmd test
-pnpm.cmd test:e2e
-pnpm.cmd test:cov
+pnpm build / lint / format
+pnpm test / test:e2e / test:cov   # tạm dừng repo-wide, xem CLAUDE.md
 ```
 
-Use `pnpm.cmd` on Windows to avoid PowerShell execution policy issues.
-
-## Project Structure
-
-```text
-src/
-  api/
-    auth/
-    users/
-  common/
-  config/
-  constants/
-  database/
-    schemas/
-    seeds/
-  decorators/
-  exceptions/
-  filters/
-  guards/
-  redis/
-```
-
-Business modules should follow this structure:
+## Cấu trúc module
 
 ```text
 src/api/<module>/
@@ -147,64 +50,11 @@ src/api/<module>/
   dto/
 ```
 
-## Main Modules
+24 module hiện có, xem bảng đầy đủ trong `CLAUDE.md`.
 
-- `auth`: login, JWT verification, current user profile.
-- `users`: user management, roles, status, password changes.
-- `database`: Drizzle connection, schemas, migrations, seeds.
-- `redis`: Redis configuration and integration.
+## Tài liệu cho agent/dev
 
-## API Conventions
-
-- Controllers stay thin.
-- Services own business logic and Drizzle queries.
-- DTOs define validation and response shaping.
-- Business errors use `AppException`.
-- Authenticated endpoints use `@ApiAuth`.
-- Public endpoints use `@ApiPublic`.
-- Business permission checks use `@Permissions`.
-- Response DTOs must not expose passwords, hashes, tokens, secrets, or connection strings.
-
-## Internal Docs
-
-Read these files before non-trivial code changes:
-
-```text
-docs/architecture.md
-docs/coding-standards.md
-docs/api-standards.md
-docs/database-rules.md
-```
-
-Module specs:
-
-```text
-docs/module-specs/auth.md
-docs/module-specs/users.md
-```
-
-Agent instructions:
-
-```text
-AGENTS.md
-```
-
-## Testing
-
-Unit tests:
-
-```bash
-pnpm.cmd test
-```
-
-E2E tests:
-
-```bash
-pnpm.cmd test:e2e
-```
-
-Coverage:
-
-```bash
-pnpm.cmd test:cov
-```
+- `CLAUDE.md` — quy ước, danh sách module, quyết định đang hiệu lực.
+- `docs/architecture.md` — sơ đồ ER + thứ tự ghi xuyên module.
+- `docs/features/<feature>.md` — business rules + API contract từng module.
+- `.claude/rules/`, `.claude/skills/` — convention chi tiết + quy trình dùng cho Claude Code.
