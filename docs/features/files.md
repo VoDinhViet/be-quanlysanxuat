@@ -31,15 +31,6 @@ URL trần (ngoại lệ: `countries.logoUrl`, xem `master-data.md`).
 - **Xoá** chỉ người upload hoặc role có `system:manage` mới xoá được — xoá cả row registry lẫn byte
   vật lý.
 
-## API contract
-
-| Method | Path | Auth | Ghi chú |
-| --- | --- | --- | --- |
-| POST | `/files` | bearer | multipart upload, trả `FileResDto` |
-| GET | `/files/:fileId` | bearer | metadata |
-| GET | `/files/:fileId/download` | public (URL ký) | `FileSignatureGuard`, không phải bearer token |
-| DELETE | `/files/:fileId` | bearer, chủ file hoặc `system:manage` | 204 |
-
 ## Trường hợp lỗi
 
 | Trường hợp | ErrorCode |

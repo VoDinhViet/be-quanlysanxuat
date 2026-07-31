@@ -1,5 +1,7 @@
 # Tính năng: Roles (Vai trò & phân quyền)
 
+Bối cảnh nghiệp vụ, vòng đời và bất biến: `docs/domains/identity-access.md`. File này là chi tiết mức module: quy tắc cụ thể, ngữ nghĩa endpoint, error code.
+
 ## Mục đích
 
 Danh mục vai trò dùng cho RBAC — mỗi vai trò là một bó mã quyền có tên. Danh sách *quyền nào tồn tại* được cố định trong code (`PERMISSION_CODES`, `src/constants/permission.constant.ts`); *vai trò nào có quyền nào* lưu trong bảng `roles` (cột `permissions`, kiểu `jsonb`). Module này hiện chỉ expose **đọc** danh mục đó — xem mục "Ngoài phạm vi" bên dưới.
@@ -12,9 +14,7 @@ Danh mục vai trò dùng cho RBAC — mỗi vai trò là một bó mã quyền 
 
 ## API contract
 
-| Method | Path | Auth | Request | Response |
-| ------ | ---- | ---- | ------- | -------- |
-| GET | `/roles` | `roles:read` | `GetRolesReqDto` — `q` | `200` + `RoleResDto[]` |
+Bảng route/DTO đầy đủ: Swagger UI ở `/api-docs` (tự sinh từ `@ApiAuth`/`@ApiPublic`, luôn khớp code). Dưới đây chỉ ghi ngữ nghĩa không đọc được từ signature.
 
 - **Không phân trang** — trả mảng trần `RoleResDto[]`. `roles` là catalogue nhỏ, cùng lý do với `GET /units`.
 - `q` khớp mờ (`unaccent` ILIKE) `code` **và** `name`. `GetRolesReqDto` chưa có filter riêng nào khác.

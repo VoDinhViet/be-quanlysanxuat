@@ -1,5 +1,7 @@
 # Tính năng: Clients (Khách hàng)
 
+Bối cảnh nghiệp vụ, vòng đời và bất biến: `docs/domains/partners.md`. File này là chi tiết mức module: quy tắc cụ thể, ngữ nghĩa endpoint, error code.
+
 ## Mục đích
 
 Danh mục khách hàng — bên mua trên đơn hàng (`orders.clientId`). Mỗi client có thể có nhiều người liên hệ (`client_contacts`), thuộc một `client group`, và bị soft-delete thay vì xoá cứng.
@@ -13,15 +15,7 @@ Danh mục khách hàng — bên mua trên đơn hàng (`orders.clientId`). Mỗ
 
 ## API contract
 
-| Method | Path | Auth | Request | Response |
-| ------ | ---- | ---- | ------- | -------- |
-| GET | `/clients` | public | `GetClientsReqDto` — `limit`, `page`, `q`, `order`, `status`, `clientGroupId` | `200` + `ClientResDto` phân trang |
-| GET | `/clients/options` | public | `GetClientOptionsReqDto` — `q` | `200` + mảng `ClientOptionResDto` |
-| GET | `/clients/:clientId` | public | — | `200` + `ClientResDto` |
-| GET | `/clients/:clientId/contacts` | public | — | `200` + mảng `ClientContactResDto` |
-| POST | `/clients` | JWT | `CreateClientReqDto` | `201` + `ClientResDto` |
-| PATCH | `/clients/:clientId` | JWT | `UpdateClientReqDto` | `200` + `ClientResDto` |
-| DELETE | `/clients/:clientId` | JWT | — | `204` |
+Bảng route/DTO đầy đủ: Swagger UI ở `/api-docs` (tự sinh từ `@ApiAuth`/`@ApiPublic`, luôn khớp code). Dưới đây chỉ ghi ngữ nghĩa không đọc được từ signature.
 
 ### Chọn endpoint nào
 

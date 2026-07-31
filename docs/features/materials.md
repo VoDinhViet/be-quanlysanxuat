@@ -1,5 +1,7 @@
 # Tính năng: Materials (Vật tư)
 
+Bối cảnh nghiệp vụ, vòng đời và bất biến: `docs/domains/partners.md`. File này là chi tiết mức module: quy tắc cụ thể, ngữ nghĩa endpoint, error code.
+
 ## Mục đích
 
 Quản lý danh mục vật tư ("Vật tư") — nguyên vật liệu dùng làm leaf node (`MATERIAL`) trong cấu trúc sản phẩm (BOM). Mỗi vật tư thuộc một đơn vị tính (`units`, scope `MATERIAL`) và một nhóm vật tư (`material_groups`), có thể là vật tư nội bộ (`INTERNAL`) hoặc vật tư của khách hàng gia công (`CLIENT`, gắn với một `clients` cụ thể).
@@ -17,15 +19,7 @@ Quản lý danh mục vật tư ("Vật tư") — nguyên vật liệu dùng là
 
 ## API contract
 
-| Method | Path | Permission | Request | Response |
-| ------ | ---- | ---------- | ------- | -------- |
-| GET | `/materials` | `materials:read` | `GetMaterialsReqDto` — `limit`, `page`, `q`, `order`, `type`, `materialGroupId`, `clientId`, `supplierId`, `status` | `200` + `MaterialResDto` phân trang |
-| GET | `/materials/:materialId` | `materials:read` | — | `200` + `MaterialResDto` |
-| POST | `/materials` | `materials:create` | `CreateMaterialReqDto` — `name`*, `unitId`*, `materialGroupId`*, `code`, `type`, `clientId`, `supplierId`, `minStock`, `imageFileId`, `status`, `note`, thông tin mở rộng, `attachmentFileIds` | `201` + `MaterialResDto` |
-| PATCH | `/materials/:materialId` | `materials:update` | `UpdateMaterialReqDto` — như trên trừ `code` (bất biến), tất cả tuỳ chọn | `200` + `MaterialResDto` |
-| DELETE | `/materials/:materialId` | `materials:delete` | — | `204`, không có body |
-
-(`*` = bắt buộc)
+Bảng route/DTO đầy đủ: Swagger UI ở `/api-docs` (tự sinh từ `@ApiAuth`/`@ApiPublic`, luôn khớp code). Dưới đây chỉ ghi ngữ nghĩa không đọc được từ signature.
 
 - `q` khớp mờ (`unaccent` ILIKE) `code`, `name`, và tên nhóm vật tư (`material_groups.name`).
 - Danh sách sắp xếp **mới nhất trước** (`created_at DESC`).

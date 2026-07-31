@@ -1,5 +1,7 @@
 # Tính năng: Inventory (Kho thành phẩm & Kho vật tư)
 
+Bối cảnh nghiệp vụ, vòng đời và bất biến: `docs/domains/inventory.md`. File này là chi tiết mức module: quy tắc cụ thể, ngữ nghĩa endpoint, error code.
+
 ## Mục đích
 
 Theo dõi tồn kho bằng mô hình sổ giao dịch: mọi biến động là một **phiếu nhập/xuất kho** (`stock_receipts` + dòng `stock_receipt_items`), số tồn luôn **tính lại từ các phiếu** tại thời điểm đọc — không có cột nào lưu số tồn. Đây là bước đầu của luồng "PO đã duyệt → LSX kiểm tra tồn TP và ra quyết định sản xuất": module này cung cấp phần "kiểm tra tồn", còn bước duyệt PO và module LSX là các phần việc riêng, làm sau.
@@ -90,31 +92,15 @@ status    = SHORTAGE  nếu available < 0
 
 ### `GET /inventory` — tồn kho theo thành phẩm
 
-| Method | Path | Permission | Request | Response |
-| --- | --- | --- | --- | --- |
-| GET | `/inventory` | `inventory:read` | `GetInventoryReqDto` — `limit`, `page`, `q` (khớp mờ `code`/`name`), `order`, `productGroupId` | `200` + `InventoryItemResDto` phân trang |
+Bảng route/DTO đầy đủ: Swagger UI ở `/api-docs` (tự sinh từ `@ApiAuth`/`@ApiPublic`, luôn khớp code). Dưới đây chỉ ghi ngữ nghĩa không đọc được từ signature.
 
 `InventoryItemResDto`: `id`, `code`, `name`, `group` (nullable), `unit`, `image`, `onHand`, `reserved`, `available`.
 
 ### `GET /inventory/materials` — tồn kho theo vật tư (2026-07-30)
 
-| Method | Path | Permission | Request | Response |
-| --- | --- | --- | --- | --- |
-| GET | `/inventory/materials` | `inventory:read` | `GetMaterialInventoryReqDto` — `limit`, `page`, `q`, `materialGroupId`, `type`, `supplierId`, `status`, `asOfDate` | `200` + `MaterialInventoryItemResDto` phân trang |
-
 Xem "Tồn kho vật tư" ở trên cho công thức + field đầy đủ.
 
 ### `GET/POST/PATCH/DELETE /stock-receipts` — phiếu nhập/xuất
-
-| Method | Path | Permission | Request | Response |
-| --- | --- | --- | --- | --- |
-| GET | `/stock-receipts` | `inventory:read` | `GetStockReceiptsReqDto` — `limit`, `page`, `q` (khớp mờ `code`), `order`, `subject`, `type`, `reason`, `productId`, `materialId`, `fromDate`/`toDate` (lọc theo `receiptDate`) | `200` + `StockReceiptResDto` phân trang |
-| GET | `/stock-receipts/:receiptId` | `inventory:read` | — | `200` + `StockReceiptResDto` (kèm `items`) |
-| POST | `/stock-receipts` | `inventory:create` | `CreateStockReceiptReqDto` — `code?`, `subject*`, `type*`, `reason*`, `receiptDate*`, `note?`, `items[]*` | `201` + `StockReceiptResDto` |
-| PATCH | `/stock-receipts/:receiptId` | `inventory:update` | `UpdateStockReceiptReqDto` — như trên trừ `code`/`subject` (bất biến), tất cả tuỳ chọn | `200` + `StockReceiptResDto` |
-| DELETE | `/stock-receipts/:receiptId` | `inventory:delete` | — | `204`, không có body (xoá mềm) |
-
-(`*` = bắt buộc)
 
 - `subject` (`FINISHED_GOOD`/`MATERIAL`) bắt buộc khi tạo, **bất biến** sau đó — cùng luật với `code`.
 - `code` tự sinh theo `subject`: `PNxxxx`/`PXxxxx` (thành phẩm) hoặc `PNVTxxxx`/`PXVTxxxx` (vật tư) nếu không truyền khi tạo, đếm riêng theo từng cặp (`subject`, `type`); bất biến sau khi tạo.

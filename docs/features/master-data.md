@@ -1,5 +1,7 @@
 # Tính năng: Master Data (Danh mục dùng chung)
 
+Bối cảnh nghiệp vụ, vòng đời và bất biến: `docs/domains/partners.md`. File này là chi tiết mức module: quy tắc cụ thể, ngữ nghĩa endpoint, error code.
+
 Bảy danh mục chỉ-đọc, mỗi cái tồn tại để một module nghiệp vụ khác trỏ FK vào và có dữ liệu cho một
 dropdown. Gộp vào một file vì cùng hình dạng: không CRUD qua HTTP, `code` unique, `q` khớp mờ
 (`unaccent` ILIKE) trên `code`+`name`, và mọi ràng buộc FK được kiểm ở **phía tiêu thụ** (module

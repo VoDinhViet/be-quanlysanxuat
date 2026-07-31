@@ -1,5 +1,7 @@
 # Tính năng: BOMs (Cấu trúc sản phẩm)
 
+Bối cảnh nghiệp vụ, vòng đời và bất biến: `docs/domains/product-structure.md`. File này là chi tiết mức module: quy tắc cụ thể, ngữ nghĩa endpoint, error code.
+
 ## Mục đích
 
 Cây cấu trúc của một sản phẩm — sản phẩm đó gồm những cụm/chi tiết (bán thành phẩm) và vật tư nào, mỗi thứ bao nhiêu. Hai bảng: `boms` (header, mỗi sản phẩm một dòng) và `bom_items` (các node, tự tham chiếu).
@@ -63,15 +65,7 @@ Cây được đọc nguyên khối, nhưng **ghi theo từng node theo thời g
 
 ## API contract
 
-| Method | Path | Auth | Request | Response |
-| ------ | ---- | ---- | ------- | -------- |
-| GET | `/products/:productId/bom` | **public** ⚠️ | — | `200` + `BomItemResDto[]` (cây lồng nhau) |
-| GET | `/products/:productId/bom/materials` | **public** ⚠️ | `GetBomMaterialsReqDto` — `limit`, `page`, `q` | `200` + `OffsetPaginatedDto<BomMaterialResDto>` (phẳng, gộp theo vật tư) |
-| POST | `/products/:productId/bom/items` | `products:bom-manage` | `CreateBomItemReqDto` — `itemType`*, `itemId`*, `quantity`*, `parentId`, `sortOrder`, `note`, `drawingFileId` | `201` + `BomItemNodeResDto` |
-| PATCH | `/products/:productId/bom/items/:itemId` | `products:bom-manage` | `UpdateBomItemReqDto` — `quantity`, `sortOrder`, `note`, `drawingFileId` | `200` + `BomItemNodeResDto` |
-| DELETE | `/products/:productId/bom/items/:itemId` | `products:bom-manage` | — | `204`, không có body |
-
-(`*` = bắt buộc)
+Bảng route/DTO đầy đủ: Swagger UI ở `/api-docs` (tự sinh từ `@ApiAuth`/`@ApiPublic`, luôn khớp code). Dưới đây chỉ ghi ngữ nghĩa không đọc được từ signature.
 
 > ⚠️ **`GET .../bom` và `GET .../bom/materials` đang thực sự public dù có `@Permissions('products:read')`** — `@ApiPublic()` áp `Public()`, và cả hai guard toàn cục đều bỏ qua route có metadata đó. Xem ghi chú tương tự trong [`products.md`](products.md).
 

@@ -1,5 +1,7 @@
 # Tính năng: Products (Sản phẩm)
 
+Bối cảnh nghiệp vụ, vòng đời và bất biến: `docs/domains/product-structure.md`. File này là chi tiết mức module: quy tắc cụ thể, ngữ nghĩa endpoint, error code.
+
 ## Mục đích
 
 Quản lý sản phẩm — cả **thành phẩm** (`FINISHED_GOOD`) lẫn **bán thành phẩm** (`WORK_IN_PROGRESS`). Đây là bảng gốc mà toàn bộ miền cấu trúc sản phẩm dựng lên trên: BOM ([`boms.md`](boms.md)) và công đoạn ([`routing.md`](routing.md)) đều móc vào một dòng `products`.
@@ -52,16 +54,7 @@ Quản lý sản phẩm — cả **thành phẩm** (`FINISHED_GOOD`) lẫn **bá
 
 ## API contract
 
-| Method | Path | Auth | Request | Response |
-| ------ | ---- | ---- | ------- | -------- |
-| GET | `/products` | **public** ⚠️ | `GetProductsReqDto` — `limit`, `page`, `q`, `order`, `clientId`, `productGroupId`, `type`, `status` | `200` + `ProductResDto` phân trang |
-| GET | `/products/:productId` | **public** ⚠️ | — | `200` + `ProductResDto` |
-| POST | `/products` | `products:create` | `CreateProductReqDto` — `name`*, `unitId`*, `code`, `type`, `clientId`, `productGroupId`, `imageFileId`, `attachmentFileIds`, `status`, `note` | `201` + `ProductResDto` |
-| PATCH | `/products/:productId` | `products:update` | `UpdateProductReqDto` — mọi trường tuỳ chọn | `200` + `ProductResDto` |
-| DELETE | `/products/:productId` | `products:delete` | — | `204`, không có body |
-| POST | `/products/:productId/copy` | `products:copy` | — | `201` + `ProductResDto` (bản sao) |
-
-(`*` = bắt buộc)
+Bảng route/DTO đầy đủ: Swagger UI ở `/api-docs` (tự sinh từ `@ApiAuth`/`@ApiPublic`, luôn khớp code). Dưới đây chỉ ghi ngữ nghĩa không đọc được từ signature.
 
 > ⚠️ **Hai route GET đang thực sự public, dù có `@Permissions('products:read')`.** Chúng dùng `@ApiPublic()`, mà decorator này áp `Public()`; cả `JwtAuthGuard` lẫn `PermissionsGuard` đều `return true` ngay khi thấy metadata đó. Nên `@Permissions` trên hai route này **không có tác dụng** — gọi được mà không cần token. Tài liệu ghi đúng hành vi hiện tại; nếu ý định thật là bắt buộc đăng nhập thì phải đổi `@ApiPublic` thành `@ApiAuth` (là thay đổi breaking với client đang gọi không token). Các route GET của [`boms.md`](boms.md) và [`routing.md`](routing.md) cũng đang y hệt.
 

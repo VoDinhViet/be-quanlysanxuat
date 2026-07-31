@@ -1,5 +1,7 @@
 # Tính năng: Users (Nhân viên & tài khoản đăng nhập)
 
+Bối cảnh nghiệp vụ, vòng đời và bất biến: `docs/domains/identity-access.md`. File này là chi tiết mức module: quy tắc cụ thể, ngữ nghĩa endpoint, error code.
+
 ## Mục đích
 
 Quản lý hồ sơ nhân viên, và tuỳ chọn cấp cho họ một tài khoản đăng nhập ERP kèm vai trò.
@@ -76,16 +78,7 @@ Thứ tự kiểm là **`E032` → `E033` → `E027` → `E034`** (với `POST` 
 
 ## API contract
 
-| Method | Path | Auth | Request | Response |
-| ------ | ---- | ---- | ------- | -------- |
-| GET | `/users/me` | chỉ cần token | — | `200` + `CredentialResDto` |
-| GET | `/users` | `users:update` | `GetUsersReqDto` — `limit`, `page`, `q`, `order` | `200` + `UserResDto` phân trang |
-| GET | `/users/:userId` | `users:update` | — | `200` + `UserResDto` |
-| POST | `/users` | `users:create` (+ `roles:update` nếu gửi `credential.roleId`) | `CreateUserReqDto` — `fullName`*, `gender`*, `departmentId`*, `positionId`*, `hireDate`*, `dateOfBirth`, `idNumber`, `phoneNumber`, `email`, `address`, `avatarFileId`, `note`, `status`, `credential` | `201` + `UserResDto` |
-| PATCH | `/users/:userId` | `users:update` (+ `roles:update` nếu gửi `roleId`) | `UpdateUserReqDto` — mọi trường tuỳ chọn, kể cả `roleId` | `200` + `UserResDto` |
-| PATCH | `/users/:userId/role` | `roles:update` | `AssignRoleReqDto` — `roleId`* | `200` + `UserResDto` |
-
-(`*` = bắt buộc)
+Bảng route/DTO đầy đủ: Swagger UI ở `/api-docs` (tự sinh từ `@ApiAuth`/`@ApiPublic`, luôn khớp code). Dưới đây chỉ ghi ngữ nghĩa không đọc được từ signature.
 
 - **`GET /users` và `GET /users/:userId` dùng quyền `users:update`, không phải `users:read`** — catalogue `PERMISSION_CODES` không có mã `users:read`, và `users:delete` cũng không. Trông như lỗi nhưng đây là trạng thái thật; đọc danh sách nhân viên hiện đòi quyền sửa.
 - **`GET /users/me` không khai `@Permissions`** — chỉ cần token hợp lệ. Nó trả `CredentialResDto`, **khác `UserResDto`**: xoay quanh danh tính đăng nhập (`username`, `email`, `role`) và kèm `permissions` — mảng mã quyền hiệu lực, dùng để FE bật/tắt UI theo quyền.

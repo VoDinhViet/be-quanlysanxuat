@@ -85,11 +85,17 @@ là tên file dưới `docs/features/`, `—` nghĩa là chưa có.
 
 ## Domain docs
 
-- `docs/architecture.md` — sơ đồ ER theo cụm + thứ tự ghi của các luồng bắc cầu nhiều module + bất
-  biến xuyên module. Đọc trước khi sửa gì chạm ≥ 2 module.
-- `docs/features/<x>.md` — business rules + API contract của từng module. Viết/cập nhật trước khi
-  làm feature mới hoặc đổi business rule đáng kể của feature cũ — phạm vi và quy ước ở
-  `.claude/rules/workflow.md`.
+Ba tầng, đọc từ trên xuống khi cần hiểu một vùng nghiệp vụ:
+
+- `docs/architecture.md` — sơ đồ ER theo cụm + thứ tự ghi qua nhiều module. Đọc trước khi sửa gì
+  chạm ≥ 2 module.
+- `docs/domains/<domain>.md` — **"tại sao"**: khái niệm, vòng đời, business rule, bất biến, phụ
+  thuộc chéo domain, và lỗi hay mắc. Sáu domain: `orders`, `production`, `inventory`,
+  `product-structure`, `identity-access`, `partners`. Đọc trước khi làm feature trong vùng đó.
+- `docs/features/<module>.md` — **"cái gì"**: API contract, error code, shape DTO của từng module.
+
+Viết/cập nhật doc trước khi làm feature mới hoặc đổi business rule — quy ước ở
+`.claude/rules/workflow.md`.
 
 ## Standing decisions
 

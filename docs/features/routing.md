@@ -1,5 +1,7 @@
 # Tính năng: Routing (Công đoạn)
 
+Bối cảnh nghiệp vụ, vòng đời và bất biến: `docs/domains/product-structure.md`. File này là chi tiết mức module: quy tắc cụ thể, ngữ nghĩa endpoint, error code.
+
 ## Mục đích
 
 Chuỗi công đoạn mà một node trong cấu trúc sản phẩm phải đi qua — ví dụ Cắt laser → Chấn → Hàn → Sơn tĩnh điện. Một bảng duy nhất, `routing_steps`, phục vụ hai loại chủ thể; module `operations` là danh mục công đoạn gốc mà mỗi bước trỏ tới.
@@ -42,23 +44,9 @@ Hai nhóm route đối xứng nhau, dùng chung service và chung `RoutingStepRe
 
 ### Cấp 0 — routing của chính sản phẩm
 
-| Method | Path | Auth | Request | Response |
-| ------ | ---- | ---- | ------- | -------- |
-| GET | `/products/:productId/operations` | **public** ⚠️ | — | `200` + `RoutingStepResDto[]` |
-| POST | `/products/:productId/operations` | `products:bom-manage` | `CreateRoutingStepReqDto` — `operationId`*, `sortOrder`, `note` | `201` + `RoutingStepResDto` |
-| PATCH | `/products/:productId/operations/:stepId` | `products:bom-manage` | `UpdateRoutingStepReqDto` — `sortOrder`, `note` | `200` + `RoutingStepResDto` |
-| DELETE | `/products/:productId/operations/:stepId` | `products:bom-manage` | — | `204`, không có body |
+Bảng route/DTO đầy đủ: Swagger UI ở `/api-docs` (tự sinh từ `@ApiAuth`/`@ApiPublic`, luôn khớp code). Dưới đây chỉ ghi ngữ nghĩa không đọc được từ signature.
 
 ### As-used — routing của một node BOM
-
-| Method | Path | Auth | Request | Response |
-| ------ | ---- | ---- | ------- | -------- |
-| GET | `/products/:productId/bom/items/:itemId/operations` | **public** ⚠️ | — | `200` + `RoutingStepResDto[]` |
-| POST | `/products/:productId/bom/items/:itemId/operations` | `products:bom-manage` | `CreateRoutingStepReqDto` | `201` + `RoutingStepResDto` |
-| PATCH | `/products/:productId/bom/items/:itemId/operations/:stepId` | `products:bom-manage` | `UpdateRoutingStepReqDto` | `200` + `RoutingStepResDto` |
-| DELETE | `/products/:productId/bom/items/:itemId/operations/:stepId` | `products:bom-manage` | — | `204`, không có body |
-
-(`*` = bắt buộc)
 
 > ⚠️ **Hai route GET đang thực sự public dù có `@Permissions('products:read')`** — `@ApiPublic()` áp `Public()`, và cả hai guard toàn cục đều bỏ qua route mang metadata đó. Xem ghi chú tương tự trong [`products.md`](products.md).
 
