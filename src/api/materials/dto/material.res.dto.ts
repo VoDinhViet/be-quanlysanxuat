@@ -15,7 +15,6 @@ import {
 import { FileField } from '../../files/dto/file.field';
 import { FileResDto } from '../../files/dto/file.res.dto';
 import { SupplierRefResDto } from '../../suppliers/dto/supplier-ref.res.dto';
-import { MaterialAttachmentResDto } from './material-attachment.res.dto';
 import { MaterialCreatorResDto } from './material-creator.res.dto';
 import { MaterialRefResDto } from './material-ref.res.dto';
 
@@ -100,10 +99,6 @@ export class MaterialResDto {
   @Expose()
   @StringFieldOptional({ nullable: true })
   leadTime!: string | null;
-
-  @Expose()
-  @ClassFieldOptional(() => MaterialAttachmentResDto, { each: true })
-  attachments!: MaterialAttachmentResDto[];
 
   @Expose()
   @ClassFieldOptional(() => MaterialCreatorResDto, { nullable: true })

@@ -53,7 +53,8 @@ import { ProductionJobStepResDto } from './dto/production-job-step.res.dto';
 export class ProductionJobsService {
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
 
-  /** Tự dựng `.select()` riêng, tách khỏi `getProductionJob` — chỉ lấy đúng cột bảng cần. */
+  /** `.select()` thủ công — `q` lọc trên `productionOrders`/`orders`/`products` (bảng join),
+   * relational query API không biểu diễn được. */
   async getProductionJobs(
     reqDto: GetProductionJobsReqDto,
   ): Promise<OffsetPaginatedDto<ProductionJobResDto>> {
@@ -124,12 +125,32 @@ export class ProductionJobsService {
     );
   }
 
-  /** Không join — thông tin PO/khách hàng/sản phẩm FE lấy từ dòng tương ứng ở `getProductionJobs`
-   * (list). */
   async getProductionJob(jobId: string): Promise<ProductionJobDetailResDto> {
-    const job = await this.db.query.productionJobs.findFirst({
-      where: eq(productionJobs.id, jobId),
-    });
+    const [job] = await this.db
+      .select({
+        id: productionJobs.id,
+        code: productionJobs.code,
+        productionOrderId: productionJobs.productionOrderId,
+        order: getTableColumns(orders),
+        client: getTableColumns(clients),
+        productId: productionJobs.productId,
+        quantity: productionJobs.quantity,
+        status: productionJobs.status,
+        startedBy: productionJobs.startedBy,
+        startedAt: productionJobs.startedAt,
+        createdAt: productionJobs.createdAt,
+        updatedAt: productionJobs.updatedAt,
+        product: getTableColumns(products),
+      })
+      .from(productionJobs)
+      .innerJoin(
+        productionOrders,
+        eq(productionOrders.id, productionJobs.productionOrderId),
+      )
+      .innerJoin(orders, eq(orders.id, productionOrders.orderId))
+      .leftJoin(clients, eq(clients.id, orders.clientId))
+      .innerJoin(products, eq(products.id, productionJobs.productId))
+      .where(eq(productionJobs.id, jobId));
 
     if (!job) {
       throw new AppException(ErrorCode.E082, HttpStatus.NOT_FOUND);

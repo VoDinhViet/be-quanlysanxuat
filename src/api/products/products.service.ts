@@ -36,6 +36,7 @@ import { formatLtreeNodeId } from '../boms/utils/ltree.util';
 import { FilesService } from '../files/files.service';
 import { CreateProductReqDto } from './dto/create-product.req.dto';
 import { GetProductsReqDto } from './dto/get-products.req.dto';
+import { ProductDetailResDto } from './dto/product-detail.res.dto';
 import { ProductResDto } from './dto/product.res.dto';
 import { UpdateProductReqDto } from './dto/update-product.req.dto';
 
@@ -96,7 +97,6 @@ export class ProductsService {
           unit: true,
           creator: true,
           imageFile: true,
-          source: { columns: { id: true, code: true, name: true } },
         },
       }),
       this.db.select({ total: count() }).from(products).where(where),
@@ -110,7 +110,7 @@ export class ProductsService {
     );
   }
 
-  async getProductDetail(productId: string): Promise<ProductResDto> {
+  async getProductDetail(productId: string): Promise<ProductDetailResDto> {
     const product = await this.db.query.products.findFirst({
       where: and(eq(products.id, productId), isNull(products.deletedAt)),
       with: PRODUCT_DETAIL_WITH,
@@ -120,7 +120,7 @@ export class ProductsService {
       throw new AppException(ErrorCode.E007, HttpStatus.NOT_FOUND);
     }
 
-    return plainToInstance(ProductResDto, product, {
+    return plainToInstance(ProductDetailResDto, product, {
       excludeExtraneousValues: true,
     });
   }
@@ -128,7 +128,7 @@ export class ProductsService {
   async createProduct(
     reqDto: CreateProductReqDto,
     userId: string,
-  ): Promise<ProductResDto> {
+  ): Promise<ProductDetailResDto> {
     let code = reqDto.code;
     if (code) {
       await this.validateCodeUniqueness(code);
@@ -176,7 +176,7 @@ export class ProductsService {
   async updateProduct(
     productId: string,
     reqDto: UpdateProductReqDto,
-  ): Promise<ProductResDto> {
+  ): Promise<ProductDetailResDto> {
     await this.ensureProductExists(productId);
 
     if (reqDto.code) {
@@ -227,7 +227,10 @@ export class ProductsService {
    * version of the source. `sourceProductId` records lineage only ("Sao chép từ"); nothing about
    * the clone stays linked to the source afterward.
    */
-  async copyProduct(productId: string, userId: string): Promise<ProductResDto> {
+  async copyProduct(
+    productId: string,
+    userId: string,
+  ): Promise<ProductDetailResDto> {
     const original = await this.ensureProductExists(productId);
     const code = await this.generateProductCode();
 

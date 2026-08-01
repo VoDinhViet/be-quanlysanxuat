@@ -18,6 +18,7 @@ import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
 import { CreateProductReqDto } from './dto/create-product.req.dto';
 import { GetProductsReqDto } from './dto/get-products.req.dto';
+import { ProductDetailResDto } from './dto/product-detail.res.dto';
 import { ProductResDto } from './dto/product.res.dto';
 import { UpdateProductReqDto } from './dto/update-product.req.dto';
 import { ProductsService } from './products.service';
@@ -43,39 +44,39 @@ export class ProductsController {
   @Get(':productId')
   @Permissions('products:read')
   @ApiPublic({
-    type: ProductResDto,
+    type: ProductDetailResDto,
     summary: 'Get product detail',
   })
   getProductDetail(
     @UUIDParam('productId') productId: string,
-  ): Promise<ProductResDto> {
+  ): Promise<ProductDetailResDto> {
     return this.productsService.getProductDetail(productId);
   }
 
   @Post()
   @Permissions('products:create')
   @ApiAuth({
-    type: ProductResDto,
+    type: ProductDetailResDto,
     summary: 'Create product',
     statusCode: HttpStatus.CREATED,
   })
   createProduct(
     @Body() reqDto: CreateProductReqDto,
     @CurrentUser() payload: JwtPayloadType,
-  ): Promise<ProductResDto> {
+  ): Promise<ProductDetailResDto> {
     return this.productsService.createProduct(reqDto, payload.sub);
   }
 
   @Patch(':productId')
   @Permissions('products:update')
   @ApiAuth({
-    type: ProductResDto,
+    type: ProductDetailResDto,
     summary: 'Update product',
   })
   updateProduct(
     @UUIDParam('productId') productId: string,
     @Body() reqDto: UpdateProductReqDto,
-  ): Promise<ProductResDto> {
+  ): Promise<ProductDetailResDto> {
     return this.productsService.updateProduct(productId, reqDto);
   }
 
@@ -92,7 +93,7 @@ export class ProductsController {
   @Post(':productId/copy')
   @Permissions('products:copy')
   @ApiAuth({
-    type: ProductResDto,
+    type: ProductDetailResDto,
     summary:
       'Copy (clone) a product, including its BOM tree and routing (Nhân bản)',
     statusCode: HttpStatus.CREATED,
@@ -100,7 +101,7 @@ export class ProductsController {
   copyProduct(
     @UUIDParam('productId') productId: string,
     @CurrentUser() payload: JwtPayloadType,
-  ): Promise<ProductResDto> {
+  ): Promise<ProductDetailResDto> {
     return this.productsService.copyProduct(productId, payload.sub);
   }
 }

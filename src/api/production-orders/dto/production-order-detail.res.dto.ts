@@ -8,7 +8,7 @@ import {
   StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
-import { OrderRefResDto } from '../../orders/dto/order-ref.res.dto';
+import { OrderBaseResDto } from '../../orders/dto/order-base.res.dto';
 import { ProductionOrderItemResDto } from './production-order-item.res.dto';
 
 @Exclude()
@@ -37,8 +37,8 @@ export class ProductionOrderDetailResDto {
   approvedAt!: Date | null;
 
   @Expose()
-  @ClassField(() => OrderRefResDto)
-  order!: OrderRefResDto;
+  @ClassField(() => OrderBaseResDto)
+  order!: OrderBaseResDto;
 
   @Expose()
   @ClassField(() => ProductionOrderItemResDto, { each: true })

@@ -1,7 +1,7 @@
 import { Exclude, Expose } from 'class-transformer';
 
 import { ProductionOrderStatus } from '../../../database/schemas';
-import { OrderClientRefResDto } from '../../orders/dto/order-client-ref.res.dto';
+import { ClientBaseResDto } from '../../clients/dto/client-base.res.dto';
 import {
   ClassFieldOptional,
   DateField,
@@ -37,8 +37,8 @@ export class ProductionOrderResDto {
   orderCode!: string;
 
   @Expose()
-  @ClassFieldOptional(() => OrderClientRefResDto, { nullable: true })
-  client!: OrderClientRefResDto | null;
+  @ClassFieldOptional(() => ClientBaseResDto, { nullable: true })
+  client!: ClientBaseResDto | null;
 
   @Expose()
   @DateField({ description: 'Ngày đặt hàng' })
