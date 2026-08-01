@@ -9,17 +9,18 @@ Repo từng có 13 file `docs/features/<module>.md`, mỗi file mở đầu bằ
 tay là nguồn sai lớn nhất trong toàn bộ tài liệu**: route đổi tên, permission đổi, DTO thêm field —
 bảng không đổi theo, và không có cách nào phát hiện tự động.
 
-87 handler đã được `@ApiAuth`/`@ApiPublic` mô tả đầy đủ; Swagger sinh ra từ chính chúng nên **không
-thể stale**.
+16 handler đã được `@ApiAuth`/`@ApiPublic` mô tả đầy đủ (7 controller, 360 dòng); Swagger sinh ra từ
+chính chúng nên **không thể stale**.
 
 ## Quyết định
 
 1. **Không viết tay bảng route/DTO trong bất kỳ file doc nào.** Reference mức route/field đọc ở
    Swagger UI `/api-docs`.
-2. **Xoá hẳn tầng `docs/features/`** (13 file, 1.353 dòng). Nội dung nghiệp vụ đã chuyển lên
-   `docs/domains/`; trình tự chạy chuyển sang `docs/workflows/`.
+2. **Xoá hẳn tầng `docs/features/`** (13 file, 1.353 dòng). Nội dung nghiệp vụ chuyển lên
+   `docs/domains/`; trình tự chạy chuyển sang `docs/workflows/<flow>.md` — tầng này còn trống trong
+   template (chưa có luồng nào chạm ≥ 2 write/module), thêm domain nghiệp vụ thì tạo lại.
 3. `ErrorCode` không có tầng doc riêng — tên mã đã tự mô tả
-   (`stock_receipt.error.line_target_mismatch`), thứ tự kiểm đọc thẳng từ service.
+   (`position.error.department_mismatch`), thứ tự kiểm đọc thẳng từ service.
 
 ## Hệ quả
 

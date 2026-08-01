@@ -1,1 +1,0 @@
-DROP TABLE "material_logs" CASCADE;

@@ -64,8 +64,8 @@ export const uploadTypeEnum = pgEnum('upload_type', [
  *   change and cannot be stored anywhere as a permanent handle.
  * - `storageDriver` records which driver wrote the file, in case drivers are ever mixed during a
  *   migration to a new one (e.g. S3).
- * - Other entities (`users`, `materials`, ...) reference a row here by `id` instead of
- *   duplicating url/filename/mimetype/size themselves.
+ * - Other entities (e.g. `users`) reference a row here by `id` instead of duplicating
+ *   url/filename/mimetype/size themselves.
  */
 export const files = pgTable(
   'files',

@@ -26,15 +26,14 @@ argument-hint: "[domain|flow|decision]"
 - `src/api/<module>/` (controller, DTO, service), `src/database/schemas/`,
   `src/constants/error-code.constant.ts`, `src/constants/permission.constant.ts` — nguồn sự thật.
 
-`$ARGUMENTS` = tên domain (`orders`, `production`, ...) hoặc tên flow (`stock-movement`, ...).
-Không truyền gì → hỏi lại người dùng.
+`$ARGUMENTS` = tên domain (vd `identity-access`) hoặc tên flow. Không truyền gì → hỏi lại người dùng.
 
 ## Workflow
 
 1. **Inspect** — xác định tầng đích: khái niệm/bất biến → `docs/domains/`; trình tự đầu-cuối →
    `docs/workflows/`; quan hệ xuyên module → `docs/architecture.md`; quyết định đảo chiều hoặc
-   ranh giới phạm vi không domain nào sở hữu → `docs/decisions/`. Một domain gộp nhiều module
-   (`product-structure` = products + boms + routing).
+   ranh giới phạm vi không domain nào sở hữu → `docs/decisions/`. Một domain có thể gộp nhiều module
+   (vd `identity-access` = auth + users + roles + departments + positions).
 2. **Read** — đọc source của **mọi** module thuộc domain đó, không chỉ module vừa sửa.
 3. **Đối chiếu** — liệt kê phát hiện, **chưa sửa gì**:
    - *Độ chính xác*: business rule trong doc vs điều service thực sự làm; `ErrorCode` được `throw`
@@ -58,7 +57,7 @@ Doc-only, không đụng code → không chạy `lint`/`build`. Kiểm ba thứ:
 
 ## Related docs
 
-- `CLAUDE.md` — bản đồ bốn tầng tài liệu, bảng 24 module → domain.
+- `CLAUDE.md` — bản đồ bốn tầng tài liệu, bảng module → domain.
 - `.claude/rules/documentation.md` — nội dung nào phải nằm ở tầng nào.
 - `.claude/README.md` — chuẩn viết `SKILL.md` của dự án.
 

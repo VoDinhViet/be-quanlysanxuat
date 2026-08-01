@@ -1,6 +1,6 @@
 # Database (Drizzle) Rules
 
-Reference: `src/database/schemas/users.ts`, `src/database/schemas/clients.ts` (soft delete).
+Reference: `src/database/schemas/users.ts`. Soft delete: `src/database/schemas/roles.ts`.
 
 - MUST declare schemas in `src/database/schemas/` with `pgTable('snake_case_name', {...})`.
 - MUST use snake_case DB column names with camelCase TS keys: `fullName: varchar('full_name', { length: 255 })`.
@@ -12,14 +12,17 @@ Reference: `src/database/schemas/users.ts`, `src/database/schemas/clients.ts` (s
 
 ## Soft delete
 
-Eight tables carry `deletedAt`: `clients`, `orders`, `products`, `stock_receipts`, `suppliers` (deleted via API) plus `users`, `roles`, `operations` (column + read filters only, no delete route). Every other table hard-deletes.
+Two tables carry `deletedAt` in this template: `roles` (column + `isNull(roles.deletedAt)` on every
+read, no delete route) and `users` (column exists but **no query filters on it today** —
+`docs/domains/identity-access.md`, mistake #5; don't copy that, it's a known gap, not the pattern to
+follow). Every other table hard-deletes.
 
 - MUST declare it as a nullable `deletedAt: timestamp('deleted_at')` — no default, no `notNull`.
 - MUST delete by `.set({ deletedAt: new Date() })` on a table that has the column. MUST NOT call `db.delete()` on one.
 - MUST filter every read with `isNull(<table>.deletedAt)` — list, detail, existence checks, and FK-validation lookups alike. Forgetting it leaks deleted rows.
 - Uniqueness on these tables is a plain `.unique()` on the column, **not** scoped to live rows — a soft-deleted row keeps holding its `code`, so that code can never be reused. MUST NOT switch it to a partial unique index without asking; that changes behaviour for existing data.
 - MUST NOT add `deletedAt` to a new table unless the module actually needs it — decide explicitly.
-- MUST NOT read a partial index ending in ``.where(sql`deleted_at IS NULL`)`` (e.g. `idx_clients_status`) as enforcing anything — those exist for query performance only.
+- MUST NOT read a partial index ending in ``.where(sql`deleted_at IS NULL`)`` as enforcing anything — those exist for query performance only, not as a constraint.
 
 ## Seeds
 

@@ -21,12 +21,10 @@ Hai bên nối nhau qua `users.credentialId` (nullable). Cả hai chiều đều
 
 | Entity | Vai trò | Ghi chú quan hệ |
 | --- | --- | --- |
-| `credentials` | Tài khoản đăng nhập | `roleId` → `roles`; **mọi FK "ai đã thao tác"** (`createdBy`, `approvedBy`, `startedBy`, ...) trong toàn hệ thống trỏ vào đây |
+| `credentials` | Tài khoản đăng nhập | `roleId` → `roles`; **mọi FK "ai đã thao tác"** (`users.createdBy`, `files.uploadedBy`) trong hệ thống trỏ vào đây |
 | `users` | Hồ sơ nhân sự | `credentialId` → `credentials` (nullable); `departmentId`/`positionId` NOT NULL, `restrict` |
 | `roles` | Nhóm quyền | `permissions` là mảng `jsonb` chứa mã từ `PERMISSION_CODES`; `isSystem` đánh dấu role được seed |
-| `departments` / `positions` | Cơ cấu tổ chức | Một chức vụ thuộc đúng một phòng ban |
-
-**`orders.staffId` là ngoại lệ duy nhất** trỏ `users.id` thay vì `credentials.id` — vì "nhân viên kinh doanh phụ trách đơn" là một vai trò trong tổ chức, không phải "người vừa bấm nút".
+| `departments` / `positions` | Cơ cấu tổ chức | Một chức vụ thuộc đúng một phòng ban (`positions.departmentId` NOT NULL, `restrict`); cả hai chỉ được `users` tham chiếu, không tham chiếu ngược |
 
 ## Lifecycle
 
@@ -64,14 +62,17 @@ Ba điều **không** phải invariant dù trông có vẻ:
 
 ## Cross-domain dependencies
 
-- **Mọi domain** đều phụ thuộc vào domain này: cột `createdBy`/`approvedBy`/... khắp hệ thống trỏ `credentials.id`, và `PermissionsGuard` gác mọi route không `@Public()`.
-- **Orders** là domain duy nhất tham chiếu `users.id` (qua `staffId`).
-- **Master data** `departments`/`positions` phục vụ hồ sơ nhân sự — xem `docs/domains/partners.md`.
+Template này chỉ còn một domain — `identity-access` tự nó. Khi thêm domain nghiệp vụ mới:
+
+- Mọi bảng mới muốn ghi "ai đã tạo/duyệt/..." nên trỏ `credentials.id`, không phải `users.id` — xem
+  bảng Entities ở trên.
+- Hiện **không bảng nào khác** trong template tham chiếu `users.id` trực tiếp — nếu domain mới cần
+  vậy (kiểu "nhân viên phụ trách"), đó là FK nghiệp vụ hợp lệ, không phải lỗi thiết kế.
 
 ## Common mistakes
 
 1. **Nhầm `credentialId` với `userId`.** `payload.sub` là credential id; `GET /users/me` nhận credential id; nhưng `PATCH /users/:userId/*` nhận **user** id. Truyền nhầm thì lặng lẽ 404, không phải lỗi rõ ràng. `LoginResDto.userId` **thực chất chứa credential id** dù tên gọi và mô tả nói khác.
-2. **Tưởng `@Permissions` trên route `@ApiPublic` có tác dụng.** Không — cả hai guard `return true` trước khi đọc metadata quyền. Khoảng 14 route (`clients`, `products`, `suppliers`, `boms`, `routing`, `operations`) đang xếp chồng như vậy và **hoàn toàn không xác thực**. Muốn siết thì phải bỏ `@ApiPublic()`, và đó là breaking change với client đang gọi.
+2. **Tưởng `@Permissions` trên route `@ApiPublic` có tác dụng.** Không — cả hai guard `return true` trước khi đọc metadata quyền. Hiện không route nào trong template xếp chồng cả hai; giữ nguyên tình trạng đó khi thêm route mới — nếu một route thật sự cần public (đăng nhập, danh mục chỉ-đọc), đừng gắn thêm `@Permissions()` cho nó, nó vô tác dụng và gây hiểu lầm.
 3. **Thêm permission mới mà chỉ sửa một chỗ.** Cần đủ ba: thêm vào `PERMISSION_CODES`, gắn `@Permissions()` lên route, và cấp cho role trong `credentials.seed.ts`. Tệ hơn: **chạy lại seed không cập nhật role đã tồn tại** — hàm seed thoát sớm nếu thấy mã role đã có, nên môi trường cũ phải `UPDATE` tay.
 4. **Quên invalidate cache khi đổi phân quyền.** Quyền được cache Redis hai tầng, TTL 5 phút. `invalidateRole()` hiện **không được gọi ở đâu** (an toàn vì chưa có đường sửa role) — nếu sau này thêm chức năng sửa role mà quên gọi, quyền cũ còn hiệu lực tới 5 phút.
 5. **Tưởng `users` có lọc xoá mềm.** Cột `users.deletedAt` tồn tại nhưng **không nơi nào đọc** — user đã "xoá" vẫn hiện trong `GET /users` và vẫn gán được. (`roles.deletedAt` thì có lọc thật.)
@@ -81,5 +82,4 @@ Ba điều **không** phải invariant dù trông có vẻ:
 ## Related docs
 
 - `.claude/skills/new-api-module/SKILL.md` — nơi một permission mới phải được khai báo và cấp.
-- `docs/domains/orders.md` — nơi dùng `staffId`.
 - `.claude/rules/service.md` — quy tắc khai `@Permissions` khi viết route mới.

@@ -12,10 +12,12 @@ Nơi mọi business logic sống. Reference: `src/api/users/users.service.ts`.
 ## Writes
 
 - MUST build write payloads by spreading the DTO into `.values()` and `.set()`. MUST NOT list columns by hand, and MUST NOT hand-roll `if (reqDto.x !== undefined) setValues.x = reqDto.x` — Drizzle drops `undefined` and `ValidationPipe` already stripped unknown keys.
-  - MUST peel off child collections that aren't columns (`contacts`, `attachmentFileIds`, ...) before spreading:
+  - MUST peel off nested objects/child collections that aren't columns before spreading:
     ```ts
-    const { attachmentFileIds, ...supplierFields } = reqDto;
-    await tx.insert(suppliers).values({ ...supplierFields, code, createdBy: userId });
+    const { credential, ...userFields } = reqDto;
+    await this.db
+      .insert(users)
+      .values({ ...userFields, code, credentialId, createdBy: actorCredentialId });
     ```
   - MUST place transformed/computed/defaulted keys **after** the spread so they win.
   - MUST use an explicit `!== undefined` check only when: `[]` is meaningful ("clear all") vs omitted; a value needs transforming before write; or a business check must run only when the field was sent.

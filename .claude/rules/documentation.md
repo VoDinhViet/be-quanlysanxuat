@@ -21,20 +21,21 @@ Mọi thứ viết ra mà không phải code: comment trong source, và bốn t�
 Default is **no comment**. A `/** */` earns its place only by passing at least one of the four
 tests below; passing none means delete it.
 
-Reference done right: `OrdersService.approveOrder`, `ProductionOrdersService.seedPlan`,
-`BomsService.checkNoCycle`. Reference correct *because* they carry zero comment lines:
-`ClientsService`, `UnitsService`, the `client-groups`/`departments`/`positions` services.
+Reference done right: `UsersService.createUser` (writes `credentials` then `users`),
+`FilesService.linkFiles` (must run before any write that references the file). Reference correct
+*because* they carry zero comment lines: `DepartmentsService`, `PositionsService`.
 
 ### The four tests — passing one is enough to write a comment
 
 1. **Multiple write sites / multiple modules** — writes ≥ 2 tables, or pulls another module into the
-   same transaction.
+   same transaction. Example: `UsersService.createUser`.
 2. **Call-order constraint** — the caller must invoke something before/after this, or must pass `tx`.
-3. **The name lies** — the function does more/less/other than its name suggests (`getStockLevels`
-   must exclude the order under evaluation itself; `updateProductionOrder` is partial, not
-   replace-all).
-4. **Deliberate limitation** — a choice that looks like a bug but is a decision (raw `SUM`, not BOM
-   explosion; deliberately no `WITH RECURSIVE`).
+   Example: `FilesService.linkFiles`.
+3. **The name lies** — the function does more/less/other than its name suggests. Example:
+   `FilesService.deleteFileById` skips the uploader/`system:manage` check that the public route
+   handler (`deleteFile`) enforces — the generic name doesn't signal that.
+4. **Deliberate limitation** — a choice that looks like a bug but is a decision. No strong example
+   survives in this template yet; add one here once a real case shows up.
 
 ### MUST NOT comment — closed list
 
@@ -70,7 +71,7 @@ Reference done right: `OrdersService.approveOrder`, `ProductionOrdersService.see
 ### `src/constants/error-code.constant.ts` specifically
 
 - MUST comment a code **only when** its value string isn't self-explanatory, or it's easily
-  confused with another code (`E011` vs `E043`, `E044` vs `E045`).
+  confused with another code (`E044` vs `E045`).
 - MUST keep the comment on a **retired/reserved** code — the one place in the repo that prevents
   a number from being reused for something else.
 - MUST NOT comment a code whose comment only translates its own value string.

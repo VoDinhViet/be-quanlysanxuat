@@ -1,2 +1,0 @@
--- No-op: the sales_staff_id → staff_id rename (column + FK constraint + index) was already done
--- in full, in a single ALTER ... RENAME (data-preserving), inside 0046_conscious_prism.sql.

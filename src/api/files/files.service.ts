@@ -163,7 +163,7 @@ export class FilesService {
     await this.db.delete(files).where(eq(files.id, fileId));
   }
 
-  /** Không check uploader/`system:manage` — dành cho service tiêu thụ (vd `BomsService`) thay một
+  /** Không check uploader/`system:manage` — dành cho service tiêu thụ khác thay một
    * link `*FileId` mà quyền route của chính nó đã cho phép. `deleteFile` mới là route
    * `DELETE /files/:id` trực tiếp, nơi caller tự quyết định xoá nên bắt buộc phải check. */
   async deleteFileById(fileId: string): Promise<void> {
@@ -173,7 +173,7 @@ export class FilesService {
     await this.db.delete(files).where(eq(files.id, fileId));
   }
 
-  /** Gọi bởi service tiêu thụ (users/materials/products...) trước khi ghi một `*FileId` — kiểm tồn
+  /** Gọi bởi service tiêu thụ (vd `users`) trước khi ghi một `*FileId` — kiểm tồn
    * tại (`E042`) và đánh dấu `linkedAt` để `FilesCleanupService` bỏ qua. Bắt buộc gọi trước write,
    * kể cả trước khi mở transaction — đảo thứ tự có thể để lại row sống trỏ file chưa link, bị
    * sweeper xoá sau (ảnh vỡ trên dữ liệu thật). */

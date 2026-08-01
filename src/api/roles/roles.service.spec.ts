@@ -20,7 +20,7 @@ describe('RolesService', () => {
     code: 'ACCOUNTANT',
     name: 'Kế toán',
     description: null,
-    permissions: ['clients:read'],
+    permissions: ['roles:read'],
     isSystem: false,
     createdAt: new Date(),
     updatedAt: new Date(),

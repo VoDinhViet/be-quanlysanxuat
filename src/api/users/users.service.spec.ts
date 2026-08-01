@@ -488,7 +488,7 @@ describe('UsersService', () => {
       arrangeHappyPath();
       mockDb.query.roles.findFirst.mockResolvedValue({
         id: 'role-1',
-        permissions: ['products:read'],
+        permissions: ['users:create'],
       });
 
       await service.createUser(withCredential('role-1'), 'actor-cred');
@@ -593,7 +593,7 @@ describe('UsersService', () => {
       arrangeUser('cred-1');
       mockDb.query.roles.findFirst.mockResolvedValue({
         id: 'role-1',
-        permissions: ['products:read'],
+        permissions: ['users:create'],
       });
 
       await service.updateUser('user-1', roleDto(), 'actor-cred');

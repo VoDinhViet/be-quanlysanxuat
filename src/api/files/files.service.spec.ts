@@ -384,7 +384,7 @@ describe('FilesService', () => {
     it('throws E033 when another user without system:manage tries to delete', async () => {
       mockDb.query.files.findFirst.mockResolvedValue(buildFileRow());
       mockPermissionsService.getPermissionCodes.mockResolvedValue([
-        'materials:read',
+        'roles:read',
       ]);
 
       await expect(

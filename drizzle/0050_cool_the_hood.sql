@@ -1,1 +1,0 @@
-ALTER TABLE "positions" ALTER COLUMN "department_id" SET NOT NULL;

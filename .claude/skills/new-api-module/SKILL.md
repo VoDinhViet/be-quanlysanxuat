@@ -78,6 +78,6 @@ Kiểm thêm bằng tay:
 
 ## Related docs
 
-- `CLAUDE.md` — bảng 24 module, request pipeline, bản đồ tài liệu.
+- `CLAUDE.md` — bảng module, request pipeline, bản đồ tài liệu.
 - `docs/domains/identity-access.md` — cách guard + permission thực sự hoạt động.
 - `docs/architecture.md` — sơ đồ ER, thứ tự ghi xuyên module.

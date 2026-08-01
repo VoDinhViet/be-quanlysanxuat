@@ -60,12 +60,12 @@ describe('PermissionsService', () => {
         roleId: 'role-1',
       });
       mockDb.query.roles.findFirst.mockResolvedValue({
-        permissions: ['clients:read'],
+        permissions: ['roles:read'],
       });
 
       const result = await service.getPermissionCodes('cred-1');
 
-      expect(result).toEqual(['clients:read']);
+      expect(result).toEqual(['roles:read']);
       expect(mockCache.set).toHaveBeenCalledWith(
         CRED_KEY,
         'role-1',
@@ -73,7 +73,7 @@ describe('PermissionsService', () => {
       );
       expect(mockCache.set).toHaveBeenCalledWith(
         ROLE_KEY,
-        ['clients:read'],
+        ['roles:read'],
         expect.any(Number),
       );
     });
@@ -89,11 +89,11 @@ describe('PermissionsService', () => {
 
     it('serves both levels from cache without touching the DB', async () => {
       cacheStore[CRED_KEY] = 'role-1';
-      cacheStore[ROLE_KEY] = ['products:read'];
+      cacheStore[ROLE_KEY] = ['users:create'];
 
       const result = await service.getPermissionCodes('cred-1');
 
-      expect(result).toEqual(['products:read']);
+      expect(result).toEqual(['users:create']);
       expect(mockDb.query.credentials.findFirst).not.toHaveBeenCalled();
       expect(mockDb.query.roles.findFirst).not.toHaveBeenCalled();
     });

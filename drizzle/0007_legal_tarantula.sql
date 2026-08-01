@@ -1,1 +1,0 @@
-ALTER TABLE "bom_lines" ADD COLUMN "sort_order" integer DEFAULT 0 NOT NULL;

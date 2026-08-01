@@ -4,14 +4,9 @@ import { APP_GUARD } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { BomsModule } from './api/boms/boms.module';
 import { JwtAuthGuard } from './api/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from './api/auth/guards/permissions.guard';
-import { MaterialGroupsModule } from './api/material-groups/material-groups.module';
-import { MaterialsModule } from './api/materials/materials.module';
 import { RolesModule } from './api/roles/roles.module';
-import { SupplierGroupsModule } from './api/supplier-groups/supplier-groups.module';
-import { SuppliersModule } from './api/suppliers/suppliers.module';
 import appConfig from './config/app.config';
 import uploadConfig from './config/upload.config';
 import authConfig from './api/auth/config/auth.config';
@@ -21,22 +16,10 @@ import { DatabaseModule } from './database/database.module';
 import { RedisModule } from './redis/redis.module';
 import { StorageModule } from './storage/storage.module';
 import { AuthModule } from './api/auth/auth.module';
-import { ClientGroupsModule } from './api/client-groups/client-groups.module';
-import { ClientsModule } from './api/clients/clients.module';
-import { CountriesModule } from './api/countries/countries.module';
 import { DepartmentsModule } from './api/departments/departments.module';
 import { FilesModule } from './api/files/files.module';
 import { HealthModule } from './api/health/health.module';
-import { InventoryModule } from './api/inventory/inventory.module';
-import { OperationsModule } from './api/operations/operations.module';
-import { OrdersModule } from './api/orders/orders.module';
 import { PositionsModule } from './api/positions/positions.module';
-import { ProductGroupsModule } from './api/product-groups/product-groups.module';
-import { ProductionJobsModule } from './api/production-jobs/production-jobs.module';
-import { ProductionOrdersModule } from './api/production-orders/production-orders.module';
-import { ProductsModule } from './api/products/products.module';
-import { RoutingModule } from './api/routing/routing.module';
-import { UnitsModule } from './api/units/units.module';
 import { UsersModule } from './api/users/users.module';
 
 @Module({
@@ -55,28 +38,11 @@ import { UsersModule } from './api/users/users.module';
     StorageModule,
     AuthModule,
     UsersModule,
-    ClientsModule,
-    ClientGroupsModule,
-    CountriesModule,
-    ProductGroupsModule,
-    UnitsModule,
-    ProductsModule,
-    BomsModule,
-    OperationsModule,
-    RoutingModule,
     DepartmentsModule,
     FilesModule,
     PositionsModule,
     HealthModule,
     RolesModule,
-    MaterialGroupsModule,
-    MaterialsModule,
-    SuppliersModule,
-    SupplierGroupsModule,
-    InventoryModule,
-    ProductionJobsModule,
-    ProductionOrdersModule,
-    OrdersModule,
   ],
 
   controllers: [AppController],

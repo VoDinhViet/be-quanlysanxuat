@@ -4,9 +4,9 @@
 
 ## Bối cảnh
 
-Repo có 50 file `*.spec.ts` (~9.400 dòng) viết ở giai đoạn đầu. Schema, enum trạng thái và business
-rule còn đổi liên tục — spec hỏng nhanh hơn tốc độ sửa, và mỗi lần đổi enum lại kéo theo một đợt sửa
-mock không mang lại tín hiệu nào.
+Repo có 21 file `*.spec.ts` (còn lại sau khi rút gọn về base template) viết ở giai đoạn đầu. Schema,
+enum trạng thái và business rule còn đổi liên tục — spec hỏng nhanh hơn tốc độ sửa, và mỗi lần đổi
+enum lại kéo theo một đợt sửa mock không mang lại tín hiệu nào.
 
 ## Quyết định
 
@@ -21,7 +21,7 @@ Dự án **chưa cần test**. Cụ thể:
 ## Hệ quả
 
 - Validation sau khi code là `pnpm lint` + `npx tsc --noEmit` + `pnpm build`.
-- **50 file spec trong `src/` đã lệch code và không ai chạy chúng.** Đừng đọc chúng như tài liệu về
+- **File spec trong `src/` đã lệch code và không ai chạy chúng.** Đừng đọc chúng như tài liệu về
   hành vi hiện tại, và đừng sửa chúng khi đổi service — chúng không phải nguồn sự thật.
 - `src/test-utils/` (`chainable-mock.util.ts`, `jest-setup.ts`) chỉ còn phục vụ đám spec đó.
 
@@ -32,5 +32,5 @@ Quy ước viết test cũ còn nguyên trong git — khôi phục bằng
 `@import` tương ứng vào mục `## Rules` của `CLAUDE.md`, bỏ MUST NOT trong `.claude/rules/general.md`,
 rồi xoá file này.
 
-Trước khi bật lại nên quyết định luôn: **xoá 50 spec cũ rồi viết lại**, hay sửa dần. Sửa dần gần như
+Trước khi bật lại nên quyết định luôn: **xoá spec cũ rồi viết lại**, hay sửa dần. Sửa dần gần như
 chắc chắn tốn hơn viết mới.

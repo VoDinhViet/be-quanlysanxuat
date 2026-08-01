@@ -4,9 +4,9 @@
 
 ## Bối cảnh
 
-Ban đầu có module `uploads` lưu file rồi trả về URL. Sáu schema cần đính kèm (`users`, `products`,
-`boms`, `materials`, `suppliers`, `orders`) sẽ phải mỗi nơi tự giữ một cột URL trần, không ai biết
-file nào còn được tham chiếu, không có metadata chung.
+Ban đầu có module `uploads` lưu file rồi trả về URL. Mỗi schema cần đính kèm (hiện chỉ `users`, sẽ
+còn nhiều hơn khi thêm domain nghiệp vụ) sẽ phải tự giữ một cột URL trần nếu không có registry
+chung — không ai biết file nào còn được tham chiếu, không có metadata chung.
 
 ## Quyết định
 
@@ -23,8 +23,6 @@ file nào còn được tham chiếu, không có metadata chung.
   transaction. Không tự lưu đường dẫn.
 - Clone một bản ghi thì bản sao **trỏ chung dòng `files`** với bản gốc — đúng ý nghĩa registry,
   không nhân bản byte.
-- **Ngoại lệ duy nhất toàn hệ thống: `countries.logoUrl`** — URL trần, vì cờ quốc gia là tài nguyên
-  tĩnh của bên thứ ba, không phải file người dùng upload.
 
 ## Đừng đảo lại
 

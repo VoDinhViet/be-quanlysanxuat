@@ -18,7 +18,7 @@
  *   update: chainableMock(undefined),
  *   delete: chainableMock(undefined),
  *   query: {
- *     clients: { findMany: jest.fn(), findFirst: jest.fn() },
+ *     users: { findMany: jest.fn(), findFirst: jest.fn() },
  *   },
  * };
  * ```
@@ -58,7 +58,7 @@ export function chainableMock<T>(result: T): jest.Mock {
  * `mock.calls[0][0]` to this in a spec instead of leaving it (and everything read off it)
  * typed `any`:
  * ```ts
- * const callArgs = mockDb.query.clients.findMany.mock.calls[0][0] as QueryMockArgs;
+ * const callArgs = mockDb.query.users.findMany.mock.calls[0][0] as QueryMockArgs;
  * expect(callArgs.limit).toBe(10);
  * ```
  */

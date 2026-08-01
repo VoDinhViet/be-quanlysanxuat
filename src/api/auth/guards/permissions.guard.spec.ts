@@ -60,7 +60,7 @@ describe('PermissionsGuard', () => {
   });
 
   it('allows a user holding the super permission (system:manage)', async () => {
-    setReflector(false, ['clients:create']);
+    setReflector(false, ['users:create']);
     permissionsService.getPermissionCodes.mockResolvedValue(['system:manage']);
 
     await expect(
@@ -69,10 +69,10 @@ describe('PermissionsGuard', () => {
   });
 
   it('allows a user holding every required permission', async () => {
-    setReflector(false, ['clients:create']);
+    setReflector(false, ['users:create']);
     permissionsService.getPermissionCodes.mockResolvedValue([
-      'clients:read',
-      'clients:create',
+      'roles:read',
+      'users:create',
     ]);
 
     await expect(
@@ -81,8 +81,8 @@ describe('PermissionsGuard', () => {
   });
 
   it('throws E033 (403) when the user is missing a required permission', async () => {
-    setReflector(false, ['clients:delete']);
-    permissionsService.getPermissionCodes.mockResolvedValue(['clients:read']);
+    setReflector(false, ['users:update']);
+    permissionsService.getPermissionCodes.mockResolvedValue(['roles:read']);
 
     await expect(
       guard.canActivate(buildContext({ sub: 'cred-1' })),
@@ -93,7 +93,7 @@ describe('PermissionsGuard', () => {
   });
 
   it('throws Unauthorized when a protected route has no authenticated user', async () => {
-    setReflector(false, ['clients:read']);
+    setReflector(false, ['roles:read']);
 
     await expect(
       guard.canActivate(buildContext(undefined)),
