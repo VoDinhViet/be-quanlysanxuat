@@ -29,6 +29,7 @@ import {
   materials,
   orders,
   productionJobMaterials,
+  productionJobNotes,
   productionJobs,
   ProductionJobStatus,
   productionJobSteps,
@@ -38,10 +39,13 @@ import {
   units,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
+import { CreateProductionJobNoteReqDto } from './dto/create-production-job-note.req.dto';
 import { GetProductionJobMaterialsReqDto } from './dto/get-production-job-materials.req.dto';
+import { GetProductionJobNotesReqDto } from './dto/get-production-job-notes.req.dto';
 import { GetProductionJobsReqDto } from './dto/get-production-jobs.req.dto';
 import { ProductionJobDetailResDto } from './dto/production-job-detail.res.dto';
 import { ProductionJobMaterialResDto } from './dto/production-job-material.res.dto';
+import { ProductionJobNoteResDto } from './dto/production-job-note.res.dto';
 import { ProductionJobResDto } from './dto/production-job.res.dto';
 import { ProductionJobStepResDto } from './dto/production-job-step.res.dto';
 
@@ -221,6 +225,48 @@ export class ProductionJobsService {
 
     return new OffsetPaginatedDto(
       plainToInstance(ProductionJobMaterialResDto, rows, {
+        excludeExtraneousValues: true,
+      }),
+      new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
+    );
+  }
+
+  async createProductionJobNote(
+    jobId: string,
+    reqDto: CreateProductionJobNoteReqDto,
+    userId: string,
+  ): Promise<void> {
+    await this.ensureJobExists(jobId);
+
+    await this.db.insert(productionJobNotes).values({
+      productionJobId: jobId,
+      content: reqDto.content,
+      createdBy: userId,
+    });
+  }
+
+  /** Sắp `asc(createdAt)` — đọc xuôi như luồng trao đổi, khác `getProductionOrderLogs` (đọc ngược
+   * lịch sử) một cách có chủ đích. */
+  async getProductionJobNotes(
+    jobId: string,
+    reqDto: GetProductionJobNotesReqDto,
+  ): Promise<OffsetPaginatedDto<ProductionJobNoteResDto>> {
+    await this.ensureJobExists(jobId);
+
+    const where = eq(productionJobNotes.productionJobId, jobId);
+    const [rows, countRows] = await Promise.all([
+      this.db.query.productionJobNotes.findMany({
+        where,
+        with: { creator: true },
+        orderBy: asc(productionJobNotes.createdAt),
+        limit: reqDto.limit,
+        offset: reqDto.offset,
+      }),
+      this.db.select({ total: count() }).from(productionJobNotes).where(where),
+    ]);
+
+    return new OffsetPaginatedDto(
+      plainToInstance(ProductionJobNoteResDto, rows, {
         excludeExtraneousValues: true,
       }),
       new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),

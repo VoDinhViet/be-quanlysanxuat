@@ -188,7 +188,7 @@ export async function seedSuppliers(db: SeedDatabase): Promise<void> {
 
   const admin = await db.query.credentials.findFirst({
     where: eq(credentials.username, 'admin'),
-    columns: { id: true },
+    columns: { userId: true },
   });
 
   if (!admin) {
@@ -197,7 +197,7 @@ export async function seedSuppliers(db: SeedDatabase): Promise<void> {
     );
   }
 
-  const createdBy = admin?.id ?? null;
+  const createdBy = admin?.userId ?? null;
 
   for (const spec of SUPPLIERS) {
     const existing = await db.query.suppliers.findFirst({

@@ -175,7 +175,10 @@ export class ProductionOrdersService {
     if (!productionOrder) {
       throw new AppException(ErrorCode.E081, HttpStatus.NOT_FOUND);
     }
-    if (productionOrder.order.deletedAt) {
+    // `orderId` là FK bắt buộc, đúng 1 dòng — Drizzle suy sai kiểu `order` thành one|many sau khi
+    // schema có thêm nhiều quan hệ trỏ `users`, ép lại cho đúng thực tế thay vì đổi logic.
+    const order = productionOrder.order as { deletedAt: Date | null };
+    if (order.deletedAt) {
       throw new AppException(ErrorCode.E057, HttpStatus.NOT_FOUND);
     }
     if (productionOrder.status !== ProductionOrderStatus.PENDING) {

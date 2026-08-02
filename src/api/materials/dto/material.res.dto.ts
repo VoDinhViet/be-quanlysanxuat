@@ -15,7 +15,7 @@ import {
 import { FileField } from '../../files/dto/file.field';
 import { FileResDto } from '../../files/dto/file.res.dto';
 import { SupplierRefResDto } from '../../suppliers/dto/supplier-ref.res.dto';
-import { MaterialCreatorResDto } from './material-creator.res.dto';
+import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
 import { MaterialRefResDto } from './material-ref.res.dto';
 
 @Exclude()
@@ -101,8 +101,8 @@ export class MaterialResDto {
   leadTime!: string | null;
 
   @Expose()
-  @ClassFieldOptional(() => MaterialCreatorResDto, { nullable: true })
-  creator!: MaterialCreatorResDto | null;
+  @ClassFieldOptional(() => UserRefResDto, { nullable: true })
+  creator!: UserRefResDto | null;
 
   @Expose()
   @DateField()

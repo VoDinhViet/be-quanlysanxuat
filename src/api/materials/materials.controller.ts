@@ -64,7 +64,7 @@ export class MaterialsController {
     @Body() reqDto: CreateMaterialReqDto,
     @CurrentUser() payload: JwtPayloadType,
   ): Promise<MaterialDetailResDto> {
-    return this.materialsService.createMaterial(reqDto, payload.sub);
+    return this.materialsService.createMaterial(reqDto, payload.userId);
   }
 
   @Patch(':materialId')

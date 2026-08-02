@@ -10,11 +10,11 @@ import {
 } from 'drizzle-orm/pg-core';
 
 import { clients } from './clients';
-import { credentials } from './credentials';
 import { files } from './files';
 import { materialGroups } from './material-groups';
 import { suppliers } from './suppliers';
 import { units } from './units';
+import { users } from './users';
 
 export enum MaterialType {
   INTERNAL = 'INTERNAL',
@@ -94,7 +94,7 @@ export const materials = pgTable(
     origin: varchar('origin', { length: 255 }),
     leadTime: varchar('lead_time', { length: 100 }),
 
-    createdBy: uuid('created_by').references(() => credentials.id, {
+    createdBy: uuid('created_by').references(() => users.id, {
       onDelete: 'set null',
     }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -154,9 +154,9 @@ export const materialsRelations = relations(materials, ({ one, many }) => ({
     fields: [materials.supplierId],
     references: [suppliers.id],
   }),
-  creator: one(credentials, {
+  creator: one(users, {
     fields: [materials.createdBy],
-    references: [credentials.id],
+    references: [users.id],
   }),
   imageFile: one(files, {
     fields: [materials.imageFileId],

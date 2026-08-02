@@ -10,9 +10,9 @@ import {
 } from 'drizzle-orm/pg-core';
 
 import { bomItems } from './boms';
-import { credentials } from './credentials';
 import { operations } from './operations';
 import { products } from './products';
+import { users } from './users';
 
 /**
  * Routing: the sequence of công đoạn (operations) a node of a product's structure goes through,
@@ -53,7 +53,7 @@ export const routingSteps = pgTable(
     // `bom_items.sortOrder`.
     sortOrder: integer('sort_order').notNull().default(0),
     note: varchar('note', { length: 1000 }),
-    createdBy: uuid('created_by').references(() => credentials.id, {
+    createdBy: uuid('created_by').references(() => users.id, {
       onDelete: 'set null',
     }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -87,8 +87,8 @@ export const routingStepsRelations = relations(routingSteps, ({ one }) => ({
     fields: [routingSteps.operationId],
     references: [operations.id],
   }),
-  creator: one(credentials, {
+  creator: one(users, {
     fields: [routingSteps.createdBy],
-    references: [credentials.id],
+    references: [users.id],
   }),
 }));

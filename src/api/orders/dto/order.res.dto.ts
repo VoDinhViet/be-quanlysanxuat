@@ -5,27 +5,26 @@ import {
   ClassFieldOptional,
   NumberField,
 } from '../../../decorators/field.decorators';
+import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
 import { OrderBaseResDto } from './order-base.res.dto';
-import { OrderCreatorResDto } from './order-creator.res.dto';
-import { OrderStaffRefResDto } from './order-staff-ref.res.dto';
 
 @Exclude()
 export class OrderResDto extends OrderBaseResDto {
   @Expose()
-  @ClassFieldOptional(() => OrderStaffRefResDto, { nullable: true })
-  staff!: OrderStaffRefResDto | null;
+  @ClassFieldOptional(() => UserRefResDto, { nullable: true })
+  staff!: UserRefResDto | null;
 
   @Expose()
-  @ClassFieldOptional(() => OrderCreatorResDto, { nullable: true })
-  approver!: OrderCreatorResDto | null;
+  @ClassFieldOptional(() => UserRefResDto, { nullable: true })
+  approver!: UserRefResDto | null;
 
   @Expose()
-  @ClassFieldOptional(() => OrderCreatorResDto, { nullable: true })
-  rejecter!: OrderCreatorResDto | null;
+  @ClassFieldOptional(() => UserRefResDto, { nullable: true })
+  rejecter!: UserRefResDto | null;
 
   @Expose()
-  @ClassFieldOptional(() => OrderCreatorResDto, { nullable: true })
-  creator!: OrderCreatorResDto | null;
+  @ClassFieldOptional(() => UserRefResDto, { nullable: true })
+  creator!: UserRefResDto | null;
 
   @Expose()
   @NumberField({

@@ -63,7 +63,7 @@ export class StockReceiptsController {
     @Body() reqDto: CreateStockReceiptReqDto,
     @CurrentUser() payload: JwtPayloadType,
   ): Promise<StockReceiptResDto> {
-    return this.stockReceiptsService.createStockReceipt(reqDto, payload.sub);
+    return this.stockReceiptsService.createStockReceipt(reqDto, payload.userId);
   }
 
   @Patch(':receiptId')

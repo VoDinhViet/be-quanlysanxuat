@@ -92,7 +92,7 @@ export class ClientsController {
     @Body() reqDto: CreateClientReqDto,
     @CurrentUser() payload: JwtPayloadType,
   ): Promise<ClientResDto> {
-    return this.clientsService.createClient(reqDto, payload.sub);
+    return this.clientsService.createClient(reqDto, payload.userId);
   }
 
   @Patch(':clientId')

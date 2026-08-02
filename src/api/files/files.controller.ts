@@ -55,7 +55,7 @@ export class FilesController {
   ): Promise<FileResDto> {
     return this.filesService.upload(file, {
       type: reqDto.type,
-      uploadedBy: payload.sub,
+      uploadedBy: payload.userId,
     });
   }
 
@@ -91,6 +91,6 @@ export class FilesController {
     @UUIDParam('fileId') fileId: string,
     @CurrentUser() payload: JwtPayloadType,
   ): Promise<void> {
-    return this.filesService.deleteFile(fileId, payload.sub);
+    return this.filesService.deleteFile(fileId, payload.userId, payload.sub);
   }
 }

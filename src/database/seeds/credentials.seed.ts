@@ -260,12 +260,50 @@ async function ensurePosition(
   return created.id;
 }
 
+/** `users` trước, `credentials` sau — `credentials.userId` NOT NULL nên credential luôn cần một
+ * user có sẵn để trỏ vào (ngược thứ tự cũ, khi `users.credentialId` còn nullable). */
+async function ensureUser(
+  db: SeedDatabase,
+  account: {
+    userCode: string;
+    fullName: string;
+    departmentId: string;
+    positionId: string;
+  },
+): Promise<string> {
+  const existing = await db.query.users.findFirst({
+    where: eq(users.code, account.userCode),
+    columns: { id: true },
+  });
+
+  if (existing) {
+    console.log(`User "${account.userCode}" already exists. Skipping.`);
+    return existing.id;
+  }
+
+  const [created] = await db
+    .insert(users)
+    .values({
+      code: account.userCode,
+      fullName: account.fullName,
+      departmentId: account.departmentId,
+      positionId: account.positionId,
+      hireDate: new Date(),
+    })
+    .returning({ id: users.id });
+
+  console.log(`User "${account.userCode}" (${account.fullName}) created.`);
+
+  return created.id;
+}
+
 async function ensureCredential(
   db: SeedDatabase,
   account: { username: string; email: string },
   roleId: string,
+  userId: string,
   password: string,
-): Promise<string> {
+): Promise<void> {
   const existing = await db.query.credentials.findFirst({
     where: or(
       eq(credentials.username, account.username),
@@ -286,56 +324,20 @@ async function ensureCredential(
       console.log(`Credential "${account.username}" already exists. Skipping.`);
     }
 
-    return existing.id;
+    return;
   }
 
   const hashedPassword = await hash(password, PASSWORD_SALT_ROUNDS);
 
-  const [created] = await db
-    .insert(credentials)
-    .values({
-      username: account.username,
-      email: account.email,
-      password: hashedPassword,
-      roleId,
-    })
-    .returning({ id: credentials.id });
+  await db.insert(credentials).values({
+    username: account.username,
+    email: account.email,
+    password: hashedPassword,
+    roleId,
+    userId,
+  });
 
   console.log(`Credential "${account.username}" created.`);
-
-  return created.id;
-}
-
-async function ensureUser(
-  db: SeedDatabase,
-  account: {
-    userCode: string;
-    fullName: string;
-    departmentId: string;
-    positionId: string;
-    credentialId: string;
-  },
-): Promise<void> {
-  const existing = await db.query.users.findFirst({
-    where: eq(users.code, account.userCode),
-    columns: { id: true },
-  });
-
-  if (existing) {
-    console.log(`User "${account.userCode}" already exists. Skipping.`);
-    return;
-  }
-
-  await db.insert(users).values({
-    code: account.userCode,
-    fullName: account.fullName,
-    departmentId: account.departmentId,
-    positionId: account.positionId,
-    hireDate: new Date(),
-    credentialId: account.credentialId,
-  });
-
-  console.log(`User "${account.userCode}" (${account.fullName}) created.`);
 }
 
 export async function seedCredentials(db: SeedDatabase): Promise<void> {
@@ -345,15 +347,14 @@ export async function seedCredentials(db: SeedDatabase): Promise<void> {
     const roleId = await ensureRole(db, account.role);
     const departmentId = await ensureDepartment(db, account.department);
     const positionId = await ensurePosition(db, account.position, departmentId);
-    const credentialId = await ensureCredential(db, account, roleId, password);
-
-    await ensureUser(db, {
+    const userId = await ensureUser(db, {
       userCode: account.userCode,
       fullName: account.fullName,
       departmentId,
       positionId,
-      credentialId,
     });
+
+    await ensureCredential(db, account, roleId, userId, password);
   }
 
   console.log('\nSeeded accounts (username / password):');

@@ -36,6 +36,7 @@ erDiagram
     PRODUCTION_JOBS }o--|| PRODUCTS : "sản phẩm FG"
     PRODUCTION_JOBS ||--o{ PRODUCTION_JOB_STEPS : "snapshot công đoạn"
     PRODUCTION_JOBS ||--o{ PRODUCTION_JOB_MATERIALS : "snapshot vật tư"
+    PRODUCTION_JOBS ||--o{ PRODUCTION_JOB_NOTES : "ghi chú"
 
     STOCK_RECEIPTS ||--o{ STOCK_RECEIPT_ITEMS : gồm
     STOCK_RECEIPT_ITEMS }o--o| PRODUCTS : "dòng thành phẩm"
@@ -112,8 +113,9 @@ Những sự thật này không nằm trọn trong một `docs/domains/<x>.md` n
   `countries.logoUrl` (danh mục nhỏ, không cần registry). Sáu bảng khác (`products`, `materials`,
   `orders`, `suppliers`, `boms` — `drawingFileId` trên `bom_items`, `users` — `avatarFileId`) dùng
   `*_attachment_file_ids`/`*FileId` trỏ `files.id`. Chi tiết: `docs/decisions/files-registry.md`.
-- **`orders.staffId` là FK nghiệp vụ duy nhất trỏ `users.id`** — mọi FK "ai đã làm việc này" khác
-  (`createdBy`, `approvedBy`, `startedBy`, ...) trỏ `credentials.id`.
+- **Mọi FK "ai đã làm việc này"** (`createdBy`, `approvedBy`, `startedBy`, `orders.staffId`, ...) trỏ
+  `users.id`, không phải `credentials.id` (đảo lại 2026-08-01 — `orders.staffId` từng là ngoại lệ duy
+  nhất, giờ mọi cột audit dùng chung một quy ước). Xem `docs/domains/identity-access.md`.
 
 ## Xem thêm
 

@@ -4,9 +4,9 @@ import {
   ClassField,
   ClassFieldOptional,
 } from '../../../decorators/field.decorators';
+import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
 import { ClientBaseResDto } from './client-base.res.dto';
 import { ClientContactResDto } from './client-contact.res.dto';
-import { ClientCreatorResDto } from './client-creator.res.dto';
 import { ClientGroupRefResDto } from './client-group-ref.res.dto';
 
 @Exclude()
@@ -20,6 +20,6 @@ export class ClientResDto extends ClientBaseResDto {
   contacts!: ClientContactResDto[];
 
   @Expose()
-  @ClassFieldOptional(() => ClientCreatorResDto, { nullable: true })
-  creator!: ClientCreatorResDto | null;
+  @ClassFieldOptional(() => UserRefResDto, { nullable: true })
+  creator!: UserRefResDto | null;
 }

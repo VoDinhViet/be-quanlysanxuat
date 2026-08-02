@@ -21,7 +21,7 @@ import {
   SUPER_PERMISSION,
 } from '../../constants/permission.constant';
 import { DRIZZLE } from '../../database/database.module';
-import type { Database } from '../../database/database.type';
+import type { Database, DbTransaction } from '../../database/database.type';
 import {
   credentials,
   departments,
@@ -86,10 +86,8 @@ export class UsersService {
   }
 
   async getCurrentUser(credentialId: string): Promise<CredentialResDto> {
-    // `fullName` lives on the linked `users` (employee) row, `role` on `roles`, and the `avatar` on
-    // `files` (via the user's `avatarFileId`) — none is a column on `credentials`, so all three are
-    // left-joined: a credential with no linked user (e.g. an admin-only login), no role, or no
-    // avatar still returns a row.
+    // `fullName` sống ở `users` (bắt buộc gắn kèm — `innerJoin`), `role` ở `roles`, `avatar` ở
+    // `files` (qua `users.avatarFileId`) — chỉ `role`/`avatarFile` còn có thể vắng mặt (left join).
     const [row] = await this.db
       .select({
         id: credentials.id,
@@ -102,7 +100,7 @@ export class UsersService {
         updatedAt: credentials.updatedAt,
       })
       .from(credentials)
-      .leftJoin(users, eq(users.credentialId, credentials.id))
+      .innerJoin(users, eq(users.id, credentials.userId))
       .leftJoin(roles, eq(roles.id, credentials.roleId))
       .leftJoin(files, eq(files.id, users.avatarFileId))
       .where(eq(credentials.id, credentialId))
@@ -131,9 +129,15 @@ export class UsersService {
     );
   }
 
+  /** `credentials.userId` giờ NOT NULL — thứ tự ghi đảo ngược so với trước (`users` trước,
+   * `credentials` sau, trỏ vào user vừa tạo), khác cách cũ (credential trước để tránh user mồ côi;
+   * giờ chiều mồ côi đã đảo: một `users` không credential luôn hợp lệ). Mọi kiểm tra read-only
+   * (department/position, uniqueness, quyền gán role) chạy trước khi mở transaction
+   * (`.claude/rules/transactions.md`). */
   async createUser(
     reqDto: CreateUserReqDto,
     actorCredentialId: string,
+    actorUserId: string,
   ): Promise<UserResDto> {
     // `credential` is a nested object, not a column on `users` — peel it off so the spread below
     // only carries real columns.
@@ -150,32 +154,37 @@ export class UsersService {
     if (reqDto.avatarFileId) {
       await this.filesService.linkFiles([reqDto.avatarFileId]);
     }
-    // Read-only check, so it belongs with the others — before any write happens.
     if (credential?.roleId) {
       await this.resolveRoleForAssignment(credential.roleId, actorCredentialId);
     }
-
-    // Provision the ERP credential (if requested) before inserting the user row, so a
-    // failed credential creation (e.g. duplicate username/email) never leaves an orphan user.
-    let credentialId: string | undefined;
     if (credential) {
-      credentialId = await this.createCredential(credential);
+      await Promise.all([
+        this.validateCredentialUsernameUniqueness(credential.username),
+        this.validateCredentialEmailUniqueness(credential.email),
+      ]);
     }
 
     const code = await this.generateUserCode();
 
-    const [user] = await this.db
-      .insert(users)
-      .values({
-        ...userFields,
-        code,
-        status: reqDto.status ?? UserStatus.WORKING,
-        credentialId,
-        createdBy: actorCredentialId,
-      })
-      .returning();
+    const userId = await this.db.transaction(async (tx) => {
+      const [user] = await tx
+        .insert(users)
+        .values({
+          ...userFields,
+          code,
+          status: reqDto.status ?? UserStatus.WORKING,
+          createdBy: actorUserId,
+        })
+        .returning({ id: users.id });
 
-    return this.getUserDetail(user.id);
+      if (credential) {
+        await this.createCredential(tx, credential, user.id);
+      }
+
+      return user.id;
+    });
+
+    return this.getUserDetail(userId);
   }
 
   async updateUser(
@@ -208,8 +217,11 @@ export class UsersService {
     // Role assignment rides along on the profile update, but the role itself lives on the login
     // credential — a user with no credential has nothing to assign to (E032). Same rules as the
     // dedicated `PATCH /users/:userId/role`; both go through `resolveRoleForAssignment`.
+    const linkedCredential = reqDto.roleId
+      ? await this.findCredentialByUserId(userId)
+      : undefined;
     if (reqDto.roleId) {
-      if (!existing.credentialId) {
+      if (!linkedCredential) {
         throw new AppException(ErrorCode.E032, HttpStatus.BAD_REQUEST);
       }
       await this.resolveRoleForAssignment(reqDto.roleId, actorCredentialId);
@@ -221,8 +233,8 @@ export class UsersService {
     // `updated_at` is bumped by the column's own `$onUpdate`.
     await this.db.update(users).set(userFields).where(eq(users.id, userId));
 
-    if (roleId && existing.credentialId) {
-      await this.applyRoleToCredential(existing.credentialId, roleId);
+    if (roleId && linkedCredential) {
+      await this.applyRoleToCredential(linkedCredential.id, roleId);
     }
 
     return this.getUserDetail(userId);
@@ -244,7 +256,7 @@ export class UsersService {
     actorCredentialId: string,
   ): Promise<UserResDto> {
     const user = await this.db.query.users.findFirst({
-      columns: { id: true, credentialId: true },
+      columns: { id: true },
       where: eq(users.id, userId),
     });
 
@@ -252,13 +264,15 @@ export class UsersService {
       throw new AppException(ErrorCode.E012, HttpStatus.NOT_FOUND);
     }
 
-    if (!user.credentialId) {
+    const linkedCredential = await this.findCredentialByUserId(userId);
+
+    if (!linkedCredential) {
       throw new AppException(ErrorCode.E032, HttpStatus.BAD_REQUEST);
     }
 
     await this.resolveRoleForAssignment(reqDto.roleId, actorCredentialId);
 
-    await this.applyRoleToCredential(user.credentialId, reqDto.roleId);
+    await this.applyRoleToCredential(linkedCredential.id, reqDto.roleId);
 
     return this.getUserDetail(userId);
   }
@@ -306,6 +320,17 @@ export class UsersService {
     }
   }
 
+  /** `users` không còn giữ `credentialId` — tra ngược qua `credentials.userId` (unique) mỗi khi
+   * cần biết user này có credential hay không. */
+  private async findCredentialByUserId(
+    userId: string,
+  ): Promise<{ id: string } | undefined> {
+    return this.db.query.credentials.findFirst({
+      where: eq(credentials.userId, userId),
+      columns: { id: true },
+    });
+  }
+
   /** Writes the role onto the credential and drops its cached role→permissions mapping, so the
    * change takes effect on that identity's next request instead of after the cache TTL. */
   private async applyRoleToCredential(
@@ -349,28 +374,20 @@ export class UsersService {
     return existing;
   }
 
+  /** Username/email uniqueness đã kiểm ở `createUser` trước khi mở transaction — đây chỉ còn lệnh
+   * ghi. `roleId` cũng đã validate ở đó (`resolveRoleForAssignment`). Không cache để invalidate —
+   * credential id còn mới tinh, `PermissionsService` chưa từng resolve nó. */
   private async createCredential(
+    tx: DbTransaction,
     credential: CreateCredentialReqDto,
-  ): Promise<string> {
-    await Promise.all([
-      this.validateCredentialUsernameUniqueness(credential.username),
-      this.validateCredentialEmailUniqueness(credential.email),
-    ]);
-
+    userId: string,
+  ): Promise<void> {
     const password = await hash(
       credential.password,
       UsersService.PASSWORD_SALT_ROUNDS,
     );
 
-    // `roleId` is already validated by the caller (`createUser` runs `resolveRoleForAssignment`
-    // with the other read-only checks). No cache to invalidate — this credential id is brand new,
-    // so `PermissionsService` has never resolved it.
-    const [created] = await this.db
-      .insert(credentials)
-      .values({ ...credential, password })
-      .returning();
-
-    return created.id;
+    await tx.insert(credentials).values({ ...credential, userId, password });
   }
 
   async getUserDetail(userId: string): Promise<UserResDto> {
@@ -393,21 +410,18 @@ export class UsersService {
     });
   }
 
-  /** Returns the columns callers need right after (department/position, to compute the
-   * "effective" pair on a partial update; `credentialId`, to assign a role) instead of a second
-   * re-fetch. */
+  /** Returns the columns callers need right after — department/position, to compute the
+   * "effective" pair on a partial update — instead of a second re-fetch. */
   private async ensureUserExists(userId: string): Promise<{
     id: string;
     departmentId: string;
     positionId: string;
-    credentialId: string | null;
   }> {
     const existing = await this.db.query.users.findFirst({
       columns: {
         id: true,
         departmentId: true,
         positionId: true,
-        credentialId: true,
       },
       where: eq(users.id, userId),
     });

@@ -74,7 +74,7 @@ export class SuppliersController {
     @Body() reqDto: CreateSupplierReqDto,
     @CurrentUser() payload: JwtPayloadType,
   ): Promise<SupplierResDto> {
-    return this.suppliersService.createSupplier(reqDto, payload.sub);
+    return this.suppliersService.createSupplier(reqDto, payload.userId);
   }
 
   @Patch(':supplierId')

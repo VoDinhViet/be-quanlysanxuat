@@ -12,9 +12,9 @@ import {
 } from 'drizzle-orm/pg-core';
 
 import { countries } from './countries';
-import { credentials } from './credentials';
 import { files } from './files';
 import { supplierGroups } from './supplier-groups';
+import { users } from './users';
 
 export enum SupplierStatus {
   ACTIVE = 'ACTIVE',
@@ -93,7 +93,7 @@ export const suppliers = pgTable(
       .default(SupplierStatus.ACTIVE),
     internalNote: varchar('internal_note', { length: 1000 }),
 
-    createdBy: uuid('created_by').references(() => credentials.id, {
+    createdBy: uuid('created_by').references(() => users.id, {
       onDelete: 'set null',
     }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -187,9 +187,9 @@ export const suppliersRelations = relations(suppliers, ({ one, many }) => ({
     fields: [suppliers.countryId],
     references: [countries.id],
   }),
-  creator: one(credentials, {
+  creator: one(users, {
     fields: [suppliers.createdBy],
-    references: [credentials.id],
+    references: [users.id],
   }),
   logoFile: one(files, {
     fields: [suppliers.logoFileId],

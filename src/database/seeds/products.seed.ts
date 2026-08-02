@@ -204,7 +204,7 @@ export async function seedProducts(db: SeedDatabase): Promise<void> {
 
   const admin = await db.query.credentials.findFirst({
     where: eq(credentials.username, 'admin'),
-    columns: { id: true },
+    columns: { userId: true },
   });
 
   if (!admin) {
@@ -213,7 +213,7 @@ export async function seedProducts(db: SeedDatabase): Promise<void> {
     );
   }
 
-  const createdBy = admin?.id ?? null;
+  const createdBy = admin?.userId ?? null;
 
   const groups = await db.query.productGroups.findMany({
     where: inArray(productGroups.code, ['THANH_PHAM', 'LINH_KIEN']),

@@ -64,7 +64,7 @@ export class ProductsController {
     @Body() reqDto: CreateProductReqDto,
     @CurrentUser() payload: JwtPayloadType,
   ): Promise<ProductDetailResDto> {
-    return this.productsService.createProduct(reqDto, payload.sub);
+    return this.productsService.createProduct(reqDto, payload.userId);
   }
 
   @Patch(':productId')
@@ -102,6 +102,6 @@ export class ProductsController {
     @UUIDParam('productId') productId: string,
     @CurrentUser() payload: JwtPayloadType,
   ): Promise<ProductDetailResDto> {
-    return this.productsService.copyProduct(productId, payload.sub);
+    return this.productsService.copyProduct(productId, payload.userId);
   }
 }

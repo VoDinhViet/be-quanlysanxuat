@@ -6,8 +6,8 @@ import {
   ClassField,
   ClassFieldOptional,
 } from '../../../decorators/field.decorators';
+import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
 import { ProductBaseResDto } from './product-base.res.dto';
-import { ProductCreatorResDto } from './product-creator.res.dto';
 import { ProductRefResDto } from './product-ref.res.dto';
 
 @Exclude()
@@ -29,6 +29,6 @@ export class ProductResDto extends ProductBaseResDto {
   unit!: ProductRefResDto;
 
   @Expose()
-  @ClassFieldOptional(() => ProductCreatorResDto, { nullable: true })
-  creator!: ProductCreatorResDto | null;
+  @ClassFieldOptional(() => UserRefResDto, { nullable: true })
+  creator!: UserRefResDto | null;
 }

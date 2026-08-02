@@ -127,7 +127,13 @@ export class RoutingService {
       where: eq(bomItems.id, bomItemId),
     });
 
-    if (!item || item.bom.productId !== productId) {
+    if (!item) {
+      throw new AppException(ErrorCode.E062, HttpStatus.NOT_FOUND);
+    }
+    // `bomId` là FK bắt buộc, đúng 1 dòng — Drizzle suy sai kiểu `bom` thành one|many sau khi
+    // schema có thêm nhiều quan hệ trỏ `users`, ép lại cho đúng thực tế thay vì đổi logic.
+    const bom = item.bom as { productId: string };
+    if (bom.productId !== productId) {
       throw new AppException(ErrorCode.E062, HttpStatus.NOT_FOUND);
     }
     if (item.itemType === BomItemType.MATERIAL) {

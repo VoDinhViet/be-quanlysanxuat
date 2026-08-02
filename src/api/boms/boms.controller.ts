@@ -68,7 +68,7 @@ export class BomsController {
     @Body() reqDto: CreateBomItemReqDto,
     @CurrentUser() payload: JwtPayloadType,
   ): Promise<BomItemNodeResDto> {
-    return this.bomsService.addBomItem(productId, reqDto, payload.sub);
+    return this.bomsService.addBomItem(productId, reqDto, payload.userId);
   }
 
   @Patch('items/:itemId')

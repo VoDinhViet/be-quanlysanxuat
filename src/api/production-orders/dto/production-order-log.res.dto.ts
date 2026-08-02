@@ -8,7 +8,7 @@ import {
   StringField,
   UUIDField,
 } from '../../../decorators/field.decorators';
-import { OrderCreatorResDto } from '../../orders/dto/order-creator.res.dto';
+import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
 
 @Exclude()
 export class ProductionOrderLogResDto {
@@ -25,11 +25,11 @@ export class ProductionOrderLogResDto {
   content!: string;
 
   @Expose()
-  @ClassFieldOptional(() => OrderCreatorResDto, {
+  @ClassFieldOptional(() => UserRefResDto, {
     nullable: true,
     description: 'Người thực hiện',
   })
-  performer!: OrderCreatorResDto | null;
+  performer!: UserRefResDto | null;
 
   @Expose()
   @DateField({ description: 'Thời điểm thực hiện' })

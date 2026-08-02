@@ -78,7 +78,7 @@ export class OrdersController {
     @Body() reqDto: CreateOrderReqDto,
     @CurrentUser() payload: JwtPayloadType,
   ): Promise<OrderDetailResDto> {
-    return this.ordersService.createOrder(reqDto, payload.sub);
+    return this.ordersService.createOrder(reqDto, payload.userId);
   }
 
   @Patch(':orderId')
@@ -116,7 +116,7 @@ export class OrdersController {
     @UUIDParam('orderId') orderId: string,
     @CurrentUser() payload: JwtPayloadType,
   ): Promise<OrderDetailResDto> {
-    return this.ordersService.approveOrder(orderId, payload.sub);
+    return this.ordersService.approveOrder(orderId, payload.userId);
   }
 
   @Post(':orderId/reject')
@@ -131,6 +131,6 @@ export class OrdersController {
     @Body() reqDto: RejectOrderReqDto,
     @CurrentUser() payload: JwtPayloadType,
   ): Promise<OrderDetailResDto> {
-    return this.ordersService.rejectOrder(orderId, reqDto, payload.sub);
+    return this.ordersService.rejectOrder(orderId, reqDto, payload.userId);
   }
 }

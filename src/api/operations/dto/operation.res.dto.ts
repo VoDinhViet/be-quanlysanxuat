@@ -9,7 +9,7 @@ import {
   StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
-import { OperationCreatorResDto } from './operation-creator.res.dto';
+import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
 
 @Exclude()
 export class OperationResDto {
@@ -38,8 +38,8 @@ export class OperationResDto {
   status!: OperationStatus;
 
   @Expose()
-  @ClassFieldOptional(() => OperationCreatorResDto, { nullable: true })
-  creator!: OperationCreatorResDto | null;
+  @ClassFieldOptional(() => UserRefResDto, { nullable: true })
+  creator!: UserRefResDto | null;
 
   @Expose()
   @DateField()

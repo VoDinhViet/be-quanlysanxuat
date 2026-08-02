@@ -1,5 +1,6 @@
 import { relations } from 'drizzle-orm';
 import {
+  type AnyPgColumn,
   date,
   index,
   pgEnum,
@@ -60,10 +61,9 @@ export const users = pgTable(
     hireDate: date('hire_date', { mode: 'date' }).notNull(),
     note: varchar('note', { length: 1000 }),
     status: userStatusEnum('status').notNull().default(UserStatus.WORKING),
-    credentialId: uuid('credential_id').references(() => credentials.id, {
-      onDelete: 'set null',
-    }),
-    createdBy: uuid('created_by').references(() => credentials.id, {
+    // Self-reference — "ai đã tạo user này" (cùng khuôn `bomItems.parentId`), NULL cho user gốc
+    // tạo bằng seed hoặc không rõ người tạo.
+    createdBy: uuid('created_by').references((): AnyPgColumn => users.id, {
       onDelete: 'set null',
     }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -76,7 +76,6 @@ export const users = pgTable(
   (table) => [
     index('idx_users_department_id').on(table.departmentId),
     index('idx_users_position_id').on(table.positionId),
-    index('idx_users_credential_id').on(table.credentialId),
     index('idx_users_avatar_file_id').on(table.avatarFileId),
     index('idx_users_created_by').on(table.createdBy),
   ],
@@ -91,16 +90,19 @@ export const usersRelations = relations(users, ({ one }) => ({
     fields: [users.positionId],
     references: [positions.id],
   }),
-  credential: one(credentials, {
-    fields: [users.credentialId],
-    references: [credentials.id],
-  }),
-  creator: one(credentials, {
+  creator: one(users, {
     fields: [users.createdBy],
-    references: [credentials.id],
+    references: [users.id],
   }),
   avatarFile: one(files, {
     fields: [users.avatarFileId],
     references: [files.id],
+  }),
+  // Chiều ngược của `credentialsRelations.user` — FK thật (`credentials.userId`) nằm bên
+  // `credentials`, khai `one()` ở cả hai phía cho quan hệ 1-1 là cách chuẩn của Drizzle khi FK
+  // không nằm trên bảng đang khai relation.
+  credential: one(credentials, {
+    fields: [users.id],
+    references: [credentials.userId],
   }),
 }));

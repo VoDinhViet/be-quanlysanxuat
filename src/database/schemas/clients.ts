@@ -10,7 +10,7 @@ import {
 } from 'drizzle-orm/pg-core';
 
 import { clientGroups } from './client-groups';
-import { credentials } from './credentials';
+import { users } from './users';
 
 export enum ClientStatus {
   ACTIVE = 'ACTIVE',
@@ -37,7 +37,7 @@ export const clients = pgTable(
     address: varchar('address', { length: 500 }),
     note: varchar('note', { length: 1000 }),
     status: clientStatusEnum('status').notNull().default(ClientStatus.ACTIVE),
-    createdBy: uuid('created_by').references(() => credentials.id, {
+    createdBy: uuid('created_by').references(() => users.id, {
       onDelete: 'set null',
     }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -80,9 +80,9 @@ export const clientsRelations = relations(clients, ({ one, many }) => ({
     fields: [clients.clientGroupId],
     references: [clientGroups.id],
   }),
-  creator: one(credentials, {
+  creator: one(users, {
     fields: [clients.createdBy],
-    references: [credentials.id],
+    references: [users.id],
   }),
   contacts: many(clientContacts),
 }));

@@ -209,9 +209,9 @@ async function seedClients(db: SeedDatabase) {
 
   const admin = await db.query.credentials.findFirst({
     where: eq(credentials.username, 'admin'),
-    columns: { id: true },
+    columns: { userId: true },
   });
-  const createdByIds = admin ? [admin.id] : [];
+  const createdByIds = admin ? [admin.userId] : [];
 
   await seed(db, { clients }).refine((f) => ({
     clients: {

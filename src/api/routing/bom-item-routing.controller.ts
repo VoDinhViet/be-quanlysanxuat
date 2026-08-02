@@ -55,7 +55,7 @@ export class BomItemRoutingController {
     return this.routingService.addStep(
       { productId, bomItemId: itemId },
       reqDto,
-      payload.sub,
+      payload.userId,
     );
   }
 

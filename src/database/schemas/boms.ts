@@ -13,10 +13,10 @@ import {
   varchar,
 } from 'drizzle-orm/pg-core';
 
-import { credentials } from './credentials';
 import { files } from './files';
 import { materials } from './materials';
 import { products } from './products';
+import { users } from './users';
 
 /** Custom Drizzle type for PostgreSQL ltree extension */
 export const ltree = customType<{ data: string }>({
@@ -34,7 +34,7 @@ export const boms = pgTable(
       .notNull()
       .unique()
       .references(() => products.id, { onDelete: 'cascade' }),
-    createdBy: uuid('created_by').references(() => credentials.id, {
+    createdBy: uuid('created_by').references(() => users.id, {
       onDelete: 'set null',
     }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -104,7 +104,7 @@ export const bomItems = pgTable(
     drawingFileId: uuid('drawing_file_id').references(() => files.id, {
       onDelete: 'set null',
     }),
-    createdBy: uuid('created_by').references(() => credentials.id, {
+    createdBy: uuid('created_by').references(() => users.id, {
       onDelete: 'set null',
     }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -134,9 +134,9 @@ export const bomsRelations = relations(boms, ({ one, many }) => ({
     fields: [boms.productId],
     references: [products.id],
   }),
-  creator: one(credentials, {
+  creator: one(users, {
     fields: [boms.createdBy],
-    references: [credentials.id],
+    references: [users.id],
   }),
   items: many(bomItems),
 }));
@@ -158,8 +158,8 @@ export const bomItemsRelations = relations(bomItems, ({ one }) => ({
     fields: [bomItems.drawingFileId],
     references: [files.id],
   }),
-  creator: one(credentials, {
+  creator: one(users, {
     fields: [bomItems.createdBy],
-    references: [credentials.id],
+    references: [users.id],
   }),
 }));

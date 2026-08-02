@@ -64,7 +64,7 @@ export class ProductionOrdersController {
     return this.productionOrdersService.updateProductionOrder(
       productionOrdersId,
       reqDto,
-      payload.sub,
+      payload.userId,
     );
   }
 
@@ -97,7 +97,7 @@ export class ProductionOrdersController {
   ): Promise<ProductionOrderDetailResDto> {
     return this.productionOrdersService.approveProductionOrder(
       productionOrdersId,
-      payload.sub,
+      payload.userId,
     );
   }
 }
