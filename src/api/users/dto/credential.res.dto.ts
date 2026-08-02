@@ -42,12 +42,8 @@ export class CredentialResDto {
   email!: string | null;
 
   @Expose()
-  @StringFieldOptional({
-    description:
-      'Full name from the linked user (employee) profile, or null if none is linked',
-    nullable: true,
-  })
-  fullName!: string | null;
+  @StringField({ description: 'Full name from the linked user profile' })
+  fullName!: string;
 
   @Expose()
   @FileField(

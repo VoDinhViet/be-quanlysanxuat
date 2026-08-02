@@ -13,7 +13,6 @@ import {
 } from 'drizzle-orm/pg-core';
 
 import { clients } from './clients';
-import { credentials } from './credentials';
 import { files } from './files';
 import { products } from './products';
 import { PaymentTerm, paymentTermEnum } from './suppliers';
@@ -118,8 +117,8 @@ export const orders = pgTable(
     contactName: varchar('contact_name', { length: 255 }),
     contactPhone: varchar('contact_phone', { length: 30 }),
     contactEmail: varchar('contact_email', { length: 255 }),
-    // Nhân viên kinh doanh — the only business-domain FK in the repo pointing at `users.id` rather
-    // than `credentials.id` (which is reserved for "who performed this write" audit columns).
+    // Nhân viên kinh doanh phụ trách đơn — vai trò tổ chức, khác `createdBy` (ai bấm nút tạo đơn),
+    // nhưng từ khi mọi FK audit đều trỏ `users.id`, hai loại không còn khác nhau về bảng đích nữa.
     staffId: uuid('staff_id').references(() => users.id, {
       onDelete: 'set null',
     }),
@@ -136,14 +135,12 @@ export const orders = pgTable(
       .notNull()
       .default(1),
     status: orderStatusEnum('status').notNull().default(OrderStatus.DRAFT),
-    // Approval/rejection — only the most recent event is kept (no history table). Both reference
-    // `credentials.id`, same as `createdBy`: this records who performed the write, not a
-    // business-domain actor like `staffId`.
-    approvedBy: uuid('approved_by').references(() => credentials.id, {
+    // Approval/rejection — only the most recent event is kept (no history table).
+    approvedBy: uuid('approved_by').references(() => users.id, {
       onDelete: 'set null',
     }),
     approvedAt: timestamp('approved_at'),
-    rejectedBy: uuid('rejected_by').references(() => credentials.id, {
+    rejectedBy: uuid('rejected_by').references(() => users.id, {
       onDelete: 'set null',
     }),
     rejectedAt: timestamp('rejected_at'),
@@ -196,7 +193,7 @@ export const orders = pgTable(
       .default(0),
     note: varchar('note', { length: 1000 }),
     internalNote: varchar('internal_note', { length: 1000 }),
-    createdBy: uuid('created_by').references(() => credentials.id, {
+    createdBy: uuid('created_by').references(() => users.id, {
       onDelete: 'set null',
     }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -317,17 +314,17 @@ export const ordersRelations = relations(orders, ({ one, many }) => ({
     fields: [orders.staffId],
     references: [users.id],
   }),
-  creator: one(credentials, {
+  creator: one(users, {
     fields: [orders.createdBy],
-    references: [credentials.id],
+    references: [users.id],
   }),
-  approver: one(credentials, {
+  approver: one(users, {
     fields: [orders.approvedBy],
-    references: [credentials.id],
+    references: [users.id],
   }),
-  rejecter: one(credentials, {
+  rejecter: one(users, {
     fields: [orders.rejectedBy],
-    references: [credentials.id],
+    references: [users.id],
   }),
   items: many(orderItems),
   attachments: many(orderAttachments),

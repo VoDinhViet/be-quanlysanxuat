@@ -11,10 +11,10 @@ import {
   varchar,
 } from 'drizzle-orm/pg-core';
 
-import { credentials } from './credentials';
 import { materials } from './materials';
 import { orderItems } from './orders';
 import { products } from './products';
+import { users } from './users';
 
 /** IN adds to on-hand stock, OUT subtracts. The sign lives entirely in `type` — `quantity` on a
  * line is always positive (see `stock_receipt_items` CHECK below), never negative. */
@@ -98,7 +98,7 @@ export const stockReceipts = pgTable(
     reason: stockReceiptReasonEnum('reason').notNull(),
     receiptDate: date('receipt_date', { mode: 'date' }).notNull(),
     note: varchar('note', { length: 1000 }),
-    createdBy: uuid('created_by').references(() => credentials.id, {
+    createdBy: uuid('created_by').references(() => users.id, {
       onDelete: 'set null',
     }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -185,9 +185,9 @@ export const stockReceiptItems = pgTable(
 export const stockReceiptsRelations = relations(
   stockReceipts,
   ({ one, many }) => ({
-    creator: one(credentials, {
+    creator: one(users, {
       fields: [stockReceipts.createdBy],
-      references: [credentials.id],
+      references: [users.id],
     }),
     items: many(stockReceiptItems),
   }),

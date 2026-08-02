@@ -132,7 +132,7 @@ export async function seedMaterials(db: SeedDatabase): Promise<void> {
 
   const admin = await db.query.credentials.findFirst({
     where: eq(credentials.username, 'admin'),
-    columns: { id: true },
+    columns: { userId: true },
   });
 
   if (!admin) {
@@ -141,7 +141,7 @@ export async function seedMaterials(db: SeedDatabase): Promise<void> {
     );
   }
 
-  const createdBy = admin?.id ?? null;
+  const createdBy = admin?.userId ?? null;
 
   for (const spec of MATERIALS) {
     const existing = await db.query.materials.findFirst({

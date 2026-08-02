@@ -60,7 +60,8 @@ Mọi chuyển trạng thái **khác** đều lỏng: không có state machine �
 - Không đường nào ngoài `approveOrder` đưa đơn tới `AWAITING_PRODUCTION`.
 - Tổng tiền trong DB luôn là kết quả server tính, chưa bao giờ là số client gửi.
 - Một đơn ở trạng thái kết thúc (`COMPLETED`/`CANCELLED`) là bất biến — không sửa, không xoá.
-- `orders.staffId` là FK nghiệp vụ **duy nhất** trong toàn hệ thống trỏ `users.id`; mọi FK "ai thao tác" khác trỏ `credentials.id`.
+- `orders.staffId` trỏ `users.id`, cùng quy ước với mọi FK "ai thao tác" khác trong hệ thống — xem
+  `docs/domains/identity-access.md`.
 
 Không phải invariant dù dễ tưởng:
 

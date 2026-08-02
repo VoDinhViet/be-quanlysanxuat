@@ -8,7 +8,7 @@ import {
   varchar,
 } from 'drizzle-orm/pg-core';
 
-import { credentials } from './credentials';
+import { users } from './users';
 
 /** Which lane a công đoạn (operation) runs in: `INHOUSE` is performed on the factory floor,
  * `OUTSOURCE` is sent to a supplier (gia công ngoài) — the master flag the "Gia công ngoài"
@@ -49,7 +49,7 @@ export const operations = pgTable(
     status: operationStatusEnum('status')
       .notNull()
       .default(OperationStatus.ACTIVE),
-    createdBy: uuid('created_by').references(() => credentials.id, {
+    createdBy: uuid('created_by').references(() => users.id, {
       onDelete: 'set null',
     }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -63,8 +63,8 @@ export const operations = pgTable(
 );
 
 export const operationsRelations = relations(operations, ({ one }) => ({
-  creator: one(credentials, {
+  creator: one(users, {
     fields: [operations.createdBy],
-    references: [credentials.id],
+    references: [users.id],
   }),
 }));

@@ -1,9 +1,9 @@
 import { Exclude, Expose } from 'class-transformer';
 
 import { ProductionJobStatus } from '../../../database/schemas';
+import { ClientBaseResDto } from '../../clients/dto/client-base.res.dto';
 import { FileField } from '../../files/dto/file.field';
 import { FileResDto } from '../../files/dto/file.res.dto';
-import { OrderClientRefResDto } from '../../orders/dto/order-client-ref.res.dto';
 import {
   ClassFieldOptional,
   DateField,
@@ -29,8 +29,8 @@ export class ProductionJobResDto {
   orderCode!: string;
 
   @Expose()
-  @ClassFieldOptional(() => OrderClientRefResDto, { nullable: true })
-  client!: OrderClientRefResDto | null;
+  @ClassFieldOptional(() => ClientBaseResDto, { nullable: true })
+  client!: ClientBaseResDto | null;
 
   @Expose()
   @FileField('imageFile', 'Ảnh sản phẩm')

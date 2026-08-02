@@ -12,11 +12,11 @@ import {
   varchar,
 } from 'drizzle-orm/pg-core';
 
-import { credentials } from './credentials';
 import { materials } from './materials';
 import { operations } from './operations';
 import { orderItems, orders } from './orders';
 import { products } from './products';
+import { users } from './users';
 
 /** "Chờ duyệt" (kế hoạch, sửa số lượng tự do qua `updateProductionOrder`) vs "Đã duyệt" (chốt
  * LSX, không sửa được nữa). Chỉ 2 giá trị — chưa có trạng thái huỷ riêng (xem doc trên
@@ -60,11 +60,11 @@ export const productionOrders = pgTable(
     status: productionOrderStatusEnum('status')
       .notNull()
       .default(ProductionOrderStatus.PENDING),
-    approvedBy: uuid('approved_by').references(() => credentials.id, {
+    approvedBy: uuid('approved_by').references(() => users.id, {
       onDelete: 'set null',
     }),
     approvedAt: timestamp('approved_at'),
-    createdBy: uuid('created_by').references(() => credentials.id, {
+    createdBy: uuid('created_by').references(() => users.id, {
       onDelete: 'set null',
     }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -208,7 +208,7 @@ export const productionJobs = pgTable(
     status: productionJobStatusEnum('status')
       .notNull()
       .default(ProductionJobStatus.PENDING),
-    startedBy: uuid('started_by').references(() => credentials.id, {
+    startedBy: uuid('started_by').references(() => users.id, {
       onDelete: 'set null',
     }),
     startedAt: timestamp('started_at'),
@@ -312,6 +312,34 @@ export const productionJobMaterials = pgTable(
   ],
 );
 
+/**
+ * Ghi chú tự do của một Job — người dùng chủ động viết (vd trao đổi yêu cầu khách hàng, ưu tiên
+ * xưởng), khác `productionOrderLogs`: đây không phải log thao tác tự động, xem
+ * `docs/domains/production.md`.
+ *
+ * Rules:
+ * - Append-only — chỉ `POST`/`GET`, không có route sửa/xoá.
+ */
+export const productionJobNotes = pgTable(
+  'production_job_notes',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    productionJobId: uuid('production_job_id')
+      .notNull()
+      .references(() => productionJobs.id, { onDelete: 'cascade' }),
+    content: varchar('content', { length: 1000 }).notNull(),
+    createdBy: uuid('created_by').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [
+    index('idx_production_job_notes_production_job_id').on(
+      table.productionJobId,
+    ),
+  ],
+);
+
 /** "Hành động" ghi log trên một LSX — mở rộng khi có thêm đường ghi mới trên `productionOrders`
  * (ví dụ huỷ duyệt, khi route đó được làm). */
 export enum ProductionOrderLogAction {
@@ -352,7 +380,7 @@ export const productionOrderLogs = pgTable(
       .references(() => productionOrders.id, { onDelete: 'cascade' }),
     action: productionOrderLogActionEnum('action').notNull(),
     content: varchar('content', { length: 1000 }).notNull(),
-    performedBy: uuid('performed_by').references(() => credentials.id, {
+    performedBy: uuid('performed_by').references(() => users.id, {
       onDelete: 'set null',
     }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -371,13 +399,13 @@ export const productionOrdersRelations = relations(
       fields: [productionOrders.orderId],
       references: [orders.id],
     }),
-    approver: one(credentials, {
+    approver: one(users, {
       fields: [productionOrders.approvedBy],
-      references: [credentials.id],
+      references: [users.id],
     }),
-    creator: one(credentials, {
+    creator: one(users, {
       fields: [productionOrders.createdBy],
-      references: [credentials.id],
+      references: [users.id],
     }),
     items: many(productionOrderItems),
     jobs: many(productionJobs),
@@ -414,12 +442,13 @@ export const productionJobsRelations = relations(
       fields: [productionJobs.productId],
       references: [products.id],
     }),
-    starter: one(credentials, {
+    starter: one(users, {
       fields: [productionJobs.startedBy],
-      references: [credentials.id],
+      references: [users.id],
     }),
     steps: many(productionJobSteps),
     materials: many(productionJobMaterials),
+    notes: many(productionJobNotes),
   }),
 );
 
@@ -458,9 +487,23 @@ export const productionOrderLogsRelations = relations(
       fields: [productionOrderLogs.productionOrderId],
       references: [productionOrders.id],
     }),
-    performer: one(credentials, {
+    performer: one(users, {
       fields: [productionOrderLogs.performedBy],
-      references: [credentials.id],
+      references: [users.id],
+    }),
+  }),
+);
+
+export const productionJobNotesRelations = relations(
+  productionJobNotes,
+  ({ one }) => ({
+    productionJob: one(productionJobs, {
+      fields: [productionJobNotes.productionJobId],
+      references: [productionJobs.id],
+    }),
+    creator: one(users, {
+      fields: [productionJobNotes.createdBy],
+      references: [users.id],
     }),
   }),
 );

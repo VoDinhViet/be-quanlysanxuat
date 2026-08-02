@@ -3,16 +3,16 @@ import { Exclude, Expose } from 'class-transformer';
 import { StringField, UUIDField } from '../../../decorators/field.decorators';
 
 @Exclude()
-export class OrderClientRefResDto {
+export class UserRefResDto {
   @Expose()
   @UUIDField()
   id!: string;
 
   @Expose()
-  @StringField()
+  @StringField({ description: 'Employee code' })
   code!: string;
 
   @Expose()
-  @StringField()
-  name!: string;
+  @StringField({ description: 'Full name' })
+  fullName!: string;
 }

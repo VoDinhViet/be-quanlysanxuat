@@ -25,6 +25,7 @@ import { AppException } from '../../exceptions/app.exception';
 import { FilesService } from '../files/files.service';
 import { CreateMaterialReqDto } from './dto/create-material.req.dto';
 import { GetMaterialsReqDto } from './dto/get-materials.req.dto';
+import { MaterialDetailResDto } from './dto/material-detail.res.dto';
 import { MaterialResDto } from './dto/material.res.dto';
 import { UpdateMaterialReqDto } from './dto/update-material.req.dto';
 
@@ -100,7 +101,7 @@ export class MaterialsService {
     );
   }
 
-  async getMaterialDetail(materialId: string): Promise<MaterialResDto> {
+  async getMaterialDetail(materialId: string): Promise<MaterialDetailResDto> {
     const material = await this.db.query.materials.findFirst({
       where: eq(materials.id, materialId),
       with: MATERIAL_DETAIL_WITH,
@@ -110,7 +111,7 @@ export class MaterialsService {
       throw new AppException(ErrorCode.E035, HttpStatus.NOT_FOUND);
     }
 
-    return plainToInstance(MaterialResDto, material, {
+    return plainToInstance(MaterialDetailResDto, material, {
       excludeExtraneousValues: true,
     });
   }
@@ -118,7 +119,7 @@ export class MaterialsService {
   async createMaterial(
     reqDto: CreateMaterialReqDto,
     userId: string,
-  ): Promise<MaterialResDto> {
+  ): Promise<MaterialDetailResDto> {
     let code = reqDto.code;
     if (code) {
       await this.validateCodeUniqueness(code);
@@ -173,7 +174,7 @@ export class MaterialsService {
   async updateMaterial(
     materialId: string,
     reqDto: UpdateMaterialReqDto,
-  ): Promise<MaterialResDto> {
+  ): Promise<MaterialDetailResDto> {
     const existing = await this.ensureMaterialExists(materialId);
 
     if (reqDto.unitId) {

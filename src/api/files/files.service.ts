@@ -146,11 +146,17 @@ export class FilesService {
   }
 
   /** Chỉ người tải lên hoặc người có `system:manage` được xoá — nếu không, bất kỳ user đăng nhập
-   * nào cũng xoá được mọi file trong registry, không có đường lùi. */
-  async deleteFile(fileId: string, actorCredentialId: string): Promise<void> {
+   * nào cũng xoá được mọi file trong registry, không có đường lùi. `uploadedBy` so `users.id`
+   * (`actorUserId`); quyền `system:manage` vẫn kiểm qua `credentials.roleId` nên cần thêm
+   * `actorCredentialId` — hai id khác vai trò, không gộp được. */
+  async deleteFile(
+    fileId: string,
+    actorUserId: string,
+    actorCredentialId: string,
+  ): Promise<void> {
     const file = await this.ensureFileExists(fileId);
 
-    if (file.uploadedBy !== actorCredentialId) {
+    if (file.uploadedBy !== actorUserId) {
       const granted =
         await this.permissionsService.getPermissionCodes(actorCredentialId);
 

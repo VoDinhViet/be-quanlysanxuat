@@ -49,7 +49,7 @@ export class RoutingController {
     @Body() reqDto: CreateRoutingStepReqDto,
     @CurrentUser() payload: JwtPayloadType,
   ): Promise<RoutingStepResDto> {
-    return this.routingService.addStep({ productId }, reqDto, payload.sub);
+    return this.routingService.addStep({ productId }, reqDto, payload.userId);
   }
 
   @Patch(':stepId')

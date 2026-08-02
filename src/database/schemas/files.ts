@@ -9,7 +9,7 @@ import {
   varchar,
 } from 'drizzle-orm/pg-core';
 
-import { credentials } from './credentials';
+import { users } from './users';
 
 export enum FileKind {
   IMAGE = 'IMAGE',
@@ -81,7 +81,7 @@ export const files = pgTable(
     storageDriver: varchar('storage_driver', { length: 20 })
       .notNull()
       .default('local'),
-    uploadedBy: uuid('uploaded_by').references(() => credentials.id, {
+    uploadedBy: uuid('uploaded_by').references(() => users.id, {
       onDelete: 'set null',
     }),
     /** When an entity first referenced this file. `NULL` means uploaded but never linked (the
@@ -94,8 +94,8 @@ export const files = pgTable(
 );
 
 export const filesRelations = relations(files, ({ one }) => ({
-  uploader: one(credentials, {
+  uploader: one(users, {
     fields: [files.uploadedBy],
-    references: [credentials.id],
+    references: [users.id],
   }),
 }));

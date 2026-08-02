@@ -35,6 +35,7 @@ import { AppException } from '../../exceptions/app.exception';
 import { FilesService } from '../files/files.service';
 import { ProductionOrdersService } from '../production-orders/production-orders.service';
 import { CreateOrderReqDto } from './dto/create-order.req.dto';
+import { OrderDetailResDto } from './dto/order-detail.res.dto';
 import { GetOrdersReqDto } from './dto/get-orders.req.dto';
 import { OrderItemReqDto } from './dto/order-item.req.dto';
 import { OrderResDto } from './dto/order.res.dto';
@@ -167,7 +168,7 @@ export class OrdersService {
     });
   }
 
-  async getOrderDetail(orderId: string): Promise<OrderResDto> {
+  async getOrderDetail(orderId: string): Promise<OrderDetailResDto> {
     const order = await this.db.query.orders.findFirst({
       where: and(eq(orders.id, orderId), isNull(orders.deletedAt)),
       extras: { expired: this.expiredSql(), totalVnd: this.totalVndSql() },
@@ -189,7 +190,7 @@ export class OrdersService {
       throw new AppException(ErrorCode.E057, HttpStatus.NOT_FOUND);
     }
 
-    return plainToInstance(OrderResDto, order, {
+    return plainToInstance(OrderDetailResDto, order, {
       excludeExtraneousValues: true,
     });
   }
@@ -197,7 +198,7 @@ export class OrdersService {
   async createOrder(
     reqDto: CreateOrderReqDto,
     userId: string,
-  ): Promise<OrderResDto> {
+  ): Promise<OrderDetailResDto> {
     let code = reqDto.code;
     if (code) {
       await this.validateCodeUniqueness(code);
@@ -260,7 +261,7 @@ export class OrdersService {
   async updateOrder(
     orderId: string,
     reqDto: UpdateOrderReqDto,
-  ): Promise<OrderResDto> {
+  ): Promise<OrderDetailResDto> {
     const existing = await this.ensureOrderExists(orderId);
     this.ensureOrderEditable(existing.status);
 
@@ -328,7 +329,10 @@ export class OrdersService {
 
   /** Nơi duy nhất ghi `AWAITING_PRODUCTION` (xem `ensureStatusSettable`) — đồng thời sinh sẵn kế
    * hoạch sản xuất trong cùng transaction, để không có trạng thái "duyệt nửa vời" không kế hoạch. */
-  async approveOrder(orderId: string, userId: string): Promise<OrderResDto> {
+  async approveOrder(
+    orderId: string,
+    userId: string,
+  ): Promise<OrderDetailResDto> {
     const existing = await this.ensureOrderExists(orderId);
     this.ensurePendingConfirmation(existing.status);
 
@@ -361,7 +365,7 @@ export class OrdersService {
     orderId: string,
     reqDto: RejectOrderReqDto,
     userId: string,
-  ): Promise<OrderResDto> {
+  ): Promise<OrderDetailResDto> {
     const existing = await this.ensureOrderExists(orderId);
     this.ensurePendingConfirmation(existing.status);
 

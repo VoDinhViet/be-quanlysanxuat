@@ -14,8 +14,8 @@ import {
 import { CountryRefResDto } from './country-ref.res.dto';
 import { FileField } from '../../files/dto/file.field';
 import { FileResDto } from '../../files/dto/file.res.dto';
+import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
 import { SupplierAttachmentResDto } from './supplier-attachment.res.dto';
-import { SupplierCreatorResDto } from './supplier-creator.res.dto';
 import { SupplierGroupRefResDto } from './supplier-group-ref.res.dto';
 import { SupplierPaymentResDto } from './supplier-payment.res.dto';
 import { SupplierRepresentativeResDto } from './supplier-representative.res.dto';
@@ -95,8 +95,8 @@ export class SupplierResDto {
   representatives!: SupplierRepresentativeResDto[];
 
   @Expose()
-  @ClassFieldOptional(() => SupplierCreatorResDto, { nullable: true })
-  creator!: SupplierCreatorResDto | null;
+  @ClassFieldOptional(() => UserRefResDto, { nullable: true })
+  creator!: UserRefResDto | null;
 
   @Expose()
   @DateField()

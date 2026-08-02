@@ -50,13 +50,25 @@ import { formatLtreeNodeId } from './utils/ltree.util';
 
 // Alias 2 lần: item của một node hoặc là product hoặc là material (không bao giờ cả hai), nên
 // unit/image lấy từ bên nào left join khớp.
-const productUnits = alias(units, 'product_units');
-const materialUnits = alias(units, 'material_units');
-const productImageFiles = alias(files, 'product_image_files');
-const materialImageFiles = alias(files, 'material_image_files');
+// `as unknown as typeof X` — sau khi schema có thêm nhiều bảng trỏ `users`, Drizzle suy sai kiểu
+// cột của alias trên các bảng này (rơi về `{ [x: string]: any }`/union với `PgView`); ép lại tường
+// minh qua `unknown`, không đổi hành vi runtime — `alias()` chỉ đổi tên SQL, không đổi cột.
+const productUnits = alias(units, 'product_units') as unknown as typeof units;
+const materialUnits = alias(units, 'material_units') as unknown as typeof units;
+const productImageFiles = alias(
+  files,
+  'product_image_files',
+) as unknown as typeof files;
+const materialImageFiles = alias(
+  files,
+  'material_image_files',
+) as unknown as typeof files;
 // Bản vẽ riêng của node là left join một nguồn duy nhất (bom_items.drawingFileId), không coalesce
 // 2 nguồn như image/unit ở trên — một alias là đủ.
-const bomItemDrawingFiles = alias(files, 'bom_item_drawing_files');
+const bomItemDrawingFiles = alias(
+  files,
+  'bom_item_drawing_files',
+) as unknown as typeof files;
 
 // Dạng thô `baseItemSelect()` trả về, trước khi `normalizeImage` gộp sub-select `image` coalesce
 // toàn null thành `null` — xem `BomTreeRow` cho dạng sau normalize.
@@ -86,11 +98,15 @@ export class BomsService {
       return [];
     }
 
-    const rows = (
-      await this.baseItemSelect()
-        .where(eq(bomItems.bomId, bom.id))
-        .orderBy(asc(bomItems.sortOrder), asc(bomItems.createdAt))
-    ).map((row) => this.normalizeImage(row));
+    // `as RawBomItemRow[]` — Drizzle suy sai kiểu `unit`/`drawing` sau khi schema có thêm nhiều
+    // quan hệ trỏ `users`, ép lại cho đúng thực tế (không đổi hành vi runtime).
+    const selectRows = (await this.baseItemSelect()
+      .where(eq(bomItems.bomId, bom.id))
+      .orderBy(
+        asc(bomItems.sortOrder),
+        asc(bomItems.createdAt),
+      )) as RawBomItemRow[];
+    const rows = selectRows.map((row) => this.normalizeImage(row));
 
     const operationsByBomItem = await this.loadOperationsByBomItem(rows);
 
@@ -411,9 +427,10 @@ export class BomsService {
     bomId: string,
     itemId: string,
   ): Promise<BomItemNodeResDto> {
-    const [row] = await this.baseItemSelect().where(
+    // `as RawBomItemRow[]` — cùng lý do ở `getBomTree`.
+    const [row] = (await this.baseItemSelect().where(
       and(eq(bomItems.id, itemId), eq(bomItems.bomId, bomId)),
-    );
+    )) as RawBomItemRow[];
 
     if (!row) {
       throw new AppException(ErrorCode.E050, HttpStatus.NOT_FOUND);
@@ -453,7 +470,9 @@ export class BomsService {
         continue;
       }
       const list = grouped.get(step.bomItemId) ?? [];
-      list.push(step);
+      // `operationId` là FK bắt buộc, `operation` luôn đúng 1 dòng — Drizzle suy sai kiểu thành
+      // one|many sau khi schema có thêm nhiều quan hệ trỏ `users`, ép lại cho đúng thực tế.
+      list.push(step as BomTreeOperationRow);
       grouped.set(step.bomItemId, list);
     }
 

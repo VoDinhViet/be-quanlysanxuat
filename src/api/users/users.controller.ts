@@ -73,7 +73,7 @@ export class UsersController {
     @Body() reqDto: CreateUserReqDto,
     @CurrentUser() payload: JwtPayloadType,
   ): Promise<UserResDto> {
-    return this.usersService.createUser(reqDto, payload.sub);
+    return this.usersService.createUser(reqDto, payload.sub, payload.userId);
   }
 
   @Patch(':userId')

@@ -13,10 +13,12 @@ xưởng hiện chưa cần theo dõi sản lượng hay tạm dừng qua API, t
 | `POST /production-jobs/:jobId/start` | Bắt đầu làm | Có |
 | `GET /production-jobs/:jobId/steps` | Đọc công đoạn đã snapshot | Không |
 | `GET /production-jobs/:jobId/materials` | Đọc danh sách vật tư | Không |
+| `GET /production-jobs/:jobId/notes` | Đọc ghi chú | Không |
+| `POST /production-jobs/:jobId/notes` | Đăng một ghi chú | Không |
 
 ## Actor
 
-`start` dùng `production:update`; hai route đọc dùng `production:read`.
+`start`/`POST notes` dùng `production:update`; ba route đọc dùng `production:read`.
 
 ⚠️ Không role seed nào có `production:update`/`production:read` (xem
 `docs/domains/identity-access.md`).
@@ -25,7 +27,8 @@ xưởng hiện chưa cần theo dõi sản lượng hay tạm dừng qua API, t
 
 - Job tồn tại (`E082`). Không kiểm LSX/đơn gốc — Job đứng độc lập sau khi sinh ra.
 - `start`: trạng thái hiện tại phải là `PENDING`, nếu không: `E087`.
-- Hai route đọc (`steps`/`materials`): không kiểm trạng thái — đọc được ở mọi trạng thái Job.
+- Các route còn lại (`steps`/`materials`/`notes`): không kiểm trạng thái — đọc/đăng được ở mọi trạng
+  thái Job.
 
 ```
 PENDING ──start──> IN_PROGRESS
@@ -39,6 +42,12 @@ lại chi tiết trả về.
 `steps`/`materials`: đọc lại dữ liệu đã copy sẵn từ Product Structure lúc duyệt LSX — không tính
 toán lại, không đọc `routing_steps`/`bom_items` sống.
 
+`POST notes`: kiểm Job tồn tại → một lệnh `INSERT` (`content`, `createdBy`) → `204`, không trả nội
+dung. `GET notes` đọc qua relational query API (`with: { creator: true }` — `createdBy` trỏ thẳng
+`users.id`, một chặng, `docs/domains/identity-access.md`), sắp `createdAt` **tăng dần** (cũ trước,
+mới sau) — đọc xuôi như một luồng trao đổi, khác `GET /production-orders/:id/logs` (đọc ngược lịch
+sử).
+
 ## State changes
 
 `production_jobs.status`: `PENDING → IN_PROGRESS`. `start` là hành động duy nhất còn lại của module
@@ -48,16 +57,17 @@ Không có route nào khác đổi trạng thái Job — `IN_PROGRESS` là đi�
 
 ## Side effects
 
-**Không có**, cho cả ba route:
+**Không có**, cho mọi route kể cả `POST notes`:
 
 - Không tiêu hao vật tư thật, không sinh phiếu xuất/nhập kho.
-- Không ghi log — Job cố ý không có action log (`docs/domains/production.md`).
-- Không đẩy trạng thái LSX hay đơn hàng.
+- Không ghi log — Job cố ý không có action log tự động (`docs/domains/production.md`). `POST notes`
+  chỉ thêm một dòng `production_job_notes`, không suy ra hay ghi thêm gì khác.
+- Không đẩy trạng thái LSX, đơn hàng, hay chính Job.
 
 ## Transaction boundary
 
-**Không có transaction nào** — `start` là một `UPDATE` đơn, Postgres đã đảm bảo nguyên tử. Hai
-route đọc chỉ `SELECT`.
+**Không có transaction nào** — `start` và `POST notes` đều là một `INSERT`/`UPDATE` đơn, Postgres đã
+đảm bảo nguyên tử. Các route đọc chỉ `SELECT`.
 
 ## Failure cases
 
@@ -84,4 +94,5 @@ LSX, không đọc `routing_steps`/`bom_items` sống. Không đọc và không 
 
 Bước trước: `docs/workflows/production-order-approval.md`.
 
-Code: `ProductionJobsService.startJob`/`getProductionJobSteps`/`getProductionJobMaterials`.
+Code: `ProductionJobsService.startJob`/`getProductionJobSteps`/`getProductionJobMaterials`/
+`getProductionJobNotes`/`createProductionJobNote`.

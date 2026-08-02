@@ -18,6 +18,7 @@ import { Permissions } from '../../decorators/permissions.decorator';
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
 import { CreateMaterialReqDto } from './dto/create-material.req.dto';
 import { GetMaterialsReqDto } from './dto/get-materials.req.dto';
+import { MaterialDetailResDto } from './dto/material-detail.res.dto';
 import { MaterialResDto } from './dto/material.res.dto';
 import { UpdateMaterialReqDto } from './dto/update-material.req.dto';
 import { MaterialsService } from './materials.service';
@@ -43,39 +44,39 @@ export class MaterialsController {
   @Get(':materialId')
   @Permissions('materials:read')
   @ApiAuth({
-    type: MaterialResDto,
+    type: MaterialDetailResDto,
     summary: 'Get material detail',
   })
   getMaterialDetail(
     @UUIDParam('materialId') materialId: string,
-  ): Promise<MaterialResDto> {
+  ): Promise<MaterialDetailResDto> {
     return this.materialsService.getMaterialDetail(materialId);
   }
 
   @Post()
   @Permissions('materials:create')
   @ApiAuth({
-    type: MaterialResDto,
+    type: MaterialDetailResDto,
     summary: 'Create a material',
     statusCode: HttpStatus.CREATED,
   })
   createMaterial(
     @Body() reqDto: CreateMaterialReqDto,
     @CurrentUser() payload: JwtPayloadType,
-  ): Promise<MaterialResDto> {
-    return this.materialsService.createMaterial(reqDto, payload.sub);
+  ): Promise<MaterialDetailResDto> {
+    return this.materialsService.createMaterial(reqDto, payload.userId);
   }
 
   @Patch(':materialId')
   @Permissions('materials:update')
   @ApiAuth({
-    type: MaterialResDto,
+    type: MaterialDetailResDto,
     summary: 'Update a material',
   })
   updateMaterial(
     @UUIDParam('materialId') materialId: string,
     @Body() reqDto: UpdateMaterialReqDto,
-  ): Promise<MaterialResDto> {
+  ): Promise<MaterialDetailResDto> {
     return this.materialsService.updateMaterial(materialId, reqDto);
   }
 

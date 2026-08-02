@@ -10,10 +10,10 @@ import {
 } from 'drizzle-orm/pg-core';
 
 import { clients } from './clients';
-import { credentials } from './credentials';
 import { files } from './files';
 import { productGroups } from './product-groups';
 import { units } from './units';
+import { users } from './users';
 
 export enum ProductStatus {
   ACTIVE = 'ACTIVE',
@@ -80,7 +80,7 @@ export const products = pgTable(
     unitId: uuid('unit_id')
       .notNull()
       .references(() => units.id, { onDelete: 'restrict' }),
-    createdBy: uuid('created_by').references(() => credentials.id, {
+    createdBy: uuid('created_by').references(() => users.id, {
       onDelete: 'set null',
     }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -135,9 +135,9 @@ export const productsRelations = relations(products, ({ one, many }) => ({
     fields: [products.unitId],
     references: [units.id],
   }),
-  creator: one(credentials, {
+  creator: one(users, {
     fields: [products.createdBy],
-    references: [credentials.id],
+    references: [users.id],
   }),
   imageFile: one(files, {
     fields: [products.imageFileId],

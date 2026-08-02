@@ -50,9 +50,11 @@ Chỗ tinh tế: phải **loại trừ chính đơn đang xét** khỏi `reserve
 | `production_job_steps` | Snapshot công đoạn Cấp 0 của Job, đóng băng lúc duyệt LSX — không route sửa |
 | `production_job_materials` | Danh sách vật tư của Job, khởi tạo từ BOM lúc duyệt — sửa được khi Job còn `PENDING` |
 | `production_order_logs` | Lịch sử thao tác **ở mức LSX** (append-only) |
+| `production_job_notes` | Ghi chú tự do trên Job, người dùng chủ động viết (append-only) |
 
-Job **không có** log thao tác — cố ý bỏ. Chỉ `startedBy`/`startedAt` được ghi thật cho hành động
-`start`.
+Job **không có log thao tác** — cố ý bỏ, chỉ `startedBy`/`startedAt` được ghi thật cho hành động
+`start`. Job **có ghi chú** (`production_job_notes`) — khác log ở chỗ nội dung do người dùng gõ tay,
+không tự sinh khi có hành động, và không ghi lại "ai đã làm gì".
 
 ## Lifecycle
 
@@ -86,6 +88,8 @@ xong", vì hệ thống hiện không ghi nhận sản lượng đạt/phế qua
   `docs/domains/product-structure.md`).
 - Danh sách vật tư của Job hiện **read-only** sau khi sinh — chưa có route sửa/thêm/xoá, tạm hoãn,
   dự kiến mở rộng sang CRUD từng dòng sau này.
+- Ghi chú Job (`production_job_notes`) là **append-only** — `POST` để đăng, không có route sửa/xoá;
+  đăng được ở mọi trạng thái Job, không kiểm `status`.
 
 ## Invariants
 
@@ -124,7 +128,8 @@ Không phải invariant dù dễ tưởng:
 3. **Tưởng "Đề xuất SX" là số liệu sống.** Là snapshot lúc duyệt; mở lại màn chi tiết không tính lại.
 4. **Quên `excludeOrderId` khi tính Khả dụng cho một PO** → trừ nhu cầu của chính nó hai lần.
 5. **Tưởng Job map 1-1 với dòng đơn hàng.** Job gộp theo sản phẩm; dòng quyết định sản xuất mới là tầng 1-1.
-6. **Tìm log thao tác của Job.** Không tồn tại — chỉ LSX có log.
+6. **Tìm log thao tác của Job.** Không tồn tại — chỉ LSX có log. Job chỉ có **ghi chú**
+   (`production_job_notes`, người dùng tự viết), không tự sinh khi có hành động.
 7. **Tưởng có thể huỷ duyệt LSX.** `APPROVED` hiện là điểm cuối, chưa có route đưa về `PENDING`.
 8. **Tưởng sửa routing/BOM của sản phẩm sẽ cập nhật công đoạn/vật tư của Job đã duyệt.** Cả hai đều
    là bản copy đóng băng tại thời điểm duyệt, không đọc lại nguồn.

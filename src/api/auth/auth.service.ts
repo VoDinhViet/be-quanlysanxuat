@@ -31,6 +31,7 @@ import { RefreshTokenPayloadType } from './types/refresh-token-payload.type';
 
 type SessionCredential = {
   credentialId: string;
+  userId: string;
   username: string;
   email: string;
 };
@@ -67,12 +68,13 @@ export class AuthService {
       throw new AppException(ErrorCode.E004, HttpStatus.UNAUTHORIZED);
     }
 
-    await this.ensureCredentialActive(credential.id);
+    await this.ensureCredentialActive(credential.userId);
 
     const sessionId = randomUUID();
     const { accessToken, refreshToken } = await this.createTokenPair(
       {
         credentialId: credential.id,
+        userId: credential.userId,
         username: credential.username,
         email: credential.email,
       },
@@ -82,7 +84,7 @@ export class AuthService {
     return plainToInstance(
       LoginResDto,
       {
-        userId: credential.id,
+        userId: credential.userId,
         accessToken,
         refreshToken,
         tokenType: 'Bearer',
@@ -122,11 +124,12 @@ export class AuthService {
       throw new UnauthorizedException();
     }
 
-    await this.ensureCredentialActive(credential.id);
+    await this.ensureCredentialActive(credential.userId);
 
     const { accessToken, refreshToken } = await this.createTokenPair(
       {
         credentialId: credential.id,
+        userId: credential.userId,
         username: credential.username,
         email: credential.email,
       },
@@ -136,7 +139,7 @@ export class AuthService {
     return plainToInstance(
       LoginResDto,
       {
-        userId: credential.id,
+        userId: credential.userId,
         accessToken,
         refreshToken,
         tokenType: 'Bearer',
@@ -187,18 +190,18 @@ export class AuthService {
   }
 
   /**
-   * A credential linked to a `users` row (via `users.credentialId`) whose `status` is
-   * `RESIGNED` can no longer log in or refresh — this revokes access as soon as the next
-   * login/refresh happens, without needing to touch existing cached sessions directly.
-   * A credential with no linked `users` row is always active.
+   * A `users` row whose `status` is `RESIGNED` can no longer log in or refresh — this revokes
+   * access as soon as the next login/refresh happens, without needing to touch existing cached
+   * sessions directly. Nhận thẳng `userId` (đã có sẵn từ `credentials.userId` ở nơi gọi) — tra cứu
+   * PK trực tiếp, không cần join ngược.
    */
-  private async ensureCredentialActive(credentialId: string): Promise<void> {
-    const linkedUser = await this.db.query.users.findFirst({
-      where: eq(users.credentialId, credentialId),
+  private async ensureCredentialActive(userId: string): Promise<void> {
+    const user = await this.db.query.users.findFirst({
+      where: eq(users.id, userId),
       columns: { status: true },
     });
 
-    if (linkedUser?.status === UserStatus.RESIGNED) {
+    if (user?.status === UserStatus.RESIGNED) {
       throw new AppException(ErrorCode.E018, HttpStatus.FORBIDDEN);
     }
   }
@@ -221,6 +224,7 @@ export class AuthService {
     const [accessToken, refreshToken] = await Promise.all([
       this.jwtService.signAsync({
         sub: credential.credentialId,
+        userId: credential.userId,
         username: credential.username,
         email: credential.email,
         sessionId,

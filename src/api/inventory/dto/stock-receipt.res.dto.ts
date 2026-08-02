@@ -13,7 +13,7 @@ import {
   StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
-import { StockReceiptCreatorResDto } from './stock-receipt-creator.res.dto';
+import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
 import { StockReceiptItemResDto } from './stock-receipt-item.res.dto';
 
 @Exclude()
@@ -51,8 +51,8 @@ export class StockReceiptResDto {
   items!: StockReceiptItemResDto[];
 
   @Expose()
-  @ClassFieldOptional(() => StockReceiptCreatorResDto, { nullable: true })
-  creator!: StockReceiptCreatorResDto | null;
+  @ClassFieldOptional(() => UserRefResDto, { nullable: true })
+  creator!: UserRefResDto | null;
 
   @Expose()
   @DateField()
