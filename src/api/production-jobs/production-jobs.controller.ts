@@ -1,4 +1,12 @@
-import { Body, Controller, Get, HttpStatus, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpStatus,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
@@ -7,15 +15,18 @@ import { ApiAuth } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
+import { FileResDto } from '../files/dto/file.res.dto';
 import { CreateProductionJobNoteReqDto } from './dto/create-production-job-note.req.dto';
 import { GetProductionJobMaterialsReqDto } from './dto/get-production-job-materials.req.dto';
 import { GetProductionJobNotesReqDto } from './dto/get-production-job-notes.req.dto';
 import { GetProductionJobsReqDto } from './dto/get-production-jobs.req.dto';
+import { ProductionJobBomItemResDto } from './dto/production-job-bom-item.res.dto';
 import { ProductionJobDetailResDto } from './dto/production-job-detail.res.dto';
 import { ProductionJobMaterialResDto } from './dto/production-job-material.res.dto';
 import { ProductionJobNoteResDto } from './dto/production-job-note.res.dto';
+import { ProductionJobOperationResDto } from './dto/production-job-operation.res.dto';
 import { ProductionJobResDto } from './dto/production-job.res.dto';
-import { ProductionJobStepResDto } from './dto/production-job-step.res.dto';
+import { UpdateProductionJobOperationReqDto } from './dto/update-production-job-operation.req.dto';
 import { ProductionJobsService } from './production-jobs.service';
 
 @ApiTags('Production Jobs')
@@ -49,17 +60,18 @@ export class ProductionJobsController {
     return this.productionJobsService.getProductionJob(jobId);
   }
 
-  @Get(':jobId/steps')
+  @Get(':jobId/bom')
   @Permissions('production:read')
   @ApiAuth({
-    type: ProductionJobStepResDto,
+    type: ProductionJobBomItemResDto,
     isArray: true,
-    summary: 'Snapshot công đoạn (routing Cấp 0) đã đóng băng lúc duyệt LSX',
+    summary:
+      'Cây BOM của Job đã đóng băng lúc duyệt LSX — danh sách phẳng cha-con (FE tự dựng cây), mỗi node kèm công đoạn as-used của nó',
   })
-  getProductionJobSteps(
+  getProductionJobBom(
     @UUIDParam('jobId') jobId: string,
-  ): Promise<ProductionJobStepResDto[]> {
-    return this.productionJobsService.getProductionJobSteps(jobId);
+  ): Promise<ProductionJobBomItemResDto[]> {
+    return this.productionJobsService.getProductionJobBom(jobId);
   }
 
   @Get(':jobId/materials')
@@ -74,6 +86,19 @@ export class ProductionJobsController {
     @Query() reqDto: GetProductionJobMaterialsReqDto,
   ): Promise<OffsetPaginatedDto<ProductionJobMaterialResDto>> {
     return this.productionJobsService.getProductionJobMaterials(jobId, reqDto);
+  }
+
+  @Get(':jobId/attachments')
+  @Permissions('production:read')
+  @ApiAuth({
+    type: FileResDto,
+    isArray: true,
+    summary: 'Tài liệu đính kèm của Job — đọc xuyên từ tài liệu của sản phẩm',
+  })
+  getProductionJobAttachments(
+    @UUIDParam('jobId') jobId: string,
+  ): Promise<FileResDto[]> {
+    return this.productionJobsService.getProductionJobAttachments(jobId);
   }
 
   @Get(':jobId/notes')
@@ -119,5 +144,24 @@ export class ProductionJobsController {
     @CurrentUser() payload: JwtPayloadType,
   ): Promise<ProductionJobDetailResDto> {
     return this.productionJobsService.startJob(jobId, payload.userId);
+  }
+
+  @Patch(':jobId/operations/:operationId')
+  @Permissions('production:update')
+  @ApiAuth({
+    type: ProductionJobOperationResDto,
+    summary:
+      'Nhập SL hoàn thành cho một công đoạn của Job (ghi đè, không cộng dồn)',
+  })
+  updateProductionJobOperation(
+    @UUIDParam('jobId') jobId: string,
+    @UUIDParam('operationId') operationId: string,
+    @Body() reqDto: UpdateProductionJobOperationReqDto,
+  ): Promise<ProductionJobOperationResDto> {
+    return this.productionJobsService.updateProductionJobOperation(
+      jobId,
+      operationId,
+      reqDto,
+    );
   }
 }

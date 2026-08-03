@@ -519,6 +519,41 @@
       "when": 1785577001369,
       "tag": "0073_invert_users_credentials_fk",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1785735990275,
+      "tag": "0074_skinny_pyro",
+      "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1785738104300,
+      "tag": "0075_rename_production_job_operations",
+      "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1785744508355,
+      "tag": "0076_round_star_brand",
+      "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1785748049775,
+      "tag": "0077_red_reaper",
+      "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1785750020370,
+      "tag": "0078_free_switch",
+      "breakpoints": true
     }
   ]
 }

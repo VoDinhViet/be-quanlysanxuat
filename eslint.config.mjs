@@ -41,17 +41,21 @@ export default tseslint.config(
     // 100%, và `npx tsc --noEmit` sạch 100% cho toàn dự án). Đây là giới hạn của công cụ suy luận
     // kiểu qua nhiều file, không phải lỗ hổng an toàn kiểu thật — `tsc --noEmit` vẫn là cổng kiểm
     // type chính thức, không bị nới lỏng bởi override này. Phạm vi: chỉ tầng chạm trực tiếp schema
-    // (service đọc/ghi DB, seed), không đụng controller/DTO/decorator.
+    // (service đọc/ghi DB, seed), không đụng controller/DTO/decorator. `**/types/*.type.ts` cùng
+    // nhóm — các type dựng từ `typeof <table>.$inferSelect` của bảng chạm `users` (vd `files` qua
+    // `uploader`) hứng đúng lỗi tương tự, dạng `no-redundant-type-constituents` thay vì `no-unsafe-*`.
     files: [
       'src/database/schemas/**/*.ts',
       'src/database/seeds/**/*.ts',
       'src/api/**/*.service.ts',
+      'src/api/**/types/*.type.ts',
     ],
     rules: {
       '@typescript-eslint/no-unsafe-return': 'off',
       '@typescript-eslint/no-unsafe-member-access': 'off',
       '@typescript-eslint/no-unsafe-assignment': 'off',
       '@typescript-eslint/no-unsafe-argument': 'off',
+      '@typescript-eslint/no-redundant-type-constituents': 'off',
     },
   },
 );

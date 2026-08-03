@@ -53,10 +53,13 @@ lượng **không** hỏi lại tồn kho.
    - Sinh mã `LSXxxxx` (đếm số LSX đã duyệt + 1), ghi `APPROVED` + `approvedBy`/`approvedAt`.
    - Đẩy đơn gốc `AWAITING_PRODUCTION` → `IN_PROGRESS`.
    - Sinh Job: mỗi sản phẩm một dòng, mã `JOBxxxx` cấp liên tiếp từ tổng số Job toàn bảng.
-   - Copy routing Cấp 0 của từng sản phẩm sang `production_job_steps` (đóng băng, không route sửa).
+   - Nhân bản toàn bộ cây BOM (cả `PRODUCT` lẫn `MATERIAL`) sang `production_job_bom_items` (id mới,
+     `code`/`name` denormalize), rồi copy routing as-used của từng node sang
+     `production_job_operations` (`code`/`name`/`type` công đoạn denormalize) — đóng băng, không
+     route sửa. Không có khái niệm Cấp 0 riêng ở tầng Job.
    - Copy BOM (gộp theo vật tư) sang `production_job_materials`, nhân định mức với SL Job
-     (`requiredQty = unitQty × quantity`) — sửa được sau đó qua
-     `docs/workflows/production-job-execution.md`.
+     (`requiredQty = unitQty × quantity`), denormalize luôn `materialCode`/`materialName`/
+     `unitCode`/`unitName` — sửa được sau đó qua `docs/workflows/production-job-execution.md`.
    - 1 dòng log `APPROVED` ghi kèm số Job đã sinh.
 
 ## State changes
@@ -66,16 +69,16 @@ lượng **không** hỏi lại tồn kho.
 | `production_orders` | `PENDING`, `code` NULL | `APPROVED`, có `code` |
 | `orders` | `AWAITING_PRODUCTION` | `IN_PROGRESS` |
 | `production_jobs` | *(chưa có)* | `PENDING` |
-| `production_job_steps` | *(chưa có)* | N dòng/Job (copy routing Cấp 0) |
+| `production_job_bom_items` | *(chưa có)* | N dòng/Job (nhân bản cây BOM) |
+| `production_job_operations` | *(chưa có)* | N dòng/Job (as-used từng node BOM) |
 | `production_job_materials` | *(chưa có)* | N dòng/Job (copy BOM × SL Job) |
 
 ## Side effects
 
 - N `production_jobs` (N = số sản phẩm phân biệt có SL > 0). Không sản phẩm nào SL > 0 → **không
   Job nào**, vẫn là duyệt hợp lệ.
-- Mỗi Job kèm theo bản copy công đoạn + vật tư. Sản phẩm không có routing → Job đó không có bước
-  nào; sản phẩm không có BOM (hoặc BOM không có node MATERIAL) → Job đó không có vật tư nào — cả hai
-  đều **không phải lỗi**.
+- Mỗi Job kèm theo bản copy cây BOM + công đoạn as-used + vật tư. Sản phẩm không có BOM → Job đó
+  không có node/công đoạn/vật tư nào — **không phải lỗi**.
 - 1 `production_order_logs`.
 - **Khoá gián tiếp**: từ giờ `PATCH /orders/:orderId` với `items` bị chặn (`E080`).
 
@@ -84,10 +87,10 @@ duyệt. Hai điểm này ngoài phạm vi có chủ đích — xem `docs/domain
 
 ## Transaction boundary
 
-Cả hai flow mở transaction sau phần đọc. Transaction duyệt bao **năm bảng ở hai domain**
-(`production_orders`, `orders`, `production_jobs`, `production_job_steps`,
-`production_job_materials`) — đây là transaction rộng nhất hệ thống, và là lý do `createJobs` bắt
-buộc nhận `tx`.
+Cả hai flow mở transaction sau phần đọc. Transaction duyệt bao **sáu bảng ở hai domain**
+(`production_orders`, `orders`, `production_jobs`, `production_job_bom_items`,
+`production_job_operations`, `production_job_materials`) — đây là transaction rộng nhất hệ thống,
+và là lý do `createJobs` bắt buộc nhận `tx`.
 
 Sinh mã nằm **trong** transaction nhưng vẫn là đếm-rồi-cộng-1: hai lượt duyệt song song có thể ra
 cùng mã, unique constraint là chốt chặn thật (biểu hiện: 500 thô, không phải mã lỗi sạch).

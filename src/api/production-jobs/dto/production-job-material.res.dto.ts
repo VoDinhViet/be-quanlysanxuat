@@ -1,33 +1,41 @@
 import { Exclude, Expose } from 'class-transformer';
 
-import { BomItemUnitResDto } from '../../boms/dto/bom-item-unit.res.dto';
 import { FileResDto } from '../../files/dto/file.res.dto';
 import {
-  ClassField,
   ClassFieldOptional,
   NumberField,
   NumberFieldOptional,
   StringField,
-  UUIDField,
+  UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
 
+/** Nguồn dữ liệu là chính `production_job_materials` — mọi field snapshot text (`materialCode`/
+ * `materialName`/`unitCode`/`unitName`) đóng băng lúc duyệt LSX, độc lập `materials`/`units` sống.
+ * `materialId` chỉ còn là liên kết tham khảo, có thể null. Xem `docs/domains/production.md`. */
 @Exclude()
 export class ProductionJobMaterialResDto {
   @Expose()
-  @UUIDField()
-  materialId!: string;
+  @UUIDFieldOptional({
+    nullable: true,
+    description: 'Liên kết tham khảo tới vật tư gốc',
+  })
+  materialId!: string | null;
 
   @Expose()
-  @StringField({ description: 'Mã vật tư' })
-  code!: string;
+  @StringField({ description: 'Mã vật tư — snapshot lúc duyệt LSX' })
+  materialCode!: string;
 
   @Expose()
-  @StringField({ description: 'Tên vật tư' })
-  name!: string;
+  @StringField({ description: 'Tên vật tư — snapshot lúc duyệt LSX' })
+  materialName!: string;
 
   @Expose()
-  @ClassField(() => BomItemUnitResDto)
-  unit!: BomItemUnitResDto;
+  @StringField({ description: 'Mã đơn vị tính — snapshot lúc duyệt LSX' })
+  unitCode!: string;
+
+  @Expose()
+  @StringField({ description: 'Tên đơn vị tính — snapshot lúc duyệt LSX' })
+  unitName!: string;
 
   @Expose()
   @ClassFieldOptional(() => FileResDto, { nullable: true })
