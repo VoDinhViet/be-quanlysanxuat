@@ -1,10 +1,10 @@
 import { PickType } from '@nestjs/swagger';
 import { Exclude } from 'class-transformer';
 
-import { ProductResDto } from './product.res.dto';
+import { PositionResDto } from './position.res.dto';
 
 @Exclude()
-export class ProductRefResDto extends PickType(ProductResDto, [
+export class PositionRefResDto extends PickType(PositionResDto, [
   'id',
   'code',
   'name',

@@ -3,7 +3,6 @@ import { Exclude, Expose } from 'class-transformer';
 import { UserGender, UserStatus } from '../../../database/schemas';
 import {
   ClassField,
-  ClassFieldOptional,
   DateField,
   DateFieldOptional,
   EmailFieldOptional,
@@ -12,10 +11,10 @@ import {
   StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
+import { DepartmentResDto } from '../../departments/dto/department.res.dto';
 import { FileField } from '../../files/dto/file.field';
 import { FileResDto } from '../../files/dto/file.res.dto';
-import { NamedRefResDto } from './named-ref.res.dto';
-import { UserCredentialResDto } from './user-credential.res.dto';
+import { PositionRefResDto } from '../../positions/dto/position-ref.res.dto';
 
 @Exclude()
 export class UserResDto {
@@ -60,12 +59,12 @@ export class UserResDto {
   avatar!: FileResDto | null;
 
   @Expose()
-  @ClassField(() => NamedRefResDto)
-  department!: NamedRefResDto;
+  @ClassField(() => DepartmentResDto)
+  department!: DepartmentResDto;
 
   @Expose()
-  @ClassField(() => NamedRefResDto)
-  position!: NamedRefResDto;
+  @ClassField(() => PositionRefResDto)
+  position!: PositionRefResDto;
 
   @Expose()
   @DateField({ description: 'Hire date' })
@@ -78,10 +77,6 @@ export class UserResDto {
   @Expose()
   @EnumField(() => UserStatus)
   status!: UserStatus;
-
-  @Expose()
-  @ClassFieldOptional(() => UserCredentialResDto, { nullable: true })
-  credential!: UserCredentialResDto | null;
 
   @Expose()
   @DateField()

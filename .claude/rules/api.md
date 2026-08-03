@@ -21,3 +21,26 @@ Biên HTTP: cái gì vào, cái gì ra, ai được gọi. Reference: `src/api/u
 - Request DTOs: MUST be plain classes with `!`/`?` fields. MUST NOT carry `@Expose()`/`@Exclude()`.
 - Response DTOs: MUST annotate the class `@Exclude()` and **every** exposed property `@Expose()` — a property missing `@Expose()` silently disappears from the API response.
 - List request DTOs MUST `extends PageOptionsDto` and only add extra filter fields, declared `readonly`. MUST NOT reimplement `limit`/`page`/`q`/`order`/`offset`.
+
+### Response DTO layering
+
+- MUST split a resource's response DTO into `XResDto` (list view: every column + the relations the
+  list needs) → `XDetailResDto extends XResDto` (+ heavier relations/collections only the detail view
+  needs) once a resource has both a list route and a detail route. Reference: `src/api/users/dto/`.
+- MUST NOT create `XDetailResDto` when detail has nothing beyond list — one `XResDto` is enough then
+  (`src/api/clients/dto/client.res.dto.ts`).
+- A separate `XBaseResDto` (only `X`'s own table columns, no relation, sitting below `XResDto extends
+  XBaseResDto`) is OPTIONAL — pull columns out into one only when something besides `XResDto` needs
+  that exact bare-column shape. Reference: `src/api/products/dto/`, `src/api/orders/dto/`. MUST NOT
+  add one with a single consumer (`XResDto` alone) — that's a needless extra file; put the columns
+  directly on `XResDto` instead, as `src/api/users/dto/user.res.dto.ts` does.
+- MUST NOT put a raw FK id (`xFileId`, `xGroupId`) on any response DTO layer — the relation replaces
+  it.
+- `XRefResDto` (the nested-elsewhere representation, `id` + `code` + `name`/`fullName`) MAY
+  `extends PickType(XResDto, [...] as const) {}` (`@nestjs/swagger`'s `PickType`, not
+  `@nestjs/mapped-types` directly — only the former also re-applies `@ApiProperty`) instead of
+  hand-declaring each field — it correctly carries over validation, `@Expose()`, and Swagger metadata
+  for the picked keys, regardless of what other relations sit on the source class. Redeclare an
+  individual field in the subclass body (`@Expose()` + the field decorator) only when its Ref-facing
+  `description` must read differently from the source's. Reference:
+  `src/api/users/dto/user-ref.res.dto.ts`.

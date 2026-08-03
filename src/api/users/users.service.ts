@@ -37,9 +37,10 @@ import { FilesService } from '../files/files.service';
 import { AssignRoleReqDto } from './dto/assign-role.req.dto';
 import { CreateCredentialReqDto } from './dto/create-credential.req.dto';
 import { CreateUserReqDto } from './dto/create-user.req.dto';
-import { CredentialResDto } from './dto/credential.res.dto';
+import { CurrentUserResDto } from './dto/current-user.res.dto';
 import { GetUsersReqDto } from './dto/get-users.req.dto';
 import { UpdateUserReqDto } from './dto/update-user.req.dto';
+import { UserDetailResDto } from './dto/user-detail.res.dto';
 import { UserResDto } from './dto/user.res.dto';
 
 @Injectable()
@@ -70,7 +71,6 @@ export class UsersService {
         with: {
           department: true,
           position: true,
-          credential: { with: { role: true } },
           avatarFile: true,
         },
       }),
@@ -85,7 +85,7 @@ export class UsersService {
     );
   }
 
-  async getCurrentUser(credentialId: string): Promise<CredentialResDto> {
+  async getCurrentUser(credentialId: string): Promise<CurrentUserResDto> {
     // `fullName` sống ở `users` (bắt buộc gắn kèm — `innerJoin`), `role` ở `roles`, `avatar` ở
     // `files` (qua `users.avatarFileId`) — chỉ `role`/`avatarFile` còn có thể vắng mặt (left join).
     const [row] = await this.db
@@ -116,7 +116,7 @@ export class UsersService {
       await this.permissionsService.getPermissionCodes(credentialId);
 
     return plainToInstance(
-      CredentialResDto,
+      CurrentUserResDto,
       // A left-joined miss surfaces as an all-null object, not `null` — collapse `role`/`avatarFile`
       // so the DTO renders `null` instead of a ref/file full of null fields.
       {
@@ -138,7 +138,7 @@ export class UsersService {
     reqDto: CreateUserReqDto,
     actorCredentialId: string,
     actorUserId: string,
-  ): Promise<UserResDto> {
+  ): Promise<UserDetailResDto> {
     // `credential` is a nested object, not a column on `users` — peel it off so the spread below
     // only carries real columns.
     const { credential, ...userFields } = reqDto;
@@ -191,7 +191,7 @@ export class UsersService {
     userId: string,
     reqDto: UpdateUserReqDto,
     actorCredentialId: string,
-  ): Promise<UserResDto> {
+  ): Promise<UserDetailResDto> {
     const existing = await this.ensureUserExists(userId);
 
     // Re-validate the (department, position) pair whenever either side changes — including when
@@ -254,7 +254,7 @@ export class UsersService {
     userId: string,
     reqDto: AssignRoleReqDto,
     actorCredentialId: string,
-  ): Promise<UserResDto> {
+  ): Promise<UserDetailResDto> {
     const user = await this.db.query.users.findFirst({
       columns: { id: true },
       where: eq(users.id, userId),
@@ -390,7 +390,7 @@ export class UsersService {
     await tx.insert(credentials).values({ ...credential, userId, password });
   }
 
-  async getUserDetail(userId: string): Promise<UserResDto> {
+  async getUserDetail(userId: string): Promise<UserDetailResDto> {
     const user = await this.db.query.users.findFirst({
       where: eq(users.id, userId),
       with: {
@@ -405,7 +405,7 @@ export class UsersService {
       throw new AppException(ErrorCode.E012, HttpStatus.NOT_FOUND);
     }
 
-    return plainToInstance(UserResDto, user, {
+    return plainToInstance(UserDetailResDto, user, {
       excludeExtraneousValues: true,
     });
   }

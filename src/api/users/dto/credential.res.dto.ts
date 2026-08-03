@@ -1,16 +1,11 @@
 import { Exclude, Expose } from 'class-transformer';
 
-import type { PermissionCode } from '../../../constants/permission.constant';
 import {
-  ClassField,
-  DateField,
-  EmailFieldOptional,
+  ClassFieldOptional,
+  EmailField,
   StringField,
-  StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
-import { FileField } from '../../files/dto/file.field';
-import { FileResDto } from '../../files/dto/file.res.dto';
 
 @Exclude()
 export class RoleRefResDto {
@@ -34,44 +29,17 @@ export class CredentialResDto {
   id!: string;
 
   @Expose()
-  @StringFieldOptional({ description: 'Username', nullable: true })
-  username!: string | null;
+  @StringField()
+  username!: string;
 
   @Expose()
-  @EmailFieldOptional({ nullable: true })
-  email!: string | null;
+  @EmailField()
+  email!: string;
 
   @Expose()
-  @StringField({ description: 'Full name from the linked user profile' })
-  fullName!: string;
-
-  @Expose()
-  @FileField(
-    'avatarFile',
-    'Avatar file from the linked user (employee) profile, or null if none is linked',
-  )
-  avatar!: FileResDto | null;
-
-  @Expose()
-  @ClassField(() => RoleRefResDto, {
+  @ClassFieldOptional(() => RoleRefResDto, {
     nullable: true,
     description: 'Role assigned to this login identity, or null if none',
   })
   role!: RoleRefResDto | null;
-
-  @Expose()
-  @StringField({
-    each: true,
-    description:
-      'Effective permission codes (includes system:manage for the ADMIN role)',
-  })
-  permissions!: PermissionCode[];
-
-  @Expose()
-  @DateField()
-  createdAt!: Date;
-
-  @Expose()
-  @DateField()
-  updatedAt!: Date;
 }
