@@ -50,7 +50,7 @@ Mọi chuyển trạng thái **khác** đều lỏng: không có state machine �
 - `orders:approve` là permission **riêng**, tách khỏi `orders:update` — duyệt/từ chối là quyền Giám đốc trở lên.
 - Duyệt/từ chối chỉ hợp lệ khi đơn đang `PENDING_CONFIRMATION` (`E074`). Từ chối **bắt buộc có lý do**.
 - **Duyệt đơn đồng thời sinh sẵn hồ sơ LSX** (header + các dòng quyết định sản xuất), trong cùng transaction với việc đổi trạng thái.
-- Sửa/xoá được ở mọi trạng thái trừ `COMPLETED`/`CANCELLED` (`E065`) — với một ngoại lệ: đổi `items` bị chặn (`E080`) nếu LSX của đơn **đã duyệt**.
+- Sửa được ở mọi trạng thái trừ `COMPLETED`/`CANCELLED` (`E065`) và `PENDING_CONFIRMATION` (`E090`, đang chờ duyệt — tránh đổi dữ liệu trong lúc Giám đốc đang xem để duyệt) — với một ngoại lệ: đổi `items` bị chặn (`E080`) nếu LSX của đơn **đã duyệt**. **Không có route xoá đơn** — huỷ đơn dùng `PATCH status = CANCELLED`, xem `docs/decisions/orders-no-delete.md`.
 - `items` trên `PATCH` là **replace-all**: gửi mảng mới (kể cả `[]`) thay hoàn toàn dòng cũ; bỏ trống field thì giữ nguyên.
 - `code` (`SOxxxx`) tự sinh nếu không gửi, và **bất biến** sau khi tạo.
 - **Mọi route `/orders*` đều cần bearer token, kể cả đọc** — khác phần lớn master data.
@@ -59,7 +59,7 @@ Mọi chuyển trạng thái **khác** đều lỏng: không có state machine �
 
 - Không đường nào ngoài `approveOrder` đưa đơn tới `AWAITING_PRODUCTION`.
 - Tổng tiền trong DB luôn là kết quả server tính, chưa bao giờ là số client gửi.
-- Một đơn ở trạng thái kết thúc (`COMPLETED`/`CANCELLED`) là bất biến — không sửa, không xoá.
+- Một đơn ở trạng thái kết thúc (`COMPLETED`/`CANCELLED`) hoặc đang chờ duyệt (`PENDING_CONFIRMATION`) là bất biến — không sửa được.
 - `orders.staffId` trỏ `users.id`, cùng quy ước với mọi FK "ai thao tác" khác trong hệ thống — xem
   `docs/domains/identity-access.md`.
 
@@ -86,9 +86,12 @@ Không phải invariant dù dễ tưởng:
 4. **Gửi thiếu dòng khi `PATCH items`.** Là replace-all, không phải partial — gửi thiếu là xoá.
 5. **Tưởng `GET /orders` trả kèm `items`/`attachments`.** Không; chỉ `GET /orders/:id` và response ngay sau `POST`/`PATCH` mới có.
 6. **Dựa vào `GET /orders/stats` như số liệu chính xác.** Hai field là xấp xỉ: `completedValue` ("Đã giao") dùng `status = COMPLETED` làm proxy vì chưa có bảng giao hàng thật; `expiredTrendCount` so trạng thái *hiện tại* với mốc 7 ngày trước vì không có bảng lịch sử trạng thái.
+7. **Tìm route xoá đơn hàng.** Không có, đã bỏ hẳn — huỷ đơn dùng `PATCH status = CANCELLED`. Xem `docs/decisions/orders-no-delete.md`.
+8. **Tưởng sửa được đơn đang chờ duyệt (`PENDING_CONFIRMATION`).** Không — `E090`, khoá cho tới khi Giám đốc duyệt/từ chối xong.
 
 ## Related docs
 
 - `docs/workflows/order-approval.md` — trình tự chạy của bước duyệt/từ chối.
 - `docs/domains/production.md` — điều xảy ra ngay sau khi duyệt đơn.
 - `docs/domains/inventory.md` — cách đơn đã duyệt tạo ra `reserved`.
+- `docs/decisions/orders-no-delete.md` — vì sao không có route xoá đơn hàng.

@@ -172,6 +172,10 @@ export enum ErrorCode {
   // only throw site was `ProductionJobsService.reportJob`, removed cùng lúc bỏ theo dõi sản lượng
   // qua API (`producedQty`/`rejectedQty` đã bỏ khỏi `production_jobs`). Tạm hoãn, xem
   // `docs/domains/production.md`.
+  // `PATCH /orders/:orderId` gọi trên một đơn đang `PENDING_CONFIRMATION` — đơn đang chờ Giám đốc
+  // duyệt/từ chối, khoá để tránh đổi dữ liệu ngay trong lúc chờ duyệt. Khác `E074` (ném ở route
+  // approve/reject khi đơn *không* ở trạng thái này).
+  E090 = 'order.error.locked_pending_confirmation',
   E101 = 'class.error.teacher_not_found',
   E102 = 'class.error.invalid_teacher_assignment',
   E103 = 'class.error.forbidden',
