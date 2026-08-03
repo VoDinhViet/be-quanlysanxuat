@@ -7,7 +7,7 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 
 import * as schema from '../schemas';
-import { materialGroups } from '../schemas/material-groups';
+import { materialGroups } from '../schemas/materials/material-groups';
 
 const MATERIAL_GROUPS = [
   { code: 'THEP_TAM', name: 'Thép tấm', description: 'Thép dạng tấm' },

@@ -12,11 +12,11 @@ import {
   SUPER_PERMISSION,
 } from '../../constants/permission.constant';
 import * as schema from '../schemas';
-import { credentials } from '../schemas/credentials';
+import { credentials } from '../schemas/identity-access/credentials';
 import { departments } from '../schemas/departments';
 import { positions } from '../schemas/positions';
-import { roles } from '../schemas/roles';
-import { users } from '../schemas/users';
+import { roles } from '../schemas/identity-access/roles';
+import { users } from '../schemas/identity-access/users';
 
 const PASSWORD_SALT_ROUNDS = 10;
 

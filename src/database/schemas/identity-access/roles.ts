@@ -7,7 +7,7 @@ import {
   varchar,
 } from 'drizzle-orm/pg-core';
 
-import type { PermissionCode } from '../../constants/permission.constant';
+import type { PermissionCode } from '../../../constants/permission.constant';
 
 /**
  * A role is a named bundle of permission codes.

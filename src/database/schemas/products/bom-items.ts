@@ -13,10 +13,11 @@ import {
   varchar,
 } from 'drizzle-orm/pg-core';
 
-import { files } from './files';
-import { materials } from './materials';
+import { boms } from './boms';
+import { files } from '../files';
+import { materials } from '../materials/materials';
 import { products } from './products';
-import { users } from './users';
+import { users } from '../identity-access/users';
 
 /** Custom Drizzle type for PostgreSQL ltree extension */
 export const ltree = customType<{ data: string }>({
@@ -24,27 +25,6 @@ export const ltree = customType<{ data: string }>({
     return 'ltree';
   },
 });
-
-/** Header row: exactly one BOM per product. Body rows live in `bom_items`. */
-export const boms = pgTable(
-  'boms',
-  {
-    id: uuid('id').defaultRandom().primaryKey(),
-    productId: uuid('product_id')
-      .notNull()
-      .unique()
-      .references(() => products.id, { onDelete: 'cascade' }),
-    createdBy: uuid('created_by').references(() => users.id, {
-      onDelete: 'set null',
-    }),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-    updatedAt: timestamp('updated_at')
-      .defaultNow()
-      .notNull()
-      .$onUpdate(() => new Date()),
-  },
-  (table) => [index('idx_boms_created_by').on(table.createdBy)],
-);
 
 /**
  * What a bom_item points at. A non-leaf item references a WIP `products` row (Cụm/Chi tiết); a
@@ -128,18 +108,6 @@ export const bomItems = pgTable(
     check('chk_bom_items_quantity_positive', sql`quantity > 0`),
   ],
 );
-
-export const bomsRelations = relations(boms, ({ one, many }) => ({
-  product: one(products, {
-    fields: [boms.productId],
-    references: [products.id],
-  }),
-  creator: one(users, {
-    fields: [boms.createdBy],
-    references: [users.id],
-  }),
-  items: many(bomItems),
-}));
 
 export const bomItemsRelations = relations(bomItems, ({ one }) => ({
   bom: one(boms, {

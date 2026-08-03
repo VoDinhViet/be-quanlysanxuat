@@ -1,9 +1,7 @@
 import { relations, sql } from 'drizzle-orm';
 import {
-  check,
   date,
   index,
-  integer,
   numeric,
   pgEnum,
   pgTable,
@@ -12,11 +10,14 @@ import {
   varchar,
 } from 'drizzle-orm/pg-core';
 
-import { clients } from './clients';
-import { files } from './files';
-import { products } from './products';
-import { PaymentTerm, paymentTermEnum } from './suppliers';
-import { users } from './users';
+import { clients } from '../clients/clients';
+import { orderAttachments } from './order-attachments';
+import { orderItems } from './order-items';
+import {
+  PaymentTerm,
+  paymentTermEnum,
+} from '../suppliers/supplier-payment-info';
+import { users } from '../identity-access/users';
 
 /**
  * DRAFT is back (re-added 2026-07-29, reversing the 2026-07-27 "no DRAFT" decision): an order now
@@ -49,8 +50,8 @@ export const orderStatusEnum = pgEnum('order_status', [
 ]);
 
 // Re-exported so callers can `import { PaymentTerm } from '../../database/schemas'` without
-// caring that the enum's canonical home is `suppliers.ts` — `orders` reuses it as-is rather than
-// declaring a second, identical enum.
+// caring that the enum's canonical home is `suppliers/supplier-payment-info.ts` — `orders` reuses
+// it as-is rather than declaring a second, identical enum.
 export { PaymentTerm };
 
 export enum Currency {
@@ -79,17 +80,6 @@ export enum OrderDiscountType {
 export const orderDiscountTypeEnum = pgEnum('order_discount_type', [
   OrderDiscountType.PERCENT,
   OrderDiscountType.AMOUNT,
-]);
-
-/** "Bình thường" / "Đã hủy" on a single order line — a cancelled line is excluded from `subtotal`. */
-export enum OrderItemStatus {
-  NORMAL = 'NORMAL',
-  CANCELLED = 'CANCELLED',
-}
-
-export const orderItemStatusEnum = pgEnum('order_item_status', [
-  OrderItemStatus.NORMAL,
-  OrderItemStatus.CANCELLED,
 ]);
 
 /**
@@ -213,98 +203,6 @@ export const orders = pgTable(
   ],
 );
 
-/**
- * One line of an order.
- *
- * Rules:
- * - `lineTotal` is server-computed (see `orders` doc comment) — written by
- *   `OrdersService.recalculateTotals`, never by the request DTO.
- * - Product name/image/unit are read through the `product` relation, not snapshotted:
- *   `products` is soft-deleted and referenced here with `onDelete: 'restrict'`, so a line's
- *   product row always exists to join against.
- */
-export const orderItems = pgTable(
-  'order_items',
-  {
-    id: uuid('id').defaultRandom().primaryKey(),
-    orderId: uuid('order_id')
-      .notNull()
-      .references(() => orders.id, { onDelete: 'cascade' }),
-    productId: uuid('product_id')
-      .notNull()
-      .references(() => products.id, { onDelete: 'restrict' }),
-    quantity: numeric('quantity', {
-      precision: 18,
-      scale: 3,
-      mode: 'number',
-    }).notNull(),
-    unitPrice: numeric('unit_price', {
-      precision: 18,
-      scale: 2,
-      mode: 'number',
-    })
-      .notNull()
-      .default(0),
-    discountPercent: numeric('discount_percent', {
-      precision: 5,
-      scale: 2,
-      mode: 'number',
-    })
-      .notNull()
-      .default(0),
-    lineTotal: numeric('line_total', {
-      precision: 18,
-      scale: 2,
-      mode: 'number',
-    })
-      .notNull()
-      .default(0),
-    note: varchar('note', { length: 500 }),
-    status: orderItemStatusEnum('status')
-      .notNull()
-      .default(OrderItemStatus.NORMAL),
-    // STT — sibling order for drag-and-drop reordering on the UI; client-assigned, never
-    // renumbered by the service.
-    sortOrder: integer('sort_order').notNull().default(0),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-    updatedAt: timestamp('updated_at')
-      .defaultNow()
-      .notNull()
-      .$onUpdate(() => new Date()),
-  },
-  (table) => [
-    index('idx_order_items_order_id').on(table.orderId),
-    index('idx_order_items_product_id').on(table.productId),
-    check('chk_order_items_quantity_positive', sql`quantity > 0`),
-    check(
-      'chk_order_items_discount_percent_range',
-      sql`discount_percent >= 0 AND discount_percent <= 100`,
-    ),
-  ],
-);
-
-/**
- * 1-many with orders: the "tài liệu đính kèm" panel. Each row is a link to a `files` registry
- * row, never a bare URL. Replace-all on update — same shape as `product_attachments`.
- */
-export const orderAttachments = pgTable(
-  'order_attachments',
-  {
-    id: uuid('id').defaultRandom().primaryKey(),
-    orderId: uuid('order_id')
-      .notNull()
-      .references(() => orders.id, { onDelete: 'cascade' }),
-    fileId: uuid('file_id')
-      .notNull()
-      .references(() => files.id, { onDelete: 'cascade' }),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-  },
-  (table) => [
-    index('idx_order_attachments_order_id').on(table.orderId),
-    index('idx_order_attachments_file_id').on(table.fileId),
-  ],
-);
-
 export const ordersRelations = relations(orders, ({ one, many }) => ({
   client: one(clients, {
     fields: [orders.clientId],
@@ -329,28 +227,3 @@ export const ordersRelations = relations(orders, ({ one, many }) => ({
   items: many(orderItems),
   attachments: many(orderAttachments),
 }));
-
-export const orderItemsRelations = relations(orderItems, ({ one }) => ({
-  order: one(orders, {
-    fields: [orderItems.orderId],
-    references: [orders.id],
-  }),
-  product: one(products, {
-    fields: [orderItems.productId],
-    references: [products.id],
-  }),
-}));
-
-export const orderAttachmentsRelations = relations(
-  orderAttachments,
-  ({ one }) => ({
-    order: one(orders, {
-      fields: [orderAttachments.orderId],
-      references: [orders.id],
-    }),
-    file: one(files, {
-      fields: [orderAttachments.fileId],
-      references: [files.id],
-    }),
-  }),
-);

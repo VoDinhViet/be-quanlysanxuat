@@ -9,10 +9,10 @@ import {
   varchar,
 } from 'drizzle-orm/pg-core';
 
-import { bomItems } from './boms';
-import { operations } from './operations';
+import { bomItems } from './bom-items';
+import { operations } from '../operations';
 import { products } from './products';
-import { users } from './users';
+import { users } from '../identity-access/users';
 
 /**
  * Routing: the sequence of công đoạn (operations) a node of a product's structure goes through,

@@ -11,9 +11,9 @@ import {
 } from 'drizzle-orm/pg-core';
 
 import { credentials } from './credentials';
-import { departments } from './departments';
-import { files } from './files';
-import { positions } from './positions';
+import { departments } from '../departments';
+import { files } from '../files';
+import { positions } from '../positions';
 
 export enum UserGender {
   MALE = 'MALE',

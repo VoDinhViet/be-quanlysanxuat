@@ -8,17 +8,19 @@ import postgres from 'postgres';
 
 import * as schema from '../schemas';
 import { countries } from '../schemas/countries';
-import { credentials } from '../schemas/credentials';
-import { supplierGroups } from '../schemas/supplier-groups';
+import { credentials } from '../schemas/identity-access/credentials';
+import { supplierGroups } from '../schemas/suppliers/supplier-groups';
 import {
   PaymentMethod,
   PaymentTerm,
   supplierPaymentInfo,
-  supplierRepresentatives,
+} from '../schemas/suppliers/supplier-payment-info';
+import { supplierRepresentatives } from '../schemas/suppliers/supplier-representatives';
+import {
   suppliers,
   SupplierStatus,
   SupplierType,
-} from '../schemas/suppliers';
+} from '../schemas/suppliers/suppliers';
 
 type SeedDatabase = ReturnType<typeof drizzle<typeof schema>>;
 

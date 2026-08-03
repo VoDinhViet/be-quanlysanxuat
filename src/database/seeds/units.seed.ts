@@ -7,7 +7,8 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 
 import * as schema from '../schemas';
-import { units, unitScopes, UnitScope } from '../schemas/units';
+import { units } from '../schemas/units/units';
+import { unitScopes, UnitScope } from '../schemas/units/unit-scopes';
 
 const { PRODUCT, MATERIAL, SEMI_FINISHED } = UnitScope;
 

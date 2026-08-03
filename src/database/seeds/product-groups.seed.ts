@@ -7,7 +7,7 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 
 import * as schema from '../schemas';
-import { productGroups } from '../schemas/product-groups';
+import { productGroups } from '../schemas/products/product-groups';
 
 /**
  * Product groups classify a product by its nature/origin, not by product family.

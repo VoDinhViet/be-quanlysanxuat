@@ -9,12 +9,13 @@ import {
   varchar,
 } from 'drizzle-orm/pg-core';
 
-import { clients } from './clients';
-import { files } from './files';
+import { clients } from '../clients/clients';
+import { files } from '../files';
+import { materialAttachments } from './material-attachments';
 import { materialGroups } from './material-groups';
-import { suppliers } from './suppliers';
-import { units } from './units';
-import { users } from './users';
+import { suppliers } from '../suppliers/suppliers';
+import { units } from '../units/units';
+import { users } from '../identity-access/users';
 
 export enum MaterialType {
   INTERNAL = 'INTERNAL',
@@ -115,28 +116,6 @@ export const materials = pgTable(
   ],
 );
 
-/**
- * 1-many with materials: the "images & documents" tab. Each row is a link to a `files` registry
- * row, never a bare URL. Replace-all on update.
- */
-export const materialAttachments = pgTable(
-  'material_attachments',
-  {
-    id: uuid('id').defaultRandom().primaryKey(),
-    materialId: uuid('material_id')
-      .notNull()
-      .references(() => materials.id, { onDelete: 'cascade' }),
-    fileId: uuid('file_id')
-      .notNull()
-      .references(() => files.id, { onDelete: 'cascade' }),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-  },
-  (table) => [
-    index('idx_material_attachments_material_id').on(table.materialId),
-    index('idx_material_attachments_file_id').on(table.fileId),
-  ],
-);
-
 export const materialsRelations = relations(materials, ({ one, many }) => ({
   unit: one(units, {
     fields: [materials.unitId],
@@ -164,17 +143,3 @@ export const materialsRelations = relations(materials, ({ one, many }) => ({
   }),
   attachments: many(materialAttachments),
 }));
-
-export const materialAttachmentsRelations = relations(
-  materialAttachments,
-  ({ one }) => ({
-    material: one(materials, {
-      fields: [materialAttachments.materialId],
-      references: [materials.id],
-    }),
-    file: one(files, {
-      fields: [materialAttachments.fileId],
-      references: [files.id],
-    }),
-  }),
-);

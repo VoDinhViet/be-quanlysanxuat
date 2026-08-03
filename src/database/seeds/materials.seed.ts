@@ -7,10 +7,14 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 
 import * as schema from '../schemas';
-import { credentials } from '../schemas/credentials';
-import { materialGroups } from '../schemas/material-groups';
-import { MaterialStatus, MaterialType, materials } from '../schemas/materials';
-import { units } from '../schemas/units';
+import { credentials } from '../schemas/identity-access/credentials';
+import { materialGroups } from '../schemas/materials/material-groups';
+import {
+  MaterialStatus,
+  MaterialType,
+  materials,
+} from '../schemas/materials/materials';
+import { units } from '../schemas/units/units';
 
 type SeedDatabase = ReturnType<typeof drizzle<typeof schema>>;
 

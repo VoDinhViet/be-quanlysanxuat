@@ -8,9 +8,10 @@ import { seed } from 'drizzle-seed';
 import postgres from 'postgres';
 
 import * as schema from '../schemas';
-import { clientGroups } from '../schemas/client-groups';
-import { clientContacts, clients } from '../schemas/clients';
-import { credentials } from '../schemas/credentials';
+import { clientGroups } from '../schemas/clients/client-groups';
+import { clientContacts } from '../schemas/clients/client-contacts';
+import { clients } from '../schemas/clients/clients';
+import { credentials } from '../schemas/identity-access/credentials';
 import { seedClientGroups } from './client-groups.seed';
 
 const CLIENT_COUNT = 50;

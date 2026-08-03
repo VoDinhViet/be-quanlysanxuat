@@ -7,7 +7,7 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 
 import * as schema from '../schemas';
-import { supplierGroups } from '../schemas/supplier-groups';
+import { supplierGroups } from '../schemas/suppliers/supplier-groups';
 
 const SUPPLIER_GROUPS = [
   {

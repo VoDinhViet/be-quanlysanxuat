@@ -1,6 +1,5 @@
 import { relations, sql } from 'drizzle-orm';
 import {
-  boolean,
   index,
   pgEnum,
   pgTable,
@@ -9,8 +8,9 @@ import {
   varchar,
 } from 'drizzle-orm/pg-core';
 
+import { clientContacts } from './client-contacts';
 import { clientGroups } from './client-groups';
-import { users } from './users';
+import { users } from '../identity-access/users';
 
 export enum ClientStatus {
   ACTIVE = 'ACTIVE',
@@ -56,25 +56,6 @@ export const clients = pgTable(
   ],
 );
 
-/** 1-many with clients: a client can have multiple contacts, replace-all on update. */
-export const clientContacts = pgTable(
-  'client_contacts',
-  {
-    id: uuid('id').defaultRandom().primaryKey(),
-    clientId: uuid('client_id')
-      .notNull()
-      .references(() => clients.id, { onDelete: 'cascade' }),
-    name: varchar('name', { length: 255 }).notNull(),
-    position: varchar('position', { length: 255 }),
-    phoneNumber: varchar('phone_number', { length: 30 }),
-    email: varchar('email', { length: 255 }),
-    note: varchar('note', { length: 500 }),
-    isPrimary: boolean('is_primary').notNull().default(false),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-  },
-  (table) => [index('idx_client_contacts_client_id').on(table.clientId)],
-);
-
 export const clientsRelations = relations(clients, ({ one, many }) => ({
   group: one(clientGroups, {
     fields: [clients.clientGroupId],
@@ -85,11 +66,4 @@ export const clientsRelations = relations(clients, ({ one, many }) => ({
     references: [users.id],
   }),
   contacts: many(clientContacts),
-}));
-
-export const clientContactsRelations = relations(clientContacts, ({ one }) => ({
-  client: one(clients, {
-    fields: [clientContacts.clientId],
-    references: [clients.id],
-  }),
 }));
