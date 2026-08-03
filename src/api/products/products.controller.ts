@@ -17,8 +17,10 @@ import { ApiAuth, ApiPublic } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
 import { CreateProductReqDto } from './dto/create-product.req.dto';
+import { GetProductOptionsReqDto } from './dto/get-product-options.req.dto';
 import { GetProductsReqDto } from './dto/get-products.req.dto';
 import { ProductDetailResDto } from './dto/product-detail.res.dto';
+import { ProductOptionResDto } from './dto/product-option.res.dto';
 import { ProductResDto } from './dto/product.res.dto';
 import { UpdateProductReqDto } from './dto/update-product.req.dto';
 import { ProductsService } from './products.service';
@@ -39,6 +41,19 @@ export class ProductsController {
     @Query() reqDto: GetProductsReqDto,
   ): Promise<OffsetPaginatedDto<ProductResDto>> {
     return this.productsService.getProducts(reqDto);
+  }
+
+  @Get('options')
+  @Permissions('products:read')
+  @ApiAuth({
+    type: ProductOptionResDto,
+    summary: 'List products for dropdown (max 100, ACTIVE only)',
+    isArray: true,
+  })
+  getProductOptions(
+    @Query() reqDto: GetProductOptionsReqDto,
+  ): Promise<ProductOptionResDto[]> {
+    return this.productsService.getProductOptions(reqDto);
   }
 
   @Get(':productId')

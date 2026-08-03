@@ -35,20 +35,12 @@ import { AppException } from '../../exceptions/app.exception';
 import { formatLtreeNodeId } from '../boms/utils/ltree.util';
 import { FilesService } from '../files/files.service';
 import { CreateProductReqDto } from './dto/create-product.req.dto';
+import { GetProductOptionsReqDto } from './dto/get-product-options.req.dto';
 import { GetProductsReqDto } from './dto/get-products.req.dto';
 import { ProductDetailResDto } from './dto/product-detail.res.dto';
+import { ProductOptionResDto } from './dto/product-option.res.dto';
 import { ProductResDto } from './dto/product.res.dto';
 import { UpdateProductReqDto } from './dto/update-product.req.dto';
-
-const PRODUCT_DETAIL_WITH = {
-  client: true,
-  group: true,
-  unit: true,
-  creator: true,
-  imageFile: true,
-  attachments: { with: { file: true } },
-  source: { columns: { id: true, code: true, name: true } },
-} as const;
 
 @Injectable()
 export class ProductsService {
@@ -110,10 +102,47 @@ export class ProductsService {
     );
   }
 
+  async getProductOptions(
+    reqDto: GetProductOptionsReqDto,
+  ): Promise<ProductOptionResDto[]> {
+    const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
+
+    const entities = await this.db.query.products.findMany({
+      where: and(
+        isNull(products.deletedAt),
+        eq(products.status, ProductStatus.ACTIVE),
+        keyword
+          ? or(
+              unaccentILike(products.code, keyword),
+              unaccentILike(products.name, keyword),
+            )
+          : undefined,
+        reqDto.type ? eq(products.type, reqDto.type) : undefined,
+      ),
+      // Alphabetical, because this list is rendered straight into a dropdown.
+      orderBy: asc(products.name),
+      // Trần cứng: `products` là dữ liệu người dùng tự tạo (thêm cả nhân bản qua `POST /:id/copy`),
+      // không phải catalogue nhỏ cố định như units/countries.
+      limit: 100,
+    });
+
+    return plainToInstance(ProductOptionResDto, entities, {
+      excludeExtraneousValues: true,
+    });
+  }
+
   async getProductDetail(productId: string): Promise<ProductDetailResDto> {
     const product = await this.db.query.products.findFirst({
       where: and(eq(products.id, productId), isNull(products.deletedAt)),
-      with: PRODUCT_DETAIL_WITH,
+      with: {
+        client: true,
+        group: true,
+        unit: true,
+        creator: true,
+        imageFile: true,
+        attachments: { with: { file: true } },
+        source: { columns: { id: true, code: true, name: true } },
+      },
     });
 
     if (!product) {
