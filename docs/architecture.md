@@ -34,7 +34,9 @@ erDiagram
     PRODUCTION_ORDER_ITEMS }o--|| ORDER_ITEMS : "1-1"
     PRODUCTION_ORDERS ||--o{ PRODUCTION_JOBS : "1 FG/LSX = 1 Job"
     PRODUCTION_JOBS }o--|| PRODUCTS : "sản phẩm FG"
-    PRODUCTION_JOBS ||--o{ PRODUCTION_JOB_STEPS : "snapshot công đoạn"
+    PRODUCTION_JOBS ||--o{ PRODUCTION_JOB_BOM_ITEMS : "snapshot cây BOM"
+    PRODUCTION_JOB_BOM_ITEMS }o--o| PRODUCTION_JOB_BOM_ITEMS : "parentId"
+    PRODUCTION_JOB_BOM_ITEMS ||--o{ PRODUCTION_JOB_OPERATIONS : "công đoạn as-used"
     PRODUCTION_JOBS ||--o{ PRODUCTION_JOB_MATERIALS : "snapshot vật tư"
     PRODUCTION_JOBS ||--o{ PRODUCTION_JOB_NOTES : "ghi chú"
 
@@ -67,9 +69,9 @@ chính PO này). Chi tiết từng bước: `docs/workflows/order-approval.md`.
 **Duyệt LSX** (`ProductionOrdersService.approveProductionOrder`, `PENDING` → `APPROVED`): đọc
 `production_order_items`, gộp SL theo `productId` (chỉ giữ SL > 0) → trong transaction: sinh mã
 `LSXxxxx`, update `production_orders.status` → update `orders.status = IN_PROGRESS` →
-`ProductionJobsService.createJobs` tạo 1 `production_jobs` row/sản phẩm, rồi copy routing Cấp 0 của
-sản phẩm đó sang `production_job_steps` và BOM (gộp theo vật tư × SL Job) sang
-`production_job_materials` — cùng trong transaction này.
+`ProductionJobsService.createJobs` tạo 1 `production_jobs` row/sản phẩm, rồi nhân bản cây BOM sang
+`production_job_bom_items`, copy routing as-used của từng node sang `production_job_operations`, và
+BOM (gộp theo vật tư × SL Job) sang `production_job_materials` — cùng trong transaction này.
 
 ## Chuỗi import module (NestJS DI)
 

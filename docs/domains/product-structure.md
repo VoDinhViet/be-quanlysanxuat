@@ -55,16 +55,19 @@ Xoá sản phẩm là **xoá mềm và không kiểm tham chiếu**. Các FK `re
 
 - **Chu trình xuyên cây.** Kiểm chu trình chỉ chạy trong phạm vi *một* cây. BOM của A chứa B, và BOM riêng của B chứa A — hoàn toàn lọt.
 - **Node anh em trùng nhau.** Không có unique trên `(bomId, parentId, productId)`; thêm hai node y hệt cạnh nhau là hợp lệ.
-- **Cột `level`/`path` khớp độ sâu thật.** `level` trong response được **tính lại lúc đọc**, nên nếu cột lưu bị lệch cũng không ai thấy — cho tới khi có người query thẳng `path`.
+- **Cột `path` khớp độ sâu thật.** Không đường đọc API nào chạm tới `path` để đối chiếu, nên lệch (nếu có) không ai thấy — khác `level`, giờ đọc thẳng từ cột lưu ra response nên lệch sẽ hiện ngay.
 
 ## Cross-domain dependencies
 
 **Điều quan trọng nhất: hiện chưa có gì bung BOM ra để tính nhu cầu vật tư.**
 
-- **Production** đọc `routing_steps` (Cấp 0 của FG) và `bom_items` (node MATERIAL) **một lần**, lúc
-  duyệt LSX, để copy sang `production_job_steps`/`production_job_materials` của Job — xem
-  `docs/domains/production.md`. Ngoài thời điểm đó, không module sản xuất nào tham chiếu
-  `boms`/`bom_items`/`routing_steps` nữa; Job không chia nhỏ tiến độ theo công đoạn.
+- **Production** đọc toàn bộ cây `bom_items` (cả `PRODUCT` lẫn `MATERIAL`) và `routing_steps`
+  as-used của từng node (`bomItemId`) **một lần**, lúc duyệt LSX, để nhân bản sang
+  `production_job_bom_items`/`production_job_operations` (id mới, độc lập) và copy sang
+  `production_job_materials` của Job — xem `docs/domains/production.md`. Routing Cấp 0 của FG
+  (`routing_steps.productId`) **không** được đọc/snapshot ở bước này. Ngoài thời điểm đó, không
+  module sản xuất nào tham chiếu `boms`/`bom_items`/`routing_steps` nữa; Job không chia nhỏ tiến độ
+  theo công đoạn.
 - `GET /products/:id/bom/materials` là một phép `SUM` gộp theo vật tư trên mọi node MATERIAL ở mọi độ sâu — **không nhân qua số lượng của các node cha**, nên nó *không* phải BOM explosion. Bản copy vật tư của Job (`production_job_materials.unitQty`) dùng đúng phép `SUM` này nên thừa hưởng nguyên giới hạn — không phải BOM explosion.
 - **Inventory** chỉ thấy sản phẩm FG + ACTIVE; WIP không có mặt trong kho. Chiều ngược lại: không xoá được vật tư đang nằm trong bất kỳ node BOM nào.
 - **Orders** tham chiếu `products.id` trên từng dòng, và cố ý **không snapshot** tên/ảnh — luôn đọc qua quan hệ.

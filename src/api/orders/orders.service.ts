@@ -317,16 +317,6 @@ export class OrdersService {
     return this.getOrderDetail(orderId);
   }
 
-  async deleteOrder(orderId: string): Promise<void> {
-    const existing = await this.ensureOrderExists(orderId);
-    this.ensureOrderEditable(existing.status);
-
-    await this.db
-      .update(orders)
-      .set({ deletedAt: new Date() })
-      .where(eq(orders.id, orderId));
-  }
-
   /** Nơi duy nhất ghi `AWAITING_PRODUCTION` (xem `ensureStatusSettable`) — đồng thời sinh sẵn kế
    * hoạch sản xuất trong cùng transaction, để không có trạng thái "duyệt nửa vời" không kế hoạch. */
   async approveOrder(
@@ -566,11 +556,15 @@ export class OrdersService {
     }
   }
 
-  /** Khoá khi đơn đã tới trạng thái cuối — `COMPLETED` hoặc `CANCELLED`. Mọi trạng thái khác vẫn
-   * sửa được. */
+  /** Khoá khi đơn đã tới trạng thái cuối (`COMPLETED`/`CANCELLED`, `E065`) hoặc đang chờ duyệt
+   * (`PENDING_CONFIRMATION`, `E090`) — tránh đổi dữ liệu trong lúc Giám đốc đang xem để duyệt. Mọi
+   * trạng thái khác vẫn sửa được. */
   private ensureOrderEditable(status: OrderStatus): void {
     if (status === OrderStatus.COMPLETED || status === OrderStatus.CANCELLED) {
       throw new AppException(ErrorCode.E065, HttpStatus.CONFLICT);
+    }
+    if (status === OrderStatus.PENDING_CONFIRMATION) {
+      throw new AppException(ErrorCode.E090, HttpStatus.CONFLICT);
     }
   }
 

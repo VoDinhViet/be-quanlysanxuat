@@ -168,10 +168,19 @@ export enum ErrorCode {
   // `start` gọi trên một Job đang không ở trạng thái hợp lệ cho hành động đó (xem sơ đồ chuyển
   // trạng thái ở `docs/domains/production.md`, mục Lifecycle).
   E087 = 'production_job.error.invalid_status_transition',
-  // E088/E089 (production_job.error.report_exceeds_quantity/empty_report) stay reserved — their
-  // only throw site was `ProductionJobsService.reportJob`, removed cùng lúc bỏ theo dõi sản lượng
-  // qua API (`producedQty`/`rejectedQty` đã bỏ khỏi `production_jobs`). Tạm hoãn, xem
-  // `docs/domains/production.md`.
+  // `PATCH /production-jobs/:jobId/operations/:operationId` gửi `completedQuantity` vượt SL kế
+  // hoạch của node BOM cha (tính lúc đọc, không lưu cột) — tái dùng slot đã để dành từ thiết kế
+  // report cũ (job-level, đã gỡ), đổi phạm vi sang từng công đoạn.
+  E088 = 'production_job_operation.error.completed_exceeds_planned',
+  // E089 (production_job.error.empty_report) vẫn để trống — không còn nơi ném, dự phòng nếu sau
+  // này hồi sinh báo sản lượng ở mức Job.
+  // `PATCH /orders/:orderId` gọi trên một đơn đang `PENDING_CONFIRMATION` — đơn đang chờ Giám đốc
+  // duyệt/từ chối, khoá để tránh đổi dữ liệu ngay trong lúc chờ duyệt. Khác `E074` (ném ở route
+  // approve/reject khi đơn *không* ở trạng thái này).
+  E090 = 'order.error.locked_pending_confirmation',
+  // `operationId` trên `PATCH /production-jobs/:jobId/operations/:operationId` không tồn tại hoặc
+  // không thuộc đúng `jobId`.
+  E091 = 'production_job_operation.error.not_found',
   E101 = 'class.error.teacher_not_found',
   E102 = 'class.error.invalid_teacher_assignment',
   E103 = 'class.error.forbidden',

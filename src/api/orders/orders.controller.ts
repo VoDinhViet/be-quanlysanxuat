@@ -1,7 +1,6 @@
 import {
   Body,
   Controller,
-  Delete,
   Get,
   HttpStatus,
   Patch,
@@ -85,24 +84,14 @@ export class OrdersController {
   @Permissions('orders:update')
   @ApiAuth({
     type: OrderDetailResDto,
-    summary: 'Update order (blocked once status is COMPLETED or CANCELLED)',
+    summary:
+      'Update order (blocked once status is COMPLETED, CANCELLED, or PENDING_CONFIRMATION)',
   })
   updateOrder(
     @UUIDParam('orderId') orderId: string,
     @Body() reqDto: UpdateOrderReqDto,
   ): Promise<OrderDetailResDto> {
     return this.ordersService.updateOrder(orderId, reqDto);
-  }
-
-  @Delete(':orderId')
-  @Permissions('orders:delete')
-  @ApiAuth({
-    summary:
-      'Delete order (soft delete, blocked once status is COMPLETED or CANCELLED)',
-    statusCode: HttpStatus.NO_CONTENT,
-  })
-  deleteOrder(@UUIDParam('orderId') orderId: string): Promise<void> {
-    return this.ordersService.deleteOrder(orderId);
   }
 
   @Post(':orderId/approve')

@@ -11,10 +11,6 @@ import { OperationResDto } from './dto/operation.res.dto';
 
 @Injectable()
 export class OperationsService {
-  // Not true pagination — a defensive cap in case this "small curated catalogue" ever
-  // grows past what a bare-array response should reasonably return.
-  private static readonly LIMIT = 100;
-
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
 
   async getOperations(reqDto: GetOperationsReqDto): Promise<OperationResDto[]> {
@@ -29,7 +25,6 @@ export class OperationsService {
       ),
       // Alphabetical, because this is a small read-only catalogue, not a management list.
       orderBy: asc(operations.name),
-      limit: OperationsService.LIMIT,
       with: { creator: true },
     });
 

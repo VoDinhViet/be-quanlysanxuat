@@ -63,6 +63,13 @@ export class BomItemNodeResDto {
   sortOrder!: number;
 
   @Expose()
+  @NumberField({
+    int: true,
+    description: 'Độ sâu 1-based — node top-level (parentId null) = 1',
+  })
+  level!: number;
+
+  @Expose()
   @StringFieldOptional({ nullable: true })
   note!: string | null;
 

@@ -1,18 +1,11 @@
-import { Exclude, Expose } from 'class-transformer';
+import { PickType } from '@nestjs/swagger';
+import { Exclude } from 'class-transformer';
 
-import { StringField, UUIDField } from '../../../decorators/field.decorators';
+import { ProductResDto } from './product.res.dto';
 
 @Exclude()
-export class ProductRefResDto {
-  @Expose()
-  @UUIDField()
-  id!: string;
-
-  @Expose()
-  @StringField()
-  code!: string;
-
-  @Expose()
-  @StringField()
-  name!: string;
-}
+export class ProductRefResDto extends PickType(ProductResDto, [
+  'id',
+  'code',
+  'name',
+] as const) {}

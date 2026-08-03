@@ -24,13 +24,11 @@ import {
   bomItems,
   boms,
   files,
-  FileKind,
   materials,
   products,
   ProductType,
   routingSteps,
   units,
-  UploadType,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { FilesService } from '../files/files.service';
@@ -41,40 +39,26 @@ import { CreateBomItemReqDto } from './dto/create-bom-item.req.dto';
 import { GetBomMaterialsReqDto } from './dto/get-bom-materials.req.dto';
 import { UpdateBomItemReqDto } from './dto/update-bom-item.req.dto';
 import type {
-  BomTreeFileRow,
   BomTreeNode,
   BomTreeOperationRow,
   BomTreeRow,
 } from './types/bom-tree.type';
 import { formatLtreeNodeId } from './utils/ltree.util';
 
-// Alias 2 lần: item của một node hoặc là product hoặc là material (không bao giờ cả hai), nên
-// unit/image lấy từ bên nào left join khớp.
-// `as unknown as typeof X` — sau khi schema có thêm nhiều bảng trỏ `users`, Drizzle suy sai kiểu
-// cột của alias trên các bảng này (rơi về `{ [x: string]: any }`/union với `PgView`); ép lại tường
-// minh qua `unknown`, không đổi hành vi runtime — `alias()` chỉ đổi tên SQL, không đổi cột.
-const productUnits = alias(units, 'product_units') as unknown as typeof units;
-const materialUnits = alias(units, 'material_units') as unknown as typeof units;
-const productImageFiles = alias(
-  files,
-  'product_image_files',
-) as unknown as typeof files;
-const materialImageFiles = alias(
-  files,
-  'material_image_files',
-) as unknown as typeof files;
+// Item của một node hoặc là product hoặc là material (không bao giờ cả hai), nên unit/image lấy
+// từ bên nào left join khớp — coalesce ngay ở khoá join, một alias là đủ cho mỗi bảng.
+const itemUnits = alias(units, 'item_units');
+// `as unknown as typeof files` — `files` có quan hệ trỏ `users` (`uploader`), khiến Drizzle suy sai
+// kiểu cột của alias trên bảng này (rơi về `{ [x: string]: any }`/union với `PgView`); ép lại tường
+// minh qua `unknown`, không đổi hành vi runtime — `alias()` chỉ đổi tên SQL, không đổi cột. `units`
+// (alias ở trên) không có quan hệ trỏ `users` nên không gặp vấn đề này, không cần cast.
+const imageFiles = alias(files, 'image_files') as unknown as typeof files;
 // Bản vẽ riêng của node là left join một nguồn duy nhất (bom_items.drawingFileId), không coalesce
 // 2 nguồn như image/unit ở trên — một alias là đủ.
 const bomItemDrawingFiles = alias(
   files,
   'bom_item_drawing_files',
 ) as unknown as typeof files;
-
-// Dạng thô `baseItemSelect()` trả về, trước khi `normalizeImage` gộp sub-select `image` coalesce
-// toàn null thành `null` — xem `BomTreeRow` cho dạng sau normalize.
-type RawBomItemRow = Omit<BomTreeRow, 'image'> & {
-  image: { [K in keyof BomTreeFileRow]: BomTreeFileRow[K] | null };
-};
 
 @Injectable()
 export class BomsService {
@@ -98,15 +82,14 @@ export class BomsService {
       return [];
     }
 
-    // `as RawBomItemRow[]` — Drizzle suy sai kiểu `unit`/`drawing` sau khi schema có thêm nhiều
-    // quan hệ trỏ `users`, ép lại cho đúng thực tế (không đổi hành vi runtime).
-    const selectRows = (await this.baseItemSelect()
+    // `as BomTreeRow[]` — Drizzle suy sai kiểu `unit`/`drawing`/`image` sau khi schema có thêm
+    // nhiều quan hệ trỏ `users`, ép lại cho đúng thực tế (không đổi hành vi runtime).
+    const rows = (await this.baseItemSelect()
       .where(eq(bomItems.bomId, bom.id))
       .orderBy(
         asc(bomItems.sortOrder),
         asc(bomItems.createdAt),
-      )) as RawBomItemRow[];
-    const rows = selectRows.map((row) => this.normalizeImage(row));
+      )) as BomTreeRow[];
 
     const operationsByBomItem = await this.loadOperationsByBomItem(rows);
 
@@ -366,45 +349,30 @@ export class BomsService {
         itemId: sql<string>`coalesce(${products.id}, ${materials.id})`,
         code: sql<string>`coalesce(${products.code}, ${materials.code})`,
         name: sql<string>`coalesce(${products.name}, ${materials.name})`,
-        image: {
-          id: sql<
-            string | null
-          >`coalesce(${productImageFiles.id}, ${materialImageFiles.id})`,
-          originalName: sql<
-            string | null
-          >`coalesce(${productImageFiles.originalName}, ${materialImageFiles.originalName})`,
-          mimetype: sql<
-            string | null
-          >`coalesce(${productImageFiles.mimetype}, ${materialImageFiles.mimetype})`,
-          size: sql<
-            number | null
-          >`coalesce(${productImageFiles.size}, ${materialImageFiles.size})`,
-          type: sql<UploadType | null>`coalesce(${productImageFiles.type}, ${materialImageFiles.type})`,
-          kind: sql<FileKind | null>`coalesce(${productImageFiles.kind}, ${materialImageFiles.kind})`,
-          createdAt: sql<Date | null>`coalesce(${productImageFiles.createdAt}, ${materialImageFiles.createdAt})`,
-        },
-        unit: {
-          id: sql<string>`coalesce(${productUnits.id}, ${materialUnits.id})`,
-          code: sql<string>`coalesce(${productUnits.code}, ${materialUnits.code})`,
-          name: sql<string>`coalesce(${productUnits.name}, ${materialUnits.name})`,
-        },
+        image: getTableColumns(imageFiles),
+        unit: getTableColumns(itemUnits),
         quantity: bomItems.quantity,
         sortOrder: bomItems.sortOrder,
+        level: bomItems.level,
         note: bomItems.note,
         drawing: getTableColumns(bomItemDrawingFiles),
       })
       .from(bomItems)
       .leftJoin(products, eq(bomItems.productId, products.id))
       .leftJoin(materials, eq(bomItems.materialId, materials.id))
-      .leftJoin(productUnits, eq(products.unitId, productUnits.id))
-      .leftJoin(materialUnits, eq(materials.unitId, materialUnits.id))
       .leftJoin(
-        productImageFiles,
-        eq(products.imageFileId, productImageFiles.id),
+        itemUnits,
+        eq(
+          itemUnits.id,
+          sql`coalesce(${products.unitId}, ${materials.unitId})`,
+        ),
       )
       .leftJoin(
-        materialImageFiles,
-        eq(materials.imageFileId, materialImageFiles.id),
+        imageFiles,
+        eq(
+          imageFiles.id,
+          sql`coalesce(${products.imageFileId}, ${materials.imageFileId})`,
+        ),
       )
       .leftJoin(
         bomItemDrawingFiles,
@@ -412,31 +380,21 @@ export class BomsService {
       );
   }
 
-  /** Gộp sub-select `image` coalesce toàn null thành `null` — mọi cột (trừ id) đến từ cùng một
-   * dòng `files` khớp, nên `id` có giá trị là đủ để biết cả sub-object đã có dữ liệu. */
-  private normalizeImage(row: RawBomItemRow): BomTreeRow {
-    return {
-      ...row,
-      image: row.image.id
-        ? (row.image as NonNullable<BomTreeRow['image']>)
-        : null,
-    };
-  }
-
   private async getBomItemDetail(
     bomId: string,
     itemId: string,
   ): Promise<BomItemNodeResDto> {
-    // `as RawBomItemRow[]` — cùng lý do ở `getBomTree`.
+    // `as BomTreeRow[]` — Drizzle suy sai kiểu `unit`/`drawing`/`image` sau khi schema có thêm
+    // nhiều quan hệ trỏ `users`, ép lại cho đúng thực tế (không đổi hành vi runtime).
     const [row] = (await this.baseItemSelect().where(
       and(eq(bomItems.id, itemId), eq(bomItems.bomId, bomId)),
-    )) as RawBomItemRow[];
+    )) as BomTreeRow[];
 
     if (!row) {
       throw new AppException(ErrorCode.E050, HttpStatus.NOT_FOUND);
     }
 
-    return plainToInstance(BomItemNodeResDto, this.normalizeImage(row), {
+    return plainToInstance(BomItemNodeResDto, row, {
       excludeExtraneousValues: true,
     });
   }
@@ -480,8 +438,8 @@ export class BomsService {
   }
 
   /** Lồng cây từ các dòng phẳng đã sort sẵn bằng SQL theo `parentId` — không query đệ quy, không
-   * sort lại. Chỉ đánh `level` 1-based khi đi xuống, gắn routing as-used của từng node (`[]` cho
-   * node `MATERIAL`). */
+   * sort lại. `level` đọc thẳng từ cột đã lưu; gắn routing as-used của từng node (`[]` cho node
+   * `MATERIAL`). */
   private buildTree(
     rows: BomTreeRow[],
     operationsByBomItem: Map<string, BomTreeOperationRow[]>,
@@ -493,15 +451,14 @@ export class BomsService {
       childrenByParent.set(row.parentId, siblings);
     }
 
-    const build = (parentId: string | null, level: number): BomTreeNode[] =>
+    const build = (parentId: string | null): BomTreeNode[] =>
       (childrenByParent.get(parentId) ?? []).map((row) => ({
         ...row,
-        level,
-        children: build(row.id, level + 1),
+        children: build(row.id),
         operations: operationsByBomItem.get(row.id) ?? [],
       }));
 
-    return build(null, 1);
+    return build(null);
   }
 
   private async ensureProductExists(productId: string): Promise<void> {

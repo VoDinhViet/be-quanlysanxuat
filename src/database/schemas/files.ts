@@ -9,7 +9,7 @@ import {
   varchar,
 } from 'drizzle-orm/pg-core';
 
-import { users } from './users';
+import { users } from './identity-access/users';
 
 export enum FileKind {
   IMAGE = 'IMAGE',

@@ -106,7 +106,7 @@ Bốn tầng, đọc từ trên xuống khi cần hiểu một vùng nghiệp v�
 - `docs/decisions/<slug>.md` — **quyết định đảo chiều hoặc ranh giới phạm vi** không domain nào sở
   hữu. Đọc khi định làm ngược lại một thứ đang có, hoặc khi ngạc nhiên vì một tính năng "lẽ ra phải
   có" lại không có: `files-registry`, `testing-paused`, `swagger-owns-api-reference`,
-  `no-procurement`.
+  `no-procurement`, `orders-no-delete`.
 
 **Không có tầng doc theo module** — `docs/features/` đã xoá. Reference mức route/DTO
 đọc ở Swagger `/api-docs`; `ErrorCode` đọc ở `src/constants/error-code.constant.ts` + service ném nó.
