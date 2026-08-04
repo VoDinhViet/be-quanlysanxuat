@@ -32,3 +32,9 @@ Không có. Đây là giả định sai tốn kém nhất với repo này.
 Điểm cắm tự nhiên là thêm `supplierId` vào `stock_receipts` cho phiếu `MATERIAL`/`IN` trước, rồi mới
 tính tới chứng từ đơn mua riêng. Xem `docs/domains/partners.md` và
 `docs/workflows/stock-movement.md`.
+
+## Không nhầm với Purchase Requests
+
+`docs/domains/purchase-requests.md` là phiếu xin duyệt nội bộ (ai cần vật tư gì, bao nhiêu) —
+không phải procurement, không đảo ngược quyết định này. Không supplier, không giá, không nhận
+hàng theo phiếu.
