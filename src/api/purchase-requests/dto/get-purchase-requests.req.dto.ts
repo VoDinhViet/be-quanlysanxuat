@@ -13,7 +13,9 @@ export class GetPurchaseRequestsReqDto extends PageOptionsDto {
   })
   readonly materialKeyword?: string;
 
-  @UUIDFieldOptional({ description: 'Filter theo LSX (production order) liên quan' })
+  @UUIDFieldOptional({
+    description: 'Filter theo LSX (production order) liên quan',
+  })
   readonly productionOrderId?: string;
 
   @UUIDFieldOptional({ description: 'Filter theo người đề xuất (users.id)' })
