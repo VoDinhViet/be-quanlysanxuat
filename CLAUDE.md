@@ -89,6 +89,7 @@ là file dưới `docs/domains/`, `—` nghĩa là hạ tầng thuần, không t
 | `inventory` | inventory | hai controller: `/inventory` và `/stock-receipts` |
 | `production-orders` | production | 1 PO duyệt = 1 LSX |
 | `production-jobs` | production | 1 sản phẩm FG = 1 Job trong một LSX |
+| `purchase-requests` | purchase-requests | Danh sách đề xuất mua hàng, giai đoạn 1 chỉ `GET /purchase-requests`; chưa có tạo/duyệt/từ chối |
 
 ## Domain docs
 
