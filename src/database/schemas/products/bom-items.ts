@@ -29,7 +29,7 @@ export const ltree = customType<{ data: string }>({
  * Không còn dùng làm cột của `bom_items` (bảng này giờ thuần cấu trúc WIP) — giữ export vì
  * `production_job_bom_items` (snapshot Job, đóng băng, vẫn phân biệt PRODUCT/MATERIAL) import
  * `bomItemTypeEnum`. Xem `docs/decisions/` hoặc `docs/domains/product-structure.md` về việc tách
- * vật tư sang `bom_item_materials`.
+ * vật tư sang `bom_materials`.
  */
 export enum BomItemType {
   PRODUCT = 'PRODUCT',
@@ -45,7 +45,7 @@ export const bomItemTypeEnum = pgEnum('bom_item_type', [
  * One line of the BOM structure tree — always a WIP sub-assembly. The FG root ("Cấp 0") is NOT
  * stored here — top-level items carry `parentId = null` and represent the root's direct children
  * ("Cấp 1"). `path` (ltree) and `level` store hierarchical path & depth level for fast tree
- * queries. Materials live in `bom_item_materials`, as-used against a node (or the root) here.
+ * queries. Materials live in `bom_materials`, as-used against a specific node here.
  */
 export const bomItems = pgTable(
   'bom_items',

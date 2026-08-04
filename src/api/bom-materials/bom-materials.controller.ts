@@ -16,16 +16,16 @@ import { CurrentUser } from '../../decorators/current-user.decorator';
 import { ApiAuth, ApiPublic } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
+import { BomMaterialsService } from './bom-materials.service';
 import { BomMaterialResDto } from './dto/bom-material.res.dto';
-import { CreateBomItemMaterialReqDto } from './dto/create-bom-item-material.req.dto';
+import { CreateBomMaterialReqDto } from './dto/create-bom-material.req.dto';
 import { GetBomMaterialsReqDto } from './dto/get-bom-materials.req.dto';
-import { UpdateBomItemMaterialReqDto } from './dto/update-bom-item-material.req.dto';
-import { BomsService } from './boms.service';
+import { UpdateBomMaterialReqDto } from './dto/update-bom-material.req.dto';
 
 @ApiTags('Boms')
 @Controller('products/:productId/bom/items/:itemId/materials')
-export class BomItemMaterialsController {
-  constructor(private readonly bomsService: BomsService) {}
+export class BomMaterialsController {
+  constructor(private readonly bomMaterialsService: BomMaterialsService) {}
 
   @Get()
   @Permissions('products:read')
@@ -39,10 +39,7 @@ export class BomItemMaterialsController {
     @UUIDParam('itemId') itemId: string,
     @Query() reqDto: GetBomMaterialsReqDto,
   ): Promise<OffsetPaginatedDto<BomMaterialResDto>> {
-    return this.bomsService.getBomItemMaterials(
-      { productId, bomItemId: itemId },
-      reqDto,
-    );
+    return this.bomMaterialsService.getBomMaterials(productId, itemId, reqDto);
   }
 
   @Post()
@@ -55,11 +52,12 @@ export class BomItemMaterialsController {
   addMaterial(
     @UUIDParam('productId') productId: string,
     @UUIDParam('itemId') itemId: string,
-    @Body() reqDto: CreateBomItemMaterialReqDto,
+    @Body() reqDto: CreateBomMaterialReqDto,
     @CurrentUser() payload: JwtPayloadType,
   ): Promise<BomMaterialResDto> {
-    return this.bomsService.addBomItemMaterial(
-      { productId, bomItemId: itemId },
+    return this.bomMaterialsService.addBomMaterial(
+      productId,
+      itemId,
       reqDto,
       payload.userId,
     );
@@ -75,10 +73,11 @@ export class BomItemMaterialsController {
     @UUIDParam('productId') productId: string,
     @UUIDParam('itemId') itemId: string,
     @UUIDParam('materialId') materialId: string,
-    @Body() reqDto: UpdateBomItemMaterialReqDto,
+    @Body() reqDto: UpdateBomMaterialReqDto,
   ): Promise<BomMaterialResDto> {
-    return this.bomsService.updateBomItemMaterial(
-      { productId, bomItemId: itemId },
+    return this.bomMaterialsService.updateBomMaterial(
+      productId,
+      itemId,
       materialId,
       reqDto,
     );
@@ -95,8 +94,9 @@ export class BomItemMaterialsController {
     @UUIDParam('itemId') itemId: string,
     @UUIDParam('materialId') materialId: string,
   ): Promise<void> {
-    return this.bomsService.deleteBomItemMaterial(
-      { productId, bomItemId: itemId },
+    return this.bomMaterialsService.deleteBomMaterial(
+      productId,
+      itemId,
       materialId,
     );
   }

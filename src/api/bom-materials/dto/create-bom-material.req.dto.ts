@@ -5,7 +5,7 @@ import {
   UUIDField,
 } from '../../../decorators/field.decorators';
 
-export class CreateBomItemMaterialReqDto {
+export class CreateBomMaterialReqDto {
   @UUIDField({ description: 'Id của vật tư' })
   readonly materialId!: string;
 

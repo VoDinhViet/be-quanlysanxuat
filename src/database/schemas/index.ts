@@ -15,7 +15,7 @@ export * from './units/unit-scopes';
 export * from './products/products';
 export * from './products/boms';
 export * from './products/bom-items';
-export * from './products/bom-item-materials';
+export * from './products/bom-materials';
 export * from './products/routing-steps';
 export * from './departments';
 export * from './positions';

@@ -7,7 +7,7 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 
 import * as schema from '../schemas';
-import { bomItemMaterials } from '../schemas/products/bom-item-materials';
+import { bomMaterials } from '../schemas/products/bom-materials';
 import { bomItems } from '../schemas/products/bom-items';
 import { boms } from '../schemas/products/boms';
 import { credentials } from '../schemas/identity-access/credentials';
@@ -81,9 +81,9 @@ interface MaterialLeafSeed {
 }
 
 /**
- * Each WIP's own BOM — the raw materials it's fabricated from — keyed by WIP product code.
- * Independent of `BOM_TREES` above: this is what you'd see navigating to e.g. "Chân bàn" as its
- * own product, not the "as-used" position inside "Bàn làm việc".
+ * Raw materials each WIP is fabricated from, as-used at its node position inside the parent FG
+ * tree (`BOM_TREES`) — keyed by WIP product code. A WIP can no longer declare materials on
+ * itself outside of a tree position (`bom_materials.bomItemId` is required).
  */
 const WIP_MATERIAL_BOMS: Record<string, MaterialLeafSeed[]> = {
   'MAT-BAN': [
@@ -277,8 +277,7 @@ async function ensureBomTree(
             );
           }
 
-          await tx.insert(bomItemMaterials).values({
-            bomId: bom.id,
+          await tx.insert(bomMaterials).values({
             bomItemId: itemId,
             materialId,
             quantity: leaf.quantity,
@@ -297,59 +296,6 @@ async function ensureBomTree(
   });
 
   console.log(`BOM tree for "${fgProductCode}" created.`);
-}
-
-/** Idempotent by `boms.productId` (unique) — a WIP's own BOM, made of raw material leaves. */
-async function ensureWipMaterialBom(
-  db: SeedDatabase,
-  wipCode: string,
-  wipProductId: string,
-  materialIdByCode: Map<string, string>,
-  createdBy: string | null,
-): Promise<void> {
-  const leaves = WIP_MATERIAL_BOMS[wipCode];
-
-  if (!leaves) {
-    return;
-  }
-
-  const existingBom = await db.query.boms.findFirst({
-    where: eq(boms.productId, wipProductId),
-    columns: { id: true },
-  });
-
-  if (existingBom) {
-    console.log(`Material BOM for "${wipCode}" already exists. Skipping.`);
-    return;
-  }
-
-  await db.transaction(async (tx) => {
-    const [bom] = await tx
-      .insert(boms)
-      .values({ productId: wipProductId, createdBy })
-      .returning({ id: boms.id });
-
-    for (const [index, leaf] of leaves.entries()) {
-      const materialId = materialIdByCode.get(leaf.code);
-
-      if (!materialId) {
-        throw new Error(
-          `WIP material BOM references unknown material code "${leaf.code}".`,
-        );
-      }
-
-      await tx.insert(bomItemMaterials).values({
-        bomId: bom.id,
-        bomItemId: null,
-        materialId,
-        quantity: leaf.quantity,
-        sortOrder: index,
-        createdBy,
-      });
-    }
-  });
-
-  console.log(`Material BOM for "${wipCode}" created.`);
 }
 
 /** Idempotent by `routingSteps.productId` — skips the whole set if this product (FG or WIP)
@@ -482,14 +428,6 @@ export async function seedProducts(db: SeedDatabase): Promise<void> {
       createdBy,
     });
     wipIdByCode.set(spec.code, product.id);
-
-    await ensureWipMaterialBom(
-      db,
-      spec.code,
-      product.id,
-      materialIdByCode,
-      createdBy,
-    );
 
     await ensureRootRouting(
       db,

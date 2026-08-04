@@ -9,7 +9,7 @@ import {
   StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
-import { BomItemUnitResDto } from './bom-item-unit.res.dto';
+import { BomItemUnitResDto } from '../../boms/dto/bom-item-unit.res.dto';
 
 @Exclude()
 export class BomMaterialResDto {

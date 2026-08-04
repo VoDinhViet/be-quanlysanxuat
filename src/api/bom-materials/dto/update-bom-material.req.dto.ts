@@ -3,7 +3,7 @@ import {
   StringFieldOptional,
 } from '../../../decorators/field.decorators';
 
-export class UpdateBomItemMaterialReqDto {
+export class UpdateBomMaterialReqDto {
   @NumberFieldOptional({ isPositive: true, description: 'Định mức sử dụng' })
   readonly quantity?: number;
 

@@ -74,16 +74,15 @@ export enum ErrorCode {
   // module was removed in favor of whole-product copy/clone (`POST /products/:id/copy`); no
   // current throw site uses them.
   E050 = 'bom_item.error.not_found',
-  // Cũng dùng cho `bomItemId` của một dòng `bom_item_materials` (vật tư as-used) không thuộc đúng
-  // BOM của sản phẩm trên URL — cùng khuôn kiểm tra với `E062` bên routing, khác mã vì khác
-  // resource.
+  // Cũng dùng cho `bomItemId` của một dòng `bom_materials` (vật tư as-used) không thuộc đúng BOM
+  // của sản phẩm trên URL — cùng khuôn kiểm tra với `E062` bên routing, khác mã vì khác resource.
   E051 = 'bom_item.error.parent_not_found',
   // E052 (bom_item.error.parent_is_material) stays reserved — từ khi vật tư tách khỏi `bom_items`
-  // (`bom_item_materials`), `bom_items` không còn hàng MATERIAL nên "cha là MATERIAL" bất khả thi.
+  // (`bom_materials`), `bom_items` không còn hàng MATERIAL nên "cha là MATERIAL" bất khả thi.
   E053 = 'bom_item.error.product_not_wip',
   E054 = 'bom_item.error.cycle_detected',
   // E055 (bom_item.error.quantity_not_integer) stays reserved — mọi node `bom_items` giờ luôn là
-  // WIP (từ khi vật tư tách sang `bom_item_materials`) nên rule "quantity nguyên" hết điều kiện,
+  // WIP (từ khi vật tư tách sang `bom_materials`) nên rule "quantity nguyên" hết điều kiện,
   // chặn thẳng ở DTO (`@NumberField({ int: true })`), trả `422` chuẩn thay vì `AppException`.
   E056 = 'routing_step.error.not_found',
   E057 = 'order.error.not_found',
@@ -98,7 +97,7 @@ export enum ErrorCode {
   // product BOM — either it doesn't exist at all, or it belongs to a different product's tree.
   E062 = 'routing_step.error.bom_item_not_found',
   // E063 (routing_step.error.material_node) stays reserved — `bom_items` không còn hàng MATERIAL
-  // (đã tách sang `bom_item_materials`) nên "bomItemId trỏ vào MATERIAL" bất khả thi.
+  // (đã tách sang `bom_materials`) nên "bomItemId trỏ vào MATERIAL" bất khả thi.
   // `positionId` on a user create/update exists (E015 already passed) but doesn't belong to the
   // effective `departmentId` (the one sent, or the user's current one when only one of the pair
   // is being changed).
@@ -203,8 +202,8 @@ export enum ErrorCode {
   // Tham chiếu tuỳ chọn trên phiếu (`supplierId`/`purchaseRequestId`/`productionOrderId`/
   // `productionJobId`/`departmentId`/`requestedBy`/`orderItemId`) không tồn tại.
   E107 = 'inventory_document.error.invalid_reference',
-  // `PATCH`/`DELETE` một dòng `bom_item_materials` không tồn tại đúng target (Cấp 0 hoặc node) —
-  // tài nguyên riêng, không dùng chung `E050` của `bom_items`.
-  E108 = 'bom_item_material.error.not_found',
+  // `PATCH`/`DELETE` một dòng `bom_materials` không tồn tại đúng node — tài nguyên riêng, không
+  // dùng chung `E050` của `bom_items`.
+  E108 = 'bom_material.error.not_found',
   V003 = 'common.error.too_many_requests',
 }

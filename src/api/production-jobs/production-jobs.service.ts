@@ -22,8 +22,8 @@ import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
   BomItemType,
-  bomItemMaterials,
   bomItems,
+  bomMaterials,
   boms,
   clients,
   files,
@@ -543,14 +543,13 @@ export class ProductionJobsService {
   }
 
   /**
-   * Gộp mọi dòng `bom_item_materials` thuộc `bomId` của từng sản phẩm theo vật tư (KHÔNG phân
-   * biệt gắn Cấp 0 hay gắn một node — vị trí chỉ ảnh hưởng hiển thị/sửa ở Product Structure, không
-   * ảnh hưởng phép gộp; KHÔNG nổ theo cấp qua node WIP cha, xem
-   * `docs/domains/product-structure.md`) — rồi nhân với SL Job thành `requiredQty`, ghi vào
-   * `production_job_materials`. `unitQty` giữ nguyên định mức gốc — chưa có route sửa nào dùng
-   * tới, để sẵn cho lúc mở rộng CRUD sau này. `materialCode`/`materialName`/`unitCode`/`unitName`/
-   * `imageFileId` snapshot lúc duyệt — độc lập `materials`/`units` sống, xem doc comment
-   * `productionJobMaterials`.
+   * Gộp mọi dòng `bom_materials` thuộc cây `bom_items` của từng sản phẩm theo vật tư (vị trí chỉ
+   * ảnh hưởng hiển thị/sửa ở Product Structure, không ảnh hưởng phép gộp; KHÔNG nổ theo cấp qua
+   * node WIP cha, xem `docs/domains/product-structure.md`) — rồi nhân với SL Job thành
+   * `requiredQty`, ghi vào `production_job_materials`. `unitQty` giữ nguyên định mức gốc — chưa có
+   * route sửa nào dùng tới, để sẵn cho lúc mở rộng CRUD sau này. `materialCode`/`materialName`/
+   * `unitCode`/`unitName`/`imageFileId` snapshot lúc duyệt — độc lập `materials`/`units` sống, xem
+   * doc comment `productionJobMaterials`.
    */
   private async copyBomMaterials(
     tx: DbTransaction,
@@ -561,22 +560,23 @@ export class ProductionJobsService {
     const rows = await tx
       .select({
         productId: boms.productId,
-        materialId: bomItemMaterials.materialId,
-        unitQty: sql<number>`sum(${bomItemMaterials.quantity})`.mapWith(Number),
+        materialId: bomMaterials.materialId,
+        unitQty: sql<number>`sum(${bomMaterials.quantity})`.mapWith(Number),
         materialCode: materials.code,
         materialName: materials.name,
         unitCode: units.code,
         unitName: units.name,
         imageFileId: materials.imageFileId,
       })
-      .from(bomItemMaterials)
-      .innerJoin(boms, eq(bomItemMaterials.bomId, boms.id))
-      .innerJoin(materials, eq(bomItemMaterials.materialId, materials.id))
+      .from(bomMaterials)
+      .innerJoin(bomItems, eq(bomMaterials.bomItemId, bomItems.id))
+      .innerJoin(boms, eq(bomItems.bomId, boms.id))
+      .innerJoin(materials, eq(bomMaterials.materialId, materials.id))
       .innerJoin(units, eq(materials.unitId, units.id))
       .where(inArray(boms.productId, productIds))
       .groupBy(
         boms.productId,
-        bomItemMaterials.materialId,
+        bomMaterials.materialId,
         materials.code,
         materials.name,
         units.code,

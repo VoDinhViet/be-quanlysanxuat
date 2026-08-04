@@ -4,6 +4,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { BomMaterialsModule } from './api/bom-materials/bom-materials.module';
 import { BomsModule } from './api/boms/boms.module';
 import { JwtAuthGuard } from './api/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from './api/auth/guards/permissions.guard';
@@ -66,6 +67,7 @@ import { WarehousesModule } from './api/warehouses/warehouses.module';
     UnitsModule,
     ProductsModule,
     BomsModule,
+    BomMaterialsModule,
     OperationsModule,
     RoutingModule,
     DepartmentsModule,
