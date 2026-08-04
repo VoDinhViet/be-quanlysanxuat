@@ -7,7 +7,8 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 
 import * as schema from '../schemas';
-import { BomItemType, bomItems } from '../schemas/products/bom-items';
+import { bomMaterials } from '../schemas/products/bom-materials';
+import { bomItems } from '../schemas/products/bom-items';
 import { boms } from '../schemas/products/boms';
 import { credentials } from '../schemas/identity-access/credentials';
 import { materials } from '../schemas/materials/materials';
@@ -80,9 +81,9 @@ interface MaterialLeafSeed {
 }
 
 /**
- * Each WIP's own BOM — the raw materials it's fabricated from — keyed by WIP product code.
- * Independent of `BOM_TREES` above: this is what you'd see navigating to e.g. "Chân bàn" as its
- * own product, not the "as-used" position inside "Bàn làm việc".
+ * Raw materials each WIP is fabricated from, as-used at its node position inside the parent FG
+ * tree (`BOM_TREES`) — keyed by WIP product code. A WIP can no longer declare materials on
+ * itself outside of a tree position (`bom_materials.bomItemId` is required).
  */
 const WIP_MATERIAL_BOMS: Record<string, MaterialLeafSeed[]> = {
   'MAT-BAN': [
@@ -235,9 +236,7 @@ async function ensureBomTree(
           id: itemId,
           bomId: bom.id,
           parentId,
-          itemType: BomItemType.PRODUCT,
           productId,
-          materialId: null,
           quantity: node.quantity,
           path: itemPath,
           level,
@@ -265,10 +264,9 @@ async function ensureBomTree(
           }
         }
 
-        // Material leaves this node consumes, nested directly in the FG's own tree (not just in
-        // the WIP's separate standalone BOM) — reading a product's BOM never descends into a
-        // child WIP's own BOM (`docs/domains/product-structure.md`), so without this a FG's tree
-        // would show sub-assemblies but zero raw materials.
+        // Vật tư as-used của node này (không chỉ trong BOM riêng của WIP) — đọc BOM sản phẩm
+        // không đệ quy xuống BOM con, nên thiếu bước này cây của FG sẽ chỉ có cấu trúc, không có
+        // vật tư (`docs/domains/product-structure.md`).
         const materialLeaves = WIP_MATERIAL_BOMS[node.code] ?? [];
         for (const [leafIndex, leaf] of materialLeaves.entries()) {
           const materialId = materialIdByCode.get(leaf.code);
@@ -279,31 +277,17 @@ async function ensureBomTree(
             );
           }
 
-          const leafId = crypto.randomUUID();
-
-          await tx.insert(bomItems).values({
-            id: leafId,
-            bomId: bom.id,
-            parentId: itemId,
-            itemType: BomItemType.MATERIAL,
-            productId: null,
+          await tx.insert(bomMaterials).values({
+            bomItemId: itemId,
             materialId,
             quantity: leaf.quantity,
-            path: `${itemPath}.${formatLtreeNodeId(leafId)}`,
-            level: level + 1,
             sortOrder: leafIndex,
             createdBy,
           });
         }
 
         if (node.children?.length) {
-          await insertNodes(
-            itemId,
-            itemPath,
-            level + 1,
-            node.children,
-            materialLeaves.length,
-          );
+          await insertNodes(itemId, itemPath, level + 1, node.children);
         }
       }
     }
@@ -312,66 +296,6 @@ async function ensureBomTree(
   });
 
   console.log(`BOM tree for "${fgProductCode}" created.`);
-}
-
-/** Idempotent by `boms.productId` (unique) — a WIP's own BOM, made of raw material leaves. */
-async function ensureWipMaterialBom(
-  db: SeedDatabase,
-  wipCode: string,
-  wipProductId: string,
-  materialIdByCode: Map<string, string>,
-  createdBy: string | null,
-): Promise<void> {
-  const leaves = WIP_MATERIAL_BOMS[wipCode];
-
-  if (!leaves) {
-    return;
-  }
-
-  const existingBom = await db.query.boms.findFirst({
-    where: eq(boms.productId, wipProductId),
-    columns: { id: true },
-  });
-
-  if (existingBom) {
-    console.log(`Material BOM for "${wipCode}" already exists. Skipping.`);
-    return;
-  }
-
-  await db.transaction(async (tx) => {
-    const [bom] = await tx
-      .insert(boms)
-      .values({ productId: wipProductId, createdBy })
-      .returning({ id: boms.id });
-
-    for (const [index, leaf] of leaves.entries()) {
-      const materialId = materialIdByCode.get(leaf.code);
-
-      if (!materialId) {
-        throw new Error(
-          `WIP material BOM references unknown material code "${leaf.code}".`,
-        );
-      }
-
-      const itemId = crypto.randomUUID();
-
-      await tx.insert(bomItems).values({
-        id: itemId,
-        bomId: bom.id,
-        parentId: null,
-        itemType: BomItemType.MATERIAL,
-        productId: null,
-        materialId,
-        quantity: leaf.quantity,
-        path: formatLtreeNodeId(itemId),
-        level: 1,
-        sortOrder: index,
-        createdBy,
-      });
-    }
-  });
-
-  console.log(`Material BOM for "${wipCode}" created.`);
 }
 
 /** Idempotent by `routingSteps.productId` — skips the whole set if this product (FG or WIP)
@@ -504,14 +428,6 @@ export async function seedProducts(db: SeedDatabase): Promise<void> {
       createdBy,
     });
     wipIdByCode.set(spec.code, product.id);
-
-    await ensureWipMaterialBom(
-      db,
-      spec.code,
-      product.id,
-      materialIdByCode,
-      createdBy,
-    );
 
     await ensureRootRouting(
       db,

@@ -6,7 +6,7 @@ import { orders } from './orders';
 
 /**
  * 1-many with orders: the "tài liệu đính kèm" panel. Each row is a link to a `files` registry
- * row, never a bare URL. Replace-all on update — same shape as `product_attachments`.
+ * row, never a bare URL. Replace-all on update — same shape as `material_attachments`.
  */
 export const orderAttachments = pgTable(
   'order_attachments',

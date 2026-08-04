@@ -1,30 +1,15 @@
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
-import {
-  asc,
-  eq,
-  and,
-  countDistinct,
-  getTableColumns,
-  inArray,
-  isNull,
-  or,
-  sql,
-} from 'drizzle-orm';
+import { asc, eq, and, getTableColumns, inArray, isNull } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 
-import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
-import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
-import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
-import type { Database } from '../../database/database.type';
+import type { Database, DbTransaction } from '../../database/database.type';
 import {
-  BomItemType,
   bomItems,
   boms,
   files,
-  materials,
   products,
   ProductType,
   routingSteps,
@@ -34,27 +19,17 @@ import { AppException } from '../../exceptions/app.exception';
 import { FilesService } from '../files/files.service';
 import { BomItemNodeResDto } from './dto/bom-item-node.res.dto';
 import { BomItemResDto } from './dto/bom-item.res.dto';
-import { BomMaterialResDto } from './dto/bom-material.res.dto';
 import { CreateBomItemReqDto } from './dto/create-bom-item.req.dto';
-import { GetBomMaterialsReqDto } from './dto/get-bom-materials.req.dto';
 import { UpdateBomItemReqDto } from './dto/update-bom-item.req.dto';
-import type {
-  BomTreeNode,
-  BomTreeOperationRow,
-  BomTreeRow,
-} from './types/bom-tree.type';
+import type { BomItem, BomTreeOperationRow } from './types/bom-tree.type';
 import { formatLtreeNodeId } from './utils/ltree.util';
 
-// Item của một node hoặc là product hoặc là material (không bao giờ cả hai), nên unit/image lấy
-// từ bên nào left join khớp — coalesce ngay ở khoá join, một alias là đủ cho mỗi bảng.
-const itemUnits = alias(units, 'item_units');
+// Hai join riêng biệt vào cùng bảng `files` (ảnh sản phẩm + bản vẽ riêng của node) cần alias để
+// không đụng nhau trong cùng một query.
 // `as unknown as typeof files` — `files` có quan hệ trỏ `users` (`uploader`), khiến Drizzle suy sai
 // kiểu cột của alias trên bảng này (rơi về `{ [x: string]: any }`/union với `PgView`); ép lại tường
-// minh qua `unknown`, không đổi hành vi runtime — `alias()` chỉ đổi tên SQL, không đổi cột. `units`
-// (alias ở trên) không có quan hệ trỏ `users` nên không gặp vấn đề này, không cần cast.
+// minh qua `unknown`, không đổi hành vi runtime — `alias()` chỉ đổi tên SQL, không đổi cột.
 const imageFiles = alias(files, 'image_files') as unknown as typeof files;
-// Bản vẽ riêng của node là left join một nguồn duy nhất (bom_items.drawingFileId), không coalesce
-// 2 nguồn như image/unit ở trên — một alias là đủ.
 const bomItemDrawingFiles = alias(
   files,
   'bom_item_drawing_files',
@@ -69,100 +44,47 @@ export class BomsService {
     private readonly filesService: FilesService,
   ) {}
 
-  async getBomTree(productId: string): Promise<BomItemResDto[]> {
+  async getBom(productId: string): Promise<BomItemResDto[]> {
     await this.ensureProductExists(productId);
 
-    const bom = await this.db.query.boms.findFirst({
-      columns: { id: true },
-      where: eq(boms.productId, productId),
-    });
-
-    // Chưa cấu hình BOM cho sản phẩm này — trạng thái bình thường, không phải lỗi.
-    if (!bom) {
-      return [];
-    }
-
-    // `as BomTreeRow[]` — Drizzle suy sai kiểu `unit`/`drawing`/`image` sau khi schema có thêm
-    // nhiều quan hệ trỏ `users`, ép lại cho đúng thực tế (không đổi hành vi runtime).
-    const rows = (await this.baseItemSelect()
-      .where(eq(bomItems.bomId, bom.id))
+    // Join thẳng qua `boms` — sản phẩm chưa có BOM (hoặc BOM chưa có node) đều tự nhiên ra mảng
+    // rỗng, không cần early-return riêng. Khai kiểu ngay trên biến — Drizzle suy sai kiểu
+    // `unit`/`drawing`/`image` sau khi schema có thêm nhiều quan hệ trỏ `users`; contextual type ở
+    // đây đủ để TS ép đúng, không cần `as BomItem[]` rải rác bên dưới.
+    const rows: BomItem[] = await this.db
+      .select({
+        ...getTableColumns(bomItems),
+        code: products.code,
+        name: products.name,
+        image: getTableColumns(imageFiles),
+        unit: getTableColumns(units),
+        drawing: getTableColumns(bomItemDrawingFiles),
+      })
+      .from(bomItems)
+      .innerJoin(boms, eq(bomItems.bomId, boms.id))
+      .innerJoin(products, eq(bomItems.productId, products.id))
+      .innerJoin(units, eq(units.id, products.unitId))
+      .leftJoin(imageFiles, eq(imageFiles.id, products.imageFileId))
+      .leftJoin(
+        bomItemDrawingFiles,
+        eq(bomItems.drawingFileId, bomItemDrawingFiles.id),
+      )
+      .where(eq(boms.productId, productId))
       .orderBy(
+        asc(bomItems.level),
         asc(bomItems.sortOrder),
         asc(bomItems.createdAt),
-      )) as BomTreeRow[];
+      );
 
     const operationsByBomItem = await this.loadOperationsByBomItem(rows);
 
-    const tree = this.buildTree(rows, operationsByBomItem);
-
-    return tree.map((node) =>
-      plainToInstance(BomItemResDto, node, { excludeExtraneousValues: true }),
-    );
-  }
-
-  /** `totalQuantity` là SUM thô qua mọi node `MATERIAL` (mọi cấp) trỏ tới vật tư đó — KHÔNG nhân
-   * qua SL của WIP tổ tiên (không phải BOM explosion). */
-  async getBomMaterials(
-    productId: string,
-    reqDto: GetBomMaterialsReqDto,
-  ): Promise<OffsetPaginatedDto<BomMaterialResDto>> {
-    await this.ensureProductExists(productId);
-
-    const bom = await this.db.query.boms.findFirst({
-      columns: { id: true },
-      where: eq(boms.productId, productId),
-    });
-
-    // Chưa cấu hình BOM — trả trang rỗng, không phải lỗi (giống getBomTree).
-    if (!bom) {
-      return new OffsetPaginatedDto([], new OffsetPaginationDto(0, reqDto));
-    }
-
-    const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
-    const where = and(
-      eq(bomItems.bomId, bom.id),
-      eq(bomItems.itemType, BomItemType.MATERIAL),
-      keyword
-        ? or(
-            unaccentILike(materials.code, keyword),
-            unaccentILike(materials.name, keyword),
-          )
-        : undefined,
-    );
-
-    const [rows, countRows] = await Promise.all([
-      this.db
-        .select({
-          materialId: materials.id,
-          code: materials.code,
-          name: materials.name,
-          unit: getTableColumns(units),
-          image: getTableColumns(files),
-          totalQuantity: sql<number>`sum(${bomItems.quantity})`.mapWith(Number),
-        })
-        .from(bomItems)
-        .innerJoin(materials, eq(bomItems.materialId, materials.id))
-        .innerJoin(units, eq(materials.unitId, units.id))
-        .leftJoin(files, eq(materials.imageFileId, files.id))
-        .where(where)
-        .groupBy(materials.id, units.id, files.id)
-        .orderBy(asc(materials.code))
-        .limit(reqDto.limit)
-        .offset(reqDto.offset),
-      this.db
-        .select({ total: countDistinct(bomItems.materialId) })
-        .from(bomItems)
-        .innerJoin(materials, eq(bomItems.materialId, materials.id))
-        .where(where),
-    ]);
-
-    // Select lồng chỉ thuộc một bảng left-join (`files`) tự động về `null` khi join không khớp —
-    // khác `baseItemSelect()` phải tự `coalesce()` vì có 2 bảng nguồn khác nhau.
-    return new OffsetPaginatedDto(
-      plainToInstance(BomMaterialResDto, rows, {
-        excludeExtraneousValues: true,
-      }),
-      new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
+    return plainToInstance(
+      BomItemResDto,
+      rows.map((row) => ({
+        ...row,
+        operations: operationsByBomItem.get(row.id) ?? [],
+      })),
+      { excludeExtraneousValues: true },
     );
   }
 
@@ -172,15 +94,7 @@ export class BomsService {
     userId: string,
   ): Promise<BomItemNodeResDto> {
     await this.ensureProductExists(productId);
-
-    if (reqDto.itemType === BomItemType.PRODUCT) {
-      await this.ensureProductIsWip(reqDto.itemId);
-      if (!Number.isInteger(reqDto.quantity)) {
-        throw new AppException(ErrorCode.E055, HttpStatus.BAD_REQUEST);
-      }
-    } else {
-      await this.ensureMaterialExists(reqDto.itemId);
-    }
+    await this.ensureProductIsWip(reqDto.productId);
 
     const existingBom = await this.db.query.boms.findFirst({
       columns: { id: true },
@@ -192,41 +106,27 @@ export class BomsService {
       if (!existingBom) {
         throw new AppException(ErrorCode.E051, HttpStatus.NOT_FOUND);
       }
-      await this.ensureParentValid(existingBom.id, reqDto.parentId);
+      await this.ensureBomItemInBom(productId, reqDto.parentId);
     }
 
-    if (reqDto.itemType === BomItemType.PRODUCT) {
-      await this.checkNoCycle(
-        existingBom?.id,
-        productId,
-        reqDto.parentId ?? null,
-        reqDto.itemId,
-      );
-    }
+    await this.checkNoCycle(
+      existingBom?.id,
+      productId,
+      reqDto.parentId ?? null,
+      reqDto.productId,
+    );
 
     if (reqDto.drawingFileId) {
       await this.filesService.linkFiles([reqDto.drawingFileId]);
     }
 
     const { bomId, itemId } = await this.db.transaction(async (tx) => {
-      let bomId = existingBom?.id;
-
-      if (!bomId) {
-        const [created] = await tx
-          .insert(boms)
-          .values({ productId, createdBy: userId })
-          .onConflictDoNothing({ target: boms.productId })
-          .returning({ id: boms.id });
-
-        bomId =
-          created?.id ??
-          (
-            await tx.query.boms.findFirst({
-              columns: { id: true },
-              where: eq(boms.productId, productId),
-            })
-          )?.id;
-      }
+      const bomId = await this.getOrCreateBomId(
+        tx,
+        productId,
+        existingBom?.id,
+        userId,
+      );
 
       const newItemId = crypto.randomUUID();
       let parentPath: string | null = null;
@@ -251,13 +151,9 @@ export class BomsService {
         .insert(bomItems)
         .values({
           id: newItemId,
-          bomId: bomId,
+          bomId,
           parentId: reqDto.parentId ?? null,
-          itemType: reqDto.itemType,
-          productId:
-            reqDto.itemType === BomItemType.PRODUCT ? reqDto.itemId : null,
-          materialId:
-            reqDto.itemType === BomItemType.MATERIAL ? reqDto.itemId : null,
+          productId: reqDto.productId,
           quantity: reqDto.quantity,
           path: itemPath,
           level: itemLevel,
@@ -268,13 +164,13 @@ export class BomsService {
         })
         .returning({ id: bomItems.id });
 
-      return { bomId: bomId, itemId: item.id };
+      return { bomId, itemId: item.id };
     });
 
     return this.getBomItemDetail(bomId, itemId);
   }
 
-  /** Chỉ sửa SL/note/drawing — `itemType`/`itemId`/`parentId` bất biến, đổi thì xoá + thêm lại. */
+  /** Chỉ sửa SL/note/drawing — `productId`/`parentId` bất biến, đổi thì xoá + thêm lại. */
   async updateBomItem(
     productId: string,
     itemId: string,
@@ -284,14 +180,6 @@ export class BomsService {
 
     const bom = await this.getBomOrThrow(productId);
     const item = await this.ensureBomItemExists(bom.id, itemId);
-
-    if (
-      reqDto.quantity !== undefined &&
-      item.itemType === BomItemType.PRODUCT &&
-      !Number.isInteger(reqDto.quantity)
-    ) {
-      throw new AppException(ErrorCode.E055, HttpStatus.BAD_REQUEST);
-    }
 
     // Peel riêng để bên dưới quyết định theo giá trị *hiệu lực*: link file mới và/hoặc xoá file
     // cũ — spread thường không diễn đạt được "thay và dọn rác" cùng lúc.
@@ -337,20 +225,17 @@ export class BomsService {
   }
 
   /** Select phẳng dùng chung cho đọc cây và re-fetch một node sau write — chỉ khác `.where()`.
-   * `productId`/`materialId` loại trừ nhau nên tối đa một bên left join khớp; `coalesce()` chọn
-   * đúng bên đó. Row đã phẳng sẵn nên DTO đọc field này dùng `ClassFieldOptional` thường, không
-   * cần `FileField` (không phải Drizzle relational `with:` result). */
+   * Mọi node giờ luôn trỏ `products`, không còn coalesce hai nguồn như trước khi tách vật tư. */
   private baseItemSelect() {
     return this.db
       .select({
         id: bomItems.id,
         parentId: bomItems.parentId,
-        itemType: bomItems.itemType,
-        itemId: sql<string>`coalesce(${products.id}, ${materials.id})`,
-        code: sql<string>`coalesce(${products.code}, ${materials.code})`,
-        name: sql<string>`coalesce(${products.name}, ${materials.name})`,
+        productId: bomItems.productId,
+        code: products.code,
+        name: products.name,
         image: getTableColumns(imageFiles),
-        unit: getTableColumns(itemUnits),
+        unit: getTableColumns(units),
         quantity: bomItems.quantity,
         sortOrder: bomItems.sortOrder,
         level: bomItems.level,
@@ -358,22 +243,9 @@ export class BomsService {
         drawing: getTableColumns(bomItemDrawingFiles),
       })
       .from(bomItems)
-      .leftJoin(products, eq(bomItems.productId, products.id))
-      .leftJoin(materials, eq(bomItems.materialId, materials.id))
-      .leftJoin(
-        itemUnits,
-        eq(
-          itemUnits.id,
-          sql`coalesce(${products.unitId}, ${materials.unitId})`,
-        ),
-      )
-      .leftJoin(
-        imageFiles,
-        eq(
-          imageFiles.id,
-          sql`coalesce(${products.imageFileId}, ${materials.imageFileId})`,
-        ),
-      )
+      .innerJoin(products, eq(bomItems.productId, products.id))
+      .innerJoin(units, eq(units.id, products.unitId))
+      .leftJoin(imageFiles, eq(imageFiles.id, products.imageFileId))
       .leftJoin(
         bomItemDrawingFiles,
         eq(bomItems.drawingFileId, bomItemDrawingFiles.id),
@@ -384,11 +256,11 @@ export class BomsService {
     bomId: string,
     itemId: string,
   ): Promise<BomItemNodeResDto> {
-    // `as BomTreeRow[]` — Drizzle suy sai kiểu `unit`/`drawing`/`image` sau khi schema có thêm
+    // `as BomItem[]` — Drizzle suy sai kiểu `unit`/`drawing`/`image` sau khi schema có thêm
     // nhiều quan hệ trỏ `users`, ép lại cho đúng thực tế (không đổi hành vi runtime).
     const [row] = (await this.baseItemSelect().where(
       and(eq(bomItems.id, itemId), eq(bomItems.bomId, bomId)),
-    )) as BomTreeRow[];
+    )) as BomItem[];
 
     if (!row) {
       throw new AppException(ErrorCode.E050, HttpStatus.NOT_FOUND);
@@ -399,24 +271,21 @@ export class BomsService {
     });
   }
 
-  /** Fetch gộp routing as-used cho một lượt đọc cây: một query cho mọi node `PRODUCT` (khoá theo
-   * `bom_items.id`, không phải id sản phẩm liên kết), gom vào `Map` cho `buildTree` gắn theo node.
-   * Node `MATERIAL` không có `routing_steps` (`RoutingService.ensureBomItemRoutable` đảm bảo) nên
-   * loại khỏi query luôn, không dựa vào việc query trả rỗng. */
+  /** Fetch gộp routing as-used cho một lượt đọc BOM: một query cho mọi node, gom vào `Map` để gắn
+   * theo node. Mọi hàng `bom_items` giờ đều routable — không còn loại trừ MATERIAL. */
   private async loadOperationsByBomItem(
-    rows: BomTreeRow[],
+    rows: BomItem[],
   ): Promise<Map<string, BomTreeOperationRow[]>> {
-    const routableIds = rows
-      .filter((row) => row.itemType === BomItemType.PRODUCT)
-      .map((row) => row.id);
-
     const grouped = new Map<string, BomTreeOperationRow[]>();
-    if (!routableIds.length) {
+    if (!rows.length) {
       return grouped;
     }
 
     const steps = await this.db.query.routingSteps.findMany({
-      where: inArray(routingSteps.bomItemId, routableIds),
+      where: inArray(
+        routingSteps.bomItemId,
+        rows.map((row) => row.id),
+      ),
       with: { operation: true },
       orderBy: [asc(routingSteps.sortOrder), asc(routingSteps.createdAt)],
     });
@@ -437,31 +306,8 @@ export class BomsService {
     return grouped;
   }
 
-  /** Lồng cây từ các dòng phẳng đã sort sẵn bằng SQL theo `parentId` — không query đệ quy, không
-   * sort lại. `level` đọc thẳng từ cột đã lưu; gắn routing as-used của từng node (`[]` cho node
-   * `MATERIAL`). */
-  private buildTree(
-    rows: BomTreeRow[],
-    operationsByBomItem: Map<string, BomTreeOperationRow[]>,
-  ): BomTreeNode[] {
-    const childrenByParent = new Map<string | null, BomTreeRow[]>();
-    for (const row of rows) {
-      const siblings = childrenByParent.get(row.parentId) ?? [];
-      siblings.push(row);
-      childrenByParent.set(row.parentId, siblings);
-    }
-
-    const build = (parentId: string | null): BomTreeNode[] =>
-      (childrenByParent.get(parentId) ?? []).map((row) => ({
-        ...row,
-        children: build(row.id),
-        operations: operationsByBomItem.get(row.id) ?? [],
-      }));
-
-    return build(null);
-  }
-
-  private async ensureProductExists(productId: string): Promise<void> {
+  /** Dùng chung với `BomMaterialsService` (`BomMaterialsModule` import `BomsModule`). */
+  async ensureProductExists(productId: string): Promise<void> {
     const existing = await this.db.query.products.findFirst({
       columns: { id: true },
       where: and(eq(products.id, productId), isNull(products.deletedAt)),
@@ -488,34 +334,30 @@ export class BomsService {
     }
   }
 
-  /** `materials` không có soft delete (không cột `deletedAt`) — chỉ cần tra id thuần. */
-  private async ensureMaterialExists(materialId: string): Promise<void> {
-    const material = await this.db.query.materials.findFirst({
-      columns: { id: true },
-      where: eq(materials.id, materialId),
+  /** Node phải thuộc đúng BOM của `productId` — chặn `bomItemId` của cây sản phẩm khác lọt qua URL
+   * này. Dùng chung cho cha của một node PRODUCT lẫn node vật tư gắn vào (`E051`); public vì
+   * `BomMaterialsService` (`BomMaterialsModule` import `BomsModule`) cũng cần kiểm tra này. */
+  async ensureBomItemInBom(
+    productId: string,
+    bomItemId: string,
+  ): Promise<{ bomId: string }> {
+    const item = await this.db.query.bomItems.findFirst({
+      columns: { id: true, bomId: true },
+      with: { bom: { columns: { productId: true } } },
+      where: eq(bomItems.id, bomItemId),
     });
 
-    if (!material) {
-      throw new AppException(ErrorCode.E035, HttpStatus.NOT_FOUND);
+    if (!item) {
+      throw new AppException(ErrorCode.E051, HttpStatus.NOT_FOUND);
     }
-  }
-
-  private async ensureParentValid(
-    bomId: string,
-    parentId: string,
-  ): Promise<void> {
-    const parent = await this.db.query.bomItems.findFirst({
-      columns: { id: true, itemType: true },
-      where: and(eq(bomItems.id, parentId), eq(bomItems.bomId, bomId)),
-    });
-
-    if (!parent) {
+    // `bomId` là FK bắt buộc, đúng 1 dòng — Drizzle suy sai kiểu `bom` thành one|many sau khi
+    // schema có thêm nhiều quan hệ trỏ `users`, ép lại cho đúng thực tế thay vì đổi logic.
+    const bom = item.bom as { productId: string };
+    if (bom.productId !== productId) {
       throw new AppException(ErrorCode.E051, HttpStatus.NOT_FOUND);
     }
 
-    if (parent.itemType === BomItemType.MATERIAL) {
-      throw new AppException(ErrorCode.E052, HttpStatus.BAD_REQUEST);
-    }
+    return { bomId: item.bomId };
   }
 
   /** Chặn một sản phẩm trở thành tổ tiên/hậu duệ của chính nó trong cùng cây. Giới hạn bởi
@@ -580,11 +422,10 @@ export class BomsService {
     itemId: string,
   ): Promise<{
     id: string;
-    itemType: BomItemType;
     drawingFileId: string | null;
   }> {
     const item = await this.db.query.bomItems.findFirst({
-      columns: { id: true, itemType: true, drawingFileId: true },
+      columns: { id: true, drawingFileId: true },
       where: and(eq(bomItems.id, itemId), eq(bomItems.bomId, bomId)),
     });
 
@@ -593,5 +434,33 @@ export class BomsService {
     }
 
     return item;
+  }
+
+  /** Header `boms` sinh lười — get-or-create trong transaction ghi node/vật tư đầu tiên của sản
+   * phẩm. `onConflictDoNothing` là chốt chặn race thật; `existingBomId` (đọc trước transaction)
+   * chỉ để tránh round-trip insert thừa khi header đã chắc chắn có sẵn. */
+  private async getOrCreateBomId(
+    tx: DbTransaction,
+    productId: string,
+    existingBomId: string | undefined,
+    userId: string,
+  ): Promise<string> {
+    if (existingBomId) {
+      return existingBomId;
+    }
+
+    const [created] = await tx
+      .insert(boms)
+      .values({ productId, createdBy: userId })
+      .onConflictDoNothing({ target: boms.productId })
+      .returning({ id: boms.id });
+
+    return (
+      created?.id ??
+      (await tx.query.boms.findFirst({
+        columns: { id: true },
+        where: eq(boms.productId, productId),
+      }))!.id
+    );
   }
 }

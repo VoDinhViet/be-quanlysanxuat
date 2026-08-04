@@ -30,12 +30,6 @@ export class UpdateProductReqDto {
   })
   imageFileId?: string | null;
 
-  @UUIDFieldOptional({
-    each: true,
-    description: 'Attachment file ids (from POST /files?type=PRODUCT_DOCUMENT)',
-  })
-  attachmentFileIds?: string[];
-
   @EnumFieldOptional(() => ProductStatus)
   status?: ProductStatus;
 

@@ -9,7 +9,7 @@ import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
-  bomItems,
+  bomMaterials,
   clients,
   materialAttachments,
   materialGroups,
@@ -378,9 +378,9 @@ export class MaterialsService {
 
   private async ensureMaterialNotInUse(materialId: string): Promise<void> {
     const [usedInBom, usedInJob] = await Promise.all([
-      this.db.query.bomItems.findFirst({
+      this.db.query.bomMaterials.findFirst({
         columns: { id: true },
-        where: eq(bomItems.materialId, materialId),
+        where: eq(bomMaterials.materialId, materialId),
       }),
       this.db.query.productionJobMaterials.findFirst({
         columns: { id: true },

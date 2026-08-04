@@ -15,7 +15,6 @@ import {
 
 import { boms } from './boms';
 import { files } from '../files';
-import { materials } from '../materials/materials';
 import { products } from './products';
 import { users } from '../identity-access/users';
 
@@ -27,9 +26,10 @@ export const ltree = customType<{ data: string }>({
 });
 
 /**
- * What a bom_item points at. A non-leaf item references a WIP `products` row (Cụm/Chi tiết); a
- * leaf references a `materials` row (Vật tư). Exactly one of `productId`/`materialId` is set,
- * matching `itemType`.
+ * Không còn dùng làm cột của `bom_items` (bảng này giờ thuần cấu trúc WIP) — giữ export vì
+ * `production_job_bom_items` (snapshot Job, đóng băng, vẫn phân biệt PRODUCT/MATERIAL) import
+ * `bomItemTypeEnum`. Xem `docs/decisions/` hoặc `docs/domains/product-structure.md` về việc tách
+ * vật tư sang `bom_materials`.
  */
 export enum BomItemType {
   PRODUCT = 'PRODUCT',
@@ -42,9 +42,10 @@ export const bomItemTypeEnum = pgEnum('bom_item_type', [
 ]);
 
 /**
- * One line of a BOM tree. The FG root ("Cấp 0") is NOT stored here — top-level items carry
- * `parentId = null` and represent the root's direct children ("Cấp 1").
- * `path` (ltree) and `level` store hierarchical path & depth level for fast tree queries.
+ * One line of the BOM structure tree — always a WIP sub-assembly. The FG root ("Cấp 0") is NOT
+ * stored here — top-level items carry `parentId = null` and represent the root's direct children
+ * ("Cấp 1"). `path` (ltree) and `level` store hierarchical path & depth level for fast tree
+ * queries. Materials live in `bom_materials`, as-used against a specific node here.
  */
 export const bomItems = pgTable(
   'bom_items',
@@ -58,15 +59,10 @@ export const bomItems = pgTable(
     parentId: uuid('parent_id').references((): AnyPgColumn => bomItems.id, {
       onDelete: 'cascade',
     }),
-    itemType: bomItemTypeEnum('item_type').notNull(),
-    // Exactly one of the next two is populated, keyed by itemType (enforced by DB CHECK).
-    // `restrict`: a product/material referenced in a BOM can't be hard-deleted out from under it.
-    productId: uuid('product_id').references(() => products.id, {
-      onDelete: 'restrict',
-    }),
-    materialId: uuid('material_id').references(() => materials.id, {
-      onDelete: 'restrict',
-    }),
+    // `restrict`: a product referenced in a BOM can't be hard-deleted out from under it.
+    productId: uuid('product_id')
+      .notNull()
+      .references(() => products.id, { onDelete: 'restrict' }),
     quantity: numeric('quantity', {
       precision: 12,
       scale: 3,
@@ -79,8 +75,8 @@ export const bomItems = pgTable(
     // from tree position + this.
     sortOrder: integer('sort_order').notNull().default(0),
     note: varchar('note', { length: 1000 }),
-    // A technical drawing specific to this node — independent of `image`, which is coalesced
-    // (read-time, not stored) from whichever product/material the node links to.
+    // A technical drawing specific to this node — independent of `image`, which is read (not
+    // stored) from the linked WIP's own `imageFileId`.
     drawingFileId: uuid('drawing_file_id').references(() => files.id, {
       onDelete: 'set null',
     }),
@@ -97,14 +93,9 @@ export const bomItems = pgTable(
     index('idx_bom_items_bom_id').on(table.bomId),
     index('idx_bom_items_parent_id').on(table.parentId),
     index('idx_bom_items_product_id').on(table.productId),
-    index('idx_bom_items_material_id').on(table.materialId),
     index('idx_bom_items_created_by').on(table.createdBy),
     index('idx_bom_items_drawing_file_id').on(table.drawingFileId),
     index('idx_bom_items_path').on(table.path),
-    check(
-      'chk_bom_items_item_type_target',
-      sql`(item_type = 'PRODUCT' AND product_id IS NOT NULL AND material_id IS NULL) OR (item_type = 'MATERIAL' AND material_id IS NOT NULL AND product_id IS NULL)`,
-    ),
     check('chk_bom_items_quantity_positive', sql`quantity > 0`),
   ],
 );
@@ -117,10 +108,6 @@ export const bomItemsRelations = relations(bomItems, ({ one }) => ({
   product: one(products, {
     fields: [bomItems.productId],
     references: [products.id],
-  }),
-  material: one(materials, {
-    fields: [bomItems.materialId],
-    references: [materials.id],
   }),
   drawingFile: one(files, {
     fields: [bomItems.drawingFileId],

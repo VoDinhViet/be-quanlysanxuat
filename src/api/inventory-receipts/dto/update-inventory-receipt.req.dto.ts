@@ -1,0 +1,33 @@
+import { InventoryReceiptType } from '../../../database/schemas';
+import {
+  ClassFieldOptional,
+  DateFieldOptional,
+  EnumFieldOptional,
+  StringFieldOptional,
+  UUIDFieldOptional,
+} from '../../../decorators/field.decorators';
+import { InventoryReceiptItemReqDto } from './inventory-receipt-item.req.dto';
+
+/** Chỉ hợp lệ khi phiếu còn `DRAFT` (`E098`). `warehouseId` bất biến — đổi kho là lập phiếu mới. */
+export class UpdateInventoryReceiptReqDto {
+  @EnumFieldOptional(() => InventoryReceiptType)
+  readonly receiptType?: InventoryReceiptType;
+
+  @DateFieldOptional()
+  readonly receiptDate?: Date;
+
+  @UUIDFieldOptional()
+  readonly supplierId?: string;
+
+  @UUIDFieldOptional()
+  readonly purchaseRequestId?: string;
+
+  @UUIDFieldOptional()
+  readonly productionOrderId?: string;
+
+  @StringFieldOptional({ maxLength: 1000, nullable: true })
+  readonly note?: string | null;
+
+  @ClassFieldOptional(() => InventoryReceiptItemReqDto, { each: true })
+  readonly items?: InventoryReceiptItemReqDto[];
+}

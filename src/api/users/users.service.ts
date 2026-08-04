@@ -410,6 +410,26 @@ export class UsersService {
     });
   }
 
+  /** Bộ phận của một user, đọc trong transaction của nơi gọi (vd
+   * `ProductionJobsService.startJob`) — `E012` nếu row `users` không còn (token còn hạn nhưng user
+   * đã bị xoá mềm). */
+  async getUserDepartmentId(
+    tx: DbTransaction,
+    userId: string,
+  ): Promise<string> {
+    const [user] = await tx
+      .select({ departmentId: users.departmentId })
+      .from(users)
+      .where(and(eq(users.id, userId), isNull(users.deletedAt)))
+      .limit(1);
+
+    if (!user) {
+      throw new AppException(ErrorCode.E012, HttpStatus.NOT_FOUND);
+    }
+
+    return user.departmentId;
+  }
+
   /** Returns the columns callers need right after — department/position, to compute the
    * "effective" pair on a partial update — instead of a second re-fetch. */
   private async ensureUserExists(userId: string): Promise<{

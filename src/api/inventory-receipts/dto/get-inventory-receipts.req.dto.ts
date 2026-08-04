@@ -1,0 +1,33 @@
+import {
+  InventoryDocumentStatus,
+  InventoryReceiptType,
+} from '../../../database/schemas';
+import { PageOptionsDto } from '../../../common/dto/offset-pagination/page-options.dto';
+import {
+  DateFieldOptional,
+  EnumFieldOptional,
+  UUIDFieldOptional,
+} from '../../../decorators/field.decorators';
+
+export class GetInventoryReceiptsReqDto extends PageOptionsDto {
+  @UUIDFieldOptional()
+  readonly warehouseId?: string;
+
+  @EnumFieldOptional(() => InventoryReceiptType)
+  readonly receiptType?: InventoryReceiptType;
+
+  @EnumFieldOptional(() => InventoryDocumentStatus)
+  readonly status?: InventoryDocumentStatus;
+
+  @UUIDFieldOptional()
+  readonly supplierId?: string;
+
+  @UUIDFieldOptional()
+  readonly productionOrderId?: string;
+
+  @DateFieldOptional({ description: 'Filter: receiptDate >= fromDate' })
+  readonly fromDate?: Date;
+
+  @DateFieldOptional({ description: 'Filter: receiptDate <= toDate' })
+  readonly toDate?: Date;
+}

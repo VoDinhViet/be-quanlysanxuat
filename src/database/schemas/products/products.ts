@@ -11,7 +11,6 @@ import {
 
 import { clients } from '../clients/clients';
 import { files } from '../files';
-import { productAttachments } from './product-attachments';
 import { productGroups } from './product-groups';
 import { units } from '../units/units';
 import { users } from '../identity-access/users';
@@ -101,7 +100,7 @@ export const products = pgTable(
   ],
 );
 
-export const productsRelations = relations(products, ({ one, many }) => ({
+export const productsRelations = relations(products, ({ one }) => ({
   client: one(clients, {
     fields: [products.clientId],
     references: [clients.id],
@@ -122,7 +121,6 @@ export const productsRelations = relations(products, ({ one, many }) => ({
     fields: [products.imageFileId],
     references: [files.id],
   }),
-  attachments: many(productAttachments),
   source: one(products, {
     fields: [products.sourceProductId],
     references: [products.id],

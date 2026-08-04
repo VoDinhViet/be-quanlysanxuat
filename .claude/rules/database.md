@@ -12,7 +12,7 @@ Reference: `src/database/schemas/users.ts`, `src/database/schemas/clients.ts` (s
 
 ## Soft delete
 
-Eight tables carry `deletedAt`: `clients`, `orders`, `products`, `stock_receipts`, `suppliers` (deleted via API) plus `users`, `roles`, `operations` (column + read filters only, no delete route). Every other table hard-deletes.
+Seven tables carry `deletedAt`: `clients`, `orders`, `products`, `suppliers` (deleted via API) plus `users`, `roles`, `operations` (column + read filters only, no delete route). Every other table hard-deletes — including `inventory_receipts`/`inventory_issues` (hard delete, only while `DRAFT`; `CANCELLED` is the "voided" state, not a second delete mechanism).
 
 - MUST declare it as a nullable `deletedAt: timestamp('deleted_at')` — no default, no `notNull`.
 - MUST delete by `.set({ deletedAt: new Date() })` on a table that has the column. MUST NOT call `db.delete()` on one.

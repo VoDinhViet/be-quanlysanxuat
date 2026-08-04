@@ -7,10 +7,6 @@ import { BomItemNodeResDto } from './bom-item-node.res.dto';
 @Exclude()
 export class BomItemResDto extends BomItemNodeResDto {
   @Expose()
-  @ClassFieldOptional(() => BomItemResDto, { each: true })
-  children!: BomItemResDto[];
-
-  @Expose()
   @ClassFieldOptional(() => RoutingStepResDto, { each: true })
   operations!: RoutingStepResDto[];
 }

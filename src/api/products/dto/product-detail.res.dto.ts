@@ -1,16 +1,11 @@
 import { Exclude, Expose } from 'class-transformer';
 
 import { ClassFieldOptional } from '../../../decorators/field.decorators';
-import { ProductAttachmentResDto } from './product-attachment.res.dto';
 import { ProductRefResDto } from './product-ref.res.dto';
 import { ProductResDto } from './product.res.dto';
 
 @Exclude()
 export class ProductDetailResDto extends ProductResDto {
-  @Expose()
-  @ClassFieldOptional(() => ProductAttachmentResDto, { each: true })
-  attachments!: ProductAttachmentResDto[];
-
   @Expose()
   @ClassFieldOptional(() => ProductRefResDto, {
     nullable: true,

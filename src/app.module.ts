@@ -4,6 +4,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { BomMaterialsModule } from './api/bom-materials/bom-materials.module';
 import { BomsModule } from './api/boms/boms.module';
 import { JwtAuthGuard } from './api/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from './api/auth/guards/permissions.guard';
@@ -28,6 +29,8 @@ import { DepartmentsModule } from './api/departments/departments.module';
 import { FilesModule } from './api/files/files.module';
 import { HealthModule } from './api/health/health.module';
 import { InventoryModule } from './api/inventory/inventory.module';
+import { InventoryIssuesModule } from './api/inventory-issues/inventory-issues.module';
+import { InventoryReceiptsModule } from './api/inventory-receipts/inventory-receipts.module';
 import { OperationsModule } from './api/operations/operations.module';
 import { OrdersModule } from './api/orders/orders.module';
 import { PositionsModule } from './api/positions/positions.module';
@@ -35,9 +38,11 @@ import { ProductGroupsModule } from './api/product-groups/product-groups.module'
 import { ProductionJobsModule } from './api/production-jobs/production-jobs.module';
 import { ProductionOrdersModule } from './api/production-orders/production-orders.module';
 import { ProductsModule } from './api/products/products.module';
+import { PurchaseRequestsModule } from './api/purchase-requests/purchase-requests.module';
 import { RoutingModule } from './api/routing/routing.module';
 import { UnitsModule } from './api/units/units.module';
 import { UsersModule } from './api/users/users.module';
+import { WarehousesModule } from './api/warehouses/warehouses.module';
 
 @Module({
   imports: [
@@ -62,6 +67,7 @@ import { UsersModule } from './api/users/users.module';
     UnitsModule,
     ProductsModule,
     BomsModule,
+    BomMaterialsModule,
     OperationsModule,
     RoutingModule,
     DepartmentsModule,
@@ -73,10 +79,14 @@ import { UsersModule } from './api/users/users.module';
     MaterialsModule,
     SuppliersModule,
     SupplierGroupsModule,
+    WarehousesModule,
     InventoryModule,
+    InventoryReceiptsModule,
+    InventoryIssuesModule,
     ProductionJobsModule,
     ProductionOrdersModule,
     OrdersModule,
+    PurchaseRequestsModule,
   ],
 
   controllers: [AppController],

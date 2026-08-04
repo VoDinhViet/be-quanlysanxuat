@@ -1,42 +1,35 @@
 import {
-  BomItemType,
+  bomItems,
   files,
   operations,
   routingSteps,
+  units,
 } from '../../../database/schemas';
 
-type FileRow = typeof files.$inferSelect;
+type File = typeof files.$inferSelect;
+type Unit = typeof units.$inferSelect;
+type RoutingStep = typeof routingSteps.$inferSelect;
+type Operation = typeof operations.$inferSelect;
+// Tên `BomItem` (đúng chuẩn số ít của bảng `bomItems`, cùng khuôn `File`/`Unit`/`RoutingStep`) đã
+// dành cho type export bên dưới (shape đã join thêm — cái thật sự lưu thông trong `BomsService`),
+// nên alias raw phải mang tên khác để tránh trùng.
 
-/** Shape of one `bom_items` row as `BomsService.getBomTree`'s SQL query already returns it —
- * item normalization (product vs. material) happens in SQL via `coalesce()` at the join key, so
- * Drizzle collapses an unmatched `image`/`drawing`/`unit` left join straight to `null` — no
- * TS-side normalize step needed. */
-export type BomTreeRow = {
-  id: string;
-  parentId: string | null;
-  itemType: BomItemType;
-  itemId: string;
+/** Shape of one `bom_items` row as `BomsService.getBom`'s SQL query already returns it — bảng giờ
+ * thuần cấu trúc WIP (không còn coalesce product/material), left join thẳng `products`. Lấy nguyên
+ * cột `bom_items` cho gọn — vài cột (`bomId`/`path`/`drawingFileId`/`createdBy`/`createdAt`/
+ * `updatedAt`) thật ra không nằm trong query, chỉ `code`/`name`/`unit`/`image`/`drawing` mới là
+ * cột join thêm thật sự dùng. */
+export type BomItem = typeof bomItems.$inferSelect & {
   code: string;
   name: string;
-  image: FileRow | null;
-  unit: { id: string; code: string; name: string };
-  quantity: number;
-  sortOrder: number;
-  level: number;
-  note: string | null;
-  drawing: FileRow | null;
+  image: File | null;
+  unit: Unit;
+  drawing: File | null;
 };
 
 /** Shape of one `routing_steps` row as `BomsService`'s batched as-used routing query returns it
  * (joined with its `operation`) — embedded raw onto each node's `operations` before the final
- * `plainToInstance(BomItemResDto, ...)` transform maps it into `RoutingStepResDto[]`, the same way
- * `children` stays raw until that same transform. */
-export type BomTreeOperationRow = typeof routingSteps.$inferSelect & {
-  operation: typeof operations.$inferSelect;
-};
-
-/** A `BomTreeRow` nested into a tree — what `BomsService.buildTree` produces. */
-export type BomTreeNode = BomTreeRow & {
-  children: BomTreeNode[];
-  operations: BomTreeOperationRow[];
+ * `plainToInstance(BomItemResDto, ...)` transform maps it into `RoutingStepResDto[]`. */
+export type BomTreeOperationRow = RoutingStep & {
+  operation: Operation;
 };

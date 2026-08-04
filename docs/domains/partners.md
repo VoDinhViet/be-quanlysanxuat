@@ -10,7 +10,7 @@ Dữ liệu nền mà các domain nghiệp vụ trỏ FK vào: khách hàng, nh�
 
 **Ràng buộc FK được kiểm ở phía tiêu thụ, không ở danh mục.** Các service danh mục gần như không bao giờ ném lỗi; chính module dùng nó (`ClientsService`, `SuppliersService`, `MaterialsService`, `UsersService`) mới là nơi từ chối một id không tồn tại. Hệ quả khi đọc code: đừng tìm validation trong module danh mục.
 
-**Không có domain Procurement.** Đây là điểm dễ giả định sai với một ERP sản xuất: hệ thống **không có** phiếu mua hàng, không có nhận hàng theo đơn mua, không có bảng giá NCC, không có công nợ. `suppliers` thuần là hồ sơ nhà cung cấp; `orders` là đơn **bán**, không phải đơn mua. Vật tư vào kho bằng phiếu nhập lập tay (`PNVT`, lý do `PURCHASE`).
+**Không có domain Procurement.** Đây là điểm dễ giả định sai với một ERP sản xuất: hệ thống **không có** phiếu mua hàng, không có nhận hàng theo đơn mua, không có bảng giá NCC, không có công nợ. `suppliers` thuần là hồ sơ nhà cung cấp; `orders` là đơn **bán**, không phải đơn mua. Vật tư vào kho bằng phiếu nhập lập tay (`PNK`, `receiptType = PURCHASE`) — có `supplierId` nhưng vẫn không phải chứng từ mua hàng, xem `docs/decisions/no-procurement.md`.
 
 **Liên hệ của khách hàng là replace-all.** Mỗi lần sửa khách hàng, toàn bộ `client_contacts` bị xoá rồi chèn lại. Đây chính là lý do `orders` phải snapshot người liên hệ thay vì giữ FK — xem `docs/domains/orders.md`.
 
@@ -20,7 +20,7 @@ Dữ liệu nền mà các domain nghiệp vụ trỏ FK vào: khách hàng, nh�
 | --- | --- | --- |
 | `clients` (+ `client_contacts`) | Khách hàng và danh bạ liên hệ | `orders.clientId`; snapshot liên hệ trên `orders` |
 | `suppliers` (+ payment info, representatives, attachments) | Nhà cung cấp | `materials.supplierId` (NCC chính) |
-| `materials` | Vật tư | `bom_items.materialId`, `stock_receipt_items.materialId` |
+| `materials` | Vật tư | `bom_items.materialId`, `inventory_receipt_items.materialId`, `inventory_issue_items.materialId` |
 | 7 catalogue nhỏ | Phân loại + cơ cấu tổ chức | `clients`/`suppliers`/`materials`/`users`/`routing` |
 
 `supplier_payment_info` là **1-1** và merge từng phần khi update; `supplier_representatives` và các bảng attachment là **replace-all**.

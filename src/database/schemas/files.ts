@@ -35,6 +35,8 @@ export enum UploadType {
   MATERIAL_IMAGE = 'MATERIAL_IMAGE',
   MATERIAL_DOCUMENT = 'MATERIAL_DOCUMENT',
   PRODUCT_IMAGE = 'PRODUCT_IMAGE',
+  /** Retired — `product_attachments` was dropped in favour of per-BOM-item drawings. Value kept
+   * because Postgres can't drop an enum value; new files must not use it. */
   PRODUCT_DOCUMENT = 'PRODUCT_DOCUMENT',
   SUPPLIER_LOGO = 'SUPPLIER_LOGO',
   SUPPLIER_DOCUMENT = 'SUPPLIER_DOCUMENT',

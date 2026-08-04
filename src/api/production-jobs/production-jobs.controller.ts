@@ -15,7 +15,6 @@ import { ApiAuth } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
-import { FileResDto } from '../files/dto/file.res.dto';
 import { CreateProductionJobNoteReqDto } from './dto/create-production-job-note.req.dto';
 import { GetProductionJobMaterialsReqDto } from './dto/get-production-job-materials.req.dto';
 import { GetProductionJobNotesReqDto } from './dto/get-production-job-notes.req.dto';
@@ -88,19 +87,6 @@ export class ProductionJobsController {
     return this.productionJobsService.getProductionJobMaterials(jobId, reqDto);
   }
 
-  @Get(':jobId/attachments')
-  @Permissions('production:read')
-  @ApiAuth({
-    type: FileResDto,
-    isArray: true,
-    summary: 'Tài liệu đính kèm của Job — đọc xuyên từ tài liệu của sản phẩm',
-  })
-  getProductionJobAttachments(
-    @UUIDParam('jobId') jobId: string,
-  ): Promise<FileResDto[]> {
-    return this.productionJobsService.getProductionJobAttachments(jobId);
-  }
-
   @Get(':jobId/notes')
   @Permissions('production:read')
   @ApiAuth({
@@ -136,13 +122,14 @@ export class ProductionJobsController {
   @Post(':jobId/start')
   @Permissions('production:update')
   @ApiAuth({
-    type: ProductionJobDetailResDto,
-    summary: 'Start a Job — PENDING → IN_PROGRESS',
+    summary:
+      'Start a Job — PENDING → IN_PROGRESS. Tự tạo đề xuất mua vật tư thiếu nếu có',
+    statusCode: HttpStatus.NO_CONTENT,
   })
   startJob(
     @UUIDParam('jobId') jobId: string,
     @CurrentUser() payload: JwtPayloadType,
-  ): Promise<ProductionJobDetailResDto> {
+  ): Promise<void> {
     return this.productionJobsService.startJob(jobId, payload.userId);
   }
 
