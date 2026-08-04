@@ -38,3 +38,5 @@ export * from './production/production-job-bom-items';
 export * from './production/production-job-operations';
 export * from './production/production-job-materials';
 export * from './production/production-job-notes';
+export * from './purchase-requests/purchase-requests';
+export * from './purchase-requests/purchase-request-items';
