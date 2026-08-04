@@ -78,12 +78,9 @@ export const purchaseRequestStatusEnum = pgEnum('purchase_request_status', [
 ]);
 
 /**
- * Đề xuất mua hàng ("purchase request") — phiếu xin duyệt nội bộ, không phải procurement. Xem
- * `docs/domains/purchase-requests.md` và ranh giới ở `docs/decisions/no-procurement.md`.
- *
- * Rules:
- * - Giai đoạn 1: chỉ có `GET /purchase-requests`. `status` đủ 4 giá trị cho vòng đời tương lai
- *   nhưng chưa có route nào ghi nó.
+ * Đề xuất mua hàng — phiếu xin duyệt nội bộ, không phải procurement
+ * (`docs/domains/purchase-requests.md`, `docs/decisions/no-procurement.md`). Giai đoạn 1: chỉ
+ * `GET /purchase-requests`; `status` đủ 4 giá trị cho vòng đời sau nhưng chưa route nào ghi nó.
  */
 export const purchaseRequests = pgTable(
   'purchase_requests',
