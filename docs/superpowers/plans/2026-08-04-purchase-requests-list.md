@@ -623,6 +623,14 @@ code (ví dụ đổi tên cột giữa chừng).
 
 - [ ] **Step 1: Lint + typecheck + build**
 
+Baseline trên `develop` (đã xác nhận trước khi tạo worktree) **không sạch tuyệt đối** — điều này
+có từ trước, không liên quan tới việc bạn sắp làm:
+- `pnpm lint`: 44 lỗi/3 cảnh báo có sẵn, toàn bộ ở file hạ tầng không liên quan
+  (`src/main.ts`, `src/redis/redis-config.type.ts`, và một file khác) — không phải do task này.
+- `npx tsc --noEmit`: fail do các file `*.spec.ts` cũ (`docs/decisions/testing-paused.md`) —
+  `tsconfig.build.json` loại trừ `**/*spec.ts`, nên đây không ảnh hưởng `pnpm build`.
+- `pnpm build`: sạch (exit 0).
+
 Run:
 ```bash
 pnpm lint
@@ -630,7 +638,10 @@ npx tsc --noEmit
 pnpm build
 ```
 
-Expected: cả ba lệnh chạy sạch, không lỗi.
+Expected: `pnpm build` sạch (exit 0), như baseline. `pnpm lint`/`npx tsc --noEmit` chỉ cần
+**không có thêm lỗi mới nào trên các file bạn vừa tạo/sửa** so với danh sách baseline ở trên — so
+sánh output với baseline, đừng sửa lỗi có sẵn ở file không thuộc phạm vi task này (out of scope,
+tránh side-effect ngoài ý muốn).
 
 - [ ] **Step 2: Kiểm tra Swagger**
 
