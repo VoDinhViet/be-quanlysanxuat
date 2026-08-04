@@ -59,7 +59,7 @@ không phải `/api/health`.
 
 ## Modules
 
-24 module dưới `src/api/`. `users` là module tham chiếu cho code mới (controller/service, DTO, lỗi,
+25 module dưới `src/api/`. `users` là module tham chiếu cho code mới (controller/service, DTO, lỗi,
 phân trang — chi tiết ở `.claude/rules/`). Đăng ký module mới trong `src/app.module.ts`. Cột `Domain`
 là file dưới `docs/domains/`, `—` nghĩa là hạ tầng thuần, không thuộc domain nghiệp vụ nào.
 
@@ -98,8 +98,8 @@ Bốn tầng, đọc từ trên xuống khi cần hiểu một vùng nghiệp v�
 - `docs/architecture.md` — sơ đồ ER theo cụm + thứ tự ghi qua nhiều module. Đọc trước khi sửa gì
   chạm ≥ 2 module.
 - `docs/domains/<domain>.md` — **"tại sao"**: khái niệm, vòng đời, business rule, bất biến, phụ
-  thuộc chéo domain, và lỗi hay mắc. Sáu domain: `orders`, `production`, `inventory`,
-  `product-structure`, `identity-access`, `partners`. Đọc trước khi làm feature trong vùng đó.
+  thuộc chéo domain, và lỗi hay mắc. Bảy domain: `orders`, `production`, `inventory`,
+  `product-structure`, `identity-access`, `partners`, `purchase-requests`. Đọc trước khi làm feature trong vùng đó.
 - `docs/workflows/<flow>.md` — **"chạy theo trình tự nào"**: trigger, actor, precondition, các bước,
   đổi trạng thái gì, ranh giới transaction, nhánh lỗi. Đọc trước khi sửa một luồng nghiệp vụ đầu-cuối.
   Năm luồng: `order-approval`, `production-order-approval`, `production-job-execution`,

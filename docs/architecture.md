@@ -40,6 +40,10 @@ erDiagram
     PRODUCTION_JOBS ||--o{ PRODUCTION_JOB_MATERIALS : "snapshot vật tư"
     PRODUCTION_JOBS ||--o{ PRODUCTION_JOB_NOTES : "ghi chú"
 
+    PRODUCTION_ORDERS ||--o{ PURCHASE_REQUESTS : "đề xuất mua vật tư (tuỳ chọn)"
+    PURCHASE_REQUESTS ||--o{ PURCHASE_REQUEST_ITEMS : gồm
+    PURCHASE_REQUEST_ITEMS }o--|| MATERIALS : "vật tư cần mua"
+
     STOCK_RECEIPTS ||--o{ STOCK_RECEIPT_ITEMS : gồm
     STOCK_RECEIPT_ITEMS }o--o| PRODUCTS : "dòng thành phẩm"
     STOCK_RECEIPT_ITEMS }o--o| MATERIALS : "dòng vật tư"

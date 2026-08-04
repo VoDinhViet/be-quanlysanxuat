@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
-import { and, count, desc, eq, exists, gte, lte, or, sql } from 'drizzle-orm';
+import { and, count, desc, eq, exists, gte, lt, or, sql } from 'drizzle-orm';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
@@ -69,7 +69,10 @@ export class PurchaseRequestsService {
         ? gte(purchaseRequests.createdAt, reqDto.fromDate)
         : undefined,
       reqDto.toDate
-        ? lte(purchaseRequests.createdAt, reqDto.toDate)
+        ? lt(
+            purchaseRequests.createdAt,
+            new Date(reqDto.toDate.getTime() + 24 * 60 * 60 * 1000),
+          )
         : undefined,
     );
 
