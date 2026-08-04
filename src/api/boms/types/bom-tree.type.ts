@@ -1,21 +1,13 @@
-import {
-  BomItemType,
-  files,
-  operations,
-  routingSteps,
-} from '../../../database/schemas';
+import { files, operations, routingSteps } from '../../../database/schemas';
 
 type FileRow = typeof files.$inferSelect;
 
 /** Shape of one `bom_items` row as `BomsService.getBomTree`'s SQL query already returns it —
- * item normalization (product vs. material) happens in SQL via `coalesce()` at the join key, so
- * Drizzle collapses an unmatched `image`/`drawing`/`unit` left join straight to `null` — no
- * TS-side normalize step needed. */
+ * bảng giờ thuần cấu trúc WIP (không còn coalesce product/material), left join thẳng `products`. */
 export type BomTreeRow = {
   id: string;
   parentId: string | null;
-  itemType: BomItemType;
-  itemId: string;
+  productId: string;
   code: string;
   name: string;
   image: FileRow | null;

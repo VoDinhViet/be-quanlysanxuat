@@ -1,11 +1,9 @@
 import { Exclude, Expose } from 'class-transformer';
 
 import { FileResDto } from '../../files/dto/file.res.dto';
-import { BomItemType } from '../../../database/schemas';
 import {
   ClassField,
   ClassFieldOptional,
-  EnumField,
   NumberField,
   StringField,
   StringFieldOptional,
@@ -28,19 +26,15 @@ export class BomItemNodeResDto {
   parentId!: string | null;
 
   @Expose()
-  @EnumField(() => BomItemType)
-  itemType!: BomItemType;
+  @UUIDField({ description: 'Id of the linked WIP product' })
+  productId!: string;
 
   @Expose()
-  @UUIDField({ description: 'Id of the linked product/material' })
-  itemId!: string;
-
-  @Expose()
-  @StringField({ description: 'Mã bản vẽ (linked product/material code)' })
+  @StringField({ description: 'Mã bản vẽ (linked product code)' })
   code!: string;
 
   @Expose()
-  @StringField({ description: 'Tên bản vẽ (linked product/material name)' })
+  @StringField({ description: 'Tên bản vẽ (linked product name)' })
   name!: string;
 
   @Expose()
@@ -55,7 +49,7 @@ export class BomItemNodeResDto {
   unit!: BomItemUnitResDto;
 
   @Expose()
-  @NumberField({ description: 'Số lượng — số nguyên nếu node là WIP' })
+  @NumberField({ int: true, description: 'Số lượng' })
   quantity!: number;
 
   @Expose()

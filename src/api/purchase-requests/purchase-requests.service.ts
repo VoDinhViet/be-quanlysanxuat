@@ -6,7 +6,7 @@ import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-p
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { unaccentILike } from '../../common/utils/search.util';
 import { DRIZZLE } from '../../database/database.module';
-import type { Database } from '../../database/database.type';
+import type { Database, DbTransaction } from '../../database/database.type';
 import {
   materials,
   purchaseRequestItems,
@@ -14,6 +14,7 @@ import {
 } from '../../database/schemas';
 import { GetPurchaseRequestsReqDto } from './dto/get-purchase-requests.req.dto';
 import { PurchaseRequestResDto } from './dto/purchase-request.res.dto';
+import { CreateShortageRequestInput } from './types/shortage-request.type';
 
 @Injectable()
 export class PurchaseRequestsService {
@@ -55,6 +56,9 @@ export class PurchaseRequestsService {
       reqDto.productionOrderId
         ? eq(purchaseRequests.productionOrderId, reqDto.productionOrderId)
         : undefined,
+      reqDto.productionJobId
+        ? eq(purchaseRequests.productionJobId, reqDto.productionJobId)
+        : undefined,
       reqDto.requesterId
         ? eq(purchaseRequests.createdBy, reqDto.requesterId)
         : undefined,
@@ -82,7 +86,12 @@ export class PurchaseRequestsService {
         limit: reqDto.limit,
         offset: reqDto.offset,
         orderBy: desc(purchaseRequests.createdAt),
-        with: { department: true, requester: true, productionOrder: true },
+        with: {
+          department: true,
+          requester: true,
+          productionOrder: true,
+          productionJob: true,
+        },
       }),
       this.db.select({ total: count() }).from(purchaseRequests).where(where),
     ]);
@@ -93,5 +102,41 @@ export class PurchaseRequestsService {
       }),
       new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
     );
+  }
+
+  /** Ghi header + dòng vật tư của một đề xuất trong transaction của nơi gọi — đường ghi duy nhất
+   * vào `purchase_requests`/`purchase_request_items`, gọi từ `ProductionJobsService.startJob` khi
+   * Job thiếu vật tư. `status` để mặc định `DRAFT` — chưa có route duyệt
+   * (`docs/domains/purchase-requests.md`). */
+  async createShortageRequest(
+    tx: DbTransaction,
+    input: CreateShortageRequestInput,
+  ): Promise<void> {
+    const { items, ...header } = input;
+    const code = await this.generatePurchaseRequestCode(tx);
+
+    const [purchaseRequest] = await tx
+      .insert(purchaseRequests)
+      .values({ ...header, code, neededDate: new Date() })
+      .returning({ id: purchaseRequests.id });
+
+    await tx.insert(purchaseRequestItems).values(
+      items.map((item) => ({
+        ...item,
+        purchaseRequestId: purchaseRequest.id,
+      })),
+    );
+  }
+
+  /** Khuôn `InventoryReceiptsService.generateReceiptCode` — `COUNT(*) + 1` pad 4 chữ số, không
+   * tách theo năm; unique constraint trên `code` là chốt chặn thật, cùng giới hạn TOCTOU đã chấp
+   * nhận chung trong repo. */
+  private async generatePurchaseRequestCode(
+    tx: DbTransaction,
+  ): Promise<string> {
+    const [totalRows] = await tx
+      .select({ total: count() })
+      .from(purchaseRequests);
+    return `DXMH${String((totalRows?.total ?? 0) + 1).padStart(4, '0')}`;
   }
 }

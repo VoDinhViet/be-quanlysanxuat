@@ -1,6 +1,4 @@
-import { BomItemType } from '../../../database/schemas';
 import {
-  EnumField,
   NumberField,
   NumberFieldOptional,
   StringFieldOptional,
@@ -9,14 +7,8 @@ import {
 } from '../../../decorators/field.decorators';
 
 export class CreateBomItemReqDto {
-  @EnumField(() => BomItemType, { description: 'WIP → PRODUCT, RM → MATERIAL' })
-  readonly itemType!: BomItemType;
-
-  @UUIDField({
-    description:
-      'Id of the linked product (WIP) or material (RM), per itemType',
-  })
-  readonly itemId!: string;
+  @UUIDField({ description: 'Id of the linked WIP product' })
+  readonly productId!: string;
 
   @UUIDFieldOptional({
     nullable: true,
@@ -26,8 +18,9 @@ export class CreateBomItemReqDto {
   readonly parentId?: string | null;
 
   @NumberField({
+    int: true,
     isPositive: true,
-    description: 'SL — WIP: số nguyên, RM: có thể thập phân',
+    description: 'SL — số nguyên (mọi node giờ luôn là WIP)',
   })
   readonly quantity!: number;
 

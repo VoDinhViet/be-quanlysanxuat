@@ -19,14 +19,13 @@ import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
+  bomItemMaterials,
   bomItems,
   boms,
   clients,
-  productAttachments,
   productGroups,
   products,
   ProductStatus,
-  ProductType,
   routingSteps,
   units,
   UnitScope,
@@ -140,7 +139,6 @@ export class ProductsService {
         unit: true,
         creator: true,
         imageFile: true,
-        attachments: { with: { file: true } },
         source: { columns: { id: true, code: true, name: true } },
       },
     });
@@ -157,7 +155,7 @@ export class ProductsService {
   async createProduct(
     reqDto: CreateProductReqDto,
     userId: string,
-  ): Promise<ProductDetailResDto> {
+  ): Promise<void> {
     let code = reqDto.code;
     if (code) {
       await this.validateCodeUniqueness(code);
@@ -172,40 +170,23 @@ export class ProductsService {
     if (reqDto.productGroupId) {
       await this.ensureProductGroupExists(reqDto.productGroupId);
     }
-    await this.linkSuppliedFiles(reqDto);
+    if (reqDto.imageFileId) {
+      await this.filesService.linkFiles([reqDto.imageFileId]);
+    }
 
-    // `attachmentFileIds` has no column on `products` — it must be peeled off before the spread,
-    // or drizzle tries to write a field that does not exist.
-    const { attachmentFileIds, ...productFields } = reqDto;
-
-    // The product row and its attachments must land together: without this transaction a failing
-    // attachment insert would leave a committed product with no documents.
-    const productId = await this.db.transaction(async (tx) => {
-      const [product] = await tx
-        .insert(products)
-        .values({
-          ...productFields,
-          code,
-          type: reqDto.type ?? ProductType.FINISHED_GOOD,
-          status: reqDto.status ?? ProductStatus.ACTIVE,
-          createdBy: userId,
-        })
-        .returning();
-
-      if (attachmentFileIds?.length) {
-        await this.createAttachments(tx, product.id, attachmentFileIds);
-      }
-
-      return product.id;
+    // `type`/`status` đều có default ở cột schema (`ProductType.FINISHED_GOOD`/
+    // `ProductStatus.ACTIVE`) — bỏ trống là DB tự điền, không cần lặp lại default ở đây.
+    await this.db.insert(products).values({
+      ...reqDto,
+      code,
+      createdBy: userId,
     });
-
-    return this.getProductDetail(productId);
   }
 
   async updateProduct(
     productId: string,
     reqDto: UpdateProductReqDto,
-  ): Promise<ProductDetailResDto> {
+  ): Promise<void> {
     await this.ensureProductExists(productId);
 
     if (reqDto.code) {
@@ -220,41 +201,22 @@ export class ProductsService {
     if (reqDto.productGroupId) {
       await this.ensureProductGroupExists(reqDto.productGroupId);
     }
-    await this.linkSuppliedFiles(reqDto);
+    if (reqDto.imageFileId) {
+      await this.filesService.linkFiles([reqDto.imageFileId]);
+    }
 
-    const { attachmentFileIds, ...productFields } = reqDto;
-
-    await this.db.transaction(async (tx) => {
-      // `updated_at` is bumped by the column's own `$onUpdate`.
-      await tx
-        .update(products)
-        .set(productFields)
-        .where(eq(products.id, productId));
-
-      // Truthiness on the array itself, not `.length`: `[]` means "remove every document",
-      // `undefined` means "this PATCH does not touch documents".
-      if (attachmentFileIds) {
-        await this.replaceAttachments(tx, productId, attachmentFileIds);
-      }
-    });
-
-    return this.getProductDetail(productId);
-  }
-
-  async deleteProduct(productId: string): Promise<void> {
-    await this.ensureProductExists(productId);
-
+    // `updated_at` is bumped by the column's own `$onUpdate`.
     await this.db
       .update(products)
-      .set({ deletedAt: new Date() })
+      .set(reqDto)
       .where(eq(products.id, productId));
   }
 
   /**
-   * Deep-clones a product: the row itself, its attachments, its whole BOM tree, its Cấp 0 root
-   * routing, and each cloned node's own as-used routing — a full independent product, not a
-   * version of the source. `sourceProductId` records lineage only ("Sao chép từ"); nothing about
-   * the clone stays linked to the source afterward.
+   * Deep-clones a product: the row itself, its whole BOM tree, its Cấp 0 root routing, and each
+   * cloned node's own as-used routing — a full independent product, not a version of the source.
+   * `sourceProductId` records lineage only ("Sao chép từ"); nothing about the clone stays linked
+   * to the source afterward.
    */
   async copyProduct(
     productId: string,
@@ -264,16 +226,6 @@ export class ProductsService {
     const code = await this.generateProductCode();
 
     // Every read happens before the transaction opens — see `.claude/rules/service.md`.
-
-    // The copy points at the same file rows as the original — `files` is a registry, and both
-    // products referencing one row is exactly what it is for. Skipping this would silently give
-    // the copy an empty document list.
-    const originalAttachments = await this.db.query.productAttachments.findMany(
-      {
-        columns: { fileId: true },
-        where: eq(productAttachments.productId, productId),
-      },
-    );
 
     const sourceBom = await this.db.query.boms.findFirst({
       columns: { id: true },
@@ -285,6 +237,14 @@ export class ProductsService {
       ? await this.db.query.bomItems.findMany({
           where: eq(bomItems.bomId, sourceBom.id),
           orderBy: [asc(bomItems.level), asc(bomItems.sortOrder)],
+        })
+      : [];
+
+    // Vật tư as-used (Cấp 0 lẫn từng node) — có thể tồn tại dù `sourceBomItems` rỗng (sản phẩm chỉ
+    // khai vật tư Cấp 0, không có cây con nào).
+    const sourceBomMaterials = sourceBom
+      ? await this.db.query.bomItemMaterials.findMany({
+          where: eq(bomItemMaterials.bomId, sourceBom.id),
         })
       : [];
 
@@ -322,17 +282,15 @@ export class ProductsService {
         })
         .returning();
 
-      if (originalAttachments.length) {
-        await this.createAttachments(
-          tx,
-          product.id,
-          originalAttachments.map(({ fileId }) => fileId),
-        );
-      }
-
-      const newBomItemIdByOldId = sourceBomItems.length
-        ? await this.cloneBomTree(tx, product.id, sourceBomItems, userId)
-        : new Map<string, string>();
+      const { newBomItemIdByOldId } = sourceBom
+        ? await this.cloneBomTree(
+            tx,
+            product.id,
+            sourceBomItems,
+            sourceBomMaterials,
+            userId,
+          )
+        : { newBomItemIdByOldId: new Map<string, string>() };
 
       if (sourceRootOperations.length) {
         await tx.insert(routingSteps).values(
@@ -376,24 +334,27 @@ export class ProductsService {
   }
 
   /**
-   * Inserts a fresh `boms` header for `newProductId`, then clones every source `bom_items` row
-   * onto it: new ids, `parentId` remapped through the old→new id map, and `path` rebuilt from the
-   * *new* parent's path (the old ltree path embeds the old ids, so it can't just be copied).
+   * Inserts a fresh `boms` header for `newProductId`, clones every source `bom_items` row onto it
+   * (new ids, `parentId` remapped through the old→new id map, `path` rebuilt from the *new*
+   * parent's path — the old ltree path embeds the old ids, so it can't just be copied), then
+   * clones every source `bom_item_materials` row (Cấp 0 and as-used alike), remapping `bomItemId`
+   * through the same id map.
    *
    * Rules:
    * - `productId`/`materialId` on each row still point at the original WIP/material — cloning a
-   *   BOM does not recursively clone the products it references.
+   *   BOM does not recursively clone the products/materials it references.
    * - Requires `sourceItems` to already be ordered parent-before-child (by `level`), so a
    *   parent's remapped id/path always exists in the maps by the time its children are processed.
-   * - Returns the old→new `bom_items.id` map so the caller can remap each cloned node's own
-   *   as-used routing (`routing_steps.bom_item_id`).
+   * - Returns the new `bomId` and the old→new `bom_items.id` map so the caller can remap each
+   *   cloned node's own as-used routing (`routing_steps.bom_item_id`).
    */
   private async cloneBomTree(
     tx: DbTransaction,
     newProductId: string,
     sourceItems: (typeof bomItems.$inferSelect)[],
+    sourceMaterials: (typeof bomItemMaterials.$inferSelect)[],
     userId: string,
-  ): Promise<Map<string, string>> {
+  ): Promise<{ bomId: string; newBomItemIdByOldId: Map<string, string> }> {
     const [bom] = await tx
       .insert(boms)
       .values({ productId: newProductId, createdBy: userId })
@@ -420,9 +381,8 @@ export class ProductsService {
         id: newId,
         bomId: bom.id,
         parentId: newParentId,
-        itemType: item.itemType,
         productId: item.productId,
-        materialId: item.materialId,
+        drawingFileId: item.drawingFileId,
         quantity: item.quantity,
         path: newPath,
         level: item.level,
@@ -432,55 +392,27 @@ export class ProductsService {
       };
     });
 
-    await tx.insert(bomItems).values(newItems);
-
-    return newIdByOldId;
-  }
-
-  /**
-   * Validates every file id the request carries and marks them linked, so the orphan sweeper
-   * leaves them alone. Runs **before** the transaction on purpose — see `FilesService.linkFiles`.
-   */
-  private async linkSuppliedFiles(
-    reqDto: CreateProductReqDto | UpdateProductReqDto,
-  ): Promise<void> {
-    const fileIds = [
-      reqDto.imageFileId,
-      ...(reqDto.attachmentFileIds ?? []),
-    ].filter((fileId): fileId is string => Boolean(fileId));
-
-    await this.filesService.linkFiles(fileIds);
-  }
-
-  /**
-   * Writes the attachment rows. Takes `tx` (not `this.db`) so it can only ever be called from
-   * inside an open transaction — passing the pooled connection is a compile error.
-   */
-  private async createAttachments(
-    tx: DbTransaction,
-    productId: string,
-    fileIds: string[],
-  ): Promise<void> {
-    await tx
-      .insert(productAttachments)
-      .values(fileIds.map((fileId) => ({ productId, fileId })));
-  }
-
-  /** Replace-all. `tx` is required so a caller cannot accidentally write outside the transaction. */
-  private async replaceAttachments(
-    tx: DbTransaction,
-    productId: string,
-    attachmentFileIds: string[],
-  ): Promise<void> {
-    await tx
-      .delete(productAttachments)
-      .where(eq(productAttachments.productId, productId));
-
-    if (attachmentFileIds.length) {
-      await tx
-        .insert(productAttachments)
-        .values(attachmentFileIds.map((fileId) => ({ productId, fileId })));
+    if (newItems.length) {
+      await tx.insert(bomItems).values(newItems);
     }
+
+    if (sourceMaterials.length) {
+      await tx.insert(bomItemMaterials).values(
+        sourceMaterials.map((material) => ({
+          bomId: bom.id,
+          bomItemId: material.bomItemId
+            ? (newIdByOldId.get(material.bomItemId) ?? null)
+            : null,
+          materialId: material.materialId,
+          quantity: material.quantity,
+          sortOrder: material.sortOrder,
+          note: material.note,
+          createdBy: userId,
+        })),
+      );
+    }
+
+    return { bomId: bom.id, newBomItemIdByOldId: newIdByOldId };
   }
 
   private async ensureProductExists(productId: string) {

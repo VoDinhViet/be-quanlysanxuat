@@ -19,7 +19,7 @@ thể stale**.
 2. **Xoá hẳn tầng `docs/features/`** (13 file, 1.353 dòng). Nội dung nghiệp vụ đã chuyển lên
    `docs/domains/`; trình tự chạy chuyển sang `docs/workflows/`.
 3. `ErrorCode` không có tầng doc riêng — tên mã đã tự mô tả
-   (`stock_receipt.error.line_target_mismatch`), thứ tự kiểm đọc thẳng từ service.
+   (`inventory_document.error.item_target_mismatch`), thứ tự kiểm đọc thẳng từ service.
 
 ## Hệ quả
 

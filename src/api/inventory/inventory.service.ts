@@ -4,10 +4,13 @@ import {
   and,
   asc,
   count,
+  desc,
   eq,
   getTableColumns,
+  gte,
   inArray,
   isNull,
+  lt,
   lte,
   ne,
   or,
@@ -22,6 +25,9 @@ import { DRIZZLE } from '../../database/database.module';
 import type { Database } from '../../database/database.type';
 import {
   files,
+  inventoryBalances,
+  inventoryTransactions,
+  InventoryItemType,
   materialGroups,
   materials,
   MaterialStatus,
@@ -32,20 +38,21 @@ import {
   products,
   ProductStatus,
   ProductType,
-  stockReceiptItems,
-  stockReceipts,
-  StockReceiptType,
   suppliers,
   units,
 } from '../../database/schemas';
+import { GetInventoryBalancesReqDto } from './dto/get-inventory-balances.req.dto';
 import { GetInventoryReqDto } from './dto/get-inventory.req.dto';
+import { GetInventoryTransactionsReqDto } from './dto/get-inventory-transactions.req.dto';
 import { GetMaterialInventoryReqDto } from './dto/get-material-inventory.req.dto';
+import { InventoryBalanceResDto } from './dto/inventory-balance.res.dto';
 import { InventoryItemResDto } from './dto/inventory-item.res.dto';
+import { InventoryTransactionResDto } from './dto/inventory-transaction.res.dto';
 import { MaterialInventoryItemResDto } from './dto/material-inventory-item.res.dto';
 import { MaterialStockStatus } from './inventory.constant';
 
-/** Đọc tồn thành phẩm, không lưu gì — mọi số tính lúc đọc từ `stock_receipt_items` (sổ
- * `StockReceiptsService` ghi) và `order_items`, nên không bao giờ lệch nguồn. */
+/** Đọc tồn — mọi số tính từ `inventory_balances` (bản chiếu `InventoryPostingService` ghi lúc
+ * `post`/`cancel`) và `order_items`, gộp mọi kho trừ khi `warehouseId` được truyền. */
 @Injectable()
 export class InventoryService {
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
@@ -84,6 +91,8 @@ export class InventoryService {
 
     const stockByProduct = await this.getStockLevels(
       entities.map((product) => product.id),
+      undefined,
+      reqDto.warehouseId,
     );
 
     const items = entities.map((product) => {
@@ -113,7 +122,10 @@ export class InventoryService {
   async getMaterialInventory(
     reqDto: GetMaterialInventoryReqDto,
   ): Promise<OffsetPaginatedDto<MaterialInventoryItemResDto>> {
-    const stock = this.materialStockSubquery(reqDto.asOfDate);
+    const stock = this.materialOnHandSubquery(
+      reqDto.asOfDate,
+      reqDto.warehouseId,
+    );
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
 
     const onHandSql = () => sql<number>`coalesce(${stock.onHand}, 0)`;
@@ -194,6 +206,96 @@ export class InventoryService {
     );
   }
 
+  /** Tồn thô theo (kho × mặt hàng) — đọc thẳng `inventory_balances`, không tính lại. */
+  async getInventoryBalances(
+    reqDto: GetInventoryBalancesReqDto,
+  ): Promise<OffsetPaginatedDto<InventoryBalanceResDto>> {
+    const where = and(
+      reqDto.warehouseId
+        ? eq(inventoryBalances.warehouseId, reqDto.warehouseId)
+        : undefined,
+      reqDto.itemType
+        ? eq(inventoryBalances.itemType, reqDto.itemType)
+        : undefined,
+    );
+
+    const [entities, countRows] = await Promise.all([
+      this.db.query.inventoryBalances.findMany({
+        where,
+        limit: reqDto.limit,
+        offset: reqDto.offset,
+        orderBy: desc(inventoryBalances.updatedAt),
+        with: { warehouse: true, product: true, material: true },
+      }),
+      this.db.select({ total: count() }).from(inventoryBalances).where(where),
+    ]);
+
+    return new OffsetPaginatedDto(
+      plainToInstance(InventoryBalanceResDto, entities, {
+        excludeExtraneousValues: true,
+      }),
+      new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
+    );
+  }
+
+  /** Sổ cái — đọc thẳng `inventory_transactions`, chỉ ghi được qua `InventoryPostingService`. */
+  async getInventoryTransactions(
+    reqDto: GetInventoryTransactionsReqDto,
+  ): Promise<OffsetPaginatedDto<InventoryTransactionResDto>> {
+    const where = and(
+      reqDto.warehouseId
+        ? eq(inventoryTransactions.warehouseId, reqDto.warehouseId)
+        : undefined,
+      reqDto.itemType
+        ? eq(inventoryTransactions.itemType, reqDto.itemType)
+        : undefined,
+      reqDto.productId
+        ? eq(inventoryTransactions.productId, reqDto.productId)
+        : undefined,
+      reqDto.materialId
+        ? eq(inventoryTransactions.materialId, reqDto.materialId)
+        : undefined,
+      reqDto.type ? eq(inventoryTransactions.type, reqDto.type) : undefined,
+      reqDto.referenceType
+        ? eq(inventoryTransactions.referenceType, reqDto.referenceType)
+        : undefined,
+      reqDto.fromDate
+        ? gte(inventoryTransactions.transactionDate, reqDto.fromDate)
+        : undefined,
+      // Exclusive next-day boundary — `toDate` parses to midnight UTC, `lte` would drop same-day rows.
+      reqDto.toDate
+        ? lt(
+            inventoryTransactions.transactionDate,
+            new Date(reqDto.toDate.getTime() + 24 * 60 * 60 * 1000),
+          )
+        : undefined,
+    );
+
+    const [entities, countRows] = await Promise.all([
+      this.db.query.inventoryTransactions.findMany({
+        where,
+        limit: reqDto.limit,
+        offset: reqDto.offset,
+        orderBy: [
+          desc(inventoryTransactions.transactionDate),
+          desc(inventoryTransactions.createdAt),
+        ],
+        with: { warehouse: true, product: true, material: true, creator: true },
+      }),
+      this.db
+        .select({ total: count() })
+        .from(inventoryTransactions)
+        .where(where),
+    ]);
+
+    return new OffsetPaginatedDto(
+      plainToInstance(InventoryTransactionResDto, entities, {
+        excludeExtraneousValues: true,
+      }),
+      new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
+    );
+  }
+
   /** Trả boolean SQL trực tiếp (không qua CASE) — chỉ phục vụ lọc `WHERE`, không cần hiển thị. */
   private materialStatusCondition(
     availableSql: () => SQL<number>,
@@ -223,58 +325,59 @@ export class InventoryService {
     return MaterialStockStatus.NORMAL;
   }
 
-  /** Tồn ròng theo vật tư qua mọi phiếu chưa xoá có `materialId` (dòng thành phẩm để null, gộp
-   * vào một bucket NULL không bao giờ join tới). `asOfDate` tính tồn tại thời điểm 23:59 ngày đó —
-   * chỉ gộp phiếu có `receiptDate <= asOfDate`. */
-  private materialStockSubquery(asOfDate?: Date) {
-    return this.db
-      .select({
-        materialId: stockReceiptItems.materialId,
-        onHand:
-          sql<number>`sum(case when ${stockReceipts.type} = ${StockReceiptType.IN} then ${stockReceiptItems.quantity} else -${stockReceiptItems.quantity} end)`
+  /** `asOfDate` không đọc `inventory_balances` được (bảng đó là tồn hiện tại) — cộng lại từ
+   * `inventory_transactions` với `transactionDate <= asOfDate`. Không truyền thì đọc balances. */
+  private materialOnHandSubquery(asOfDate?: Date, warehouseId?: string) {
+    if (asOfDate) {
+      return this.db
+        .select({
+          materialId: inventoryTransactions.materialId,
+          onHand: sql<number>`sum(${inventoryTransactions.quantity})`
             .mapWith(Number)
             .as('on_hand'),
-      })
-      .from(stockReceiptItems)
-      .innerJoin(
-        stockReceipts,
-        eq(stockReceipts.id, stockReceiptItems.receiptId),
-      )
-      .where(
-        and(
-          isNull(stockReceipts.deletedAt),
-          asOfDate ? lte(stockReceipts.receiptDate, asOfDate) : undefined,
-        ),
-      )
-      .groupBy(stockReceiptItems.materialId)
-      .as('material_stock');
+        })
+        .from(inventoryTransactions)
+        .where(
+          and(
+            eq(inventoryTransactions.itemType, InventoryItemType.MATERIAL),
+            lte(inventoryTransactions.transactionDate, asOfDate),
+            warehouseId
+              ? eq(inventoryTransactions.warehouseId, warehouseId)
+              : undefined,
+          ),
+        )
+        .groupBy(inventoryTransactions.materialId)
+        .as('material_on_hand');
+    }
+
+    return this.materialBalanceSubquery(warehouseId);
   }
 
   /** `excludeOrderId` loại một đơn khỏi `reserved` khi tính Khả dụng cho chính đơn đó — đơn này đã
    * tự giữ chỗ nên không loại trừ sẽ bị trừ nhu cầu của nó hai lần. Chỉ `ProductionOrdersService`
-   * truyền tham số này; `GET /inventory` luôn để trống. Công thức đầy đủ:
-   * `docs/workflows/production-order-approval.md`. */
+   * truyền tham số này; `GET /inventory` luôn để trống. `warehouseId` gộp mọi kho nếu bỏ trống. */
   async getStockLevels(
     productIds: string[],
     excludeOrderId?: string,
+    warehouseId?: string,
   ): Promise<Map<string, { onHand: number; reserved: number }>> {
     if (!productIds.length) {
       return new Map();
     }
 
-    const stock = this.stockSubquery();
+    const balance = this.productBalanceSubquery(warehouseId);
     const reserved = this.reservedSubquery(excludeOrderId);
 
     const rows = await this.db
       .select({
         productId: products.id,
-        onHand: sql<number>`coalesce(${stock.onHand}, 0)`.mapWith(Number),
+        onHand: sql<number>`coalesce(${balance.onHand}, 0)`.mapWith(Number),
         reserved: sql<number>`coalesce(${reserved.reserved}, 0)`.mapWith(
           Number,
         ),
       })
       .from(products)
-      .leftJoin(stock, eq(stock.productId, products.id))
+      .leftJoin(balance, eq(balance.productId, products.id))
       .leftJoin(reserved, eq(reserved.productId, products.id))
       .where(inArray(products.id, productIds));
 
@@ -286,47 +389,85 @@ export class InventoryService {
     );
   }
 
-  /** Tồn ròng theo sản phẩm qua mọi phiếu chưa xoá: IN cộng, OUT trừ. */
-  private stockSubquery() {
-    return this.db
+  /** Per-material on-hand, gộp mọi kho trừ khi `warehouseId` được truyền. */
+  async getMaterialStockLevels(
+    materialIds: string[],
+    warehouseId?: string,
+  ): Promise<Map<string, number>> {
+    if (!materialIds.length) {
+      return new Map();
+    }
+
+    const balance = this.materialBalanceSubquery(warehouseId);
+
+    const rows = await this.db
       .select({
-        productId: stockReceiptItems.productId,
-        onHand:
-          sql<number>`sum(case when ${stockReceipts.type} = ${StockReceiptType.IN} then ${stockReceiptItems.quantity} else -${stockReceiptItems.quantity} end)`
-            .mapWith(Number)
-            .as('on_hand'),
+        materialId: materials.id,
+        onHand: sql<number>`coalesce(${balance.onHand}, 0)`.mapWith(Number),
       })
-      .from(stockReceiptItems)
-      .innerJoin(
-        stockReceipts,
-        eq(stockReceipts.id, stockReceiptItems.receiptId),
-      )
-      .where(isNull(stockReceipts.deletedAt))
-      .groupBy(stockReceiptItems.productId)
-      .as('stock');
+      .from(materials)
+      .leftJoin(balance, eq(balance.materialId, materials.id))
+      .where(inArray(materials.id, materialIds));
+
+    return new Map(rows.map((row) => [row.materialId, row.onHand]));
   }
 
-  /** Mỗi dòng đơn hàng đã thực xuất kho bao nhiêu (chỉ tính phiếu OUT). */
+  private productBalanceSubquery(warehouseId?: string) {
+    return this.db
+      .select({
+        productId: inventoryBalances.productId,
+        onHand: sql<number>`sum(${inventoryBalances.quantity})`
+          .mapWith(Number)
+          .as('on_hand'),
+      })
+      .from(inventoryBalances)
+      .where(
+        and(
+          eq(inventoryBalances.itemType, InventoryItemType.PRODUCT),
+          warehouseId
+            ? eq(inventoryBalances.warehouseId, warehouseId)
+            : undefined,
+        ),
+      )
+      .groupBy(inventoryBalances.productId)
+      .as('product_balance');
+  }
+
+  private materialBalanceSubquery(warehouseId?: string) {
+    return this.db
+      .select({
+        materialId: inventoryBalances.materialId,
+        onHand: sql<number>`sum(${inventoryBalances.quantity})`
+          .mapWith(Number)
+          .as('on_hand'),
+      })
+      .from(inventoryBalances)
+      .where(
+        and(
+          eq(inventoryBalances.itemType, InventoryItemType.MATERIAL),
+          warehouseId
+            ? eq(inventoryBalances.warehouseId, warehouseId)
+            : undefined,
+        ),
+      )
+      .groupBy(inventoryBalances.materialId)
+      .as('material_balance');
+  }
+
+  /** Mỗi dòng đơn hàng đã thực xuất kho bao nhiêu — cộng `-quantity` trên mọi bút toán có
+   * `orderItemId`. Một phiếu xuất `post` ghi dòng âm; huỷ phiếu (`cancel`) ghi thêm dòng đảo dấu
+   * dương cùng `orderItemId` nên tự triệt tiêu, không cần lọc theo trạng thái phiếu. */
   private deliveredSubquery() {
     return this.db
       .select({
-        orderItemId: stockReceiptItems.orderItemId,
-        deliveredQty: sql<number>`sum(${stockReceiptItems.quantity})`
+        orderItemId: inventoryTransactions.orderItemId,
+        deliveredQty: sql<number>`sum(-${inventoryTransactions.quantity})`
           .mapWith(Number)
           .as('delivered_qty'),
       })
-      .from(stockReceiptItems)
-      .innerJoin(
-        stockReceipts,
-        eq(stockReceipts.id, stockReceiptItems.receiptId),
-      )
-      .where(
-        and(
-          eq(stockReceipts.type, StockReceiptType.OUT),
-          isNull(stockReceipts.deletedAt),
-        ),
-      )
-      .groupBy(stockReceiptItems.orderItemId)
+      .from(inventoryTransactions)
+      .where(sql`${inventoryTransactions.orderItemId} IS NOT NULL`)
+      .groupBy(inventoryTransactions.orderItemId)
       .as('delivered');
   }
 

@@ -31,7 +31,6 @@ describe('ProductsService', () => {
       units: { findFirst: jest.Mock };
       clients: { findFirst: jest.Mock };
       productGroups: { findFirst: jest.Mock };
-      productAttachments: { findMany: jest.Mock };
       boms: { findFirst: jest.Mock };
       bomItems: { findMany: jest.Mock };
       routingSteps: { findMany: jest.Mock };
@@ -78,7 +77,6 @@ describe('ProductsService', () => {
         units: { findFirst: jest.fn() },
         clients: { findFirst: jest.fn() },
         productGroups: { findFirst: jest.fn() },
-        productAttachments: { findMany: jest.fn().mockResolvedValue([]) },
         // Defaults model "no BOM / no routing yet" — the common case for createProduct and for
         // most copyProduct tests. Individual tests override to exercise the clone paths.
         boms: { findFirst: jest.fn().mockResolvedValue(undefined) },
@@ -177,7 +175,6 @@ describe('ProductsService', () => {
             unit: true,
             creator: true,
             imageFile: true,
-            attachments: { with: { file: true } },
             source: { columns: { id: true, code: true, name: true } },
           },
         }),
@@ -209,15 +206,11 @@ describe('ProductsService', () => {
         id: 'unit-1',
         scopes: [{ scope: UnitScope.PRODUCT }],
       });
-      mockDb.query.products.findFirst.mockResolvedValue({
-        id: 'new-product-id',
-      });
 
-      const result = await service.createProduct(reqDto, 'user-1');
+      await service.createProduct(reqDto, 'user-1');
 
       expect(mockDb.query.units.findFirst).toHaveBeenCalled();
       expect(mockDb.insert).toHaveBeenCalled();
-      expect(result).toBeDefined();
     });
 
     it('throws E008 when the explicit code is already taken', async () => {
@@ -286,9 +279,6 @@ describe('ProductsService', () => {
         id: 'unit-1',
         scopes: [{ scope: UnitScope.PRODUCT }],
       });
-      mockDb.query.products.findFirst.mockResolvedValue({
-        id: 'new-product-id',
-      });
 
       await service.createProduct(
         Object.assign(new CreateProductReqDto(), reqDto, {
@@ -338,82 +328,6 @@ describe('ProductsService', () => {
         status: HttpStatus.NOT_FOUND,
         response: { errorCode: ErrorCode.E010 },
       });
-    });
-    it('links image and attachment files together before opening the transaction', async () => {
-      mockDb.query.units.findFirst.mockResolvedValue({
-        id: 'unit-1',
-        scopes: [{ scope: UnitScope.PRODUCT }],
-      });
-      mockDb.query.products.findFirst.mockResolvedValue({
-        id: 'new-product-id',
-      });
-
-      await service.createProduct(
-        Object.assign(new CreateProductReqDto(), {
-          name: 'Sản phẩm A',
-          unitId: 'unit-1',
-          imageFileId: 'img-1',
-          attachmentFileIds: ['doc-a', 'doc-b'],
-        }),
-        'user-1',
-      );
-
-      expect(mockFilesService.linkFiles).toHaveBeenCalledWith([
-        'img-1',
-        'doc-a',
-        'doc-b',
-      ]);
-      expect(mockDb.transaction).toHaveBeenCalledTimes(1);
-    });
-
-    it('propagates E042 and never opens a transaction when a file id is unknown', async () => {
-      mockDb.query.units.findFirst.mockResolvedValue({
-        id: 'unit-1',
-        scopes: [{ scope: UnitScope.PRODUCT }],
-      });
-      mockDb.query.products.findFirst.mockResolvedValue(undefined);
-      mockFilesService.linkFiles.mockRejectedValue(
-        new AppException(ErrorCode.E042, HttpStatus.NOT_FOUND),
-      );
-
-      await expect(
-        service.createProduct(
-          Object.assign(new CreateProductReqDto(), {
-            name: 'Sản phẩm A',
-            unitId: 'unit-1',
-            attachmentFileIds: ['ghost'],
-          }),
-          'user-1',
-        ),
-      ).rejects.toMatchObject({ response: { errorCode: ErrorCode.E042 } });
-
-      expect(mockDb.transaction).not.toHaveBeenCalled();
-    });
-
-    // Required by .claude/rules/testing.md for any service that opens a transaction: the error
-    // must propagate AND the post-commit re-fetch must not run.
-    it('rolls back and never re-reads the detail when a write inside the transaction fails', async () => {
-      mockDb.query.units.findFirst.mockResolvedValue({
-        id: 'unit-1',
-        scopes: [{ scope: UnitScope.PRODUCT }],
-      });
-      const failure = new Error('attachment insert failed');
-      mockDb.transaction.mockRejectedValue(failure);
-
-      await expect(
-        service.createProduct(
-          Object.assign(new CreateProductReqDto(), {
-            name: 'Sản phẩm A',
-            unitId: 'unit-1',
-            attachmentFileIds: ['doc-a'],
-          }),
-          'user-1',
-        ),
-      ).rejects.toThrow(failure);
-
-      // The code is auto-generated here, so no uniqueness probe runs — every products.findFirst
-      // would be the post-commit detail re-fetch, which must not have happened.
-      expect(mockDb.query.products.findFirst).not.toHaveBeenCalled();
     });
   });
 
@@ -472,51 +386,6 @@ describe('ProductsService', () => {
         response: { errorCode: ErrorCode.E008 },
       });
     });
-    it('replaces attachments when the PATCH carries attachmentFileIds', async () => {
-      mockDb.query.products.findFirst
-        .mockResolvedValueOnce({ id: 'product-1' })
-        .mockResolvedValueOnce({ id: 'product-1' });
-
-      await service.updateProduct(
-        'product-1',
-        Object.assign(new UpdateProductReqDto(), { attachmentFileIds: [] }),
-      );
-
-      // `[]` means "remove every document", so the delete must still run.
-      expect(mockDb.delete).toHaveBeenCalled();
-    });
-
-    it('leaves attachments untouched when the PATCH omits attachmentFileIds', async () => {
-      mockDb.query.products.findFirst
-        .mockResolvedValueOnce({ id: 'product-1' })
-        .mockResolvedValueOnce({ id: 'product-1' });
-
-      await service.updateProduct(
-        'product-1',
-        Object.assign(new UpdateProductReqDto(), { name: 'Tên mới' }),
-      );
-
-      expect(mockDb.delete).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('deleteProduct', () => {
-    it('soft-deletes the product', async () => {
-      mockDb.query.products.findFirst.mockResolvedValue({ id: 'p1' });
-
-      await service.deleteProduct('p1');
-
-      expect(mockDb.update).toHaveBeenCalled();
-    });
-
-    it('throws E007 when the product does not exist', async () => {
-      mockDb.query.products.findFirst.mockResolvedValue(undefined);
-
-      await expect(service.deleteProduct('missing')).rejects.toMatchObject({
-        status: HttpStatus.NOT_FOUND,
-        response: { errorCode: ErrorCode.E007 },
-      });
-    });
   });
 
   describe('copyProduct', () => {
@@ -530,22 +399,6 @@ describe('ProductsService', () => {
 
       expect(mockDb.insert).toHaveBeenCalled();
       expect(result).toBeDefined();
-    });
-
-    it('clones the original attachments onto the copy', async () => {
-      mockDb.query.products.findFirst
-        .mockResolvedValueOnce({ id: 'p1', name: 'Sản phẩm A' })
-        .mockResolvedValueOnce({ id: 'new-product-id' });
-      mockDb.query.productAttachments.findMany.mockResolvedValue([
-        { fileId: 'doc-a' },
-        { fileId: 'doc-b' },
-      ]);
-
-      await service.copyProduct('p1', 'user-1');
-
-      // Two real inserts: the product row, then its attachment rows — no BOM/routing to clone in
-      // this fixture (both default to empty in `beforeEach`).
-      expect(mockDb.insert).toHaveBeenCalledTimes(2);
     });
 
     it('throws E007 when the source product does not exist', async () => {
@@ -777,21 +630,11 @@ describe('ProductsService', () => {
         id: 'unit-1',
         scopes: [{ scope: UnitScope.PRODUCT }],
       });
-      mockDb.query.products.findFirst.mockResolvedValue({
-        id: 'new-product-id',
-      });
     });
 
-    it('defaults to FINISHED_GOOD when omitted on create', async () => {
-      const { insert, insertedValues } = captureInsert();
-      mockDb.insert = insert;
-
-      await service.createProduct(reqDto, 'user-1');
-
-      expect((insertedValues[0] as Record<string, unknown>).type).toBe(
-        ProductType.FINISHED_GOOD,
-      );
-    });
+    // No "defaults to FINISHED_GOOD when omitted" case here: `type` now has no app-level default
+    // (the schema column does), so an omitted `type` simply carries no key into `.values()` — the
+    // real default only applies once Postgres executes the insert, which this mock never does.
 
     it('respects an explicit type on create', async () => {
       const { insert, insertedValues } = captureInsert();

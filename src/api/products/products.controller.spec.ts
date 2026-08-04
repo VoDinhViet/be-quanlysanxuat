@@ -15,7 +15,6 @@ describe('ProductsController', () => {
     getProductDetail: jest.Mock;
     createProduct: jest.Mock;
     updateProduct: jest.Mock;
-    deleteProduct: jest.Mock;
     copyProduct: jest.Mock;
   };
 
@@ -27,7 +26,6 @@ describe('ProductsController', () => {
       getProductDetail: jest.fn(),
       createProduct: jest.fn(),
       updateProduct: jest.fn(),
-      deleteProduct: jest.fn(),
       copyProduct: jest.fn(),
     };
 
@@ -91,15 +89,6 @@ describe('ProductsController', () => {
 
     expect(mockService.updateProduct).toHaveBeenCalledWith('p1', reqDto);
     expect(result).toBe(expected);
-  });
-
-  it('deleteProduct delegates to ProductsService.deleteProduct', async () => {
-    mockService.deleteProduct.mockResolvedValue(undefined);
-
-    const result = await controller.deleteProduct('p1');
-
-    expect(mockService.deleteProduct).toHaveBeenCalledWith('p1');
-    expect(result).toBeUndefined();
   });
 
   it('copyProduct delegates to ProductsService.copyProduct with the current user id', async () => {

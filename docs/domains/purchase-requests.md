@@ -11,15 +11,19 @@ procurement thật: không supplier, không giá, không nhận hàng theo đơn
 **Không phải procurement.** `purchase_requests` chỉ là phiếu xin duyệt nội bộ: ai cần gì, bao
 nhiêu, khi nào cần, cho LSX nào (tuỳ chọn). Không có `supplierId`, không có đơn giá, không có
 nhận hàng theo phiếu. Đây không phải điểm khởi đầu của procurement thật nếu sau này hệ thống làm
-— điểm cắm thật (nếu làm) vẫn là `stock_receipts` theo `docs/decisions/no-procurement.md`.
+— điểm cắm thật (nếu làm) vẫn là `inventory_receipts` theo `docs/decisions/no-procurement.md`.
 
 **Gắn LSX là tuỳ chọn.** `productionOrderId` cho biết đề xuất phát sinh từ việc thiếu vật tư của
-một LSX cụ thể; `NULL` là đề xuất chung (vd mua dự trữ), không gắn LSX nào.
+một LSX cụ thể; `NULL` là đề xuất chung (vd mua dự trữ), không gắn LSX nào. `productionJobId` thu hẹp
+thêm một bậc — LSX có nhiều Job, cột này cho biết đúng Job nào đã sinh ra đề xuất; cũng `NULL` được.
 
-**Giai đoạn 1 — chỉ có danh sách.** Repo hiện chỉ có `GET /purchase-requests` (danh sách, phân
-trang, filter). Chưa có API tạo/sửa/duyệt/từ chối — dữ liệu vào bằng tay/seed cho tới khi giai
-đoạn sau bổ sung. `status` đã định nghĩa đủ 4 giá trị cho vòng đời tương lai, nhưng chưa có route
-nào chuyển trạng thái.
+**Chưa có route tạo/sửa/duyệt/từ chối.** Đường ghi duy nhất vào `purchase_requests`/
+`purchase_request_items` không phải một route của module này, mà là hệ quả của
+`POST /production-jobs/:jobId/start`: vật tư nào của Job thiếu tồn thì tự sinh một đề xuất cho đúng
+phần thiếu, xem `docs/workflows/production-job-execution.md`. Phiếu sinh ra luôn `status = DRAFT`,
+gắn cả `productionOrderId` lẫn `productionJobId`, SL mỗi dòng là **phần thiếu**
+(`requiredQty − onHand` tại thời điểm start), không phải toàn bộ nhu cầu của Job. `status` đã định
+nghĩa đủ 4 giá trị cho vòng đời tương lai, nhưng chưa có route nào chuyển trạng thái sau khi sinh.
 
 ## Entities
 
@@ -41,14 +45,17 @@ tồn tại trước để schema không phải đổi khi giai đoạn sau thê
 
 ## Cross-domain dependencies
 
-- **→ Production**: `productionOrderId` trỏ `production_orders` (LSX), tuỳ chọn.
+- **← Production**: `ProductionJobsService.startJob` là domain khác **duy nhất ghi vào** đây —
+  `productionOrderId`/`productionJobId` trỏ `production_orders`/`production_jobs`, cả hai tuỳ chọn.
 - **→ Partners**: `departmentId` trỏ danh mục `departments`; dòng phiếu trỏ `materials`.
-- **→ Identity**: `createdBy` trỏ `users.id` — người đề xuất.
+- **→ Identity**: `createdBy` trỏ `users.id` — người bấm start, không phải người "đề xuất" theo
+  nghĩa tự tay lập phiếu.
 
 ## Common mistakes
 
 1. **Tưởng đây là bước đầu của procurement.** Không — xem `docs/decisions/no-procurement.md`.
-2. **Đi tìm route tạo/duyệt/từ chối.** Chưa có ở giai đoạn 1, chỉ có danh sách.
+2. **Đi tìm route tạo/duyệt/từ chối.** Chưa có route nào — đường ghi duy nhất là hệ quả tự động của
+   `startJob`, không phải API trực tiếp của module này.
 
 ## Related docs
 

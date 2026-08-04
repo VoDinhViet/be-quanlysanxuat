@@ -74,11 +74,17 @@ export enum ErrorCode {
   // module was removed in favor of whole-product copy/clone (`POST /products/:id/copy`); no
   // current throw site uses them.
   E050 = 'bom_item.error.not_found',
+  // Cũng dùng cho `bomItemId` của một dòng `bom_item_materials` (vật tư as-used) không thuộc đúng
+  // BOM của sản phẩm trên URL — cùng khuôn kiểm tra với `E062` bên routing, khác mã vì khác
+  // resource.
   E051 = 'bom_item.error.parent_not_found',
-  E052 = 'bom_item.error.parent_is_material',
+  // E052 (bom_item.error.parent_is_material) stays reserved — từ khi vật tư tách khỏi `bom_items`
+  // (`bom_item_materials`), `bom_items` không còn hàng MATERIAL nên "cha là MATERIAL" bất khả thi.
   E053 = 'bom_item.error.product_not_wip',
   E054 = 'bom_item.error.cycle_detected',
-  E055 = 'bom_item.error.quantity_not_integer',
+  // E055 (bom_item.error.quantity_not_integer) stays reserved — mọi node `bom_items` giờ luôn là
+  // WIP (từ khi vật tư tách sang `bom_item_materials`) nên rule "quantity nguyên" hết điều kiện,
+  // chặn thẳng ở DTO (`@NumberField({ int: true })`), trả `422` chuẩn thay vì `AppException`.
   E056 = 'routing_step.error.not_found',
   E057 = 'order.error.not_found',
   E058 = 'order.error.code_exists',
@@ -91,9 +97,8 @@ export enum ErrorCode {
   // `bomItemId` on a routing route doesn't reference a `bom_items` row within the URL's own
   // product BOM — either it doesn't exist at all, or it belongs to a different product's tree.
   E062 = 'routing_step.error.bom_item_not_found',
-  // The `bomItemId` node exists and belongs to this product's BOM, but is a MATERIAL leaf —
-  // vật tư nodes never carry their own routing.
-  E063 = 'routing_step.error.material_node',
+  // E063 (routing_step.error.material_node) stays reserved — `bom_items` không còn hàng MATERIAL
+  // (đã tách sang `bom_item_materials`) nên "bomItemId trỏ vào MATERIAL" bất khả thi.
   // `positionId` on a user create/update exists (E015 already passed) but doesn't belong to the
   // effective `departmentId` (the one sent, or the user's current one when only one of the pair
   // is being changed).
@@ -104,22 +109,12 @@ export enum ErrorCode {
   // E066 (order.error.no_items) stays reserved — it was `POST /orders/:id/confirm`'s
   // zero-NORMAL-lines guard; that endpoint was removed 2026-07-27 along with `OrderStatus.DRAFT`
   // (orders are `CONFIRMED` on creation, no separate confirm step). No current throw site uses it.
-  E067 = 'stock_receipt.error.not_found',
-  E068 = 'stock_receipt.error.code_exists',
-  // `productId` on a stock receipt line doesn't reference any `products` row.
-  E069 = 'stock_receipt.error.product_not_found',
-  // The `productId` exists but isn't a FINISHED_GOOD — only finished goods are tracked here.
-  E070 = 'stock_receipt.error.product_not_finished_good',
-  // Writing (create or update) this receipt would drive some product's on-hand quantity below
-  // zero. On update, evaluated against the ledger with this receipt's own current lines excluded.
-  E071 = 'stock_receipt.error.insufficient_stock',
-  // `orderItemId` on a line is invalid: sent on a non-OUT receipt, doesn't reference an existing
-  // `order_items` row, or references one whose `productId` doesn't match the line's own.
-  E072 = 'stock_receipt.error.invalid_order_item',
-  // `reason` doesn't belong to `type` (e.g. DELIVERY on an IN receipt) — same rule as the DB
-  // CHECK `chk_stock_receipts_reason_type`, pre-validated here for a clean 400 instead of a raw
-  // constraint-violation 500.
-  E073 = 'stock_receipt.error.reason_type_mismatch',
+  // E067-E073 (stock_receipt.error.*: not_found, code_exists, product_not_found,
+  // product_not_finished_good, insufficient_stock, invalid_order_item, reason_type_mismatch) stay
+  // reserved — the whole `stock_receipts`/`stock_receipt_items` design (single-table receipt with
+  // a `subject`+`type`+`reason` triple) was replaced 2026-08-04 by `inventory_receipts`/
+  // `inventory_issues` + a posted ledger (`docs/decisions/stored-inventory-balances.md`). No
+  // current throw site uses them; the successor codes are E096-E100/E106-E107.
   // `POST /orders/:orderId/approve` or `/reject` called on an order whose status isn't
   // PENDING_CONFIRMATION — only an order actually submitted for approval can be approved/rejected.
   E074 = 'order.error.invalid_approval_state',
@@ -158,13 +153,8 @@ export enum ErrorCode {
   // `PATCH /production-orders/:productionOrdersId` gọi trên một LSX không còn `PENDING` (đã
   // `APPROVED`) — sửa số lượng sản xuất chỉ hợp lệ trước khi chốt LSX.
   E084 = 'production_order.error.not_editable',
-  // `materialId` trên dòng phiếu nhập/xuất kho vật tư không tồn tại.
-  E085 = 'stock_receipt.error.material_not_found',
-  // Dòng phiếu gửi sai loại so với `subject` của phiếu cha (`stock_receipts.subject`) — phiếu vật
-  // tư mà dòng gửi `productId`, phiếu thành phẩm mà dòng gửi `materialId`, gửi cả hai, hoặc không
-  // gửi gì. `chk_stock_receipt_items_target` chỉ đảm bảo "đúng một trong hai", không đảm bảo khớp
-  // đúng `subject` — đó là phần việc của mã lỗi này.
-  E086 = 'stock_receipt.error.line_target_mismatch',
+  // E085/E086 (stock_receipt.error.material_not_found/line_target_mismatch) stay reserved —
+  // retired with E067-E073, same reason.
   // `start` gọi trên một Job đang không ở trạng thái hợp lệ cho hành động đó (xem sơ đồ chuyển
   // trạng thái ở `docs/domains/production.md`, mục Lifecycle).
   E087 = 'production_job.error.invalid_status_transition',
@@ -181,10 +171,40 @@ export enum ErrorCode {
   // `operationId` trên `PATCH /production-jobs/:jobId/operations/:operationId` không tồn tại hoặc
   // không thuộc đúng `jobId`.
   E091 = 'production_job_operation.error.not_found',
+  E092 = 'warehouse.error.not_found',
+  E093 = 'warehouse.error.code_exists',
+  // Kho `INACTIVE` không nhận phiếu nhập/xuất mới — lập/`post` phiếu trên kho này bị chặn.
+  E094 = 'warehouse.error.inactive',
+  // `DELETE /warehouses/:warehouseId` khi kho còn phiếu/bút toán/tồn tham chiếu tới — FK là
+  // `restrict`, kiểm trước để trả 409 sạch thay vì 500 thô.
+  E095 = 'warehouse.error.in_use',
+  // Dùng chung cho cả `inventory_receipts` lẫn `inventory_issues` — phiếu không tồn tại.
+  E096 = 'inventory_document.error.not_found',
+  E097 = 'inventory_document.error.code_exists',
+  // `PATCH`/`DELETE`/`post` gọi trên phiếu không còn `DRAFT`, hoặc `cancel` gọi trên phiếu đã
+  // `CANCELLED`.
+  E098 = 'inventory_document.error.invalid_status_transition',
+  // Dòng phiếu sai `itemType`: không đúng một trong `productId`/`materialId` khớp `itemType` gửi
+  // lên. Cùng ràng buộc với CHECK `chk_inventory_receipt_items_target`/
+  // `chk_inventory_issue_items_target`, pre-validate ở service để trả 400 sạch thay vì lộ lỗi
+  // constraint 500 thô.
+  E099 = 'inventory_document.error.item_target_mismatch',
+  // `productId`/`materialId` trên dòng phiếu không tồn tại.
+  E100 = 'inventory_document.error.item_not_found',
   E101 = 'class.error.teacher_not_found',
   E102 = 'class.error.invalid_teacher_assignment',
   E103 = 'class.error.forbidden',
   E104 = 'class.error.unique_code_generation_failed',
   E105 = 'class.error.not_found',
+  // `post` (nhập hoặc xuất) sẽ làm `inventory_balances.quantity` của một mặt hàng xuống dưới 0 —
+  // đánh số tiếp sau E100, nhảy qua khối E101-E105 (dead code của sản phẩm khác) để không tái
+  // dùng số đã cấp phát.
+  E106 = 'inventory_document.error.insufficient_stock',
+  // Tham chiếu tuỳ chọn trên phiếu (`supplierId`/`purchaseRequestId`/`productionOrderId`/
+  // `productionJobId`/`departmentId`/`requestedBy`/`orderItemId`) không tồn tại.
+  E107 = 'inventory_document.error.invalid_reference',
+  // `PATCH`/`DELETE` một dòng `bom_item_materials` không tồn tại đúng target (Cấp 0 hoặc node) —
+  // tài nguyên riêng, không dùng chung `E050` của `bom_items`.
+  E108 = 'bom_item_material.error.not_found',
   V003 = 'common.error.too_many_requests',
 }

@@ -7,7 +7,8 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 
 import * as schema from '../schemas';
-import { BomItemType, bomItems } from '../schemas/products/bom-items';
+import { bomItemMaterials } from '../schemas/products/bom-item-materials';
+import { bomItems } from '../schemas/products/bom-items';
 import { boms } from '../schemas/products/boms';
 import { credentials } from '../schemas/identity-access/credentials';
 import { materials } from '../schemas/materials/materials';
@@ -235,9 +236,7 @@ async function ensureBomTree(
           id: itemId,
           bomId: bom.id,
           parentId,
-          itemType: BomItemType.PRODUCT,
           productId,
-          materialId: null,
           quantity: node.quantity,
           path: itemPath,
           level,
@@ -265,10 +264,9 @@ async function ensureBomTree(
           }
         }
 
-        // Material leaves this node consumes, nested directly in the FG's own tree (not just in
-        // the WIP's separate standalone BOM) — reading a product's BOM never descends into a
-        // child WIP's own BOM (`docs/domains/product-structure.md`), so without this a FG's tree
-        // would show sub-assemblies but zero raw materials.
+        // Vật tư as-used của node này (không chỉ trong BOM riêng của WIP) — đọc BOM sản phẩm
+        // không đệ quy xuống BOM con, nên thiếu bước này cây của FG sẽ chỉ có cấu trúc, không có
+        // vật tư (`docs/domains/product-structure.md`).
         const materialLeaves = WIP_MATERIAL_BOMS[node.code] ?? [];
         for (const [leafIndex, leaf] of materialLeaves.entries()) {
           const materialId = materialIdByCode.get(leaf.code);
@@ -279,31 +277,18 @@ async function ensureBomTree(
             );
           }
 
-          const leafId = crypto.randomUUID();
-
-          await tx.insert(bomItems).values({
-            id: leafId,
+          await tx.insert(bomItemMaterials).values({
             bomId: bom.id,
-            parentId: itemId,
-            itemType: BomItemType.MATERIAL,
-            productId: null,
+            bomItemId: itemId,
             materialId,
             quantity: leaf.quantity,
-            path: `${itemPath}.${formatLtreeNodeId(leafId)}`,
-            level: level + 1,
             sortOrder: leafIndex,
             createdBy,
           });
         }
 
         if (node.children?.length) {
-          await insertNodes(
-            itemId,
-            itemPath,
-            level + 1,
-            node.children,
-            materialLeaves.length,
-          );
+          await insertNodes(itemId, itemPath, level + 1, node.children);
         }
       }
     }
@@ -353,18 +338,11 @@ async function ensureWipMaterialBom(
         );
       }
 
-      const itemId = crypto.randomUUID();
-
-      await tx.insert(bomItems).values({
-        id: itemId,
+      await tx.insert(bomItemMaterials).values({
         bomId: bom.id,
-        parentId: null,
-        itemType: BomItemType.MATERIAL,
-        productId: null,
+        bomItemId: null,
         materialId,
         quantity: leaf.quantity,
-        path: formatLtreeNodeId(itemId),
-        level: 1,
         sortOrder: index,
         createdBy,
       });

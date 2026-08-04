@@ -561,6 +561,41 @@
       "when": 1785809516156,
       "tag": "0079_bitter_tyger_tiger",
       "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1785820467011,
+      "tag": "0080_sour_namor",
+      "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1785820496227,
+      "tag": "0081_graceful_shape",
+      "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1785823744142,
+      "tag": "0082_clumsy_justin_hammer",
+      "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1785828018467,
+      "tag": "0083_petite_wendell_rand",
+      "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1785830317192,
+      "tag": "0084_greedy_ser_duncan",
+      "breakpoints": true
     }
   ]
 }

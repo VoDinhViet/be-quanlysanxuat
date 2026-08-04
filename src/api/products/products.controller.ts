@@ -1,7 +1,6 @@
 import {
   Body,
   Controller,
-  Delete,
   Get,
   HttpStatus,
   Patch,
@@ -71,38 +70,27 @@ export class ProductsController {
   @Post()
   @Permissions('products:create')
   @ApiAuth({
-    type: ProductDetailResDto,
     summary: 'Create product',
-    statusCode: HttpStatus.CREATED,
+    statusCode: HttpStatus.NO_CONTENT,
   })
   createProduct(
     @Body() reqDto: CreateProductReqDto,
     @CurrentUser() payload: JwtPayloadType,
-  ): Promise<ProductDetailResDto> {
+  ): Promise<void> {
     return this.productsService.createProduct(reqDto, payload.userId);
   }
 
   @Patch(':productId')
   @Permissions('products:update')
   @ApiAuth({
-    type: ProductDetailResDto,
     summary: 'Update product',
+    statusCode: HttpStatus.NO_CONTENT,
   })
   updateProduct(
     @UUIDParam('productId') productId: string,
     @Body() reqDto: UpdateProductReqDto,
-  ): Promise<ProductDetailResDto> {
+  ): Promise<void> {
     return this.productsService.updateProduct(productId, reqDto);
-  }
-
-  @Delete(':productId')
-  @Permissions('products:delete')
-  @ApiAuth({
-    summary: 'Delete product (soft delete)',
-    statusCode: HttpStatus.NO_CONTENT,
-  })
-  deleteProduct(@UUIDParam('productId') productId: string): Promise<void> {
-    return this.productsService.deleteProduct(productId);
   }
 
   @Post(':productId/copy')

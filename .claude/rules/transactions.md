@@ -2,7 +2,7 @@
 
 Not `@import`ed — read when a service needs a transaction. Pointer: `.claude/rules/service.md`, Writes.
 
-Reference: `MaterialsService.createMaterial` (simplest), `OrdersService` (fullest). Seven services use `db.transaction`: `boms`, `inventory` (`stock-receipts.service.ts`), `materials`, `orders`, `production-orders`, `products`, `suppliers`.
+Reference: `MaterialsService.createMaterial` (simplest), `OrdersService` (fullest). Eight services use `db.transaction`: `boms`, `inventory` (`inventory-receipts.service.ts`, `inventory-issues.service.ts` — both call `InventoryPostingService`, which takes `tx` and never opens its own), `materials`, `orders`, `production-orders`, `products`, `suppliers`.
 
 - MUST use a transaction when two or more writes must all land or all roll back (parent + child rows, replace-all on a child table, a write plus its log row). MUST NOT wrap a single write — Postgres already makes it atomic.
 - MUST run read-only checks (`ensureXExists`, `validateXUniqueness`, `FilesService.linkFiles`) **before** opening the transaction.

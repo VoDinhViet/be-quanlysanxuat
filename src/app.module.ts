@@ -28,6 +28,8 @@ import { DepartmentsModule } from './api/departments/departments.module';
 import { FilesModule } from './api/files/files.module';
 import { HealthModule } from './api/health/health.module';
 import { InventoryModule } from './api/inventory/inventory.module';
+import { InventoryIssuesModule } from './api/inventory-issues/inventory-issues.module';
+import { InventoryReceiptsModule } from './api/inventory-receipts/inventory-receipts.module';
 import { OperationsModule } from './api/operations/operations.module';
 import { OrdersModule } from './api/orders/orders.module';
 import { PositionsModule } from './api/positions/positions.module';
@@ -39,6 +41,7 @@ import { PurchaseRequestsModule } from './api/purchase-requests/purchase-request
 import { RoutingModule } from './api/routing/routing.module';
 import { UnitsModule } from './api/units/units.module';
 import { UsersModule } from './api/users/users.module';
+import { WarehousesModule } from './api/warehouses/warehouses.module';
 
 @Module({
   imports: [
@@ -74,7 +77,10 @@ import { UsersModule } from './api/users/users.module';
     MaterialsModule,
     SuppliersModule,
     SupplierGroupsModule,
+    WarehousesModule,
     InventoryModule,
+    InventoryReceiptsModule,
+    InventoryIssuesModule,
     ProductionJobsModule,
     ProductionOrdersModule,
     OrdersModule,

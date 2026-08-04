@@ -6,7 +6,6 @@ import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database } from '../../database/database.type';
 import {
-  BomItemType,
   bomItems,
   operations,
   products,
@@ -115,14 +114,15 @@ export class RoutingService {
     }
   }
 
-  /** Node gắn được routing phải (a) thuộc đúng BOM của `productId` — chặn `bomItemId` của cây
-   * sản phẩm khác lọt qua URL này — và (b) là node PRODUCT; lá MATERIAL không mang routing. */
+  /** Node gắn được routing phải thuộc đúng BOM của `productId` — chặn `bomItemId` của cây sản
+   * phẩm khác lọt qua URL này. Mọi hàng `bom_items` giờ đều là PRODUCT nên không còn cần loại trừ
+   * MATERIAL (`E063` đã nghỉ hưu). */
   private async ensureBomItemRoutable(
     productId: string,
     bomItemId: string,
   ): Promise<void> {
     const item = await this.db.query.bomItems.findFirst({
-      columns: { id: true, itemType: true },
+      columns: { id: true },
       with: { bom: { columns: { productId: true } } },
       where: eq(bomItems.id, bomItemId),
     });
@@ -135,9 +135,6 @@ export class RoutingService {
     const bom = item.bom as { productId: string };
     if (bom.productId !== productId) {
       throw new AppException(ErrorCode.E062, HttpStatus.NOT_FOUND);
-    }
-    if (item.itemType === BomItemType.MATERIAL) {
-      throw new AppException(ErrorCode.E063, HttpStatus.BAD_REQUEST);
     }
   }
 

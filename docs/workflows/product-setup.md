@@ -11,6 +11,8 @@ Người dùng khai báo một sản phẩm mới, hoặc tạo biến thể t�
 | --- | --- |
 | Tạo sản phẩm | `POST /products` |
 | Thêm node BOM | `POST /products/:productId/bom/items` |
+| Vật tư Cấp 0 | `POST /products/:productId/bom/materials` |
+| Vật tư của một node | `POST /products/:productId/bom/items/:itemId/materials` |
 | Công đoạn Cấp 0 | `POST /products/:productId/operations` |
 | Công đoạn của một node | `POST /products/:productId/bom/items/:itemId/operations` |
 | Nhân bản | `POST /products/:productId/copy` |
@@ -29,28 +31,33 @@ Các route `GET` của cả ba module đều `@ApiPublic()` — **đọc cấu t
 ## Preconditions
 
 - Tạo sản phẩm: `unitId` phải là đơn vị có scope `PRODUCT` (`E043`).
-- Thêm node BOM: sản phẩm gốc tồn tại; node `PRODUCT` phải trỏ tới một WIP (`E053`); node cha (nếu
-  có) phải cùng cây.
-- Thêm công đoạn cho node: node phải thuộc đúng sản phẩm trên URL (`E062`) và phải là node
-  `PRODUCT` (`E063`) — vật tư không có công đoạn.
+- Thêm node BOM: sản phẩm gốc tồn tại; node phải trỏ tới một WIP (`E053`); node cha (nếu có) phải
+  cùng cây; `quantity` phải nguyên dương (chặn ở DTO, `422` chuẩn — không còn `ErrorCode` riêng).
+- Thêm vật tư (Cấp 0 hoặc của một node): vật tư tồn tại (`E035`); nếu khai cho một node, node đó phải
+  thuộc đúng sản phẩm trên URL (`E051`) — cùng khuôn kiểm tra `RoutingService` dùng cho công đoạn
+  (`E062`), khác mã vì khác resource.
+- Thêm công đoạn cho node: node phải thuộc đúng sản phẩm trên URL (`E062`). Không còn ràng buộc
+  "phải là node PRODUCT" — mọi node `bom_items` giờ luôn là PRODUCT.
 
 ## Flow
 
-1. **Tạo sản phẩm.** `POST /products` chỉ ghi `products` + `product_attachments`. **Không tạo BOM.**
+1. **Tạo sản phẩm.** `POST /products` chỉ ghi `products`. **Không tạo BOM.**
 2. **Thêm node BOM đầu tiên.** Header `boms` được tạo **lười** (get-or-create) ngay trong
    transaction ghi node đầu tiên. Đọc BOM của sản phẩm chưa có node → mảng rỗng, không phải lỗi.
 3. **Dựng cây.** Node không có `parentId` là con trực tiếp của sản phẩm gốc ("Cấp 0" không phải một
-   dòng). Node `MATERIAL` luôn là lá.
-4. **Gắn công đoạn.** Hai đích khác nhau, không thay thế nhau được:
-   - Công đoạn của **chính sản phẩm gốc** → khoá theo `productId`.
-   - Công đoạn của **một vị trí trong cây** → khoá theo `bomItemId`.
+   dòng). `bom_items` giờ thuần cấu trúc WIP — không còn node vật tư.
+4. **Khai vật tư và gắn công đoạn — cùng khuôn as-used, hai đích không thay thế nhau được:**
+   - Của **chính sản phẩm gốc (Cấp 0)** → khoá theo `productId` (`bomItemId` để trống).
+   - Của **một vị trí trong cây** → khoá theo `bomItemId`.
 
-   Vì routing khoá theo `bomItemId`, **phải có node BOM trước mới gắn được công đoạn cho nó** — đây
-   là ràng buộc thứ tự thật sự của workflow này.
-5. **Tạo biến thể (tuỳ chọn).** `POST /products/:productId/copy` đọc trước toàn bộ (đính kèm, cây
-   BOM theo thứ tự cha-trước-con, routing Cấp 0, routing từng node) rồi trong một transaction ghi
-   sản phẩm mới + clone cây + remap routing sang id node mới. `sourceProductId` ghi lại nguồn gốc
-   nhưng **không tạo ràng buộc gì**.
+   Vì cả hai khoá theo `bomItemId` khi gắn vào một vị trí, **phải có node BOM trước mới khai được vật
+   tư/công đoạn cho nó** — ràng buộc thứ tự thật sự của workflow này. Vật tư khai cho một node **không
+   tự cộng thêm** vật tư Cấp 0 của WIP mà node đó tham chiếu — hai danh sách độc lập.
+5. **Tạo biến thể (tuỳ chọn).** `POST /products/:productId/copy` đọc trước toàn bộ (cây BOM theo
+   thứ tự cha-trước-con, vật tư as-used, routing Cấp 0, routing từng node) rồi trong một
+   transaction ghi sản phẩm mới + clone cây + clone vật tư (remap `bomItemId` sang id node mới) +
+   remap routing sang id node mới. `sourceProductId` ghi lại nguồn gốc nhưng **không tạo ràng buộc
+   gì**.
 
 ## State changes
 
@@ -59,40 +66,42 @@ theo nó; BOM, đơn hàng và sản xuất đều nhận sản phẩm `INACTIVE
 
 ## Side effects
 
-- Node BOM đầu tiên kéo theo việc tạo header `boms` — bước ẩn duy nhất của workflow này.
-- Xoá một node giữa cây **cascade sạch cả nhánh con và routing as-used của chúng**, không cảnh báo,
-  không đếm trước.
-- Nhân bản chỉ clone **cấu trúc**: các WIP/vật tư được tham chiếu giữ nguyên id, không được clone
-  theo. Bản sao và bản gốc trỏ chung các dòng `files`, đúng ý nghĩa registry.
+- Node BOM đầu tiên (hoặc vật tư/công đoạn Cấp 0 đầu tiên) kéo theo việc tạo header `boms` — bước ẩn
+  duy nhất của workflow này.
+- Xoá một node giữa cây **cascade sạch cả nhánh con, routing as-used và vật tư as-used của chúng**,
+  không cảnh báo, không đếm trước.
+- Nhân bản chỉ clone **cấu trúc + vật tư as-used**: các WIP/vật tư được tham chiếu giữ nguyên id,
+  không được clone theo. Bản sao và bản gốc trỏ chung các dòng `files`, đúng ý nghĩa registry.
 
 ## Transaction boundary
 
 - Thêm/sửa/xoá node BOM: transaction bao get-or-create header + ghi node.
-- Nhân bản: một transaction bao **toàn bộ** sản phẩm + đính kèm + cây + routing. Đây là lý do mọi
-  phần đọc phải xong trước khi mở.
-- Tạo sản phẩm: transaction bao dòng `products` + đính kèm.
+- Nhân bản: một transaction bao **toàn bộ** sản phẩm + cây + routing. Đây là lý do mọi phần đọc phải
+  xong trước khi mở.
+- Tạo sản phẩm: một `INSERT` đơn, không cần transaction.
 
 ## Failure cases
 
 | Tình huống | Mã |
 | --- | --- |
 | Đơn vị tính sai scope | `E043` |
-| Node `PRODUCT` trỏ tới FG thay vì WIP | `E053` |
-| Số lượng WIP không nguyên | `E055` |
-| Node không thuộc sản phẩm trên URL | `E062` |
-| Gắn công đoạn vào node `MATERIAL` | `E063` |
+| Node trỏ tới FG thay vì WIP | `E053` |
+| Số lượng WIP không nguyên | `422` (validate DTO, không còn `ErrorCode`) |
+| Node không thuộc sản phẩm trên URL — vật tư | `E051` |
+| Node không thuộc sản phẩm trên URL — công đoạn | `E062` |
+| Vật tư không tồn tại | `E035` |
+| Dòng vật tư (`PATCH`/`DELETE`) không tồn tại | `E108` |
 
 Ngoài phạm vi kiểm: chu trình **xuyên cây** (BOM của A chứa B, BOM riêng của B chứa A) lọt hoàn
 toàn; node anh em trùng nhau hợp lệ. Xem `docs/domains/product-structure.md`.
 
 ## Business rules
 
-- Vì sao routing thuộc **vị trí** chứ không thuộc sản phẩm → `docs/domains/product-structure.md`.
+- Vì sao routing/vật tư thuộc **vị trí** chứ không thuộc sản phẩm → `docs/domains/product-structure.md`.
 - Vì sao versioning là clone chứ không phải bảng lịch sử phiên bản → cùng file.
-- Vì sao đọc BOM không đệ quy xuống BOM của WIP con → cùng file.
-
-⚠️ Bug đang tồn tại: clone **không sao chép `drawingFileId`** của node, nên nhân bản âm thầm làm mất
-bản vẽ kỹ thuật. Chi tiết ở `docs/domains/product-structure.md`.
+- Vì sao đọc BOM không đệ quy xuống BOM của WIP con, và vì sao vật tư Cấp 0 của WIP con không tự
+  cộng vào cây cha → cùng file.
+- Sản phẩm không có bảng đính kèm; bản vẽ kỹ thuật gắn theo từng node BOM → cùng file.
 
 ## Related domains
 
@@ -100,4 +109,5 @@ bản vẽ kỹ thuật. Chi tiết ở `docs/domains/product-structure.md`.
 này chảy xuống `orders` (mỗi dòng đơn một `productId`) và `production` — nhưng **sản xuất hiện chỉ
 lấy `productId` + số lượng, không đọc BOM và không đọc routing**.
 
-Code: `ProductsService.createProduct`/`copyProduct`, `BomsService`, `RoutingService`.
+Code: `ProductsService.createProduct`/`copyProduct`, `BomsService` (cây + vật tư as-used, mount kép
+`boms.controller.ts`/`bom-item-materials.controller.ts`), `RoutingService`.

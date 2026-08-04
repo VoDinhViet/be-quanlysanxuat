@@ -10,6 +10,7 @@ import {
   UUIDField,
 } from '../../../decorators/field.decorators';
 import { DepartmentResDto } from '../../departments/dto/department.res.dto';
+import { ProductionJobRefResDto } from '../../production-jobs/dto/production-job-ref.res.dto';
 import { ProductionOrderRefResDto } from '../../production-orders/dto/production-order-ref.res.dto';
 import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
 
@@ -46,4 +47,8 @@ export class PurchaseRequestResDto {
   @Expose()
   @ClassFieldOptional(() => ProductionOrderRefResDto, { nullable: true })
   productionOrder!: ProductionOrderRefResDto | null;
+
+  @Expose()
+  @ClassFieldOptional(() => ProductionJobRefResDto, { nullable: true })
+  productionJob!: ProductionJobRefResDto | null;
 }

@@ -6,6 +6,7 @@ import {
   ClassFieldOptional,
   NumberField,
   StringField,
+  StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
 import { BomItemUnitResDto } from './bom-item-unit.res.dto';
@@ -14,6 +15,10 @@ import { BomItemUnitResDto } from './bom-item-unit.res.dto';
 export class BomMaterialResDto {
   @Expose()
   @UUIDField()
+  id!: string;
+
+  @Expose()
+  @UUIDField({ description: 'Id của vật tư' })
   materialId!: string;
 
   @Expose()
@@ -33,9 +38,14 @@ export class BomMaterialResDto {
   image!: FileResDto | null;
 
   @Expose()
-  @NumberField({
-    description:
-      'Tổng SL cộng dồn thô của vật tư này trong BOM (mọi cấp) — không nổ theo cấp',
-  })
-  totalQuantity!: number;
+  @NumberField({ description: 'Định mức sử dụng' })
+  quantity!: number;
+
+  @Expose()
+  @NumberField({ int: true, description: 'Deterministic sibling ordering' })
+  sortOrder!: number;
+
+  @Expose()
+  @StringFieldOptional({ nullable: true })
+  note!: string | null;
 }

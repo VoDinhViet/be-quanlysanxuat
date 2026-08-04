@@ -59,7 +59,7 @@ không phải `/api/health`.
 
 ## Modules
 
-25 module dưới `src/api/`. `users` là module tham chiếu cho code mới (controller/service, DTO, lỗi,
+28 module dưới `src/api/`. `users` là module tham chiếu cho code mới (controller/service, DTO, lỗi,
 phân trang — chi tiết ở `.claude/rules/`). Đăng ký module mới trong `src/app.module.ts`. Cột `Domain`
 là file dưới `docs/domains/`, `—` nghĩa là hạ tầng thuần, không thuộc domain nghiệp vụ nào.
 
@@ -86,10 +86,13 @@ là file dưới `docs/domains/`, `—` nghĩa là hạ tầng thuần, không t
 | `countries` | partners | chỉ đọc, không phân trang |
 | `operations` | partners | chỉ đọc (từng có CRUD) |
 | `orders` | orders | **mọi** route cần bearer token, kể cả đọc |
-| `inventory` | inventory | hai controller: `/inventory` và `/stock-receipts` |
+| `warehouses` | inventory | danh mục kho — `code`/`name`/`type`/`status`, không soft delete |
+| `inventory` | inventory | chỉ đọc — `/inventory` (onHand/reserved), `/inventory/balances`, `/inventory/transactions`; sở hữu `InventoryPostingService` |
+| `inventory-receipts` | inventory | phiếu nhập — vòng đời `DRAFT`/`POSTED`/`CANCELLED`, import `InventoryModule`+`WarehousesModule` |
+| `inventory-issues` | inventory | phiếu xuất — cùng vòng đời, cùng khuôn `inventory-receipts` |
 | `production-orders` | production | 1 PO duyệt = 1 LSX |
 | `production-jobs` | production | 1 sản phẩm FG = 1 Job trong một LSX |
-| `purchase-requests` | purchase-requests | Danh sách đề xuất mua hàng, giai đoạn 1 chỉ `GET /purchase-requests`; chưa có tạo/duyệt/từ chối |
+| `purchase-requests` | purchase-requests | Danh sách đề xuất mua hàng, chỉ `GET /purchase-requests`; chưa có route tạo/duyệt/từ chối — phiếu tự sinh khi `production-jobs` start Job thiếu vật tư |
 
 ## Domain docs
 

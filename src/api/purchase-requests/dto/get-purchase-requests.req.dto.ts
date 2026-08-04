@@ -18,6 +18,9 @@ export class GetPurchaseRequestsReqDto extends PageOptionsDto {
   })
   readonly productionOrderId?: string;
 
+  @UUIDFieldOptional({ description: 'Filter theo Job đã sinh ra đề xuất' })
+  readonly productionJobId?: string;
+
   @UUIDFieldOptional({ description: 'Filter theo người đề xuất (users.id)' })
   readonly requesterId?: string;
 
