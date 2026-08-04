@@ -48,6 +48,7 @@ export const PERMISSION_CODES = [
   'production:create',
   'production:update',
   'production:approve',
+  'purchase-requests:read',
 ] as const;
 
 export type PermissionCode = (typeof PERMISSION_CODES)[number];

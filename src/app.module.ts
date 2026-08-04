@@ -35,6 +35,7 @@ import { ProductGroupsModule } from './api/product-groups/product-groups.module'
 import { ProductionJobsModule } from './api/production-jobs/production-jobs.module';
 import { ProductionOrdersModule } from './api/production-orders/production-orders.module';
 import { ProductsModule } from './api/products/products.module';
+import { PurchaseRequestsModule } from './api/purchase-requests/purchase-requests.module';
 import { RoutingModule } from './api/routing/routing.module';
 import { UnitsModule } from './api/units/units.module';
 import { UsersModule } from './api/users/users.module';
@@ -77,6 +78,7 @@ import { UsersModule } from './api/users/users.module';
     ProductionJobsModule,
     ProductionOrdersModule,
     OrdersModule,
+    PurchaseRequestsModule,
   ],
 
   controllers: [AppController],
