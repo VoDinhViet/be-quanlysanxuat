@@ -8,23 +8,18 @@ import postgres from 'postgres';
 
 import * as schema from '../schemas';
 import { bomMaterials } from '../schemas/products/bom-materials';
+import { bomOperations } from '../schemas/products/bom-operations';
 import { bomItems } from '../schemas/products/bom-items';
 import { boms } from '../schemas/products/boms';
 import { credentials } from '../schemas/identity-access/credentials';
 import { materials } from '../schemas/materials/materials';
 import { operations } from '../schemas/operations';
 import { productGroups } from '../schemas/products/product-groups';
+import { productOperations } from '../schemas/products/product-operations';
 import { ProductType, products } from '../schemas/products/products';
-import { routingSteps } from '../schemas/products/routing-steps';
 import { units } from '../schemas/units/units';
 
 type SeedDatabase = ReturnType<typeof drizzle<typeof schema>>;
-
-// Same formatting rule as `BomsService`'s ltree helper (`src/api/boms/utils/ltree.util.ts`) —
-// duplicated rather than imported so this standalone script doesn't reach into `src/api/`.
-function formatLtreeNodeId(id: string): string {
-  return 'n_' + id.replace(/-/g, '_');
-}
 
 interface ProductSeed {
   code: string;
@@ -114,7 +109,7 @@ const WIP_MATERIAL_BOMS: Record<string, MaterialLeafSeed[]> = {
   ],
 };
 
-// As-used routing (`routing_steps.bomItemId`) for a WIP's node at its position inside a parent
+// As-used routing (`bom_operations.bomItemId`) for a WIP's node at its position inside a parent
 // tree in `BOM_TREES` — the fabrication steps that specific node goes through.
 const WIP_ROUTING: Record<string, string[]> = {
   'MAT-BAN': ['CAT_LASER', 'CHAN', 'MAI', 'SON_TINH_DIEN'],
@@ -125,8 +120,8 @@ const WIP_ROUTING: Record<string, string[]> = {
   'NGAN-KEO': ['CAT_LASER', 'CHAN', 'HAN', 'MAI'],
 };
 
-// Cấp 0 routing (`routing_steps.productId`) for the FG root itself — final assembly, run after
-// every child part is fabricated.
+// Cấp 0 routing (`product_operations.productId`) for the FG root itself — final assembly, run
+// after every child part is fabricated.
 const FG_ROUTING: Record<string, string[]> = {
   'BAN-LV': ['LAP_RAP_TONG', 'DONG_GOI'],
   'TU-TL': ['LAP_RAP_TONG', 'DONG_GOI'],
@@ -209,11 +204,10 @@ async function ensureBomTree(
 
     // Nested closure over `tx` instead of a top-level helper taking `tx` as a param — sidesteps
     // typing drizzle's transaction callback param and keeps the recursion scoped to this one BOM.
-    // Mirrors `BomsService.addBomItem`'s path/level computation so seeded rows look the same to
-    // readers as ones created through the API.
+    // Mirrors `BomsService.addBomItem`'s level computation so seeded rows look the same to readers
+    // as ones created through the API.
     async function insertNodes(
       parentId: string | null,
-      parentPath: string | null,
       level: number,
       siblings: BomNodeSeed[],
       startIndex = 0,
@@ -229,8 +223,6 @@ async function ensureBomTree(
         }
 
         const itemId = crypto.randomUUID();
-        const nodeKey = formatLtreeNodeId(itemId);
-        const itemPath = parentPath ? `${parentPath}.${nodeKey}` : nodeKey;
 
         await tx.insert(bomItems).values({
           id: itemId,
@@ -238,7 +230,6 @@ async function ensureBomTree(
           parentId,
           productId,
           quantity: node.quantity,
-          path: itemPath,
           level,
           sortOrder: index,
           createdBy,
@@ -255,7 +246,7 @@ async function ensureBomTree(
               );
             }
 
-            await tx.insert(routingSteps).values({
+            await tx.insert(bomOperations).values({
               bomItemId: itemId,
               operationId,
               sortOrder: stepIndex,
@@ -287,29 +278,29 @@ async function ensureBomTree(
         }
 
         if (node.children?.length) {
-          await insertNodes(itemId, itemPath, level + 1, node.children);
+          await insertNodes(itemId, level + 1, node.children);
         }
       }
     }
 
-    await insertNodes(null, null, 1, nodes);
+    await insertNodes(null, 1, nodes);
   });
 
   console.log(`BOM tree for "${fgProductCode}" created.`);
 }
 
-/** Idempotent by `routingSteps.productId` — skips the whole set if this product (FG or WIP)
+/** Idempotent by `productOperations.productId` — skips the whole set if this product (FG or WIP)
  * already has Cấp 0 routing. Used for every root product, not just FG: a WIP fully has its own
  * routing too, independent of the as-used routing on its bom_item position elsewhere. */
-async function ensureRootRouting(
+async function ensureRootOperations(
   db: SeedDatabase,
   rootProductId: string,
   operationCodes: string[],
   operationIdByCode: Map<string, string>,
   createdBy: string | null,
 ): Promise<void> {
-  const existing = await db.query.routingSteps.findFirst({
-    where: eq(routingSteps.productId, rootProductId),
+  const existing = await db.query.productOperations.findFirst({
+    where: eq(productOperations.productId, rootProductId),
     columns: { id: true },
   });
 
@@ -325,7 +316,7 @@ async function ensureRootRouting(
         throw new Error(`Routing references unknown operation code "${code}".`);
       }
 
-      await tx.insert(routingSteps).values({
+      await tx.insert(productOperations).values({
         productId: rootProductId,
         operationId,
         sortOrder: index,
@@ -429,7 +420,7 @@ export async function seedProducts(db: SeedDatabase): Promise<void> {
     });
     wipIdByCode.set(spec.code, product.id);
 
-    await ensureRootRouting(
+    await ensureRootOperations(
       db,
       product.id,
       WIP_ROUTING[spec.code] ?? [],
@@ -457,7 +448,7 @@ export async function seedProducts(db: SeedDatabase): Promise<void> {
       createdBy,
     );
 
-    await ensureRootRouting(
+    await ensureRootOperations(
       db,
       product.id,
       FG_ROUTING[spec.code] ?? [],

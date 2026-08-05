@@ -15,6 +15,8 @@ import { CurrentUser } from '../../decorators/current-user.decorator';
 import { ApiAuth, ApiPublic } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
+import { BomMaterialResDto } from '../bom-materials/dto/bom-material.res.dto';
+import { GetBomMaterialsReqDto } from '../bom-materials/dto/get-bom-materials.req.dto';
 import { CreateProductReqDto } from './dto/create-product.req.dto';
 import { GetProductOptionsReqDto } from './dto/get-product-options.req.dto';
 import { GetProductsReqDto } from './dto/get-products.req.dto';
@@ -93,10 +95,23 @@ export class ProductsController {
     return this.productsService.updateProduct(productId, reqDto);
   }
 
+  @Get(':productId/materials')
+  @Permissions('products:read')
+  @ApiPublic({
+    type: BomMaterialResDto,
+    summary: "Get a product's BOM materials list (Thành phần vật tư)",
+    isPaginated: true,
+  })
+  getProductMaterials(
+    @UUIDParam('productId') productId: string,
+    @Query() reqDto: GetBomMaterialsReqDto,
+  ): Promise<OffsetPaginatedDto<BomMaterialResDto>> {
+    return this.productsService.getProductMaterials(productId, reqDto);
+  }
+
   @Post(':productId/copy')
   @Permissions('products:copy')
   @ApiAuth({
-    type: ProductDetailResDto,
     summary:
       'Copy (clone) a product, including its BOM tree and routing (Nhân bản)',
     statusCode: HttpStatus.CREATED,
@@ -104,7 +119,7 @@ export class ProductsController {
   copyProduct(
     @UUIDParam('productId') productId: string,
     @CurrentUser() payload: JwtPayloadType,
-  ): Promise<ProductDetailResDto> {
+  ): Promise<void> {
     return this.productsService.copyProduct(productId, payload.userId);
   }
 }

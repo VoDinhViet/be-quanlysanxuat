@@ -4,7 +4,7 @@ import {
   UUIDField,
 } from '../../../decorators/field.decorators';
 
-export class CreateRoutingStepReqDto {
+export class CreateProductOperationReqDto {
   @UUIDField({ description: 'Master operation (công đoạn) id' })
   readonly operationId!: string;
 

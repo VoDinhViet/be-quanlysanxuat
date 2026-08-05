@@ -6,54 +6,63 @@ import {
   HttpStatus,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
+import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { CurrentUser } from '../../decorators/current-user.decorator';
 import { ApiAuth, ApiPublic } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
-import { CreateRoutingStepReqDto } from './dto/create-routing-step.req.dto';
-import { RoutingStepResDto } from './dto/routing-step.res.dto';
-import { UpdateRoutingStepReqDto } from './dto/update-routing-step.req.dto';
-import { RoutingService } from './routing.service';
+import { BomOperationsService } from './bom-operations.service';
+import { BomOperationResDto } from './dto/bom-operation.res.dto';
+import { CreateBomOperationReqDto } from './dto/create-bom-operation.req.dto';
+import { GetBomOperationsReqDto } from './dto/get-bom-operations.req.dto';
+import { UpdateBomOperationReqDto } from './dto/update-bom-operation.req.dto';
 
-@ApiTags('Routing')
+@ApiTags('Boms')
 @Controller('products/:productId/bom/items/:itemId/operations')
-export class BomItemRoutingController {
-  constructor(private readonly routingService: RoutingService) {}
+export class BomOperationsController {
+  constructor(private readonly bomOperationsService: BomOperationsService) {}
 
   @Get()
   @Permissions('products:read')
   @ApiPublic({
-    type: RoutingStepResDto,
+    type: BomOperationResDto,
     summary:
-      "Get one BOM node's own routing (as-used, Công đoạn), in run order",
-    isArray: true,
+      "List one BOM node's own routing (as-used, Công đoạn), in run order",
+    isPaginated: true,
   })
   getOperations(
     @UUIDParam('productId') productId: string,
     @UUIDParam('itemId') itemId: string,
-  ): Promise<RoutingStepResDto[]> {
-    return this.routingService.getRouting({ productId, bomItemId: itemId });
+    @Query() reqDto: GetBomOperationsReqDto,
+  ): Promise<OffsetPaginatedDto<BomOperationResDto>> {
+    return this.bomOperationsService.getBomOperations(
+      productId,
+      itemId,
+      reqDto,
+    );
   }
 
   @Post()
   @Permissions('products:bom-manage')
   @ApiAuth({
-    type: RoutingStepResDto,
+    type: BomOperationResDto,
     summary: 'Add a routing step ("[+]") for this BOM node',
     statusCode: HttpStatus.CREATED,
   })
   addOperation(
     @UUIDParam('productId') productId: string,
     @UUIDParam('itemId') itemId: string,
-    @Body() reqDto: CreateRoutingStepReqDto,
+    @Body() reqDto: CreateBomOperationReqDto,
     @CurrentUser() payload: JwtPayloadType,
-  ): Promise<RoutingStepResDto> {
-    return this.routingService.addStep(
-      { productId, bomItemId: itemId },
+  ): Promise<BomOperationResDto> {
+    return this.bomOperationsService.addBomOperation(
+      productId,
+      itemId,
       reqDto,
       payload.userId,
     );
@@ -62,17 +71,18 @@ export class BomItemRoutingController {
   @Patch(':stepId')
   @Permissions('products:bom-manage')
   @ApiAuth({
-    type: RoutingStepResDto,
+    type: BomOperationResDto,
     summary: 'Edit a routing step (STT chạy/note)',
   })
   updateOperation(
     @UUIDParam('productId') productId: string,
     @UUIDParam('itemId') itemId: string,
     @UUIDParam('stepId') stepId: string,
-    @Body() reqDto: UpdateRoutingStepReqDto,
-  ): Promise<RoutingStepResDto> {
-    return this.routingService.updateStep(
-      { productId, bomItemId: itemId },
+    @Body() reqDto: UpdateBomOperationReqDto,
+  ): Promise<BomOperationResDto> {
+    return this.bomOperationsService.updateBomOperation(
+      productId,
+      itemId,
       stepId,
       reqDto,
     );
@@ -89,8 +99,9 @@ export class BomItemRoutingController {
     @UUIDParam('itemId') itemId: string,
     @UUIDParam('stepId') stepId: string,
   ): Promise<void> {
-    return this.routingService.deleteStep(
-      { productId, bomItemId: itemId },
+    return this.bomOperationsService.deleteBomOperation(
+      productId,
+      itemId,
       stepId,
     );
   }

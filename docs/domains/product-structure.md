@@ -20,12 +20,13 @@ lý do này.
 Điểm dễ hiểu sai nhất: một node `bom_items` trỏ tới một WIP **có thể có BOM riêng của nó**, nhưng khi đọc cây, hệ thống **không bao giờ đi xuống BOM đó**. "Nhiều cấp" ở đây nghĩa là người dùng tự dựng sâu trong *một* cây, không phải hệ thống tự bung BOM con.
 
 **Routing và vật tư đều "as-used" — thuộc về vị trí trong cấu trúc, không thuộc về sản phẩm.**
-`routing_steps` khoá theo **đúng một trong** `productId` (Cấp 0 của chính sản phẩm gốc) **hoặc**
-`bomItemId` (đúng một node trong cây). `bom_materials` thì **luôn** khoá theo `bomItemId` — không còn
-Cấp 0: một sản phẩm muốn khai vật tư trực tiếp bắt buộc phải có sẵn ít nhất một node `bom_items` để
-gắn vào (xem "Common mistakes"). Lý do nghiệp vụ của việc as-used theo vị trí (không theo sản phẩm):
-cùng một chi tiết, lắp ở vị trí này thì hàn + cần 2 con ốc, ở vị trí khác thì sơn + không cần ốc
-thêm.
+`product_operations` giờ thuần Cấp 0 — routing của chính sản phẩm gốc, khoá theo `productId`. Routing
+as-used của một node cây sống ở bảng riêng `bom_operations` (`bomItemId` NOT NULL), cùng khuôn
+`bom_materials` — không còn ca "một trong hai" phải phân biệt bằng CHECK. `bom_materials` cũng
+**luôn** khoá theo `bomItemId`: một sản phẩm muốn khai vật tư trực tiếp bắt buộc phải có sẵn ít nhất
+một node `bom_items` để gắn vào (xem "Common mistakes"). Lý do nghiệp vụ của việc as-used theo vị
+trí (không theo sản phẩm): cùng một chi tiết, lắp ở vị trí này thì hàn + cần 2 con ốc, ở vị trí khác
+thì sơn + không cần ốc thêm.
 
 **Vật tư của một WIP con không tự động cộng vào cây cha.** Đọc cây cha không đệ quy xuống BOM riêng
 của WIP con (đoạn trên) — vật tư "as-used" gắn ở một node trong cây cha là **khai riêng, không tự
@@ -41,7 +42,8 @@ suy ra** từ vật tư trên cây BOM riêng của WIP mà node đó tham chi�
 | `boms` | Header, **đúng một dòng cho mỗi product** (unique `productId`) |
 | `bom_items` | Node của cây cấu trúc, tự lồng qua `parentId`; luôn trỏ một WIP (`productId` NOT NULL); `drawingFileId` (nullable) là bản vẽ kỹ thuật riêng của node |
 | `bom_materials` | Vật tư as-used; `bomItemId` NOT NULL — luôn gắn đúng một node `bom_items`, không còn Cấp 0 |
-| `routing_steps` | Bước công đoạn; khoá theo **đúng một trong** `productId`/`bomItemId` |
+| `bom_operations` | Công đoạn as-used; `bomItemId` NOT NULL — luôn gắn đúng một node `bom_items`, cùng khuôn `bom_materials` |
+| `product_operations` | Công đoạn Cấp 0 của chính sản phẩm gốc; `productId` NOT NULL, không còn ca node |
 | `operations` | Danh mục công đoạn gốc (`INHOUSE`/`OUTSOURCE`), chỉ đọc — xem `docs/domains/partners.md` |
 
 ## Lifecycle
@@ -60,9 +62,9 @@ Xoá sản phẩm là **xoá mềm và không kiểm tham chiếu**. Các FK `re
   là business rule ném `AppException`.
 - Node cha phải cùng một BOM với node con.
 - `bomItemId` trong route routing/vật tư phải thuộc đúng sản phẩm trên URL — không với sang cây khác
-  được. `RoutingService` ném `E062` (routing); `BomMaterialsService` ném `E051` (vật tư, qua
-  `BomsService.ensureBomItemInBom` dùng chung — cùng mã đã dùng cho "cha của một node PRODUCT không
-  hợp lệ"). Cùng khuôn kiểm tra, khác mã vì khác resource.
+  được. `BomOperationsService` và `BomMaterialsService` đều ném `E051` qua
+  `BomsService.ensureBomItemInBom` dùng chung (cùng mã đã dùng cho "cha của một node PRODUCT không
+  hợp lệ") — cùng khuôn kiểm tra, cùng resource `bom_items` nên cùng mã.
 - `operationId` **bất biến** sau khi thêm routing: đổi công đoạn = xoá bước rồi thêm lại.
   `materialId` trên một dòng `bom_materials` cũng bất biến, cùng lý do — đổi vật tư = xoá + thêm lại.
 - Một chuỗi routing **được phép lặp lại cùng một công đoạn** (hàn → sơn → hàn) — không có ràng buộc
@@ -73,8 +75,9 @@ Xoá sản phẩm là **xoá mềm và không kiểm tham chiếu**. Các FK `re
 ## Invariants
 
 **DB đảm bảo** (không thể lách kể cả bằng SQL tay): một BOM cho mỗi product; `bom_items.productId`
-NOT NULL; `bom_materials.bomItemId` NOT NULL (không còn Cấp 0); `quantity > 0` (cả `bom_items` lẫn
-`bom_materials`); routing khoá đúng một trong `productId`/`bomItemId`.
+NOT NULL; `bom_materials.bomItemId`/`bom_operations.bomItemId` NOT NULL (không còn Cấp 0);
+`quantity > 0` (cả `bom_items` lẫn `bom_materials`); `product_operations.productId` NOT NULL (thuần Cấp
+0, không còn CHECK loại trừ).
 
 **Chỉ service đảm bảo** (SQL tay lách được): node phải là WIP; cha cùng BOM (cả cho node con lẫn cho
 `bomItemId` của vật tư/routing); không có chu trình; độ sâu ≤ 50.
@@ -82,18 +85,18 @@ NOT NULL; `bom_materials.bomItemId` NOT NULL (không còn Cấp 0); `quantity > 
 **Không ai đảm bảo** — đừng giả định:
 
 - **Chu trình xuyên cây.** Kiểm chu trình chỉ chạy trong phạm vi *một* cây. BOM của A chứa B, và BOM riêng của B chứa A — hoàn toàn lọt.
-- **Node anh em trùng nhau.** Không có unique trên `(bomId, parentId, productId)`; thêm hai node y hệt cạnh nhau là hợp lệ. `bom_materials` cũng không unique trên `(bomItemId, materialId)`.
-- **Cột `path` khớp độ sâu thật.** Không đường đọc API nào chạm tới `path` để đối chiếu, nên lệch (nếu có) không ai thấy — khác `level`, giờ đọc thẳng từ cột lưu ra response nên lệch sẽ hiện ngay.
+- **Node anh em trùng nhau.** Không có unique trên `(bomId, parentId, productId)`; thêm hai node y hệt cạnh nhau là hợp lệ. `bom_materials`/`bom_operations` cũng không unique trên `(bomItemId, materialId/operationId)`.
 
 ## Cross-domain dependencies
 
 - **Production** đọc **hai nguồn tách biệt**, cả hai **một lần**, lúc duyệt LSX: cây `bom_items`
-  (thuần cấu trúc) + `routing_steps` as-used của từng node, nhân bản sang
+  (thuần cấu trúc) + `bom_operations` as-used của từng node, nhân bản sang
   `production_job_bom_items`/`production_job_operations` (id mới, độc lập); và `bom_materials` (mọi
   dòng thuộc cây `bom_items` của sản phẩm, gộp theo vật tư), copy sang `production_job_materials`
-  của Job — xem `docs/domains/production.md`. Routing Cấp 0 của FG (`routing_steps.productId`)
+  của Job — xem `docs/domains/production.md`. Routing Cấp 0 của FG (`product_operations.productId`)
   **không** được đọc/snapshot ở bước này. Ngoài thời điểm đó, không module sản xuất nào tham chiếu
-  `boms`/`bom_items`/`bom_materials`/`routing_steps` nữa; Job không chia nhỏ tiến độ theo công đoạn.
+  `boms`/`bom_items`/`bom_materials`/`bom_operations`/`product_operations` nữa; Job không chia nhỏ tiến độ
+  theo công đoạn.
 - Phép gộp vật tư (`SUM(quantity) GROUP BY materialId` trên mọi dòng `bom_materials` thuộc cây một
   sản phẩm) — **không nhân qua số lượng của các node cha**, nên nó *không* phải BOM explosion.
   `production_job_materials.unitQty` thừa hưởng nguyên giới hạn này.
@@ -106,12 +109,12 @@ NOT NULL; `bom_materials.bomItemId` NOT NULL (không còn Cấp 0); `quantity > 
 1. **Tưởng đọc BOM sẽ đệ quy xuống BOM của WIP con.** Không. Mỗi cây độc lập — và vật tư trên cây
    riêng của một WIP con (nếu có) cũng **không** tự cộng vào cây cha đang tham chiếu nó.
 2. **Tưởng `boms` đã tồn tại sau khi tạo sản phẩm.** Chưa. Luôn xử lý trường hợp chưa có, và dùng đúng pattern get-or-create thay vì insert trần.
-3. **Coi routing/vật tư là thuộc tính của sản phẩm.** Cả hai sống as-used trên `bom_items.id`; routing
-   còn khai được ở Cấp 0 (`productId`, gốc cây), vật tư thì không — sửa một vị trí không được đụng vị
-   trí song sinh của nó.
+3. **Coi routing/vật tư là thuộc tính của sản phẩm.** Cả hai sống as-used trên `bom_items.id`
+   (`bom_operations`/`bom_materials`); routing còn khai được ở Cấp 0 (`product_operations.productId`, gốc
+   cây), vật tư thì không — sửa một vị trí không được đụng vị trí song sinh của nó.
 4. **Tin `restrict` sẽ chặn xoá sản phẩm đang được dùng.** Xoá là mềm, nên nó luôn qua; sản phẩm biến khỏi danh sách nhưng vẫn hiện trong join của BOM/đơn hàng. Tệ hơn: **một WIP đã xoá mềm vẫn hiển thị trong cây BOM**, vì join sang `products` khi dựng cây không lọc `deletedAt`.
-5. **Xoá một node giữa cây** sẽ cascade sạch cả nhánh con, routing as-used **và vật tư as-used**
-   (`bom_materials.bomItemId`) của chúng, không cảnh báo trước, không đếm trước.
+5. **Xoá một node giữa cây** sẽ cascade sạch cả nhánh con, routing as-used (`bom_operations`)
+   **và vật tư as-used** (`bom_materials.bomItemId`) của chúng, không cảnh báo trước, không đếm trước.
 6. **Thêm ràng buộc "một node cho mỗi (cha, item)" hoặc chống chu trình xuyên cây vì tưởng đã có.** Cả hai đều chưa có.
 7. **Tưởng ảnh (`products.imageFileId`) và bản vẽ (`bom_items.drawingFileId`) là một.** Khác nhau: ảnh
    là ảnh đại diện của sản phẩm, đọc ké vào mọi node BOM trỏ tới WIP đó; bản vẽ là tài liệu kỹ thuật

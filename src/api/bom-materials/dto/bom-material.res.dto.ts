@@ -1,6 +1,7 @@
 import { Exclude, Expose } from 'class-transformer';
 
 import { FileResDto } from '../../files/dto/file.res.dto';
+import { UnitResDto } from '../../units/dto/unit.res.dto';
 import {
   ClassField,
   ClassFieldOptional,
@@ -9,7 +10,6 @@ import {
   StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
-import { BomItemUnitResDto } from '../../boms/dto/bom-item-unit.res.dto';
 
 @Exclude()
 export class BomMaterialResDto {
@@ -30,8 +30,8 @@ export class BomMaterialResDto {
   name!: string;
 
   @Expose()
-  @ClassField(() => BomItemUnitResDto)
-  unit!: BomItemUnitResDto;
+  @ClassField(() => UnitResDto)
+  unit!: UnitResDto;
 
   @Expose()
   @ClassFieldOptional(() => FileResDto, { nullable: true })

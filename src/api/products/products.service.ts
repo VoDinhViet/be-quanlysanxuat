@@ -6,6 +6,7 @@ import {
   count,
   desc,
   eq,
+  getTableColumns,
   inArray,
   isNull,
   ne,
@@ -23,16 +24,18 @@ import {
   bomMaterials,
   boms,
   clients,
+  files,
+  materials,
   productGroups,
   products,
   ProductStatus,
-  routingSteps,
   units,
   UnitScope,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
-import { formatLtreeNodeId } from '../boms/utils/ltree.util';
 import { FilesService } from '../files/files.service';
+import { BomMaterialResDto } from '../bom-materials/dto/bom-material.res.dto';
+import { GetBomMaterialsReqDto } from '../bom-materials/dto/get-bom-materials.req.dto';
 import { CreateProductReqDto } from './dto/create-product.req.dto';
 import { GetProductOptionsReqDto } from './dto/get-product-options.req.dto';
 import { GetProductsReqDto } from './dto/get-products.req.dto';
@@ -40,6 +43,9 @@ import { ProductDetailResDto } from './dto/product-detail.res.dto';
 import { ProductOptionResDto } from './dto/product-option.res.dto';
 import { ProductResDto } from './dto/product.res.dto';
 import { UpdateProductReqDto } from './dto/update-product.req.dto';
+
+type BomItemSelect = typeof bomItems.$inferSelect;
+type BomMaterialSelect = typeof bomMaterials.$inferSelect;
 
 @Injectable()
 export class ProductsService {
@@ -139,7 +145,7 @@ export class ProductsService {
         unit: true,
         creator: true,
         imageFile: true,
-        source: { columns: { id: true, code: true, name: true } },
+        clonedFrom: { columns: { id: true, code: true, name: true } },
       },
     });
 
@@ -212,255 +218,182 @@ export class ProductsService {
       .where(eq(products.id, productId));
   }
 
+  async getProductMaterials(
+    productId: string,
+    reqDto: GetBomMaterialsReqDto,
+  ): Promise<OffsetPaginatedDto<BomMaterialResDto>> {
+    await this.ensureProductExists(productId);
+
+    const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
+    const where = and(
+      eq(boms.productId, productId),
+      keyword
+        ? or(
+            unaccentILike(materials.code, keyword),
+            unaccentILike(materials.name, keyword),
+          )
+        : undefined,
+    );
+
+    const [rows, countRows] = await Promise.all([
+      this.db
+        .select({
+          id: bomMaterials.id,
+          materialId: materials.id,
+          code: materials.code,
+          name: materials.name,
+          unit: getTableColumns(units),
+          image: getTableColumns(files),
+          quantity: bomMaterials.quantity,
+          sortOrder: bomMaterials.sortOrder,
+          note: bomMaterials.note,
+        })
+        .from(bomMaterials)
+        .innerJoin(bomItems, eq(bomMaterials.bomItemId, bomItems.id))
+        .innerJoin(boms, eq(bomItems.bomId, boms.id))
+        .innerJoin(materials, eq(bomMaterials.materialId, materials.id))
+        .innerJoin(units, eq(materials.unitId, units.id))
+        .leftJoin(files, eq(materials.imageFileId, files.id))
+        .where(where)
+        .orderBy(asc(bomMaterials.sortOrder), asc(bomMaterials.createdAt))
+        .limit(reqDto.limit)
+        .offset(reqDto.offset),
+      this.db
+        .select({ total: count() })
+        .from(bomMaterials)
+        .innerJoin(bomItems, eq(bomMaterials.bomItemId, bomItems.id))
+        .innerJoin(boms, eq(bomItems.bomId, boms.id))
+        .innerJoin(materials, eq(bomMaterials.materialId, materials.id))
+        .where(where),
+    ]);
+
+    return new OffsetPaginatedDto(
+      plainToInstance(BomMaterialResDto, rows, {
+        excludeExtraneousValues: true,
+      }),
+      new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
+    );
+  }
+
   /**
-   * Deep-clones a product: the row itself, its whole BOM tree, its Cấp 0 root routing, and each
-   * cloned node's own as-used routing — a full independent product, not a version of the source.
-   * `sourceProductId` records lineage only ("Sao chép từ"); nothing about the clone stays linked
-   * to the source afterward.
+   * Clone a product: creates a new product row with a generated code, keeping sourceProductId lineage.
    */
   async copyProduct(
     productId: string,
     userId: string,
-  ): Promise<ProductDetailResDto> {
-    const original = await this.ensureProductExists(productId);
+  ): Promise<void> {
+    const product = await this.ensureProductExists(productId);
     const code = await this.generateProductCode();
 
-    // Every read happens before the transaction opens — see `.claude/rules/service.md`.
-
-    const sourceBom = await this.db.query.boms.findFirst({
+    // 1. Đọc BOM gốc trước khi mở transaction
+    const bom = await this.db.query.boms.findFirst({
       columns: { id: true },
       where: eq(boms.productId, productId),
     });
-    // Parents always precede their children: `checkNoCycle`-free copy relies on visiting a node
-    // only after its parent has already been remapped (see `cloneBomTree`).
-    const sourceBomItems = sourceBom
+
+    const items = bom
       ? await this.db.query.bomItems.findMany({
-          where: eq(bomItems.bomId, sourceBom.id),
+          where: eq(bomItems.bomId, bom.id),
           orderBy: [asc(bomItems.level), asc(bomItems.sortOrder)],
         })
       : [];
 
-    // Vật tư as-used luôn gắn vào một node — không có node nào thì chắc chắn không có vật tư.
-    const sourceBomMaterials = sourceBomItems.length
+    const bomItemIds = items.map((item) => item.id);
+
+    const materials = bomItemIds.length
       ? await this.db.query.bomMaterials.findMany({
-          where: inArray(
-            bomMaterials.bomItemId,
-            sourceBomItems.map((item) => item.id),
-          ),
+          where: inArray(bomMaterials.bomItemId, bomItemIds),
         })
       : [];
 
-    // Cấp 0 (root product) routing — keyed by productId, unrelated to the BOM tree.
-    const sourceRootOperations = await this.db.query.routingSteps.findMany({
-      where: eq(routingSteps.productId, productId),
-    });
+    // 2. Mở transaction để ghi dữ liệu mới
+    await this.db.transaction(async (tx) => {
+      const {
+        id: clonedFromProductId,
+        code: _,
+        createdAt,
+        updatedAt,
+        deletedAt,
+        createdBy,
+        ...copyFields
+      } = product;
 
-    // As-used routing on each source node — remapped through `newBomItemIdByOldId` once the tree
-    // itself has been cloned (see below). Empty tree → nothing to fetch.
-    const sourceNodeOperations = sourceBomItems.length
-      ? await this.db.query.routingSteps.findMany({
-          where: inArray(
-            routingSteps.bomItemId,
-            sourceBomItems.map((item) => item.id),
-          ),
+      const [createdProduct] = await tx
+        .insert(products)
+        .values({
+          ...copyFields,
+          code,
+          clonedFromProductId,
+          createdBy: userId,
         })
-      : [];
+        .returning({ id: products.id });
 
-    const copyId = await this.db.transaction(async (tx) => {
-      const newProductId = await this.cloneProductRow(
-        tx,
-        original,
-        code,
-        userId,
-      );
-
-      const { newBomItemIdByOldId } = sourceBom
-        ? await this.cloneBomTree(
-            tx,
-            newProductId,
-            sourceBomItems,
-            sourceBomMaterials,
-            userId,
-          )
-        : { newBomItemIdByOldId: new Map<string, string>() };
-
-      await this.cloneRootRouting(
-        tx,
-        newProductId,
-        sourceRootOperations,
-        userId,
-      );
-      await this.cloneNodeRouting(
-        tx,
-        sourceNodeOperations,
-        newBomItemIdByOldId,
-        userId,
-      );
-
-      return newProductId;
+      // 3. Clone cây BOM & Vật tư qua hàm trợ lý
+      if (bom) {
+        await this.copyBomTree(
+          tx,
+          createdProduct.id,
+          items,
+          materials,
+          userId,
+        );
+      }
     });
-
-    return this.getProductDetail(copyId);
   }
 
-  /** Spread nguyên dòng gốc rồi override — không liệt kê tay từng cột copy được. Các key gán
-   * `undefined` để Drizzle bỏ qua, nhường cho DB tự áp giá trị (id mới random, createdAt/updatedAt
-   * = lúc insert thật, không phải lúc bản gốc được tạo). */
-  private async cloneProductRow(
+  private async copyBomTree(
     tx: DbTransaction,
-    original: typeof products.$inferSelect,
-    code: string,
-    userId: string,
-  ): Promise<string> {
-    const [product] = await tx
-      .insert(products)
-      .values({
-        ...original,
-        id: undefined,
-        code,
-        sourceProductId: original.id,
-        createdAt: undefined,
-        updatedAt: undefined,
-        deletedAt: undefined,
-        createdBy: userId,
-      })
-      .returning();
-
-    return product.id;
-  }
-
-  /** Cấp 0 (root product) routing — keyed by productId, unrelated to the BOM tree. */
-  private async cloneRootRouting(
-    tx: DbTransaction,
-    newProductId: string,
-    sourceRootOperations: (typeof routingSteps.$inferSelect)[],
+    productId: string,
+    items: BomItemSelect[],
+    materials: BomMaterialSelect[],
     userId: string,
   ): Promise<void> {
-    if (!sourceRootOperations.length) {
-      return;
-    }
-
-    await tx.insert(routingSteps).values(
-      sourceRootOperations.map((step) => ({
-        productId: newProductId,
-        bomItemId: null,
-        operationId: step.operationId,
-        sortOrder: step.sortOrder,
-        note: step.note,
-        createdBy: userId,
-      })),
-    );
-  }
-
-  /** As-used routing on each source node — remapped through `newBomItemIdByOldId`; a step whose
-   * `bomItemId` didn't get cloned (not in the map) is dropped, not inserted with a dangling ref. */
-  private async cloneNodeRouting(
-    tx: DbTransaction,
-    sourceNodeOperations: (typeof routingSteps.$inferSelect)[],
-    newBomItemIdByOldId: Map<string, string>,
-    userId: string,
-  ): Promise<void> {
-    const clonedSteps = sourceNodeOperations.flatMap((step) => {
-      const bomItemId = step.bomItemId
-        ? newBomItemIdByOldId.get(step.bomItemId)
-        : undefined;
-      return bomItemId
-        ? [
-            {
-              productId: null,
-              bomItemId,
-              operationId: step.operationId,
-              sortOrder: step.sortOrder,
-              note: step.note,
-              createdBy: userId,
-            },
-          ]
-        : [];
-    });
-
-    if (!clonedSteps.length) {
-      return;
-    }
-
-    await tx.insert(routingSteps).values(clonedSteps);
-  }
-
-  /**
-   * Inserts a fresh `boms` header for `newProductId`, clones every source `bom_items` row onto it
-   * (new ids, `parentId` remapped through the old→new id map, `path` rebuilt from the *new*
-   * parent's path — the old ltree path embeds the old ids, so it can't just be copied), then
-   * clones every source `bom_materials` row, remapping `bomItemId` through the same id map.
-   *
-   * Rules:
-   * - `productId`/`materialId` on each row still point at the original WIP/material — cloning a
-   *   BOM does not recursively clone the products/materials it references.
-   * - Requires `sourceItems` to already be ordered parent-before-child (by `level`), so a
-   *   parent's remapped id/path always exists in the maps by the time its children are processed.
-   * - Returns the new `bomId` and the old→new `bom_items.id` map so the caller can remap each
-   *   cloned node's own as-used routing/materials (`routing_steps`/`bom_materials.bom_item_id`).
-   */
-  private async cloneBomTree(
-    tx: DbTransaction,
-    newProductId: string,
-    sourceItems: (typeof bomItems.$inferSelect)[],
-    sourceMaterials: (typeof bomMaterials.$inferSelect)[],
-    userId: string,
-  ): Promise<{ bomId: string; newBomItemIdByOldId: Map<string, string> }> {
-    const [bom] = await tx
+    const [newBom] = await tx
       .insert(boms)
-      .values({ productId: newProductId, createdBy: userId })
+      .values({ productId, createdBy: userId })
       .returning({ id: boms.id });
 
     const newIdByOldId = new Map<string, string>();
-    const newPathByOldId = new Map<string, string>();
 
-    const newItems = sourceItems.map((item) => {
-      const newId = crypto.randomUUID();
-      newIdByOldId.set(item.id, newId);
+    const newItems = items.map(
+      ({
+        id: oldId,
+        parentId: oldParentId,
+        bomId: _,
+        createdAt,
+        updatedAt,
+        ...item
+      }) => {
+        const id = crypto.randomUUID();
+        newIdByOldId.set(oldId, id);
 
-      const newParentId = item.parentId
-        ? (newIdByOldId.get(item.parentId) ?? null)
-        : null;
-      const parentPath = item.parentId
-        ? newPathByOldId.get(item.parentId)
-        : undefined;
-      const nodeKey = formatLtreeNodeId(newId);
-      const newPath = parentPath ? `${parentPath}.${nodeKey}` : nodeKey;
-      newPathByOldId.set(item.id, newPath);
-
-      return {
-        id: newId,
-        bomId: bom.id,
-        parentId: newParentId,
-        productId: item.productId,
-        drawingFileId: item.drawingFileId,
-        quantity: item.quantity,
-        path: newPath,
-        level: item.level,
-        sortOrder: item.sortOrder,
-        note: item.note,
-        createdBy: userId,
-      };
-    });
+        return {
+          ...item,
+          id,
+          bomId: newBom.id,
+          parentId: oldParentId
+            ? (newIdByOldId.get(oldParentId) ?? null)
+            : null,
+          createdBy: userId,
+        };
+      },
+    );
 
     if (newItems.length) {
       await tx.insert(bomItems).values(newItems);
     }
 
-    if (sourceMaterials.length) {
+    if (materials.length) {
       await tx.insert(bomMaterials).values(
-        sourceMaterials.map((material) => ({
-          bomItemId: newIdByOldId.get(material.bomItemId)!,
-          materialId: material.materialId,
-          quantity: material.quantity,
-          sortOrder: material.sortOrder,
-          note: material.note,
-          createdBy: userId,
-        })),
+        materials.map(
+          ({ id, createdAt, updatedAt, bomItemId: oldItemId, ...mat }) => ({
+            ...mat,
+            bomItemId: newIdByOldId.get(oldItemId)!,
+            createdBy: userId,
+          }),
+        ),
       );
     }
-
-    return { bomId: bom.id, newBomItemIdByOldId: newIdByOldId };
   }
 
   private async ensureProductExists(productId: string) {

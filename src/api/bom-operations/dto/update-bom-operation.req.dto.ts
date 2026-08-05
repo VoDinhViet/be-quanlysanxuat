@@ -3,7 +3,7 @@ import {
   StringFieldOptional,
 } from '../../../decorators/field.decorators';
 
-export class UpdateRoutingStepReqDto {
+export class UpdateBomOperationReqDto {
   @NumberFieldOptional({ int: true, min: 0 })
   readonly sortOrder?: number;
 

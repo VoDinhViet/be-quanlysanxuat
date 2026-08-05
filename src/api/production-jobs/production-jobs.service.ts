@@ -27,6 +27,7 @@ import {
   boms,
   clients,
   files,
+  bomOperations,
   materials,
   orders,
   productionJobBomItems,
@@ -37,7 +38,6 @@ import {
   ProductionJobStatus,
   productionOrders,
   products,
-  routingSteps,
   units,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
@@ -58,7 +58,7 @@ import { ProductionJobResDto } from './dto/production-job.res.dto';
 import { UpdateProductionJobOperationReqDto } from './dto/update-production-job-operation.req.dto';
 import {
   SourceBomItemRow,
-  SourceRoutingStepRow,
+  SourceBomOperationRow,
 } from './types/job-bom-tree.type';
 
 /** Job sản xuất — 1 sản phẩm (FG) = 1 Job trong một LSX. Chỉ tạo được qua `createJobs`, gọi từ
@@ -440,11 +440,10 @@ export class ProductionJobsService {
   /**
    * Nhân bản cây cấu trúc (`bom_items`, thuần WIP) của từng sản phẩm sang
    * `production_job_bom_items` — id hoàn toàn mới, `code`/`name` snapshot text (độc lập
-   * `products` sống) — rồi copy routing as-used của từng node (`routing_steps.bomItemId`) sang
+   * `products` sống) — rồi copy công đoạn as-used của từng node (`bom_operations.bomItemId`) sang
    * `production_job_operations`, remap `bomItemId` qua id snapshot mới và denormalize luôn
-   * `code`/`name`/`type` của công đoạn. Cùng kỹ thuật remap của `ProductsService.cloneBomTree`, bỏ
-   * phần ltree `path` — cây Job dựng trong bộ nhớ lúc đọc, không cần query theo path. Yêu cầu
-   * `sourceItems` sắp cha-trước-con (`orderBy level`) để id cha luôn có sẵn trong map khi xử lý
+   * `code`/`name`/`type` của công đoạn. Cùng kỹ thuật remap của `ProductsService.cloneBomTree`. Yêu
+   * cầu `sourceItems` sắp cha-trước-con (`orderBy level`) để id cha luôn có sẵn trong map khi xử lý
    * tới con. Vật tư **không** nhân bản ở đây — xem `copyBomMaterials`, vật tư của Job chỉ sống ở
    * `production_job_materials`, không còn là node trong cây snapshot.
    */
@@ -513,13 +512,13 @@ export class ProductionJobsService {
     // As-used routing của từng node nguồn — mọi hàng bom_items giờ đều routable, không còn nhánh
     // MATERIAL để loại trừ.
     const sourceItemIds = sourceItems.map((item) => item.id);
-    const asUsedSteps = (await tx.query.routingSteps.findMany({
-      where: inArray(routingSteps.bomItemId, sourceItemIds),
+    const asUsedSteps = (await tx.query.bomOperations.findMany({
+      where: inArray(bomOperations.bomItemId, sourceItemIds),
       with: {
         operation: { columns: { code: true, name: true, type: true } },
       },
-      orderBy: [asc(routingSteps.sortOrder), asc(routingSteps.createdAt)],
-    })) as SourceRoutingStepRow[];
+      orderBy: [asc(bomOperations.sortOrder), asc(bomOperations.createdAt)],
+    })) as SourceBomOperationRow[];
 
     if (!asUsedSteps.length) {
       return;
@@ -527,7 +526,7 @@ export class ProductionJobsService {
 
     await tx.insert(productionJobOperations).values(
       asUsedSteps.map((step) => {
-        const newBomItemId = newIdByOldId.get(step.bomItemId!)!;
+        const newBomItemId = newIdByOldId.get(step.bomItemId)!;
         return {
           productionJobId: jobIdByNewItemId.get(newBomItemId)!,
           productionJobBomItemId: newBomItemId,

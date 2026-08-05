@@ -10,7 +10,7 @@ import {
 } from '../../../decorators/field.decorators';
 
 @Exclude()
-export class RoutingStepResDto {
+export class BomOperationResDto {
   @Expose()
   @UUIDField()
   id!: string;

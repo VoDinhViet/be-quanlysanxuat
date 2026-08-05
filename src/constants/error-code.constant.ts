@@ -67,15 +67,17 @@ export enum ErrorCode {
   E046 = 'operation.error.not_found',
   // E047 (operation.error.code_exists) stays reserved — its only throw site was
   // `OperationsService.createOperation`/`updateOperation`, removed when `operations` became a
-  // read-only catalogue (list only, no create/update/delete). E046 stays live: `RoutingService`
-  // independently throws it when a routing step references a missing operation.
+  // read-only catalogue (list only, no create/update/delete). E046 stays live:
+  // `ProductOperationsService`/`BomOperationsService` independently throw it when a routing step
+  // references a missing operation.
   E047 = 'operation.error.code_exists',
   // E048/E049 (product_revision not_found/number_exists) stay reserved — the product-revisions
   // module was removed in favor of whole-product copy/clone (`POST /products/:id/copy`); no
   // current throw site uses them.
   E050 = 'bom_item.error.not_found',
-  // Cũng dùng cho `bomItemId` của một dòng `bom_materials` (vật tư as-used) không thuộc đúng BOM
-  // của sản phẩm trên URL — cùng khuôn kiểm tra với `E062` bên routing, khác mã vì khác resource.
+  // Cũng dùng cho `bomItemId` của một dòng `bom_materials`/`bom_operations` (vật tư/công đoạn
+  // as-used) không thuộc đúng BOM của sản phẩm trên URL — cùng khuôn kiểm tra
+  // (`BomsService.ensureBomItemInBom`), dùng chung mã vì cùng resource `bom_items`.
   E051 = 'bom_item.error.parent_not_found',
   // E052 (bom_item.error.parent_is_material) stays reserved — từ khi vật tư tách khỏi `bom_items`
   // (`bom_materials`), `bom_items` không còn hàng MATERIAL nên "cha là MATERIAL" bất khả thi.
@@ -84,7 +86,7 @@ export enum ErrorCode {
   // E055 (bom_item.error.quantity_not_integer) stays reserved — mọi node `bom_items` giờ luôn là
   // WIP (từ khi vật tư tách sang `bom_materials`) nên rule "quantity nguyên" hết điều kiện,
   // chặn thẳng ở DTO (`@NumberField({ int: true })`), trả `422` chuẩn thay vì `AppException`.
-  E056 = 'routing_step.error.not_found',
+  E056 = 'product_operation.error.not_found',
   E057 = 'order.error.not_found',
   E058 = 'order.error.code_exists',
   // Client/staff/product refs on an order. Retired when the module was pared down to a
@@ -93,11 +95,11 @@ export enum ErrorCode {
   E059 = 'order.error.client_not_found',
   E060 = 'order.error.staff_not_found',
   E061 = 'order.error.product_not_found',
-  // `bomItemId` on a routing route doesn't reference a `bom_items` row within the URL's own
-  // product BOM — either it doesn't exist at all, or it belongs to a different product's tree.
-  E062 = 'routing_step.error.bom_item_not_found',
-  // E063 (routing_step.error.material_node) stays reserved — `bom_items` không còn hàng MATERIAL
-  // (đã tách sang `bom_materials`) nên "bomItemId trỏ vào MATERIAL" bất khả thi.
+  // E062 (product_operation.error.bom_item_not_found) stays reserved — routing as-used theo node
+  // đã tách sang `bom_operations` (dùng chung `E051` qua `BomsService.ensureBomItemInBom`, giống
+  // `bom_materials`); `product_operations` giờ thuần Cấp 0 nên không còn ca `bomItemId` để kiểm.
+  // E063 (product_operation.error.material_node) stays reserved — `bom_items` không còn hàng
+  // MATERIAL (đã tách sang `bom_materials`) nên "bomItemId trỏ vào MATERIAL" bất khả thi.
   // `positionId` on a user create/update exists (E015 already passed) but doesn't belong to the
   // effective `departmentId` (the one sent, or the user's current one when only one of the pair
   // is being changed).
@@ -205,5 +207,8 @@ export enum ErrorCode {
   // `PATCH`/`DELETE` một dòng `bom_materials` không tồn tại đúng node — tài nguyên riêng, không
   // dùng chung `E050` của `bom_items`.
   E108 = 'bom_material.error.not_found',
+  // `PATCH`/`DELETE` một dòng `bom_operations` không tồn tại đúng node — cùng lý do `E108`, khác
+  // resource.
+  E109 = 'bom_operation.error.not_found',
   V003 = 'common.error.too_many_requests',
 }

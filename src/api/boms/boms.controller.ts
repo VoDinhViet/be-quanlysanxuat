@@ -14,7 +14,6 @@ import { CurrentUser } from '../../decorators/current-user.decorator';
 import { ApiAuth, ApiPublic } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
-import { BomItemNodeResDto } from './dto/bom-item-node.res.dto';
 import { BomItemResDto } from './dto/bom-item.res.dto';
 import { CreateBomItemReqDto } from './dto/create-bom-item.req.dto';
 import { UpdateBomItemReqDto } from './dto/update-bom-item.req.dto';
@@ -39,30 +38,29 @@ export class BomsController {
   @Post('items')
   @Permissions('products:bom-manage')
   @ApiAuth({
-    type: BomItemNodeResDto,
     summary:
       'Add a BOM node ("[+]") as a child of parentId, or top-level if omitted',
-    statusCode: HttpStatus.CREATED,
+    statusCode: HttpStatus.NO_CONTENT,
   })
   addItem(
     @UUIDParam('productId') productId: string,
     @Body() reqDto: CreateBomItemReqDto,
     @CurrentUser() payload: JwtPayloadType,
-  ): Promise<BomItemNodeResDto> {
+  ): Promise<void> {
     return this.bomsService.addBomItem(productId, reqDto, payload.userId);
   }
 
   @Patch('items/:itemId')
   @Permissions('products:bom-manage')
   @ApiAuth({
-    type: BomItemNodeResDto,
     summary: 'Edit a BOM node (inline SL/note/order)',
+    statusCode: HttpStatus.NO_CONTENT,
   })
   updateItem(
     @UUIDParam('productId') productId: string,
     @UUIDParam('itemId') itemId: string,
     @Body() reqDto: UpdateBomItemReqDto,
-  ): Promise<BomItemNodeResDto> {
+  ): Promise<void> {
     return this.bomsService.updateBomItem(productId, itemId, reqDto);
   }
 

@@ -59,7 +59,7 @@ không phải `/api/health`.
 
 ## Modules
 
-29 module dưới `src/api/`. `users` là module tham chiếu cho code mới (controller/service, DTO, lỗi,
+30 module dưới `src/api/`. `users` là module tham chiếu cho code mới (controller/service, DTO, lỗi,
 phân trang — chi tiết ở `.claude/rules/`). Đăng ký module mới trong `src/app.module.ts`. Cột `Domain`
 là file dưới `docs/domains/`, `—` nghĩa là hạ tầng thuần, không thuộc domain nghiệp vụ nào.
 
@@ -76,7 +76,8 @@ là file dưới `docs/domains/`, `—` nghĩa là hạ tầng thuần, không t
 | `product-groups` | product-structure | |
 | `boms` | product-structure | mount ở `/products/:productId/bom` |
 | `bom-materials` | product-structure | vật tư as-used của một node BOM, mount ở `.../bom/items/:itemId/materials`; import `BomsModule` |
-| `routing` | product-structure | mount ở `/products/:productId/operations` **và** `.../bom/items/:itemId/operations` |
+| `bom-operations` | product-structure | công đoạn as-used của một node BOM, mount ở `.../bom/items/:itemId/operations`; import `BomsModule`, cùng khuôn `bom-materials` |
+| `product-operations` | product-structure | công đoạn Cấp 0 của chính sản phẩm gốc, mount ở `/products/:productId/operations` |
 | `materials` | partners | |
 | `material-groups` | partners | danh mục duy nhất yêu cầu quyền (`materials:read`) |
 | `suppliers` | partners | |

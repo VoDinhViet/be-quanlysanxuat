@@ -11,5 +11,5 @@ export class ProductDetailResDto extends ProductResDto {
     nullable: true,
     description: 'Sản phẩm gốc được sao chép từ (nếu là bản sao)',
   })
-  source!: ProductRefResDto | null;
+  clonedFrom!: ProductRefResDto | null;
 }

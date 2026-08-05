@@ -8,21 +8,20 @@ import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
   bomItems,
+  bomOperations,
   boms,
   files,
+  operations,
   products,
   ProductType,
-  routingSteps,
   units,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { FilesService } from '../files/files.service';
-import { BomItemNodeResDto } from './dto/bom-item-node.res.dto';
 import { BomItemResDto } from './dto/bom-item.res.dto';
 import { CreateBomItemReqDto } from './dto/create-bom-item.req.dto';
 import { UpdateBomItemReqDto } from './dto/update-bom-item.req.dto';
-import type { BomItem, BomTreeOperationRow } from './types/bom-tree.type';
-import { formatLtreeNodeId } from './utils/ltree.util';
+import type { BomItem, BomOperation } from './types/bom-tree.type';
 
 // Hai join riêng biệt vào cùng bảng `files` (ảnh sản phẩm + bản vẽ riêng của node) cần alias để
 // không đụng nhau trong cùng một query.
@@ -92,7 +91,7 @@ export class BomsService {
     productId: string,
     reqDto: CreateBomItemReqDto,
     userId: string,
-  ): Promise<BomItemNodeResDto> {
+  ): Promise<void> {
     await this.ensureProductExists(productId);
     await this.ensureProductIsWip(reqDto.productId);
 
@@ -120,7 +119,7 @@ export class BomsService {
       await this.filesService.linkFiles([reqDto.drawingFileId]);
     }
 
-    const { bomId, itemId } = await this.db.transaction(async (tx) => {
+    await this.db.transaction(async (tx) => {
       const bomId = await this.getOrCreateBomId(
         tx,
         productId,
@@ -128,46 +127,32 @@ export class BomsService {
         userId,
       );
 
-      const newItemId = crypto.randomUUID();
-      let parentPath: string | null = null;
       let parentLevel = 0;
 
       if (reqDto.parentId) {
         const parentItem = await tx.query.bomItems.findFirst({
-          columns: { path: true, level: true },
+          columns: { level: true },
           where: eq(bomItems.id, reqDto.parentId),
         });
         if (parentItem) {
-          parentPath = parentItem.path;
           parentLevel = parentItem.level ?? 1;
         }
       }
 
       const itemLevel = reqDto.parentId ? parentLevel + 1 : 1;
-      const nodeKey = formatLtreeNodeId(newItemId);
-      const itemPath = parentPath ? `${parentPath}.${nodeKey}` : nodeKey;
 
-      const [item] = await tx
-        .insert(bomItems)
-        .values({
-          id: newItemId,
-          bomId,
-          parentId: reqDto.parentId ?? null,
-          productId: reqDto.productId,
-          quantity: reqDto.quantity,
-          path: itemPath,
-          level: itemLevel,
-          sortOrder: reqDto.sortOrder ?? 0,
-          note: reqDto.note,
-          drawingFileId: reqDto.drawingFileId ?? null,
-          createdBy: userId,
-        })
-        .returning({ id: bomItems.id });
-
-      return { bomId, itemId: item.id };
+      await tx.insert(bomItems).values({
+        bomId,
+        parentId: reqDto.parentId ?? null,
+        productId: reqDto.productId,
+        quantity: reqDto.quantity,
+        level: itemLevel,
+        sortOrder: reqDto.sortOrder ?? 0,
+        note: reqDto.note,
+        drawingFileId: reqDto.drawingFileId ?? null,
+        createdBy: userId,
+      });
     });
-
-    return this.getBomItemDetail(bomId, itemId);
   }
 
   /** Chỉ sửa SL/note/drawing — `productId`/`parentId` bất biến, đổi thì xoá + thêm lại. */
@@ -175,7 +160,7 @@ export class BomsService {
     productId: string,
     itemId: string,
     reqDto: UpdateBomItemReqDto,
-  ): Promise<BomItemNodeResDto> {
+  ): Promise<void> {
     await this.ensureProductExists(productId);
 
     const bom = await this.getBomOrThrow(productId);
@@ -209,8 +194,6 @@ export class BomsService {
     ) {
       await this.filesService.deleteFileById(item.drawingFileId);
     }
-
-    return this.getBomItemDetail(bom.id, itemId);
   }
 
   async deleteBomItem(productId: string, itemId: string): Promise<void> {
@@ -224,83 +207,35 @@ export class BomsService {
       .where(and(eq(bomItems.id, itemId), eq(bomItems.bomId, bom.id)));
   }
 
-  /** Select phẳng dùng chung cho đọc cây và re-fetch một node sau write — chỉ khác `.where()`.
-   * Mọi node giờ luôn trỏ `products`, không còn coalesce hai nguồn như trước khi tách vật tư. */
-  private baseItemSelect() {
-    return this.db
-      .select({
-        id: bomItems.id,
-        parentId: bomItems.parentId,
-        productId: bomItems.productId,
-        code: products.code,
-        name: products.name,
-        image: getTableColumns(imageFiles),
-        unit: getTableColumns(units),
-        quantity: bomItems.quantity,
-        sortOrder: bomItems.sortOrder,
-        level: bomItems.level,
-        note: bomItems.note,
-        drawing: getTableColumns(bomItemDrawingFiles),
-      })
-      .from(bomItems)
-      .innerJoin(products, eq(bomItems.productId, products.id))
-      .innerJoin(units, eq(units.id, products.unitId))
-      .leftJoin(imageFiles, eq(imageFiles.id, products.imageFileId))
-      .leftJoin(
-        bomItemDrawingFiles,
-        eq(bomItems.drawingFileId, bomItemDrawingFiles.id),
-      );
-  }
-
-  private async getBomItemDetail(
-    bomId: string,
-    itemId: string,
-  ): Promise<BomItemNodeResDto> {
-    // `as BomItem[]` — Drizzle suy sai kiểu `unit`/`drawing`/`image` sau khi schema có thêm
-    // nhiều quan hệ trỏ `users`, ép lại cho đúng thực tế (không đổi hành vi runtime).
-    const [row] = (await this.baseItemSelect().where(
-      and(eq(bomItems.id, itemId), eq(bomItems.bomId, bomId)),
-    )) as BomItem[];
-
-    if (!row) {
-      throw new AppException(ErrorCode.E050, HttpStatus.NOT_FOUND);
-    }
-
-    return plainToInstance(BomItemNodeResDto, row, {
-      excludeExtraneousValues: true,
-    });
-  }
-
-  /** Fetch gộp routing as-used cho một lượt đọc BOM: một query cho mọi node, gom vào `Map` để gắn
-   * theo node. Mọi hàng `bom_items` giờ đều routable — không còn loại trừ MATERIAL. */
+  /** Fetch gộp công đoạn as-used cho một lượt đọc BOM: một query cho mọi node, gom vào `Map` để
+   * gắn theo node. Mọi hàng `bom_items` giờ đều routable — không còn loại trừ MATERIAL. */
   private async loadOperationsByBomItem(
     rows: BomItem[],
-  ): Promise<Map<string, BomTreeOperationRow[]>> {
-    const grouped = new Map<string, BomTreeOperationRow[]>();
+  ): Promise<Map<string, BomOperation[]>> {
+    const grouped = new Map<string, BomOperation[]>();
     if (!rows.length) {
       return grouped;
     }
 
-    const steps = await this.db.query.routingSteps.findMany({
-      where: inArray(
-        routingSteps.bomItemId,
-        rows.map((row) => row.id),
-      ),
-      with: { operation: true },
-      orderBy: [asc(routingSteps.sortOrder), asc(routingSteps.createdAt)],
-    });
+    const bomOperationRows = await this.db
+      .select({
+        ...getTableColumns(bomOperations),
+        operation: getTableColumns(operations),
+      })
+      .from(bomOperations)
+      .innerJoin(operations, eq(bomOperations.operationId, operations.id))
+      .where(
+        inArray(
+          bomOperations.bomItemId,
+          rows.map((row) => row.id),
+        ),
+      )
+      .orderBy(asc(bomOperations.sortOrder), asc(bomOperations.createdAt));
 
-    for (const step of steps) {
-      // Luôn có giá trị theo cách query được scope (chỉ lấy target bom_item_id), nhưng cột vẫn
-      // nullable ở tầng schema (XOR với product_id) — narrow trước khi dùng.
-      if (!step.bomItemId) {
-        continue;
-      }
-      const list = grouped.get(step.bomItemId) ?? [];
-      // `operationId` là FK bắt buộc, `operation` luôn đúng 1 dòng — Drizzle suy sai kiểu thành
-      // one|many sau khi schema có thêm nhiều quan hệ trỏ `users`, ép lại cho đúng thực tế.
-      list.push(step as BomTreeOperationRow);
-      grouped.set(step.bomItemId, list);
+    for (const row of bomOperationRows) {
+      const operations = grouped.get(row.bomItemId) ?? [];
+      operations.push(row);
+      grouped.set(row.bomItemId, operations);
     }
 
     return grouped;

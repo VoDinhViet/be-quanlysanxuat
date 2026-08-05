@@ -25,7 +25,8 @@ quyền dùng chung), `products:copy` để nhân bản.
 `products:bom-manage`** — đúng người dựng sản phẩm lại không dựng được BOM. Xem
 `docs/domains/identity-access.md`.
 
-Các route `GET` của cả ba module đều `@ApiPublic()` — **đọc cấu trúc sản phẩm không cần đăng nhập**.
+Các route `GET` của mọi module trong nhóm này đều `@ApiPublic()` — **đọc cấu trúc sản phẩm không cần
+đăng nhập**.
 
 ## Preconditions
 
@@ -33,10 +34,9 @@ Các route `GET` của cả ba module đều `@ApiPublic()` — **đọc cấu t
 - Thêm node BOM: sản phẩm gốc tồn tại; node phải trỏ tới một WIP (`E053`); node cha (nếu có) phải
   cùng cây; `quantity` phải nguyên dương (chặn ở DTO, `422` chuẩn — không còn `ErrorCode` riêng).
 - Thêm vật tư cho một node: vật tư tồn tại (`E035`); node đó phải thuộc đúng sản phẩm trên URL
-  (`E051`) — cùng khuôn kiểm tra `RoutingService` dùng cho công đoạn (`E062`), khác mã vì khác
-  resource.
-- Thêm công đoạn cho node: node phải thuộc đúng sản phẩm trên URL (`E062`). Không còn ràng buộc
-  "phải là node PRODUCT" — mọi node `bom_items` giờ luôn là PRODUCT.
+  (`E051`) — cùng khuôn kiểm tra `BomOperationsService` dùng cho công đoạn.
+- Thêm công đoạn cho node: node phải thuộc đúng sản phẩm trên URL (`E051`, cùng khuôn kiểm tra với
+  vật tư). Không còn ràng buộc "phải là node PRODUCT" — mọi node `bom_items` giờ luôn là PRODUCT.
 
 ## Flow
 
@@ -69,8 +69,8 @@ theo nó; BOM, đơn hàng và sản xuất đều nhận sản phẩm `INACTIVE
 
 - Node BOM đầu tiên (hoặc công đoạn Cấp 0 đầu tiên) kéo theo việc tạo header `boms` — bước ẩn duy
   nhất của workflow này. Vật tư thì không thể là bước này — luôn cần một node có sẵn để gắn vào.
-- Xoá một node giữa cây **cascade sạch cả nhánh con, routing as-used và vật tư as-used của chúng**,
-  không cảnh báo, không đếm trước.
+- Xoá một node giữa cây **cascade sạch cả nhánh con, công đoạn as-used (`bom_operations`) và vật tư
+  as-used (`bom_materials`) của chúng**, không cảnh báo, không đếm trước.
 - Nhân bản chỉ clone **cấu trúc + vật tư as-used**: các WIP/vật tư được tham chiếu giữ nguyên id,
   không được clone theo. Bản sao và bản gốc trỏ chung các dòng `files`, đúng ý nghĩa registry.
 
@@ -88,10 +88,10 @@ theo nó; BOM, đơn hàng và sản xuất đều nhận sản phẩm `INACTIVE
 | Đơn vị tính sai scope | `E043` |
 | Node trỏ tới FG thay vì WIP | `E053` |
 | Số lượng WIP không nguyên | `422` (validate DTO, không còn `ErrorCode`) |
-| Node không thuộc sản phẩm trên URL — vật tư | `E051` |
-| Node không thuộc sản phẩm trên URL — công đoạn | `E062` |
+| Node không thuộc sản phẩm trên URL — vật tư/công đoạn | `E051` |
 | Vật tư không tồn tại | `E035` |
 | Dòng vật tư (`PATCH`/`DELETE`) không tồn tại | `E108` |
+| Dòng công đoạn (`PATCH`/`DELETE`) không tồn tại | `E109` |
 
 Ngoài phạm vi kiểm: chu trình **xuyên cây** (BOM của A chứa B, BOM riêng của B chứa A) lọt hoàn
 toàn; node anh em trùng nhau hợp lệ. Xem `docs/domains/product-structure.md`.
@@ -111,5 +111,6 @@ này chảy xuống `orders` (mỗi dòng đơn một `productId`) và `producti
 lấy `productId` + số lượng, không đọc BOM và không đọc routing**.
 
 Code: `ProductsService.createProduct`/`copyProduct`, `BomsService` (cây, `boms.controller.ts`),
-`BomMaterialsService` (vật tư as-used của node, `bom-materials.controller.ts` — module riêng, import
-`BomsModule`), `RoutingService`.
+`BomMaterialsService` (vật tư as-used của node, module riêng import `BomsModule`),
+`BomOperationsService` (công đoạn as-used của node, cùng khuôn — module riêng import `BomsModule`),
+`ProductOperationsService` (công đoạn Cấp 0).

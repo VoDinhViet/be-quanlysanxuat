@@ -2,7 +2,6 @@ import { relations, sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
   check,
-  customType,
   index,
   integer,
   numeric,
@@ -17,13 +16,6 @@ import { boms } from './boms';
 import { files } from '../files';
 import { products } from './products';
 import { users } from '../identity-access/users';
-
-/** Custom Drizzle type for PostgreSQL ltree extension */
-export const ltree = customType<{ data: string }>({
-  dataType() {
-    return 'ltree';
-  },
-});
 
 /**
  * Không còn dùng làm cột của `bom_items` (bảng này giờ thuần cấu trúc WIP) — giữ export vì
@@ -44,8 +36,8 @@ export const bomItemTypeEnum = pgEnum('bom_item_type', [
 /**
  * One line of the BOM structure tree — always a WIP sub-assembly. The FG root ("Cấp 0") is NOT
  * stored here — top-level items carry `parentId = null` and represent the root's direct children
- * ("Cấp 1"). `path` (ltree) and `level` store hierarchical path & depth level for fast tree
- * queries. Materials live in `bom_materials`, as-used against a specific node here.
+ * ("Cấp 1"). `level` stores 1-based depth, read straight into the response. Materials live in
+ * `bom_materials`, as-used against a specific node here.
  */
 export const bomItems = pgTable(
   'bom_items',
@@ -68,8 +60,6 @@ export const bomItems = pgTable(
       scale: 3,
       mode: 'number',
     }).notNull(),
-    // Path and level for hierarchical tree acceleration
-    path: ltree('path'),
     level: integer('level').notNull().default(1),
     // Deterministic sibling ordering — the UI's "STT" (e.g. "1.0.3") is presentational, derived
     // from tree position + this.
@@ -95,7 +85,6 @@ export const bomItems = pgTable(
     index('idx_bom_items_product_id').on(table.productId),
     index('idx_bom_items_created_by').on(table.createdBy),
     index('idx_bom_items_drawing_file_id').on(table.drawingFileId),
-    index('idx_bom_items_path').on(table.path),
     check('chk_bom_items_quantity_positive', sql`quantity > 0`),
   ],
 );

@@ -23,9 +23,10 @@ erDiagram
     BOM_ITEMS }o--|| PRODUCTS : "node luôn là WIP"
     BOM_ITEMS ||--o{ BOM_MATERIALS : "vật tư as-used của node"
     BOM_MATERIALS }o--|| MATERIALS : "vật tư"
-    PRODUCTS ||--o{ ROUTING_STEPS : "routing Cấp 0 (productId)"
-    BOM_ITEMS ||--o{ ROUTING_STEPS : "routing as-used (bomItemId)"
-    ROUTING_STEPS }o--|| OPERATIONS : "công đoạn"
+    BOM_ITEMS ||--o{ BOM_OPERATIONS : "công đoạn as-used của node"
+    BOM_OPERATIONS }o--|| OPERATIONS : "công đoạn"
+    PRODUCTS ||--o{ PRODUCT_OPERATIONS : "routing Cấp 0 (productId)"
+    PRODUCT_OPERATIONS }o--|| OPERATIONS : "công đoạn"
 
     CLIENTS ||--o{ ORDERS : đặt
     ORDERS ||--o{ ORDER_ITEMS : gồm
@@ -68,13 +69,13 @@ khỏi sơ đồ trên cho gọn, xem `docs/domains/partners.md`.
 
 **Tạo sản phẩm** (`ProductsService.createProduct`): một `INSERT` đơn vào `products`, không cần
 transaction. **`boms`/`bom_items` KHÔNG được tạo ở bước này** — BOM sinh ra lười (get-or-create)
-ngay trong transaction ghi node/công đoạn đầu tiên, qua `POST /products/:productId/bom/items` hoặc
-`.../operations`. `bom_materials` viết riêng qua `.../bom/items/:itemId/materials`
-(`BomMaterialsModule`) — luôn gắn vào một node có sẵn, không còn Cấp 0, nên không bao giờ là điểm
-sinh lười của `boms`. `routing_steps` viết riêng theo từng node qua
-`/products/:productId/bom/items/:itemId/operations*` — cùng khuôn mount kép. `POST /products/:id/copy`
-đọc trước toàn bộ (cây BOM, vật tư as-used, routing Cấp 0 + as-used) rồi ghi lại tất cả — kể cả
-header `boms` — trong một transaction, ghi `sourceProductId` vào bản clone. Chi tiết từng bước:
+ngay trong transaction ghi node đầu tiên, qua `POST /products/:productId/bom/items`. `bom_materials`
+viết riêng qua `.../bom/items/:itemId/materials` (`BomMaterialsModule`) và `bom_operations` viết
+riêng qua `.../bom/items/:itemId/operations` (`BomOperationsModule`) — cả hai luôn gắn vào một node
+có sẵn, không còn Cấp 0, nên không bao giờ là điểm sinh lười của `boms`. `product_operations` (thuần Cấp
+0) viết riêng qua `POST /products/:productId/operations`. `POST /products/:id/copy` đọc trước toàn
+bộ (cây BOM, vật tư as-used, công đoạn as-used, routing Cấp 0) rồi ghi lại tất cả — kể cả header
+`boms` — trong một transaction, ghi `sourceProductId` vào bản clone. Chi tiết từng bước:
 `docs/workflows/product-setup.md`.
 
 **Duyệt đơn hàng** (`OrdersService.approveOrder`, chỉ hợp lệ từ `PENDING_CONFIRMATION` — `E074` nếu
@@ -119,12 +120,12 @@ import `AuthModule`/`InventoryModule` (không import ngược `OrdersModule`), n
 `startJob`). Chiều còn lại không tồn tại — `PurchaseRequestsModule` không import
 `ProductionJobsModule`, chỉ `export: [PurchaseRequestsService]` để bị inject vào.
 
-`BomsModule`/`RoutingModule` không import `ProductsModule` — cả hai truy vấn
-`products`/`boms`/`bom_items`/`routing_steps`/`operations` thẳng qua `DRIZZLE`, không qua service
+`BomsModule`/`ProductOperationsModule` không import `ProductsModule` — cả hai truy vấn
+`products`/`boms`/`bom_items`/`product_operations`/`operations` thẳng qua `DRIZZLE`, không qua service
 của module khác. `BomsModule` import `FilesModule` để link/xoá file bản vẽ của node;
-`RoutingModule` không cần vì routing không mang file riêng. `BomMaterialsModule` import `BomsModule`
-để dùng chung `ensureProductExists`/`ensureBomItemInBom` (public trên `BomsService`) — chiều ngược
-lại không tồn tại.
+`ProductOperationsModule` không cần vì routing không mang file riêng. `BomMaterialsModule`/`BomOperationsModule`
+đều import `BomsModule` để dùng chung `ensureProductExists`/`ensureBomItemInBom` (public trên
+`BomsService`) — chiều ngược lại không tồn tại.
 
 ## Bất biến xuyên module
 
@@ -134,11 +135,11 @@ Những sự thật này không nằm trọn trong một `docs/domains/<x>.md` n
   `orders` là bản chụp một dòng `client_contacts` tại thời điểm submit, không phải FK — vì
   `ClientsService.replaceContacts` xoá+chèn lại toàn bộ contact mỗi lần sửa client, nên id contact
   không ổn định để tham chiếu lâu dài.
-- **`routing_steps` khoá theo đúng một trong `productId`/`bomItemId`** (CHECK
-  `chk_routing_steps_target`). **`bom_materials` cùng tinh thần as-used** nhưng đơn giản hơn —
-  `bomItemId` NOT NULL, không còn Cấp 0/CHECK XOR. Cùng một WIP xuất hiện ở 2 vị trí cha khác nhau
-  trong 2 cây BOM khác nhau có thể mang routing/vật tư khác nhau — cả hai "as-used" theo node, không
-  phải thuộc tính của sản phẩm.
+- **`product_operations` giờ thuần Cấp 0** — `productId` NOT NULL, chỉ routing của chính sản phẩm gốc.
+  Routing as-used của một node sống ở `bom_operations` (`bomItemId` NOT NULL), cùng khuôn
+  `bom_materials` — không còn CHECK XOR như trước khi tách. Cùng một WIP xuất hiện ở 2 vị trí cha
+  khác nhau trong 2 cây BOM khác nhau có thể mang routing/vật tư khác nhau — cả hai "as-used" theo
+  node, không phải thuộc tính của sản phẩm.
 - **`bom_items` giờ thuần cấu trúc** — mọi node luôn trỏ một WIP (`productId` NOT NULL), không còn
   discriminator `itemType`.
 - **`itemType` quyết định `productId`/`materialId` trên mọi bảng kho** (`inventory_receipt_items`,

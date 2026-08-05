@@ -603,6 +603,27 @@
       "when": 1785837623623,
       "tag": "0085_rename_bom_item_materials_to_bom_materials",
       "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1785894486198,
+      "tag": "0086_spicy_talisman",
+      "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1785897800811,
+      "tag": "0087_rename_routing_steps_to_product_operations",
+      "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1785903222635,
+      "tag": "0088_rename_products_source_product_id_to_cloned_from_product_id",
+      "breakpoints": true
     }
   ]
 }

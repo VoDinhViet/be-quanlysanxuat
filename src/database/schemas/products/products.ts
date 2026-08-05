@@ -62,7 +62,7 @@ export const products = pgTable(
      * - Self-referencing forward reference — needs the explicit `AnyPgColumn` return type to
      *   break TypeScript's circular inference within the same table.
      */
-    sourceProductId: uuid('source_product_id').references(
+    clonedFromProductId: uuid('cloned_from_product_id').references(
       (): AnyPgColumn => products.id,
       { onDelete: 'set null' },
     ),
@@ -94,7 +94,9 @@ export const products = pgTable(
     index('idx_products_client_id').on(table.clientId),
     index('idx_products_product_group_id').on(table.productGroupId),
     index('idx_products_unit_id').on(table.unitId),
-    index('idx_products_source_product_id').on(table.sourceProductId),
+    index('idx_products_cloned_from_product_id').on(
+      table.clonedFromProductId,
+    ),
     index('idx_products_created_by').on(table.createdBy),
     index('idx_products_image_file_id').on(table.imageFileId),
   ],
@@ -121,8 +123,8 @@ export const productsRelations = relations(products, ({ one }) => ({
     fields: [products.imageFileId],
     references: [files.id],
   }),
-  source: one(products, {
-    fields: [products.sourceProductId],
+  clonedFrom: one(products, {
+    fields: [products.clonedFromProductId],
     references: [products.id],
   }),
 }));

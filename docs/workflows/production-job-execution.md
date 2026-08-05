@@ -53,7 +53,7 @@ mặc định `DRAFT`) + các dòng `purchase_request_items` cho đúng phần t
 không tạo phiếu. Trả `204`, không có nội dung — không đọc lại chi tiết Job.
 
 `bom`: đọc `production_job_bom_items` (kèm `operations`) đã copy sẵn từ Product Structure lúc duyệt
-LSX — không đọc `routing_steps`/`bom_items` sống. Tính `plannedQuantity` cho từng node ngay trong
+LSX — không đọc `bom_operations`/`bom_items` sống. Tính `plannedQuantity` cho từng node ngay trong
 service (`ProductionJobsService.resolvePlannedQuantities`) bằng cách nhân luỹ kế `quantity` (định
 mức trên 1 đơn vị cha) từ gốc xuống, nhân với SL Job — không lưu cột, không đọc lại `bom_items`.
 
@@ -141,7 +141,7 @@ mức từng công đoạn.
 ## Related domains
 
 Phần lớn `production` thuần — các route đọc chỉ đọc lại dữ liệu đã copy sẵn từ Product Structure lúc
-duyệt LSX, không đọc `routing_steps`/`bom_items` sống; `PATCH operations` cũng chỉ sửa dữ liệu
+duyệt LSX, không đọc `bom_operations`/`bom_items` sống; `PATCH operations` cũng chỉ sửa dữ liệu
 snapshot của chính Job. Ngoại lệ là `start`: đọc `inventory` (`InventoryService.getMaterialStockLevels`,
 chỉ đọc `inventory_balances`, không ghi) và **ghi** `purchase-requests`
 (`PurchaseRequestsService.createShortageRequest`) — điểm ghi-ngang-domain duy nhất trong luồng này.

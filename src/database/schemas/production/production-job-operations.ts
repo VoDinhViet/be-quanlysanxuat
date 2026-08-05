@@ -16,18 +16,18 @@ import { productionJobBomItems } from './production-job-bom-items';
 import { productionJobs } from './production-jobs';
 
 /**
- * Snapshot công đoạn as-used của từng node BOM trong một Job — copy `routing_steps` (khoá theo
+ * Snapshot công đoạn as-used của từng node BOM trong một Job — copy `bom_operations` (khoá theo
  * `bomItemId`) trong transaction duyệt LSX (`ProductionJobsService.createJobs`). Đóng băng, không
  * có route sửa — sửa routing/`operations` gốc sau đó không ảnh hưởng Job đã duyệt. Không có khái
- * niệm Cấp 0 riêng ở tầng Job — công đoạn của chính FG đọc qua `job.productId`, không snapshot ở
- * đây.
+ * niệm Cấp 0 riêng ở tầng Job — công đoạn của chính FG đọc qua `job.productId`
+ * (`product_operations`), không snapshot ở đây.
  *
  * Rules:
  * - `code`/`name`/`type` (của công đoạn) là **snapshot text**, nguồn hiển thị chính — đóng băng
  *   lúc duyệt, độc lập `operations` sống. `operationId` chỉ còn là liên kết tham khảo (`set null`
  *   khi bị xoá).
  * - Không unique `(productionJobBomItemId, operationId)` — một routing được phép lặp lại cùng
- *   công đoạn (`routing_steps` cũng vậy), ép unique sẽ nuốt mất bước khi copy.
+ *   công đoạn (`bom_operations` cũng vậy), ép unique sẽ nuốt mất bước khi copy.
  * - `code`/`name`/`type`/`sortOrder`/`note`/`operationId` vẫn đóng băng lúc duyệt. `completedQuantity`/
  *   `completedDate` là 2 cột duy nhất sửa được sau đó, qua
  *   `ProductionJobsService.updateProductionJobOperation` (`PATCH .../operations/:operationId`).

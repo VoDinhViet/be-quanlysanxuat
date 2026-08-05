@@ -14,56 +14,64 @@ import { CurrentUser } from '../../decorators/current-user.decorator';
 import { ApiAuth, ApiPublic } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
-import { CreateRoutingStepReqDto } from './dto/create-routing-step.req.dto';
-import { RoutingStepResDto } from './dto/routing-step.res.dto';
-import { UpdateRoutingStepReqDto } from './dto/update-routing-step.req.dto';
-import { RoutingService } from './routing.service';
+import { CreateProductOperationReqDto } from './dto/create-product-operation.req.dto';
+import { ProductOperationResDto } from './dto/product-operation.res.dto';
+import { UpdateProductOperationReqDto } from './dto/update-product-operation.req.dto';
+import { ProductOperationsService } from './product-operations.service';
 
-@ApiTags('Routing')
+@ApiTags('Products')
 @Controller('products/:productId/operations')
-export class RoutingController {
-  constructor(private readonly routingService: RoutingService) {}
+export class ProductOperationsController {
+  constructor(
+    private readonly productOperationsService: ProductOperationsService,
+  ) {}
 
   @Get()
   @Permissions('products:read')
   @ApiPublic({
-    type: RoutingStepResDto,
+    type: ProductOperationResDto,
     summary: "Get a product's own routing (Cấp 0, Công đoạn), in run order",
     isArray: true,
   })
-  getOperations(
+  getProductOperations(
     @UUIDParam('productId') productId: string,
-  ): Promise<RoutingStepResDto[]> {
-    return this.routingService.getRouting({ productId });
+  ): Promise<ProductOperationResDto[]> {
+    return this.productOperationsService.getProductOperations(productId);
   }
 
   @Post()
   @Permissions('products:bom-manage')
   @ApiAuth({
-    type: RoutingStepResDto,
     summary: 'Add a routing step ("[+]") for this product',
     statusCode: HttpStatus.CREATED,
   })
-  addOperation(
+  createProductOperation(
     @UUIDParam('productId') productId: string,
-    @Body() reqDto: CreateRoutingStepReqDto,
+    @Body() reqDto: CreateProductOperationReqDto,
     @CurrentUser() payload: JwtPayloadType,
-  ): Promise<RoutingStepResDto> {
-    return this.routingService.addStep({ productId }, reqDto, payload.userId);
+  ): Promise<void> {
+    return this.productOperationsService.createProductOperation(
+      productId,
+      reqDto,
+      payload.userId,
+    );
   }
 
   @Patch(':stepId')
   @Permissions('products:bom-manage')
   @ApiAuth({
-    type: RoutingStepResDto,
     summary: 'Edit a routing step (STT chạy/note)',
   })
-  updateOperation(
+  updateProductOperation(
     @UUIDParam('productId') productId: string,
     @UUIDParam('stepId') stepId: string,
-    @Body() reqDto: UpdateRoutingStepReqDto,
-  ): Promise<RoutingStepResDto> {
-    return this.routingService.updateStep({ productId }, stepId, reqDto);
+    @Body() reqDto: UpdateProductOperationReqDto,
+  ): Promise<void> {
+    return this.productOperationsService.updateProductOperation(
+      productId,
+      stepId,
+      reqDto,
+    );
   }
 
   @Delete(':stepId')
@@ -72,10 +80,13 @@ export class RoutingController {
     summary: 'Delete a routing step ("[X]")',
     statusCode: HttpStatus.NO_CONTENT,
   })
-  deleteOperation(
+  deleteProductOperation(
     @UUIDParam('productId') productId: string,
     @UUIDParam('stepId') stepId: string,
   ): Promise<void> {
-    return this.routingService.deleteStep({ productId }, stepId);
+    return this.productOperationsService.deleteProductOperation(
+      productId,
+      stepId,
+    );
   }
 }

@@ -22,7 +22,7 @@ mức FK:**
 
 | | `production_job_bom_items` (cây BOM) | `production_job_operations` (công đoạn as-used) | `production_job_materials` (vật tư) |
 | --- | --- | --- | --- |
-| Nguồn | `bom_items` (thuần cấu trúc WIP), id nhân bản hoàn toàn mới | `routing_steps` as-used của từng node BOM (`bomItemId`), `productionJobBomItemId` remap qua id snapshot mới | `bom_materials` (mọi dòng thuộc cây `bom_items` của sản phẩm, gộp theo vật tư), nhân với SL Job |
+| Nguồn | `bom_items` (thuần cấu trúc WIP), id nhân bản hoàn toàn mới | `bom_operations` as-used của từng node BOM (`bomItemId`), `productionJobBomItemId` remap qua id snapshot mới | `bom_materials` (mọi dòng thuộc cây `bom_items` của sản phẩm, gộp theo vật tư), nhân với SL Job |
 | Vai trò | **Snapshot thuần, đóng băng vĩnh viễn** | **Snapshot cấu trúc đóng băng, tiến độ sửa được** | **Snapshot, hiện read-only** |
 | Độc lập master data | `code`/`name` denormalize — `productId`/`materialId` chỉ còn liên kết tham khảo (`set null`) | `code`/`name`/`type` (của công đoạn) denormalize — `operationId` chỉ còn liên kết tham khảo (`set null`) | `materialCode`/`materialName`/`unitCode`/`unitName` denormalize, `imageFileId` copy tham chiếu — `materialId` chỉ còn liên kết tham khảo (`set null`) |
 | Sửa sau khi sinh | Không có route nào sửa | `completedQuantity`/`completedDate` sửa qua `PATCH .../operations/:operationId` (ghi đè, xem dưới) — phần còn lại (`code`/`name`/`type`/`sortOrder`/`note`/`operationId`) vẫn đóng băng | **Chưa có route sửa** — tạm hoãn, dự kiến mở rộng sang CRUD từng dòng (thêm/sửa/xoá) sau này |
@@ -33,7 +33,7 @@ tự dựng qua `parentId`): mỗi phần tử là một node `production_job_bo
 `production_job_operations` as-used của đúng node đó (`productionJobBomItemId` luôn có giá trị —
 mỗi bước công đoạn luôn gắn với đúng một node BOM). **Không** gồm sản phẩm FG gốc — `parentId = null`
 là node top-level, con trực tiếp của FG; không có khái niệm "Cấp 0" riêng ở tầng Job — công đoạn
-Cấp 0 của chính FG (`routing_steps.productId`) không được snapshot, đọc trực tiếp qua
+Cấp 0 của chính FG (`product_operations.productId`) không được snapshot, đọc trực tiếp qua
 `job.productId` nếu cần. `level` (độ sâu 1-based) copy nguyên từ `bom_items.level` lúc duyệt LSX,
 cùng quy ước với `GET /products/:id/bom`. Xem `docs/workflows/production-job-execution.md`.
 
@@ -161,7 +161,7 @@ Không phải invariant dù dễ tưởng:
   `docs/workflows/production-job-execution.md`. Không đi ngược: Purchase Requests không đọc/ghi gì
   vào Production.
 - **← Product Structure**: đọc **hai nguồn tách biệt** trong transaction duyệt LSX, đúng **một lần**:
-  `bom_items` (thuần cấu trúc) + `routing_steps` as-used (`bomItemId`), nhân bản sang
+  `bom_items` (thuần cấu trúc) + `bom_operations` as-used (`bomItemId`), nhân bản sang
   `production_job_bom_items`/`production_job_operations`; và `bom_materials` (gộp theo vật tư) sang
   `production_job_materials`. Ngoài thời điểm đó không đọc lại — sửa routing/BOM/vật tư sau khi đã
   duyệt không ảnh hưởng Job đã có. Tiến độ chia theo **từng công đoạn**

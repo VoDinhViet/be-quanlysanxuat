@@ -26,9 +26,9 @@ import { productionJobs } from './production-jobs';
  * - `code`/`name` là **snapshot text**, nguồn hiển thị chính — KHÔNG đọc qua `productId`/
  *   `materialId` lúc render. `productId`/`materialId` chỉ còn là liên kết tham khảo tới sản
  *   phẩm/vật tư gốc (`set null` khi bị xoá), không phải nguồn dữ liệu.
- * - Không `path`/ltree như `bom_items` — cây Job nhỏ, dựng trong bộ nhớ lúc đọc
- *   (`ProductionJobsService`, mirror `BomsService.buildTree`), không cần query theo path.
- * - `level` là snapshot copy nguyên từ `bom_items.level` lúc duyệt LSX, cùng quy ước 1-based.
+ * - `level` là snapshot copy nguyên từ `bom_items.level` lúc duyệt LSX, cùng quy ước 1-based — cây
+ *   Job nhỏ, dựng trong bộ nhớ lúc đọc qua `parentId` (`ProductionJobsService`, mirror
+ *   `BomsService`), không cần cột path riêng.
  */
 export const productionJobBomItems = pgTable(
   'production_job_bom_items',
