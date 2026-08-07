@@ -5,7 +5,7 @@
 ## Bối cảnh
 
 Hệ thống có `suppliers` (hồ sơ NCC đầy đủ: thanh toán, người đại diện, đính kèm, `creditLimit`),
-có `materials` với `supplierId` là NCC chính, có role `PROCUREMENT_MANAGER`, và có lý do phiếu kho
+có `items` (RM) với `supplierId` là NCC chính, có role `PROCUREMENT_MANAGER`, và có lý do phiếu kho
 `PURCHASE`. Nhìn từ ngoài rất giống một ERP đã có mua hàng.
 
 Không có. Đây là giả định sai tốn kém nhất với repo này.
@@ -15,7 +15,7 @@ Không có. Đây là giả định sai tốn kém nhất với repo này.
 **Không có phiếu mua hàng, không có nhận hàng theo đơn mua, không có bảng giá NCC, không có công nợ.**
 
 - `orders` là đơn **bán**, không phải đơn mua.
-- `suppliers` thuần là master data — hồ sơ để tra cứu và để `materials` trỏ tới.
+- `suppliers` thuần là master data — hồ sơ để tra cứu và để `items` (RM) trỏ tới.
 - Vật tư vào kho bằng **phiếu nhập lập tay**: `inventory_receipts` với `receiptType = PURCHASE`.
   Từ đợt thiết kế lại kho (`docs/decisions/stored-inventory-balances.md`), phiếu này **có**
   `supplierId` (NCC đã giao), `purchaseRequestId` (đề xuất mua đã sinh ra nhu cầu, tuỳ chọn) và
@@ -27,10 +27,10 @@ Không có. Đây là giả định sai tốn kém nhất với repo này.
 
 ## Hệ quả
 
-- Đừng đi tìm module/bảng mua hàng, và đừng suy ra procurement từ việc có `suppliers` + `materials`
+- Đừng đi tìm module/bảng mua hàng, và đừng suy ra procurement từ việc có `suppliers` + `items`
   hay từ việc phiếu nhập có `supplierId`/`unitPrice`.
 - `PROCUREMENT_MANAGER` trong `role.constant.ts` chỉ là một tên role; role `PURCHASING` được seed
-  chỉ có quyền trên `suppliers`/`materials`, không có quyền nào liên quan mua hàng.
+  chỉ có quyền trên `suppliers`/`items`, không có quyền nào liên quan mua hàng.
 - Muốn biết đã nhập bao nhiêu vật tư: cộng các phiếu `PNK` có `receiptType = PURCHASE`, không có
   báo cáo tổng hợp theo NCC dù `supplierId` đã có trên từng phiếu.
 

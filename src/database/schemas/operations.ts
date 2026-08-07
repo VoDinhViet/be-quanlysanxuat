@@ -68,3 +68,5 @@ export const operationsRelations = relations(operations, ({ one }) => ({
     references: [users.id],
   }),
 }));
+
+export type OperationSelect = typeof operations.$inferSelect;

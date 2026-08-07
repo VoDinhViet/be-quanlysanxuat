@@ -10,11 +10,9 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 
-import { inventoryItemTypeEnum } from './inventory-documents';
 import { warehouses } from './warehouses';
-import { materials } from '../materials/materials';
+import { items } from '../items/items';
 import { orderItems } from '../orders/order-items';
-import { products } from '../products/products';
 import { users } from '../identity-access/users';
 
 /** `_IN`/`RECEIPT` cộng tồn, `_OUT`/`ISSUE` trừ tồn — dấu bắt buộc khớp `type` (DB CHECK
@@ -71,13 +69,9 @@ export const inventoryTransactions = pgTable(
     warehouseId: uuid('warehouse_id')
       .notNull()
       .references(() => warehouses.id, { onDelete: 'restrict' }),
-    itemType: inventoryItemTypeEnum('item_type').notNull(),
-    productId: uuid('product_id').references(() => products.id, {
-      onDelete: 'restrict',
-    }),
-    materialId: uuid('material_id').references(() => materials.id, {
-      onDelete: 'restrict',
-    }),
+    itemId: uuid('item_id')
+      .notNull()
+      .references(() => items.id, { onDelete: 'restrict' }),
     type: inventoryTransactionTypeEnum('type').notNull(),
     quantity: numeric('quantity', {
       precision: 18,
@@ -97,8 +91,7 @@ export const inventoryTransactions = pgTable(
   },
   (table) => [
     index('idx_inventory_transactions_warehouse_id').on(table.warehouseId),
-    index('idx_inventory_transactions_product_id').on(table.productId),
-    index('idx_inventory_transactions_material_id').on(table.materialId),
+    index('idx_inventory_transactions_item_id').on(table.itemId),
     index('idx_inventory_transactions_order_item_id').on(table.orderItemId),
     index('idx_inventory_transactions_type').on(table.type),
     index('idx_inventory_transactions_transaction_date').on(
@@ -108,17 +101,9 @@ export const inventoryTransactions = pgTable(
       table.referenceType,
       table.referenceId,
     ),
-    index('idx_inventory_transactions_warehouse_product').on(
+    index('idx_inventory_transactions_warehouse_item').on(
       table.warehouseId,
-      table.productId,
-    ),
-    index('idx_inventory_transactions_warehouse_material').on(
-      table.warehouseId,
-      table.materialId,
-    ),
-    check(
-      'chk_inventory_transactions_target',
-      sql`(item_type = 'PRODUCT' AND product_id IS NOT NULL AND material_id IS NULL) OR (item_type = 'MATERIAL' AND material_id IS NOT NULL AND product_id IS NULL)`,
+      table.itemId,
     ),
     check(
       'chk_inventory_transactions_quantity_sign',
@@ -135,13 +120,9 @@ export const inventoryTransactionsRelations = relations(
       fields: [inventoryTransactions.warehouseId],
       references: [warehouses.id],
     }),
-    product: one(products, {
-      fields: [inventoryTransactions.productId],
-      references: [products.id],
-    }),
-    material: one(materials, {
-      fields: [inventoryTransactions.materialId],
-      references: [materials.id],
+    item: one(items, {
+      fields: [inventoryTransactions.itemId],
+      references: [items.id],
     }),
     orderItem: one(orderItems, {
       fields: [inventoryTransactions.orderItemId],

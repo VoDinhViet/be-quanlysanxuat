@@ -34,7 +34,7 @@ Không truyền gì → hỏi lại người dùng.
 1. **Inspect** — xác định tầng đích: khái niệm/bất biến → `docs/domains/`; trình tự đầu-cuối →
    `docs/workflows/`; quan hệ xuyên module → `docs/architecture.md`; quyết định đảo chiều hoặc
    ranh giới phạm vi không domain nào sở hữu → `docs/decisions/`. Một domain gộp nhiều module
-   (`product-structure` = products + boms + routing).
+   (`product-structure` = items + boms + routings).
 2. **Read** — đọc source của **mọi** module thuộc domain đó, không chỉ module vừa sửa.
 3. **Đối chiếu** — liệt kê phát hiện, **chưa sửa gì**:
    - *Độ chính xác*: business rule trong doc vs điều service thực sự làm; `ErrorCode` được `throw`

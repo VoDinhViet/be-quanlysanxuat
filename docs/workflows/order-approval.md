@@ -36,7 +36,7 @@ Bước đưa đơn tới `PENDING_CONFIRMATION` là một `PATCH /orders/:order
 2. **Ngoài transaction** — dựng kế hoạch sản xuất ban đầu:
    - Lấy mọi dòng đơn `status = NORMAL` (dòng `CANCELLED` không cần sản xuất). Không có dòng nào →
      kế hoạch rỗng, thoát sớm, không gọi tới kho.
-   - Gom `productId` duy nhất, hỏi kho **một lần** cho cả lô, truyền `excludeOrderId` = chính đơn
+   - Gom `itemId` duy nhất, hỏi kho **một lần** cho cả lô, truyền `excludeOrderId` = chính đơn
      này.
    - Với mỗi dòng, tính Đề xuất SX / Lấy từ tồn theo công thức ở `docs/domains/production.md`.
 3. **Mở transaction**:

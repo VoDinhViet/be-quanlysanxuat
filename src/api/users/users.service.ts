@@ -217,9 +217,11 @@ export class UsersService {
     // Role assignment rides along on the profile update, but the role itself lives on the login
     // credential — a user with no credential has nothing to assign to (E032). Same rules as the
     // dedicated `PATCH /users/:userId/role`; both go through `resolveRoleForAssignment`.
-    const linkedCredential = reqDto.roleId
-      ? await this.findCredentialByUserId(userId)
-      : undefined;
+    const linkedCredential =
+      reqDto.roleId || reqDto.credentialEnabled !== undefined
+        ? await this.findCredentialByUserId(userId)
+        : undefined;
+
     if (reqDto.roleId) {
       if (!linkedCredential) {
         throw new AppException(ErrorCode.E032, HttpStatus.BAD_REQUEST);
@@ -227,14 +229,35 @@ export class UsersService {
       await this.resolveRoleForAssignment(reqDto.roleId, actorCredentialId);
     }
 
-    // `roleId` has no column on `users` — peel it off before the spread.
-    const { roleId, ...userFields } = reqDto;
+    if (reqDto.credentialEnabled !== undefined && !linkedCredential) {
+      throw new AppException(ErrorCode.E032, HttpStatus.BAD_REQUEST);
+    }
+
+    // `roleId` and `credentialEnabled` have no column on `users` — peel them off before the spread.
+    const { roleId, credentialEnabled, ...userFields } = reqDto;
 
     // `updated_at` is bumped by the column's own `$onUpdate`.
     await this.db.update(users).set(userFields).where(eq(users.id, userId));
 
-    if (roleId && linkedCredential) {
-      await this.applyRoleToCredential(linkedCredential.id, roleId);
+    if (linkedCredential) {
+      const updateData: Partial<typeof credentials.$inferInsert> = {};
+      if (roleId) updateData.roleId = roleId;
+      if (credentialEnabled !== undefined) {
+        updateData.credentialEnabled = credentialEnabled;
+      }
+
+      if (Object.keys(updateData).length > 0) {
+        await this.db
+          .update(credentials)
+          .set(updateData)
+          .where(eq(credentials.id, linkedCredential.id));
+
+        if (roleId) {
+          await this.permissionsService.invalidateCredential(
+            linkedCredential.id,
+          );
+        }
+      }
     }
 
     return this.getUserDetail(userId);
@@ -387,7 +410,12 @@ export class UsersService {
       UsersService.PASSWORD_SALT_ROUNDS,
     );
 
-    await tx.insert(credentials).values({ ...credential, userId, password });
+    await tx.insert(credentials).values({
+      ...credential,
+      userId,
+      password,
+      credentialEnabled: credential.credentialEnabled ?? true,
+    });
   }
 
   async getUserDetail(userId: string): Promise<UserDetailResDto> {

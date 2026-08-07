@@ -8,7 +8,7 @@ import { unaccentILike } from '../../common/utils/search.util';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
-  materials,
+  items,
   purchaseRequestItems,
   purchaseRequests,
 } from '../../database/schemas';
@@ -35,10 +35,7 @@ export class PurchaseRequestsService {
             this.db
               .select({ one: sql`1` })
               .from(purchaseRequestItems)
-              .innerJoin(
-                materials,
-                eq(materials.id, purchaseRequestItems.materialId),
-              )
+              .innerJoin(items, eq(items.id, purchaseRequestItems.itemId))
               .where(
                 and(
                   eq(
@@ -46,8 +43,8 @@ export class PurchaseRequestsService {
                     purchaseRequests.id,
                   ),
                   or(
-                    unaccentILike(materials.name, materialKeyword),
-                    unaccentILike(materials.code, materialKeyword),
+                    unaccentILike(items.name, materialKeyword),
+                    unaccentILike(items.code, materialKeyword),
                   ),
                 ),
               ),

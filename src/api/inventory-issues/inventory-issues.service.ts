@@ -14,12 +14,11 @@ import {
   InventoryIssueType,
   inventoryIssueItems,
   inventoryIssues,
-  InventoryItemType,
   InventoryReferenceType,
   InventoryTransactionType,
-  materials,
+  items as itemsTable,
+  ItemType,
   orderItems,
-  products,
   productionJobs,
   productionOrders,
   users,
@@ -41,7 +40,7 @@ const ISSUE_DETAIL_WITH = {
   requester: true,
   poster: true,
   creator: true,
-  items: { with: { product: true, material: true } },
+  items: { with: { item: true } },
 } as const;
 
 /** Loại phiếu → loại bút toán lúc `post` — bảng đầy đủ ở `docs/domains/inventory.md`. */
@@ -218,9 +217,7 @@ export class InventoryIssuesService {
         transactionDate: issue.issueDate,
         createdBy: userId,
         lines: items.map((item) => ({
-          itemType: item.itemType,
-          productId: item.productId,
-          materialId: item.materialId,
+          itemId: item.itemId,
           // Xuất luôn trừ tồn — dấu âm.
           signedQuantity: -item.quantity,
           type: ISSUE_TYPE_TRANSACTION_TYPE[issue.issueType],
@@ -321,82 +318,51 @@ export class InventoryIssuesService {
     }
   }
 
-  /** Mỗi dòng phải đúng-một-trong `productId`/`materialId` khớp `itemType` (`E099`), mặt hàng
-   * phải tồn tại (`E100`), và `orderItemId` (nếu có) chỉ hợp lệ trên dòng `PRODUCT` + phải khớp
-   * đúng `productId` của dòng đơn hàng đó (`E107`). Không kiểm loại kho ↔ loại hàng — cố ý. */
+  /** Mặt hàng của mỗi dòng phải tồn tại (`E100`), và `orderItemId` (nếu có) chỉ hợp lệ trên dòng
+   * item FG + phải khớp đúng `itemId` của dòng đơn hàng đó (`E107`). Không kiểm loại kho ↔ loại
+   * hàng — cố ý. */
   private async ensureItemsValid(
-    items: InventoryIssueItemReqDto[],
+    lineItems: InventoryIssueItemReqDto[],
   ): Promise<void> {
-    for (const item of items) {
-      const matchesType =
-        item.itemType === InventoryItemType.PRODUCT
-          ? item.productId !== undefined && item.materialId === undefined
-          : item.materialId !== undefined && item.productId === undefined;
-
-      if (!matchesType) {
-        throw new AppException(ErrorCode.E099, HttpStatus.BAD_REQUEST);
-      }
-      if (item.orderItemId && item.itemType !== InventoryItemType.PRODUCT) {
-        throw new AppException(ErrorCode.E107, HttpStatus.BAD_REQUEST);
-      }
-    }
-
-    const productIds = [
-      ...new Set(
-        items.map((item) => item.productId).filter((id): id is string => !!id),
-      ),
-    ];
-    const materialIds = [
-      ...new Set(
-        items.map((item) => item.materialId).filter((id): id is string => !!id),
-      ),
-    ];
+    const itemIds = [...new Set(lineItems.map((item) => item.itemId))];
     const orderItemIds = [
       ...new Set(
-        items
+        lineItems
           .map((item) => item.orderItemId)
           .filter((id): id is string => !!id),
       ),
     ];
 
-    const [foundProducts, foundMaterials, foundOrderItems] = await Promise.all([
-      productIds.length
-        ? this.db.query.products.findMany({
-            columns: { id: true },
-            where: and(
-              inArray(products.id, productIds),
-              isNull(products.deletedAt),
-            ),
-          })
-        : Promise.resolve<Array<{ id: string }>>([]),
-      materialIds.length
-        ? this.db.query.materials.findMany({
-            columns: { id: true },
-            where: inArray(materials.id, materialIds),
-          })
-        : Promise.resolve<Array<{ id: string }>>([]),
+    const [foundItems, foundOrderItems] = await Promise.all([
+      this.db.query.items.findMany({
+        columns: { id: true, type: true },
+        where: and(
+          inArray(itemsTable.id, itemIds),
+          isNull(itemsTable.deletedAt),
+        ),
+      }),
       orderItemIds.length
         ? this.db.query.orderItems.findMany({
-            columns: { id: true, productId: true },
+            columns: { id: true, itemId: true },
             where: inArray(orderItems.id, orderItemIds),
           })
-        : Promise.resolve<Array<{ id: string; productId: string }>>([]),
+        : Promise.resolve<Array<{ id: string; itemId: string }>>([]),
     ]);
 
-    const foundProductIds = new Set(foundProducts.map((p) => p.id));
-    const foundMaterialIds = new Set(foundMaterials.map((m) => m.id));
+    const itemById = new Map(foundItems.map((item) => [item.id, item]));
     const orderItemById = new Map(foundOrderItems.map((oi) => [oi.id, oi]));
 
-    for (const item of items) {
-      if (item.productId && !foundProductIds.has(item.productId)) {
-        throw new AppException(ErrorCode.E100, HttpStatus.NOT_FOUND);
-      }
-      if (item.materialId && !foundMaterialIds.has(item.materialId)) {
+    for (const item of lineItems) {
+      const found = itemById.get(item.itemId);
+      if (!found) {
         throw new AppException(ErrorCode.E100, HttpStatus.NOT_FOUND);
       }
       if (item.orderItemId) {
+        if (found.type !== ItemType.FG) {
+          throw new AppException(ErrorCode.E107, HttpStatus.BAD_REQUEST);
+        }
         const orderItem = orderItemById.get(item.orderItemId);
-        if (!orderItem || orderItem.productId !== item.productId) {
+        if (!orderItem || orderItem.itemId !== item.itemId) {
           throw new AppException(ErrorCode.E107, HttpStatus.BAD_REQUEST);
         }
       }

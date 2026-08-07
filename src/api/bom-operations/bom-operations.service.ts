@@ -24,12 +24,12 @@ export class BomOperationsService {
   ) {}
 
   async getBomOperations(
-    productId: string,
+    itemId: string,
     bomItemId: string,
     reqDto: GetBomOperationsReqDto,
   ): Promise<OffsetPaginatedDto<BomOperationResDto>> {
-    await this.bomsService.ensureProductExists(productId);
-    await this.bomsService.ensureBomItemInBom(productId, bomItemId);
+    await this.bomsService.ensureItemExists(itemId);
+    await this.bomsService.ensureBomItemInBom(itemId, bomItemId);
 
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
     const where = and(
@@ -65,14 +65,15 @@ export class BomOperationsService {
     );
   }
 
-  async addBomOperation(
-    productId: string,
+  async createBomOperation(
+    itemId: string,
     bomItemId: string,
     reqDto: CreateBomOperationReqDto,
     userId: string,
   ): Promise<BomOperationResDto> {
-    await this.bomsService.ensureProductExists(productId);
-    await this.bomsService.ensureBomItemInBom(productId, bomItemId);
+    await this.bomsService.ensureItemExists(itemId);
+    await this.bomsService.ensureBomItemInBom(itemId, bomItemId);
+    await this.bomsService.ensureBomItemCanHaveOperations(bomItemId);
     await this.ensureOperationExists(reqDto.operationId);
 
     const [row] = await this.db
@@ -91,13 +92,13 @@ export class BomOperationsService {
 
   /** Chỉ sửa STT/note — `operationId` bất biến, đổi thì xoá + thêm lại. */
   async updateBomOperation(
-    productId: string,
+    itemId: string,
     bomItemId: string,
     stepId: string,
     reqDto: UpdateBomOperationReqDto,
   ): Promise<BomOperationResDto> {
-    await this.bomsService.ensureProductExists(productId);
-    await this.bomsService.ensureBomItemInBom(productId, bomItemId);
+    await this.bomsService.ensureItemExists(itemId);
+    await this.bomsService.ensureBomItemInBom(itemId, bomItemId);
     await this.ensureBomOperationExists(bomItemId, stepId);
 
     await this.db
@@ -114,12 +115,12 @@ export class BomOperationsService {
   }
 
   async deleteBomOperation(
-    productId: string,
+    itemId: string,
     bomItemId: string,
     stepId: string,
   ): Promise<void> {
-    await this.bomsService.ensureProductExists(productId);
-    await this.bomsService.ensureBomItemInBom(productId, bomItemId);
+    await this.bomsService.ensureItemExists(itemId);
+    await this.bomsService.ensureBomItemInBom(itemId, bomItemId);
     await this.ensureBomOperationExists(bomItemId, stepId);
 
     await this.db
@@ -148,7 +149,7 @@ export class BomOperationsService {
   }
 
   /** Trùng check tồn tại với `OperationsService.ensureOperationExists` — cố ý không inject qua DI
-   * để module này đứng độc lập, giống cách `BomMaterialsService.ensureMaterialExists` tự query. */
+   * để module này đứng độc lập, giống cách `ItemsService` tự query. */
   private async ensureOperationExists(operationId: string): Promise<void> {
     const existing = await this.db.query.operations.findFirst({
       columns: { id: true },

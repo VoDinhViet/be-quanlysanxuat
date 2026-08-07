@@ -2,7 +2,7 @@ import { Exclude, Expose } from 'class-transformer';
 
 import { OperationStatus, OperationType } from '../../../database/schemas';
 import {
-  ClassFieldOptional,
+  ClassField,
   DateField,
   EnumField,
   StringField,
@@ -38,8 +38,8 @@ export class OperationResDto {
   status!: OperationStatus;
 
   @Expose()
-  @ClassFieldOptional(() => UserRefResDto, { nullable: true })
-  creator!: UserRefResDto | null;
+  @ClassField(() => UserRefResDto)
+  creator!: UserRefResDto;
 
   @Expose()
   @DateField()

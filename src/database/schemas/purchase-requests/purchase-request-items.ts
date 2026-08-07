@@ -1,7 +1,7 @@
 import { relations, sql } from 'drizzle-orm';
 import { check, index, numeric, pgTable, uuid } from 'drizzle-orm/pg-core';
 
-import { materials } from '../materials/materials';
+import { items } from '../items/items';
 import { purchaseRequests } from './purchase-requests';
 
 /**
@@ -15,9 +15,9 @@ export const purchaseRequestItems = pgTable(
     purchaseRequestId: uuid('purchase_request_id')
       .notNull()
       .references(() => purchaseRequests.id, { onDelete: 'cascade' }),
-    materialId: uuid('material_id')
+    itemId: uuid('item_id')
       .notNull()
-      .references(() => materials.id, { onDelete: 'restrict' }),
+      .references(() => items.id, { onDelete: 'restrict' }),
     quantity: numeric('quantity', {
       precision: 18,
       scale: 3,
@@ -28,7 +28,7 @@ export const purchaseRequestItems = pgTable(
     index('idx_purchase_request_items_purchase_request_id').on(
       table.purchaseRequestId,
     ),
-    index('idx_purchase_request_items_material_id').on(table.materialId),
+    index('idx_purchase_request_items_item_id').on(table.itemId),
     check('chk_purchase_request_items_quantity_positive', sql`quantity > 0`),
   ],
 );
@@ -40,9 +40,9 @@ export const purchaseRequestItemsRelations = relations(
       fields: [purchaseRequestItems.purchaseRequestId],
       references: [purchaseRequests.id],
     }),
-    material: one(materials, {
-      fields: [purchaseRequestItems.materialId],
-      references: [materials.id],
+    item: one(items, {
+      fields: [purchaseRequestItems.itemId],
+      references: [items.id],
     }),
   }),
 );

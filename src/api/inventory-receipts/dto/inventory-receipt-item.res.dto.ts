@@ -1,16 +1,13 @@
 import { Exclude, Expose } from 'class-transformer';
 
-import { InventoryItemType } from '../../../database/schemas';
 import {
-  ClassFieldOptional,
-  EnumField,
+  ClassField,
   NumberField,
   NumberFieldOptional,
   StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
-import { MaterialRefResDto } from '../../materials/dto/material-ref.res.dto';
-import { ProductRefResDto } from '../../products/dto/product-ref.res.dto';
+import { ItemRefResDto } from '../../items/dto/item-ref.res.dto';
 
 @Exclude()
 export class InventoryReceiptItemResDto {
@@ -19,16 +16,8 @@ export class InventoryReceiptItemResDto {
   id!: string;
 
   @Expose()
-  @EnumField(() => InventoryItemType)
-  itemType!: InventoryItemType;
-
-  @Expose()
-  @ClassFieldOptional(() => ProductRefResDto, { nullable: true })
-  product!: ProductRefResDto | null;
-
-  @Expose()
-  @ClassFieldOptional(() => MaterialRefResDto, { nullable: true })
-  material!: MaterialRefResDto | null;
+  @ClassField(() => ItemRefResDto)
+  item!: ItemRefResDto;
 
   @Expose()
   @NumberField({ description: 'Số lượng' })

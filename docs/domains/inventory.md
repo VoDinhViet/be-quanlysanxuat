@@ -17,8 +17,8 @@ inventory_balances                      — tồn hiện tại, một dòng/(kho
 ```
 
 `inventory_balances` **dựng lại được 100%** từ `inventory_transactions` — cộng dồn mọi bút toán
-theo `(warehouseId, productId|materialId)`. Bảng tồn không phải nguồn sự thật độc lập, chỉ là cache
-có thể build lại.
+theo `(warehouseId, itemId)`. Bảng tồn không phải nguồn sự thật độc lập, chỉ là cache có thể build
+lại.
 
 **Chỉ `POSTED` mới đụng tồn kho.** Phiếu tạo ra luôn ở `DRAFT` — sửa/xoá tự do, không ảnh hưởng
 `inventory_balances`/`inventory_transactions`. `POST .../post` mới sinh bút toán và cập nhật tồn;
@@ -47,13 +47,16 @@ Gộp `PURCHASE`/`RETURN` vào cùng bút toán `RECEIPT` không mất thông ti
 bút toán làm chỗ cắm cho chuyển kho, **chưa route nào phát ra** — không có phiếu chuyển kho ở giai
 đoạn này.
 
-**Item là `products` hoặc `materials`, không có bảng chung.** Mọi bảng đụng tới mặt hàng
+**Mặt hàng là `items`, một bảng chung cho FG/WIP/RM.** Mọi bảng đụng tới mặt hàng
 (`inventory_receipt_items`, `inventory_issue_items`, `inventory_transactions`, `inventory_balances`)
-đều mang `itemType` (`PRODUCT`/`MATERIAL`) + `productId`/`materialId` nullable, ràng buộc CHECK
-"đúng một trong hai khớp `itemType`" — đúng khuôn `bom_items` (`chk_bom_items_item_type_target`).
+chỉ mang một `itemId` NOT NULL — không còn discriminator, không còn CHECK "đúng một trong hai FK
+khớp `itemType`" (xem `docs/decisions/items-merge.md`). Loại mặt hàng (FG/WIP/RM) suy từ join sang
+`items.type` khi cần lọc — `GetInventoryBalancesReqDto`/`GetInventoryTransactionsReqDto` vẫn nhận
+tham số `itemType` (nay kiểu `ItemType`), nhưng service lọc bằng subquery `inArray` trên `items`,
+không phải một cột thật trên các bảng kho.
 
-**Loại kho không ràng buộc cứng loại hàng.** `warehouses.type` (`MATERIAL`/`FINISHED_GOODS`/`WIP`)
-là nhãn phân loại/lọc — quyết định nghiệp vụ, không phải constraint kỹ thuật. Một kho `MATERIAL`
+**Loại kho không ràng buộc cứng loại hàng.** `warehouses.type` (`RM`/`FG`/`WIP`)
+là nhãn phân loại/lọc — quyết định nghiệp vụ, không phải constraint kỹ thuật. Một kho `RM`
 vẫn nhận được thành phẩm nếu người dùng chủ động lập phiếu như vậy.
 
 **Ba con số, ba ý nghĩa khác nhau** (không đổi so với trước, chỉ đổi nguồn tính `onHand`):
@@ -77,7 +80,7 @@ này. Giữ hàng thật là một feature riêng, đụng module `orders`, ngo�
 | --- | --- |
 | `warehouses` | Danh mục kho — `code`/`name`/`type`/`status`, không soft delete |
 | `inventory_receipts` | Phiếu nhập — header, vòng đời `DRAFT`/`POSTED`/`CANCELLED` |
-| `inventory_receipt_items` | Dòng phiếu nhập — `itemType` + `productId`/`materialId` + `quantity` + `unitPrice` tuỳ chọn |
+| `inventory_receipt_items` | Dòng phiếu nhập — `itemId` + `quantity` + `unitPrice` tuỳ chọn |
 | `inventory_issues` | Phiếu xuất — header, cùng vòng đời |
 | `inventory_issue_items` | Dòng phiếu xuất — cùng khuôn dòng nhập, thêm `orderItemId` tuỳ chọn |
 | `inventory_transactions` | Sổ cái — append-only, nguồn sự thật, `quantity` có dấu |
@@ -85,7 +88,7 @@ này. Giữ hàng thật là một feature riêng, đụng module `orders`, ngo�
 
 `orderItemId` trên dòng phiếu xuất (và bút toán sinh ra từ nó) là **chỗ nối duy nhất sang Orders** —
 vừa là cơ sở tính `reserved`, vừa chính là delivery tracking mà Orders chưa có. Chỉ hợp lệ trên dòng
-`itemType = PRODUCT`.
+mà `itemId` trỏ tới một item `type = FG` (service-enforced, `InventoryIssuesService.ensureItemsValid`).
 
 ## Lifecycle
 
@@ -126,8 +129,8 @@ Không có đường `CANCELLED → DRAFT`/`POSTED` — huỷ là điểm cuối
 
 ## Invariants
 
-- Mỗi dòng `inventory_balances`/bút toán trỏ đúng một trong `productId`/`materialId`, khớp
-  `itemType` (DB CHECK).
+- Mỗi dòng `inventory_balances`/bút toán/dòng phiếu mang một `itemId` NOT NULL (FK `restrict` tới
+  `items`).
 - `inventory_balances.quantity` không bao giờ âm (DB CHECK) — không thao tác nào qua API làm tồn
   một mặt hàng xuống dưới 0.
 - Phiếu `POSTED` không sửa/xoá được qua API.
@@ -135,10 +138,8 @@ Không có đường `CANCELLED → DRAFT`/`POSTED` — huỷ là điểm cuối
 
 Không phải invariant dù dễ tưởng:
 
-- **DB không đảm bảo dòng phiếu khớp `itemType` của mọi ràng buộc nghiệp vụ khác** (vd loại kho ↔
-  loại hàng) — CHECK chỉ đảm bảo "đúng một trong hai FK khớp `itemType`", không đảm bảo gì thêm.
-  Loại kho không ràng buộc loại hàng là quyết định nghiệp vụ (xem Core concepts), không phải một
-  ràng buộc bị thiếu.
+- **DB không ràng buộc loại kho ↔ loại hàng** — `warehouses.type` chỉ là nhãn (xem Core concepts),
+  không phải một ràng buộc bị thiếu, là quyết định nghiệp vụ.
 - **`reservedQuantity` trên `inventory_balances` luôn bằng 0** — cột có sẵn, chưa route nào ghi.
 - **`reserved`/`bomDemand` của vật tư hiện luôn bằng 0** — chưa có Phiếu lãnh vật tư tự động,
   chưa nổ BOM. `SHORTAGE` của vật tư **chưa bao giờ xuất hiện thực tế** qua đường đọc này (khác
@@ -155,10 +156,10 @@ Không phải invariant dù dễ tưởng:
   `productionOrderId`/`productionJobId` cho người dùng gắn thủ công.
 - **→ Purchase Requests**: `inventory_receipts.purchaseRequestId` liên kết tuỳ chọn tới đề xuất mua
   đã sinh ra nhu cầu nhập — không đảo ngược `docs/decisions/no-procurement.md`.
-- **← Product Structure**: chỉ thấy sản phẩm `FINISHED_GOOD` + `ACTIVE` trên `GET /inventory`. WIP
-  không có mặt trên màn tồn kho thành phẩm dù có thể được nhập/xuất qua phiếu (loại kho không ràng
-  buộc loại hàng).
-- **← Materials / Suppliers**: màn tồn kho vật tư lọc theo nhóm vật tư và NCC chính;
+- **← Product Structure**: chỉ thấy item `type = FG` + `ACTIVE` trên `GET /inventory`, `type = RM`
+  + `ACTIVE` trên `GET /inventory/materials`. WIP không có mặt trên màn tồn kho nào dù có thể được
+  nhập/xuất qua phiếu (loại kho không ràng buộc loại hàng).
+- **← Suppliers**: màn tồn kho vật tư lọc theo NCC chính (`items.supplierId`);
   `inventory_receipts.supplierId` liên kết tuỳ chọn NCC đã giao hàng.
 
 ## Common mistakes
@@ -169,8 +170,8 @@ Không phải invariant dù dễ tưởng:
 3. **Tưởng sửa/xoá được phiếu đã `POSTED`.** Bất biến — `cancel` rồi lập phiếu mới.
 4. **Dùng `available` của màn Kho khi tính cho một PO cụ thể.** Sẽ trừ nhu cầu của chính PO đó hai
    lần — phải truyền `excludeOrderId`.
-5. **Gắn `orderItemId` vào dòng vật tư.** Chỉ hợp lệ trên dòng `itemType = PRODUCT` của phiếu xuất.
-6. **Tưởng loại kho ràng buộc loại hàng.** Không — `warehouses.type` chỉ là nhãn, kho `MATERIAL`
+5. **Gắn `orderItemId` vào dòng vật tư (RM).** Chỉ hợp lệ trên dòng mà `itemId` là FG, ở phiếu xuất.
+6. **Tưởng loại kho ràng buộc loại hàng.** Không — `warehouses.type` chỉ là nhãn, kho `RM`
    vẫn nhận được thành phẩm nếu người dùng lập phiếu như vậy.
 7. **Tưởng vật tư đã có "đã giữ"/"tổng nhu cầu BOM" thật.** Hai field đó là **chỗ cắm sẵn**, giá
    trị 0 là do phạm vi hiện tại, không phải bug.

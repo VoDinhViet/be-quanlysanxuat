@@ -48,12 +48,12 @@ lượng **không** hỏi lại tồn kho.
 
 1. Đọc LSX join đơn gốc, kiểm bốn precondition.
 2. **Ngoài transaction** — đọc lại các dòng quyết định sản xuất và **gộp số lượng theo
-   `productId`**, bỏ sản phẩm số lượng 0. Đây là chỗ ba dòng đơn cùng một sản phẩm thu về một Job.
+   `itemId`**, bỏ item số lượng 0. Đây là chỗ ba dòng đơn cùng một item thu về một Job.
 3. **Transaction**:
    - Sinh mã `LSXxxxx` (đếm số LSX đã duyệt + 1), ghi `APPROVED` + `approvedBy`/`approvedAt`.
    - Đẩy đơn gốc `AWAITING_PRODUCTION` → `IN_PROGRESS`.
    - Sinh Job: mỗi sản phẩm một dòng, mã `JOBxxxx` cấp liên tiếp từ tổng số Job toàn bảng.
-   - Nhân bản toàn bộ cây BOM (cả `PRODUCT` lẫn `MATERIAL`) sang `production_job_bom_items` (id mới,
+   - Nhân bản toàn bộ cây BOM (cả `WIP` lẫn `RM`) sang `production_job_bom_items` (id mới,
      `code`/`name` denormalize), rồi copy routing as-used của từng node sang
      `production_job_operations` (`code`/`name`/`type` công đoạn denormalize) — đóng băng, không
      route sửa. Không có khái niệm Cấp 0 riêng ở tầng Job.

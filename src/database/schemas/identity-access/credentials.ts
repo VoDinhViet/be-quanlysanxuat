@@ -1,5 +1,12 @@
 import { relations } from 'drizzle-orm';
-import { index, pgTable, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
+import {
+  boolean,
+  index,
+  pgTable,
+  timestamp,
+  uuid,
+  varchar,
+} from 'drizzle-orm/pg-core';
 
 import { roles } from './roles';
 import { users } from './users';
@@ -10,8 +17,6 @@ import { users } from './users';
  * "admin-only login" nữa, xem `docs/domains/identity-access.md`.
  *
  * Rules:
- * - No active/inactive flag here either: trạng thái duy nhất là `users.status` (WORKING/RESIGNED)
- *   của user gắn kèm.
  * - Authorization is anchored here: `roleId` links the login identity (the JWT `sub`) to a role,
  *   so the permission layer resolves permissions straight from the token subject without needing
  *   to read `users`.
@@ -32,6 +37,7 @@ export const credentials = pgTable(
     roleId: uuid('role_id').references(() => roles.id, {
       onDelete: 'set null',
     }),
+    credentialEnabled: boolean('credential_enabled').default(true).notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at')
       .defaultNow()

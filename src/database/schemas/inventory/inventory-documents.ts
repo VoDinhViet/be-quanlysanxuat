@@ -13,15 +13,3 @@ export const inventoryDocumentStatusEnum = pgEnum('inventory_document_status', [
   InventoryDocumentStatus.POSTED,
   InventoryDocumentStatus.CANCELLED,
 ]);
-
-/** Discriminator dùng chung cho mọi bảng đụng tới mặt hàng trong domain kho — cùng khuôn
- * `BomItemType` (`bom_items.ts`). */
-export enum InventoryItemType {
-  PRODUCT = 'PRODUCT',
-  MATERIAL = 'MATERIAL',
-}
-
-export const inventoryItemTypeEnum = pgEnum('inventory_item_type', [
-  InventoryItemType.PRODUCT,
-  InventoryItemType.MATERIAL,
-]);

@@ -12,11 +12,15 @@ export enum ErrorCode {
   E003 = 'credential.error.email_exists',
   E004 = 'credential.error.invalid_credentials',
   E005 = 'user.error.code_exists',
-  E006 = 'product.error.locked',
-  E007 = 'product.error.not_found',
-  E008 = 'product.error.code_exists',
+  // Chưa từng có nơi ném — dự phòng ở thiết kế `products` cũ, không sống lại ở `items`
+  // (`docs/decisions/items-merge.md`).
+  E006 = 'item.error.locked',
+  E007 = 'item.error.not_found',
+  E008 = 'item.error.code_exists',
   E009 = 'client.error.not_found',
-  E010 = 'product_group.error.not_found',
+  // E010 (product_group.error.not_found) stays reserved — nhóm hàng hoá (product_groups/
+  // material_groups) bị bỏ hẳn khi gộp `items` (`docs/decisions/items-merge.md`); `type` là thứ
+  // duy nhất phân loại.
   E011 = 'unit.error.not_found',
   E012 = 'user.error.not_found',
   E013 = 'user.error.id_number_exists',
@@ -45,18 +49,19 @@ export enum ErrorCode {
   E032 = 'user.error.no_credential',
   E033 = 'auth.error.forbidden',
   E034 = 'role.error.elevation_forbidden',
-  E035 = 'material.error.not_found',
-  E036 = 'material.error.code_exists',
-  E037 = 'material_group.error.not_found',
-  // E038 (material_group.code_exists) and E039 (material_group.in_use) stay reserved with their
-  // original meanings — the material-group CRUD that would raise them isn't built yet.
-  E040 = 'material.error.client_required',
-  // Blocks `DELETE /materials/:materialId` when the material is still referenced by at least one
-  // `bom_items` node — the FK is `onDelete: 'restrict'`, so this turns what would otherwise be a
-  // raw 500 into a clean 409.
-  E041 = 'material.has_transactions',
+  // E035 (material.error.not_found) and E036 (material.error.code_exists) stay reserved —
+  // `materials` merged into `items`; `E007`/`E008` cover the same cases now
+  // (`docs/decisions/items-merge.md`).
+  // E037 (material_group.error.not_found) stays reserved — nhóm hàng hoá bỏ hẳn, cùng lý do E010.
+  // E038/E039 (material_group.error.code_exists/in_use) stay reserved with their original
+  // meanings — the resource they'd guard no longer exists.
+  // E040 (material.error.client_required) stays reserved — `MaterialType` (INTERNAL/CLIENT) bị bỏ
+  // khi gộp `items`; `clientId` giờ là field tự do, không còn ràng buộc theo `type`.
+  // E041 (material.has_transactions) stays reserved — xoá item giờ luôn là soft delete
+  // (`deletedAt`), không còn kiểm "đang được dùng" trước khi xoá, cùng khuôn `clients`/`orders`/
+  // `suppliers`.
   E042 = 'file.error.not_found',
-  // The unit exists but isn't assignable to this kind of entity (e.g. `Mét` on a product) —
+  // The unit exists but isn't assignable to this kind of entity (e.g. `Mét` on an FG) —
   // deliberately distinct from E011 so the client can tell a bad id from a wrong-scope unit.
   E043 = 'unit.error.scope_mismatch',
   // Download-URL signature failures. Kept distinct on purpose: E045 means "ask the API for the
@@ -68,38 +73,42 @@ export enum ErrorCode {
   // E047 (operation.error.code_exists) stays reserved — its only throw site was
   // `OperationsService.createOperation`/`updateOperation`, removed when `operations` became a
   // read-only catalogue (list only, no create/update/delete). E046 stays live:
-  // `ProductOperationsService`/`BomOperationsService` independently throw it when a routing step
+  // `RoutingsService`/`BomOperationsService` independently throw it when a routing step
   // references a missing operation.
   E047 = 'operation.error.code_exists',
   // E048/E049 (product_revision not_found/number_exists) stay reserved — the product-revisions
-  // module was removed in favor of whole-product copy/clone (`POST /products/:id/copy`); no
-  // current throw site uses them.
+  // module was removed in favor of whole-item copy/clone (`POST /items/:id/copy`); no current
+  // throw site uses them.
   E050 = 'bom_item.error.not_found',
-  // Cũng dùng cho `bomItemId` của một dòng `bom_materials`/`bom_operations` (vật tư/công đoạn
-  // as-used) không thuộc đúng BOM của sản phẩm trên URL — cùng khuôn kiểm tra
-  // (`BomsService.ensureBomItemInBom`), dùng chung mã vì cùng resource `bom_items`.
+  // Cũng dùng cho `bomItemId` của một dòng `bom_operations` (công đoạn as-used) không thuộc đúng
+  // BOM của item trên URL — cùng khuôn kiểm tra (`BomsService.ensureBomItemInBom`), dùng chung mã
+  // vì cùng resource `bom_items`.
   E051 = 'bom_item.error.parent_not_found',
-  // E052 (bom_item.error.parent_is_material) stays reserved — từ khi vật tư tách khỏi `bom_items`
-  // (`bom_materials`), `bom_items` không còn hàng MATERIAL nên "cha là MATERIAL" bất khả thi.
-  E053 = 'bom_item.error.product_not_wip',
+  // `bom_items` giờ chứa cả node WIP lẫn lá RM (`docs/decisions/items-merge.md`) — RM là lá bắt
+  // buộc, không được nhận node con. Sống lại từ chỗ reserved khi vật tư còn ở bảng riêng
+  // `bom_materials`.
+  E052 = 'bom_item.error.parent_is_leaf',
+  E053 = 'bom_item.error.item_not_wip',
   E054 = 'bom_item.error.cycle_detected',
-  // E055 (bom_item.error.quantity_not_integer) stays reserved — mọi node `bom_items` giờ luôn là
-  // WIP (từ khi vật tư tách sang `bom_materials`) nên rule "quantity nguyên" hết điều kiện,
-  // chặn thẳng ở DTO (`@NumberField({ int: true })`), trả `422` chuẩn thay vì `AppException`.
-  E056 = 'product_operation.error.not_found',
+  // WIP bắt buộc SL nguyên (cấu trúc lắp ráp); RM được phép SL lẻ (định mức vật tư) — validate ở
+  // `BomsService.ensureQuantityValid`, theo `type` của item đang thêm/sửa. Sống lại cùng lý do
+  // E052.
+  E055 = 'bom_item.error.quantity_not_integer',
+  E056 = 'routing_operation.error.not_found',
   E057 = 'order.error.not_found',
   E058 = 'order.error.code_exists',
-  // Client/staff/product refs on an order. Retired when the module was pared down to a
-  // header-only table on 2026-07-27, restored with their original meanings the same day when the
-  // module was re-expanded — so no client ever saw these codes point at anything else.
+  // Client/staff/item refs on an order. Retired when the module was pared down to a header-only
+  // table on 2026-07-27, restored with their original meanings the same day when the module was
+  // re-expanded — so no client ever saw these codes point at anything else.
   E059 = 'order.error.client_not_found',
   E060 = 'order.error.staff_not_found',
-  E061 = 'order.error.product_not_found',
-  // E062 (product_operation.error.bom_item_not_found) stays reserved — routing as-used theo node
-  // đã tách sang `bom_operations` (dùng chung `E051` qua `BomsService.ensureBomItemInBom`, giống
-  // `bom_materials`); `product_operations` giờ thuần Cấp 0 nên không còn ca `bomItemId` để kiểm.
-  // E063 (product_operation.error.material_node) stays reserved — `bom_items` không còn hàng
-  // MATERIAL (đã tách sang `bom_materials`) nên "bomItemId trỏ vào MATERIAL" bất khả thi.
+  E061 = 'order.error.item_not_found',
+  // E062 (routing_operation.error.bom_item_not_found) stays reserved — routing as-used theo node
+  // sống ở `bom_operations` (dùng chung `E051` qua `BomsService.ensureBomItemInBom`); routing Cấp 0
+  // (`routings`/`routing_operations`) không còn ca `bomItemId` để kiểm.
+  // RM là lá — không được gắn `bom_operations`. Khác `E052` (lá không được nhận node **con**): đây
+  // là lá không được gắn **công đoạn**. Sống lại cùng lý do E052.
+  E063 = 'bom_operation.error.leaf_node',
   // `positionId` on a user create/update exists (E015 already passed) but doesn't belong to the
   // effective `departmentId` (the one sent, or the user's current one when only one of the pair
   // is being changed).
@@ -185,12 +194,10 @@ export enum ErrorCode {
   // `PATCH`/`DELETE`/`post` gọi trên phiếu không còn `DRAFT`, hoặc `cancel` gọi trên phiếu đã
   // `CANCELLED`.
   E098 = 'inventory_document.error.invalid_status_transition',
-  // Dòng phiếu sai `itemType`: không đúng một trong `productId`/`materialId` khớp `itemType` gửi
-  // lên. Cùng ràng buộc với CHECK `chk_inventory_receipt_items_target`/
-  // `chk_inventory_issue_items_target`, pre-validate ở service để trả 400 sạch thay vì lộ lỗi
-  // constraint 500 thô.
-  E099 = 'inventory_document.error.item_target_mismatch',
-  // `productId`/`materialId` trên dòng phiếu không tồn tại.
+  // E099 (inventory_document.error.item_target_mismatch) stays reserved — dòng phiếu giờ chỉ có
+  // một `itemId` (không còn cặp `productId`/`materialId` + `itemType`), nên "sai target" bất khả
+  // thi (`docs/decisions/items-merge.md`).
+  // `itemId` trên dòng phiếu không tồn tại.
   E100 = 'inventory_document.error.item_not_found',
   E101 = 'class.error.teacher_not_found',
   E102 = 'class.error.invalid_teacher_assignment',
@@ -204,11 +211,14 @@ export enum ErrorCode {
   // Tham chiếu tuỳ chọn trên phiếu (`supplierId`/`purchaseRequestId`/`productionOrderId`/
   // `productionJobId`/`departmentId`/`requestedBy`/`orderItemId`) không tồn tại.
   E107 = 'inventory_document.error.invalid_reference',
-  // `PATCH`/`DELETE` một dòng `bom_materials` không tồn tại đúng node — tài nguyên riêng, không
-  // dùng chung `E050` của `bom_items`.
-  E108 = 'bom_material.error.not_found',
-  // `PATCH`/`DELETE` một dòng `bom_operations` không tồn tại đúng node — cùng lý do `E108`, khác
-  // resource.
+  // E108 (bom_material.error.not_found) stays reserved — `bom_materials` merged into `bom_items`;
+  // `E050` covers "node not found" for both node types now (`docs/decisions/items-merge.md`).
+  // `PATCH`/`DELETE` một dòng `bom_operations` không tồn tại đúng node.
   E109 = 'bom_operation.error.not_found',
+  // `POST /items/:itemId/copy` gọi trên item `type=RM` — vật tư không có cây BOM để nhân bản.
+  E110 = 'item.error.cannot_copy_raw_material',
+  // RM không có BOM (`BomsService`) hoặc routing Cấp 0 (`RoutingsService`) — chỉ FG/WIP mới
+  // có cấu trúc/công đoạn của chính nó.
+  E111 = 'item.error.raw_material_not_allowed',
   V003 = 'common.error.too_many_requests',
 }

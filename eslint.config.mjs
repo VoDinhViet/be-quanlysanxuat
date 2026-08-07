@@ -29,6 +29,11 @@ export default tseslint.config(
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-floating-promises': 'warn',
       '@typescript-eslint/no-unsafe-argument': 'warn',
+      // `ignoreRestSiblings`: cho phép pattern "loại cột khỏi object trước khi spread"
+      // (`const { code: _, createdAt, updatedAt, ...copyFields } = row`) — các field bị loại phải
+      // được đặt tên để tách khỏi `...rest`, nhưng bản thân chúng không cần dùng tới. Dùng ở
+      // `ItemsService.copyItem`/`copyBomTree`, cùng khuôn `ProductsService.copyProduct` cũ.
+      '@typescript-eslint/no-unused-vars': ['error', { ignoreRestSiblings: true }],
       "prettier/prettier": ["error", { endOfLine: "auto" }],
     },
   },

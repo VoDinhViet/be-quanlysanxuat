@@ -6,9 +6,9 @@ import {
 
 export class UpdateBomItemReqDto {
   @NumberFieldOptional({
-    int: true,
     isPositive: true,
-    description: 'SL — số nguyên',
+    description:
+      'SL — nguyên nếu node là WIP (E055 nếu lẻ), có thể lẻ nếu là RM',
   })
   readonly quantity?: number;
 

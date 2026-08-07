@@ -101,3 +101,5 @@ export const filesRelations = relations(files, ({ one }) => ({
     references: [users.id],
   }),
 }));
+
+export type FileSelect = typeof files.$inferSelect;

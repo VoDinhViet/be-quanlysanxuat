@@ -31,7 +31,7 @@ Biên HTTP: cái gì vào, cái gì ra, ai được gọi. Reference: `src/api/u
   (`src/api/clients/dto/client.res.dto.ts`).
 - A separate `XBaseResDto` (only `X`'s own table columns, no relation, sitting below `XResDto extends
   XBaseResDto`) is OPTIONAL — pull columns out into one only when something besides `XResDto` needs
-  that exact bare-column shape. Reference: `src/api/products/dto/`, `src/api/orders/dto/`. MUST NOT
+  that exact bare-column shape. Reference: `src/api/orders/dto/`, `src/api/clients/dto/`. MUST NOT
   add one with a single consumer (`XResDto` alone) — that's a needless extra file; put the columns
   directly on `XResDto` instead, as `src/api/users/dto/user.res.dto.ts` does.
 - MUST NOT put a raw FK id (`xFileId`, `xGroupId`) on any response DTO layer — the relation replaces

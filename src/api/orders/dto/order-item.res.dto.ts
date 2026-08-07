@@ -8,7 +8,7 @@ import {
   StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
-import { OrderItemProductRefResDto } from './order-item-product-ref.res.dto';
+import { OrderItemRefResDto } from './order-item-ref.res.dto';
 
 @Exclude()
 export class OrderItemResDto {
@@ -48,6 +48,6 @@ export class OrderItemResDto {
   sortOrder!: number;
 
   @Expose()
-  @ClassField(() => OrderItemProductRefResDto)
-  product!: OrderItemProductRefResDto;
+  @ClassField(() => OrderItemRefResDto)
+  item!: OrderItemRefResDto;
 }

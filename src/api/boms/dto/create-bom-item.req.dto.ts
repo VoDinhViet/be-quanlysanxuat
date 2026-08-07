@@ -7,8 +7,8 @@ import {
 } from '../../../decorators/field.decorators';
 
 export class CreateBomItemReqDto {
-  @UUIDField({ description: 'Id of the linked WIP product' })
-  readonly productId!: string;
+  @UUIDField({ description: 'Id of the linked item (WIP hoặc RM)' })
+  readonly itemId!: string;
 
   @UUIDFieldOptional({
     nullable: true,
@@ -18,9 +18,9 @@ export class CreateBomItemReqDto {
   readonly parentId?: string | null;
 
   @NumberField({
-    int: true,
     isPositive: true,
-    description: 'SL — số nguyên (mọi node giờ luôn là WIP)',
+    description:
+      'SL — nguyên nếu itemId là WIP (E055 nếu lẻ), có thể lẻ nếu itemId là RM',
   })
   readonly quantity!: number;
 

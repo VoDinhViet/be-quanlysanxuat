@@ -11,7 +11,7 @@ import {
   varchar,
 } from 'drizzle-orm/pg-core';
 
-import { products } from '../products/products';
+import { items } from '../items/items';
 import { productionJobBomItems } from './production-job-bom-items';
 import { productionJobMaterials } from './production-job-materials';
 import { productionJobNotes } from './production-job-notes';
@@ -39,7 +39,7 @@ export const productionJobStatusEnum = pgEnum('production_job_status', [
 
 /**
  * Job sản xuất — 1 sản phẩm (FG) = 1 Job trong một LSX. Số lượng gộp từ mọi dòng
- * `production_order_items` cùng `productId` trong cùng LSX — khác tầng quyết định sản xuất, tầng
+ * `production_order_items` cùng `itemId` trong cùng LSX — khác tầng quyết định sản xuất, tầng
  * này không giữ 1-1 với `orderItemId` vì Job là đơn vị công việc thực tế của xưởng, không phải
  * đơn vị kế toán kho. Đường ghi từng sinh Job ("Tạo LSX" phát hành,
  * `ProductionOrdersService.issueProductionOrders`) đã bỏ 2026-07-30; sống lại cùng ngày qua
@@ -66,9 +66,9 @@ export const productionJobs = pgTable(
     productionOrderId: uuid('production_order_id')
       .notNull()
       .references(() => productionOrders.id, { onDelete: 'cascade' }),
-    productId: uuid('product_id')
+    itemId: uuid('item_id')
       .notNull()
-      .references(() => products.id, { onDelete: 'restrict' }),
+      .references(() => items.id, { onDelete: 'restrict' }),
     quantity: numeric('quantity', {
       precision: 18,
       scale: 3,
@@ -88,11 +88,11 @@ export const productionJobs = pgTable(
       .$onUpdate(() => new Date()),
   },
   (table) => [
-    unique('uq_production_jobs_order_product').on(
+    unique('uq_production_jobs_order_item').on(
       table.productionOrderId,
-      table.productId,
+      table.itemId,
     ),
-    index('idx_production_jobs_product_id').on(table.productId),
+    index('idx_production_jobs_item_id').on(table.itemId),
     index('idx_production_jobs_status').on(table.status),
     check('chk_production_jobs_quantity', sql`quantity > 0`),
     check(
@@ -109,9 +109,9 @@ export const productionJobsRelations = relations(
       fields: [productionJobs.productionOrderId],
       references: [productionOrders.id],
     }),
-    product: one(products, {
-      fields: [productionJobs.productId],
-      references: [products.id],
+    item: one(items, {
+      fields: [productionJobs.itemId],
+      references: [items.id],
     }),
     starter: one(users, {
       fields: [productionJobs.startedBy],

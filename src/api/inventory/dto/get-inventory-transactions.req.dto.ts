@@ -1,7 +1,7 @@
 import {
-  InventoryItemType,
   InventoryReferenceType,
   InventoryTransactionType,
+  ItemType,
 } from '../../../database/schemas';
 import { PageOptionsDto } from '../../../common/dto/offset-pagination/page-options.dto';
 import {
@@ -14,14 +14,11 @@ export class GetInventoryTransactionsReqDto extends PageOptionsDto {
   @UUIDFieldOptional()
   readonly warehouseId?: string;
 
-  @EnumFieldOptional(() => InventoryItemType)
-  readonly itemType?: InventoryItemType;
+  @EnumFieldOptional(() => ItemType)
+  readonly itemType?: ItemType;
 
   @UUIDFieldOptional()
-  readonly productId?: string;
-
-  @UUIDFieldOptional()
-  readonly materialId?: string;
+  readonly itemId?: string;
 
   @EnumFieldOptional(() => InventoryTransactionType)
   readonly type?: InventoryTransactionType;

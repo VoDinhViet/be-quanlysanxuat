@@ -13,8 +13,8 @@ export class GetProductionJobsReqDto extends PageOptionsDto {
   @EnumFieldOptional(() => ProductionJobStatus)
   readonly status?: ProductionJobStatus;
 
-  @UUIDFieldOptional({ description: 'Filter by product id' })
-  readonly productId?: string;
+  @UUIDFieldOptional({ description: 'Filter by item id' })
+  readonly itemId?: string;
 
   @UUIDFieldOptional({ description: 'Filter by client id' })
   readonly clientId?: string;

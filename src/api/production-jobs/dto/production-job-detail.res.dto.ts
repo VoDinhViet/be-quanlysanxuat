@@ -2,8 +2,8 @@ import { Exclude, Expose } from 'class-transformer';
 
 import { ProductionJobStatus } from '../../../database/schemas';
 import { ClientBaseResDto } from '../../clients/dto/client-base.res.dto';
+import { ItemRefResDto } from '../../items/dto/item-ref.res.dto';
 import { OrderBaseResDto } from '../../orders/dto/order-base.res.dto';
-import { ProductRefResDto } from '../../products/dto/product-ref.res.dto';
 import {
   ClassField,
   ClassFieldOptional,
@@ -40,11 +40,11 @@ export class ProductionJobDetailResDto {
 
   @Expose()
   @UUIDField({ description: 'Id sản phẩm (FG)' })
-  productId!: string;
+  itemId!: string;
 
   @Expose()
-  @ClassField(() => ProductRefResDto, { description: 'Sản phẩm (FG)' })
-  product!: ProductRefResDto;
+  @ClassField(() => ItemRefResDto, { description: 'Sản phẩm (FG)' })
+  item!: ItemRefResDto;
 
   @Expose()
   @NumberField({ description: 'SL cần sản xuất — đã gộp theo sản phẩm' })

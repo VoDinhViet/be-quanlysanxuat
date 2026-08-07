@@ -1,6 +1,5 @@
 import { Exclude, Expose } from 'class-transformer';
 
-import { MaterialType } from '../../../database/schemas';
 import {
   ClassField,
   ClassFieldOptional,
@@ -10,8 +9,8 @@ import {
   UUIDField,
 } from '../../../decorators/field.decorators';
 import { FileResDto } from '../../files/dto/file.res.dto';
-import { MaterialRefResDto } from '../../materials/dto/material-ref.res.dto';
 import { SupplierRefResDto } from '../../suppliers/dto/supplier-ref.res.dto';
+import { UnitResDto } from '../../units/dto/unit.res.dto';
 import { MaterialStockStatus } from '../inventory.constant';
 
 @Exclude()
@@ -29,16 +28,8 @@ export class MaterialInventoryItemResDto {
   name!: string;
 
   @Expose()
-  @EnumField(() => MaterialType)
-  type!: MaterialType;
-
-  @Expose()
-  @ClassField(() => MaterialRefResDto)
-  unit!: MaterialRefResDto;
-
-  @Expose()
-  @ClassField(() => MaterialRefResDto)
-  group!: MaterialRefResDto;
+  @ClassField(() => UnitResDto)
+  unit!: UnitResDto;
 
   @Expose()
   @ClassFieldOptional(() => SupplierRefResDto, { nullable: true })

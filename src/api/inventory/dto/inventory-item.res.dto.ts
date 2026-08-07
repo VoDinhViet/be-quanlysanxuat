@@ -4,38 +4,32 @@ import { FileField } from '../../files/dto/file.field';
 import { FileResDto } from '../../files/dto/file.res.dto';
 import {
   ClassField,
-  ClassFieldOptional,
   NumberField,
   StringField,
   UUIDField,
 } from '../../../decorators/field.decorators';
-import { ProductRefResDto } from '../../products/dto/product-ref.res.dto';
 import { UnitResDto } from '../../units/dto/unit.res.dto';
 
 @Exclude()
 export class InventoryItemResDto {
   @Expose()
-  @UUIDField({ description: 'Product id' })
+  @UUIDField({ description: 'Item id' })
   id!: string;
 
   @Expose()
-  @StringField({ description: 'Product code' })
+  @StringField({ description: 'Item code' })
   code!: string;
 
   @Expose()
-  @StringField({ description: 'Product name' })
+  @StringField({ description: 'Item name' })
   name!: string;
-
-  @Expose()
-  @ClassFieldOptional(() => ProductRefResDto, { nullable: true })
-  group!: ProductRefResDto | null;
 
   @Expose()
   @ClassField(() => UnitResDto)
   unit!: UnitResDto;
 
   @Expose()
-  @FileField('imageFile', 'Product image')
+  @FileField('imageFile', 'Item image')
   image!: FileResDto | null;
 
   @Expose()

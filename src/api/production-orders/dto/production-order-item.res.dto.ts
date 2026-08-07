@@ -1,6 +1,6 @@
 import { Exclude, Expose } from 'class-transformer';
 
-import { OrderItemProductRefResDto } from '../../orders/dto/order-item-product-ref.res.dto';
+import { OrderItemRefResDto } from '../../orders/dto/order-item-ref.res.dto';
 import {
   ClassField,
   NumberField,
@@ -14,8 +14,8 @@ export class ProductionOrderItemResDto {
   orderItemId!: string;
 
   @Expose()
-  @ClassField(() => OrderItemProductRefResDto)
-  product!: OrderItemProductRefResDto;
+  @ClassField(() => OrderItemRefResDto)
+  item!: OrderItemRefResDto;
 
   @Expose()
   @NumberField({

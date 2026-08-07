@@ -8,8 +8,8 @@ import {
 } from '../../../decorators/field.decorators';
 
 export class OrderItemReqDto {
-  @UUIDField({ description: 'Product id (FINISHED_GOOD or WORK_IN_PROGRESS)' })
-  readonly productId!: string;
+  @UUIDField({ description: 'Item id (FG hoặc WIP)' })
+  readonly itemId!: string;
 
   @NumberField({ isPositive: true, description: 'Số lượng' })
   readonly quantity!: number;

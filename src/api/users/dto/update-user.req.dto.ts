@@ -1,5 +1,6 @@
 import { UserGender, UserStatus } from '../../../database/schemas';
 import {
+  BooleanFieldOptional,
   DateFieldOptional,
   EmailFieldOptional,
   EnumFieldOptional,
@@ -61,4 +62,9 @@ export class UpdateUserReqDto {
     description: "Role id to assign to this user's login credential",
   })
   roleId?: string;
+
+  @BooleanFieldOptional({
+    description: "Enable or disable this user's login credential",
+  })
+  credentialEnabled?: boolean;
 }

@@ -29,8 +29,7 @@ phê duyệt hai cấp.
 Lập/sửa phiếu — chạy **trước** transaction:
 
 1. Kho tồn tại và `ACTIVE` (`E092`/`E094`).
-2. Mọi dòng có `itemType` khớp đúng id gửi lên (đúng một trong `productId`/`materialId`, `E099`) và
-   mặt hàng tồn tại (`E100`).
+2. Mọi dòng có `itemId` trỏ tới một item còn sống (`E100`).
 3. Tham chiếu tuỳ chọn (`supplierId`/`purchaseRequestId`/`productionOrderId`/`productionJobId`/
    `departmentId`/`requestedBy`/`orderItemId`) nếu có gửi phải tồn tại (`E107`).
 4. **Không kiểm** loại kho khớp loại hàng — cố ý, xem `docs/domains/inventory.md`.
@@ -57,7 +56,7 @@ Không đụng `inventory_transactions`/`inventory_balances` ở bước này.
 1. Đọc phiếu, kiểm `status = DRAFT` (`E098` nếu không).
 2. **Transaction**:
    - Với mỗi dòng phiếu: `SELECT … FOR UPDATE` dòng `inventory_balances` khớp
-     `(warehouseId, productId|materialId)` (tạo dòng mới nếu chưa có) → cộng/trừ theo dấu bút toán
+     `(warehouseId, itemId)` (tạo dòng mới nếu chưa có) → cộng/trừ theo dấu bút toán
      tương ứng loại phiếu (xem bảng ánh xạ ở `docs/domains/inventory.md`) → nếu kết quả `< 0`, ném
      `E106` và rollback toàn bộ phiếu → `INSERT`/`UPDATE` balance → `INSERT` một dòng
      `inventory_transactions`.
@@ -116,7 +115,6 @@ trên `code` là chốt chặn thật, cùng giới hạn TOCTOU đã chấp nh�
 | Phiếu không tồn tại | `E096` | 404 |
 | Kho không tồn tại | `E092` | 404 |
 | Kho không `ACTIVE` | `E094` | 400 |
-| Dòng phiếu sai `itemType`/không đúng một trong hai FK | `E099` | 400 |
 | Mặt hàng trên dòng không tồn tại | `E100` | 404 |
 | Tham chiếu tuỳ chọn không tồn tại | `E107` | 400 |
 | `PATCH`/`DELETE`/`post` gọi trên phiếu không còn `DRAFT` | `E098` | 409 |
@@ -133,7 +131,7 @@ trên `code` là chốt chặn thật, cùng giới hạn TOCTOU đã chấp nh�
 
 `inventory` là chủ; đọc `orders` (qua `orderItemId`), `production` (qua `productionOrderId`/
 `productionJobId`, chỉ liên kết tham khảo), `purchase-requests` (qua `purchaseRequestId`),
-`suppliers` (qua `supplierId`), `product-structure`/`materials` (mặt hàng). Không domain nào ghi
+`suppliers` (qua `supplierId`), `product-structure` (`items`, mặt hàng). Không domain nào ghi
 ngược vào đây.
 
 Code: `InventoryReceiptsService`/`InventoryIssuesService` (`createInventoryReceipt`/`createInventoryIssue`,

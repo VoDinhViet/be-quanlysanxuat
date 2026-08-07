@@ -19,7 +19,7 @@ nhập/xuất có vòng đời `DRAFT`/`POSTED`/`CANCELLED`, sổ cái `inventor
 
 - `inventory_transactions` (sổ cái, append-only) là **nguồn sự thật**. `inventory_balances` là
   **bản chiếu** của sổ cái — dựng lại được 100% bằng cách cộng dồn mọi bút toán theo
-  `(warehouseId, productId|materialId)`, nên không mất khả năng phục hồi nếu số dư bị lệch.
+  `(warehouseId, itemId)`, nên không mất khả năng phục hồi nếu số dư bị lệch.
 - `stock_receipts`/`stock_receipt_items` — hai bảng phiếu cũ gánh cả nhập lẫn xuất qua cặp
   `subject`+`type`+`reason` — bị **xoá hẳn**, cùng 5 route `/stock-receipts` và 9 `ErrorCode`
   (`E067`–`E073`, `E085`, `E086`, xem `src/constants/error-code.constant.ts`).
@@ -44,11 +44,13 @@ nhập/xuất có vòng đời `DRAFT`/`POSTED`/`CANCELLED`, sổ cái `inventor
   constraint DB nào chặn được điều này (tồn là số tính lại, không phải cột) — giới hạn đã biết,
   chưa xử lý"*; thiết kế mới xử lý được nhờ `SELECT … FOR UPDATE` khoá đúng dòng balance trong
   transaction `post`, không còn race hai phiếu xuất song song cùng vượt tồn.
-- **`itemType` + `productId`/`materialId` nullable + CHECK** — đúng khuôn `bom_items`
-  (`chk_bom_items_item_type_target`), nay áp dụng cho cả ledger lẫn balances.
-- **Loại kho không ràng buộc cứng với loại hàng** — `warehouses.type` (`MATERIAL`/`FINISHED_GOODS`/
-  `WIP`) là nhãn phân loại/lọc, không phải constraint; một kho `MATERIAL` vẫn nhận được thành phẩm
-  nếu người dùng muốn. Quyết định nghiệp vụ, không phải giới hạn kỹ thuật.
+- **Một `itemId` NOT NULL duy nhất** trên cả ledger lẫn balances — ban đầu đợt này dùng cặp
+  `itemType` + `productId`/`materialId` nullable + CHECK (đúng khuôn `bom_items` lúc đó), sau co lại
+  còn một `itemId` khi `products`/`materials` gộp thành `items`, xem
+  `docs/decisions/items-merge.md`.
+- **Loại kho không ràng buộc cứng với loại hàng** — `warehouses.type` (`RM`/`FG`/`WIP`) là nhãn
+  phân loại/lọc, không phải constraint; một kho `RM` vẫn nhận được thành phẩm nếu người dùng muốn.
+  Quyết định nghiệp vụ, không phải giới hạn kỹ thuật.
 
 ## Ngoài phạm vi đợt này
 

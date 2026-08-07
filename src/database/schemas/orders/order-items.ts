@@ -12,7 +12,7 @@ import {
 } from 'drizzle-orm/pg-core';
 
 import { orders } from './orders';
-import { products } from '../products/products';
+import { items } from '../items/items';
 
 /** "Bình thường" / "Đã hủy" on a single order line — a cancelled line is excluded from `subtotal`. */
 export enum OrderItemStatus {
@@ -31,9 +31,9 @@ export const orderItemStatusEnum = pgEnum('order_item_status', [
  * Rules:
  * - `lineTotal` is server-computed (see `orders` doc comment) — written by
  *   `OrdersService.recalculateTotals`, never by the request DTO.
- * - Product name/image/unit are read through the `product` relation, not snapshotted:
- *   `products` is soft-deleted and referenced here with `onDelete: 'restrict'`, so a line's
- *   product row always exists to join against.
+ * - Item name/image/unit are read through the `item` relation, not snapshotted: `items` is
+ *   soft-deleted and referenced here with `onDelete: 'restrict'`, so a line's item row always
+ *   exists to join against.
  */
 export const orderItems = pgTable(
   'order_items',
@@ -42,9 +42,9 @@ export const orderItems = pgTable(
     orderId: uuid('order_id')
       .notNull()
       .references(() => orders.id, { onDelete: 'cascade' }),
-    productId: uuid('product_id')
+    itemId: uuid('item_id')
       .notNull()
-      .references(() => products.id, { onDelete: 'restrict' }),
+      .references(() => items.id, { onDelete: 'restrict' }),
     quantity: numeric('quantity', {
       precision: 18,
       scale: 3,
@@ -86,7 +86,7 @@ export const orderItems = pgTable(
   },
   (table) => [
     index('idx_order_items_order_id').on(table.orderId),
-    index('idx_order_items_product_id').on(table.productId),
+    index('idx_order_items_item_id').on(table.itemId),
     check('chk_order_items_quantity_positive', sql`quantity > 0`),
     check(
       'chk_order_items_discount_percent_range',
@@ -100,8 +100,8 @@ export const orderItemsRelations = relations(orderItems, ({ one }) => ({
     fields: [orderItems.orderId],
     references: [orders.id],
   }),
-  product: one(products, {
-    fields: [orderItems.productId],
-    references: [products.id],
+  item: one(items, {
+    fields: [orderItems.itemId],
+    references: [items.id],
   }),
 }));

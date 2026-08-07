@@ -1,6 +1,6 @@
 import { Exclude, Expose } from 'class-transformer';
 
-import { BomItemType } from '../../../database/schemas';
+import { ItemType } from '../../../database/schemas';
 import {
   ClassFieldOptional,
   EnumField,
@@ -28,8 +28,8 @@ export class ProductionJobBomItemResDto {
   parentId!: string | null;
 
   @Expose()
-  @EnumField(() => BomItemType)
-  itemType!: BomItemType;
+  @EnumField(() => ItemType)
+  itemType!: ItemType;
 
   @Expose()
   @StringField({ description: 'Mã sản phẩm/vật tư — snapshot lúc duyệt LSX' })

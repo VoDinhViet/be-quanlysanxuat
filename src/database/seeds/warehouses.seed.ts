@@ -13,13 +13,13 @@ const WAREHOUSES = [
   {
     code: 'KHO-NVL',
     name: 'Kho nguyên vật liệu',
-    type: WarehouseType.MATERIAL,
+    type: WarehouseType.RM,
   },
   { code: 'KHO-BTP', name: 'Kho bán thành phẩm', type: WarehouseType.WIP },
   {
     code: 'KHO-TP',
     name: 'Kho thành phẩm',
-    type: WarehouseType.FINISHED_GOODS,
+    type: WarehouseType.FG,
   },
 ];
 

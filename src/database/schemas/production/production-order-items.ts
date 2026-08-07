@@ -9,7 +9,7 @@ import {
 } from 'drizzle-orm/pg-core';
 
 import { orderItems } from '../orders/order-items';
-import { products } from '../products/products';
+import { items } from '../items/items';
 import { productionOrders } from './production-orders';
 
 /**
@@ -33,9 +33,9 @@ export const productionOrderItems = pgTable(
       .notNull()
       .unique()
       .references(() => orderItems.id, { onDelete: 'restrict' }),
-    productId: uuid('product_id')
+    itemId: uuid('item_id')
       .notNull()
-      .references(() => products.id, { onDelete: 'restrict' }),
+      .references(() => items.id, { onDelete: 'restrict' }),
     // Đề xuất SX đã chốt (do hệ thống gợi ý hoặc người dùng sửa tay).
     quantity: numeric('quantity', {
       precision: 18,
@@ -74,7 +74,7 @@ export const productionOrderItems = pgTable(
     index('idx_production_order_items_production_order_id').on(
       table.productionOrderId,
     ),
-    index('idx_production_order_items_product_id').on(table.productId),
+    index('idx_production_order_items_item_id').on(table.itemId),
     check('chk_production_order_items_quantity', sql`quantity >= 0`),
   ],
 );
@@ -90,9 +90,9 @@ export const productionOrderItemsRelations = relations(
       fields: [productionOrderItems.orderItemId],
       references: [orderItems.id],
     }),
-    product: one(products, {
-      fields: [productionOrderItems.productId],
-      references: [products.id],
+    item: one(items, {
+      fields: [productionOrderItems.itemId],
+      references: [items.id],
     }),
   }),
 );

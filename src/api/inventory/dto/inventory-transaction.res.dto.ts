@@ -1,7 +1,6 @@
 import { Exclude, Expose } from 'class-transformer';
 
 import {
-  InventoryItemType,
   InventoryReferenceType,
   InventoryTransactionType,
 } from '../../../database/schemas';
@@ -13,8 +12,7 @@ import {
   NumberField,
   UUIDField,
 } from '../../../decorators/field.decorators';
-import { MaterialRefResDto } from '../../materials/dto/material-ref.res.dto';
-import { ProductRefResDto } from '../../products/dto/product-ref.res.dto';
+import { ItemRefResDto } from '../../items/dto/item-ref.res.dto';
 import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
 import { WarehouseRefResDto } from '../../warehouses/dto/warehouse-ref.res.dto';
 
@@ -29,16 +27,8 @@ export class InventoryTransactionResDto {
   warehouse!: WarehouseRefResDto;
 
   @Expose()
-  @EnumField(() => InventoryItemType)
-  itemType!: InventoryItemType;
-
-  @Expose()
-  @ClassFieldOptional(() => ProductRefResDto, { nullable: true })
-  product!: ProductRefResDto | null;
-
-  @Expose()
-  @ClassFieldOptional(() => MaterialRefResDto, { nullable: true })
-  material!: MaterialRefResDto | null;
+  @ClassField(() => ItemRefResDto)
+  item!: ItemRefResDto;
 
   @Expose()
   @EnumField(() => InventoryTransactionType)

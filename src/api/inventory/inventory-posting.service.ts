@@ -5,7 +5,6 @@ import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
-  InventoryItemType,
   inventoryBalances,
   InventoryReferenceType,
   inventoryTransactions,
@@ -14,9 +13,7 @@ import {
 import { AppException } from '../../exceptions/app.exception';
 
 export interface InventoryPostingLine {
-  itemType: InventoryItemType;
-  productId: string | null;
-  materialId: string | null;
+  itemId: string;
   /** Có dấu — dương cộng tồn, âm trừ tồn. Nơi gọi (`InventoryReceiptsService`/
    * `InventoryIssuesService`) chịu trách nhiệm gắn dấu theo loại phiếu. */
   signedQuantity: number;
@@ -85,9 +82,7 @@ export class InventoryPostingService {
         referenceId: input.referenceId,
         transactionDate: input.transactionDate,
         createdBy: input.createdBy,
-        itemType: line.itemType,
-        productId: line.productId,
-        materialId: line.materialId,
+        itemId: line.itemId,
         signedQuantity,
         type:
           signedQuantity > 0
@@ -108,16 +103,10 @@ export class InventoryPostingService {
       createdBy: string;
     },
   ): Promise<void> {
-    const balanceWhere =
-      line.itemType === InventoryItemType.PRODUCT
-        ? and(
-            eq(inventoryBalances.warehouseId, line.warehouseId),
-            eq(inventoryBalances.productId, line.productId as string),
-          )
-        : and(
-            eq(inventoryBalances.warehouseId, line.warehouseId),
-            eq(inventoryBalances.materialId, line.materialId as string),
-          );
+    const balanceWhere = and(
+      eq(inventoryBalances.warehouseId, line.warehouseId),
+      eq(inventoryBalances.itemId, line.itemId),
+    );
 
     const [existing] = await tx
       .select()
@@ -138,18 +127,14 @@ export class InventoryPostingService {
     } else {
       await tx.insert(inventoryBalances).values({
         warehouseId: line.warehouseId,
-        itemType: line.itemType,
-        productId: line.productId,
-        materialId: line.materialId,
+        itemId: line.itemId,
         quantity: newQuantity,
       });
     }
 
     await tx.insert(inventoryTransactions).values({
       warehouseId: line.warehouseId,
-      itemType: line.itemType,
-      productId: line.productId,
-      materialId: line.materialId,
+      itemId: line.itemId,
       type: line.type,
       quantity: line.signedQuantity,
       referenceType: line.referenceType,

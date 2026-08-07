@@ -22,6 +22,7 @@ import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
   clients,
+  items as itemsTable,
   orderItems,
   OrderItemStatus,
   orders,
@@ -31,7 +32,6 @@ import {
   ProductionOrderLogAction,
   productionOrders,
   ProductionOrderStatus,
-  products,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { InventoryService } from '../inventory/inventory.service';
@@ -46,7 +46,7 @@ import { UpdateProductionOrderReqDto } from './dto/update-production-order.req.d
 /** Số liệu đã chốt/tính toán của một dòng PO — hình dạng chung cho mọi hàm đọc/ghi bên dưới. */
 interface PlanItem {
   orderItemId: string;
-  productId: string;
+  itemId: string;
   quantity: number;
   orderQty: number;
   onHandQty: number;
@@ -112,13 +112,13 @@ export class ProductionOrdersService {
         .where(where),
     ]);
 
-    const items = entities.map((row) => ({
+    const rows = entities.map((row) => ({
       ...row,
       client: row.client?.id ? row.client : null,
     }));
 
     return new OffsetPaginatedDto(
-      plainToInstance(ProductionOrderResDto, items, {
+      plainToInstance(ProductionOrderResDto, rows, {
         excludeExtraneousValues: true,
       }),
       new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
@@ -135,7 +135,7 @@ export class ProductionOrdersService {
       with: {
         order: { with: { client: true } },
         items: {
-          with: { product: { with: { unit: true, imageFile: true } } },
+          with: { item: { with: { unit: true, imageFile: true } } },
         },
       },
     });
@@ -167,7 +167,7 @@ export class ProductionOrdersService {
             orderItemId: true,
             orderQty: true,
             quantity: true,
-            productId: true,
+            itemId: true,
           },
         },
       },
@@ -195,7 +195,7 @@ export class ProductionOrdersService {
       }
       return {
         id: row.id,
-        productId: row.productId,
+        itemId: row.itemId,
         oldQuantity: row.quantity,
         quantity: item.quantity,
         fromStockQty: Math.max(0, row.orderQty - item.quantity),
@@ -203,21 +203,19 @@ export class ProductionOrdersService {
     });
 
     if (updates.length) {
-      // Tên SP chỉ để dựng nội dung log — 1 query gộp theo productId duy nhất, không lặp theo dòng.
-      const productIds = [
-        ...new Set(updates.map((update) => update.productId)),
-      ];
-      const productRows = await this.db
-        .select({ id: products.id, name: products.name })
-        .from(products)
-        .where(inArray(products.id, productIds));
-      const nameByProductId = new Map(
-        productRows.map((product) => [product.id, product.name]),
+      // Tên item chỉ để dựng nội dung log — 1 query gộp theo itemId duy nhất, không lặp theo dòng.
+      const itemIds = [...new Set(updates.map((update) => update.itemId))];
+      const itemRows = await this.db
+        .select({ id: itemsTable.id, name: itemsTable.name })
+        .from(itemsTable)
+        .where(inArray(itemsTable.id, itemIds));
+      const nameByItemId = new Map(
+        itemRows.map((item) => [item.id, item.name]),
       );
       const content = `Cập nhật SL sản xuất: ${updates
         .map(
           (update) =>
-            `${nameByProductId.get(update.productId) ?? update.productId} ${update.oldQuantity} → ${update.quantity}`,
+            `${nameByItemId.get(update.itemId) ?? update.itemId} ${update.oldQuantity} → ${update.quantity}`,
         )
         .join('; ')}`;
 
@@ -275,21 +273,21 @@ export class ProductionOrdersService {
       throw new AppException(ErrorCode.E076, HttpStatus.CONFLICT);
     }
 
-    // Gộp SL theo sản phẩm cho Job — chỉ giữ SL > 0 (khớp `chk_production_jobs_quantity`), theo
-    // số liệu đã lưu (kể cả đã sửa tay qua `updateProductionOrder`).
-    const items = await this.db
+    // Gộp SL theo item cho Job — chỉ giữ SL > 0 (khớp `chk_production_jobs_quantity`), theo số
+    // liệu đã lưu (kể cả đã sửa tay qua `updateProductionOrder`).
+    const planRows = await this.db
       .select({
-        productId: productionOrderItems.productId,
+        itemId: productionOrderItems.itemId,
         quantity: productionOrderItems.quantity,
       })
       .from(productionOrderItems)
       .where(eq(productionOrderItems.productionOrderId, productionOrdersId));
-    const quantityByProduct = new Map<string, number>();
-    for (const item of items) {
-      if (item.quantity > 0) {
-        quantityByProduct.set(
-          item.productId,
-          (quantityByProduct.get(item.productId) ?? 0) + item.quantity,
+    const quantityByItem = new Map<string, number>();
+    for (const row of planRows) {
+      if (row.quantity > 0) {
+        quantityByItem.set(
+          row.itemId,
+          (quantityByItem.get(row.itemId) ?? 0) + row.quantity,
         );
       }
     }
@@ -312,10 +310,10 @@ export class ProductionOrdersService {
       await this.productionJobsService.createJobs(
         tx,
         productionOrdersId,
-        quantityByProduct,
+        quantityByItem,
       );
 
-      const jobCount = quantityByProduct.size;
+      const jobCount = quantityByItem.size;
       const content =
         jobCount > 0
           ? `Duyệt LSX ${code}, sinh ${jobCount} Job`
@@ -332,8 +330,8 @@ export class ProductionOrdersService {
     return this.getProductionOrdersById(productionOrdersId);
   }
 
-  /** Khuôn `OrdersService.generateOrderCode`/`MaterialsService.generateMaterialCode` — vẫn TOCTOU
-   * như mọi generator khác trong repo, unique constraint trên `code` là chốt chặn thật. */
+  /** Khuôn `OrdersService.generateOrderCode`/`ItemsService.generateItemCode` — vẫn TOCTOU như mọi
+   * generator khác trong repo, unique constraint trên `code` là chốt chặn thật. */
   private async generateProductionOrderCode(
     tx: DbTransaction,
   ): Promise<string> {
@@ -352,7 +350,7 @@ export class ProductionOrdersService {
     const normalOrderItems = await this.db
       .select({
         id: orderItems.id,
-        productId: orderItems.productId,
+        itemId: orderItems.itemId,
         quantity: orderItems.quantity,
       })
       .from(orderItems)
@@ -367,20 +365,18 @@ export class ProductionOrdersService {
       return [];
     }
 
-    // Gom productId duy nhất — 1 query tồn kho cho mọi sản phẩm thay vì mỗi dòng PO một query.
-    const productIds = [
-      ...new Set(normalOrderItems.map((item) => item.productId)),
-    ];
+    // Gom itemId duy nhất — 1 query tồn kho cho mọi item thay vì mỗi dòng PO một query.
+    const itemIds = [...new Set(normalOrderItems.map((item) => item.itemId))];
     // `excludeOrderId = orderId`: PO đang xét đã tự giữ chỗ trong `reserved`, phải loại trừ chính
     // nó ra để không bị trừ nhu cầu của nó hai lần (xem docs/domains/production.md).
-    const stockByProduct = await this.inventoryService.getStockLevels(
-      productIds,
+    const stockByItem = await this.inventoryService.getStockLevels(
+      itemIds,
       orderId,
     );
 
     return normalOrderItems.map((item) => {
-      // Sản phẩm chưa từng có phiếu kho nào → coi như tồn 0, không phải lỗi.
-      const stock = stockByProduct.get(item.productId) ?? {
+      // Item chưa từng có phiếu kho nào → coi như tồn 0, không phải lỗi.
+      const stock = stockByItem.get(item.itemId) ?? {
         onHand: 0,
         reserved: 0,
       };
@@ -392,7 +388,7 @@ export class ProductionOrdersService {
 
       return {
         orderItemId: item.id,
-        productId: item.productId,
+        itemId: item.itemId,
         quantity: suggested,
         orderQty: item.quantity,
         onHandQty: stock.onHand,
@@ -426,7 +422,7 @@ export class ProductionOrdersService {
         items.map((item) => ({
           productionOrderId: createdProductionOrders.id,
           orderItemId: item.orderItemId,
-          productId: item.productId,
+          itemId: item.itemId,
           quantity: item.quantity,
           orderQty: item.orderQty,
           onHandQty: item.onHandQty,

@@ -30,7 +30,7 @@ nghĩa đủ 4 giá trị cho vòng đời tương lai, nhưng chưa có route n
 | Entity | Vai trò |
 | --- | --- |
 | `purchase_requests` | Header — mã phiếu, ngày cần, bộ phận, LSX (tuỳ chọn), người đề xuất, trạng thái |
-| `purchase_request_items` | Dòng vật tư của phiếu — `materialId` + `quantity` |
+| `purchase_request_items` | Dòng vật tư của phiếu — `itemId` (trỏ `items`, luôn RM trong thực tế) + `quantity` |
 
 ## Lifecycle
 
@@ -47,7 +47,8 @@ tồn tại trước để schema không phải đổi khi giai đoạn sau thê
 
 - **← Production**: `ProductionJobsService.startJob` là domain khác **duy nhất ghi vào** đây —
   `productionOrderId`/`productionJobId` trỏ `production_orders`/`production_jobs`, cả hai tuỳ chọn.
-- **→ Partners**: `departmentId` trỏ danh mục `departments`; dòng phiếu trỏ `materials`.
+- **→ Partners**: `departmentId` trỏ danh mục `departments`.
+- **→ Product Structure**: dòng phiếu trỏ `items` (`itemId`), xem `docs/domains/product-structure.md`.
 - **→ Identity**: `createdBy` trỏ `users.id` — người bấm start, không phải người "đề xuất" theo
   nghĩa tự tay lập phiếu.
 
@@ -61,4 +62,5 @@ tồn tại trước để schema không phải đổi khi giai đoạn sau thê
 
 - `docs/decisions/no-procurement.md` — ranh giới không làm procurement thật.
 - `docs/domains/production.md` — nơi `production_orders` (LSX) sống.
-- `docs/domains/partners.md` — nơi `materials`/`departments` sống.
+- `docs/domains/partners.md` — nơi `departments` sống.
+- `docs/domains/product-structure.md` — nơi `items` (vật tư) sống.

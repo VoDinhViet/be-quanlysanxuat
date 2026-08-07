@@ -21,3 +21,5 @@ export const units = pgTable('units', {
 export const unitsRelations = relations(units, ({ many }) => ({
   scopes: many(unitScopes),
 }));
+
+export type UnitSelect = typeof units.$inferSelect;

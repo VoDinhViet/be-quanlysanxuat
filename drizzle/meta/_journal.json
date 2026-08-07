@@ -624,6 +624,27 @@
       "when": 1785903222635,
       "tag": "0088_rename_products_source_product_id_to_cloned_from_product_id",
       "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1785920319410,
+      "tag": "0089_loving_sharon_carter",
+      "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1786079695541,
+      "tag": "0090_spooky_stingray",
+      "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "7",
+      "when": 1786088157688,
+      "tag": "0091_misty_the_hunter",
+      "breakpoints": true
     }
   ]
 }

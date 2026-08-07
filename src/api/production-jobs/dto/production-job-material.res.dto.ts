@@ -10,8 +10,8 @@ import {
 } from '../../../decorators/field.decorators';
 
 /** Nguồn dữ liệu là chính `production_job_materials` — mọi field snapshot text (`materialCode`/
- * `materialName`/`unitCode`/`unitName`) đóng băng lúc duyệt LSX, độc lập `materials`/`units` sống.
- * `materialId` chỉ còn là liên kết tham khảo, có thể null. Xem `docs/domains/production.md`. */
+ * `materialName`/`unitCode`/`unitName`) đóng băng lúc duyệt LSX, độc lập `items`/`units` sống.
+ * `itemId` chỉ còn là liên kết tham khảo, có thể null. Xem `docs/domains/production.md`. */
 @Exclude()
 export class ProductionJobMaterialResDto {
   @Expose()
@@ -19,7 +19,7 @@ export class ProductionJobMaterialResDto {
     nullable: true,
     description: 'Liên kết tham khảo tới vật tư gốc',
   })
-  materialId!: string | null;
+  itemId!: string | null;
 
   @Expose()
   @StringField({ description: 'Mã vật tư — snapshot lúc duyệt LSX' })

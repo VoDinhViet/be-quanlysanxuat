@@ -10,14 +10,12 @@ import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
   InventoryDocumentStatus,
-  InventoryItemType,
   inventoryReceiptItems,
   inventoryReceipts,
   InventoryReceiptType,
   InventoryReferenceType,
   InventoryTransactionType,
-  materials,
-  products,
+  items as itemsTable,
   productionOrders,
   purchaseRequests,
   suppliers,
@@ -38,7 +36,7 @@ const RECEIPT_DETAIL_WITH = {
   productionOrder: true,
   poster: true,
   creator: true,
-  items: { with: { product: true, material: true } },
+  items: { with: { item: true } },
 } as const;
 
 /** Loại phiếu → loại bút toán lúc `post` — bảng đầy đủ ở `docs/domains/inventory.md`. */
@@ -212,9 +210,7 @@ export class InventoryReceiptsService {
         transactionDate: receipt.receiptDate,
         createdBy: userId,
         lines: items.map((item) => ({
-          itemType: item.itemType,
-          productId: item.productId,
-          materialId: item.materialId,
+          itemId: item.itemId,
           signedQuantity: item.quantity,
           type: RECEIPT_TYPE_TRANSACTION_TYPE[receipt.receiptType],
         })),
@@ -316,59 +312,21 @@ export class InventoryReceiptsService {
     }
   }
 
-  /** Mỗi dòng phải đúng-một-trong `productId`/`materialId` khớp `itemType` (`E099`), và mặt hàng
-   * phải tồn tại (`E100`). Không kiểm loại kho ↔ loại hàng — cố ý, xem `docs/domains/inventory.md`. */
+  /** Mặt hàng của mỗi dòng phải tồn tại (`E100`). Không kiểm loại kho ↔ loại hàng — cố ý, xem
+   * `docs/domains/inventory.md`. */
   private async ensureItemsValid(
-    items: InventoryReceiptItemReqDto[],
+    lineItems: InventoryReceiptItemReqDto[],
   ): Promise<void> {
-    for (const item of items) {
-      const matchesType =
-        item.itemType === InventoryItemType.PRODUCT
-          ? item.productId !== undefined && item.materialId === undefined
-          : item.materialId !== undefined && item.productId === undefined;
+    const itemIds = [...new Set(lineItems.map((item) => item.itemId))];
 
-      if (!matchesType) {
-        throw new AppException(ErrorCode.E099, HttpStatus.BAD_REQUEST);
-      }
-    }
+    const found = await this.db.query.items.findMany({
+      columns: { id: true },
+      where: and(inArray(itemsTable.id, itemIds), isNull(itemsTable.deletedAt)),
+    });
+    const foundIds = new Set(found.map((item) => item.id));
 
-    const productIds = [
-      ...new Set(
-        items.map((item) => item.productId).filter((id): id is string => !!id),
-      ),
-    ];
-    const materialIds = [
-      ...new Set(
-        items.map((item) => item.materialId).filter((id): id is string => !!id),
-      ),
-    ];
-
-    const [foundProducts, foundMaterials] = await Promise.all([
-      productIds.length
-        ? this.db.query.products.findMany({
-            columns: { id: true },
-            where: and(
-              inArray(products.id, productIds),
-              isNull(products.deletedAt),
-            ),
-          })
-        : Promise.resolve([]),
-      materialIds.length
-        ? this.db.query.materials.findMany({
-            columns: { id: true },
-            where: inArray(materials.id, materialIds),
-          })
-        : Promise.resolve([]),
-    ]);
-
-    const foundProductIds = new Set(foundProducts.map((p) => p.id));
-    const foundMaterialIds = new Set(foundMaterials.map((m) => m.id));
-
-    for (const item of items) {
-      if (item.productId && !foundProductIds.has(item.productId)) {
-        throw new AppException(ErrorCode.E100, HttpStatus.NOT_FOUND);
-      }
-      if (item.materialId && !foundMaterialIds.has(item.materialId)) {
+    for (const item of lineItems) {
+      if (!foundIds.has(item.itemId)) {
         throw new AppException(ErrorCode.E100, HttpStatus.NOT_FOUND);
       }
     }

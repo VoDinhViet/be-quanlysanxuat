@@ -179,7 +179,7 @@ export class FilesService {
     await this.db.delete(files).where(eq(files.id, fileId));
   }
 
-  /** Gọi bởi service tiêu thụ (users/materials/products...) trước khi ghi một `*FileId` — kiểm tồn
+  /** Gọi bởi service tiêu thụ (users/items...) trước khi ghi một `*FileId` — kiểm tồn
    * tại (`E042`) và đánh dấu `linkedAt` để `FilesCleanupService` bỏ qua. Bắt buộc gọi trước write,
    * kể cả trước khi mở transaction — đảo thứ tự có thể để lại row sống trỏ file chưa link, bị
    * sweeper xoá sau (ảnh vỡ trên dữ liệu thật). */

@@ -14,16 +14,16 @@ import { inventoryReceipts } from './inventory-receipts';
 import { inventoryTransactions } from './inventory-transactions';
 
 /** Nhãn phân loại/lọc — KHÔNG ràng buộc mặt hàng nào được nhập/xuất vào kho này (quyết định
- * nghiệp vụ, xem `docs/domains/inventory.md`). */
+ * nghiệp vụ, xem `docs/domains/inventory.md`). Giá trị viết tắt, cùng khuôn `ItemType`. */
 export enum WarehouseType {
-  MATERIAL = 'MATERIAL',
-  FINISHED_GOODS = 'FINISHED_GOODS',
+  RM = 'RM',
+  FG = 'FG',
   WIP = 'WIP',
 }
 
 export const warehouseTypeEnum = pgEnum('warehouse_type', [
-  WarehouseType.MATERIAL,
-  WarehouseType.FINISHED_GOODS,
+  WarehouseType.RM,
+  WarehouseType.FG,
   WarehouseType.WIP,
 ]);
 
@@ -38,7 +38,7 @@ export const warehouseStatusEnum = pgEnum('warehouse_status', [
 ]);
 
 /** Danh mục kho — không soft delete: một kho ngừng dùng chuyển `status = INACTIVE`, cùng khuôn
- * `materials` (`docs/domains/inventory.md`). */
+ * `items` (`docs/domains/inventory.md`). */
 export const warehouses = pgTable(
   'warehouses',
   {

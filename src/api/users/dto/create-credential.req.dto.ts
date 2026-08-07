@@ -1,4 +1,5 @@
 import {
+  BooleanFieldOptional,
   EmailField,
   PasswordField,
   StringField,
@@ -17,4 +18,10 @@ export class CreateCredentialReqDto {
 
   @UUIDFieldOptional({ description: 'Role id to assign to this credential' })
   roleId?: string;
+
+  @BooleanFieldOptional({
+    description: 'Enable credential for login',
+    nullable: true,
+  })
+  credentialEnabled?: boolean;
 }
