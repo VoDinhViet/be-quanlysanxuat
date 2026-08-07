@@ -7,7 +7,6 @@ import {
 import {
   ClassFieldOptional,
   DateFieldOptional,
-  EmailFieldOptional,
   EnumFieldOptional,
   NumberFieldOptional,
   StringFieldOptional,
@@ -19,20 +18,11 @@ export class UpdateOrderReqDto {
   @UUIDFieldOptional({ description: 'Client (khách hàng) id' })
   readonly clientId?: string;
 
-  @StringFieldOptional({ maxLength: 255, nullable: true })
-  readonly contactName?: string | null;
-
-  @StringFieldOptional({ maxLength: 30, nullable: true })
-  readonly contactPhone?: string | null;
-
-  @EmailFieldOptional({ nullable: true })
-  readonly contactEmail?: string | null;
-
   @UUIDFieldOptional({
     nullable: true,
     description: 'Nhân viên kinh doanh (users.id) id',
   })
-  readonly staffId?: string | null;
+  readonly assignedUserId?: string | null;
 
   @DateFieldOptional({ description: 'Ngày đặt hàng' })
   readonly orderDate?: Date;

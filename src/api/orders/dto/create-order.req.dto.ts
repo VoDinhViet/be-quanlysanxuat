@@ -7,7 +7,6 @@ import {
 import {
   ClassFieldOptional,
   DateField,
-  EmailFieldOptional,
   EnumFieldOptional,
   NumberFieldOptional,
   StringFieldOptional,
@@ -28,20 +27,11 @@ export class CreateOrderReqDto {
   })
   readonly clientId?: string | null;
 
-  @StringFieldOptional({ maxLength: 255, nullable: true })
-  readonly contactName?: string | null;
-
-  @StringFieldOptional({ maxLength: 30, nullable: true })
-  readonly contactPhone?: string | null;
-
-  @EmailFieldOptional({ nullable: true })
-  readonly contactEmail?: string | null;
-
   @UUIDFieldOptional({
     nullable: true,
     description: 'Nhân viên kinh doanh (users.id) id',
   })
-  readonly staffId?: string | null;
+  readonly assignedUserId?: string | null;
 
   @DateField({ description: 'Ngày đặt hàng' })
   readonly orderDate!: Date;

@@ -28,7 +28,7 @@ import {
   OrderStatus,
   productionOrders,
   ProductionOrderStatus,
-  products,
+  items,
   users,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
@@ -57,7 +57,7 @@ export class OrdersService {
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly filesService: FilesService,
     private readonly productionOrdersService: ProductionOrdersService,
-  ) {}
+  ) { }
 
   async getOrders(
     reqDto: GetOrdersReqDto,
@@ -68,7 +68,9 @@ export class OrdersService {
       keyword ? unaccentILike(orders.code, keyword) : undefined,
       reqDto.status ? eq(orders.status, reqDto.status) : undefined,
       reqDto.clientId ? eq(orders.clientId, reqDto.clientId) : undefined,
-      reqDto.staffId ? eq(orders.staffId, reqDto.staffId) : undefined,
+      reqDto.assignedUserId
+        ? eq(orders.assignedUserId, reqDto.assignedUserId)
+        : undefined,
       reqDto.fromDate ? gte(orders.dueDate, reqDto.fromDate) : undefined,
       reqDto.toDate ? lte(orders.dueDate, reqDto.toDate) : undefined,
     );
@@ -83,7 +85,7 @@ export class OrdersService {
         extras: { expired: this.expiredSql(), totalVnd: this.totalVndSql() },
         with: {
           client: true,
-          staff: true,
+          assignedUser: true,
           creator: true,
           approver: true,
           rejecter: true,
@@ -174,12 +176,12 @@ export class OrdersService {
       extras: { expired: this.expiredSql(), totalVnd: this.totalVndSql() },
       with: {
         client: true,
-        staff: true,
+        assignedUser: true,
         creator: true,
         approver: true,
         rejecter: true,
         items: {
-          with: { product: { with: { unit: true, imageFile: true } } },
+          with: { item: { with: { unit: true, imageFile: true } } },
           orderBy: [asc(orderItems.sortOrder), asc(orderItems.createdAt)],
         },
         attachments: { with: { file: true } },
@@ -195,10 +197,7 @@ export class OrdersService {
     });
   }
 
-  async createOrder(
-    reqDto: CreateOrderReqDto,
-    userId: string,
-  ): Promise<OrderDetailResDto> {
+  async createOrder(reqDto: CreateOrderReqDto, userId: string): Promise<void> {
     let code = reqDto.code;
     if (code) {
       await this.validateCodeUniqueness(code);
@@ -209,34 +208,30 @@ export class OrdersService {
     if (reqDto.clientId) {
       await this.ensureClientExists(reqDto.clientId);
     }
-    if (reqDto.staffId) {
-      await this.ensureStaffExists(reqDto.staffId);
+    if (reqDto.assignedUserId) {
+      await this.ensureAssignedUserExists(reqDto.assignedUserId);
     }
     if (reqDto.items?.length) {
-      await this.ensureProductsExist(
-        reqDto.items.map((item) => item.productId),
-      );
+      await this.ensureItemsExist(reqDto.items.map((item) => item.itemId));
     }
     this.ensureStatusSettable(reqDto.status);
 
-    await this.linkOrderFiles(reqDto);
+    await this.filesService.linkFiles(reqDto.attachmentFileIds ?? []);
 
     const { items, attachmentFileIds, ...orderFields } = reqDto;
+    const currency = orderFields.currency ?? Currency.VND;
 
     // Order, dòng, đính kèm và total dẫn xuất từ dòng phải vào cùng lúc — nếu không, insert dòng
     // lỗi sẽ để lại một order đã commit với `total = 0` không bao giờ được tính lại.
-    const orderId = await this.db.transaction(async (tx) => {
+    await this.db.transaction(async (tx) => {
       const [order] = await tx
         .insert(orders)
         .values({
           ...orderFields,
-          // Đơn VND luôn có rate = 1 — totalVndSql/getOrderStats nhân exchangeRate để quy mọi
-          // đơn về một đơn vị, nên một rate lệch trên đơn VND (bug client, input sai) sẽ âm thầm
-          // làm sai mọi tổng dashboard.
-          exchangeRate:
-            (orderFields.currency ?? Currency.VND) === Currency.VND
-              ? 1
-              : orderFields.exchangeRate,
+          exchangeRate: this.enforceExchangeRate(
+            currency,
+            orderFields.exchangeRate,
+          ),
           code,
           status: reqDto.status ?? OrderStatus.DRAFT,
           createdBy: userId,
@@ -244,56 +239,58 @@ export class OrdersService {
         .returning();
 
       if (items?.length) {
-        await this.createItems(tx, order.id, items);
+        // `lineTotal` để mặc định của cột — `recalculateTotals` điền giá trị thật ngay sau.
+        await tx
+          .insert(orderItems)
+          .values(items.map((item) => ({ ...item, orderId: order.id })));
       }
       if (attachmentFileIds?.length) {
-        await this.createAttachments(tx, order.id, attachmentFileIds);
+        await tx
+          .insert(orderAttachments)
+          .values(
+            attachmentFileIds.map((fileId) => ({ orderId: order.id, fileId })),
+          );
       }
 
       await this.recalculateTotals(tx, order.id);
-
-      return order.id;
     });
-
-    return this.getOrderDetail(orderId);
   }
 
-  async updateOrder(
-    orderId: string,
-    reqDto: UpdateOrderReqDto,
-  ): Promise<OrderDetailResDto> {
+  async updateOrder(orderId: string, reqDto: UpdateOrderReqDto): Promise<void> {
     const existing = await this.ensureOrderExists(orderId);
     this.ensureOrderEditable(existing.status);
 
     if (reqDto.clientId) {
       await this.ensureClientExists(reqDto.clientId);
     }
-    if (reqDto.staffId) {
-      await this.ensureStaffExists(reqDto.staffId);
+    if (reqDto.assignedUserId) {
+      await this.ensureAssignedUserExists(reqDto.assignedUserId);
     }
     if (reqDto.items?.length) {
-      await this.ensureProductsExist(
-        reqDto.items.map((item) => item.productId),
-      );
+      await this.ensureItemsExist(reqDto.items.map((item) => item.itemId));
     }
     this.ensureStatusSettable(reqDto.status);
     if (reqDto.items !== undefined) {
       await this.ensureItemsNotLockedByProduction(orderId);
     }
 
-    await this.linkOrderFiles(reqDto);
+    await this.filesService.linkFiles(reqDto.attachmentFileIds ?? []);
 
     const { items, attachmentFileIds, ...orderFields } = reqDto;
-    // Cùng chuẩn hoá VND-luôn-1 như createOrder, so với currency hiện tại của dòng khi request
-    // không đụng tới `currency`.
+    // So với currency hiện tại của dòng khi request không đụng tới `currency`.
     const currency = orderFields.currency ?? existing.currency;
-    const orderValues =
-      currency === Currency.VND
-        ? { ...orderFields, exchangeRate: 1 }
-        : orderFields;
 
     await this.db.transaction(async (tx) => {
-      await tx.update(orders).set(orderValues).where(eq(orders.id, orderId));
+      await tx
+        .update(orders)
+        .set({
+          ...orderFields,
+          exchangeRate: this.enforceExchangeRate(
+            currency,
+            orderFields.exchangeRate,
+          ),
+        })
+        .where(eq(orders.id, orderId));
 
       if (items !== undefined) {
         // `ensureItemsNotLockedByProduction` ở trên đã đảm bảo LSX (nếu có) đang PENDING, chưa
@@ -313,8 +310,6 @@ export class OrdersService {
       // shippingFee cũng đủ đổi total header mà không đụng dòng nào.
       await this.recalculateTotals(tx, orderId);
     });
-
-    return this.getOrderDetail(orderId);
   }
 
   /** Nơi duy nhất ghi `AWAITING_PRODUCTION` (xem `ensureStatusSettable`) — đồng thời sinh sẵn kế
@@ -388,6 +383,16 @@ export class OrdersService {
       .as('totalVnd');
   }
 
+  /** Đơn VND luôn có rate = 1 — `totalVndSql`/`getOrderStats` nhân `exchangeRate` để quy mọi đơn về
+   * một đơn vị, nên một rate lệch trên đơn VND (bug client, input sai) sẽ âm thầm làm sai mọi tổng
+   * dashboard. */
+  private enforceExchangeRate(
+    currency: Currency,
+    exchangeRate: number | undefined,
+  ): number | undefined {
+    return currency === Currency.VND ? 1 : exchangeRate;
+  }
+
   /** Tính lại mọi cột tiền do server sở hữu, từ `order_items`, hai câu SQL: refresh `lineTotal`
    * từng dòng, rồi gộp tổng các dòng không `CANCELLED` vào discount/VAT/total header. Bắt buộc
    * chạy trong cùng transaction với write vừa đụng `order_items` hoặc discount/VAT/shipping. */
@@ -430,24 +435,6 @@ export class OrdersService {
     `);
   }
 
-  /** Xem `FilesService.linkFiles` — phải gọi trước khi mở transaction. */
-  private async linkOrderFiles(
-    reqDto: CreateOrderReqDto | UpdateOrderReqDto,
-  ): Promise<void> {
-    await this.filesService.linkFiles(reqDto.attachmentFileIds ?? []);
-  }
-
-  /** `lineTotal` để mặc định của cột — `recalculateTotals` điền giá trị thật ngay sau. */
-  private async createItems(
-    tx: DbTransaction,
-    orderId: string,
-    items: OrderItemReqDto[],
-  ): Promise<void> {
-    await tx
-      .insert(orderItems)
-      .values(items.map((item) => ({ ...item, orderId })));
-  }
-
   /** Replace-all. Bắt buộc truyền `tx` để tránh ghi ra ngoài transaction. */
   private async replaceItems(
     tx: DbTransaction,
@@ -457,18 +444,11 @@ export class OrdersService {
     await tx.delete(orderItems).where(eq(orderItems.orderId, orderId));
 
     if (items.length) {
-      await this.createItems(tx, orderId, items);
+      // `lineTotal` để mặc định của cột — `recalculateTotals` điền giá trị thật ngay sau.
+      await tx
+        .insert(orderItems)
+        .values(items.map((item) => ({ ...item, orderId })));
     }
-  }
-
-  private async createAttachments(
-    tx: DbTransaction,
-    orderId: string,
-    fileIds: string[],
-  ): Promise<void> {
-    await tx
-      .insert(orderAttachments)
-      .values(fileIds.map((fileId) => ({ orderId, fileId })));
   }
 
   /** Replace-all. Bắt buộc truyền `tx` để tránh ghi ra ngoài transaction. */
@@ -482,7 +462,9 @@ export class OrdersService {
       .where(eq(orderAttachments.orderId, orderId));
 
     if (fileIds.length) {
-      await this.createAttachments(tx, orderId, fileIds);
+      await tx
+        .insert(orderAttachments)
+        .values(fileIds.map((fileId) => ({ orderId, fileId })));
     }
   }
 
@@ -513,10 +495,12 @@ export class OrdersService {
     }
   }
 
-  private async ensureStaffExists(staffId: string): Promise<void> {
+  private async ensureAssignedUserExists(
+    assignedUserId: string,
+  ): Promise<void> {
     const existing = await this.db.query.users.findFirst({
       columns: { id: true },
-      where: eq(users.id, staffId),
+      where: eq(users.id, assignedUserId),
     });
 
     if (!existing) {
@@ -524,11 +508,11 @@ export class OrdersService {
     }
   }
 
-  private async ensureProductsExist(productIds: string[]): Promise<void> {
-    const uniqueIds = [...new Set(productIds)];
-    const found = await this.db.query.products.findMany({
+  private async ensureItemsExist(itemIds: string[]): Promise<void> {
+    const uniqueIds = [...new Set(itemIds)];
+    const found = await this.db.query.items.findMany({
       columns: { id: true },
-      where: and(inArray(products.id, uniqueIds), isNull(products.deletedAt)),
+      where: and(inArray(items.id, uniqueIds), isNull(items.deletedAt)),
     });
 
     if (found.length !== uniqueIds.length) {

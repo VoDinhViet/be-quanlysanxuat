@@ -37,7 +37,7 @@ describe('OrdersService', () => {
       };
       clients: { findFirst: jest.Mock };
       users: { findFirst: jest.Mock };
-      products: { findMany: jest.Mock };
+      items: { findMany: jest.Mock };
     };
     select: jest.Mock;
     insert: jest.Mock;
@@ -144,8 +144,8 @@ describe('OrdersService', () => {
         },
         clients: { findFirst: jest.fn().mockResolvedValue({ id: 'client-1' }) },
         users: { findFirst: jest.fn().mockResolvedValue({ id: 'staff-1' }) },
-        products: {
-          findMany: jest.fn().mockResolvedValue([{ id: 'product-1' }]),
+        items: {
+          findMany: jest.fn().mockResolvedValue([{ id: 'item-1' }]),
         },
       },
       select: chainableMock([{ total: 0 }]),
@@ -366,18 +366,18 @@ describe('OrdersService', () => {
       expect(orderRow.exchangeRate).toBe(26235.49);
     });
 
-    it('inserts items and validates every productId in one query when items are sent', async () => {
+    it('inserts items and validates every itemId in one query when items are sent', async () => {
       await service.createOrder(
         buildCreateReqDto({
           items: [
-            { productId: 'product-1', quantity: 2 },
-            { productId: 'product-1', quantity: 1 },
+            { itemId: 'item-1', quantity: 2 },
+            { itemId: 'item-1', quantity: 1 },
           ],
         }),
         'user-1',
       );
 
-      expect(mockDb.query.products.findMany).toHaveBeenCalledTimes(1);
+      expect(mockDb.query.items.findMany).toHaveBeenCalledTimes(1);
       // order row + items.
       expect(mockDb.insert).toHaveBeenCalledTimes(2);
       expect(insertedValues[1]).toHaveLength(2);
@@ -456,13 +456,13 @@ describe('OrdersService', () => {
       });
     });
 
-    it('throws E061 when a line productId does not reference an existing product', async () => {
-      mockDb.query.products.findMany.mockResolvedValue([]);
+    it('throws E061 when a line itemId does not reference an existing item', async () => {
+      mockDb.query.items.findMany.mockResolvedValue([]);
 
       await expect(
         service.createOrder(
           buildCreateReqDto({
-            items: [{ productId: 'missing-product', quantity: 1 } as any],
+            items: [{ itemId: 'missing-item', quantity: 1 } as any],
           }),
           'user-1',
         ),
@@ -559,7 +559,7 @@ describe('OrdersService', () => {
         service.updateOrder(
           'order-1',
           Object.assign(new UpdateOrderReqDto(), {
-            items: [{ productId: 'product-1', quantity: 1 } as any],
+            items: [{ itemId: 'item-1', quantity: 1 } as any],
           }),
         ),
       ).resolves.toBeDefined();

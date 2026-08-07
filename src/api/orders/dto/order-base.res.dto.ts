@@ -34,18 +34,6 @@ export class OrderBaseResDto {
   client!: ClientBaseResDto | null;
 
   @Expose()
-  @StringFieldOptional({ nullable: true })
-  contactName!: string | null;
-
-  @Expose()
-  @StringFieldOptional({ nullable: true })
-  contactPhone!: string | null;
-
-  @Expose()
-  @StringFieldOptional({ nullable: true })
-  contactEmail!: string | null;
-
-  @Expose()
   @DateField({ description: 'Ngày đặt hàng' })
   orderDate!: Date;
 

@@ -69,28 +69,27 @@ export class OrdersController {
   @Post()
   @Permissions('orders:create')
   @ApiAuth({
-    type: OrderDetailResDto,
     summary: 'Create order',
-    statusCode: HttpStatus.CREATED,
+    statusCode: HttpStatus.NO_CONTENT,
   })
   createOrder(
     @Body() reqDto: CreateOrderReqDto,
     @CurrentUser() payload: JwtPayloadType,
-  ): Promise<OrderDetailResDto> {
+  ): Promise<void> {
     return this.ordersService.createOrder(reqDto, payload.userId);
   }
 
   @Patch(':orderId')
   @Permissions('orders:update')
   @ApiAuth({
-    type: OrderDetailResDto,
     summary:
       'Update order (blocked once status is COMPLETED, CANCELLED, or PENDING_CONFIRMATION)',
+    statusCode: HttpStatus.NO_CONTENT,
   })
   updateOrder(
     @UUIDParam('orderId') orderId: string,
     @Body() reqDto: UpdateOrderReqDto,
-  ): Promise<OrderDetailResDto> {
+  ): Promise<void> {
     return this.ordersService.updateOrder(orderId, reqDto);
   }
 

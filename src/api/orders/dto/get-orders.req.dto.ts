@@ -11,7 +11,7 @@ export class GetOrdersReqDto extends PageOptionsDto {
   readonly clientId?: string;
 
   @UUIDFieldOptional({ description: 'Filter by sales staff (users) id' })
-  readonly staffId?: string;
+  readonly assignedUserId?: string;
 
   @EnumFieldOptional(() => OrderStatus)
   readonly status?: OrderStatus;

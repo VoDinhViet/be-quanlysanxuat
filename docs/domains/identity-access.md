@@ -68,8 +68,9 @@ Hai điều **không** phải invariant dù trông có vẻ:
 ## Cross-domain dependencies
 
 - **Mọi domain** đều phụ thuộc vào domain này: cột `createdBy`/`approvedBy`/`startedBy`/... khắp hệ
-  thống trỏ `users.id` (đảo lại 2026-08-01 — trước đó trỏ `credentials.id`, `orders.staffId` từng là
-  ngoại lệ duy nhất; giờ không còn ngoại lệ nào, mọi cột audit cùng một quy ước), và `PermissionsGuard`
+  thống trỏ `users.id` (đảo lại 2026-08-01 — trước đó trỏ `credentials.id`, `orders.assignedUserId`
+  (trước đó `staffId`) từng là ngoại lệ duy nhất; giờ không còn ngoại lệ nào, mọi cột audit cùng một
+  quy ước), và `PermissionsGuard`
   gác mọi route không `@Public()` (dựa trên `credentials.roleId`, không đổi).
 - **Master data** `departments`/`positions` phục vụ hồ sơ nhân sự — xem `docs/domains/partners.md`.
 
@@ -80,7 +81,7 @@ Hai điều **không** phải invariant dù trông có vẻ:
    tác" dùng giá trị này). Dùng nhầm field thì lặng lẽ 404 hoặc ghi sai FK, không phải lỗi rõ ràng.
    `LoginResDto.userId` nay trả đúng `users.id` (đã sửa 2026-08-01 — trước đó trả nhầm credential id
    dù tên field nói khác).
-2. **Tưởng `@Permissions` trên route `@ApiPublic` có tác dụng.** Không — cả hai guard `return true` trước khi đọc metadata quyền. Khoảng 14 route (`clients`, `products`, `suppliers`, `boms`, `routing`, `operations`) đang xếp chồng như vậy và **hoàn toàn không xác thực**. Muốn siết thì phải bỏ `@ApiPublic()`, và đó là breaking change với client đang gọi.
+2. **Tưởng `@Permissions` trên route `@ApiPublic` có tác dụng.** Không — cả hai guard `return true` trước khi đọc metadata quyền. Khoảng 8 route (`clients`, `suppliers`, `operations`) đang xếp chồng như vậy và **hoàn toàn không xác thực**. Muốn siết thì phải bỏ `@ApiPublic()`, và đó là breaking change với client đang gọi. (`items`/`boms` từng nằm trong nhóm này — đã chuyển hết sang `@ApiAuth()` khi `products`/`materials` gộp thành `items`, vì gộp bảng kéo theo field vật tư như `supplierId`/`minStock` vốn trước đó phải đăng nhập mới xem được, xem `docs/decisions/items-merge.md`.)
 3. **Thêm permission mới mà chỉ sửa một chỗ.** Cần đủ ba: thêm vào `PERMISSION_CODES`, gắn `@Permissions()` lên route, và cấp cho role trong `credentials.seed.ts`. Tệ hơn: **chạy lại seed không cập nhật role đã tồn tại** — hàm seed thoát sớm nếu thấy mã role đã có, nên môi trường cũ phải `UPDATE` tay.
 4. **Quên invalidate cache khi đổi phân quyền.** Quyền được cache Redis hai tầng, TTL 5 phút. `invalidateRole()` hiện **không được gọi ở đâu** (an toàn vì chưa có đường sửa role) — nếu sau này thêm chức năng sửa role mà quên gọi, quyền cũ còn hiệu lực tới 5 phút.
 5. **Tưởng `users` có lọc xoá mềm.** Cột `users.deletedAt` tồn tại nhưng **không nơi nào đọc** — user đã "xoá" vẫn hiện trong `GET /users` và vẫn gán được. (`roles.deletedAt` thì có lọc thật.)
@@ -90,5 +91,5 @@ Hai điều **không** phải invariant dù trông có vẻ:
 ## Related docs
 
 - `.claude/skills/new-api-module/SKILL.md` — nơi một permission mới phải được khai báo và cấp.
-- `docs/domains/orders.md` — nơi dùng `staffId`.
+- `docs/domains/orders.md` — nơi dùng `assignedUserId`.
 - `.claude/rules/service.md` — quy tắc khai `@Permissions` khi viết route mới.

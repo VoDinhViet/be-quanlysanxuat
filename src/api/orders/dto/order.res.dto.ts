@@ -12,7 +12,7 @@ import { OrderBaseResDto } from './order-base.res.dto';
 export class OrderResDto extends OrderBaseResDto {
   @Expose()
   @ClassFieldOptional(() => UserRefResDto, { nullable: true })
-  staff!: UserRefResDto | null;
+  assignedUser!: UserRefResDto | null;
 
   @Expose()
   @ClassFieldOptional(() => UserRefResDto, { nullable: true })

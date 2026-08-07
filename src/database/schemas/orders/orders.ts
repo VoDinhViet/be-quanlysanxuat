@@ -89,9 +89,6 @@ export const orderDiscountTypeEnum = pgEnum('order_discount_type', [
  * - Every money column (`subtotal`, `discountAmount`, `vatAmount`, `total`) is server-computed
  *   from `order_items` + the discount/VAT/shipping inputs below — see
  *   `OrdersService.recalculateTotals`. Never write them directly from a request DTO.
- * - `contactName`/`contactPhone`/`contactEmail` are a snapshot of a `client_contacts` row at
- *   create time, not a foreign key — `ClientsService.replaceContacts` deletes and re-inserts a
- *   client's contacts on every client update, so a contact id has no stable identity to point at.
  * - "Trễ hạn" (overdue) is intentionally not a column — derived at read time from `dueDate` vs
  *   "now" + `status`, see `OrdersService`.
  */
@@ -104,12 +101,9 @@ export const orders = pgTable(
     clientId: uuid('client_id').references(() => clients.id, {
       onDelete: 'restrict',
     }),
-    contactName: varchar('contact_name', { length: 255 }),
-    contactPhone: varchar('contact_phone', { length: 30 }),
-    contactEmail: varchar('contact_email', { length: 255 }),
     // Nhân viên kinh doanh phụ trách đơn — vai trò tổ chức, khác `createdBy` (ai bấm nút tạo đơn),
     // nhưng từ khi mọi FK audit đều trỏ `users.id`, hai loại không còn khác nhau về bảng đích nữa.
-    staffId: uuid('staff_id').references(() => users.id, {
+    assignedUserId: uuid('assigned_user_id').references(() => users.id, {
       onDelete: 'set null',
     }),
     orderDate: date('order_date', { mode: 'date' }).notNull(),
@@ -195,7 +189,7 @@ export const orders = pgTable(
   },
   (table) => [
     index('idx_orders_client_id').on(table.clientId),
-    index('idx_orders_staff_id').on(table.staffId),
+    index('idx_orders_assigned_user_id').on(table.assignedUserId),
     index('idx_orders_created_by').on(table.createdBy),
     index('idx_orders_status')
       .on(table.status)
@@ -208,8 +202,8 @@ export const ordersRelations = relations(orders, ({ one, many }) => ({
     fields: [orders.clientId],
     references: [clients.id],
   }),
-  staff: one(users, {
-    fields: [orders.staffId],
+  assignedUser: one(users, {
+    fields: [orders.assignedUserId],
     references: [users.id],
   }),
   creator: one(users, {

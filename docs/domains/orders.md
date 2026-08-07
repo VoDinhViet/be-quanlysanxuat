@@ -6,9 +6,9 @@ Chứng từ ghi nhận **khách đặt gì, giá bao nhiêu, giao khi nào** �
 
 ## Core concepts
 
-**Đơn hàng là chứng từ thương mại, nên nó đóng băng dữ liệu tại thời điểm lập.** Người liên hệ (`contactName`/`contactPhone`/`contactEmail`) là **bản chụp** từ danh bạ khách hàng, **không phải FK**. Lý do rất cụ thể: mỗi lần sửa khách hàng, hệ thống xoá sạch rồi chèn lại toàn bộ liên hệ, nên id một dòng liên hệ không ổn định theo thời gian — một FK trỏ thẳng vào đó sẽ đứt mỗi khi ai đó sửa thông tin khách, kể cả khi không đụng gì tới đơn.
+**Không snapshot người liên hệ.** `orders` không giữ contact riêng — liên hệ của một đơn luôn đọc qua `clientId` → danh bạ hiện tại của khách hàng, không đóng băng tại thời điểm lập đơn.
 
-**Sản phẩm thì ngược lại — cố ý *không* snapshot.** Dòng đơn chỉ giữ `productId` + số lượng/đơn giá/chiết khấu. Tên, ảnh, đơn vị luôn đọc qua quan hệ tại thời điểm đọc. An toàn vì sản phẩm chỉ xoá mềm, nên dòng đơn cũ luôn còn sản phẩm để join tới.
+**Item cũng cố ý *không* snapshot.** Dòng đơn chỉ giữ `itemId` (luôn FG, service-enforced) + số lượng/đơn giá/chiết khấu. Tên, ảnh, đơn vị luôn đọc qua quan hệ tại thời điểm đọc. An toàn vì item chỉ xoá mềm, nên dòng đơn cũ luôn còn item để join tới.
 
 **Mọi số tiền do server tính, client không được gửi.** Client chỉ gửi đầu vào (số lượng, đơn giá, % chiết khấu, VAT, phí ship); toàn bộ `lineTotal`/`subtotal`/`discountAmount`/`vatAmount`/`total` được tính lại **trong Postgres**, trong cùng transaction với lần ghi. Gửi kèm các field đó sẽ bị `ValidationPipe` lặng lẽ loại bỏ. Lý do: tiền là thứ không được phép lệch giữa client và server.
 
@@ -18,7 +18,7 @@ Chứng từ ghi nhận **khách đặt gì, giá bao nhiêu, giao khi nào** �
 
 | Entity | Vai trò |
 | --- | --- |
-| `orders` | Header: khách, liên hệ (snapshot), NVKD, ngày đặt/giao, tiền tệ + tỷ giá, khối tiền, trạng thái, lý do từ chối |
+| `orders` | Header: khách, NVKD phụ trách, ngày đặt/giao, tiền tệ + tỷ giá, khối tiền, trạng thái, lý do từ chối |
 | `order_items` | Dòng sản phẩm; `sortOrder` do client tự quản khi kéo-thả |
 | `order_attachments` | Tài liệu đính kèm qua registry `files` |
 
@@ -60,8 +60,8 @@ Mọi chuyển trạng thái **khác** đều lỏng: không có state machine �
 - Không đường nào ngoài `approveOrder` đưa đơn tới `AWAITING_PRODUCTION`.
 - Tổng tiền trong DB luôn là kết quả server tính, chưa bao giờ là số client gửi.
 - Một đơn ở trạng thái kết thúc (`COMPLETED`/`CANCELLED`) hoặc đang chờ duyệt (`PENDING_CONFIRMATION`) là bất biến — không sửa được.
-- `orders.staffId` trỏ `users.id`, cùng quy ước với mọi FK "ai thao tác" khác trong hệ thống — xem
-  `docs/domains/identity-access.md`.
+- `orders.assignedUserId` trỏ `users.id`, cùng quy ước với mọi FK "ai thao tác" khác trong hệ thống
+  — xem `docs/domains/identity-access.md`.
 
 Không phải invariant dù dễ tưởng:
 
@@ -73,21 +73,20 @@ Không phải invariant dù dễ tưởng:
 - **→ Production**: duyệt đơn seed `production_orders` + `production_order_items`. Đây là ranh giới quan trọng nhất của hệ thống.
 - **← Production**: duyệt LSX đẩy đơn từ `AWAITING_PRODUCTION` sang `IN_PROGRESS`, và khoá việc sửa `items`.
 - **← Inventory**: đơn đã duyệt (`AWAITING_PRODUCTION`/`IN_PROGRESS`) là thứ tạo ra `reserved` (hàng đã giữ chỗ) trong công thức tồn kho. Đơn chưa duyệt **không** giữ chỗ.
-- **→ Clients**: `clientId` + snapshot liên hệ (xem "Core concepts").
-- **→ Identity**: `staffId` → `users.id`.
-- **→ Product Structure**: `productId` mỗi dòng.
+- **→ Clients**: `clientId`, liên hệ đọc qua quan hệ (xem "Core concepts").
+- **→ Identity**: `assignedUserId` → `users.id`.
+- **→ Product Structure**: `itemId` mỗi dòng (luôn FG).
 - **→ Suppliers**: chỉ mượn lại enum `PaymentTerm` khai báo bên đó — không phụ thuộc dữ liệu nhà cung cấp.
 
 ## Common mistakes
 
 1. **Tưởng có thể set `status = AWAITING_PRODUCTION` bằng `PATCH`.** Không — `E075`. Đây là chốt chặn cố ý của luồng duyệt.
 2. **Gửi `total`/`subtotal` từ client rồi thắc mắc sao không có tác dụng.** Bị `whitelist: true` loại bỏ lặng lẽ, không báo lỗi.
-3. **Thêm FK tới `client_contacts`** vì thấy snapshot là "trùng dữ liệu" — sẽ đứt liên kết mỗi lần khách hàng được sửa.
-4. **Gửi thiếu dòng khi `PATCH items`.** Là replace-all, không phải partial — gửi thiếu là xoá.
-5. **Tưởng `GET /orders` trả kèm `items`/`attachments`.** Không; chỉ `GET /orders/:id` và response ngay sau `POST`/`PATCH` mới có.
-6. **Dựa vào `GET /orders/stats` như số liệu chính xác.** Hai field là xấp xỉ: `completedValue` ("Đã giao") dùng `status = COMPLETED` làm proxy vì chưa có bảng giao hàng thật; `expiredTrendCount` so trạng thái *hiện tại* với mốc 7 ngày trước vì không có bảng lịch sử trạng thái.
-7. **Tìm route xoá đơn hàng.** Không có, đã bỏ hẳn — huỷ đơn dùng `PATCH status = CANCELLED`. Xem `docs/decisions/orders-no-delete.md`.
-8. **Tưởng sửa được đơn đang chờ duyệt (`PENDING_CONFIRMATION`).** Không — `E090`, khoá cho tới khi Giám đốc duyệt/từ chối xong.
+3. **Gửi thiếu dòng khi `PATCH items`.** Là replace-all, không phải partial — gửi thiếu là xoá.
+4. **Tưởng `GET /orders` trả kèm `items`/`attachments`.** Không; chỉ `GET /orders/:id` và response ngay sau `POST`/`PATCH` mới có.
+5. **Dựa vào `GET /orders/stats` như số liệu chính xác.** Hai field là xấp xỉ: `completedValue` ("Đã giao") dùng `status = COMPLETED` làm proxy vì chưa có bảng giao hàng thật; `expiredTrendCount` so trạng thái *hiện tại* với mốc 7 ngày trước vì không có bảng lịch sử trạng thái.
+6. **Tìm route xoá đơn hàng.** Không có, đã bỏ hẳn — huỷ đơn dùng `PATCH status = CANCELLED`. Xem `docs/decisions/orders-no-delete.md`.
+7. **Tưởng sửa được đơn đang chờ duyệt (`PENDING_CONFIRMATION`).** Không — `E090`, khoá cho tới khi Giám đốc duyệt/từ chối xong.
 
 ## Related docs
 
