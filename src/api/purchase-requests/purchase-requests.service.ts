@@ -421,7 +421,7 @@ export class PurchaseRequestsService {
     );
   }
 
-  /** Khuôn `InventoryReceiptsService.generateReceiptCode` — `COUNT(*) + 1` pad 4 chữ số, không
+  /** Khuôn `InventoryReceiptsService.generateReceiptCode` — `COUNT(*) + 1` pad 5 chữ số, không
    * tách theo năm; unique constraint trên `code` là chốt chặn thật, cùng giới hạn TOCTOU đã chấp
    * nhận chung trong repo. */
   private async generatePurchaseRequestCode(
@@ -430,6 +430,6 @@ export class PurchaseRequestsService {
     const [totalRows] = await tx
       .select({ total: count() })
       .from(purchaseRequests);
-    return `DXMH${String((totalRows?.total ?? 0) + 1).padStart(4, '0')}`;
+    return `PR-${String((totalRows?.total ?? 0) + 1).padStart(5, '0')}`;
   }
 }

@@ -36,6 +36,8 @@ import { PositionsModule } from './api/positions/positions.module';
 import { ProductionJobsModule } from './api/production-jobs/production-jobs.module';
 import { ProductionOrdersModule } from './api/production-orders/production-orders.module';
 import { PurchaseLedgerModule } from './api/purchase-ledger/purchase-ledger.module';
+import { PurchaseOrdersModule } from './api/purchase-orders/purchase-orders.module';
+import { PurchaseQuotationsModule } from './api/purchase-quotations/purchase-quotations.module';
 import { PurchaseRequestsModule } from './api/purchase-requests/purchase-requests.module';
 import { RoutingsModule } from './api/routings/routings.module';
 import { UnitsModule } from './api/units/units.module';
@@ -83,6 +85,8 @@ import { WarehousesModule } from './api/warehouses/warehouses.module';
     OrdersModule,
     PurchaseRequestsModule,
     PurchaseLedgerModule,
+    PurchaseQuotationsModule,
+    PurchaseOrdersModule,
   ],
 
   controllers: [AppController],

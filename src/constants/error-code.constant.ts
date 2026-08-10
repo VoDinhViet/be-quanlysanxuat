@@ -236,5 +236,7 @@ export enum ErrorCode {
   E125 = 'purchase_ledger.error.line_not_purchasable',
   E126 = 'purchase_ledger.error.line_already_ordered',
   E127 = 'purchase_order.error.receipt_item_mismatch',
+  // Hai dòng cùng `purchaseRequestItemId` trong một payload tạo báo giá/đơn mua.
+  E128 = 'purchase_quotation.error.duplicate_request_item',
   V003 = 'common.error.too_many_requests',
 }

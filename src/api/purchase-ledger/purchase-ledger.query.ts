@@ -13,33 +13,29 @@ import {
   purchaseQuotations,
 } from '../../database/schemas';
 
-/** SL đặt mua theo dòng đề xuất — chỉ đơn mua chưa `CANCELLED`. `totalOrderItems` (kể cả đơn đã
- * hủy) phân biệt "chưa từng đặt mua" với "đã đặt mua nhưng mọi đơn đều bị hủy" — cả hai cho
- * `orderedQuantity = 0` nhưng ứng với hai trạng thái sổ cái khác nhau (`docs/domains/purchasing.md`). */
-export function purchaseOrderAggregateSubquery(db: Database) {
+/** SL đặt mua theo dòng đề xuất — Σ `quantity` của đơn mua đã `ORDERED`. Không đếm `DRAFT` (đơn
+ * đang soạn, chưa đặt) hay `CANCELLED`. */
+export function orderedQuantitySubquery(db: Database) {
   return db
     .select({
       purchaseRequestItemId: purchaseOrderItems.purchaseRequestItemId,
-      orderedQuantity:
-        sql<number>`sum(case when ${purchaseOrders.status} <> ${PurchaseOrderStatus.CANCELLED} then ${purchaseOrderItems.quantity} else 0 end)`
-          .mapWith(Number)
-          .as('ordered_quantity'),
-      totalOrderItems: sql<number>`count(*)`
+      orderedQuantity: sql<number>`sum(${purchaseOrderItems.quantity})`
         .mapWith(Number)
-        .as('total_order_items'),
+        .as('ordered_quantity'),
     })
     .from(purchaseOrderItems)
     .innerJoin(
       purchaseOrders,
       eq(purchaseOrders.id, purchaseOrderItems.purchaseOrderId),
     )
+    .where(eq(purchaseOrders.status, PurchaseOrderStatus.ORDERED))
     .groupBy(purchaseOrderItems.purchaseRequestItemId)
-    .as('purchase_order_aggregate');
+    .as('ordered_quantity_aggregate');
 }
 
 /** SL đã nhập kho theo dòng đề xuất — chỉ phiếu nhập `POSTED`, nối qua `purchase_order_items` (một
  * dòng phiếu nhập trace về đúng một dòng đơn mua, dòng đơn mua trace về đúng một dòng đề xuất). */
-export function receivedQuantityAggregateSubquery(db: Database) {
+export function receivedQuantitySubquery(db: Database) {
   return db
     .select({
       purchaseRequestItemId: purchaseOrderItems.purchaseRequestItemId,
@@ -61,20 +57,15 @@ export function receivedQuantityAggregateSubquery(db: Database) {
     .as('received_quantity_aggregate');
 }
 
-/** Trạng thái báo giá theo dòng đề xuất — chỉ báo giá chưa `CANCELLED`. `hasQuoted` = đã có NCC trả
- * giá (`unitPrice` không null); `selectedAt` = mốc chốt giá gần nhất còn sống. */
-export function quotationAggregateSubquery(db: Database) {
+/** SL báo giá theo dòng đề xuất — Σ `quantity` của **mọi** dòng báo giá chưa `CANCELLED`, kể cả
+ * chưa được chọn giá (`selectedAt` không xét ở đây). */
+export function quotedQuantitySubquery(db: Database) {
   return db
     .select({
       purchaseRequestItemId: purchaseQuotationItems.purchaseRequestItemId,
-      hasQuoted:
-        sql<boolean>`bool_or(${purchaseQuotationItems.unitPrice} is not null)`
-          .mapWith(Boolean)
-          .as('has_quoted'),
-      selectedAt:
-        sql<Date | null>`max(${purchaseQuotationItems.selectedAt})`.as(
-          'selected_at',
-        ),
+      quotedQuantity: sql<number>`sum(${purchaseQuotationItems.quantity})`
+        .mapWith(Number)
+        .as('quoted_quantity'),
     })
     .from(purchaseQuotationItems)
     .innerJoin(
@@ -83,5 +74,5 @@ export function quotationAggregateSubquery(db: Database) {
     )
     .where(ne(purchaseQuotations.status, PurchaseQuotationStatus.CANCELLED))
     .groupBy(purchaseQuotationItems.purchaseRequestItemId)
-    .as('quotation_aggregate');
+    .as('quoted_quantity_aggregate');
 }

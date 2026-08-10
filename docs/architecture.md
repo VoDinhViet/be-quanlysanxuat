@@ -115,11 +115,11 @@ IN_PROGRESS` → nếu có thiếu, `PurchaseRequestsService.createShortageReque
 transaction chỉ có đúng một `UPDATE`. Chi tiết: `docs/workflows/production-job-execution.md`.
 
 **Sổ cái mua hàng** (`GET /purchase-ledger`, `docs/domains/purchasing.md`): thuần đọc, không
-transaction — một `.select()` + join gộp `purchase_request_items` (phiếu `APPROVED`) với ba
-subquery aggregate (SL đặt mua từ `purchase_order_items`, SL đã nhập từ `inventory_receipt_items`
-lọc `POSTED`, trạng thái báo giá từ `purchase_quotation_items`) cộng hai subquery tồn/nhu cầu của
-`item-stock.query.ts`. Bảy trạng thái + `pendingPurchaseSince` tính bằng `CASE WHEN` ngay trong câu
-lệnh, không lọc ở tầng JS.
+transaction — một `.select()` + join `purchase_request_items` (phiếu `APPROVED`) với ba subquery
+aggregate (`purchase-ledger.query.ts`): SL đặt mua từ `purchase_order_items` của đơn đã `ORDERED`,
+SL đã nhập từ `inventory_receipt_items` lọc `POSTED`, SL báo giá từ `purchase_quotation_items` chưa
+`CANCELLED`. Bốn trạng thái tính bằng `CASE WHEN` ngay trong câu lệnh, không lọc ở tầng JS. Không
+tồn kho — sổ cái chỉ có dữ liệu mua hàng, xem "Trạng thái hiện tại" ở đầu `docs/domains/purchasing.md`.
 
 ## Chuỗi import module (NestJS DI)
 

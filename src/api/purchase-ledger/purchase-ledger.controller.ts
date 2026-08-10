@@ -21,9 +21,9 @@ export class PurchaseLedgerController {
       'Sổ cái mua hàng — 1 dòng/1 dòng vật tư của đề xuất đã APPROVED, trạng thái tính lúc đọc',
     isPaginated: true,
   })
-  getPurchaseLedger(
+  getPurchaseLedgers(
     @Query() reqDto: GetPurchaseLedgerReqDto,
   ): Promise<OffsetPaginatedDto<PurchaseLedgerItemResDto>> {
-    return this.purchaseLedgerService.getPurchaseLedger(reqDto);
+    return this.purchaseLedgerService.getPurchaseLedgers(reqDto);
   }
 }

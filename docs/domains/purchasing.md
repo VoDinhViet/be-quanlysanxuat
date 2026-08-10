@@ -7,9 +7,29 @@ kho: hỏi giá NCC (báo giá), chốt giá và đặt mua (đơn mua), rồi n
 (`docs/domains/inventory.md`). Đảo ngược `docs/decisions/no-procurement.md` — xem lý do ở đầu file
 đó.
 
-**Sổ cái mua hàng** (`GET /purchase-ledger`) là màn hình tổng hợp, một dòng/một dòng đề xuất, hiện
-đủ vòng đời từ đề xuất → nhận hàng. Nó không phải một chứng từ — không có bảng riêng, mọi số đều
-tính lúc đọc từ bốn bảng gốc.
+**Sổ cái mua hàng** (`GET /purchase-ledger`) là màn hình tổng hợp, một dòng/một dòng đề xuất, thiết
+kế để hiện đủ vòng đời từ đề xuất → nhận hàng. Nó không phải một chứng từ — không có bảng riêng, mọi
+số đều tính lúc đọc từ bốn bảng gốc.
+
+**Trạng thái hiện tại (chưa xong hết thiết kế dưới đây).** Module `purchase-quotations` đã có
+`GET` list/detail + `POST` lập báo giá tay (chọn dòng ĐXMH `APPROVED` + một NCC) — không sinh tự động
+ở bước duyệt ĐXMH. Module `purchase-orders` mới có `GET` list — **chưa có** route
+tạo, nên list này rỗng trên dữ liệu thật tới khi có `POST /purchase-orders` (đợt sau, gom dòng báo giá
+đã chốt giá thành đơn). `GET /purchase-ledger` đọc thẳng bốn bảng cho `quotedQuantity` (Σ `quantity`
+mọi dòng báo giá chưa `CANCELLED`, không xét đã có giá hay chưa — "có RFQ" = đang báo giá) và
+`orderedQuantity` (Σ `quantity` mọi đơn mua đã `ORDERED`, không đếm `DRAFT`) — `orderedQuantity` vẫn
+**luôn ra 0** cho tới khi có route tạo PO. `status` hiện tại là **bản rút gọn 4 giá trị** của riêng
+API này (`WAITING_TO_PURCHASE`/`QUOTING`/`ORDERED`/`COMPLETED`, xem `PurchaseLedgerService`) — **khác**
+bộ 7 giá trị đầy đủ mô tả ở "Bảy trạng thái" dưới đây, vẫn là **thiết kế đích** cho khi RFQ/PO đủ route
+(không dùng cho response hiện tại). `COMPLETED` cần `receivedQuantity` (nối qua
+`inventory_receipt_items.purchaseOrderItemId`, phiếu `POSTED`) — cột đã có nhưng `inventory-receipts`
+chưa route nào ghi, nên `COMPLETED` chưa thể xuất hiện thật. Không trả tồn kho
+(`onHand`/`bomDemand`/`available`/`fromStock`) hay `remainingQuantity`/`pendingPurchaseSince`.
+
+**Cảnh báo (vd "Chưa tạo PO"/"Cần xử lý gấp") không do BE tính** — cùng nguyên tắc với highlight
+vàng/đỏ ở thiết kế đích: BE chỉ trả số thô (`orderedQuantity`, `neededDate`), FE tự so ngày lúc
+render để cảnh báo luôn đúng theo giờ thực tế của người xem, không bị đứng lại theo thời điểm BE trả
+response.
 
 ## Core concepts
 
@@ -100,6 +120,10 @@ Báo giá:  DRAFT ──send──> SENT ──receive (đủ unitPrice, E120)�
 Không có đường lùi ở cả hai — `CANCELLED` là điểm cuối, `RECEIVED`/`ORDERED` không quay lại
 `SENT`/`DRAFT`.
 
+Cả `DRAFT` báo giá lẫn `DRAFT` đơn mua đều do người mua hàng **lập tay** qua `POST` — duyệt ĐXMH
+(`purchase-requests:approve`) không sinh chứng từ nào ở domain này, chỉ lật trạng thái phiếu của
+chính nó.
+
 **Một dòng đề xuất** (`purchase_request_items`) hủy tay được khi **chưa có đơn mua sống** — hủy đơn
 mua chứa nó, hoặc `POST /purchase-ledger/:id/cancel`, đều lật dòng sổ cái sang `CANCELLED`; `restore`
 gỡ hủy tay (không gỡ được hủy-do-đơn-mua, phải lập đơn mua khác).
@@ -108,6 +132,9 @@ gỡ hủy tay (không gỡ được hủy-do-đơn-mua, phải lập đơn mua 
 
 - `purchase_quotation_items`/`purchase_order_items` chỉ nhận `purchaseRequestItemId` thuộc phiếu
   `APPROVED` và **chưa hủy tay** (`E125`).
+- Một báo giá không được chứa hai dòng cùng `purchaseRequestItemId` (`E128`,
+  `PurchaseQuotationsService.createQuotation`) — trùng sẽ nhân đôi `quotedQuantity` của dòng đó trên
+  sổ cái.
 - `receive` (báo giá) chặn nếu còn dòng thiếu `unitPrice` (`E120`) — không cho chốt giá dòng chưa có
   giá.
 - `select` chạy trong transaction: bỏ `selectedAt` ở mọi dòng báo giá khác cùng
@@ -116,8 +143,9 @@ gỡ hủy tay (không gỡ được hủy-do-đơn-mua, phải lập đơn mua 
   được, phải xử lý ở phiếu nhập trước.
 - `POST /purchase-ledger/:id/cancel` chặn nếu dòng đã có đơn mua sống (`E126`) — muốn hủy phải hủy
   đơn mua trước.
-- Mã (`purchase_quotations.code`, `purchase_orders.code`) bất biến, unique toàn bảng, sinh theo
-  khuôn `PurchaseRequestsService.generatePurchaseRequestCode` (đếm + pad, không tách năm).
+- Mã (`purchase_quotations.code` tiền tố `RFQ`, `purchase_orders.code` tiền tố `PO`) bất biến, unique
+  toàn bảng, sinh theo khuôn `PurchaseRequestsService.generatePurchaseRequestCode` (đếm + pad, không
+  tách năm).
 
 ## Cross-domain dependencies
 
@@ -144,6 +172,9 @@ gỡ hủy tay (không gỡ được hủy-do-đơn-mua, phải lập đơn mua 
    khác (dòng đề xuất vẫn còn, chỉ đơn mua cũ chết).
 5. **Đi tìm cột duyệt đơn mua.** Chưa có — `DRAFT → ORDERED` là thao tác của người mua hàng, không
    qua Giám đốc (khác `purchase-requests:approve`).
+6. **Tưởng lập một PO `DRAFT` là dòng sổ cái đã "đặt hàng".** `orderedQuantity` chỉ đếm PO đã
+   `ORDERED` — PO đang soạn không tính, dòng sổ cái vẫn `QUOTING`/`WAITING_TO_PURCHASE` tuỳ đã có RFQ
+   hay chưa.
 
 ## Related docs
 

@@ -1,14 +1,12 @@
 /**
- * Trạng thái một dòng sổ cái mua hàng — tính lúc đọc (`PurchaseLedgerService.getPurchaseLedger`),
- * không lưu cột nào. Đánh giá theo đúng thứ tự khai báo, dừng ở nhánh khớp đầu tiên — xem bảng đầy
- * đủ ở `docs/domains/purchasing.md`.
+ * Trạng thái một dòng sổ cái mua hàng — tính lúc đọc (`PurchaseLedgerService.getPurchaseLedgers`),
+ * không lưu cột nào. `COMPLETED` cần `receivedQuantity` (nối qua `purchaseOrderItemId`, phiếu nhập
+ * `POSTED`) nên chưa thể xuất hiện thật tới khi `inventory-receipts` nối cột này
+ * (`docs/domains/purchasing.md`).
  */
 export enum PurchaseLedgerStatus {
-  CANCELLED = 'CANCELLED',
+  WAITING_TO_PURCHASE = 'WAITING_TO_PURCHASE',
+  QUOTING = 'QUOTING',
+  ORDERED = 'ORDERED',
   COMPLETED = 'COMPLETED',
-  RECEIVING = 'RECEIVING',
-  PURCHASED = 'PURCHASED',
-  PENDING_PURCHASE = 'PENDING_PURCHASE',
-  QUOTED = 'QUOTED',
-  NOT_QUOTED = 'NOT_QUOTED',
 }

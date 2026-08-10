@@ -5,7 +5,6 @@ import {
   asc,
   count,
   eq,
-  exists,
   getTableColumns,
   gte,
   lt,
@@ -20,47 +19,36 @@ import { unaccentILike } from '../../common/utils/search.util';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database } from '../../database/database.type';
 import {
-  files,
   items,
   productionOrders,
-  purchaseOrderItems,
-  purchaseOrders,
-  purchaseQuotationItems,
-  purchaseQuotations,
   purchaseRequestItems,
   purchaseRequests,
   PurchaseRequestStatus,
   units,
 } from '../../database/schemas';
-import {
-  itemOnHandSubquery,
-  itemStockColumnsByScope,
-  jobMaterialDemandByJobSubquery,
-  jobMaterialDemandByOrderSubquery,
-} from '../inventory/item-stock.query';
 import { GetPurchaseLedgerReqDto } from './dto/get-purchase-ledger.req.dto';
 import { PurchaseLedgerItemResDto } from './dto/purchase-ledger-item.res.dto';
 import { PurchaseLedgerStatus } from './purchase-ledger.constant';
 import {
-  purchaseOrderAggregateSubquery,
-  quotationAggregateSubquery,
-  receivedQuantityAggregateSubquery,
+  orderedQuantitySubquery,
+  quotedQuantitySubquery,
+  receivedQuantitySubquery,
 } from './purchase-ledger.query';
 
-type LedgerStatusRefs = {
-  cancelledAt: SQL | null;
+type LedgerQuantityRefs = {
   orderedQuantity: SQL<number>;
-  totalOrderItems: SQL<number>;
   receivedQuantity: SQL<number>;
-  hasQuoted: SQL<boolean>;
-  selectedAt: SQL<Date | null> | null;
+  quotedQuantity: SQL<number>;
 };
 
+/** Chưa có module `purchase-quotations`/`purchase-orders` — `quotedQuantity`/`orderedQuantity` đọc
+ * thẳng bảng đã có ở schema nhưng chưa route nào ghi, luôn `0` tới khi hai module đó lên
+ * (`docs/domains/purchasing.md`). */
 @Injectable()
 export class PurchaseLedgerService {
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
 
-  async getPurchaseLedger(
+  async getPurchaseLedgers(
     reqDto: GetPurchaseLedgerReqDto,
   ): Promise<OffsetPaginatedDto<PurchaseLedgerItemResDto>> {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
@@ -68,29 +56,10 @@ export class PurchaseLedgerService {
       ? `%${reqDto.materialKeyword}%`
       : undefined;
 
-    const balance = itemOnHandSubquery(this.db);
-    const jobDemand = jobMaterialDemandByJobSubquery(this.db);
-    const orderDemand = jobMaterialDemandByOrderSubquery(this.db);
-    const orderAgg = purchaseOrderAggregateSubquery(this.db);
-    const receivedAgg = receivedQuantityAggregateSubquery(this.db);
-    const quotationAgg = quotationAggregateSubquery(this.db);
-
-    const refs: LedgerStatusRefs = {
-      cancelledAt: sql`${purchaseRequestItems.cancelledAt}`,
-      orderedQuantity:
-        sql<number>`coalesce(${orderAgg.orderedQuantity}, 0)`.mapWith(Number),
-      totalOrderItems:
-        sql<number>`coalesce(${orderAgg.totalOrderItems}, 0)`.mapWith(Number),
-      receivedQuantity:
-        sql<number>`coalesce(${receivedAgg.receivedQuantity}, 0)`.mapWith(
-          Number,
-        ),
-      hasQuoted:
-        sql<boolean>`coalesce(${quotationAgg.hasQuoted}, false)`.mapWith(
-          Boolean,
-        ),
-      selectedAt: sql`${quotationAgg.selectedAt}`,
-    };
+    const orderedAgg = orderedQuantitySubquery(this.db);
+    const receivedAgg = receivedQuantitySubquery(this.db);
+    const quotedAgg = quotedQuantitySubquery(this.db);
+    const refs = this.buildQuantityRefs(orderedAgg, receivedAgg, quotedAgg);
 
     const where = and(
       eq(purchaseRequests.status, PurchaseRequestStatus.APPROVED),
@@ -108,9 +77,8 @@ export class PurchaseLedgerService {
       reqDto.productionOrderId
         ? eq(purchaseRequests.productionOrderId, reqDto.productionOrderId)
         : undefined,
-      reqDto.supplierId ? this.supplierCondition(reqDto.supplierId) : undefined,
       reqDto.status
-        ? this.purchaseLedgerStatusCondition(refs, reqDto.status)
+        ? this.buildStatusCondition(refs, reqDto.status)
         : undefined,
       reqDto.neededDate
         ? eq(purchaseRequests.neededDate, reqDto.neededDate)
@@ -132,18 +100,15 @@ export class PurchaseLedgerService {
           id: purchaseRequestItems.id,
           quantity: purchaseRequestItems.quantity,
           note: purchaseRequestItems.note,
-          cancelledAt: purchaseRequestItems.cancelledAt,
           item: getTableColumns(items),
           unit: getTableColumns(units),
-          imageFile: getTableColumns(files),
           purchaseRequest: getTableColumns(purchaseRequests),
           productionOrder: getTableColumns(productionOrders),
+          neededDate: purchaseRequests.neededDate,
+          createdAt: purchaseRequests.createdAt,
           orderedQuantity: refs.orderedQuantity,
-          receivedQuantity: refs.receivedQuantity,
-          totalOrderItems: refs.totalOrderItems,
-          hasQuoted: refs.hasQuoted,
-          selectedAt: quotationAgg.selectedAt,
-          ...itemStockColumnsByScope(balance, jobDemand, orderDemand),
+          quotedQuantity: refs.quotedQuantity,
+          status: this.buildLedgerStatus(refs),
         })
         .from(purchaseRequestItems)
         .innerJoin(
@@ -152,40 +117,21 @@ export class PurchaseLedgerService {
         )
         .innerJoin(items, eq(items.id, purchaseRequestItems.itemId))
         .innerJoin(units, eq(units.id, items.unitId))
-        .leftJoin(files, eq(files.id, items.imageFileId))
         .leftJoin(
           productionOrders,
           eq(productionOrders.id, purchaseRequests.productionOrderId),
         )
-        .leftJoin(balance, eq(balance.itemId, items.id))
         .leftJoin(
-          jobDemand,
-          and(
-            eq(jobDemand.productionJobId, purchaseRequests.productionJobId),
-            eq(jobDemand.itemId, items.id),
-          ),
-        )
-        .leftJoin(
-          orderDemand,
-          and(
-            eq(
-              orderDemand.productionOrderId,
-              purchaseRequests.productionOrderId,
-            ),
-            eq(orderDemand.itemId, items.id),
-          ),
-        )
-        .leftJoin(
-          orderAgg,
-          eq(orderAgg.purchaseRequestItemId, purchaseRequestItems.id),
+          orderedAgg,
+          eq(orderedAgg.purchaseRequestItemId, purchaseRequestItems.id),
         )
         .leftJoin(
           receivedAgg,
           eq(receivedAgg.purchaseRequestItemId, purchaseRequestItems.id),
         )
         .leftJoin(
-          quotationAgg,
-          eq(quotationAgg.purchaseRequestItemId, purchaseRequestItems.id),
+          quotedAgg,
+          eq(quotedAgg.purchaseRequestItemId, purchaseRequestItems.id),
         )
         .where(where)
         .orderBy(asc(items.code))
@@ -200,176 +146,84 @@ export class PurchaseLedgerService {
         )
         .innerJoin(items, eq(items.id, purchaseRequestItems.itemId))
         .leftJoin(
-          orderAgg,
-          eq(orderAgg.purchaseRequestItemId, purchaseRequestItems.id),
+          orderedAgg,
+          eq(orderedAgg.purchaseRequestItemId, purchaseRequestItems.id),
         )
         .leftJoin(
           receivedAgg,
           eq(receivedAgg.purchaseRequestItemId, purchaseRequestItems.id),
         )
         .leftJoin(
-          quotationAgg,
-          eq(quotationAgg.purchaseRequestItemId, purchaseRequestItems.id),
+          quotedAgg,
+          eq(quotedAgg.purchaseRequestItemId, purchaseRequestItems.id),
         )
         .where(where),
     ]);
 
-    const entities = rows.map(
-      ({
-        item,
-        unit,
-        imageFile,
-        purchaseRequest,
-        cancelledAt,
-        orderedQuantity,
-        receivedQuantity,
-        totalOrderItems,
-        hasQuoted,
-        selectedAt,
-        ...rest
-      }) => {
-        const status = this.computeStatus({
-          cancelledAt,
-          orderedQuantity,
-          receivedQuantity,
-          totalOrderItems,
-          hasQuoted,
-          selectedAt,
-        });
-
-        return {
-          ...rest,
-          item: { ...item, unit, imageFile },
-          purchaseRequest,
-          neededDate: purchaseRequest.neededDate,
-          createdAt: purchaseRequest.createdAt,
-          orderedQuantity,
-          receivedQuantity,
-          remainingQuantity: orderedQuantity - receivedQuantity,
-          status,
-          pendingPurchaseSince:
-            status === PurchaseLedgerStatus.PENDING_PURCHASE
-              ? selectedAt
-              : null,
-        };
-      },
-    );
-
     return new OffsetPaginatedDto(
-      plainToInstance(PurchaseLedgerItemResDto, entities, {
+      plainToInstance(PurchaseLedgerItemResDto, rows, {
         excludeExtraneousValues: true,
       }),
       new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
     );
   }
 
-  /** Khớp NCC đã báo giá **hoặc** đã được đặt mua cho dòng này — hai đường độc lập vì đơn mua
-   * không bắt buộc qua báo giá (`docs/domains/purchasing.md`). */
-  private supplierCondition(supplierId: string): SQL {
-    return or(
-      exists(
-        this.db
-          .select({ one: sql`1` })
-          .from(purchaseQuotationItems)
-          .innerJoin(
-            purchaseQuotations,
-            eq(purchaseQuotations.id, purchaseQuotationItems.quotationId),
-          )
-          .where(
-            and(
-              eq(
-                purchaseQuotationItems.purchaseRequestItemId,
-                purchaseRequestItems.id,
-              ),
-              eq(purchaseQuotations.supplierId, supplierId),
-            ),
-          ),
-      ),
-      exists(
-        this.db
-          .select({ one: sql`1` })
-          .from(purchaseOrderItems)
-          .innerJoin(
-            purchaseOrders,
-            eq(purchaseOrders.id, purchaseOrderItems.purchaseOrderId),
-          )
-          .where(
-            and(
-              eq(
-                purchaseOrderItems.purchaseRequestItemId,
-                purchaseRequestItems.id,
-              ),
-              eq(purchaseOrders.supplierId, supplierId),
-            ),
-          ),
-      ),
-    ) as SQL;
-  }
-
-  /** Điều kiện lọc `WHERE` khớp đúng một giá trị `PurchaseLedgerStatus` — mỗi nhánh loại trừ
-   * tường minh các nhánh đứng trước theo đúng thứ tự ưu tiên ở `computeStatus`/
-   * `docs/domains/purchasing.md`, không dựa vào suy luận số học ngầm. */
-  private purchaseLedgerStatusCondition(
-    refs: LedgerStatusRefs,
+  /** Điều kiện lọc `WHERE` khớp đúng một giá trị `PurchaseLedgerStatus` — mỗi nhánh vừa loại trừ,
+   * vừa gộp đủ (`orderedQuantity > 0` chia COMPLETED/ORDERED; `= 0` chia QUOTING/WAITING), cùng
+   * thứ tự ưu tiên với CASE tính `status` ở `getPurchaseLedgers`. */
+  private buildStatusCondition(
+    refs: LedgerQuantityRefs,
     status: PurchaseLedgerStatus,
   ): SQL {
-    const cancelled = sql`((${refs.cancelledAt}) is not null or (${refs.totalOrderItems} > 0 and ${refs.orderedQuantity} = 0))`;
-
     switch (status) {
-      case PurchaseLedgerStatus.CANCELLED:
-        return sql`(${cancelled})`;
       case PurchaseLedgerStatus.COMPLETED:
-        return sql`(not ${cancelled} and ${refs.orderedQuantity} > 0 and ${refs.receivedQuantity} >= ${refs.orderedQuantity})`;
-      case PurchaseLedgerStatus.RECEIVING:
-        return sql`(not ${cancelled} and ${refs.receivedQuantity} > 0 and ${refs.receivedQuantity} < ${refs.orderedQuantity})`;
-      case PurchaseLedgerStatus.PURCHASED:
-        return sql`(not ${cancelled} and ${refs.orderedQuantity} > 0 and ${refs.receivedQuantity} = 0)`;
-      case PurchaseLedgerStatus.PENDING_PURCHASE:
-        return sql`(not ${cancelled} and ${refs.orderedQuantity} = 0 and (${refs.selectedAt}) is not null)`;
-      case PurchaseLedgerStatus.QUOTED:
-        return sql`(not ${cancelled} and ${refs.orderedQuantity} = 0 and (${refs.selectedAt}) is null and ${refs.hasQuoted})`;
-      case PurchaseLedgerStatus.NOT_QUOTED:
-        return sql`(not ${cancelled} and ${refs.orderedQuantity} = 0 and (${refs.selectedAt}) is null and not ${refs.hasQuoted})`;
+        return sql`(${refs.orderedQuantity} > 0 and ${refs.receivedQuantity} >= ${refs.orderedQuantity})`;
+      case PurchaseLedgerStatus.ORDERED:
+        return sql`(${refs.orderedQuantity} > 0 and ${refs.receivedQuantity} < ${refs.orderedQuantity})`;
+      case PurchaseLedgerStatus.QUOTING:
+        return sql`(${refs.orderedQuantity} = 0 and ${refs.quotedQuantity} > 0)`;
+      case PurchaseLedgerStatus.WAITING_TO_PURCHASE:
+        return sql`(${refs.orderedQuantity} = 0 and ${refs.quotedQuantity} = 0)`;
     }
   }
 
-  /** Tính trong JS sau khi đọc số — cùng thứ tự ưu tiên với `purchaseLedgerStatusCondition`,
-   * dùng cho giá trị hiển thị (`docs/domains/purchasing.md`). */
-  private computeStatus(row: {
-    cancelledAt: Date | null;
-    orderedQuantity: number;
-    totalOrderItems: number;
-    receivedQuantity: number;
-    hasQuoted: boolean;
-    selectedAt: Date | null;
-  }): PurchaseLedgerStatus {
-    if (
-      row.cancelledAt ||
-      (row.totalOrderItems > 0 && row.orderedQuantity === 0)
-    ) {
-      return PurchaseLedgerStatus.CANCELLED;
-    }
-    if (
-      row.orderedQuantity > 0 &&
-      row.receivedQuantity >= row.orderedQuantity
-    ) {
-      return PurchaseLedgerStatus.COMPLETED;
-    }
-    if (
-      row.receivedQuantity > 0 &&
-      row.receivedQuantity < row.orderedQuantity
-    ) {
-      return PurchaseLedgerStatus.RECEIVING;
-    }
-    if (row.orderedQuantity > 0) {
-      return PurchaseLedgerStatus.PURCHASED;
-    }
-    if (row.selectedAt) {
-      return PurchaseLedgerStatus.PENDING_PURCHASE;
-    }
-    if (row.hasQuoted) {
-      return PurchaseLedgerStatus.QUOTED;
-    }
-    return PurchaseLedgerStatus.NOT_QUOTED;
+  /** Coalesce ba subquery aggregate về 0 — LEFT JOIN không khớp dòng nào thì các cột này null. */
+  private buildQuantityRefs(
+    orderedAgg: ReturnType<typeof orderedQuantitySubquery>,
+    receivedAgg: ReturnType<typeof receivedQuantitySubquery>,
+    quotedAgg: ReturnType<typeof quotedQuantitySubquery>,
+  ): LedgerQuantityRefs {
+    return {
+      orderedQuantity:
+        sql<number>`coalesce(${orderedAgg.orderedQuantity}, 0)`.mapWith(Number),
+      receivedQuantity:
+        sql<number>`coalesce(${receivedAgg.receivedQuantity}, 0)`.mapWith(
+          Number,
+        ),
+      quotedQuantity:
+        sql<number>`coalesce(${quotedAgg.quotedQuantity}, 0)`.mapWith(Number),
+    };
+  }
+
+  /** Cùng thứ tự ưu tiên với `buildStatusCondition`, viết dạng CASE để trả trực tiếp giá trị hiển
+   * thị — không cần map lại trong JS sau khi đọc. */
+  private buildLedgerStatus(
+    refs: LedgerQuantityRefs,
+  ): SQL<PurchaseLedgerStatus> {
+    return sql<PurchaseLedgerStatus>`
+      case
+        when ${refs.orderedQuantity} > 0
+          and ${refs.receivedQuantity} >= ${refs.orderedQuantity}
+          then ${PurchaseLedgerStatus.COMPLETED}
+
+        when ${refs.orderedQuantity} > 0
+          then ${PurchaseLedgerStatus.ORDERED}
+
+        when ${refs.quotedQuantity} > 0
+          then ${PurchaseLedgerStatus.QUOTING}
+
+        else ${PurchaseLedgerStatus.WAITING_TO_PURCHASE}
+      end
+    `.mapWith((value): PurchaseLedgerStatus => value);
   }
 }

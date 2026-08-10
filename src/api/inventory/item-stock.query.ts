@@ -56,46 +56,6 @@ export function jobMaterialDemandSubquery(
     .as('job_material_demand');
 }
 
-/** Nhu cầu vật tư group theo `(productionJobId, itemId)` — dùng cho sổ cái mua hàng, nơi mỗi dòng
- * thuộc một đề xuất khác nhau nên không có một scope cố định như `jobMaterialDemandSubquery`. Kết
- * hợp với `jobMaterialDemandByOrderSubquery` để giữ đúng thứ tự ưu tiên Job > LSX (xem nơi gọi). */
-export function jobMaterialDemandByJobSubquery(db: Database) {
-  return db
-    .select({
-      productionJobId: productionJobMaterials.productionJobId,
-      itemId: productionJobMaterials.itemId,
-      bomDemand: sql<number>`sum(${productionJobMaterials.requiredQty})`
-        .mapWith(Number)
-        .as('bom_demand'),
-    })
-    .from(productionJobMaterials)
-    .groupBy(
-      productionJobMaterials.productionJobId,
-      productionJobMaterials.itemId,
-    )
-    .as('job_material_demand_by_job');
-}
-
-/** Nhu cầu vật tư group theo `(productionOrderId, itemId)`, gộp mọi Job của LSX — sibling của
- * `jobMaterialDemandByJobSubquery`, dùng khi dòng sổ cái chỉ gắn LSX, không gắn Job cụ thể. */
-export function jobMaterialDemandByOrderSubquery(db: Database) {
-  return db
-    .select({
-      productionOrderId: productionJobs.productionOrderId,
-      itemId: productionJobMaterials.itemId,
-      bomDemand: sql<number>`sum(${productionJobMaterials.requiredQty})`
-        .mapWith(Number)
-        .as('bom_demand'),
-    })
-    .from(productionJobMaterials)
-    .innerJoin(
-      productionJobs,
-      eq(productionJobs.id, productionJobMaterials.productionJobId),
-    )
-    .groupBy(productionJobs.productionOrderId, productionJobMaterials.itemId)
-    .as('job_material_demand_by_order');
-}
-
 /** 4 cột số spread vào `.select()` — `available` cố ý có thể âm (nhu cầu vượt tồn thực tế);
  * `fromStock` không lưu ở đâu, luôn tính lại lúc đọc. */
 export function itemStockColumns(
@@ -104,27 +64,6 @@ export function itemStockColumns(
 ) {
   const onHandSql = sql<number>`coalesce(${balance.onHand}, 0)`;
   const bomDemandSql = sql<number>`coalesce(${demand.bomDemand}, 0)`;
-
-  return {
-    onHand: onHandSql.mapWith(Number),
-    bomDemand: bomDemandSql.mapWith(Number),
-    available: sql<number>`(${onHandSql}) - (${bomDemandSql})`.mapWith(Number),
-    fromStock: sql<number>`least(${onHandSql}, ${bomDemandSql})`.mapWith(
-      Number,
-    ),
-  };
-}
-
-/** Biến thể của `itemStockColumns` cho sổ cái mua hàng — mỗi dòng thuộc một đề xuất khác nhau nên
- * không có một scope cố định để truyền vào `jobMaterialDemandSubquery`; `bomDemand` là coalesce
- * của hai subquery theo scope, ưu tiên Job (khớp thứ tự ưu tiên của `jobMaterialDemandSubquery`). */
-export function itemStockColumnsByScope(
-  balance: ReturnType<typeof itemOnHandSubquery>,
-  jobDemand: ReturnType<typeof jobMaterialDemandByJobSubquery>,
-  orderDemand: ReturnType<typeof jobMaterialDemandByOrderSubquery>,
-) {
-  const onHandSql = sql<number>`coalesce(${balance.onHand}, 0)`;
-  const bomDemandSql = sql<number>`coalesce(${jobDemand.bomDemand}, ${orderDemand.bomDemand}, 0)`;
 
   return {
     onHand: onHandSql.mapWith(Number),

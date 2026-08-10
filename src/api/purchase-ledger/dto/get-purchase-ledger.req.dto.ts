@@ -22,11 +22,6 @@ export class GetPurchaseLedgerReqDto extends PageOptionsDto {
   })
   readonly productionOrderId?: string;
 
-  @UUIDFieldOptional({
-    description: 'Filter theo NCC đã báo giá hoặc đã được đặt mua cho dòng này',
-  })
-  readonly supplierId?: string;
-
   @EnumFieldOptional(() => PurchaseLedgerStatus)
   readonly status?: PurchaseLedgerStatus;
 
