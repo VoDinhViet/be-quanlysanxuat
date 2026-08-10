@@ -40,7 +40,7 @@ Reference done right: `OrdersService.approveOrder`, `ProductionOrdersService.see
 
 - Controllers, DTOs (**both class and field**), `*.module.ts`, `index.ts`, seeds.
 - Single-table CRUD: `getXs`/`getX`/`createX`/`updateX`/`deleteX`.
-- Standard check helpers: `ensureXExists`, `validateXUniqueness`, `getXDetail`.
+- Standard check helpers: `ensureXExists`, `validateXUniqueness`.
 - Private select/mapper helpers.
 - Anything that only restates the function name, the signature, or a rule already in `docs/`.
 

@@ -206,15 +206,15 @@ export const ordersRelations = relations(orders, ({ one, many }) => ({
     fields: [orders.assignedUserId],
     references: [users.id],
   }),
-  creator: one(users, {
+  creatorBy: one(users, {
     fields: [orders.createdBy],
     references: [users.id],
   }),
-  approver: one(users, {
+  approverBy: one(users, {
     fields: [orders.approvedBy],
     references: [users.id],
   }),
-  rejecter: one(users, {
+  rejecterBy: one(users, {
     fields: [orders.rejectedBy],
     references: [users.id],
   }),

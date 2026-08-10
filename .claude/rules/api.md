@@ -24,23 +24,28 @@ Biên HTTP: cái gì vào, cái gì ra, ai được gọi. Reference: `src/api/u
 
 ### Response DTO layering
 
-- MUST split a resource's response DTO into `XResDto` (list view: every column + the relations the
-  list needs) → `XDetailResDto extends XResDto` (+ heavier relations/collections only the detail view
-  needs) once a resource has both a list route and a detail route. Reference: `src/api/users/dto/`.
-- MUST NOT create `XDetailResDto` when detail has nothing beyond list — one `XResDto` is enough then
-  (`src/api/clients/dto/client.res.dto.ts`).
-- A separate `XBaseResDto` (only `X`'s own table columns, no relation, sitting below `XResDto extends
-  XBaseResDto`) is OPTIONAL — pull columns out into one only when something besides `XResDto` needs
-  that exact bare-column shape. Reference: `src/api/orders/dto/`, `src/api/clients/dto/`. MUST NOT
-  add one with a single consumer (`XResDto` alone) — that's a needless extra file; put the columns
-  directly on `XResDto` instead, as `src/api/users/dto/user.res.dto.ts` does.
+- MUST design a resource's response DTO as **two independent classes** once a resource has both a
+  list route and a detail route: `XResDto` (the detail shape — every column + every relation the
+  detail view needs) and `PageXResDto` (the list shape — every column + every relation the list view
+  needs). Neither `extends` the other — declare each class's own fields directly on it, even where
+  that duplicates a field declaration between the two (e.g. both need `department`, so both declare
+  it). `XResDto` is also what `createX`/`updateX` map to, since those re-fetch and return the full
+  entity (`.claude/rules/service.md`, Responses). Reference: `src/api/purchase-requests/dto/`
+  (`PurchaseRequestResDto` = detail, `PagePurchaseRequestResDto` = list).
+- A separate `XBaseResDto` (only `X`'s own table columns, no relation) is a **different, orthogonal**
+  axis from the list/detail split above — keep one only when another module reuses that exact
+  bare-column shape (`OrderBaseResDto` read by `production-orders`/`production-jobs`,
+  `ClientBaseResDto` read by `production-jobs`). `XResDto` and `PageXResDto` MAY both `extends` the
+  same `XBaseResDto` for that reason — that shared ancestor is not the inheritance the bullet above
+  forbids; it only forbids `PageXResDto extends XResDto` (or the reverse). MUST NOT add an
+  `XBaseResDto` with a single consumer — put the columns directly on `XResDto`/`PageXResDto` instead.
 - MUST NOT put a raw FK id (`xFileId`, `xGroupId`) on any response DTO layer — the relation replaces
   it.
 - `XRefResDto` (the nested-elsewhere representation, `id` + `code` + `name`/`fullName`) MAY
-  `extends PickType(XResDto, [...] as const) {}` (`@nestjs/swagger`'s `PickType`, not
-  `@nestjs/mapped-types` directly — only the former also re-applies `@ApiProperty`) instead of
-  hand-declaring each field — it correctly carries over validation, `@Expose()`, and Swagger metadata
-  for the picked keys, regardless of what other relations sit on the source class. Redeclare an
-  individual field in the subclass body (`@Expose()` + the field decorator) only when its Ref-facing
-  `description` must read differently from the source's. Reference:
-  `src/api/users/dto/user-ref.res.dto.ts`.
+  `extends PickType(XResDto, [...] as const) {}` — picking from the **detail** shape `XResDto`
+  (`@nestjs/swagger`'s `PickType`, not `@nestjs/mapped-types` directly — only the former also
+  re-applies `@ApiProperty`) instead of hand-declaring each field — it correctly carries over
+  validation, `@Expose()`, and Swagger metadata for the picked keys, regardless of what other
+  relations sit on the source class. Redeclare an individual field in the subclass body (`@Expose()`
+  + the field decorator) only when its Ref-facing `description` must read differently from the
+  source's. Reference: `src/api/users/dto/user-ref.res.dto.ts`.

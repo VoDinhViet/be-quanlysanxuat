@@ -39,7 +39,7 @@ export class OperationResDto {
 
   @Expose()
   @ClassField(() => UserRefResDto)
-  creator!: UserRefResDto;
+  creatorBy!: UserRefResDto;
 
   @Expose()
   @DateField()

@@ -63,7 +63,7 @@ export const operations = pgTable(
 );
 
 export const operationsRelations = relations(operations, ({ one }) => ({
-  creator: one(users, {
+  creatorBy: one(users, {
     fields: [operations.createdBy],
     references: [users.id],
   }),

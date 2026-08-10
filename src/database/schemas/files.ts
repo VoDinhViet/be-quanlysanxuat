@@ -96,7 +96,7 @@ export const files = pgTable(
 );
 
 export const filesRelations = relations(files, ({ one }) => ({
-  uploader: one(users, {
+  uploaderBy: one(users, {
     fields: [files.uploadedBy],
     references: [users.id],
   }),

@@ -36,7 +36,7 @@ export const routingsRelations = relations(routings, ({ one, many }) => ({
     fields: [routings.itemId],
     references: [items.id],
   }),
-  creator: one(users, {
+  creatorBy: one(users, {
     fields: [routings.createdBy],
     references: [users.id],
   }),

@@ -60,7 +60,7 @@ export const bomOperationsRelations = relations(bomOperations, ({ one }) => ({
     fields: [bomOperations.operationId],
     references: [operations.id],
   }),
-  creator: one(users, {
+  creatorBy: one(users, {
     fields: [bomOperations.createdBy],
     references: [users.id],
   }),

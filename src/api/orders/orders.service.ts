@@ -35,11 +35,11 @@ import { AppException } from '../../exceptions/app.exception';
 import { FilesService } from '../files/files.service';
 import { ProductionOrdersService } from '../production-orders/production-orders.service';
 import { CreateOrderReqDto } from './dto/create-order.req.dto';
-import { OrderDetailResDto } from './dto/order-detail.res.dto';
 import { GetOrdersReqDto } from './dto/get-orders.req.dto';
 import { OrderItemReqDto } from './dto/order-item.req.dto';
 import { OrderResDto } from './dto/order.res.dto';
 import { OrderStatsResDto } from './dto/order-stats.res.dto';
+import { PageOrderResDto } from './dto/page-order.res.dto';
 import { RejectOrderReqDto } from './dto/reject-order.req.dto';
 import { UpdateOrderReqDto } from './dto/update-order.req.dto';
 
@@ -57,11 +57,11 @@ export class OrdersService {
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly filesService: FilesService,
     private readonly productionOrdersService: ProductionOrdersService,
-  ) { }
+  ) {}
 
   async getOrders(
     reqDto: GetOrdersReqDto,
-  ): Promise<OffsetPaginatedDto<OrderResDto>> {
+  ): Promise<OffsetPaginatedDto<PageOrderResDto>> {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
     const where = and(
       isNull(orders.deletedAt),
@@ -86,16 +86,18 @@ export class OrdersService {
         with: {
           client: true,
           assignedUser: true,
-          creator: true,
-          approver: true,
-          rejecter: true,
+          creatorBy: true,
+          approverBy: true,
+          rejecterBy: true,
         },
       }),
       this.db.select({ total: count() }).from(orders).where(where),
     ]);
 
     return new OffsetPaginatedDto(
-      plainToInstance(OrderResDto, entities, { excludeExtraneousValues: true }),
+      plainToInstance(PageOrderResDto, entities, {
+        excludeExtraneousValues: true,
+      }),
       new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
     );
   }
@@ -170,16 +172,16 @@ export class OrdersService {
     });
   }
 
-  async getOrderDetail(orderId: string): Promise<OrderDetailResDto> {
+  async getOrder(orderId: string): Promise<OrderResDto> {
     const order = await this.db.query.orders.findFirst({
       where: and(eq(orders.id, orderId), isNull(orders.deletedAt)),
       extras: { expired: this.expiredSql(), totalVnd: this.totalVndSql() },
       with: {
         client: true,
         assignedUser: true,
-        creator: true,
-        approver: true,
-        rejecter: true,
+        creatorBy: true,
+        approverBy: true,
+        rejecterBy: true,
         items: {
           with: { item: { with: { unit: true, imageFile: true } } },
           orderBy: [asc(orderItems.sortOrder), asc(orderItems.createdAt)],
@@ -192,7 +194,7 @@ export class OrdersService {
       throw new AppException(ErrorCode.E057, HttpStatus.NOT_FOUND);
     }
 
-    return plainToInstance(OrderDetailResDto, order, {
+    return plainToInstance(OrderResDto, order, {
       excludeExtraneousValues: true,
     });
   }
@@ -314,10 +316,7 @@ export class OrdersService {
 
   /** Nơi duy nhất ghi `AWAITING_PRODUCTION` (xem `ensureStatusSettable`) — đồng thời sinh sẵn kế
    * hoạch sản xuất trong cùng transaction, để không có trạng thái "duyệt nửa vời" không kế hoạch. */
-  async approveOrder(
-    orderId: string,
-    userId: string,
-  ): Promise<OrderDetailResDto> {
+  async approveOrder(orderId: string, userId: string): Promise<void> {
     const existing = await this.ensureOrderExists(orderId);
     this.ensurePendingConfirmation(existing.status);
 
@@ -341,8 +340,6 @@ export class OrdersService {
         userId,
       );
     });
-
-    return this.getOrderDetail(orderId);
   }
 
   /** Về lại `DRAFT` để sales sửa và gửi duyệt lại. */
@@ -350,7 +347,7 @@ export class OrdersService {
     orderId: string,
     reqDto: RejectOrderReqDto,
     userId: string,
-  ): Promise<OrderDetailResDto> {
+  ): Promise<void> {
     const existing = await this.ensureOrderExists(orderId);
     this.ensurePendingConfirmation(existing.status);
 
@@ -363,8 +360,6 @@ export class OrdersService {
         rejectionReason: reqDto.reason,
       })
       .where(eq(orders.id, orderId));
-
-    return this.getOrderDetail(orderId);
   }
 
   /** "Trễ hạn": tính lúc đọc, không lưu — dueDate quá hạn trên đơn chưa tới trạng thái cuối. Không

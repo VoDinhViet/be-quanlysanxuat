@@ -69,7 +69,7 @@ export class InventoryReceiptResDto {
 
   @Expose()
   @ClassFieldOptional(() => UserRefResDto, { nullable: true })
-  poster!: UserRefResDto | null;
+  posterBy!: UserRefResDto | null;
 
   @Expose()
   @DateFieldOptional({ nullable: true })
@@ -77,7 +77,7 @@ export class InventoryReceiptResDto {
 
   @Expose()
   @ClassFieldOptional(() => UserRefResDto, { nullable: true })
-  creator!: UserRefResDto | null;
+  creatorBy!: UserRefResDto | null;
 
   @Expose()
   @DateField()

@@ -60,6 +60,8 @@ export const productionOrders = pgTable(
       onDelete: 'set null',
     }),
     approvedAt: timestamp('approved_at'),
+    // Ghi chú của chính LSX — khác `orders.note` (ghi chú đơn hàng gốc), hai cột độc lập.
+    note: varchar('note', { length: 1000 }),
     createdBy: uuid('created_by').references(() => users.id, {
       onDelete: 'set null',
     }),
@@ -85,11 +87,11 @@ export const productionOrdersRelations = relations(
       fields: [productionOrders.orderId],
       references: [orders.id],
     }),
-    approver: one(users, {
+    approverBy: one(users, {
       fields: [productionOrders.approvedBy],
       references: [users.id],
     }),
-    creator: one(users, {
+    creatorBy: one(users, {
       fields: [productionOrders.createdBy],
       references: [users.id],
     }),

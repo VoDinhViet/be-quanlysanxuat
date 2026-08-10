@@ -23,6 +23,7 @@ import { ClientResDto } from './dto/client.res.dto';
 import { CreateClientReqDto } from './dto/create-client.req.dto';
 import { GetClientOptionsReqDto } from './dto/get-client-options.req.dto';
 import { GetClientsReqDto } from './dto/get-clients.req.dto';
+import { PageClientResDto } from './dto/page-client.res.dto';
 import { UpdateClientReqDto } from './dto/update-client.req.dto';
 
 @ApiTags('Clients')
@@ -33,13 +34,13 @@ export class ClientsController {
   @Get()
   @Permissions('clients:read')
   @ApiPublic({
-    type: ClientResDto,
+    type: PageClientResDto,
     summary: 'List clients',
     isPaginated: true,
   })
   getClients(
     @Query() reqDto: GetClientsReqDto,
-  ): Promise<OffsetPaginatedDto<ClientResDto>> {
+  ): Promise<OffsetPaginatedDto<PageClientResDto>> {
     return this.clientsService.getClients(reqDto);
   }
 
@@ -62,10 +63,8 @@ export class ClientsController {
     type: ClientResDto,
     summary: 'Get client detail',
   })
-  getClientDetail(
-    @UUIDParam('clientId') clientId: string,
-  ): Promise<ClientResDto> {
-    return this.clientsService.getClientDetail(clientId);
+  getClient(@UUIDParam('clientId') clientId: string): Promise<ClientResDto> {
+    return this.clientsService.getClient(clientId);
   }
 
   @Get(':clientId/contacts')

@@ -43,7 +43,7 @@ Bước đưa đơn tới `PENDING_CONFIRMATION` là một `PATCH /orders/:order
    - Đơn → `AWAITING_PRODUCTION`, ghi `approvedBy`/`approvedAt`.
    - Xoá LSX cũ của đơn (nếu có) rồi ghi LSX mới `PENDING` + các dòng quyết định sản xuất +
      1 dòng log `CREATED`.
-4. Commit, đọc lại chi tiết đơn để trả về.
+4. Commit, không trả body (204).
 
 ### Từ chối
 

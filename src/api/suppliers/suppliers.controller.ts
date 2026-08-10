@@ -18,6 +18,7 @@ import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
 import { CreateSupplierReqDto } from './dto/create-supplier.req.dto';
 import { GetSuppliersReqDto } from './dto/get-suppliers.req.dto';
+import { PageSupplierResDto } from './dto/page-supplier.res.dto';
 import { SupplierResDto } from './dto/supplier.res.dto';
 import { SupplierStatsResDto } from './dto/supplier-stats.res.dto';
 import { UpdateSupplierReqDto } from './dto/update-supplier.req.dto';
@@ -31,13 +32,13 @@ export class SuppliersController {
   @Get()
   @Permissions('suppliers:read')
   @ApiPublic({
-    type: SupplierResDto,
+    type: PageSupplierResDto,
     summary: 'List suppliers',
     isPaginated: true,
   })
   getSuppliers(
     @Query() reqDto: GetSuppliersReqDto,
-  ): Promise<OffsetPaginatedDto<SupplierResDto>> {
+  ): Promise<OffsetPaginatedDto<PageSupplierResDto>> {
     return this.suppliersService.getSuppliers(reqDto);
   }
 
@@ -57,10 +58,10 @@ export class SuppliersController {
     type: SupplierResDto,
     summary: 'Get supplier detail',
   })
-  getSupplierDetail(
+  getSupplier(
     @UUIDParam('supplierId') supplierId: string,
   ): Promise<SupplierResDto> {
-    return this.suppliersService.getSupplierDetail(supplierId);
+    return this.suppliersService.getSupplier(supplierId);
   }
 
   @Post()

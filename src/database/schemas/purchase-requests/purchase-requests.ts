@@ -31,10 +31,11 @@ export const purchaseRequestStatusEnum = pgEnum('purchase_request_status', [
 
 /**
  * Đề xuất mua hàng — phiếu xin duyệt nội bộ, không phải procurement
- * (`docs/domains/purchase-requests.md`, `docs/decisions/no-procurement.md`). Chưa có route
- * tạo/duyệt/từ chối — đường ghi duy nhất là `PurchaseRequestsService.createShortageRequest`, gọi
- * từ `ProductionJobsService.startJob`. `status` đủ 4 giá trị cho vòng đời sau nhưng chưa route nào
- * chuyển trạng thái sau khi sinh.
+ * (`docs/domains/purchase-requests.md`, `docs/decisions/no-procurement.md`). Chưa có route tạo —
+ * đường sinh duy nhất là `PurchaseRequestsService.createShortageRequest`, gọi từ
+ * `ProductionJobsService.startJob`. Có route gửi duyệt/duyệt/từ chối (`sendPurchaseRequest`/
+ * `approvePurchaseRequest`/`rejectPurchaseRequest`) — `REJECTED` là điểm dừng, không quay lại
+ * `DRAFT`.
  */
 export const purchaseRequests = pgTable(
   'purchase_requests',
@@ -61,6 +62,19 @@ export const purchaseRequests = pgTable(
     createdBy: uuid('created_by').references(() => users.id, {
       onDelete: 'set null',
     }),
+    sentBy: uuid('sent_by').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    sentAt: timestamp('sent_at'),
+    approvedBy: uuid('approved_by').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    approvedAt: timestamp('approved_at'),
+    rejectedBy: uuid('rejected_by').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    rejectedAt: timestamp('rejected_at'),
+    rejectionReason: varchar('rejection_reason', { length: 1000 }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at')
       .defaultNow()
@@ -94,8 +108,20 @@ export const purchaseRequestsRelations = relations(
       fields: [purchaseRequests.productionJobId],
       references: [productionJobs.id],
     }),
-    requester: one(users, {
+    requesterBy: one(users, {
       fields: [purchaseRequests.createdBy],
+      references: [users.id],
+    }),
+    senderBy: one(users, {
+      fields: [purchaseRequests.sentBy],
+      references: [users.id],
+    }),
+    approverBy: one(users, {
+      fields: [purchaseRequests.approvedBy],
+      references: [users.id],
+    }),
+    rejecterBy: one(users, {
+      fields: [purchaseRequests.rejectedBy],
       references: [users.id],
     }),
     items: many(purchaseRequestItems),

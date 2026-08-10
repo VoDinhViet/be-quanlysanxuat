@@ -1,6 +1,9 @@
 # Không làm Procurement (mua hàng)
 
-**Trạng thái:** còn hiệu lực — ranh giới phạm vi, không phải việc chưa kịp làm
+**Trạng thái:** đã đảo ngược — xem `docs/domains/purchasing.md`. Giữ file này lại vì nó vẫn giải
+thích đúng vì sao `suppliers`/`creditLimit`/`rating` từng nằm không dùng, và ranh giới cũ (công nợ,
+thanh toán, bảng giá NCC theo thời gian) **vẫn còn hiệu lực** — chỉ phần "không có phiếu mua hàng"
+là đã đảo.
 
 ## Bối cảnh
 
@@ -10,7 +13,7 @@ có `items` (RM) với `supplierId` là NCC chính, có role `PROCUREMENT_MANAGE
 
 Không có. Đây là giả định sai tốn kém nhất với repo này.
 
-## Quyết định
+## Quyết định gốc (2026 trở về trước)
 
 **Không có phiếu mua hàng, không có nhận hàng theo đơn mua, không có bảng giá NCC, không có công nợ.**
 
@@ -25,25 +28,28 @@ Không có. Đây là giả định sai tốn kém nhất với repo này.
   công nợ hay báo cáo theo NCC.
 - `creditLimit` của NCC chỉ được lưu, chưa nơi nào đọc. `rating` là số nhập tay.
 
+## Đã đảo ngược — phần nào
+
+`docs/domains/purchasing.md` (module `purchase-quotations`/`purchase-orders`, đọc từ sổ cái
+`GET /purchase-ledger`) thêm **báo giá** (RFQ) và **đơn mua** (PO) thật — có xác nhận từ NCC (trạng
+thái báo giá `RECEIVED`), có trạng thái đơn mua riêng (`ORDERED`), và `inventory_receipts`/
+`inventory_receipt_items` giờ nối tới đúng dòng đơn mua qua `purchaseOrderId`/`purchaseOrderItemId`.
+`supplierId`/`unitPrice` trên phiếu nhập vẫn giữ nguyên vai trò cũ (ghi kèm, không tổng hợp).
+
+**Vẫn không làm**: công nợ NCC, thanh toán, bảng giá NCC theo thời gian (giá chỉ nằm trên từng dòng
+báo giá/đơn mua, không có lịch sử giá theo NCC×vật tư), duyệt đơn mua qua Giám đốc. `creditLimit`
+vẫn chỉ lưu, chưa route nào đọc.
+
 ## Hệ quả
 
-- Đừng đi tìm module/bảng mua hàng, và đừng suy ra procurement từ việc có `suppliers` + `items`
-  hay từ việc phiếu nhập có `supplierId`/`unitPrice`.
-- `PROCUREMENT_MANAGER` trong `role.constant.ts` chỉ là một tên role; role `PURCHASING` được seed
-  chỉ có quyền trên `suppliers`/`items`, không có quyền nào liên quan mua hàng.
-- Muốn biết đã nhập bao nhiêu vật tư: cộng các phiếu `PNK` có `receiptType = PURCHASE`, không có
-  báo cáo tổng hợp theo NCC dù `supplierId` đã có trên từng phiếu.
-
-## Nếu sau này làm
-
-`supplierId`/`purchaseRequestId`/`unitPrice` trên `inventory_receipts`/`inventory_receipt_items`
-đã là điểm cắm. Bước tiếp theo (nếu làm) là một chứng từ đơn mua riêng có trạng thái xác nhận/nhận
-hàng của chính nó, đứng trước `inventory_receipts` trong luồng — phiếu nhập kho vẫn chỉ là bằng
-chứng vật tư đã vào kho, không phải bằng chứng đã mua. Xem `docs/domains/partners.md` và
-`docs/workflows/stock-movement.md`.
+- `PROCUREMENT_MANAGER` trong `role.constant.ts` vẫn chỉ là một tên role chưa gán; role `PURCHASING`
+  được seed nắm quyền `purchasing:*` — đây **là** quyền mua hàng thật, không còn đúng câu "không có
+  quyền nào liên quan mua hàng" của bản quyết định gốc.
+- Muốn biết đã nhập bao nhiêu vật tư theo từng dòng đề xuất: đọc `GET /purchase-ledger`
+  (`receivedQuantity`), không cần tự cộng phiếu `PNK` nữa như bản quyết định gốc mô tả.
 
 ## Không nhầm với Purchase Requests
 
-`docs/domains/purchase-requests.md` là phiếu xin duyệt nội bộ (ai cần vật tư gì, bao nhiêu) —
-không phải procurement, không đảo ngược quyết định này. Không supplier, không giá, không nhận
-hàng theo phiếu.
+`docs/domains/purchase-requests.md` vẫn là phiếu xin duyệt nội bộ (ai cần vật tư gì, bao nhiêu) —
+không đổi. Domain `purchasing` chỉ bắt đầu từ đề xuất **đã duyệt** (`APPROVED`), không đảo ngược gì
+ở tầng xin duyệt.

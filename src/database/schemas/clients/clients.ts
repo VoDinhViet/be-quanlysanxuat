@@ -61,7 +61,7 @@ export const clientsRelations = relations(clients, ({ one, many }) => ({
     fields: [clients.clientGroupId],
     references: [clientGroups.id],
   }),
-  creator: one(users, {
+  creatorBy: one(users, {
     fields: [clients.createdBy],
     references: [users.id],
   }),

@@ -19,8 +19,8 @@ import { AssignRoleReqDto } from './dto/assign-role.req.dto';
 import { CreateUserReqDto } from './dto/create-user.req.dto';
 import { CurrentUserResDto } from './dto/current-user.res.dto';
 import { GetUsersReqDto } from './dto/get-users.req.dto';
+import { PageUserResDto } from './dto/page-user.res.dto';
 import { UpdateUserReqDto } from './dto/update-user.req.dto';
-import { UserDetailResDto } from './dto/user-detail.res.dto';
 import { UserResDto } from './dto/user.res.dto';
 import { UsersService } from './users.service';
 
@@ -43,67 +43,65 @@ export class UsersController {
   @Get()
   @Permissions('users:update')
   @ApiAuth({
-    type: UserResDto,
+    type: PageUserResDto,
     summary: 'List users',
     isPaginated: true,
   })
   getUsers(
     @Query() reqDto: GetUsersReqDto,
-  ): Promise<OffsetPaginatedDto<UserResDto>> {
+  ): Promise<OffsetPaginatedDto<PageUserResDto>> {
     return this.usersService.getUsers(reqDto);
   }
 
   @Get(':userId')
   @Permissions('users:update')
   @ApiAuth({
-    type: UserDetailResDto,
+    type: UserResDto,
     summary: 'Get user detail',
   })
-  getUserDetail(
-    @UUIDParam('userId') userId: string,
-  ): Promise<UserDetailResDto> {
-    return this.usersService.getUserDetail(userId);
+  getUser(@UUIDParam('userId') userId: string): Promise<UserResDto> {
+    return this.usersService.getUser(userId);
   }
 
   @Post()
   @Permissions('users:create')
   @ApiAuth({
-    type: UserDetailResDto,
+    type: UserResDto,
     summary: 'Create user (user + optional ERP credential, with optional role)',
     statusCode: HttpStatus.CREATED,
   })
   createUser(
     @Body() reqDto: CreateUserReqDto,
     @CurrentUser() payload: JwtPayloadType,
-  ): Promise<UserDetailResDto> {
+  ): Promise<UserResDto> {
     return this.usersService.createUser(reqDto, payload.sub, payload.userId);
   }
 
   @Patch(':userId')
   @Permissions('users:update')
   @ApiAuth({
-    type: UserDetailResDto,
+    type: UserResDto,
     summary: 'Update user profile (and optionally their role)',
   })
   updateUser(
     @UUIDParam('userId') userId: string,
     @Body() reqDto: UpdateUserReqDto,
     @CurrentUser() payload: JwtPayloadType,
-  ): Promise<UserDetailResDto> {
+  ): Promise<UserResDto> {
     return this.usersService.updateUser(userId, reqDto, payload.sub);
   }
 
   @Patch(':userId/role')
   @Permissions('roles:update')
   @ApiAuth({
-    type: UserDetailResDto,
+    type: UserResDto,
     summary: 'Assign a role to a user',
   })
   assignRole(
     @UUIDParam('userId') userId: string,
     @Body() reqDto: AssignRoleReqDto,
     @CurrentUser() payload: JwtPayloadType,
-  ): Promise<UserDetailResDto> {
+  ): Promise<UserResDto> {
     return this.usersService.assignRole(userId, reqDto, payload.sub);
   }
 

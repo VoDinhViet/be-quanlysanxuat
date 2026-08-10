@@ -19,10 +19,10 @@ import { CreateItemReqDto } from './dto/create-item.req.dto';
 import { GetItemMaterialsReqDto } from './dto/get-item-materials.req.dto';
 import { GetItemOptionsReqDto } from './dto/get-item-options.req.dto';
 import { GetItemsReqDto } from './dto/get-items.req.dto';
-import { ItemDetailResDto } from './dto/item-detail.res.dto';
 import { ItemMaterialResDto } from './dto/item-material.res.dto';
 import { ItemOptionResDto } from './dto/item-option.res.dto';
 import { ItemResDto } from './dto/item.res.dto';
+import { PageItemResDto } from './dto/page-item.res.dto';
 import { UpdateItemReqDto } from './dto/update-item.req.dto';
 import { ItemsService } from './items.service';
 
@@ -34,13 +34,13 @@ export class ItemsController {
   @Get()
   @Permissions('items:read')
   @ApiAuth({
-    type: ItemResDto,
+    type: PageItemResDto,
     summary: 'List items (FG/WIP/RM)',
     isPaginated: true,
   })
   getItems(
     @Query() reqDto: GetItemsReqDto,
-  ): Promise<OffsetPaginatedDto<ItemResDto>> {
+  ): Promise<OffsetPaginatedDto<PageItemResDto>> {
     return this.itemsService.getItems(reqDto);
   }
 
@@ -60,13 +60,11 @@ export class ItemsController {
   @Get(':itemId')
   @Permissions('items:read')
   @ApiAuth({
-    type: ItemDetailResDto,
+    type: ItemResDto,
     summary: 'Get item detail',
   })
-  getItemDetail(
-    @UUIDParam('itemId') itemId: string,
-  ): Promise<ItemDetailResDto> {
-    return this.itemsService.getItemDetail(itemId);
+  getItem(@UUIDParam('itemId') itemId: string): Promise<ItemResDto> {
+    return this.itemsService.getItem(itemId);
   }
 
   @Post()

@@ -16,10 +16,10 @@ import { ApiAuth } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
 import { CreateOrderReqDto } from './dto/create-order.req.dto';
-import { OrderDetailResDto } from './dto/order-detail.res.dto';
 import { GetOrdersReqDto } from './dto/get-orders.req.dto';
 import { OrderResDto } from './dto/order.res.dto';
 import { OrderStatsResDto } from './dto/order-stats.res.dto';
+import { PageOrderResDto } from './dto/page-order.res.dto';
 import { RejectOrderReqDto } from './dto/reject-order.req.dto';
 import { UpdateOrderReqDto } from './dto/update-order.req.dto';
 import { OrdersService } from './orders.service';
@@ -32,13 +32,13 @@ export class OrdersController {
   @Get()
   @Permissions('orders:read')
   @ApiAuth({
-    type: OrderResDto,
+    type: PageOrderResDto,
     summary: 'List orders',
     isPaginated: true,
   })
   getOrders(
     @Query() reqDto: GetOrdersReqDto,
-  ): Promise<OffsetPaginatedDto<OrderResDto>> {
+  ): Promise<OffsetPaginatedDto<PageOrderResDto>> {
     return this.ordersService.getOrders(reqDto);
   }
 
@@ -57,13 +57,11 @@ export class OrdersController {
   @Get(':orderId')
   @Permissions('orders:read')
   @ApiAuth({
-    type: OrderDetailResDto,
+    type: OrderResDto,
     summary: 'Get order detail',
   })
-  getOrderDetail(
-    @UUIDParam('orderId') orderId: string,
-  ): Promise<OrderDetailResDto> {
-    return this.ordersService.getOrderDetail(orderId);
+  getOrder(@UUIDParam('orderId') orderId: string): Promise<OrderResDto> {
+    return this.ordersService.getOrder(orderId);
   }
 
   @Post()
@@ -96,29 +94,29 @@ export class OrdersController {
   @Post(':orderId/approve')
   @Permissions('orders:approve')
   @ApiAuth({
-    type: OrderDetailResDto,
     summary:
       'Approve an order (director-level) — PENDING_CONFIRMATION → AWAITING_PRODUCTION',
+    statusCode: HttpStatus.NO_CONTENT,
   })
   approveOrder(
     @UUIDParam('orderId') orderId: string,
     @CurrentUser() payload: JwtPayloadType,
-  ): Promise<OrderDetailResDto> {
+  ): Promise<void> {
     return this.ordersService.approveOrder(orderId, payload.userId);
   }
 
   @Post(':orderId/reject')
   @Permissions('orders:approve')
   @ApiAuth({
-    type: OrderDetailResDto,
     summary:
       'Reject an order (director-level) — PENDING_CONFIRMATION → DRAFT, reason required',
+    statusCode: HttpStatus.NO_CONTENT,
   })
   rejectOrder(
     @UUIDParam('orderId') orderId: string,
     @Body() reqDto: RejectOrderReqDto,
     @CurrentUser() payload: JwtPayloadType,
-  ): Promise<OrderDetailResDto> {
+  ): Promise<void> {
     return this.ordersService.rejectOrder(orderId, reqDto, payload.userId);
   }
 }

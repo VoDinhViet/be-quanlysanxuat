@@ -1,12 +1,26 @@
 import { relations, sql } from 'drizzle-orm';
-import { check, index, numeric, pgTable, uuid } from 'drizzle-orm/pg-core';
+import {
+  check,
+  index,
+  numeric,
+  pgTable,
+  timestamp,
+  uuid,
+  varchar,
+} from 'drizzle-orm/pg-core';
 
 import { items } from '../items/items';
+import { purchaseOrderItems } from '../purchasing/purchase-order-items';
+import { purchaseQuotationItems } from '../purchasing/purchase-quotation-items';
+import { users } from '../identity-access/users';
 import { purchaseRequests } from './purchase-requests';
 
 /**
- * Một dòng vật tư của đề xuất mua hàng. Chưa có route ghi (giai đoạn 1 chỉ list) — bảng tồn tại
- * để `GET /purchase-requests` lọc được theo tên/mã vật tư trong dòng phiếu.
+ * Một dòng vật tư của đề xuất mua hàng. Chưa có route ghi trực tiếp — đọc qua
+ * `GET /purchase-requests` (lọc theo tên/mã vật tư trong dòng) và
+ * `GET /purchase-requests/:purchaseRequestId` (trả nguyên dòng, kèm tồn hiện tại). Sổ cái mua hàng
+ * (`docs/domains/purchasing.md`) đọc mọi dòng của phiếu `APPROVED`, hủy tay qua 3 cột
+ * `cancelled*` bên dưới — chỉ khi dòng chưa có đơn mua sống.
  */
 export const purchaseRequestItems = pgTable(
   'purchase_request_items',
@@ -23,6 +37,12 @@ export const purchaseRequestItems = pgTable(
       scale: 3,
       mode: 'number',
     }).notNull(),
+    note: varchar('note', { length: 500 }),
+    cancelledBy: uuid('cancelled_by').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    cancelledAt: timestamp('cancelled_at'),
+    cancellationReason: varchar('cancellation_reason', { length: 500 }),
   },
   (table) => [
     index('idx_purchase_request_items_purchase_request_id').on(
@@ -35,7 +55,7 @@ export const purchaseRequestItems = pgTable(
 
 export const purchaseRequestItemsRelations = relations(
   purchaseRequestItems,
-  ({ one }) => ({
+  ({ one, many }) => ({
     purchaseRequest: one(purchaseRequests, {
       fields: [purchaseRequestItems.purchaseRequestId],
       references: [purchaseRequests.id],
@@ -44,5 +64,11 @@ export const purchaseRequestItemsRelations = relations(
       fields: [purchaseRequestItems.itemId],
       references: [items.id],
     }),
+    cancellerBy: one(users, {
+      fields: [purchaseRequestItems.cancelledBy],
+      references: [users.id],
+    }),
+    quotationItems: many(purchaseQuotationItems),
+    orderItems: many(purchaseOrderItems),
   }),
 );

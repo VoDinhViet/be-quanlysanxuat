@@ -100,7 +100,7 @@ export const suppliersRelations = relations(suppliers, ({ one, many }) => ({
     fields: [suppliers.countryId],
     references: [countries.id],
   }),
-  creator: one(users, {
+  creatorBy: one(users, {
     fields: [suppliers.createdBy],
     references: [users.id],
   }),

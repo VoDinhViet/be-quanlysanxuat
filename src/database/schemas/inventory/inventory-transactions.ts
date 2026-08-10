@@ -128,7 +128,7 @@ export const inventoryTransactionsRelations = relations(
       fields: [inventoryTransactions.orderItemId],
       references: [orderItems.id],
     }),
-    creator: one(users, {
+    creatorBy: one(users, {
       fields: [inventoryTransactions.createdBy],
       references: [users.id],
     }),

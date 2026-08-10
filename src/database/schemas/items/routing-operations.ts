@@ -63,7 +63,7 @@ export const routingOperationsRelations = relations(
       fields: [routingOperations.operationId],
       references: [operations.id],
     }),
-    creator: one(users, {
+    creatorBy: one(users, {
       fields: [routingOperations.createdBy],
       references: [users.id],
     }),

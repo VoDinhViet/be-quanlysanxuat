@@ -125,6 +125,10 @@ xưởng chưa cần tạm dừng qua API, tạm hoãn để mở rộng sau nà
   không có input nhận ngày từ client.
 - Ghi chú Job (`production_job_notes`) là **append-only** — `POST` để đăng, không có route sửa/xoá;
   đăng được ở mọi trạng thái Job, không kiểm `status`.
+- Ghi chú LSX (`production_orders.note`, expose `productionOrderNote` — khác `note`/`order.note` là
+  ghi chú đơn hàng gốc) sửa qua `PATCH .../note`, sửa được ở **mọi trạng thái** LSX, không kiểm
+  `status` (khác route sửa số lượng, chỉ `PENDING`). Mỗi lần sửa ghi một dòng
+  `production_order_logs` (`NOTE_UPDATED`).
 
 ## Invariants
 

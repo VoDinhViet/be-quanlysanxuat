@@ -31,6 +31,7 @@ import { ClientResDto } from './dto/client.res.dto';
 import { CreateClientReqDto } from './dto/create-client.req.dto';
 import { GetClientOptionsReqDto } from './dto/get-client-options.req.dto';
 import { GetClientsReqDto } from './dto/get-clients.req.dto';
+import { PageClientResDto } from './dto/page-client.res.dto';
 import { UpdateClientReqDto } from './dto/update-client.req.dto';
 
 @Injectable()
@@ -43,7 +44,7 @@ export class ClientsService {
 
   async getClients(
     reqDto: GetClientsReqDto,
-  ): Promise<OffsetPaginatedDto<ClientResDto>> {
+  ): Promise<OffsetPaginatedDto<PageClientResDto>> {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
     const where = and(
       isNull(clients.deletedAt),
@@ -78,7 +79,7 @@ export class ClientsService {
         orderBy,
         with: {
           group: true,
-          creator: true,
+          creatorBy: true,
           contacts: true,
         },
       }),
@@ -86,7 +87,7 @@ export class ClientsService {
     ]);
 
     return new OffsetPaginatedDto(
-      plainToInstance(ClientResDto, entities, {
+      plainToInstance(PageClientResDto, entities, {
         excludeExtraneousValues: true,
       }),
       new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
@@ -120,12 +121,12 @@ export class ClientsService {
     });
   }
 
-  async getClientDetail(clientId: string): Promise<ClientResDto> {
+  async getClient(clientId: string): Promise<ClientResDto> {
     const client = await this.db.query.clients.findFirst({
       where: and(eq(clients.id, clientId), isNull(clients.deletedAt)),
       with: {
         group: true,
-        creator: true,
+        creatorBy: true,
         contacts: true,
       },
     });
@@ -187,7 +188,7 @@ export class ClientsService {
       await this.replaceContacts(client.id, contacts);
     }
 
-    return this.getClientDetail(client.id);
+    return this.getClient(client.id);
   }
 
   async updateClient(
@@ -218,7 +219,7 @@ export class ClientsService {
       await this.replaceContacts(clientId, contacts);
     }
 
-    return this.getClientDetail(clientId);
+    return this.getClient(clientId);
   }
 
   async deleteClient(clientId: string): Promise<void> {

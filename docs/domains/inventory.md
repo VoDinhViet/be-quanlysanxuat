@@ -74,6 +74,22 @@ vì `stock_receipt_items` cũ — công thức không đổi.
 **`reservedQuantity` trên `inventory_balances` có cột nhưng chưa ai ghi** — luôn `0` ở giai đoạn
 này. Giữ hàng thật là một feature riêng, đụng module `orders`, ngoài phạm vi đợt này.
 
+**Bốn số khác trên dòng chi tiết phiếu nhập** (`GET /inventory-receipts/:receiptId`) và dòng chi
+tiết đề xuất mua (`GET /purchase-requests/:purchaseRequestId`, `docs/domains/purchase-requests.md`),
+dùng chung công thức ở `item-stock.query.ts`:
+
+```
+onHand    = SUM(inventory_balances.quantity) gộp mọi kho              (giống trên)
+bomDemand = SUM(production_job_materials.requiredQty) của Job liên kết với
+            phiếu/đề xuất, hoặc mọi Job của LSX nếu không có Job cụ thể
+available = onHand − bomDemand                                        (cố ý có thể âm)
+fromStock = min(onHand, bomDemand)                                     (phần tồn bị LSX này chiếm)
+```
+
+`fromStock` không lưu ở đâu — không có bảng giữ chỗ vật tư theo LSX, tính lại mỗi lần đọc. Khác
+`reserved`/`available` của FG ở trên: `bomDemand` là nhu cầu của **một LSX/Job cụ thể**, không gộp
+mọi LSX đang mở.
+
 ## Entities
 
 | Entity | Vai trò |
@@ -141,10 +157,10 @@ Không phải invariant dù dễ tưởng:
 - **DB không ràng buộc loại kho ↔ loại hàng** — `warehouses.type` chỉ là nhãn (xem Core concepts),
   không phải một ràng buộc bị thiếu, là quyết định nghiệp vụ.
 - **`reservedQuantity` trên `inventory_balances` luôn bằng 0** — cột có sẵn, chưa route nào ghi.
-- **`reserved`/`bomDemand` của vật tư hiện luôn bằng 0** — chưa có Phiếu lãnh vật tư tự động,
-  chưa nổ BOM. `SHORTAGE` của vật tư **chưa bao giờ xuất hiện thực tế** qua đường đọc này (khác
-  `ProductionJobsService.collectMaterialShortages`, tính riêng cho mục đích tạo đề xuất mua —
-  `docs/domains/purchase-requests.md`).
+- **`reserved`/`bomDemand` của vật tư trên `GET /inventory/materials` luôn bằng 0** — chưa có
+  Phiếu lãnh vật tư tự động, chưa nổ BOM đa cấp. `SHORTAGE` **chưa bao giờ xuất hiện thực tế** qua
+  đường đọc này. Chỉ đúng cho danh sách này — dòng chi tiết phiếu nhập/đề xuất mua (khối "Bốn số
+  khác" ở Core concepts) tính `bomDemand` thật từ `production_job_materials`.
 
 ## Cross-domain dependencies
 

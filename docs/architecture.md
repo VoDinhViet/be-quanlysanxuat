@@ -54,6 +54,16 @@ erDiagram
     INVENTORY_ISSUE_ITEMS }o--|| ITEMS : "mặt hàng (FG/WIP/RM)"
     INVENTORY_ISSUE_ITEMS }o--o| ORDER_ITEMS : "delivery tracking (tuỳ chọn)"
     INVENTORY_RECEIPTS }o--o| PURCHASE_REQUESTS : "phát sinh từ đề xuất (tuỳ chọn)"
+
+    SUPPLIERS ||--o{ PURCHASE_QUOTATIONS : "báo giá cho NCC"
+    PURCHASE_QUOTATIONS ||--o{ PURCHASE_QUOTATION_ITEMS : gồm
+    PURCHASE_QUOTATION_ITEMS }o--|| PURCHASE_REQUEST_ITEMS : "giá cho dòng đề xuất"
+    SUPPLIERS ||--o{ PURCHASE_ORDERS : "đơn mua cho NCC"
+    PURCHASE_ORDERS ||--o{ PURCHASE_ORDER_ITEMS : gồm
+    PURCHASE_ORDER_ITEMS }o--|| PURCHASE_REQUEST_ITEMS : "đặt mua cho dòng đề xuất"
+    PURCHASE_ORDER_ITEMS }o--o| PURCHASE_QUOTATION_ITEMS : "nguồn giá (tuỳ chọn)"
+    INVENTORY_RECEIPTS }o--o| PURCHASE_ORDERS : "trace mức phiếu (tuỳ chọn)"
+    INVENTORY_RECEIPT_ITEMS }o--o| PURCHASE_ORDER_ITEMS : "SL đã nhập theo dòng (tuỳ chọn)"
 ```
 
 Master data (`client-groups`, `supplier-groups`, `countries`, `departments`, `positions`, `units`,
@@ -103,6 +113,13 @@ transaction) để tính vật tư thiếu → trong transaction: update `produc
 IN_PROGRESS` → nếu có thiếu, `PurchaseRequestsService.createShortageRequest` ghi thêm
 `purchase_requests` (`DRAFT`) + `purchase_request_items` cho đúng phần thiếu. Không thiếu gì thì
 transaction chỉ có đúng một `UPDATE`. Chi tiết: `docs/workflows/production-job-execution.md`.
+
+**Sổ cái mua hàng** (`GET /purchase-ledger`, `docs/domains/purchasing.md`): thuần đọc, không
+transaction — một `.select()` + join gộp `purchase_request_items` (phiếu `APPROVED`) với ba
+subquery aggregate (SL đặt mua từ `purchase_order_items`, SL đã nhập từ `inventory_receipt_items`
+lọc `POSTED`, trạng thái báo giá từ `purchase_quotation_items`) cộng hai subquery tồn/nhu cầu của
+`item-stock.query.ts`. Bảy trạng thái + `pendingPurchaseSince` tính bằng `CASE WHEN` ngay trong câu
+lệnh, không lọc ở tầng JS.
 
 ## Chuỗi import module (NestJS DI)
 

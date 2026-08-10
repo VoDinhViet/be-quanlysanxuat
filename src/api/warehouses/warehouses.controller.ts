@@ -16,6 +16,7 @@ import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
 import { CreateWarehouseReqDto } from './dto/create-warehouse.req.dto';
 import { GetWarehousesReqDto } from './dto/get-warehouses.req.dto';
+import { PageWarehouseResDto } from './dto/page-warehouse.res.dto';
 import { UpdateWarehouseReqDto } from './dto/update-warehouse.req.dto';
 import { WarehouseResDto } from './dto/warehouse.res.dto';
 import { WarehousesService } from './warehouses.service';
@@ -28,13 +29,13 @@ export class WarehousesController {
   @Get()
   @Permissions('inventory:read')
   @ApiAuth({
-    type: WarehouseResDto,
+    type: PageWarehouseResDto,
     summary: 'List warehouses (danh mục kho)',
     isPaginated: true,
   })
   getWarehouses(
     @Query() reqDto: GetWarehousesReqDto,
-  ): Promise<OffsetPaginatedDto<WarehouseResDto>> {
+  ): Promise<OffsetPaginatedDto<PageWarehouseResDto>> {
     return this.warehousesService.getWarehouses(reqDto);
   }
 
@@ -55,10 +56,10 @@ export class WarehousesController {
     type: WarehouseResDto,
     summary: 'Get warehouse detail',
   })
-  getWarehouseDetail(
+  getWarehouse(
     @UUIDParam('warehouseId') warehouseId: string,
   ): Promise<WarehouseResDto> {
-    return this.warehousesService.getWarehouseDetail(warehouseId);
+    return this.warehousesService.getWarehouse(warehouseId);
   }
 
   @Post()

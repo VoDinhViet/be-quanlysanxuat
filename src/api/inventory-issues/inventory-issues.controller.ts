@@ -19,6 +19,7 @@ import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
 import { CreateInventoryIssueReqDto } from './dto/create-inventory-issue.req.dto';
 import { GetInventoryIssuesReqDto } from './dto/get-inventory-issues.req.dto';
 import { InventoryIssueResDto } from './dto/inventory-issue.res.dto';
+import { PageInventoryIssueResDto } from './dto/page-inventory-issue.res.dto';
 import { UpdateInventoryIssueReqDto } from './dto/update-inventory-issue.req.dto';
 import { InventoryIssuesService } from './inventory-issues.service';
 
@@ -32,13 +33,13 @@ export class InventoryIssuesController {
   @Get()
   @Permissions('inventory:read')
   @ApiAuth({
-    type: InventoryIssueResDto,
+    type: PageInventoryIssueResDto,
     summary: 'List inventory issues (phiếu xuất kho)',
     isPaginated: true,
   })
   getInventoryIssues(
     @Query() reqDto: GetInventoryIssuesReqDto,
-  ): Promise<OffsetPaginatedDto<InventoryIssueResDto>> {
+  ): Promise<OffsetPaginatedDto<PageInventoryIssueResDto>> {
     return this.inventoryIssuesService.getInventoryIssues(reqDto);
   }
 
@@ -48,10 +49,10 @@ export class InventoryIssuesController {
     type: InventoryIssueResDto,
     summary: 'Get inventory issue detail',
   })
-  getInventoryIssueDetail(
+  getInventoryIssue(
     @UUIDParam('issueId') issueId: string,
   ): Promise<InventoryIssueResDto> {
-    return this.inventoryIssuesService.getInventoryIssueDetail(issueId);
+    return this.inventoryIssuesService.getInventoryIssue(issueId);
   }
 
   @Post()

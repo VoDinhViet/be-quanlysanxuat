@@ -41,6 +41,14 @@ export class ProductionOrderDetailResDto {
   order!: OrderBaseResDto;
 
   @Expose()
+  @StringFieldOptional({
+    nullable: true,
+    description:
+      'Ghi chú của chính LSX — khác `order.note` (ghi chú đơn hàng gốc)',
+  })
+  productionOrderNote!: string | null;
+
+  @Expose()
   @ClassField(() => ProductionOrderItemResDto, { each: true })
   items!: ProductionOrderItemResDto[];
 }

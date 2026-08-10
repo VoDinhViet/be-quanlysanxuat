@@ -90,7 +90,7 @@ export const usersRelations = relations(users, ({ one }) => ({
     fields: [users.positionId],
     references: [positions.id],
   }),
-  creator: one(users, {
+  creatorBy: one(users, {
     fields: [users.createdBy],
     references: [users.id],
   }),

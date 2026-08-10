@@ -3,6 +3,7 @@ import { Exclude, Expose } from 'class-transformer';
 import { UserGender, UserStatus } from '../../../database/schemas';
 import {
   ClassField,
+  ClassFieldOptional,
   DateField,
   DateFieldOptional,
   EmailFieldOptional,
@@ -15,6 +16,7 @@ import { DepartmentResDto } from '../../departments/dto/department.res.dto';
 import { FileField } from '../../files/dto/file.field';
 import { FileResDto } from '../../files/dto/file.res.dto';
 import { PositionRefResDto } from '../../positions/dto/position-ref.res.dto';
+import { CredentialResDto } from './credential.res.dto';
 
 @Exclude()
 export class UserResDto {
@@ -85,4 +87,8 @@ export class UserResDto {
   @Expose()
   @DateField()
   updatedAt!: Date;
+
+  @Expose()
+  @ClassFieldOptional(() => CredentialResDto, { nullable: true })
+  credential!: CredentialResDto | null;
 }

@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Patch, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpStatus,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
@@ -12,6 +20,7 @@ import { GetProductionOrdersReqDto } from './dto/get-production-orders.req.dto';
 import { ProductionOrderDetailResDto } from './dto/production-order-detail.res.dto';
 import { ProductionOrderLogResDto } from './dto/production-order-log.res.dto';
 import { ProductionOrderResDto } from './dto/production-order.res.dto';
+import { UpdateProductionOrderNoteReqDto } from './dto/update-production-order-note.req.dto';
 import { UpdateProductionOrderReqDto } from './dto/update-production-order.req.dto';
 import { ProductionOrdersService } from './production-orders.service';
 
@@ -62,6 +71,24 @@ export class ProductionOrdersController {
     @CurrentUser() payload: JwtPayloadType,
   ): Promise<ProductionOrderDetailResDto> {
     return this.productionOrdersService.updateProductionOrder(
+      productionOrdersId,
+      reqDto,
+      payload.userId,
+    );
+  }
+
+  @Patch(':productionOrdersId/note')
+  @Permissions('production:update')
+  @ApiAuth({
+    summary: 'Update ghi chú riêng của LSX — sửa được ở mọi trạng thái',
+    statusCode: HttpStatus.NO_CONTENT,
+  })
+  updateProductionOrderNote(
+    @UUIDParam('productionOrdersId') productionOrdersId: string,
+    @Body() reqDto: UpdateProductionOrderNoteReqDto,
+    @CurrentUser() payload: JwtPayloadType,
+  ): Promise<void> {
+    return this.productionOrdersService.updateProductionOrderNote(
       productionOrdersId,
       reqDto,
       payload.userId,

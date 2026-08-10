@@ -1,19 +1,45 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
-import { and, count, desc, eq, exists, gte, lt, or, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  exists,
+  getTableColumns,
+  gte,
+  lt,
+  or,
+  sql,
+} from 'drizzle-orm';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { unaccentILike } from '../../common/utils/search.util';
+import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
+  files,
+  inventoryReceipts,
   items,
+  PurchaseRequestStatus,
   purchaseRequestItems,
   purchaseRequests,
+  units,
 } from '../../database/schemas';
+import { AppException } from '../../exceptions/app.exception';
+import {
+  itemOnHandSubquery,
+  itemStockColumns,
+  jobMaterialDemandSubquery,
+} from '../inventory/item-stock.query';
 import { GetPurchaseRequestsReqDto } from './dto/get-purchase-requests.req.dto';
+import { PagePurchaseRequestResDto } from './dto/page-purchase-request.res.dto';
 import { PurchaseRequestResDto } from './dto/purchase-request.res.dto';
+import { RejectPurchaseRequestReqDto } from './dto/reject-purchase-request.req.dto';
+import { UpdatePurchaseRequestItemReqDto } from './dto/update-purchase-request-item.req.dto';
 import { CreateShortageRequestInput } from './types/shortage-request.type';
 
 @Injectable()
@@ -22,7 +48,7 @@ export class PurchaseRequestsService {
 
   async getPurchaseRequests(
     reqDto: GetPurchaseRequestsReqDto,
-  ): Promise<OffsetPaginatedDto<PurchaseRequestResDto>> {
+  ): Promise<OffsetPaginatedDto<PagePurchaseRequestResDto>> {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
     const materialKeyword = reqDto.materialKeyword
       ? `%${reqDto.materialKeyword}%`
@@ -85,7 +111,10 @@ export class PurchaseRequestsService {
         orderBy: desc(purchaseRequests.createdAt),
         with: {
           department: true,
-          requester: true,
+          requesterBy: true,
+          senderBy: true,
+          approverBy: true,
+          rejecterBy: true,
           productionOrder: true,
           productionJob: true,
         },
@@ -94,27 +123,294 @@ export class PurchaseRequestsService {
     ]);
 
     return new OffsetPaginatedDto(
-      plainToInstance(PurchaseRequestResDto, entities, {
+      plainToInstance(PagePurchaseRequestResDto, entities, {
         excludeExtraneousValues: true,
       }),
       new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
     );
   }
 
-  /** Ghi header + dòng vật tư của một đề xuất trong transaction của nơi gọi — đường ghi duy nhất
-   * vào `purchase_requests`/`purchase_request_items`, gọi từ `ProductionJobsService.startJob` khi
-   * Job thiếu vật tư. `status` để mặc định `DRAFT` — chưa có route duyệt
-   * (`docs/domains/purchase-requests.md`). */
+  async getPurchaseRequest(
+    purchaseRequestId: string,
+  ): Promise<PurchaseRequestResDto> {
+    const purchaseRequest = await this.db.query.purchaseRequests.findFirst({
+      where: eq(purchaseRequests.id, purchaseRequestId),
+      with: {
+        department: true,
+        requesterBy: true,
+        senderBy: true,
+        approverBy: true,
+        rejecterBy: true,
+        productionOrder: true,
+        productionJob: true,
+      },
+    });
+
+    if (!purchaseRequest) {
+      throw new AppException(ErrorCode.E112, HttpStatus.NOT_FOUND);
+    }
+
+    const [lines, receipts] = await Promise.all([
+      this.getPurchaseRequestLines(purchaseRequestId, {
+        productionJobId: purchaseRequest.productionJobId,
+        productionOrderId: purchaseRequest.productionOrderId,
+      }),
+      this.db.query.inventoryReceipts.findMany({
+        where: eq(inventoryReceipts.purchaseRequestId, purchaseRequestId),
+        orderBy: desc(inventoryReceipts.receiptDate),
+      }),
+    ]);
+
+    return plainToInstance(
+      PurchaseRequestResDto,
+      { ...purchaseRequest, items: lines, receipts },
+      { excludeExtraneousValues: true },
+    );
+  }
+
+  /** `purchase_request_items` không có `sortOrder`, và relational query API không order được
+   * theo cột của bảng join (`items.code`) — dùng `.select()` + join để Postgres sort thay vì
+   * `.sort()` trong JS. 4 số tồn/nhu cầu dùng chung công thức với `InventoryReceiptsService` —
+   * xem `item-stock.query.ts`. */
+  private async getPurchaseRequestLines(
+    purchaseRequestId: string,
+    scope: {
+      productionJobId: string | null;
+      productionOrderId: string | null;
+    },
+  ) {
+    const balance = itemOnHandSubquery(this.db);
+    const demand = jobMaterialDemandSubquery(this.db, scope);
+
+    const rows = await this.db
+      .select({
+        id: purchaseRequestItems.id,
+        quantity: purchaseRequestItems.quantity,
+        note: purchaseRequestItems.note,
+        ...itemStockColumns(balance, demand),
+        item: getTableColumns(items),
+        unit: getTableColumns(units),
+        imageFile: getTableColumns(files),
+      })
+      .from(purchaseRequestItems)
+      .innerJoin(items, eq(items.id, purchaseRequestItems.itemId))
+      .innerJoin(units, eq(units.id, items.unitId))
+      .leftJoin(files, eq(files.id, items.imageFileId))
+      .leftJoin(balance, eq(balance.itemId, items.id))
+      .leftJoin(demand, eq(demand.itemId, items.id))
+      .where(eq(purchaseRequestItems.purchaseRequestId, purchaseRequestId))
+      .orderBy(asc(items.code));
+
+    // `unit`/`imageFile` join phẳng ở cấp gốc — lồng vào trong `item` cho khớp shape
+    // `OrderItemRefResDto` (`item.unit`, `item.image`) mà `.select()` không tự lồng được.
+    // `imageFile` bắt buộc ở cấp gốc: drizzle chỉ null-collapse LEFT JOIN trượt ở độ sâu 1
+    // (`mapResultRow`), lồng sẵn trong `item` sẽ ra `{id: null, ...}` chứ không phải `null`.
+    return rows.map(({ item, unit, imageFile, ...line }) => ({
+      ...line,
+      item: { ...item, unit, imageFile },
+    }));
+  }
+
+  async updatePurchaseRequestItem(
+    purchaseRequestId: string,
+    purchaseRequestItemId: string,
+    reqDto: UpdatePurchaseRequestItemReqDto,
+  ): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      await this.ensurePurchaseRequestEditable(tx, purchaseRequestId);
+
+      const item = await tx.query.purchaseRequestItems.findFirst({
+        columns: { id: true },
+        where: and(
+          eq(purchaseRequestItems.id, purchaseRequestItemId),
+          eq(purchaseRequestItems.purchaseRequestId, purchaseRequestId),
+        ),
+      });
+
+      if (!item) {
+        throw new AppException(ErrorCode.E113, HttpStatus.NOT_FOUND);
+      }
+
+      await tx
+        .update(purchaseRequestItems)
+        .set({ ...reqDto })
+        .where(eq(purchaseRequestItems.id, purchaseRequestItemId));
+    });
+  }
+
+  /** Phải còn ≥ 1 dòng sau khi xoá (`E115`) — module chưa có route xoá cả phiếu, xoá hết sẽ để lại
+   * một đề xuất rỗng sống vĩnh viễn. */
+  async deletePurchaseRequestItem(
+    purchaseRequestId: string,
+    purchaseRequestItemId: string,
+  ): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      await this.ensurePurchaseRequestEditable(tx, purchaseRequestId);
+
+      const item = await tx.query.purchaseRequestItems.findFirst({
+        columns: { id: true },
+        where: and(
+          eq(purchaseRequestItems.id, purchaseRequestItemId),
+          eq(purchaseRequestItems.purchaseRequestId, purchaseRequestId),
+        ),
+      });
+
+      if (!item) {
+        throw new AppException(ErrorCode.E113, HttpStatus.NOT_FOUND);
+      }
+
+      const [{ total }] = await tx
+        .select({ total: count() })
+        .from(purchaseRequestItems)
+        .where(eq(purchaseRequestItems.purchaseRequestId, purchaseRequestId));
+
+      if (total <= 1) {
+        throw new AppException(ErrorCode.E115, HttpStatus.CONFLICT);
+      }
+
+      await tx
+        .delete(purchaseRequestItems)
+        .where(eq(purchaseRequestItems.id, purchaseRequestItemId));
+    });
+  }
+
+  async sendPurchaseRequest(
+    purchaseRequestId: string,
+    userId: string,
+  ): Promise<void> {
+    await this.ensurePurchaseRequestDraft(purchaseRequestId);
+
+    await this.db
+      .update(purchaseRequests)
+      .set({
+        status: PurchaseRequestStatus.PENDING_APPROVAL,
+        sentBy: userId,
+        sentAt: new Date(),
+      })
+      .where(eq(purchaseRequests.id, purchaseRequestId));
+  }
+
+  async approvePurchaseRequest(
+    purchaseRequestId: string,
+    userId: string,
+  ): Promise<void> {
+    await this.ensurePendingApproval(purchaseRequestId);
+
+    await this.db
+      .update(purchaseRequests)
+      .set({
+        status: PurchaseRequestStatus.APPROVED,
+        approvedBy: userId,
+        approvedAt: new Date(),
+      })
+      .where(eq(purchaseRequests.id, purchaseRequestId));
+  }
+
+  /** `REJECTED` là điểm dừng — không có route đưa lại `DRAFT`. Chỉ sửa/xoá dòng vật tư
+   * (`ensurePurchaseRequestEditable`) mới mở lại được, coi như làm lại từ đầu. */
+  async rejectPurchaseRequest(
+    purchaseRequestId: string,
+    reqDto: RejectPurchaseRequestReqDto,
+    userId: string,
+  ): Promise<void> {
+    await this.ensurePendingApproval(purchaseRequestId);
+
+    await this.db
+      .update(purchaseRequests)
+      .set({
+        status: PurchaseRequestStatus.REJECTED,
+        rejectedBy: userId,
+        rejectedAt: new Date(),
+        rejectionReason: reqDto.reason,
+      })
+      .where(eq(purchaseRequests.id, purchaseRequestId));
+  }
+
+  /** Chỉ dùng cho `sendPurchaseRequest` — bắt buộc đúng `DRAFT`, không tự mở lại như
+   * `ensurePurchaseRequestEditable`. */
+  private async ensurePurchaseRequestDraft(purchaseRequestId: string) {
+    const purchaseRequest = await this.db.query.purchaseRequests.findFirst({
+      columns: { id: true, status: true },
+      where: eq(purchaseRequests.id, purchaseRequestId),
+    });
+
+    if (!purchaseRequest) {
+      throw new AppException(ErrorCode.E112, HttpStatus.NOT_FOUND);
+    }
+
+    if (purchaseRequest.status !== PurchaseRequestStatus.DRAFT) {
+      throw new AppException(ErrorCode.E114, HttpStatus.CONFLICT);
+    }
+
+    return purchaseRequest;
+  }
+
+  /** Sửa/xoá dòng hợp lệ khi `DRAFT` hoặc `REJECTED` — `PENDING_APPROVAL`/`APPROVED` khoá cứng
+   * (`E114`). Đang `REJECTED` thì tự đưa về `DRAFT` ngay trong transaction của nơi gọi (coi như
+   * sửa lại từ đầu), giữ nguyên lịch sử `rejectedBy`/`rejectedAt`/`rejectionReason`. */
+  private async ensurePurchaseRequestEditable(
+    tx: DbTransaction,
+    purchaseRequestId: string,
+  ) {
+    const purchaseRequest = await tx.query.purchaseRequests.findFirst({
+      columns: { id: true, status: true },
+      where: eq(purchaseRequests.id, purchaseRequestId),
+    });
+
+    if (!purchaseRequest) {
+      throw new AppException(ErrorCode.E112, HttpStatus.NOT_FOUND);
+    }
+
+    if (
+      purchaseRequest.status === PurchaseRequestStatus.PENDING_APPROVAL ||
+      purchaseRequest.status === PurchaseRequestStatus.APPROVED
+    ) {
+      throw new AppException(ErrorCode.E114, HttpStatus.CONFLICT);
+    }
+
+    if (purchaseRequest.status === PurchaseRequestStatus.REJECTED) {
+      await tx
+        .update(purchaseRequests)
+        .set({ status: PurchaseRequestStatus.DRAFT })
+        .where(eq(purchaseRequests.id, purchaseRequestId));
+    }
+
+    return purchaseRequest;
+  }
+
+  /** `approve`/`reject` chỉ hợp lệ từ `PENDING_APPROVAL` — sibling của `ensurePurchaseRequestDraft`. */
+  private async ensurePendingApproval(purchaseRequestId: string) {
+    const purchaseRequest = await this.db.query.purchaseRequests.findFirst({
+      columns: { id: true, status: true },
+      where: eq(purchaseRequests.id, purchaseRequestId),
+    });
+
+    if (!purchaseRequest) {
+      throw new AppException(ErrorCode.E112, HttpStatus.NOT_FOUND);
+    }
+
+    if (purchaseRequest.status !== PurchaseRequestStatus.PENDING_APPROVAL) {
+      throw new AppException(ErrorCode.E116, HttpStatus.CONFLICT);
+    }
+
+    return purchaseRequest;
+  }
+
+  /** Ghi header + dòng vật tư của một đề xuất trong transaction của nơi gọi — đường sinh **tự
+   * động** duy nhất vào `purchase_requests`/`purchase_request_items`, gọi từ
+   * `ProductionJobsService.startJob` khi Job thiếu vật tư. `status` để mặc định `DRAFT` — chưa có
+   * route duyệt (`docs/domains/purchase-requests.md`). Sửa `quantity`/`note` từng dòng sau khi
+   * sinh qua `updatePurchaseRequestItem`. */
   async createShortageRequest(
     tx: DbTransaction,
     input: CreateShortageRequestInput,
   ): Promise<void> {
-    const { items, ...header } = input;
+    const { items, ...purchaseRequestFields } = input;
     const code = await this.generatePurchaseRequestCode(tx);
 
     const [purchaseRequest] = await tx
       .insert(purchaseRequests)
-      .values({ ...header, code, neededDate: new Date() })
+      .values({ ...purchaseRequestFields, code, neededDate: new Date() })
       .returning({ id: purchaseRequests.id });
 
     await tx.insert(purchaseRequestItems).values(

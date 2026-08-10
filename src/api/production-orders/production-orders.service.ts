@@ -41,6 +41,7 @@ import { GetProductionOrdersReqDto } from './dto/get-production-orders.req.dto';
 import { ProductionOrderDetailResDto } from './dto/production-order-detail.res.dto';
 import { ProductionOrderLogResDto } from './dto/production-order-log.res.dto';
 import { ProductionOrderResDto } from './dto/production-order.res.dto';
+import { UpdateProductionOrderNoteReqDto } from './dto/update-production-order-note.req.dto';
 import { UpdateProductionOrderReqDto } from './dto/update-production-order.req.dto';
 
 /** Số liệu đã chốt/tính toán của một dòng PO — hình dạng chung cho mọi hàm đọc/ghi bên dưới. */
@@ -95,6 +96,7 @@ export class ProductionOrdersService {
           orderDate: orders.orderDate,
           dueDate: orders.dueDate,
           note: orders.note,
+          productionOrderNote: productionOrders.note,
           client: getTableColumns(clients),
           status: productionOrders.status,
         })
@@ -143,9 +145,11 @@ export class ProductionOrdersService {
       throw new AppException(ErrorCode.E081, HttpStatus.NOT_FOUND);
     }
 
-    return plainToInstance(ProductionOrderDetailResDto, productionOrder, {
-      excludeExtraneousValues: true,
-    });
+    return plainToInstance(
+      ProductionOrderDetailResDto,
+      { ...productionOrder, productionOrderNote: productionOrder.note },
+      { excludeExtraneousValues: true },
+    );
   }
 
   /** Sửa số lượng sản xuất từng dòng, nhập tay — chỉ khi LSX còn `PENDING` (`E084`). Partial: chỉ
@@ -441,7 +445,7 @@ export class ProductionOrdersService {
     );
   }
 
-  /** `performer` null nếu credential đã bị xoá; `E081` nếu header không tồn tại. */
+  /** `performedBy` null nếu credential đã bị xoá; `E081` nếu header không tồn tại. */
   async getProductionOrderLogs(
     productionOrdersId: string,
     reqDto: GetProductionOrderLogsReqDto,
@@ -458,7 +462,7 @@ export class ProductionOrdersService {
     const [rows, countRows] = await Promise.all([
       this.db.query.productionOrderLogs.findMany({
         where,
-        with: { performer: true },
+        with: { performerBy: true },
         orderBy: desc(productionOrderLogs.createdAt),
         limit: reqDto.limit,
         offset: reqDto.offset,
@@ -472,6 +476,37 @@ export class ProductionOrdersService {
       }),
       new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
     );
+  }
+
+  /** Sửa được ở mọi trạng thái LSX — khác `updateProductionOrder` (chỉ `PENDING`, `E084`), vì đây
+   * chỉ là annotation nội bộ, không đụng số liệu sản xuất đã chốt. */
+  async updateProductionOrderNote(
+    productionOrdersId: string,
+    reqDto: UpdateProductionOrderNoteReqDto,
+    userId: string,
+  ): Promise<void> {
+    const exists = await this.db.query.productionOrders.findFirst({
+      columns: { id: true },
+      where: eq(productionOrders.id, productionOrdersId),
+    });
+    if (!exists) {
+      throw new AppException(ErrorCode.E081, HttpStatus.NOT_FOUND);
+    }
+
+    await this.db.transaction(async (tx) => {
+      await tx
+        .update(productionOrders)
+        .set({ note: reqDto.note })
+        .where(eq(productionOrders.id, productionOrdersId));
+
+      await this.logAction(
+        tx,
+        productionOrdersId,
+        ProductionOrderLogAction.NOTE_UPDATED,
+        'Cập nhật ghi chú LSX',
+        userId,
+      );
+    });
   }
 
   /** Ghi 1 dòng lịch sử thao tác — luôn gọi trong transaction của hành động đang log, không tách

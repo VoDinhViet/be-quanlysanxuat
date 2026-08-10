@@ -19,6 +19,7 @@ import {
 import { AppException } from '../../exceptions/app.exception';
 import { CreateWarehouseReqDto } from './dto/create-warehouse.req.dto';
 import { GetWarehousesReqDto } from './dto/get-warehouses.req.dto';
+import { PageWarehouseResDto } from './dto/page-warehouse.res.dto';
 import { UpdateWarehouseReqDto } from './dto/update-warehouse.req.dto';
 import { WarehouseResDto } from './dto/warehouse.res.dto';
 
@@ -28,7 +29,7 @@ export class WarehousesService {
 
   async getWarehouses(
     reqDto: GetWarehousesReqDto,
-  ): Promise<OffsetPaginatedDto<WarehouseResDto>> {
+  ): Promise<OffsetPaginatedDto<PageWarehouseResDto>> {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
     const where = and(
       keyword
@@ -52,7 +53,7 @@ export class WarehousesService {
     ]);
 
     return new OffsetPaginatedDto(
-      plainToInstance(WarehouseResDto, entities, {
+      plainToInstance(PageWarehouseResDto, entities, {
         excludeExtraneousValues: true,
       }),
       new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
@@ -72,7 +73,7 @@ export class WarehousesService {
     });
   }
 
-  async getWarehouseDetail(warehouseId: string): Promise<WarehouseResDto> {
+  async getWarehouse(warehouseId: string): Promise<WarehouseResDto> {
     const warehouse = await this.ensureWarehouseExists(warehouseId);
 
     return plainToInstance(WarehouseResDto, warehouse, {

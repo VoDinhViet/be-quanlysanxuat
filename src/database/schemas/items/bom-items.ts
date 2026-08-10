@@ -91,7 +91,7 @@ export const bomItemsRelations = relations(bomItems, ({ one }) => ({
     fields: [bomItems.drawingFileId],
     references: [files.id],
   }),
-  creator: one(users, {
+  creatorBy: one(users, {
     fields: [bomItems.createdBy],
     references: [users.id],
   }),

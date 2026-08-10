@@ -87,7 +87,7 @@ export class BomOperationsService {
       })
       .returning({ id: bomOperations.id });
 
-    return this.getBomOperationDetail(row.id);
+    return this.getBomOperation(row.id);
   }
 
   /** Chỉ sửa STT/note — `operationId` bất biến, đổi thì xoá + thêm lại. */
@@ -111,7 +111,7 @@ export class BomOperationsService {
         ),
       );
 
-    return this.getBomOperationDetail(stepId);
+    return this.getBomOperation(stepId);
   }
 
   async deleteBomOperation(
@@ -133,7 +133,7 @@ export class BomOperationsService {
       );
   }
 
-  private async getBomOperationDetail(id: string): Promise<BomOperationResDto> {
+  private async getBomOperation(id: string): Promise<BomOperationResDto> {
     const row = await this.db.query.bomOperations.findFirst({
       where: eq(bomOperations.id, id),
       with: { operation: true },

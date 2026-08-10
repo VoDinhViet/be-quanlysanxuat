@@ -58,7 +58,7 @@ không phải `/api/health`.
 
 ## Modules
 
-26 module dưới `src/api/`. `users` là module tham chiếu cho code mới (controller/service, DTO, lỗi,
+27 module dưới `src/api/`. `users` là module tham chiếu cho code mới (controller/service, DTO, lỗi,
 phân trang — chi tiết ở `.claude/rules/`). Đăng ký module mới trong `src/app.module.ts`. Cột `Domain`
 là file dưới `docs/domains/`, `—` nghĩa là hạ tầng thuần, không thuộc domain nghiệp vụ nào.
 
@@ -89,7 +89,8 @@ là file dưới `docs/domains/`, `—` nghĩa là hạ tầng thuần, không t
 | `inventory-issues` | inventory | phiếu xuất — cùng vòng đời, cùng khuôn `inventory-receipts` |
 | `production-orders` | production | 1 PO duyệt = 1 LSX |
 | `production-jobs` | production | 1 item FG = 1 Job trong một LSX |
-| `purchase-requests` | purchase-requests | Danh sách đề xuất mua hàng, chỉ `GET /purchase-requests`; chưa có route tạo/duyệt/từ chối — phiếu tự sinh khi `production-jobs` start Job thiếu vật tư |
+| `purchase-requests` | purchase-requests | Đề xuất mua hàng — `GET` list/detail + `PATCH`/`DELETE .../items/:purchaseRequestItemId` (sửa/xoá dòng, chỉ `DRAFT`/`REJECTED`) + `POST .../send`/`.../approve`/`.../reject` (gửi duyệt/duyệt/từ chối, `REJECTED` là điểm cuối trừ khi sửa/xoá dòng lại đưa về `DRAFT`); chưa có route tạo/xoá cả phiếu — phiếu tự sinh khi `production-jobs` start Job thiếu vật tư |
+| `purchase-ledger` | purchasing | Sổ cái mua hàng — hiện tại chỉ `GET /purchase-ledger`, 1 dòng/1 `purchase_request_items` của phiếu `APPROVED`; báo giá (`purchase-quotations`)/đơn mua (`purchase-orders`) chưa có module riêng, đang ở phase thiết kế trong `docs/domains/purchasing.md` |
 
 ## Domain docs
 
@@ -98,8 +99,9 @@ Bốn tầng, đọc từ trên xuống khi cần hiểu một vùng nghiệp v�
 - `docs/architecture.md` — sơ đồ ER theo cụm + thứ tự ghi qua nhiều module. Đọc trước khi sửa gì
   chạm ≥ 2 module.
 - `docs/domains/<domain>.md` — **"tại sao"**: khái niệm, vòng đời, business rule, bất biến, phụ
-  thuộc chéo domain, và lỗi hay mắc. Bảy domain: `orders`, `production`, `inventory`,
-  `product-structure`, `identity-access`, `partners`, `purchase-requests`. Đọc trước khi làm feature trong vùng đó.
+  thuộc chéo domain, và lỗi hay mắc. Tám domain: `orders`, `production`, `inventory`,
+  `product-structure`, `identity-access`, `partners`, `purchase-requests`, `purchasing`. Đọc trước
+  khi làm feature trong vùng đó.
 - `docs/workflows/<flow>.md` — **"chạy theo trình tự nào"**: trigger, actor, precondition, các bước,
   đổi trạng thái gì, ranh giới transaction, nhánh lỗi. Đọc trước khi sửa một luồng nghiệp vụ đầu-cuối.
   Năm luồng: `order-approval`, `production-order-approval`, `production-job-execution`,
@@ -113,7 +115,8 @@ Bốn tầng, đọc từ trên xuống khi cần hiểu một vùng nghiệp v�
 đọc ở Swagger `/api-docs`; `ErrorCode` đọc ở `src/constants/error-code.constant.ts` + service ném nó.
 
 Chuỗi chính của hệ thống: duyệt đơn → duyệt LSX → chạy Job, rồi kho là một luồng **tách rời** chạy
-tay. Không có mua hàng/đơn mua — nhập vật tư là phiếu kho lập tay (`docs/domains/product-structure.md`).
+tay. Đề xuất mua hàng đã duyệt (`purchase-requests`) tiếp tục sang báo giá/đơn mua
+(`docs/domains/purchasing.md`) — nhập vật tư vẫn là phiếu kho lập tay, nay có thể trace về đơn mua.
 
 Viết/cập nhật doc trước khi làm feature mới hoặc đổi business rule — quy ước ở
 `.claude/rules/documentation.md`.
@@ -121,8 +124,9 @@ Viết/cập nhật doc trước khi làm feature mới hoặc đổi business r
 ## Standing decisions
 
 Quyết định đảo chiều nằm ở `docs/decisions/` — testing tạm dừng, `files` thay `uploads`, Swagger là
-reference API, không có mua hàng, `products`+`materials` gộp thành `items`. Đọc trước khi định làm
-ngược lại thứ gì đang có.
+reference API, `products`+`materials` gộp thành `items`. `no-procurement.md` từng chặn mua hàng,
+nay đã đảo ngược một phần (`docs/domains/purchasing.md`) — đọc kỹ phần "vẫn không làm" trong đó
+trước khi định mở rộng thêm (công nợ, thanh toán, bảng giá theo thời gian).
 
 Một cảnh báo không thuộc file nào khác: **enum trạng thái (`OrderStatus`, `ProductionOrderStatus`,
 `ProductionJobStatus`, ...) đổi khá thường xuyên** — luôn đọc giá trị thật từ

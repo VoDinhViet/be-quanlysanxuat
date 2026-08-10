@@ -61,7 +61,7 @@ export class InventoryIssueResDto {
 
   @Expose()
   @ClassFieldOptional(() => UserRefResDto, { nullable: true })
-  requester!: UserRefResDto | null;
+  requesterBy!: UserRefResDto | null;
 
   @Expose()
   @StringFieldOptional({ nullable: true })
@@ -73,7 +73,7 @@ export class InventoryIssueResDto {
 
   @Expose()
   @ClassFieldOptional(() => UserRefResDto, { nullable: true })
-  poster!: UserRefResDto | null;
+  posterBy!: UserRefResDto | null;
 
   @Expose()
   @DateFieldOptional({ nullable: true })
@@ -81,7 +81,7 @@ export class InventoryIssueResDto {
 
   @Expose()
   @ClassFieldOptional(() => UserRefResDto, { nullable: true })
-  creator!: UserRefResDto | null;
+  creatorBy!: UserRefResDto | null;
 
   @Expose()
   @DateField()

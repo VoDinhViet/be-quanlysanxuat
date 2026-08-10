@@ -375,7 +375,7 @@ export class ProductionJobsService {
     const [rows, countRows] = await Promise.all([
       this.db.query.productionJobNotes.findMany({
         where,
-        with: { creator: true },
+        with: { creatorBy: true },
         orderBy: asc(productionJobNotes.createdAt),
         limit: reqDto.limit,
         offset: reqDto.offset,

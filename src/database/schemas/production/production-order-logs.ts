@@ -17,6 +17,7 @@ export enum ProductionOrderLogAction {
   CREATED = 'CREATED',
   QUANTITY_UPDATED = 'QUANTITY_UPDATED',
   APPROVED = 'APPROVED',
+  NOTE_UPDATED = 'NOTE_UPDATED',
 }
 
 export const productionOrderLogActionEnum = pgEnum(
@@ -25,6 +26,7 @@ export const productionOrderLogActionEnum = pgEnum(
     ProductionOrderLogAction.CREATED,
     ProductionOrderLogAction.QUANTITY_UPDATED,
     ProductionOrderLogAction.APPROVED,
+    ProductionOrderLogAction.NOTE_UPDATED,
   ],
 );
 
@@ -70,7 +72,7 @@ export const productionOrderLogsRelations = relations(
       fields: [productionOrderLogs.productionOrderId],
       references: [productionOrders.id],
     }),
-    performer: one(users, {
+    performerBy: one(users, {
       fields: [productionOrderLogs.performedBy],
       references: [users.id],
     }),

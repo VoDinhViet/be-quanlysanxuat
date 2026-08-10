@@ -16,6 +16,7 @@ import {
 import { inventoryReceiptItems } from './inventory-receipt-items';
 import { warehouses } from './warehouses';
 import { productionOrders } from '../production/production-orders';
+import { purchaseOrders } from '../purchasing/purchase-orders';
 import { purchaseRequests } from '../purchase-requests/purchase-requests';
 import { suppliers } from '../suppliers/suppliers';
 import { users } from '../identity-access/users';
@@ -65,6 +66,12 @@ export const inventoryReceipts = pgTable(
       () => productionOrders.id,
       { onDelete: 'set null' },
     ),
+    // Trace mức phiếu về đơn mua sinh ra nó (`docs/domains/purchasing.md`) — thuần để trace, không
+    // đọc để tính tồn/bút toán.
+    purchaseOrderId: uuid('purchase_order_id').references(
+      () => purchaseOrders.id,
+      { onDelete: 'set null' },
+    ),
     note: varchar('note', { length: 1000 }),
     postedBy: uuid('posted_by').references(() => users.id, {
       onDelete: 'set null',
@@ -88,6 +95,7 @@ export const inventoryReceipts = pgTable(
     index('idx_inventory_receipts_production_order_id').on(
       table.productionOrderId,
     ),
+    index('idx_inventory_receipts_purchase_order_id').on(table.purchaseOrderId),
     index('idx_inventory_receipts_created_by').on(table.createdBy),
   ],
 );
@@ -111,11 +119,15 @@ export const inventoryReceiptsRelations = relations(
       fields: [inventoryReceipts.productionOrderId],
       references: [productionOrders.id],
     }),
-    poster: one(users, {
+    purchaseOrder: one(purchaseOrders, {
+      fields: [inventoryReceipts.purchaseOrderId],
+      references: [purchaseOrders.id],
+    }),
+    posterBy: one(users, {
       fields: [inventoryReceipts.postedBy],
       references: [users.id],
     }),
-    creator: one(users, {
+    creatorBy: one(users, {
       fields: [inventoryReceipts.createdBy],
       references: [users.id],
     }),

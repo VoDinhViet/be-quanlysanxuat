@@ -19,6 +19,7 @@ import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
 import { CreateInventoryReceiptReqDto } from './dto/create-inventory-receipt.req.dto';
 import { GetInventoryReceiptsReqDto } from './dto/get-inventory-receipts.req.dto';
 import { InventoryReceiptResDto } from './dto/inventory-receipt.res.dto';
+import { PageInventoryReceiptResDto } from './dto/page-inventory-receipt.res.dto';
 import { UpdateInventoryReceiptReqDto } from './dto/update-inventory-receipt.req.dto';
 import { InventoryReceiptsService } from './inventory-receipts.service';
 
@@ -32,13 +33,13 @@ export class InventoryReceiptsController {
   @Get()
   @Permissions('inventory:read')
   @ApiAuth({
-    type: InventoryReceiptResDto,
+    type: PageInventoryReceiptResDto,
     summary: 'List inventory receipts (phiếu nhập kho)',
     isPaginated: true,
   })
   getInventoryReceipts(
     @Query() reqDto: GetInventoryReceiptsReqDto,
-  ): Promise<OffsetPaginatedDto<InventoryReceiptResDto>> {
+  ): Promise<OffsetPaginatedDto<PageInventoryReceiptResDto>> {
     return this.inventoryReceiptsService.getInventoryReceipts(reqDto);
   }
 
@@ -48,10 +49,10 @@ export class InventoryReceiptsController {
     type: InventoryReceiptResDto,
     summary: 'Get inventory receipt detail',
   })
-  getInventoryReceiptDetail(
+  getInventoryReceipt(
     @UUIDParam('receiptId') receiptId: string,
   ): Promise<InventoryReceiptResDto> {
-    return this.inventoryReceiptsService.getInventoryReceiptDetail(receiptId);
+    return this.inventoryReceiptsService.getInventoryReceipt(receiptId);
   }
 
   @Post()

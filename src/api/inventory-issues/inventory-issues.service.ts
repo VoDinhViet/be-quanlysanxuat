@@ -30,21 +30,11 @@ import { CreateInventoryIssueReqDto } from './dto/create-inventory-issue.req.dto
 import { GetInventoryIssuesReqDto } from './dto/get-inventory-issues.req.dto';
 import { InventoryIssueItemReqDto } from './dto/inventory-issue-item.req.dto';
 import { InventoryIssueResDto } from './dto/inventory-issue.res.dto';
+import { PageInventoryIssueResDto } from './dto/page-inventory-issue.res.dto';
 import { UpdateInventoryIssueReqDto } from './dto/update-inventory-issue.req.dto';
 
-const ISSUE_DETAIL_WITH = {
-  warehouse: true,
-  productionOrder: true,
-  productionJob: true,
-  department: true,
-  requester: true,
-  poster: true,
-  creator: true,
-  items: { with: { item: true } },
-} as const;
-
 /** Loại phiếu → loại bút toán lúc `post` — bảng đầy đủ ở `docs/domains/inventory.md`. */
-const ISSUE_TYPE_TRANSACTION_TYPE: Record<
+const issueTypeTransactionType: Record<
   InventoryIssueType,
   InventoryTransactionType
 > = {
@@ -64,7 +54,7 @@ export class InventoryIssuesService {
 
   async getInventoryIssues(
     reqDto: GetInventoryIssuesReqDto,
-  ): Promise<OffsetPaginatedDto<InventoryIssueResDto>> {
+  ): Promise<OffsetPaginatedDto<PageInventoryIssueResDto>> {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
     const where = and(
       keyword ? unaccentILike(inventoryIssues.code, keyword) : undefined,
@@ -105,25 +95,41 @@ export class InventoryIssuesService {
           desc(inventoryIssues.issueDate),
           desc(inventoryIssues.createdAt),
         ],
-        with: ISSUE_DETAIL_WITH,
+        with: {
+          warehouse: true,
+          productionOrder: true,
+          productionJob: true,
+          department: true,
+          requesterBy: true,
+          posterBy: true,
+          creatorBy: true,
+          items: { with: { item: true } },
+        },
       }),
       this.db.select({ total: count() }).from(inventoryIssues).where(where),
     ]);
 
     return new OffsetPaginatedDto(
-      plainToInstance(InventoryIssueResDto, entities, {
+      plainToInstance(PageInventoryIssueResDto, entities, {
         excludeExtraneousValues: true,
       }),
       new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
     );
   }
 
-  async getInventoryIssueDetail(
-    issueId: string,
-  ): Promise<InventoryIssueResDto> {
+  async getInventoryIssue(issueId: string): Promise<InventoryIssueResDto> {
     const issue = await this.db.query.inventoryIssues.findFirst({
       where: eq(inventoryIssues.id, issueId),
-      with: ISSUE_DETAIL_WITH,
+      with: {
+        warehouse: true,
+        productionOrder: true,
+        productionJob: true,
+        department: true,
+        requesterBy: true,
+        posterBy: true,
+        creatorBy: true,
+        items: { with: { item: true } },
+      },
     });
 
     if (!issue) {
@@ -163,7 +169,7 @@ export class InventoryIssuesService {
       return issue.id;
     });
 
-    return this.getInventoryIssueDetail(issueId);
+    return this.getInventoryIssue(issueId);
   }
 
   async updateInventoryIssue(
@@ -190,7 +196,7 @@ export class InventoryIssuesService {
       }
     });
 
-    return this.getInventoryIssueDetail(issueId);
+    return this.getInventoryIssue(issueId);
   }
 
   async deleteInventoryIssue(issueId: string): Promise<void> {
@@ -220,7 +226,7 @@ export class InventoryIssuesService {
           itemId: item.itemId,
           // Xuất luôn trừ tồn — dấu âm.
           signedQuantity: -item.quantity,
-          type: ISSUE_TYPE_TRANSACTION_TYPE[issue.issueType],
+          type: issueTypeTransactionType[issue.issueType],
           orderItemId: item.orderItemId,
         })),
       });

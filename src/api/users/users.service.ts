@@ -39,8 +39,8 @@ import { CreateCredentialReqDto } from './dto/create-credential.req.dto';
 import { CreateUserReqDto } from './dto/create-user.req.dto';
 import { CurrentUserResDto } from './dto/current-user.res.dto';
 import { GetUsersReqDto } from './dto/get-users.req.dto';
+import { PageUserResDto } from './dto/page-user.res.dto';
 import { UpdateUserReqDto } from './dto/update-user.req.dto';
-import { UserDetailResDto } from './dto/user-detail.res.dto';
 import { UserResDto } from './dto/user.res.dto';
 
 @Injectable()
@@ -55,7 +55,7 @@ export class UsersService {
 
   async getUsers(
     reqDto: GetUsersReqDto,
-  ): Promise<OffsetPaginatedDto<UserResDto>> {
+  ): Promise<OffsetPaginatedDto<PageUserResDto>> {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
     const where = keyword
       ? or(ilike(users.fullName, keyword), ilike(users.code, keyword))
@@ -78,7 +78,7 @@ export class UsersService {
     ]);
 
     return new OffsetPaginatedDto(
-      plainToInstance(UserResDto, entities, {
+      plainToInstance(PageUserResDto, entities, {
         excludeExtraneousValues: true,
       }),
       new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
@@ -138,7 +138,7 @@ export class UsersService {
     reqDto: CreateUserReqDto,
     actorCredentialId: string,
     actorUserId: string,
-  ): Promise<UserDetailResDto> {
+  ): Promise<UserResDto> {
     // `credential` is a nested object, not a column on `users` — peel it off so the spread below
     // only carries real columns.
     const { credential, ...userFields } = reqDto;
@@ -184,14 +184,14 @@ export class UsersService {
       return user.id;
     });
 
-    return this.getUserDetail(userId);
+    return this.getUser(userId);
   }
 
   async updateUser(
     userId: string,
     reqDto: UpdateUserReqDto,
     actorCredentialId: string,
-  ): Promise<UserDetailResDto> {
+  ): Promise<UserResDto> {
     const existing = await this.ensureUserExists(userId);
 
     // Re-validate the (department, position) pair whenever either side changes — including when
@@ -260,7 +260,7 @@ export class UsersService {
       }
     }
 
-    return this.getUserDetail(userId);
+    return this.getUser(userId);
   }
 
   /**
@@ -277,7 +277,7 @@ export class UsersService {
     userId: string,
     reqDto: AssignRoleReqDto,
     actorCredentialId: string,
-  ): Promise<UserDetailResDto> {
+  ): Promise<UserResDto> {
     const user = await this.db.query.users.findFirst({
       columns: { id: true },
       where: eq(users.id, userId),
@@ -297,7 +297,7 @@ export class UsersService {
 
     await this.applyRoleToCredential(linkedCredential.id, reqDto.roleId);
 
-    return this.getUserDetail(userId);
+    return this.getUser(userId);
   }
 
   /**
@@ -418,7 +418,7 @@ export class UsersService {
     });
   }
 
-  async getUserDetail(userId: string): Promise<UserDetailResDto> {
+  async getUser(userId: string): Promise<UserResDto> {
     const user = await this.db.query.users.findFirst({
       where: eq(users.id, userId),
       with: {
@@ -433,7 +433,7 @@ export class UsersService {
       throw new AppException(ErrorCode.E012, HttpStatus.NOT_FOUND);
     }
 
-    return plainToInstance(UserDetailResDto, user, {
+    return plainToInstance(UserResDto, user, {
       excludeExtraneousValues: true,
     });
   }

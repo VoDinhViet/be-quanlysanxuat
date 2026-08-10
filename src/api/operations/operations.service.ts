@@ -25,7 +25,7 @@ export class OperationsService {
       ),
       // Alphabetical, because this is a small read-only catalogue, not a management list.
       orderBy: asc(operations.name),
-      with: { creator: true },
+      with: { creatorBy: true },
     });
 
     return plainToInstance(OperationResDto, entities, {

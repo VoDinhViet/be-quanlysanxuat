@@ -21,5 +21,5 @@ export class ClientResDto extends ClientBaseResDto {
 
   @Expose()
   @ClassFieldOptional(() => UserRefResDto, { nullable: true })
-  creator!: UserRefResDto | null;
+  creatorBy!: UserRefResDto | null;
 }

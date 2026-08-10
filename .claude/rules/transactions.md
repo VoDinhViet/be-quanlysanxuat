@@ -13,7 +13,7 @@ Reference: `SuppliersService.createSupplier` (simplest), `OrdersService` (fulles
     if (attachmentFileIds?.length) await this.replaceAttachments(tx, supplier.id, attachmentFileIds);
     return supplier.id;
   });
-  return this.getSupplierDetail(supplierId);
+  return this.getSupplier(supplierId);
   ```
 - MUST use `tx` for every statement inside the callback. MUST NOT use `this.db` — it checks out a different pooled connection, so those statements commit on their own with no error and no warning. This is the easiest way to silently lose atomicity.
 - A write helper called from a transaction MUST take `tx: DbTransaction` as its first, required parameter. MUST NOT type it as `Database | DbTransaction` and MUST NOT default it to `this.db` — `Database` isn't assignable to `DbTransaction`, which turns the mistake above into a compile error.

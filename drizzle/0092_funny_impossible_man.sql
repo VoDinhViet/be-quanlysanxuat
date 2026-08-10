@@ -1,0 +1,1 @@
+ALTER TABLE "purchase_request_items" ADD COLUMN "note" varchar(500);

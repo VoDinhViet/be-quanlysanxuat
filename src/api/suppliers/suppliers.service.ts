@@ -30,6 +30,7 @@ import { AppException } from '../../exceptions/app.exception';
 import { FilesService } from '../files/files.service';
 import { CreateSupplierReqDto } from './dto/create-supplier.req.dto';
 import { GetSuppliersReqDto } from './dto/get-suppliers.req.dto';
+import { PageSupplierResDto } from './dto/page-supplier.res.dto';
 import { SupplierResDto } from './dto/supplier.res.dto';
 import { SupplierStatsResDto } from './dto/supplier-stats.res.dto';
 import { UpdateSupplierReqDto } from './dto/update-supplier.req.dto';
@@ -43,7 +44,7 @@ export class SuppliersService {
 
   async getSuppliers(
     reqDto: GetSuppliersReqDto,
-  ): Promise<OffsetPaginatedDto<SupplierResDto>> {
+  ): Promise<OffsetPaginatedDto<PageSupplierResDto>> {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
     const where = and(
       isNull(suppliers.deletedAt),
@@ -77,7 +78,7 @@ export class SuppliersService {
         orderBy,
         with: {
           group: true,
-          creator: true,
+          creatorBy: true,
           attachments: { with: { file: true } },
           logoFile: true,
           representatives: true,
@@ -89,7 +90,7 @@ export class SuppliersService {
     ]);
 
     return new OffsetPaginatedDto(
-      plainToInstance(SupplierResDto, entities, {
+      plainToInstance(PageSupplierResDto, entities, {
         excludeExtraneousValues: true,
       }),
       new OffsetPaginationDto(count[0]?.total ?? 0, reqDto),
@@ -119,12 +120,12 @@ export class SuppliersService {
     );
   }
 
-  async getSupplierDetail(supplierId: string): Promise<SupplierResDto> {
+  async getSupplier(supplierId: string): Promise<SupplierResDto> {
     const supplier = await this.db.query.suppliers.findFirst({
       where: and(eq(suppliers.id, supplierId), isNull(suppliers.deletedAt)),
       with: {
         group: true,
-        creator: true,
+        creatorBy: true,
         attachments: { with: { file: true } },
         logoFile: true,
         representatives: true,
@@ -192,7 +193,7 @@ export class SuppliersService {
       return supplier.id;
     });
 
-    return this.getSupplierDetail(supplierId);
+    return this.getSupplier(supplierId);
   }
 
   async updateSupplier(
@@ -243,7 +244,7 @@ export class SuppliersService {
       }
     });
 
-    return this.getSupplierDetail(supplierId);
+    return this.getSupplier(supplierId);
   }
 
   async deleteSupplier(supplierId: string): Promise<void> {

@@ -1,6 +1,17 @@
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
-import { and, count, desc, eq, gte, inArray, isNull, lt } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  getTableColumns,
+  gte,
+  inArray,
+  isNull,
+  lt,
+} from 'drizzle-orm';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
@@ -15,32 +26,28 @@ import {
   InventoryReceiptType,
   InventoryReferenceType,
   InventoryTransactionType,
-  items as itemsTable,
+  items,
   productionOrders,
   purchaseRequests,
   suppliers,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
+import {
+  itemOnHandSubquery,
+  itemStockColumns,
+  jobMaterialDemandSubquery,
+} from '../inventory/item-stock.query';
 import { InventoryPostingService } from '../inventory/inventory-posting.service';
 import { WarehousesService } from '../warehouses/warehouses.service';
 import { CreateInventoryReceiptReqDto } from './dto/create-inventory-receipt.req.dto';
 import { GetInventoryReceiptsReqDto } from './dto/get-inventory-receipts.req.dto';
 import { InventoryReceiptItemReqDto } from './dto/inventory-receipt-item.req.dto';
 import { InventoryReceiptResDto } from './dto/inventory-receipt.res.dto';
+import { PageInventoryReceiptResDto } from './dto/page-inventory-receipt.res.dto';
 import { UpdateInventoryReceiptReqDto } from './dto/update-inventory-receipt.req.dto';
 
-const RECEIPT_DETAIL_WITH = {
-  warehouse: true,
-  supplier: true,
-  purchaseRequest: true,
-  productionOrder: true,
-  poster: true,
-  creator: true,
-  items: { with: { item: true } },
-} as const;
-
 /** Loại phiếu → loại bút toán lúc `post` — bảng đầy đủ ở `docs/domains/inventory.md`. */
-const RECEIPT_TYPE_TRANSACTION_TYPE: Record<
+const receiptTypeTransactionType: Record<
   InventoryReceiptType,
   InventoryTransactionType
 > = {
@@ -60,7 +67,7 @@ export class InventoryReceiptsService {
 
   async getInventoryReceipts(
     reqDto: GetInventoryReceiptsReqDto,
-  ): Promise<OffsetPaginatedDto<InventoryReceiptResDto>> {
+  ): Promise<OffsetPaginatedDto<PageInventoryReceiptResDto>> {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
     const where = and(
       keyword ? unaccentILike(inventoryReceipts.code, keyword) : undefined,
@@ -98,34 +105,93 @@ export class InventoryReceiptsService {
           desc(inventoryReceipts.receiptDate),
           desc(inventoryReceipts.createdAt),
         ],
-        with: RECEIPT_DETAIL_WITH,
+        with: {
+          warehouse: true,
+          supplier: true,
+          purchaseRequest: true,
+          productionOrder: true,
+          posterBy: true,
+          creatorBy: true,
+          items: { with: { item: true } },
+        },
       }),
       this.db.select({ total: count() }).from(inventoryReceipts).where(where),
     ]);
 
     return new OffsetPaginatedDto(
-      plainToInstance(InventoryReceiptResDto, entities, {
+      plainToInstance(PageInventoryReceiptResDto, entities, {
         excludeExtraneousValues: true,
       }),
       new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
     );
   }
 
-  async getInventoryReceiptDetail(
+  async getInventoryReceipt(
     receiptId: string,
   ): Promise<InventoryReceiptResDto> {
     const receipt = await this.db.query.inventoryReceipts.findFirst({
       where: eq(inventoryReceipts.id, receiptId),
-      with: RECEIPT_DETAIL_WITH,
+      with: {
+        warehouse: true,
+        supplier: true,
+        purchaseRequest: true,
+        productionOrder: true,
+        posterBy: true,
+        creatorBy: true,
+      },
     });
 
     if (!receipt) {
       throw new AppException(ErrorCode.E096, HttpStatus.NOT_FOUND);
     }
 
-    return plainToInstance(InventoryReceiptResDto, receipt, {
-      excludeExtraneousValues: true,
+    const purchaseRequest = receipt.purchaseRequestId
+      ? await this.db.query.purchaseRequests.findFirst({
+          where: eq(purchaseRequests.id, receipt.purchaseRequestId),
+          columns: { productionJobId: true },
+        })
+      : undefined;
+
+    const lines = await this.getReceiptLines(receiptId, {
+      productionJobId: purchaseRequest?.productionJobId,
+      productionOrderId: receipt.productionOrderId,
     });
+
+    return plainToInstance(
+      InventoryReceiptResDto,
+      { ...receipt, items: lines },
+      { excludeExtraneousValues: true },
+    );
+  }
+
+  /** `bomDemand`/`available`/`fromStock` không phải cột thật — relational API không tính được,
+   * nên dòng phiếu nhập dùng `.select()` + join thay vì `with: { items: ... }`. Công thức 4 số
+   * sống ở `item-stock.query.ts`, dùng chung với `PurchaseRequestsService`. */
+  private async getReceiptLines(
+    receiptId: string,
+    scope: {
+      productionJobId?: string | null;
+      productionOrderId?: string | null;
+    },
+  ) {
+    const balance = itemOnHandSubquery(this.db);
+    const demand = jobMaterialDemandSubquery(this.db, scope);
+
+    return this.db
+      .select({
+        id: inventoryReceiptItems.id,
+        quantity: inventoryReceiptItems.quantity,
+        unitPrice: inventoryReceiptItems.unitPrice,
+        note: inventoryReceiptItems.note,
+        item: getTableColumns(items),
+        ...itemStockColumns(balance, demand),
+      })
+      .from(inventoryReceiptItems)
+      .innerJoin(items, eq(items.id, inventoryReceiptItems.itemId))
+      .leftJoin(balance, eq(balance.itemId, items.id))
+      .leftJoin(demand, eq(demand.itemId, items.id))
+      .where(eq(inventoryReceiptItems.receiptId, receiptId))
+      .orderBy(asc(items.code));
   }
 
   async createInventoryReceipt(
@@ -156,7 +222,7 @@ export class InventoryReceiptsService {
       return receipt.id;
     });
 
-    return this.getInventoryReceiptDetail(receiptId);
+    return this.getInventoryReceipt(receiptId);
   }
 
   async updateInventoryReceipt(
@@ -183,7 +249,7 @@ export class InventoryReceiptsService {
       }
     });
 
-    return this.getInventoryReceiptDetail(receiptId);
+    return this.getInventoryReceipt(receiptId);
   }
 
   async deleteInventoryReceipt(receiptId: string): Promise<void> {
@@ -212,7 +278,7 @@ export class InventoryReceiptsService {
         lines: items.map((item) => ({
           itemId: item.itemId,
           signedQuantity: item.quantity,
-          type: RECEIPT_TYPE_TRANSACTION_TYPE[receipt.receiptType],
+          type: receiptTypeTransactionType[receipt.receiptType],
         })),
       });
 
@@ -321,7 +387,7 @@ export class InventoryReceiptsService {
 
     const found = await this.db.query.items.findMany({
       columns: { id: true },
-      where: and(inArray(itemsTable.id, itemIds), isNull(itemsTable.deletedAt)),
+      where: and(inArray(items.id, itemIds), isNull(items.deletedAt)),
     });
     const foundIds = new Set(found.map((item) => item.id));
 

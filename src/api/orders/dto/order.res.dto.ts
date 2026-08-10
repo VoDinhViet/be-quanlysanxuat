@@ -6,7 +6,9 @@ import {
   NumberField,
 } from '../../../decorators/field.decorators';
 import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
+import { OrderAttachmentResDto } from './order-attachment.res.dto';
 import { OrderBaseResDto } from './order-base.res.dto';
+import { OrderItemResDto } from './order-item.res.dto';
 
 @Exclude()
 export class OrderResDto extends OrderBaseResDto {
@@ -16,15 +18,15 @@ export class OrderResDto extends OrderBaseResDto {
 
   @Expose()
   @ClassFieldOptional(() => UserRefResDto, { nullable: true })
-  approver!: UserRefResDto | null;
+  approverBy!: UserRefResDto | null;
 
   @Expose()
   @ClassFieldOptional(() => UserRefResDto, { nullable: true })
-  rejecter!: UserRefResDto | null;
+  rejecterBy!: UserRefResDto | null;
 
   @Expose()
   @ClassFieldOptional(() => UserRefResDto, { nullable: true })
-  creator!: UserRefResDto | null;
+  creatorBy!: UserRefResDto | null;
 
   @Expose()
   @NumberField({
@@ -39,4 +41,12 @@ export class OrderResDto extends OrderBaseResDto {
       'Derived, not stored: dueDate < now && status not in (COMPLETED, CANCELLED)',
   })
   expired!: boolean;
+
+  @Expose()
+  @ClassFieldOptional(() => OrderItemResDto, { each: true })
+  items!: OrderItemResDto[];
+
+  @Expose()
+  @ClassFieldOptional(() => OrderAttachmentResDto, { each: true })
+  attachments!: OrderAttachmentResDto[];
 }

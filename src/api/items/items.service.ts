@@ -38,10 +38,10 @@ import { CreateItemReqDto } from './dto/create-item.req.dto';
 import { GetItemMaterialsReqDto } from './dto/get-item-materials.req.dto';
 import { GetItemOptionsReqDto } from './dto/get-item-options.req.dto';
 import { GetItemsReqDto } from './dto/get-items.req.dto';
-import { ItemDetailResDto } from './dto/item-detail.res.dto';
 import { ItemMaterialResDto } from './dto/item-material.res.dto';
 import { ItemOptionResDto } from './dto/item-option.res.dto';
 import { ItemResDto } from './dto/item.res.dto';
+import { PageItemResDto } from './dto/page-item.res.dto';
 import { UpdateItemReqDto } from './dto/update-item.req.dto';
 
 @Injectable()
@@ -49,19 +49,19 @@ export class ItemsService {
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly filesService: FilesService,
-  ) { }
+  ) {}
 
   async getItems(
     reqDto: GetItemsReqDto,
-  ): Promise<OffsetPaginatedDto<ItemResDto>> {
+  ): Promise<OffsetPaginatedDto<PageItemResDto>> {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
     const where = and(
       isNull(items.deletedAt),
       keyword
         ? or(
-          unaccentILike(items.code, keyword),
-          unaccentILike(items.name, keyword),
-        )
+            unaccentILike(items.code, keyword),
+            unaccentILike(items.name, keyword),
+          )
         : undefined,
       reqDto.type?.length ? inArray(items.type, reqDto.type) : undefined,
       reqDto.clientId ? eq(items.clientId, reqDto.clientId) : undefined,
@@ -79,7 +79,7 @@ export class ItemsService {
           client: true,
           unit: true,
           supplier: true,
-          creator: true,
+          creatorBy: true,
           imageFile: true,
         },
       }),
@@ -87,7 +87,7 @@ export class ItemsService {
     ]);
 
     return new OffsetPaginatedDto(
-      plainToInstance(ItemResDto, entities, {
+      plainToInstance(PageItemResDto, entities, {
         excludeExtraneousValues: true,
       }),
       new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
@@ -105,9 +105,9 @@ export class ItemsService {
         eq(items.status, ItemStatus.ACTIVE),
         keyword
           ? or(
-            unaccentILike(items.code, keyword),
-            unaccentILike(items.name, keyword),
-          )
+              unaccentILike(items.code, keyword),
+              unaccentILike(items.name, keyword),
+            )
           : undefined,
         reqDto.type ? eq(items.type, reqDto.type) : undefined,
       ),
@@ -123,14 +123,14 @@ export class ItemsService {
     });
   }
 
-  async getItemDetail(itemId: string): Promise<ItemDetailResDto> {
+  async getItem(itemId: string): Promise<ItemResDto> {
     const item = await this.db.query.items.findFirst({
       where: and(eq(items.id, itemId), isNull(items.deletedAt)),
       with: {
         client: true,
         unit: true,
         supplier: true,
-        creator: true,
+        creatorBy: true,
         imageFile: true,
         clonedFrom: true,
       },
@@ -140,7 +140,7 @@ export class ItemsService {
       throw new AppException(ErrorCode.E007, HttpStatus.NOT_FOUND);
     }
 
-    return plainToInstance(ItemDetailResDto, item, {
+    return plainToInstance(ItemResDto, item, {
       excludeExtraneousValues: true,
     });
   }
@@ -209,9 +209,9 @@ export class ItemsService {
       eq(items.type, ItemType.RM),
       keyword
         ? or(
-          unaccentILike(items.code, keyword),
-          unaccentILike(items.name, keyword),
-        )
+            unaccentILike(items.code, keyword),
+            unaccentILike(items.name, keyword),
+          )
         : undefined,
     );
 
@@ -272,9 +272,9 @@ export class ItemsService {
 
     const sourceBomItems = bom
       ? await this.db.query.bomItems.findMany({
-        where: eq(bomItems.bomId, bom.id),
-        orderBy: [asc(bomItems.level), asc(bomItems.sortOrder)],
-      })
+          where: eq(bomItems.bomId, bom.id),
+          orderBy: [asc(bomItems.level), asc(bomItems.sortOrder)],
+        })
       : [];
 
     // 2. Mở transaction để ghi dữ liệu mới

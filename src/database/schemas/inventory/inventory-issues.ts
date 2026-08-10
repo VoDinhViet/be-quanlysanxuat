@@ -114,15 +114,15 @@ export const inventoryIssuesRelations = relations(
       fields: [inventoryIssues.departmentId],
       references: [departments.id],
     }),
-    requester: one(users, {
+    requesterBy: one(users, {
       fields: [inventoryIssues.requestedBy],
       references: [users.id],
     }),
-    poster: one(users, {
+    posterBy: one(users, {
       fields: [inventoryIssues.postedBy],
       references: [users.id],
     }),
-    creator: one(users, {
+    creatorBy: one(users, {
       fields: [inventoryIssues.createdBy],
       references: [users.id],
     }),

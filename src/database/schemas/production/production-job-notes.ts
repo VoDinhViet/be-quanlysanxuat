@@ -39,7 +39,7 @@ export const productionJobNotesRelations = relations(
       fields: [productionJobNotes.productionJobId],
       references: [productionJobs.id],
     }),
-    creator: one(users, {
+    creatorBy: one(users, {
       fields: [productionJobNotes.createdBy],
       references: [users.id],
     }),

@@ -645,6 +645,34 @@
       "when": 1786088157688,
       "tag": "0091_misty_the_hunter",
       "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1786172334725,
+      "tag": "0092_funny_impossible_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1786174336837,
+      "tag": "0093_narrow_tinkerer",
+      "breakpoints": true
+    },
+    {
+      "idx": 94,
+      "version": "7",
+      "when": 1786176765440,
+      "tag": "0094_needy_sumo",
+      "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "7",
+      "when": 1786181614861,
+      "tag": "0095_tan_lady_vermin",
+      "breakpoints": true
     }
   ]
 }

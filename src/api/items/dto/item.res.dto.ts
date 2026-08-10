@@ -105,7 +105,7 @@ export class ItemResDto {
 
   @Expose()
   @ClassFieldOptional(() => UserRefResDto, { nullable: true })
-  creator!: UserRefResDto | null;
+  creatorBy!: UserRefResDto | null;
 
   @Expose()
   @DateField()
@@ -114,4 +114,11 @@ export class ItemResDto {
   @Expose()
   @DateField()
   updatedAt!: Date;
+
+  @Expose()
+  @ClassFieldOptional(() => ItemRefResDto, {
+    nullable: true,
+    description: 'Item gốc được sao chép từ (nếu là bản sao)',
+  })
+  clonedFrom!: ItemRefResDto | null;
 }

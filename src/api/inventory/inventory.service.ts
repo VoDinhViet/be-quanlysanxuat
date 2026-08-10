@@ -262,7 +262,7 @@ export class InventoryService {
           desc(inventoryTransactions.transactionDate),
           desc(inventoryTransactions.createdAt),
         ],
-        with: { warehouse: true, item: true, creator: true },
+        with: { warehouse: true, item: true, creatorBy: true },
       }),
       this.db
         .select({ total: count() })

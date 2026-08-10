@@ -220,5 +220,21 @@ export enum ErrorCode {
   // RM không có BOM (`BomsService`) hoặc routing Cấp 0 (`RoutingsService`) — chỉ FG/WIP mới
   // có cấu trúc/công đoạn của chính nó.
   E111 = 'item.error.raw_material_not_allowed',
+  E112 = 'purchase_request.error.not_found',
+  E113 = 'purchase_request_item.error.not_found',
+  E114 = 'purchase_request.error.not_editable',
+  E115 = 'purchase_request_item.error.last_item',
+  E116 = 'purchase_request.error.invalid_approval_state',
+  E117 = 'purchase_quotation.error.not_found',
+  E118 = 'purchase_quotation.error.invalid_status_transition',
+  E119 = 'purchase_quotation_item.error.not_found',
+  E120 = 'purchase_quotation.error.missing_unit_price',
+  E121 = 'purchase_order.error.not_found',
+  E122 = 'purchase_order.error.invalid_status_transition',
+  E123 = 'purchase_order_item.error.not_found',
+  E124 = 'purchase_order.error.has_posted_receipts',
+  E125 = 'purchase_ledger.error.line_not_purchasable',
+  E126 = 'purchase_ledger.error.line_already_ordered',
+  E127 = 'purchase_order.error.receipt_item_mismatch',
   V003 = 'common.error.too_many_requests',
 }
