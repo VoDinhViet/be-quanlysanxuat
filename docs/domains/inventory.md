@@ -101,6 +101,7 @@ mọi LSX đang mở.
 | `inventory_issue_items` | Dòng phiếu xuất — cùng khuôn dòng nhập, thêm `orderItemId` tuỳ chọn |
 | `inventory_transactions` | Sổ cái — append-only, nguồn sự thật, `quantity` có dấu |
 | `inventory_balances` | Tồn hiện tại — một dòng/(kho × mặt hàng), dựng lại được từ sổ cái |
+| `supplier_returns` | Phiếu trả NCC — bảng phẳng (1 phiếu = 1 dòng vật tư), tái dùng `status` của phiếu nhập/xuất; hiện **chỉ có `GET` list**, chưa có route tạo/`post`/`cancel` nên bảng luôn rỗng |
 
 `orderItemId` trên dòng phiếu xuất (và bút toán sinh ra từ nó) là **chỗ nối duy nhất sang Orders** —
 vừa là cơ sở tính `reserved`, vừa chính là delivery tracking mà Orders chưa có. Chỉ hợp lệ trên dòng
@@ -123,6 +124,9 @@ DRAFT ──cancel────────────────────> 
   bút toán cũ), trả `inventory_balances` về như trước khi post.
 
 Không có đường `CANCELLED → DRAFT`/`POSTED` — huỷ là điểm cuối.
+
+`supplier_returns` tái dùng cùng cột `status`/enum nhưng **vòng đời trên chưa áp dụng được** — chưa
+có route `post`/`cancel`, chỉ `GET` list. Xem Entities.
 
 ## Business rules
 
@@ -172,6 +176,8 @@ Không phải invariant dù dễ tưởng:
   `productionOrderId`/`productionJobId` cho người dùng gắn thủ công.
 - **→ Purchase Requests**: `inventory_receipts.purchaseRequestId` liên kết tuỳ chọn tới đề xuất mua
   đã sinh ra nhu cầu nhập — không đảo ngược `docs/decisions/no-procurement.md`.
+- **→ Purchasing / Suppliers**: `supplier_returns.purchaseOrderId`/`supplierId` liên kết tuỳ chọn/bắt
+  buộc tới đơn mua/NCC gốc — thuần để trace, không đọc ngược (chưa có logic gì đọc lại các cột này).
 - **← Product Structure**: chỉ thấy item `type = FG` + `ACTIVE` trên `GET /inventory`, `type = RM`
   + `ACTIVE` trên `GET /inventory/materials`. WIP không có mặt trên màn tồn kho nào dù có thể được
   nhập/xuất qua phiếu (loại kho không ràng buộc loại hàng).

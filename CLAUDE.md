@@ -87,6 +87,7 @@ là file dưới `docs/domains/`, `—` nghĩa là hạ tầng thuần, không t
 | `inventory` | inventory | chỉ đọc — `/inventory` (FG), `/inventory/materials` (RM), `/inventory/balances`, `/inventory/transactions`; sở hữu `InventoryPostingService` |
 | `inventory-receipts` | inventory | phiếu nhập — vòng đời `DRAFT`/`POSTED`/`CANCELLED`, import `InventoryModule`+`WarehousesModule` |
 | `inventory-issues` | inventory | phiếu xuất — cùng vòng đời, cùng khuôn `inventory-receipts` |
+| `supplier-returns` | inventory | phiếu trả NCC — bảng phẳng (1 phiếu = 1 dòng vật tư); chỉ có `GET` list, chưa có route tạo/`post`/`cancel` |
 | `production-orders` | production | 1 PO duyệt = 1 LSX |
 | `production-jobs` | production | 1 item FG = 1 Job trong một LSX |
 | `purchase-requests` | purchase-requests | Đề xuất mua hàng — `GET` list/detail + `PATCH`/`DELETE .../items/:purchaseRequestItemId` (sửa/xoá dòng, chỉ `DRAFT`/`REJECTED`) + `POST .../send`/`.../approve`/`.../reject` (gửi duyệt/duyệt/từ chối, `REJECTED` là điểm cuối trừ khi sửa/xoá dòng lại đưa về `DRAFT`); chưa có route tạo/xoá cả phiếu — phiếu tự sinh khi `production-jobs` start Job thiếu vật tư |
