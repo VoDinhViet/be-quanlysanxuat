@@ -6,12 +6,12 @@ import {
   DateField,
   DateFieldOptional,
   EnumField,
+  NumberField,
   StringField,
   StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
 import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
-import { PageQuotationItemResDto } from './page-quotation-item.res.dto';
 
 @Exclude()
 export class PageQuotationResDto {
@@ -28,24 +28,28 @@ export class PageQuotationResDto {
   status!: PurchaseQuotationStatus;
 
   @Expose()
-  @DateField({ description: 'Ngày lập báo giá' })
-  quotationDate!: Date;
-
-  @Expose()
-  @DateFieldOptional({ nullable: true })
-  validUntil!: Date | null;
-
-  @Expose()
   @StringFieldOptional({ nullable: true })
   note!: string | null;
 
   @Expose()
-  @ClassFieldOptional(() => PageQuotationItemResDto, { each: true })
-  items!: PageQuotationItemResDto[];
+  @NumberField({ int: true, description: 'Số dòng vật tư trong báo giá' })
+  itemCount!: number;
 
   @Expose()
   @ClassFieldOptional(() => UserRefResDto, { nullable: true })
   creatorBy!: UserRefResDto | null;
+
+  @Expose()
+  @DateFieldOptional({ nullable: true })
+  sentAt!: Date | null;
+
+  @Expose()
+  @ClassFieldOptional(() => UserRefResDto, { nullable: true })
+  approverBy!: UserRefResDto | null;
+
+  @Expose()
+  @DateFieldOptional({ nullable: true })
+  approvedAt!: Date | null;
 
   @Expose()
   @DateField()

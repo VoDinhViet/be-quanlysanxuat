@@ -8,19 +8,18 @@ import {
   DateFieldOptional,
   EnumField,
   EnumFieldOptional,
-  NumberField,
   StringField,
+  StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
-import { PurchaseRequestRefResDto } from '../../purchase-requests/dto/purchase-request-ref.res.dto';
 import { QuotationRefResDto } from '../../purchase-quotations/dto/quotation-ref.res.dto';
 import { SupplierRefResDto } from '../../suppliers/dto/supplier-ref.res.dto';
 import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
 import { WarehouseRefResDto } from '../../warehouses/dto/warehouse-ref.res.dto';
-import { PurchaseOrderProgress } from '../purchase-orders.constant';
+import { PurchaseOrderItemResDto } from './purchase-order-item.res.dto';
 
 @Exclude()
-export class PagePurchaseOrderResDto {
+export class PurchaseOrderResDto {
   @Expose()
   @UUIDField()
   id!: string;
@@ -58,27 +57,16 @@ export class PagePurchaseOrderResDto {
   receiptWarehouse!: WarehouseRefResDto | null;
 
   @Expose()
-  @NumberField({ description: 'Số dòng vật tư' })
-  itemCount!: number;
-
-  @Expose()
-  @NumberField({ description: 'Tổng giá trị (Σ SL đặt × đơn giá)' })
-  totalAmount!: number;
-
-  @Expose()
-  @EnumField(() => PurchaseOrderProgress, {
-    description:
-      'Tiến độ nhận hàng, suy từ status + receivedQuantity/orderedQuantity — không phải cột DB',
-  })
-  progress!: PurchaseOrderProgress;
-
-  @Expose()
-  @ClassField(() => PurchaseRequestRefResDto, { each: true })
-  purchaseRequests!: PurchaseRequestRefResDto[];
+  @StringFieldOptional({ nullable: true })
+  note!: string | null;
 
   @Expose()
   @ClassFieldOptional(() => QuotationRefResDto, { nullable: true })
   quotation!: QuotationRefResDto | null;
+
+  @Expose()
+  @ClassFieldOptional(() => PurchaseOrderItemResDto, { each: true })
+  items!: PurchaseOrderItemResDto[];
 
   @Expose()
   @ClassFieldOptional(() => UserRefResDto, { nullable: true })
@@ -95,6 +83,10 @@ export class PagePurchaseOrderResDto {
   @Expose()
   @DateFieldOptional({ nullable: true })
   cancelledAt!: Date | null;
+
+  @Expose()
+  @StringFieldOptional({ nullable: true })
+  cancellationReason!: string | null;
 
   @Expose()
   @ClassFieldOptional(() => UserRefResDto, { nullable: true })

@@ -1,6 +1,5 @@
 import { relations } from 'drizzle-orm';
 import {
-  date,
   index,
   pgEnum,
   pgTable,
@@ -14,23 +13,23 @@ import { users } from '../identity-access/users';
 
 export enum PurchaseQuotationStatus {
   DRAFT = 'DRAFT',
-  SENT = 'SENT',
-  RECEIVED = 'RECEIVED',
+  PENDING_APPROVAL = 'PENDING_APPROVAL',
+  APPROVED = 'APPROVED',
   CANCELLED = 'CANCELLED',
 }
 
 export const purchaseQuotationStatusEnum = pgEnum('purchase_quotation_status', [
   PurchaseQuotationStatus.DRAFT,
-  PurchaseQuotationStatus.SENT,
-  PurchaseQuotationStatus.RECEIVED,
+  PurchaseQuotationStatus.PENDING_APPROVAL,
+  PurchaseQuotationStatus.APPROVED,
   PurchaseQuotationStatus.CANCELLED,
 ]);
 
 /**
- * Báo giá (RFQ) — hỏi giá cho một nhóm dòng đề xuất mua hàng đã duyệt, mỗi dòng tự chọn NCC riêng
- * (`supplierId` ở `purchase_quotation_items`, `docs/domains/purchasing.md`). `DRAFT → SENT →
- * RECEIVED`, hoặc `CANCELLED` từ `DRAFT`/`SENT`. `RECEIVED` mới cho `select` (chốt giá) ở
- * `purchase_quotation_items`.
+ * Báo giá (RFQ) — header cho một nhóm dòng vật tư, mỗi vật tư mang danh sách NCC được hỏi giá
+ * (`purchase_quotation_items` → `purchase_quotation_item_suppliers`, `docs/domains/purchasing.md`).
+ * `DRAFT → PENDING_APPROVAL → APPROVED`, hoặc `CANCELLED` từ `PENDING_APPROVAL`; `APPROVED` gỡ
+ * được về `DRAFT` qua `recall` (`docs/workflows/rfq-approval.md`).
  */
 export const purchaseQuotations = pgTable(
   'purchase_quotations',
@@ -40,17 +39,15 @@ export const purchaseQuotations = pgTable(
     status: purchaseQuotationStatusEnum('status')
       .notNull()
       .default(PurchaseQuotationStatus.DRAFT),
-    quotationDate: date('quotation_date', { mode: 'date' }).notNull(),
-    validUntil: date('valid_until', { mode: 'date' }),
     note: varchar('note', { length: 1000 }),
     sentBy: uuid('sent_by').references(() => users.id, {
       onDelete: 'set null',
     }),
     sentAt: timestamp('sent_at'),
-    receivedBy: uuid('received_by').references(() => users.id, {
+    approvedBy: uuid('approved_by').references(() => users.id, {
       onDelete: 'set null',
     }),
-    receivedAt: timestamp('received_at'),
+    approvedAt: timestamp('approved_at'),
     cancelledBy: uuid('cancelled_by').references(() => users.id, {
       onDelete: 'set null',
     }),
@@ -78,8 +75,8 @@ export const purchaseQuotationsRelations = relations(
       fields: [purchaseQuotations.sentBy],
       references: [users.id],
     }),
-    receiverBy: one(users, {
-      fields: [purchaseQuotations.receivedBy],
+    approverBy: one(users, {
+      fields: [purchaseQuotations.approvedBy],
       references: [users.id],
     }),
     cancellerBy: one(users, {

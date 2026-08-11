@@ -18,9 +18,11 @@ import { Permissions } from '../../decorators/permissions.decorator';
 import { AssignRoleReqDto } from './dto/assign-role.req.dto';
 import { CreateUserReqDto } from './dto/create-user.req.dto';
 import { CurrentUserResDto } from './dto/current-user.res.dto';
+import { GetUserOptionsReqDto } from './dto/get-user-options.req.dto';
 import { GetUsersReqDto } from './dto/get-users.req.dto';
 import { PageUserResDto } from './dto/page-user.res.dto';
 import { UpdateUserReqDto } from './dto/update-user.req.dto';
+import { UserRefResDto } from './dto/user-ref.res.dto';
 import { UserResDto } from './dto/user.res.dto';
 import { UsersService } from './users.service';
 
@@ -51,6 +53,19 @@ export class UsersController {
     @Query() reqDto: GetUsersReqDto,
   ): Promise<OffsetPaginatedDto<PageUserResDto>> {
     return this.usersService.getUsers(reqDto);
+  }
+
+  @Get('options')
+  @ApiAuth({
+    type: UserRefResDto,
+    summary:
+      'List users for dropdown (max 100, đang làm việc, search theo code/tên) — không đòi permission quản lý nhân sự, chỉ cần đăng nhập, để nhân viên các phòng ban khác chọn được đồng nghiệp (vd. người phụ trách một đơn mua hàng)',
+    isArray: true,
+  })
+  getUserOptions(
+    @Query() reqDto: GetUserOptionsReqDto,
+  ): Promise<UserRefResDto[]> {
+    return this.usersService.getUserOptions(reqDto);
   }
 
   @Get(':userId')

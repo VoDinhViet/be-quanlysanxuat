@@ -108,7 +108,8 @@ export const orders = pgTable(
     }),
     orderDate: date('order_date', { mode: 'date' }).notNull(),
     dueDate: date('due_date', { mode: 'date' }),
-    deliveryAddress: varchar('delivery_address', { length: 500 }),
+    // Người nhận hàng thật — có thể khác khách hàng đặt đơn (giao qua đại lý/đối tác).
+    consigneeAddress: varchar('consignee_address', { length: 500 }),
     paymentTerm: paymentTermEnum('payment_term'),
     currency: currencyEnum('currency').notNull().default(Currency.VND),
     exchangeRate: numeric('exchange_rate', {

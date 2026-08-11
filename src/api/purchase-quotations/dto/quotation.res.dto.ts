@@ -28,14 +28,6 @@ export class QuotationResDto {
   status!: PurchaseQuotationStatus;
 
   @Expose()
-  @DateField({ description: 'Ngày lập báo giá' })
-  quotationDate!: Date;
-
-  @Expose()
-  @DateFieldOptional({ nullable: true })
-  validUntil!: Date | null;
-
-  @Expose()
   @StringFieldOptional({ nullable: true })
   note!: string | null;
 
@@ -53,11 +45,11 @@ export class QuotationResDto {
 
   @Expose()
   @ClassFieldOptional(() => UserRefResDto, { nullable: true })
-  receiverBy!: UserRefResDto | null;
+  approverBy!: UserRefResDto | null;
 
   @Expose()
   @DateFieldOptional({ nullable: true })
-  receivedAt!: Date | null;
+  approvedAt!: Date | null;
 
   @Expose()
   @ClassFieldOptional(() => UserRefResDto, { nullable: true })

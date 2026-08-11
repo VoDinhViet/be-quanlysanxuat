@@ -30,8 +30,13 @@ export class UpdateOrderReqDto {
   @DateFieldOptional({ description: 'Ngày giao hàng yêu cầu' })
   readonly dueDate?: Date;
 
-  @StringFieldOptional({ maxLength: 500, nullable: true })
-  readonly deliveryAddress?: string | null;
+  @StringFieldOptional({
+    maxLength: 500,
+    nullable: true,
+    description:
+      'Địa chỉ người nhận hàng — có thể khác khách hàng đặt đơn (đại lý/đối tác)',
+  })
+  readonly consigneeAddress?: string | null;
 
   @EnumFieldOptional(() => PaymentTerm, { nullable: true })
   readonly paymentTerm?: PaymentTerm | null;

@@ -55,13 +55,15 @@ erDiagram
     INVENTORY_ISSUE_ITEMS }o--o| ORDER_ITEMS : "delivery tracking (tuỳ chọn)"
     INVENTORY_RECEIPTS }o--o| PURCHASE_REQUESTS : "phát sinh từ đề xuất (tuỳ chọn)"
 
-    SUPPLIERS ||--o{ PURCHASE_QUOTATIONS : "báo giá cho NCC"
-    PURCHASE_QUOTATIONS ||--o{ PURCHASE_QUOTATION_ITEMS : gồm
-    PURCHASE_QUOTATION_ITEMS }o--|| PURCHASE_REQUEST_ITEMS : "giá cho dòng đề xuất"
+    PURCHASE_QUOTATIONS ||--o{ PURCHASE_QUOTATION_ITEMS : "gồm (1 dòng/vật tư)"
+    PURCHASE_QUOTATION_ITEMS }o--|| PURCHASE_REQUEST_ITEMS : "hỏi giá cho dòng đề xuất"
+    PURCHASE_QUOTATION_ITEMS ||--o{ PURCHASE_QUOTATION_ITEM_SUPPLIERS : "giá của từng NCC"
+    PURCHASE_QUOTATION_ITEM_SUPPLIERS }o--|| SUPPLIERS : "NCC được hỏi giá"
     SUPPLIERS ||--o{ PURCHASE_ORDERS : "đơn mua cho NCC"
+    PURCHASE_QUOTATIONS ||--o{ PURCHASE_ORDERS : "duyệt RFQ tự sinh PO Draft (tuỳ chọn)"
     PURCHASE_ORDERS ||--o{ PURCHASE_ORDER_ITEMS : gồm
     PURCHASE_ORDER_ITEMS }o--|| PURCHASE_REQUEST_ITEMS : "đặt mua cho dòng đề xuất"
-    PURCHASE_ORDER_ITEMS }o--o| PURCHASE_QUOTATION_ITEMS : "nguồn giá (tuỳ chọn)"
+    PURCHASE_ORDER_ITEMS }o--o| PURCHASE_QUOTATION_ITEM_SUPPLIERS : "NCC + giá đã chốt (tuỳ chọn)"
     INVENTORY_RECEIPTS }o--o| PURCHASE_ORDERS : "trace mức phiếu (tuỳ chọn)"
     INVENTORY_RECEIPT_ITEMS }o--o| PURCHASE_ORDER_ITEMS : "SL đã nhập theo dòng (tuỳ chọn)"
 ```
@@ -118,8 +120,17 @@ transaction chỉ có đúng một `UPDATE`. Chi tiết: `docs/workflows/product
 transaction — một `.select()` + join `purchase_request_items` (phiếu `APPROVED`) với ba subquery
 aggregate (`purchase-ledger.query.ts`): SL đặt mua từ `purchase_order_items` của đơn đã `ORDERED`,
 SL đã nhập từ `inventory_receipt_items` lọc `POSTED`, SL báo giá từ `purchase_quotation_items` chưa
-`CANCELLED`. Bốn trạng thái tính bằng `CASE WHEN` ngay trong câu lệnh, không lọc ở tầng JS. Không
-tồn kho — sổ cái chỉ có dữ liệu mua hàng, xem "Trạng thái hiện tại" ở đầu `docs/domains/purchasing.md`.
+`CANCELLED` — tính ở tầng vật tư, không nhân theo số NCC báo giá (`quantity` chỉ sống ở
+`purchase_quotation_items`, giá/NCC ở bảng con `purchase_quotation_item_suppliers`). Bốn trạng thái
+tính bằng `CASE WHEN` ngay trong câu lệnh, không lọc ở tầng JS. Không tồn kho — sổ cái chỉ có dữ liệu
+mua hàng, xem "Trạng thái hiện tại" ở đầu `docs/domains/purchasing.md`.
+
+**Duyệt RFQ** (`PurchaseQuotationsService.approveQuotation`, chỉ hợp lệ từ `PENDING_APPROVAL`, mọi
+vật tư đã chọn NCC thắng thầu — `E132` nếu không): trong transaction, set `selectedAt`/`selectedBy`
+cho từng dòng `purchase_quotation_item_suppliers` thắng thầu → update `purchase_quotations.status =
+APPROVED` → gom theo `supplierId` → `PurchaseOrdersService.createDraftOrdersFromQuotation` sinh
+`purchase_orders` (`DRAFT`) + `purchase_order_items` tương ứng, cùng trong transaction này. Chi tiết
+từng bước: `docs/workflows/rfq-approval.md`.
 
 ## Chuỗi import module (NestJS DI)
 
@@ -141,6 +152,10 @@ qua service của module khác. `BomsModule` import `FilesModule` để link/xo�
 `RoutingsModule` không cần vì routing không mang file riêng. `BomOperationsModule` import
 `BomsModule` để dùng chung `ensureItemExists`/`ensureBomItemInBom`/`ensureBomItemCanHaveOperations`
 (public trên `BomsService`) — chiều ngược lại không tồn tại.
+
+`PurchaseQuotationsModule → PurchaseOrdersModule` (cho `approveQuotation`/`recallQuotation` gọi
+`createDraftOrdersFromQuotation`). Chiều ngược lại không tồn tại — `PurchaseOrdersModule` chỉ
+`export: [PurchaseOrdersService]`, không import `PurchaseQuotationsModule`.
 
 ## Bất biến xuyên module
 

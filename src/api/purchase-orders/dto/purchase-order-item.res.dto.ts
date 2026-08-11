@@ -4,28 +4,32 @@ import {
   ClassField,
   NumberField,
   NumberFieldOptional,
+  StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
 import { PurchaseRequestItemRefResDto } from '../../purchase-requests/dto/purchase-request-item-ref.res.dto';
-import { SupplierRefResDto } from '../../suppliers/dto/supplier-ref.res.dto';
 
 @Exclude()
-export class PageQuotationItemResDto {
+export class PurchaseOrderItemResDto {
   @Expose()
   @UUIDField()
   id!: string;
 
   @Expose()
-  @ClassField(() => SupplierRefResDto)
-  supplier!: SupplierRefResDto;
-
-  @Expose()
-  @NumberField({ description: 'SL hỏi giá' })
+  @NumberField({ description: 'SL đặt mua' })
   quantity!: number;
 
   @Expose()
-  @NumberFieldOptional({ nullable: true, description: 'Đơn giá NCC báo' })
+  @StringFieldOptional({ nullable: true, description: 'Lý do điều chỉnh SL' })
+  quantityAdjustmentReason!: string | null;
+
+  @Expose()
+  @NumberFieldOptional({ nullable: true, description: 'Đơn giá' })
   unitPrice!: number | null;
+
+  @Expose()
+  @StringFieldOptional({ nullable: true })
+  note!: string | null;
 
   @Expose()
   @ClassField(() => PurchaseRequestItemRefResDto)

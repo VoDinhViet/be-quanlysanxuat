@@ -42,8 +42,12 @@ export class OrderBaseResDto {
   dueDate!: Date | null;
 
   @Expose()
-  @StringFieldOptional({ nullable: true })
-  deliveryAddress!: string | null;
+  @StringFieldOptional({
+    nullable: true,
+    description:
+      'Địa chỉ người nhận hàng — có thể khác khách hàng đặt đơn (đại lý/đối tác)',
+  })
+  consigneeAddress!: string | null;
 
   @Expose()
   @EnumFieldOptional(() => PaymentTerm, { nullable: true })

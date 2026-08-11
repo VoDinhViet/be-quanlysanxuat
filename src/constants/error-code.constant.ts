@@ -238,5 +238,21 @@ export enum ErrorCode {
   E127 = 'purchase_order.error.receipt_item_mismatch',
   // Hai dòng cùng `purchaseRequestItemId` trong một payload tạo báo giá/đơn mua.
   E128 = 'purchase_quotation.error.duplicate_request_item',
+  // Khác `E128`: E128 là trùng vật tư giữa các dòng của một báo giá; E129 là trùng NCC giữa các
+  // mục con (nhiều NCC chào giá) của cùng một dòng vật tư.
+  E129 = 'purchase_quotation.error.duplicate_item_supplier',
+  // Gửi duyệt khi một dòng vật tư chưa có NCC nào.
+  E130 = 'purchase_quotation.error.item_without_supplier',
+  // Gửi duyệt khi báo giá không có dòng vật tư nào.
+  E131 = 'purchase_quotation.error.no_items',
+  // Duyệt khi còn dòng vật tư chưa chọn đúng một NCC thắng thầu.
+  E132 = 'purchase_quotation.error.supplier_not_selected',
+  // Thu hồi báo giá đã duyệt khi PO do nó sinh ra đã chuyển `ORDERED`.
+  E133 = 'purchase_quotation.error.order_already_placed',
+  // Xác nhận đặt hàng khi PO chưa có ngày giao dự kiến.
+  E134 = 'purchase_order.error.missing_expected_date',
+  // Xác nhận đặt hàng khi còn dòng chưa có đơn giá. Khác `E120` (cùng nghĩa nhưng ở báo giá).
+  E135 = 'purchase_order.error.missing_unit_price',
+  E136 = 'purchase_order.error.assigned_user_not_found',
   V003 = 'common.error.too_many_requests',
 }

@@ -8,6 +8,7 @@ Nơi mọi business logic sống. Reference: `src/api/users/users.service.ts`.
 - MUST default to the relational query API for reads (`db.query.<table>.findMany/findFirst`), and MUST fall back to `.select({...})` + explicit joins only when the read needs something the relational API can't express — a computed SQL column, an aggregate, or filtering/sorting on a joined table. MUST write with the builder API (`db.insert/update/delete`).
 - MUST fetch nested relations with `with: { relation: true }`. MUST NOT hand-pick `columns` there — the response DTO's `@Expose()` is what restricts the shape. Exception: an existence-check query may narrow to `{ id: true }`.
 - MUST put config constants on the class as `private static readonly NAME = value`.
+- A relational query nested ≥ 3-4 levels deep can exceed Drizzle's type-inference depth — the symptom is `no-unsafe-call`/`no-unsafe-member-access` from `eslint` on a field that reads fine and compiles under plain `tsc` (the type silently collapsed to `{ [x: string]: any }`, which `tsc` allows and `eslint`'s `no-unsafe-*` rules catch). MUST NOT chase this by restructuring the query; MUST cast the result to an explicit local type built from the table's `XSelect` (`.claude/rules/database.md`) plus the extra relation fields actually used, one `type` per shape in `types/*.type.ts`, same convention as `SourceBomItemRow`/`SourceBomOperationRow` in `production-jobs`.
 
 ## Writes
 

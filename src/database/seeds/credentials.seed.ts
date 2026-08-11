@@ -60,6 +60,7 @@ const ROLES = {
       'purchase-requests:approve',
       'inventory:read',
       'purchasing:read',
+      'purchasing:approve',
     ],
     isSystem: false,
   },

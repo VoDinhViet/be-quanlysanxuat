@@ -1,9 +1,10 @@
 import {
+  ClassField,
   NumberField,
-  NumberFieldOptional,
   StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
+import { CreateQuotationItemSupplierReqDto } from './create-quotation-item-supplier.req.dto';
 
 export class CreateQuotationItemReqDto {
   @UUIDField({
@@ -11,25 +12,21 @@ export class CreateQuotationItemReqDto {
   })
   readonly purchaseRequestItemId!: string;
 
-  @UUIDField({ description: 'Nhà cung cấp được hỏi giá cho dòng này' })
-  readonly supplierId!: string;
-
-  @NumberField({ isPositive: true, description: 'SL hỏi giá' })
+  @NumberField({
+    isPositive: true,
+    description: 'SL báo giá — một lần cho vật tư, không nhân theo số NCC',
+  })
   readonly quantity!: number;
 
-  @NumberFieldOptional({
-    min: 0,
-    description: 'Đơn giá NCC báo — điền ngay nếu đã biết',
+  @StringFieldOptional({
+    maxLength: 500,
+    description: 'Lý do khi SL báo giá khác SL đề xuất',
   })
-  readonly unitPrice?: number;
+  readonly quantityAdjustmentReason?: string;
 
-  @NumberFieldOptional({
-    min: 0,
-    int: true,
-    description: 'Thời gian giao hàng (ngày)',
+  @ClassField(() => CreateQuotationItemSupplierReqDto, {
+    each: true,
+    description: 'Danh sách NCC được hỏi giá cho vật tư này',
   })
-  readonly leadTimeDays?: number;
-
-  @StringFieldOptional({ maxLength: 500 })
-  readonly note?: string;
+  readonly suppliers!: CreateQuotationItemSupplierReqDto[];
 }

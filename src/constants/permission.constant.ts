@@ -50,6 +50,7 @@ export const PERMISSION_CODES = [
   'purchasing:create',
   'purchasing:update',
   'purchasing:delete',
+  'purchasing:approve',
 ] as const;
 
 export type PermissionCode = (typeof PERMISSION_CODES)[number];

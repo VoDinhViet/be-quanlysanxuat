@@ -4,7 +4,7 @@ import {
 } from '../../../decorators/field.decorators';
 import { CreateQuotationItemReqDto } from './create-quotation-item.req.dto';
 
-export class CreateQuotationReqDto {
+export class UpdateQuotationReqDto {
   @StringFieldOptional({ maxLength: 1000, nullable: true })
   readonly note?: string | null;
 

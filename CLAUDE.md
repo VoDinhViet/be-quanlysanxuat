@@ -91,8 +91,8 @@ là file dưới `docs/domains/`, `—` nghĩa là hạ tầng thuần, không t
 | `production-jobs` | production | 1 item FG = 1 Job trong một LSX |
 | `purchase-requests` | purchase-requests | Đề xuất mua hàng — `GET` list/detail + `PATCH`/`DELETE .../items/:purchaseRequestItemId` (sửa/xoá dòng, chỉ `DRAFT`/`REJECTED`) + `POST .../send`/`.../approve`/`.../reject` (gửi duyệt/duyệt/từ chối, `REJECTED` là điểm cuối trừ khi sửa/xoá dòng lại đưa về `DRAFT`); chưa có route tạo/xoá cả phiếu — phiếu tự sinh khi `production-jobs` start Job thiếu vật tư |
 | `purchase-ledger` | purchasing | Sổ cái mua hàng — chỉ `GET /purchase-ledger`, 1 dòng/1 `purchase_request_items` của phiếu `APPROVED`, mọi số tính lúc đọc từ bốn bảng của `purchase-quotations`/`purchase-orders` |
-| `purchase-quotations` | purchasing | Báo giá (RFQ) — `GET` list/detail + `POST` lập tay (chọn dòng ĐXMH `APPROVED` + một NCC); chưa có điền giá/send/receive/chốt giá |
-| `purchase-orders` | purchasing | Đơn mua (PO) — hiện chỉ `GET /purchase-orders`; chưa có route tạo — rỗng tới khi có `POST` (đợt sau, gom dòng báo giá đã chốt) |
+| `purchase-quotations` | purchasing | Báo giá (RFQ) — một vật tư có nhiều NCC chào giá; `GET` list/detail + CRUD tay + `send`/`approve` (chọn NCC thắng thầu từng vật tư, tự sinh PO Draft)/`reject`/`request-changes`/`recall` |
+| `purchase-orders` | purchasing | Đơn mua (PO) — `GET` list/detail; chưa có `POST` tay, PO hiện chỉ sinh tự động từ duyệt RFQ (`purchase-quotations`); `PATCH /:id` + `PATCH /:id/items/:itemId` sửa người phụ trách/điều khoản TT/kho nhập/ngày giao/SL/giá khi còn `DRAFT`; `POST /:id/confirm` xác nhận đặt hàng (`DRAFT → ORDERED`); `POST /:id/cancel` huỷ (`DRAFT`/`ORDERED → CANCELLED`) |
 
 ## Domain docs
 

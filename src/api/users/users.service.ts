@@ -3,6 +3,7 @@ import { hash } from 'bcryptjs';
 import { plainToInstance } from 'class-transformer';
 import {
   and,
+  asc,
   count,
   desc,
   eq,
@@ -40,7 +41,9 @@ import { CreateUserReqDto } from './dto/create-user.req.dto';
 import { CurrentUserResDto } from './dto/current-user.res.dto';
 import { GetUsersReqDto } from './dto/get-users.req.dto';
 import { PageUserResDto } from './dto/page-user.res.dto';
+import { GetUserOptionsReqDto } from './dto/get-user-options.req.dto';
 import { UpdateUserReqDto } from './dto/update-user.req.dto';
+import { UserRefResDto } from './dto/user-ref.res.dto';
 import { UserResDto } from './dto/user.res.dto';
 
 @Injectable()
@@ -83,6 +86,29 @@ export class UsersService {
       }),
       new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
     );
+  }
+
+  // Không đòi permission quản lý nhân sự — mirror WarehousesService.getWarehouseOptions, chỉ
+  // để các màn khác (vd. "Người phụ trách" trên PO) chọn được đồng nghiệp đang làm việc. `q`
+  // search theo code/fullName giống getUsers ở trên (ilike, không unaccent — cùng khuôn với
+  // list chính của chính service này).
+  async getUserOptions(reqDto: GetUserOptionsReqDto): Promise<UserRefResDto[]> {
+    const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
+
+    const entities = await this.db.query.users.findMany({
+      where: and(
+        eq(users.status, UserStatus.WORKING),
+        keyword
+          ? or(ilike(users.fullName, keyword), ilike(users.code, keyword))
+          : undefined,
+      ),
+      orderBy: asc(users.fullName),
+      limit: 100,
+    });
+
+    return plainToInstance(UserRefResDto, entities, {
+      excludeExtraneousValues: true,
+    });
   }
 
   async getCurrentUser(credentialId: string): Promise<CurrentUserResDto> {

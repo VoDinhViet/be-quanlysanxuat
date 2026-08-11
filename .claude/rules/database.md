@@ -9,6 +9,7 @@ Reference: `src/database/schemas/users.ts`, `src/database/schemas/clients.ts` (s
 - MUST declare enums as a paired TS `enum` + `pgEnum('snake_name', [...])` (e.g. `UserStatus` / `userStatusEnum`).
 - MUST re-export every new/changed schema file from `src/database/schemas/index.ts` — `drizzle-kit` reads only that file — then run `pnpm db:generate` followed by `pnpm db:migrate`, in that order.
 - MUST NOT hand-edit a generated migration except to add a data migration (e.g. backfilling a column, remapping enum values before a cast).
+- MUST export `export type XSelect = typeof x.$inferSelect;` right after a table's `relations(...)` block (e.g. `OperationSelect`, `FileSelect`, `BomItemSelect`, `UnitSelect`) — a consumer needing that table's row shape imports `XSelect` from `src/database/schemas`, never re-derives `typeof x.$inferSelect` inline at the call site.
 
 ## Soft delete
 

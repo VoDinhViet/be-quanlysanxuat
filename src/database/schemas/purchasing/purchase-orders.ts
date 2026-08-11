@@ -9,8 +9,11 @@ import {
   varchar,
 } from 'drizzle-orm/pg-core';
 
+import { warehouses } from '../inventory/warehouses';
+import { paymentTermEnum } from '../suppliers/supplier-payment-info';
 import { suppliers } from '../suppliers/suppliers';
 import { purchaseOrderItems } from './purchase-order-items';
+import { purchaseQuotations } from './purchase-quotations';
 import { users } from '../identity-access/users';
 
 export enum PurchaseOrderStatus {
@@ -28,7 +31,8 @@ export const purchaseOrderStatusEnum = pgEnum('purchase_order_status', [
 /**
  * Đơn mua (PO) — đặt mua với **một** NCC cho một nhóm dòng đề xuất mua hàng đã duyệt
  * (`docs/domains/purchasing.md`). Chỉ 3 trạng thái lưu cột; "Đang nhận"/"Hoàn tất" ở sổ cái tính
- * lúc đọc từ phiếu nhập nối qua `purchase_order_items`, không lưu ở đây.
+ * lúc đọc từ phiếu nhập nối qua `purchase_order_items`, không lưu ở đây. `quotationId` tuỳ chọn —
+ * chỉ có giá trị cho PO tự sinh từ duyệt RFQ (`docs/workflows/rfq-approval.md`).
  */
 export const purchaseOrders = pgTable(
   'purchase_orders',
@@ -38,11 +42,24 @@ export const purchaseOrders = pgTable(
     supplierId: uuid('supplier_id')
       .notNull()
       .references(() => suppliers.id, { onDelete: 'restrict' }),
+    quotationId: uuid('quotation_id').references(() => purchaseQuotations.id, {
+      onDelete: 'set null',
+    }),
     status: purchaseOrderStatusEnum('status')
       .notNull()
       .default(PurchaseOrderStatus.DRAFT),
     orderDate: date('order_date', { mode: 'date' }).notNull(),
     expectedDate: date('expected_date', { mode: 'date' }),
+    assignedUserId: uuid('assigned_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    paymentTerm: paymentTermEnum('payment_term'),
+    // Kho sẽ nhập hàng về khi PO này hoàn tất — đặt tên theo chiều nghiệp vụ (PO → nhập kho,
+    // `inventory_receipts.warehouseId`), không phải kho xuất (`inventory-issues`).
+    receiptWarehouseId: uuid('receipt_warehouse_id').references(
+      () => warehouses.id,
+      { onDelete: 'set null' },
+    ),
     note: varchar('note', { length: 1000 }),
     orderedBy: uuid('ordered_by').references(() => users.id, {
       onDelete: 'set null',
@@ -64,8 +81,13 @@ export const purchaseOrders = pgTable(
   },
   (table) => [
     index('idx_purchase_orders_supplier_id').on(table.supplierId),
+    index('idx_purchase_orders_quotation_id').on(table.quotationId),
     index('idx_purchase_orders_status').on(table.status),
     index('idx_purchase_orders_created_by').on(table.createdBy),
+    index('idx_purchase_orders_assigned_user_id').on(table.assignedUserId),
+    index('idx_purchase_orders_receipt_warehouse_id').on(
+      table.receiptWarehouseId,
+    ),
   ],
 );
 
@@ -75,6 +97,18 @@ export const purchaseOrdersRelations = relations(
     supplier: one(suppliers, {
       fields: [purchaseOrders.supplierId],
       references: [suppliers.id],
+    }),
+    quotation: one(purchaseQuotations, {
+      fields: [purchaseOrders.quotationId],
+      references: [purchaseQuotations.id],
+    }),
+    assignedUser: one(users, {
+      fields: [purchaseOrders.assignedUserId],
+      references: [users.id],
+    }),
+    receiptWarehouse: one(warehouses, {
+      fields: [purchaseOrders.receiptWarehouseId],
+      references: [warehouses.id],
     }),
     ordererBy: one(users, {
       fields: [purchaseOrders.orderedBy],

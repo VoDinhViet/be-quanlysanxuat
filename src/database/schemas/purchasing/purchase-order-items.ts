@@ -10,11 +10,12 @@ import {
 
 import { purchaseRequestItems } from '../purchase-requests/purchase-request-items';
 import { purchaseOrders } from './purchase-orders';
-import { purchaseQuotationItems } from './purchase-quotation-items';
+import { purchaseQuotationItemSuppliers } from './purchase-quotation-item-suppliers';
 
 /**
- * Một dòng đơn mua — SL/giá đặt mua cho một dòng đề xuất. `quotationItemId` tuỳ chọn, chỉ để trace
- * về báo giá đã chốt (`docs/domains/purchasing.md`) — đơn mua có thể lập thẳng, không qua báo giá.
+ * Một dòng đơn mua — SL/giá đặt mua cho một dòng đề xuất. `quotationItemSupplierId` tuỳ chọn, trỏ
+ * **dòng NCC** đã chốt (không phải dòng vật tư) — đó là nơi giữ đồng thời NCC + giá đã thoả thuận
+ * (`docs/domains/purchasing.md`). Đơn mua có thể lập thẳng, không qua báo giá.
  */
 export const purchaseOrderItems = pgTable(
   'purchase_order_items',
@@ -26,8 +27,8 @@ export const purchaseOrderItems = pgTable(
     purchaseRequestItemId: uuid('purchase_request_item_id')
       .notNull()
       .references(() => purchaseRequestItems.id, { onDelete: 'restrict' }),
-    quotationItemId: uuid('quotation_item_id').references(
-      () => purchaseQuotationItems.id,
+    quotationItemSupplierId: uuid('quotation_item_supplier_id').references(
+      () => purchaseQuotationItemSuppliers.id,
       { onDelete: 'set null' },
     ),
     quantity: numeric('quantity', {
@@ -40,6 +41,11 @@ export const purchaseOrderItems = pgTable(
       scale: 2,
       mode: 'number',
     }),
+    // Lý do khi SL đặt khác SL báo giá RFQ (vd mua gộp, tồn tối thiểu NCC) — text tự do, mirror
+    // `purchase_quotation_items.quantityAdjustmentReason`.
+    quantityAdjustmentReason: varchar('quantity_adjustment_reason', {
+      length: 500,
+    }),
     note: varchar('note', { length: 500 }),
   },
   (table) => [
@@ -49,8 +55,8 @@ export const purchaseOrderItems = pgTable(
     index('idx_purchase_order_items_purchase_request_item_id').on(
       table.purchaseRequestItemId,
     ),
-    index('idx_purchase_order_items_quotation_item_id').on(
-      table.quotationItemId,
+    index('idx_purchase_order_items_quotation_item_supplier_id').on(
+      table.quotationItemSupplierId,
     ),
     check('chk_purchase_order_items_quantity_positive', sql`quantity > 0`),
     check(
@@ -71,9 +77,9 @@ export const purchaseOrderItemsRelations = relations(
       fields: [purchaseOrderItems.purchaseRequestItemId],
       references: [purchaseRequestItems.id],
     }),
-    quotationItem: one(purchaseQuotationItems, {
-      fields: [purchaseOrderItems.quotationItemId],
-      references: [purchaseQuotationItems.id],
+    quotationItemSupplier: one(purchaseQuotationItemSuppliers, {
+      fields: [purchaseOrderItems.quotationItemSupplierId],
+      references: [purchaseQuotationItemSuppliers.id],
     }),
   }),
 );

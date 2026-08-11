@@ -19,14 +19,17 @@ export class GetQuotationsReqDto extends PageOptionsDto {
   })
   readonly purchaseRequestId?: string;
 
+  @UUIDFieldOptional({ description: 'Filter theo người tạo RFQ' })
+  readonly createdBy?: string;
+
   @StringFieldOptional({
     description: 'Tìm theo tên hoặc mã vật tư trong dòng báo giá',
   })
   readonly materialKeyword?: string;
 
-  @DateFieldOptional({ description: 'Filter: quotationDate >= fromDate' })
+  @DateFieldOptional({ description: 'Filter: createdAt >= fromDate' })
   readonly fromDate?: Date;
 
-  @DateFieldOptional({ description: 'Filter: quotationDate <= toDate' })
+  @DateFieldOptional({ description: 'Filter: createdAt <= toDate' })
   readonly toDate?: Date;
 }
