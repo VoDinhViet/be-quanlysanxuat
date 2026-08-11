@@ -81,7 +81,7 @@ export class OrdersController {
   @Permissions('orders:update')
   @ApiAuth({
     summary:
-      'Update order (blocked once status is COMPLETED, CANCELLED, or PENDING_CONFIRMATION)',
+      'Update order (blocked once status is COMPLETED, CANCELLED, or PENDING_CONFIRMATION) — editing a REJECTED order without sending `status` reverts it to DRAFT',
     statusCode: HttpStatus.NO_CONTENT,
   })
   updateOrder(
@@ -109,7 +109,7 @@ export class OrdersController {
   @Permissions('orders:approve')
   @ApiAuth({
     summary:
-      'Reject an order (director-level) — PENDING_CONFIRMATION → DRAFT, reason required',
+      'Reject an order (director-level) — PENDING_CONFIRMATION → REJECTED, reason required',
     statusCode: HttpStatus.NO_CONTENT,
   })
   rejectOrder(

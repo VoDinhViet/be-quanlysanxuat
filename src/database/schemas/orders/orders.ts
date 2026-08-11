@@ -24,16 +24,17 @@ import { users } from '../identity-access/users';
  * starts as DRAFT and needs director-level approval before production planning can see it.
  *
  * Rules:
- * - `AWAITING_PRODUCTION` is reachable only via `OrdersService.approveOrder`, never a plain
- *   create/update `status` field (`OrdersService.ensureStatusSettable`, `E075`).
- * - Every other transition — DRAFT → PENDING_CONFIRMATION, and everything from
- *   AWAITING_PRODUCTION onward — stays as loose as the rest of `orders`, no full state machine.
+ * - `AWAITING_PRODUCTION` and `REJECTED` are reachable only via `OrdersService.approveOrder`/
+ *   `rejectOrder`, never a plain create/update `status` field (`ensureStatusSettable`, `E075`).
+ * - Editing a `REJECTED` order without sending `status` reverts it to `DRAFT`
+ *   (`OrdersService.updateOrder`), keeping `rejectedBy`/`rejectedAt`/`rejectionReason` as history.
  *
  * See `OrdersService.ensureOrderEditable` for what stays editable.
  */
 export enum OrderStatus {
   DRAFT = 'DRAFT',
   PENDING_CONFIRMATION = 'PENDING_CONFIRMATION',
+  REJECTED = 'REJECTED',
   AWAITING_PRODUCTION = 'AWAITING_PRODUCTION',
   IN_PROGRESS = 'IN_PROGRESS',
   COMPLETED = 'COMPLETED',
@@ -43,6 +44,7 @@ export enum OrderStatus {
 export const orderStatusEnum = pgEnum('order_status', [
   OrderStatus.DRAFT,
   OrderStatus.PENDING_CONFIRMATION,
+  OrderStatus.REJECTED,
   OrderStatus.AWAITING_PRODUCTION,
   OrderStatus.IN_PROGRESS,
   OrderStatus.COMPLETED,

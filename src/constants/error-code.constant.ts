@@ -128,9 +128,9 @@ export enum ErrorCode {
   // `POST /orders/:orderId/approve` or `/reject` called on an order whose status isn't
   // PENDING_CONFIRMATION — only an order actually submitted for approval can be approved/rejected.
   E074 = 'order.error.invalid_approval_state',
-  // Client tried to set `status: AWAITING_PRODUCTION` directly via `POST /orders`/
-  // `PATCH /orders/:orderId` — that status is only reachable through `OrdersService.approveOrder`
-  // (director-level `orders:approve` permission), never a plain create/update.
+  // Client tried to set `status: AWAITING_PRODUCTION`/`REJECTED` directly via `POST orders`/
+  // `PATCH /orders/:orderId` — both are only reachable through `OrdersService.approveOrder`/
+  // `rejectOrder` (director-level `orders:approve` permission), never a plain create/update.
   E075 = 'order.error.status_not_settable_directly',
   // `POST /production-orders/:productionOrdersId/approve` gọi trên một LSX mà PO gốc không còn
   // `AWAITING_PRODUCTION`. Trước 2026-07-30 (bản `PATCH`/`issue` cũ) cùng ý nghĩa nhưng không có

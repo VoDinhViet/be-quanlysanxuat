@@ -31,15 +31,19 @@ Tạo đơn → DRAFT (nháp, sửa thoải mái)
    │ PATCH status=PENDING_CONFIRMATION
    ▼
 PENDING_CONFIRMATION (chờ xác nhận)
-   │ POST .../approve          │ POST .../reject (bắt buộc reason)
-   ▼                            ▼
-AWAITING_PRODUCTION          DRAFT (quay lại, kèm rejectionReason)
-   │ POST /production-orders/:id/approve   ← thuộc domain Production
-   ▼
-IN_PROGRESS → COMPLETED / CANCELLED (qua PATCH)
+   │ POST .../approve                      │ POST .../reject (bắt buộc reason)
+   ▼                                        ▼
+AWAITING_PRODUCTION                      REJECTED (kèm rejectionReason)
+   │ POST /production-orders/:id/approve     │ PATCH status=PENDING_CONFIRMATION (gửi lại ngay)
+   │   ← thuộc domain Production              │ PATCH field khác, KHÔNG kèm status (sửa lại từ đầu)
+   ▼                                        ▼
+IN_PROGRESS → COMPLETED / CANCELLED       DRAFT
+   (qua PATCH)
 ```
 
-**Chốt cứng duy nhất của cả vòng đời: `AWAITING_PRODUCTION` chỉ đạt được qua `POST /orders/:orderId/approve`.** Request tạo/sửa không được set thẳng trạng thái đó (`E075`). Nếu không chặn, bất kỳ ai có `orders:update` — không riêng Giám đốc — đều bỏ qua được bước duyệt.
+**Chốt cứng duy nhất của cả vòng đời: `AWAITING_PRODUCTION`/`REJECTED` chỉ đạt được qua `POST /orders/:orderId/approve`/`reject`.** Request tạo/sửa không được set thẳng hai trạng thái đó (`E075`). Nếu không chặn, bất kỳ ai có `orders:update` — không riêng Giám đốc — đều bỏ qua được bước duyệt/từ chối.
+
+**Sửa một đơn đang `REJECTED` mà không gửi `status` sẽ tự động đưa nó về `DRAFT`** — coi như làm lại từ đầu, giữ nguyên `rejectedBy`/`rejectedAt`/`rejectionReason` làm lịch sử (`OrdersService.updateOrder`). Gửi `status` rõ ràng (vd `CANCELLED`) thì tôn trọng giá trị đó, không tự chuyển.
 
 Mọi chuyển trạng thái **khác** đều lỏng: không có state machine đầy đủ, huỷ được từ bất kỳ đâu chưa kết thúc.
 
@@ -48,9 +52,14 @@ Mọi chuyển trạng thái **khác** đều lỏng: không có state machine �
 ## Business rules
 
 - `orders:approve` là permission **riêng**, tách khỏi `orders:update` — duyệt/từ chối là quyền Giám đốc trở lên.
-- Duyệt/từ chối chỉ hợp lệ khi đơn đang `PENDING_CONFIRMATION` (`E074`). Từ chối **bắt buộc có lý do**.
+- Duyệt/từ chối chỉ hợp lệ khi đơn đang `PENDING_CONFIRMATION` (`E074`). Từ chối **bắt buộc có lý do**, đưa đơn sang `REJECTED` (không phải `DRAFT`).
 - **Duyệt đơn đồng thời sinh sẵn hồ sơ LSX** (header + các dòng quyết định sản xuất), trong cùng transaction với việc đổi trạng thái.
 - Sửa được ở mọi trạng thái trừ `COMPLETED`/`CANCELLED` (`E065`) và `PENDING_CONFIRMATION` (`E090`, đang chờ duyệt — tránh đổi dữ liệu trong lúc Giám đốc đang xem để duyệt) — với một ngoại lệ: đổi `items` bị chặn (`E080`) nếu LSX của đơn **đã duyệt**. **Không có route xoá đơn** — huỷ đơn dùng `PATCH status = CANCELLED`, xem `docs/decisions/orders-no-delete.md`.
+- `PATCH` một đơn `REJECTED` mà **không gửi `status`** tự động đưa nó về `DRAFT` — coi như sửa lại từ
+  đầu, giữ nguyên `rejectedBy`/`rejectedAt`/`rejectionReason` làm lịch sử. Gửi `status` rõ ràng (kể
+  cả `PENDING_CONFIRMATION` để gửi duyệt lại ngay, không cần sửa gì) thì tôn trọng giá trị đó, không
+  tự chuyển. Không có route riêng để "mở lại" `REJECTED` — sửa/không sửa gì cũng qua cùng một `PATCH`.
+  `status: AWAITING_PRODUCTION`/`REJECTED` vẫn bị chặn thẳng (`E075`).
 - `items` trên `PATCH` là **replace-all**: gửi mảng mới (kể cả `[]`) thay hoàn toàn dòng cũ; bỏ trống field thì giữ nguyên.
 - `code` (`SOxxxx`) tự sinh nếu không gửi, và **bất biến** sau khi tạo.
 - **Mọi route `/orders*` đều cần bearer token, kể cả đọc** — khác phần lớn master data.
@@ -80,13 +89,16 @@ Không phải invariant dù dễ tưởng:
 
 ## Common mistakes
 
-1. **Tưởng có thể set `status = AWAITING_PRODUCTION` bằng `PATCH`.** Không — `E075`. Đây là chốt chặn cố ý của luồng duyệt.
+1. **Tưởng có thể set `status = AWAITING_PRODUCTION`/`REJECTED` bằng `PATCH`.** Không — `E075`. Đây là chốt chặn cố ý của luồng duyệt/từ chối.
 2. **Gửi `total`/`subtotal` từ client rồi thắc mắc sao không có tác dụng.** Bị `whitelist: true` loại bỏ lặng lẽ, không báo lỗi.
 3. **Gửi thiếu dòng khi `PATCH items`.** Là replace-all, không phải partial — gửi thiếu là xoá.
 4. **Tưởng `GET /orders` trả kèm `items`/`attachments`.** Không; chỉ `GET /orders/:id` và response ngay sau `POST`/`PATCH` mới có.
 5. **Dựa vào `GET /orders/stats` như số liệu chính xác.** Hai field là xấp xỉ: `completedValue` ("Đã giao") dùng `status = COMPLETED` làm proxy vì chưa có bảng giao hàng thật; `expiredTrendCount` so trạng thái *hiện tại* với mốc 7 ngày trước vì không có bảng lịch sử trạng thái.
 6. **Tìm route xoá đơn hàng.** Không có, đã bỏ hẳn — huỷ đơn dùng `PATCH status = CANCELLED`. Xem `docs/decisions/orders-no-delete.md`.
 7. **Tưởng sửa được đơn đang chờ duyệt (`PENDING_CONFIRMATION`).** Không — `E090`, khoá cho tới khi Giám đốc duyệt/từ chối xong.
+8. **Tưởng `REJECTED` có route riêng để "mở lại"/"khôi phục".** Không có — `PATCH` bất kỳ field nào
+   mà không kèm `status` tự động đưa nó về `DRAFT`, đó chính là cách "mở lại" (khuôn
+   `docs/domains/purchase-requests.md`).
 
 ## Related docs
 

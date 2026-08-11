@@ -47,15 +47,23 @@ Bước đưa đơn tới `PENDING_CONFIRMATION` là một `PATCH /orders/:order
 
 ### Từ chối
 
-Một `UPDATE` duy nhất: đơn về `DRAFT`, ghi `rejectedBy`/`rejectedAt`/`rejectionReason`. Không đụng
-gì tới sản xuất — tại thời điểm này LSX chưa tồn tại.
+Một `UPDATE` duy nhất: đơn sang `REJECTED`, ghi `rejectedBy`/`rejectedAt`/`rejectionReason`. Không
+đụng gì tới sản xuất — tại thời điểm này LSX chưa tồn tại.
+
+Từ `REJECTED`, có hai đường tiếp theo, cả hai đều qua `PATCH /orders/:orderId` bình thường (quyền
+`orders:update`), không phải route riêng của workflow này:
+- Gửi kèm `status = PENDING_CONFIRMATION` → gửi duyệt lại ngay, không cần sửa gì.
+- Không gửi `status` (sửa field khác) → tự động về `DRAFT`, giữ nguyên `rejectedBy`/`rejectedAt`/
+  `rejectionReason` làm lịch sử — `OrdersService.updateOrder`, chi tiết ở `docs/domains/orders.md`.
 
 ## State changes
 
 | Entity | Trước | Sau |
 | --- | --- | --- |
 | `orders` (duyệt) | `PENDING_CONFIRMATION` | `AWAITING_PRODUCTION` |
-| `orders` (từ chối) | `PENDING_CONFIRMATION` | `DRAFT` |
+| `orders` (từ chối) | `PENDING_CONFIRMATION` | `REJECTED` |
+| `orders` (gửi duyệt lại) | `REJECTED` | `PENDING_CONFIRMATION` |
+| `orders` (sửa không kèm status) | `REJECTED` | `DRAFT` |
 | `production_orders` | *(chưa có)* | `PENDING`, `code` NULL |
 
 ## Side effects

@@ -281,6 +281,10 @@ export class OrdersService {
     const { items, attachmentFileIds, ...orderFields } = reqDto;
     // So với currency hiện tại của dòng khi request không đụng tới `currency`.
     const currency = orderFields.currency ?? existing.currency;
+    // Sửa một đơn đang REJECTED = làm lại từ đầu → tự về DRAFT, giữ nguyên rejectedBy/rejectedAt/
+    // rejectionReason làm lịch sử. Request gửi `status` rõ ràng (vd CANCELLED) thì tôn trọng nó.
+    const revertsToDraft =
+      existing.status === OrderStatus.REJECTED && reqDto.status === undefined;
 
     await this.db.transaction(async (tx) => {
       await tx
@@ -291,6 +295,7 @@ export class OrdersService {
             currency,
             orderFields.exchangeRate,
           ),
+          ...(revertsToDraft && { status: OrderStatus.DRAFT }),
         })
         .where(eq(orders.id, orderId));
 
@@ -342,7 +347,7 @@ export class OrdersService {
     });
   }
 
-  /** Về lại `DRAFT` để sales sửa và gửi duyệt lại. */
+  /** Sửa lại (không kèm `status`) mới tự về `DRAFT` — xem `updateOrder`. */
   async rejectOrder(
     orderId: string,
     reqDto: RejectOrderReqDto,
@@ -354,7 +359,7 @@ export class OrdersService {
     await this.db
       .update(orders)
       .set({
-        status: OrderStatus.DRAFT,
+        status: OrderStatus.REJECTED,
         rejectedBy: userId,
         rejectedAt: new Date(),
         rejectionReason: reqDto.reason,
@@ -547,10 +552,14 @@ export class OrdersService {
     }
   }
 
-  /** `AWAITING_PRODUCTION` chỉ do `approveOrder` ghi — `POST`/`PATCH /orders` không được set thẳng,
-   * để duyệt của Giám đốc không bị lách qua PATCH status. Trạng thái khác tự do. */
+  /** `AWAITING_PRODUCTION`/`REJECTED` chỉ do `approveOrder`/`rejectOrder` ghi — `POST`/
+   * `PATCH /orders` không được set thẳng, để duyệt/từ chối của Giám đốc không bị lách qua PATCH
+   * status. Trạng thái khác tự do. */
   private ensureStatusSettable(status: OrderStatus | undefined): void {
-    if (status === OrderStatus.AWAITING_PRODUCTION) {
+    if (
+      status === OrderStatus.AWAITING_PRODUCTION ||
+      status === OrderStatus.REJECTED
+    ) {
       throw new AppException(ErrorCode.E075, HttpStatus.BAD_REQUEST);
     }
   }

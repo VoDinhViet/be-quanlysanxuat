@@ -86,7 +86,8 @@ export class CreateOrderReqDto {
   readonly shippingFee?: number;
 
   @EnumFieldOptional(() => OrderStatus, {
-    description: 'Defaults to DRAFT. Cannot be set to AWAITING_PRODUCTION.',
+    description:
+      'Defaults to DRAFT. Cannot be set to AWAITING_PRODUCTION or REJECTED.',
   })
   readonly status?: OrderStatus;
 
