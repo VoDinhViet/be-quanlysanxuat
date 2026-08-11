@@ -3,14 +3,10 @@ import {
   DateField,
   DateFieldOptional,
   StringFieldOptional,
-  UUIDField,
 } from '../../../decorators/field.decorators';
 import { CreateQuotationItemReqDto } from './create-quotation-item.req.dto';
 
 export class CreateQuotationReqDto {
-  @UUIDField({ description: 'Nhà cung cấp được hỏi giá' })
-  readonly supplierId!: string;
-
   @DateField({ description: 'Ngày lập báo giá' })
   readonly quotationDate!: Date;
 

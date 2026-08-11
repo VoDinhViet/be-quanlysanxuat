@@ -11,6 +11,9 @@ export class CreateQuotationItemReqDto {
   })
   readonly purchaseRequestItemId!: string;
 
+  @UUIDField({ description: 'Nhà cung cấp được hỏi giá cho dòng này' })
+  readonly supplierId!: string;
+
   @NumberField({ isPositive: true, description: 'SL hỏi giá' })
   readonly quantity!: number;
 

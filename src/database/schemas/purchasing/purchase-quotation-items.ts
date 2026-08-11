@@ -11,14 +11,15 @@ import {
 } from 'drizzle-orm/pg-core';
 
 import { purchaseRequestItems } from '../purchase-requests/purchase-request-items';
+import { suppliers } from '../suppliers/suppliers';
 import { users } from '../identity-access/users';
 import { purchaseQuotations } from './purchase-quotations';
 
 /**
- * Một dòng báo giá — giá của một NCC cho một dòng đề xuất mua hàng. `unitPrice` nullable đến khi
- * NCC trả giá. `selectedAt` có giá trị nghĩa là dòng này được chốt để đặt mua — mỗi
- * `purchaseRequestItemId` chỉ được chốt ở tối đa một dòng báo giá đang sống, do service giữ bất
- * biến này, không phải DB (`docs/domains/purchasing.md`).
+ * Một dòng báo giá — giá của một NCC (`supplierId`, tự chọn theo dòng, không lấy từ header) cho một
+ * dòng đề xuất mua hàng. `unitPrice` nullable đến khi NCC trả giá. `selectedAt` có giá trị nghĩa là
+ * dòng này được chốt để đặt mua — mỗi `purchaseRequestItemId` chỉ được chốt ở tối đa một dòng báo
+ * giá đang sống, do service giữ bất biến này, không phải DB (`docs/domains/purchasing.md`).
  */
 export const purchaseQuotationItems = pgTable(
   'purchase_quotation_items',
@@ -30,6 +31,9 @@ export const purchaseQuotationItems = pgTable(
     purchaseRequestItemId: uuid('purchase_request_item_id')
       .notNull()
       .references(() => purchaseRequestItems.id, { onDelete: 'restrict' }),
+    supplierId: uuid('supplier_id')
+      .notNull()
+      .references(() => suppliers.id, { onDelete: 'restrict' }),
     quantity: numeric('quantity', {
       precision: 18,
       scale: 3,
@@ -52,6 +56,7 @@ export const purchaseQuotationItems = pgTable(
     index('idx_purchase_quotation_items_purchase_request_item_id').on(
       table.purchaseRequestItemId,
     ),
+    index('idx_purchase_quotation_items_supplier_id').on(table.supplierId),
     check('chk_purchase_quotation_items_quantity_positive', sql`quantity > 0`),
     check(
       'chk_purchase_quotation_items_unit_price',
@@ -70,6 +75,10 @@ export const purchaseQuotationItemsRelations = relations(
     purchaseRequestItem: one(purchaseRequestItems, {
       fields: [purchaseQuotationItems.purchaseRequestItemId],
       references: [purchaseRequestItems.id],
+    }),
+    supplier: one(suppliers, {
+      fields: [purchaseQuotationItems.supplierId],
+      references: [suppliers.id],
     }),
     selectorBy: one(users, {
       fields: [purchaseQuotationItems.selectedBy],

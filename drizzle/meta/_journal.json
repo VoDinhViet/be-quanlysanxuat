@@ -673,6 +673,13 @@
       "when": 1786181614861,
       "tag": "0095_tan_lady_vermin",
       "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "7",
+      "when": 1786415453244,
+      "tag": "0096_shallow_jack_power",
+      "breakpoints": true
     }
   ]
 }

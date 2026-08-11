@@ -50,11 +50,8 @@ export class PurchaseQuotationsService {
 
     const where = and(
       keyword ? unaccentILike(purchaseQuotations.code, keyword) : undefined,
-      reqDto.supplierId
-        ? eq(purchaseQuotations.supplierId, reqDto.supplierId)
-        : undefined,
       reqDto.status ? eq(purchaseQuotations.status, reqDto.status) : undefined,
-      reqDto.purchaseRequestId || materialKeyword
+      reqDto.purchaseRequestId || reqDto.supplierId || materialKeyword
         ? exists(
             this.db
               .select({ one: sql`1` })
@@ -75,6 +72,9 @@ export class PurchaseQuotationsService {
                         purchaseRequestItems.purchaseRequestId,
                         reqDto.purchaseRequestId,
                       )
+                    : undefined,
+                  reqDto.supplierId
+                    ? eq(purchaseQuotationItems.supplierId, reqDto.supplierId)
                     : undefined,
                   materialKeyword
                     ? or(
@@ -104,13 +104,13 @@ export class PurchaseQuotationsService {
         offset: reqDto.offset,
         orderBy: desc(purchaseQuotations.createdAt),
         with: {
-          supplier: true,
           creatorBy: true,
           items: {
             with: {
               purchaseRequestItem: {
                 with: { purchaseRequest: true, item: { with: { unit: true } } },
               },
+              supplier: true,
             },
           },
         },
@@ -130,7 +130,6 @@ export class PurchaseQuotationsService {
     const quotation = await this.db.query.purchaseQuotations.findFirst({
       where: eq(purchaseQuotations.id, quotationId),
       with: {
-        supplier: true,
         senderBy: true,
         receiverBy: true,
         cancellerBy: true,
@@ -140,6 +139,7 @@ export class PurchaseQuotationsService {
             purchaseRequestItem: {
               with: { purchaseRequest: true, item: { with: { unit: true } } },
             },
+            supplier: true,
             selectorBy: true,
           },
         },
@@ -159,7 +159,9 @@ export class PurchaseQuotationsService {
     reqDto: CreateQuotationReqDto,
     userId: string,
   ): Promise<void> {
-    await this.ensureSupplierExists(reqDto.supplierId);
+    await this.ensureSuppliersExist(
+      reqDto.items.map((item) => item.supplierId),
+    );
     await this.validateRequestItems(reqDto.items);
 
     const { items: quotationItems, ...quotationFields } = reqDto;
@@ -180,13 +182,17 @@ export class PurchaseQuotationsService {
     });
   }
 
-  private async ensureSupplierExists(supplierId: string): Promise<void> {
-    const supplier = await this.db.query.suppliers.findFirst({
-      columns: { id: true },
-      where: and(eq(suppliers.id, supplierId), isNull(suppliers.deletedAt)),
-    });
+  private async ensureSuppliersExist(supplierIds: string[]): Promise<void> {
+    const uniqueIds = [...new Set(supplierIds)];
 
-    if (!supplier) {
+    const [{ total }] = await this.db
+      .select({ total: count() })
+      .from(suppliers)
+      .where(
+        and(inArray(suppliers.id, uniqueIds), isNull(suppliers.deletedAt)),
+      );
+
+    if (total !== uniqueIds.length) {
       throw new AppException(ErrorCode.E019, HttpStatus.NOT_FOUND);
     }
   }

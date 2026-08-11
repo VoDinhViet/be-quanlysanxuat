@@ -2,7 +2,6 @@ import { Exclude, Expose } from 'class-transformer';
 
 import { PurchaseQuotationStatus } from '../../../database/schemas';
 import {
-  ClassField,
   ClassFieldOptional,
   DateField,
   DateFieldOptional,
@@ -11,7 +10,6 @@ import {
   StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
-import { SupplierRefResDto } from '../../suppliers/dto/supplier-ref.res.dto';
 import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
 import { PageQuotationItemResDto } from './page-quotation-item.res.dto';
 
@@ -24,10 +22,6 @@ export class PageQuotationResDto {
   @Expose()
   @StringField({ description: 'Mã báo giá' })
   code!: string;
-
-  @Expose()
-  @ClassField(() => SupplierRefResDto)
-  supplier!: SupplierRefResDto;
 
   @Expose()
   @EnumField(() => PurchaseQuotationStatus)

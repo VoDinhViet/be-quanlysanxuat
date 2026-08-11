@@ -9,7 +9,6 @@ import {
   varchar,
 } from 'drizzle-orm/pg-core';
 
-import { suppliers } from '../suppliers/suppliers';
 import { purchaseQuotationItems } from './purchase-quotation-items';
 import { users } from '../identity-access/users';
 
@@ -28,18 +27,16 @@ export const purchaseQuotationStatusEnum = pgEnum('purchase_quotation_status', [
 ]);
 
 /**
- * Báo giá (RFQ) — hỏi giá **một** NCC cho một nhóm dòng đề xuất mua hàng đã duyệt
- * (`docs/domains/purchasing.md`). `DRAFT → SENT → RECEIVED`, hoặc `CANCELLED` từ `DRAFT`/`SENT`.
- * `RECEIVED` mới cho `select` (chốt giá) ở `purchase_quotation_items`.
+ * Báo giá (RFQ) — hỏi giá cho một nhóm dòng đề xuất mua hàng đã duyệt, mỗi dòng tự chọn NCC riêng
+ * (`supplierId` ở `purchase_quotation_items`, `docs/domains/purchasing.md`). `DRAFT → SENT →
+ * RECEIVED`, hoặc `CANCELLED` từ `DRAFT`/`SENT`. `RECEIVED` mới cho `select` (chốt giá) ở
+ * `purchase_quotation_items`.
  */
 export const purchaseQuotations = pgTable(
   'purchase_quotations',
   {
     id: uuid('id').defaultRandom().primaryKey(),
     code: varchar('code', { length: 50 }).notNull().unique(),
-    supplierId: uuid('supplier_id')
-      .notNull()
-      .references(() => suppliers.id, { onDelete: 'restrict' }),
     status: purchaseQuotationStatusEnum('status')
       .notNull()
       .default(PurchaseQuotationStatus.DRAFT),
@@ -69,7 +66,6 @@ export const purchaseQuotations = pgTable(
       .$onUpdate(() => new Date()),
   },
   (table) => [
-    index('idx_purchase_quotations_supplier_id').on(table.supplierId),
     index('idx_purchase_quotations_status').on(table.status),
     index('idx_purchase_quotations_created_by').on(table.createdBy),
   ],
@@ -78,10 +74,6 @@ export const purchaseQuotations = pgTable(
 export const purchaseQuotationsRelations = relations(
   purchaseQuotations,
   ({ one, many }) => ({
-    supplier: one(suppliers, {
-      fields: [purchaseQuotations.supplierId],
-      references: [suppliers.id],
-    }),
     senderBy: one(users, {
       fields: [purchaseQuotations.sentBy],
       references: [users.id],

@@ -12,8 +12,8 @@ kế để hiện đủ vòng đời từ đề xuất → nhận hàng. Nó kh�
 số đều tính lúc đọc từ bốn bảng gốc.
 
 **Trạng thái hiện tại (chưa xong hết thiết kế dưới đây).** Module `purchase-quotations` đã có
-`GET` list/detail + `POST` lập báo giá tay (chọn dòng ĐXMH `APPROVED` + một NCC) — không sinh tự động
-ở bước duyệt ĐXMH. Module `purchase-orders` mới có `GET` list — **chưa có** route
+`GET` list/detail + `POST` lập báo giá tay (chọn dòng ĐXMH `APPROVED`, mỗi dòng tự chọn NCC riêng)
+— không sinh tự động ở bước duyệt ĐXMH. Module `purchase-orders` mới có `GET` list — **chưa có** route
 tạo, nên list này rỗng trên dữ liệu thật tới khi có `POST /purchase-orders` (đợt sau, gom dòng báo giá
 đã chốt giá thành đơn). `GET /purchase-ledger` đọc thẳng bốn bảng cho `quotedQuantity` (Σ `quantity`
 mọi dòng báo giá chưa `CANCELLED`, không xét đã có giá hay chưa — "có RFQ" = đang báo giá) và
@@ -37,13 +37,16 @@ response.
 
 ```
 purchase_requests / purchase_request_items   — đề xuất đã duyệt (nguồn của nhu cầu, đọc-only ở đây)
-purchase_quotations / purchase_quotation_items — báo giá, hỏi MỘT NCC cho nhiều dòng đề xuất
+purchase_quotations / purchase_quotation_items — báo giá, mỗi dòng tự chọn NCC riêng (supplierId ở dòng)
 purchase_orders / purchase_order_items         — đơn mua, đặt với MỘT NCC, có thể không qua báo giá
 ```
 
-Một báo giá/đơn mua gom nhiều dòng đề xuất **của nhiều đề xuất khác nhau**, miễn cùng NCC — không
-có FK header-to-header nào giữa `purchase_quotations`/`purchase_orders` và `purchase_requests`, chỉ
-nối ở mức dòng (`purchase_request_item_id`).
+Một báo giá/đơn mua gom nhiều dòng đề xuất **của nhiều đề xuất khác nhau** — không có FK
+header-to-header nào giữa `purchase_quotations`/`purchase_orders` và `purchase_requests`, chỉ nối ở
+mức dòng (`purchase_request_item_id`). Một báo giá không còn ràng buộc "cùng NCC" giữa các dòng —
+`supplierId` sống ở `purchase_quotation_items`, không phải header, nên hai dòng trong cùng một báo
+giá có thể hỏi giá hai NCC khác nhau. Đơn mua vẫn giữ ràng buộc MỘT NCC/đơn (`supplierId` ở header
+`purchase_orders`, chưa đổi).
 
 **Đơn mua không bắt buộc qua báo giá.** `purchase_order_items.quotationItemId` tuỳ chọn — người mua
 hàng có thể lập đơn mua thẳng khi đã biết giá (vd giá niêm yết), báo giá chỉ là một đường tới đó.
@@ -101,8 +104,8 @@ như `inventory-receipts`/`purchase-requests` detail đang dùng.
 
 | Entity | Vai trò |
 | --- | --- |
-| `purchase_quotations` | Báo giá — header, một NCC, vòng đời `DRAFT`/`SENT`/`RECEIVED`/`CANCELLED` |
-| `purchase_quotation_items` | Dòng báo giá — giá NCC cho một dòng đề xuất, `selectedAt` nếu được chốt |
+| `purchase_quotations` | Báo giá — header, không mang NCC, vòng đời `DRAFT`/`SENT`/`RECEIVED`/`CANCELLED` |
+| `purchase_quotation_items` | Dòng báo giá — mang `supplierId` riêng + giá NCC cho một dòng đề xuất, `selectedAt` nếu được chốt |
 | `purchase_orders` | Đơn mua — header, một NCC, vòng đời `DRAFT`/`ORDERED`/`CANCELLED` |
 | `purchase_order_items` | Dòng đơn mua — SL/giá đặt, `quotationItemId` tuỳ chọn để trace |
 
@@ -151,7 +154,8 @@ gỡ hủy tay (không gỡ được hủy-do-đơn-mua, phải lập đơn mua 
 
 - **← Purchase Requests**: đọc `purchase_request_items` của phiếu `APPROVED`; không ghi ngược —
   đề xuất chỉ đổi trạng thái qua route của chính nó.
-- **← Partners**: `supplierId` (NCC) bắt buộc trên cả báo giá và đơn mua.
+- **← Partners**: `supplierId` (NCC) bắt buộc — ở dòng cho báo giá (`purchase_quotation_items`), ở
+  header cho đơn mua (`purchase_orders`).
 - **→ Inventory**: `inventory_receipts.purchaseOrderId`/`inventory_receipt_items.purchaseOrderItemId`
   là chỗ nối duy nhất — phiếu nhập trace về đơn mua, không đọc ngược (`InventoryPostingService`
   không đổi, xem `docs/domains/inventory.md`).
