@@ -66,6 +66,12 @@ erDiagram
     PURCHASE_ORDER_ITEMS }o--o| PURCHASE_QUOTATION_ITEM_SUPPLIERS : "NCC + giá đã chốt (tuỳ chọn)"
     INVENTORY_RECEIPTS }o--o| PURCHASE_ORDERS : "trace mức phiếu (tuỳ chọn)"
     INVENTORY_RECEIPT_ITEMS }o--o| PURCHASE_ORDER_ITEMS : "SL đã nhập theo dòng (tuỳ chọn)"
+
+    WAREHOUSES ||--o{ SUPPLIER_RETURNS : "kho xuất trả"
+    SUPPLIERS ||--o{ SUPPLIER_RETURNS : "NCC nhận trả"
+    SUPPLIER_RETURNS }o--|| ITEMS : "vật tư trả"
+    SUPPLIER_RETURNS }o--o| PURCHASE_ORDERS : "trace mức phiếu (tuỳ chọn)"
+    SUPPLIER_RETURNS }o--o| INVENTORY_RECEIPTS : "trace mức phiếu (tuỳ chọn)"
 ```
 
 Master data (`client-groups`, `supplier-groups`, `countries`, `departments`, `positions`, `units`,

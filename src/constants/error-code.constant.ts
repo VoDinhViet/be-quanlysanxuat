@@ -254,5 +254,6 @@ export enum ErrorCode {
   // Xác nhận đặt hàng khi còn dòng chưa có đơn giá. Khác `E120` (cùng nghĩa nhưng ở báo giá).
   E135 = 'purchase_order.error.missing_unit_price',
   E136 = 'purchase_order.error.assigned_user_not_found',
+  E137 = 'supplier_return.error.not_found',
   V003 = 'common.error.too_many_requests',
 }

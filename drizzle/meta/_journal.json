@@ -701,6 +701,13 @@
       "when": 1786498398891,
       "tag": "0099_youthful_the_fallen",
       "breakpoints": true
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1786500554440,
+      "tag": "0100_wealthy_maximus",
+      "breakpoints": true
     }
   ]
 }

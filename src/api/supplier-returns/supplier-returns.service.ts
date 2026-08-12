@@ -1,10 +1,11 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { and, count, desc, eq, exists, or, sql } from 'drizzle-orm';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { unaccentILike } from '../../common/utils/search.util';
+import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database } from '../../database/database.type';
 import {
@@ -13,8 +14,10 @@ import {
   purchaseOrders,
   supplierReturns,
 } from '../../database/schemas';
+import { AppException } from '../../exceptions/app.exception';
 import { GetSupplierReturnsReqDto } from './dto/get-supplier-returns.req.dto';
 import { PageSupplierReturnResDto } from './dto/page-supplier-return.res.dto';
+import { SupplierReturnResDto } from './dto/supplier-return.res.dto';
 
 @Injectable()
 export class SupplierReturnsService {
@@ -107,5 +110,29 @@ export class SupplierReturnsService {
       }),
       new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
     );
+  }
+
+  async getSupplierReturn(
+    supplierReturnId: string,
+  ): Promise<SupplierReturnResDto> {
+    const row = await this.db.query.supplierReturns.findFirst({
+      where: eq(supplierReturns.id, supplierReturnId),
+      with: {
+        item: { with: { unit: true } },
+        supplier: true,
+        warehouse: true,
+        purchaseOrder: true,
+        inventoryReceipt: true,
+        creatorBy: true,
+      },
+    });
+
+    if (!row) {
+      throw new AppException(ErrorCode.E137, HttpStatus.NOT_FOUND);
+    }
+
+    return plainToInstance(SupplierReturnResDto, row, {
+      excludeExtraneousValues: true,
+    });
   }
 }
