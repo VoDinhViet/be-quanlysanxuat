@@ -1,4 +1,4 @@
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
   index,
@@ -6,6 +6,7 @@ import {
   pgEnum,
   pgTable,
   timestamp,
+  uniqueIndex,
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core';
@@ -52,12 +53,16 @@ export const itemStatusEnum = pgEnum('item_status', [
  *   trên FG/WIP, không tách bảng phụ.
  * - Không còn cột nhóm hàng hoá (`productGroupId`/`materialGroupId` cũ) — `type` là thứ duy nhất
  *   phân loại.
+ * - `code` unique theo partial index (chỉ dòng còn sống) chứ không phải `.unique()` toàn bảng —
+ *   khác quy ước chung của `.claude/rules/database.md`'s "Soft delete" (cố tình, đã bàn với người
+ *   yêu cầu): một mã bị xoá mềm phải dùng lại được, vì `code` còn tự sinh (`VTxxxx`/`SPxxxx`) nên
+ *   giữ mã chết vĩnh viễn sẽ làm hụt dải số một cách vô ích.
  */
 export const items = pgTable(
   'items',
   {
     id: uuid('id').defaultRandom().primaryKey(),
-    code: varchar('code', { length: 50 }).notNull().unique(),
+    code: varchar('code', { length: 50 }).notNull(),
     name: varchar('name', { length: 255 }).notNull(),
     type: itemTypeEnum('type').notNull().default(ItemType.FG),
     imageFileId: uuid('image_file_id').references(() => files.id, {
@@ -122,6 +127,11 @@ export const items = pgTable(
     index('idx_items_image_file_id').on(table.imageFileId),
     index('idx_items_type').on(table.type),
     index('idx_items_status').on(table.status),
+    // Partial unique index — thật sự enforce (khác partial index chỉ để tăng tốc,
+    // `.claude/rules/database.md`) — chỉ chặn trùng `code` giữa các dòng còn sống.
+    uniqueIndex('uq_items_code_active')
+      .on(table.code)
+      .where(sql`deleted_at IS NULL`),
   ],
 );
 

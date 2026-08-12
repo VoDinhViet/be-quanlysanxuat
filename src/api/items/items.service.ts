@@ -9,9 +9,12 @@ import {
   getTableColumns,
   inArray,
   isNull,
+  like,
   ne,
   or,
+  sql,
 } from 'drizzle-orm';
+import postgres from 'postgres';
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
@@ -166,12 +169,21 @@ export class ItemsService {
       await this.filesService.linkFiles([reqDto.imageFileId]);
     }
 
-    // `type`/`status`/`minStock` đều có default ở cột schema, bỏ trống là DB tự điền.
-    await this.db.insert(items).values({
-      ...reqDto,
-      code,
-      createdBy: userId,
-    });
+    try {
+      // `type`/`status`/`minStock` đều có default ở cột schema, bỏ trống là DB tự điền.
+      await this.db.insert(items).values({
+        ...reqDto,
+        code,
+        createdBy: userId,
+      });
+    } catch (error) {
+      // `generateItemCode` chỉ đọc mã lớn nhất tại thời điểm gọi — hai request tạo đồng thời vẫn
+      // có thể đụng cùng một mã. Bắt ở đây thay vì để lỗi Postgres thô 500 lọt ra ngoài.
+      if (error instanceof postgres.PostgresError && error.code === '23505') {
+        throw new AppException(ErrorCode.E008, HttpStatus.CONFLICT);
+      }
+      throw error;
+    }
   }
 
   async updateItem(itemId: string, reqDto: UpdateItemReqDto): Promise<void> {
@@ -422,13 +434,23 @@ export class ItemsService {
     }
   }
 
+  // Số thứ tự lấy từ mã lớn nhất đang có của tiền tố, không phải `count(*)` — count trùng khi có
+  // mã nhập tay chen ngang giữa hai số đã tồn tại, và vẫn có thể đụng race giữa hai request tạo
+  // đồng thời (bắt ở `createItem`'s catch, phía trên). Không lọc `isNull(deletedAt)`: dòng đã xoá
+  // mềm vẫn giữ mã của nó, số thứ tự phải tính cả chúng để không cấp lại một mã đã dùng.
   private async generateItemCode(type: ItemType): Promise<string> {
-    const [totalRows] = await this.db
-      .select({ total: count() })
+    const prefix = type === ItemType.RM ? 'VT' : 'SP';
+    const [maxRow] = await this.db
+      .select({
+        maxNumber:
+          sql<number>`coalesce(max(substring(${items.code} from ${`^${prefix}([0-9]+)$`})::int), 0)`.mapWith(
+            Number,
+          ),
+      })
       .from(items)
-      .where(eq(items.type, type));
-    const nextNumber = String((totalRows?.total ?? 0) + 1).padStart(4, '0');
+      .where(like(items.code, `${prefix}%`));
+    const nextNumber = String((maxRow?.maxNumber ?? 0) + 1).padStart(4, '0');
 
-    return type === ItemType.RM ? `VT${nextNumber}` : `SP${nextNumber}`;
+    return `${prefix}${nextNumber}`;
   }
 }
