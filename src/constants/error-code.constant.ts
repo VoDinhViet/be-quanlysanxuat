@@ -260,5 +260,15 @@ export enum ErrorCode {
   // `chk_iqc_inspections_disposition_requires_fail` làm chốt chặn cuối.
   E139 = 'iqc_inspection.error.disposition_not_allowed_for_pass',
   E140 = 'iqc_inspection.error.code_exists',
+  // Xác nhận QC (`POST /iqc/:iqcId/confirm`) khi `status` không còn là `NOT_INSPECTED`.
+  E141 = 'iqc_inspection.error.already_inspected',
+  // Không tra được sample size/Ac/Re cho tổ hợp (lot size, inspectionLevel, aqlLevel) gửi lên.
+  E142 = 'iqc_inspection.error.invalid_aql_combination',
+  // Xử lý QC FAIL (`POST /iqc/:iqcId/resolve`) khi `status` không phải `PENDING` — bao trùm cả
+  // dòng chưa confirm lẫn dòng đã resolve rồi.
+  E143 = 'iqc_inspection.error.not_pending',
+  // `PATCH /iqc/:iqcId` (sửa lại thông tin ngữ cảnh sau confirm) khi `status` còn `NOT_INSPECTED`
+  // — dòng phải confirm qua AQL sampling trước đã mới có gì để sửa.
+  E144 = 'iqc_inspection.error.not_yet_confirmed',
   V003 = 'common.error.too_many_requests',
 }

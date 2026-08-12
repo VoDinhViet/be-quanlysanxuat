@@ -1,3 +1,172 @@
-import { IqcBaseResDto } from './iqc-base.res.dto';
+import { Exclude, Expose } from 'class-transformer';
 
-export class IqcResDto extends IqcBaseResDto {}
+import {
+  IqcDisposition,
+  IqcInspectionLevel,
+  IqcResult,
+  IqcStatus,
+} from '../../../database/schemas';
+import {
+  ClassField,
+  ClassFieldOptional,
+  DateField,
+  DateFieldOptional,
+  EnumField,
+  EnumFieldOptional,
+  NumberField,
+  NumberFieldOptional,
+  StringField,
+  StringFieldOptional,
+  UUIDField,
+} from '../../../decorators/field.decorators';
+import { InventoryReceiptRefResDto } from '../../inventory-receipts/dto/inventory-receipt-ref.res.dto';
+import { ItemUnitRefResDto } from '../../items/dto/item-unit-ref.res.dto';
+import { PurchaseOrderRefResDto } from '../../purchase-orders/dto/purchase-order-ref.res.dto';
+import { SupplierRefResDto } from '../../suppliers/dto/supplier-ref.res.dto';
+import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
+
+@Exclude()
+export class IqcResDto {
+  @Expose()
+  @UUIDField()
+  id!: string;
+
+  @Expose()
+  @StringField({ description: 'Mã IQC' })
+  code!: string;
+
+  @Expose()
+  @ClassFieldOptional(() => InventoryReceiptRefResDto, { nullable: true })
+  inventoryReceipt!: InventoryReceiptRefResDto | null;
+
+  @Expose()
+  @ClassFieldOptional(() => PurchaseOrderRefResDto, { nullable: true })
+  purchaseOrder!: PurchaseOrderRefResDto | null;
+
+  @Expose()
+  @ClassField(() => SupplierRefResDto)
+  supplier!: SupplierRefResDto;
+
+  @Expose()
+  @ClassField(() => ItemUnitRefResDto)
+  item!: ItemUnitRefResDto;
+
+  @Expose()
+  @NumberField({ description: 'Số lượng kiểm (Lot size)' })
+  quantity!: number;
+
+  @Expose()
+  @DateField({ description: 'Ngày kiểm' })
+  inspectionDate!: Date;
+
+  @Expose()
+  @EnumFieldOptional(() => IqcResult, { nullable: true })
+  result!: IqcResult | null;
+
+  @Expose()
+  @EnumFieldOptional(() => IqcDisposition, { nullable: true })
+  disposition!: IqcDisposition | null;
+
+  @Expose()
+  @EnumField(() => IqcStatus)
+  status!: IqcStatus;
+
+  @Expose()
+  @StringFieldOptional({ nullable: true, description: 'Lý do kiểm' })
+  reason!: string | null;
+
+  @Expose()
+  @StringFieldOptional({ nullable: true, description: 'Ghi chú' })
+  note!: string | null;
+
+  @Expose()
+  @EnumFieldOptional(() => IqcInspectionLevel, {
+    nullable: true,
+    description: 'Mức kiểm tra (Inspection Level) đã dùng lúc xác nhận QC',
+  })
+  inspectionLevel!: IqcInspectionLevel | null;
+
+  @Expose()
+  @NumberFieldOptional({
+    nullable: true,
+    description: 'Mức AQL (%) đã dùng lúc xác nhận QC',
+  })
+  aqlLevel!: number | null;
+
+  @Expose()
+  @NumberFieldOptional({ int: true, nullable: true, description: 'Cỡ mẫu' })
+  sampleSize!: number | null;
+
+  @Expose()
+  @NumberFieldOptional({
+    int: true,
+    nullable: true,
+    description: 'Số lượng lỗi đếm được trong mẫu',
+  })
+  defectQty!: number | null;
+
+  @Expose()
+  @StringFieldOptional({
+    nullable: true,
+    description: 'Tiêu chuẩn kiểm — vd VT-0152 Rev.02',
+  })
+  inspectionStandard!: string | null;
+
+  @Expose()
+  @StringFieldOptional({
+    nullable: true,
+    description: 'Tên người kiểm thực tế',
+  })
+  inspectorName!: string | null;
+
+  @Expose()
+  @StringFieldOptional({ nullable: true, description: 'Dụng cụ đo đã dùng' })
+  measuringTools!: string | null;
+
+  @Expose()
+  @NumberFieldOptional({
+    int: true,
+    nullable: true,
+    description: 'Số lỗi chấp nhận (Ac) — tra từ bảng AQL, không lưu cột riêng',
+  })
+  ac!: number | null;
+
+  @Expose()
+  @NumberFieldOptional({
+    int: true,
+    nullable: true,
+    description: 'Số lỗi từ chối (Re) — tra từ bảng AQL, không lưu cột riêng',
+  })
+  re!: number | null;
+
+  @Expose()
+  @ClassFieldOptional(() => UserRefResDto, { nullable: true })
+  confirmerBy!: UserRefResDto | null;
+
+  @Expose()
+  @DateFieldOptional({ nullable: true, description: 'Thời điểm xác nhận QC' })
+  confirmedAt!: Date | null;
+
+  @Expose()
+  @ClassFieldOptional(() => UserRefResDto, { nullable: true })
+  resolverBy!: UserRefResDto | null;
+
+  @Expose()
+  @DateFieldOptional({
+    nullable: true,
+    description: 'Thời điểm chọn phương án xử lý (disposition)',
+  })
+  resolvedAt!: Date | null;
+
+  @Expose()
+  @ClassFieldOptional(() => UserRefResDto, { nullable: true })
+  creatorBy!: UserRefResDto | null;
+
+  @Expose()
+  @DateField()
+  createdAt!: Date;
+
+  @Expose()
+  @DateField()
+  updatedAt!: Date;
+}

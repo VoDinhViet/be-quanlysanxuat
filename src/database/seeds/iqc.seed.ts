@@ -18,18 +18,24 @@ import {
 
 type SeedDatabase = ReturnType<typeof drizzle<typeof schema>>;
 
-// `GET /api/iqc` has no route to change `disposition`/`status` after create yet — this seed is the
-// only way to see every column of the mockup at once (PASS/FAIL × mọi disposition × mọi status,
-// xem `IqcService.resolveIqcStatus`). Chỉ 2 dòng đầu gắn `inventoryReceiptId`/`purchaseOrderId`
-// thật (dev DB hiện chỉ có vài phiếu nhập/PO) — phần còn lại để `reason` text, đúng khuôn "PO / Lý
-// do" của mockup khi không có PO.
+// Ngoài `POST /iqc/:iqcId/confirm` (chỉ chuyển được NOT_INSPECTED → COMPLETED/PENDING), không có
+// route nào khác đổi `disposition`/`status` sau khi tạo — seed này là cách duy nhất thấy đủ mọi tổ
+// hợp cột cùng lúc (chưa kiểm + PASS/FAIL × mọi disposition × mọi status, xem
+// `IqcService.resolveIqcStatus`). Chỉ 2 dòng đầu gắn `inventoryReceiptId`/`purchaseOrderId` thật
+// (dev DB hiện chỉ có vài phiếu nhập/PO) — phần còn lại để `reason` text, đúng khuôn "PO / Lý do"
+// của mockup khi không có PO.
 const IQC_COUNT = 20;
 
 const PATTERNS: {
-  result: IqcResult;
+  result: IqcResult | undefined;
   disposition: IqcDisposition | undefined;
   status: IqcStatus;
 }[] = [
+  {
+    result: undefined,
+    disposition: undefined,
+    status: IqcStatus.NOT_INSPECTED,
+  },
   {
     result: IqcResult.PASS,
     disposition: undefined,

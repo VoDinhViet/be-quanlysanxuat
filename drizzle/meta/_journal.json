@@ -715,6 +715,27 @@
       "when": 1786504909598,
       "tag": "0101_right_thor_girl",
       "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1786521232927,
+      "tag": "0102_unique_miss_america",
+      "breakpoints": true
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1786524337400,
+      "tag": "0103_great_anthem",
+      "breakpoints": true
+    },
+    {
+      "idx": 104,
+      "version": "7",
+      "when": 1786525507050,
+      "tag": "0104_puzzling_lenny_balinger",
+      "breakpoints": true
     }
   ]
 }

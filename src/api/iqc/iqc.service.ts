@@ -30,11 +30,15 @@ import {
   suppliers,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
+import { ConfirmIqcReqDto } from './dto/confirm-iqc.req.dto';
 import { CreateIqcReqDto } from './dto/create-iqc.req.dto';
 import { GetIqcsReqDto } from './dto/get-iqcs.req.dto';
 import { IqcResDto } from './dto/iqc.res.dto';
 import { IqcStatsResDto } from './dto/iqc-stats.res.dto';
 import { PageIqcResDto } from './dto/page-iqc.res.dto';
+import { ResolveIqcReqDto } from './dto/resolve-iqc.req.dto';
+import { UpdateIqcReqDto } from './dto/update-iqc.req.dto';
+import { resolveAqlPlan } from './iqc-aql.constant';
 
 @Injectable()
 export class IqcService {
@@ -133,6 +137,9 @@ export class IqcService {
     const [row] = await this.db
       .select({
         total: count(),
+        notInspected: count(
+          sql`case when ${iqcInspections.status} = ${IqcStatus.NOT_INSPECTED} then 1 end`,
+        ),
         pass: count(
           sql`case when ${iqcInspections.result} = ${IqcResult.PASS} then 1 end`,
         ),
@@ -166,7 +173,7 @@ export class IqcService {
       await this.ensurePurchaseOrderExists(reqDto.purchaseOrderId);
     }
 
-    if (reqDto.result === IqcResult.PASS && reqDto.disposition) {
+    if (reqDto.disposition && reqDto.result !== IqcResult.FAIL) {
       throw new AppException(ErrorCode.E139, HttpStatus.BAD_REQUEST);
     }
 
@@ -187,7 +194,7 @@ export class IqcService {
     return this.getIqc(inspection.id);
   }
 
-  private async getIqc(iqcId: string): Promise<IqcResDto> {
+  async getIqc(iqcId: string): Promise<IqcResDto> {
     const row = await this.db.query.iqcInspections.findFirst({
       where: eq(iqcInspections.id, iqcId),
       with: {
@@ -196,6 +203,8 @@ export class IqcService {
         inventoryReceipt: true,
         purchaseOrder: true,
         creatorBy: true,
+        confirmerBy: true,
+        resolverBy: true,
       },
     });
 
@@ -203,14 +212,26 @@ export class IqcService {
       throw new AppException(ErrorCode.E138, HttpStatus.NOT_FOUND);
     }
 
-    return plainToInstance(IqcResDto, row, { excludeExtraneousValues: true });
+    const plan =
+      row.inspectionLevel && row.aqlLevel != null
+        ? resolveAqlPlan(row.quantity, row.inspectionLevel, row.aqlLevel)
+        : undefined;
+
+    return plainToInstance(
+      IqcResDto,
+      { ...row, ac: plan?.ac ?? null, re: plan?.re ?? null },
+      { excludeExtraneousValues: true },
+    );
   }
 
-  /** Xem `docs/domains/quality.md` — quy tắc suy `status` từ `result`/`disposition` lúc tạo. */
+  /** Xem `docs/domains/quality.md` — quy tắc suy `status`, dùng chung cho tạo lẫn xác nhận QC. */
   private resolveIqcStatus(
-    result: IqcResult,
+    result: IqcResult | undefined,
     disposition: IqcDisposition | undefined,
   ): IqcStatus {
+    if (!result) {
+      return IqcStatus.NOT_INSPECTED;
+    }
     if (result === IqcResult.PASS) {
       return IqcStatus.COMPLETED;
     }
@@ -220,6 +241,129 @@ export class IqcService {
     return disposition === IqcDisposition.CONCESSION
       ? IqcStatus.COMPLETED
       : IqcStatus.WAITING_RETURN;
+  }
+
+  async confirmIqc(
+    iqcId: string,
+    reqDto: ConfirmIqcReqDto,
+    userId: string,
+  ): Promise<void> {
+    const inspection = await this.ensureIqcNotInspected(iqcId);
+
+    const plan = resolveAqlPlan(
+      inspection.quantity,
+      reqDto.inspectionLevel,
+      reqDto.aqlLevel,
+    );
+
+    if (!plan) {
+      throw new AppException(ErrorCode.E142, HttpStatus.BAD_REQUEST);
+    }
+
+    const result =
+      reqDto.defectQty <= plan.ac ? IqcResult.PASS : IqcResult.FAIL;
+
+    await this.db
+      .update(iqcInspections)
+      .set({
+        inspectionLevel: reqDto.inspectionLevel,
+        aqlLevel: reqDto.aqlLevel,
+        sampleSize: reqDto.sampleSize,
+        defectQty: reqDto.defectQty,
+        inspectionStandard: reqDto.inspectionStandard,
+        inspectorName: reqDto.inspectorName,
+        measuringTools: reqDto.measuringTools,
+        inspectionDate: reqDto.inspectionDate,
+        result,
+        status: this.resolveIqcStatus(result, undefined),
+        confirmedBy: userId,
+        confirmedAt: new Date(),
+      })
+      .where(eq(iqcInspections.id, iqcId));
+  }
+
+  private async ensureIqcNotInspected(
+    iqcId: string,
+  ): Promise<{ quantity: number }> {
+    const inspection = await this.db.query.iqcInspections.findFirst({
+      columns: { id: true, quantity: true, status: true },
+      where: eq(iqcInspections.id, iqcId),
+    });
+
+    if (!inspection) {
+      throw new AppException(ErrorCode.E138, HttpStatus.NOT_FOUND);
+    }
+
+    if (inspection.status !== IqcStatus.NOT_INSPECTED) {
+      throw new AppException(ErrorCode.E141, HttpStatus.CONFLICT);
+    }
+
+    return inspection;
+  }
+
+  async resolveIqcDisposition(
+    iqcId: string,
+    reqDto: ResolveIqcReqDto,
+    userId: string,
+  ): Promise<void> {
+    await this.ensureIqcPending(iqcId);
+
+    await this.db
+      .update(iqcInspections)
+      .set({
+        disposition: reqDto.disposition,
+        status: this.resolveIqcStatus(IqcResult.FAIL, reqDto.disposition),
+        resolvedBy: userId,
+        resolvedAt: new Date(),
+      })
+      .where(eq(iqcInspections.id, iqcId));
+  }
+
+  private async ensureIqcPending(iqcId: string): Promise<void> {
+    const inspection = await this.db.query.iqcInspections.findFirst({
+      columns: { id: true, status: true },
+      where: eq(iqcInspections.id, iqcId),
+    });
+
+    if (!inspection) {
+      throw new AppException(ErrorCode.E138, HttpStatus.NOT_FOUND);
+    }
+
+    if (inspection.status !== IqcStatus.PENDING) {
+      throw new AppException(ErrorCode.E143, HttpStatus.CONFLICT);
+    }
+  }
+
+  /** Sửa lại 4 field ngữ cảnh (`inspectionStandard`/`inspectorName`/`measuringTools`/
+   * `inspectionDate`) sau khi đã confirm — không đụng `inspectionLevel`/`aqlLevel`/`sampleSize`/
+   * `defectQty`/`result`, những field quyết định PASS/FAIL vẫn khoá cứng sau confirm. */
+  async updateIqc(iqcId: string, reqDto: UpdateIqcReqDto): Promise<void> {
+    await this.ensureIqcConfirmed(iqcId);
+
+    await this.db
+      .update(iqcInspections)
+      .set({
+        inspectionStandard: reqDto.inspectionStandard,
+        inspectorName: reqDto.inspectorName,
+        measuringTools: reqDto.measuringTools,
+        inspectionDate: reqDto.inspectionDate,
+      })
+      .where(eq(iqcInspections.id, iqcId));
+  }
+
+  private async ensureIqcConfirmed(iqcId: string): Promise<void> {
+    const inspection = await this.db.query.iqcInspections.findFirst({
+      columns: { id: true, status: true },
+      where: eq(iqcInspections.id, iqcId),
+    });
+
+    if (!inspection) {
+      throw new AppException(ErrorCode.E138, HttpStatus.NOT_FOUND);
+    }
+
+    if (inspection.status === IqcStatus.NOT_INSPECTED) {
+      throw new AppException(ErrorCode.E144, HttpStatus.CONFLICT);
+    }
   }
 
   private async generateIqcCode(inspectionDate: Date): Promise<string> {

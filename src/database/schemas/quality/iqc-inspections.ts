@@ -1,8 +1,8 @@
 import { relations, sql } from 'drizzle-orm';
 import {
   check,
-  date,
   index,
+  integer,
   numeric,
   pgEnum,
   pgTable,
@@ -27,6 +27,18 @@ export const iqcResultEnum = pgEnum('iqc_result', [
   IqcResult.FAIL,
 ]);
 
+export enum IqcInspectionLevel {
+  I = 'I',
+  II = 'II',
+  III = 'III',
+}
+
+export const iqcInspectionLevelEnum = pgEnum('iqc_inspection_level', [
+  IqcInspectionLevel.I,
+  IqcInspectionLevel.II,
+  IqcInspectionLevel.III,
+]);
+
 /**
  * Chỉ có ý nghĩa khi `result = FAIL` (`chk_iqc_inspections_disposition_requires_fail`).
  * CONCESSION (chấp nhận đặc biệt) không cần trả hàng, IQC hoàn thành ngay; SORT (phân loại) và
@@ -45,18 +57,22 @@ export const iqcDispositionEnum = pgEnum('iqc_disposition', [
 ]);
 
 /**
- * `PENDING` → FAIL chưa có quyết định xử lý. `WAITING_RETURN` → FAIL, `disposition` là SORT/RETURN,
- * chờ xuất trả NCC (`supplier_returns`, chưa nối route). `COMPLETED` → PASS, hoặc FAIL với
- * `disposition = CONCESSION`. Set một lần lúc tạo (`IqcService.resolveIqcStatus`) — chưa có route
- * nào chuyển `WAITING_RETURN` → `COMPLETED`, xem `docs/domains/quality.md`.
+ * `NOT_INSPECTED` → chưa gửi `result` lúc tạo, chờ chạy AQL sampling qua `POST
+ * /iqc/:iqcId/confirm` — status duy nhất còn đổi được sau khi tạo. `PENDING` → FAIL chưa có quyết
+ * định xử lý. `WAITING_RETURN` → FAIL, `disposition` là SORT/RETURN, chờ xuất trả NCC
+ * (`supplier_returns`, chưa nối route). `COMPLETED` → PASS, hoặc FAIL với `disposition =
+ * CONCESSION`. Set lúc tạo hoặc lúc confirm (`IqcService.resolveIqcStatus`) — chưa có route nào
+ * chuyển `WAITING_RETURN` → `COMPLETED`, xem `docs/domains/quality.md`.
  */
 export enum IqcStatus {
+  NOT_INSPECTED = 'NOT_INSPECTED',
   PENDING = 'PENDING',
   WAITING_RETURN = 'WAITING_RETURN',
   COMPLETED = 'COMPLETED',
 }
 
 export const iqcStatusEnum = pgEnum('iqc_status', [
+  IqcStatus.NOT_INSPECTED,
   IqcStatus.PENDING,
   IqcStatus.WAITING_RETURN,
   IqcStatus.COMPLETED,
@@ -92,13 +108,38 @@ export const iqcInspections = pgTable(
       scale: 3,
       mode: 'number',
     }).notNull(),
-    inspectionDate: date('inspection_date', { mode: 'date' }).notNull(),
-    result: iqcResultEnum('result').notNull(),
+    // Thời điểm kiểm thực tế — set lúc tạo, sửa lại được đúng một lần lúc
+    // `POST /iqc/:iqcId/confirm` (xem ConfirmIqcReqDto.inspectionDate).
+    inspectionDate: timestamp('inspection_date').notNull(),
+    result: iqcResultEnum('result'),
     disposition: iqcDispositionEnum('disposition'),
     status: iqcStatusEnum('status').notNull().default(IqcStatus.PENDING),
     // Hiện chung ô "PO / Lý do" trên FE khi không có purchaseOrderId (hàng không qua PO).
     reason: varchar('reason', { length: 255 }),
     note: varchar('note', { length: 1000 }),
+    // Cả 7 cột dưới và confirmedBy/confirmedAt đều nullable — chỉ có giá trị sau khi
+    // `POST /iqc/:iqcId/confirm` chạy AQL sampling, xem `docs/domains/quality.md`.
+    inspectionLevel: iqcInspectionLevelEnum('inspection_level'),
+    aqlLevel: numeric('aql_level', { precision: 4, scale: 2, mode: 'number' }),
+    sampleSize: integer('sample_size'),
+    defectQty: integer('defect_qty'),
+    // Tiêu chuẩn kiểm (vd "VT-0152 Rev.02") — text tự do, không tra bảng danh mục.
+    inspectionStandard: varchar('inspection_standard', { length: 100 }),
+    // Tên người kiểm thực tế ngoài xưởng — text tự do, tách biệt với confirmedBy (tài khoản
+    // bấm nút Xác nhận QC): người kiểm thật có thể không có tài khoản trong hệ thống.
+    inspectorName: varchar('inspector_name', { length: 100 }),
+    measuringTools: varchar('measuring_tools', { length: 255 }),
+    confirmedBy: uuid('confirmed_by').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    confirmedAt: timestamp('confirmed_at'),
+    // Nullable — chỉ có giá trị sau khi `POST /iqc/:iqcId/resolve` chạy (dòng FAIL đã được chọn
+    // phương án xử lý). Tách biệt với confirmedBy/confirmedAt: 2 hành động khác nhau, có thể do
+    // người khác nhau, ở thời điểm khác nhau. Xem `docs/domains/quality.md`.
+    resolvedBy: uuid('resolved_by').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    resolvedAt: timestamp('resolved_at'),
     createdBy: uuid('created_by').references(() => users.id, {
       onDelete: 'set null',
     }),
@@ -126,6 +167,18 @@ export const iqcInspections = pgTable(
       'chk_iqc_inspections_disposition_requires_fail',
       sql`disposition IS NULL OR result = 'FAIL'`,
     ),
+    check(
+      'chk_iqc_inspections_sample_size_positive',
+      sql`sample_size IS NULL OR sample_size > 0`,
+    ),
+    check(
+      'chk_iqc_inspections_defect_qty_non_negative',
+      sql`defect_qty IS NULL OR defect_qty >= 0`,
+    ),
+    check(
+      'chk_iqc_inspections_aql_level_valid',
+      sql`aql_level IS NULL OR aql_level = ANY(ARRAY[0.65,1.0,1.5,2.5,4.0,6.5])`,
+    ),
   ],
 );
 
@@ -148,6 +201,14 @@ export const iqcInspectionsRelations = relations(iqcInspections, ({ one }) => ({
   }),
   creatorBy: one(users, {
     fields: [iqcInspections.createdBy],
+    references: [users.id],
+  }),
+  confirmerBy: one(users, {
+    fields: [iqcInspections.confirmedBy],
+    references: [users.id],
+  }),
+  resolverBy: one(users, {
+    fields: [iqcInspections.resolvedBy],
     references: [users.id],
   }),
 }));

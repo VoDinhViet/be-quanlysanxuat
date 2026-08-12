@@ -128,7 +128,7 @@ const ROLES = {
   QC: {
     code: 'QC',
     name: 'Kiểm tra chất lượng (QC)',
-    permissions: ['items:read', 'iqc:read', 'iqc:create'],
+    permissions: ['items:read', 'iqc:read', 'iqc:create', 'iqc:update'],
     isSystem: false,
   },
 } as const satisfies Record<string, RoleSeed>;

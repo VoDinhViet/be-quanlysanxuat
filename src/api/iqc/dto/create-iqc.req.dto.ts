@@ -1,7 +1,6 @@
 import { IqcDisposition, IqcResult } from '../../../database/schemas';
 import {
   DateField,
-  EnumField,
   EnumFieldOptional,
   NumberField,
   StringFieldOptional,
@@ -34,8 +33,10 @@ export class CreateIqcReqDto {
   @DateField({ description: 'Ngày kiểm' })
   readonly inspectionDate!: Date;
 
-  @EnumField(() => IqcResult, { description: 'Kết quả QC' })
-  readonly result!: IqcResult;
+  @EnumFieldOptional(() => IqcResult, {
+    description: 'Kết quả QC — bỏ trống = tạo dòng chưa kiểm (NOT_INSPECTED)',
+  })
+  readonly result?: IqcResult;
 
   @EnumFieldOptional(() => IqcDisposition, {
     description:

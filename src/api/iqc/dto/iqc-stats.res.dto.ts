@@ -9,6 +9,10 @@ export class IqcStatsResDto {
   total!: number;
 
   @Expose()
+  @NumberField({ int: true, description: 'Chưa kiểm' })
+  notInspected!: number;
+
+  @Expose()
   @NumberField({ int: true, description: 'Số phiếu PASS' })
   pass!: number;
 
