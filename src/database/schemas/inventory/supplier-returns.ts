@@ -18,6 +18,7 @@ import { inventoryReceipts } from './inventory-receipts';
 import { warehouses } from './warehouses';
 import { items } from '../items/items';
 import { purchaseOrders } from '../purchasing/purchase-orders';
+import { iqcInspections } from '../quality/iqc-inspections';
 import { suppliers } from '../suppliers/suppliers';
 import { users } from '../identity-access/users';
 
@@ -53,8 +54,9 @@ export const supplierReturns = pgTable(
       () => inventoryReceipts.id,
       { onDelete: 'set null' },
     ),
-    // Chưa có module IQC thật — text tự do, chờ tới khi có bảng kiểm tra chất lượng thì đổi sang FK.
-    iqcCode: varchar('iqc_code', { length: 50 }),
+    iqcId: uuid('iqc_id').references(() => iqcInspections.id, {
+      onDelete: 'set null',
+    }),
     returnDate: date('return_date', { mode: 'date' }).notNull(),
     status: inventoryDocumentStatusEnum('status')
       .notNull()
@@ -77,6 +79,7 @@ export const supplierReturns = pgTable(
     index('idx_supplier_returns_inventory_receipt_id').on(
       table.inventoryReceiptId,
     ),
+    index('idx_supplier_returns_iqc_id').on(table.iqcId),
     index('idx_supplier_returns_status').on(table.status),
     index('idx_supplier_returns_return_date').on(table.returnDate),
     index('idx_supplier_returns_created_by').on(table.createdBy),
@@ -106,6 +109,10 @@ export const supplierReturnsRelations = relations(
     inventoryReceipt: one(inventoryReceipts, {
       fields: [supplierReturns.inventoryReceiptId],
       references: [inventoryReceipts.id],
+    }),
+    iqc: one(iqcInspections, {
+      fields: [supplierReturns.iqcId],
+      references: [iqcInspections.id],
     }),
     creatorBy: one(users, {
       fields: [supplierReturns.createdBy],

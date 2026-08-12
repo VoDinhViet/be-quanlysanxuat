@@ -708,6 +708,13 @@
       "when": 1786500554440,
       "tag": "0100_wealthy_maximus",
       "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1786504909598,
+      "tag": "0101_right_thor_girl",
+      "breakpoints": true
     }
   ]
 }

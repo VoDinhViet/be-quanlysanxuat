@@ -61,6 +61,7 @@ const ROLES = {
       'inventory:read',
       'purchasing:read',
       'purchasing:approve',
+      'iqc:read',
     ],
     isSystem: false,
   },
@@ -107,6 +108,7 @@ const ROLES = {
       'inventory:update',
       'inventory:delete',
       'purchasing:read',
+      'iqc:read',
     ],
     isSystem: false,
   },
@@ -126,7 +128,7 @@ const ROLES = {
   QC: {
     code: 'QC',
     name: 'Kiểm tra chất lượng (QC)',
-    permissions: ['items:read'],
+    permissions: ['items:read', 'iqc:read', 'iqc:create'],
     isSystem: false,
   },
 } as const satisfies Record<string, RoleSeed>;

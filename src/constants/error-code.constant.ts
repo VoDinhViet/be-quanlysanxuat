@@ -255,5 +255,10 @@ export enum ErrorCode {
   E135 = 'purchase_order.error.missing_unit_price',
   E136 = 'purchase_order.error.assigned_user_not_found',
   E137 = 'supplier_return.error.not_found',
+  E138 = 'iqc_inspection.error.not_found',
+  // `result = PASS` không được kèm `disposition` (chỉ FAIL mới có quyết định xử lý) — DB còn giữ
+  // `chk_iqc_inspections_disposition_requires_fail` làm chốt chặn cuối.
+  E139 = 'iqc_inspection.error.disposition_not_allowed_for_pass',
+  E140 = 'iqc_inspection.error.code_exists',
   V003 = 'common.error.too_many_requests',
 }

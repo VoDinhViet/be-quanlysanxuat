@@ -33,6 +33,7 @@ export * from './inventory/inventory-issues';
 export * from './inventory/inventory-issue-items';
 export * from './inventory/inventory-transactions';
 export * from './inventory/inventory-balances';
+export * from './quality/iqc-inspections';
 export * from './inventory/supplier-returns';
 export * from './production/production-orders';
 export * from './production/production-order-items';

@@ -16,10 +16,10 @@ import { warehouses, WarehouseType } from '../schemas/inventory/warehouses';
 type SeedDatabase = ReturnType<typeof drizzle<typeof schema>>;
 
 // `GET /api/supplier-returns` has no create route yet (list-only, see the schema file's own doc
-// comment) — this seed is the only way to see the screen with real rows. purchaseOrderId and
-// inventoryReceiptId are left null on every row: both source tables are still empty in a fresh
-// dev DB, and a null FK is also what exercises the list's "--" placeholder for Mã NK / PO. iqcCode
-// is set on 2 of every 3 rows so both the code and the placeholder show up.
+// comment) — this seed is the only way to see the screen with real rows. purchaseOrderId,
+// inventoryReceiptId and iqcId are left null on every row: the source tables are either still
+// empty in a fresh dev DB or seeded independently (`pnpm db:seed:iqc`), and a null FK is also what
+// exercises the list's "--" placeholder for Mã NK / PO / Mã IQC.
 const RETURN_COUNT = 24;
 
 async function main() {
@@ -107,10 +107,7 @@ async function seedSupplierReturns(db: SeedDatabase): Promise<void> {
       quantity: 10 + index * 5,
       purchaseOrderId: null,
       inventoryReceiptId: null,
-      iqcCode:
-        index % 3 === 2
-          ? null
-          : `IQC2406-${String(index + 1).padStart(3, '0')}`,
+      iqcId: null,
       returnDate,
       status:
         index % 2 === 0

@@ -10,6 +10,7 @@ import { DRIZZLE } from '../../database/database.module';
 import type { Database } from '../../database/database.type';
 import {
   inventoryReceipts,
+  iqcInspections,
   items,
   purchaseOrders,
   supplierReturns,
@@ -40,7 +41,17 @@ export class SupplierReturnsService {
         : undefined,
       reqDto.status ? eq(supplierReturns.status, reqDto.status) : undefined,
       reqDto.iqcCode
-        ? unaccentILike(supplierReturns.iqcCode, `%${reqDto.iqcCode}%`)
+        ? exists(
+            this.db
+              .select({ one: sql`1` })
+              .from(iqcInspections)
+              .where(
+                and(
+                  eq(iqcInspections.id, supplierReturns.iqcId),
+                  unaccentILike(iqcInspections.code, `%${reqDto.iqcCode}%`),
+                ),
+              ),
+          )
         : undefined,
       materialKeyword
         ? exists(
@@ -98,6 +109,7 @@ export class SupplierReturnsService {
           warehouse: true,
           purchaseOrder: true,
           inventoryReceipt: true,
+          iqc: true,
           creatorBy: true,
         },
       }),
@@ -123,6 +135,7 @@ export class SupplierReturnsService {
         warehouse: true,
         purchaseOrder: true,
         inventoryReceipt: true,
+        iqc: true,
         creatorBy: true,
       },
     });

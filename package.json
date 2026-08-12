@@ -30,6 +30,7 @@
     "db:seed:operations": "ts-node src/database/seeds/operations.seed.ts",
     "db:seed:warehouses": "ts-node src/database/seeds/warehouses.seed.ts",
     "db:seed:supplier-returns": "ts-node src/database/seeds/supplier-returns.seed.ts",
+    "db:seed:iqc": "ts-node src/database/seeds/iqc.seed.ts",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio"
   },

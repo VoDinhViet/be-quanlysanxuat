@@ -72,6 +72,12 @@ erDiagram
     SUPPLIER_RETURNS }o--|| ITEMS : "vật tư trả"
     SUPPLIER_RETURNS }o--o| PURCHASE_ORDERS : "trace mức phiếu (tuỳ chọn)"
     SUPPLIER_RETURNS }o--o| INVENTORY_RECEIPTS : "trace mức phiếu (tuỳ chọn)"
+
+    SUPPLIERS ||--o{ IQC_INSPECTIONS : "NCC bị kiểm"
+    IQC_INSPECTIONS }o--|| ITEMS : "vật tư kiểm"
+    IQC_INSPECTIONS }o--o| INVENTORY_RECEIPTS : "trace mức phiếu (tuỳ chọn)"
+    IQC_INSPECTIONS }o--o| PURCHASE_ORDERS : "trace mức phiếu (tuỳ chọn)"
+    SUPPLIER_RETURNS }o--o| IQC_INSPECTIONS : "phiếu trả sinh từ lần IQC nào (tuỳ chọn)"
 ```
 
 Master data (`client-groups`, `supplier-groups`, `countries`, `departments`, `positions`, `units`,
