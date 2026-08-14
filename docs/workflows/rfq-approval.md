@@ -56,9 +56,12 @@ sửa, cùng khuôn `production:update`/`production:approve`.
    - Gọi `PurchaseOrdersService.createDraftOrdersFromQuotation(tx, quotationId, groups, userId)` —
      mỗi nhóm sinh 1 `purchase_orders` (`status = DRAFT`, `quotationId`, `supplierId`, mã `PO-xxxxx`,
      `expectedDate = orderDate + max(leadTimeDays)` của các dòng trong nhóm, `null` nếu không dòng
-     nào có `leadTimeDays`) + N `purchase_order_items` (`purchaseRequestItemId` từ dòng vật tư,
-     `quotationItemSupplierId` trỏ đúng dòng NCC thắng, `quantity` từ dòng **vật tư** — không phải
-     dòng NCC, `unitPrice` từ dòng NCC thắng).
+     nào có `leadTimeDays`) + N `purchase_order_items` — **N là tổng số phân bổ**
+     (`purchase_quotation_item_allocations`) của các dòng vật tư NCC đó thắng, không phải số dòng vật
+     tư: một dòng vật tư gộp nhiều dòng ĐXMH nguồn sinh từng đó dòng PO, mỗi dòng lấy
+     `purchaseRequestItemId`/`quantity` từ đúng phân bổ đó (không phải SL cả dòng vật tư),
+     `quotationItemSupplierId` trỏ đúng dòng NCC thắng, `unitPrice` từ dòng NCC thắng
+     (`docs/domains/purchasing.md`).
 
 Ba giá trị mặc định trên (`expectedDate`, `quantity`, `unitPrice`) sửa được sau đó qua
 `PATCH /purchase-orders/:id` (header, chỉ `expectedDate`) và `PATCH .../items/:id` (dòng, chỉ
@@ -90,7 +93,7 @@ phải tạo RFQ mới.
 | `purchase_quotations` | `PENDING_APPROVAL` | `APPROVED`, có `approvedBy`/`approvedAt` |
 | `purchase_quotation_item_suppliers` (dòng thắng) | `selectedAt` NULL | có `selectedBy`/`selectedAt` |
 | `purchase_orders` | *(chưa có, hoặc còn từ lần duyệt trước nếu vừa `recall`)* | 1 dòng `DRAFT`/NCC thắng thầu |
-| `purchase_order_items` | *(chưa có)* | N dòng/PO (N = số vật tư NCC đó thắng) |
+| `purchase_order_items` | *(chưa có)* | N dòng/PO (N = tổng số phân bổ của các dòng vật tư NCC đó thắng, ≥ số vật tư) |
 
 ## Side effects
 
@@ -127,8 +130,8 @@ unique constraint là chốt chặn thật.
 
 ## Business rules
 
-- Vì sao `quantity` chỉ ở tầng vật tư, vì sao thắng thầu là unique index từng phần →
-  `docs/domains/purchasing.md`, mục Core concepts.
+- Vì sao SL báo giá sống ở bảng phân bổ (không ở tầng vật tư/NCC), vì sao thắng thầu là unique index
+  từng phần → `docs/domains/purchasing.md`, mục Core concepts.
 - Vì sao PO chỉ sinh tự động, chưa có lập tay → cùng file, mục "Trạng thái hiện tại".
 
 ## Related domains

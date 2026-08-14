@@ -4,10 +4,10 @@ import {
   ClassField,
   ClassFieldOptional,
   NumberField,
-  StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
-import { PurchaseRequestItemRefResDto } from '../../purchase-requests/dto/purchase-request-item-ref.res.dto';
+import { ItemUnitRefResDto } from '../../items/dto/item-unit-ref.res.dto';
+import { QuotationItemAllocationResDto } from './quotation-item-allocation.res.dto';
 import { QuotationItemSupplierResDto } from './quotation-item-supplier.res.dto';
 
 @Exclude()
@@ -17,16 +17,16 @@ export class QuotationItemResDto {
   id!: string;
 
   @Expose()
-  @NumberField({ description: 'SL báo giá' })
+  @ClassField(() => ItemUnitRefResDto)
+  item!: ItemUnitRefResDto;
+
+  @Expose()
+  @NumberField({ description: 'SL báo giá của vật tư — tổng SL các phân bổ' })
   quantity!: number;
 
   @Expose()
-  @StringFieldOptional({ nullable: true })
-  quantityAdjustmentReason!: string | null;
-
-  @Expose()
-  @ClassField(() => PurchaseRequestItemRefResDto)
-  purchaseRequestItem!: PurchaseRequestItemRefResDto;
+  @ClassField(() => QuotationItemAllocationResDto, { each: true })
+  allocations!: QuotationItemAllocationResDto[];
 
   @Expose()
   @ClassFieldOptional(() => QuotationItemSupplierResDto, { each: true })

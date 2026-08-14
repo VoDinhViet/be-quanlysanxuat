@@ -1,28 +1,20 @@
-import {
-  ClassField,
-  NumberField,
-  StringFieldOptional,
-  UUIDField,
-} from '../../../decorators/field.decorators';
+import { ClassField, UUIDField } from '../../../decorators/field.decorators';
+import { CreateQuotationItemAllocationReqDto } from './create-quotation-item-allocation.req.dto';
 import { CreateQuotationItemSupplierReqDto } from './create-quotation-item-supplier.req.dto';
 
 export class CreateQuotationItemReqDto {
   @UUIDField({
-    description: 'Id dòng đề xuất mua hàng (purchase_request_items)',
+    description:
+      'Id vật tư (items) — mọi dòng ĐXMH cùng vật tư này gộp vào một dòng báo giá',
   })
-  readonly purchaseRequestItemId!: string;
+  readonly itemId!: string;
 
-  @NumberField({
-    isPositive: true,
-    description: 'SL báo giá — một lần cho vật tư, không nhân theo số NCC',
+  @ClassField(() => CreateQuotationItemAllocationReqDto, {
+    each: true,
+    description:
+      'Phân bổ SL báo giá về các dòng ĐXMH nguồn — tối thiểu 1 phân bổ; SL báo giá của vật tư là tổng các phân bổ',
   })
-  readonly quantity!: number;
-
-  @StringFieldOptional({
-    maxLength: 500,
-    description: 'Lý do khi SL báo giá khác SL đề xuất',
-  })
-  readonly quantityAdjustmentReason?: string;
+  readonly allocations!: CreateQuotationItemAllocationReqDto[];
 
   @ClassField(() => CreateQuotationItemSupplierReqDto, {
     each: true,

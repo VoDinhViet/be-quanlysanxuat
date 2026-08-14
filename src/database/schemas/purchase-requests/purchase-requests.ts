@@ -30,12 +30,9 @@ export const purchaseRequestStatusEnum = pgEnum('purchase_request_status', [
 ]);
 
 /**
- * Đề xuất mua hàng — phiếu xin duyệt nội bộ, không phải procurement
- * (`docs/domains/purchase-requests.md`, `docs/decisions/no-procurement.md`). Chưa có route tạo —
- * đường sinh duy nhất là `PurchaseRequestsService.createShortageRequest`, gọi từ
- * `ProductionJobsService.startJob`. Có route gửi duyệt/duyệt/từ chối (`sendPurchaseRequest`/
- * `approvePurchaseRequest`/`rejectPurchaseRequest`) — `REJECTED` là điểm dừng, không quay lại
- * `DRAFT`.
+ * Đề xuất mua hàng — phiếu xin duyệt nội bộ, không phải procurement. Hai đường sinh (lập tay
+ * `POST /purchase-requests`, tự động từ `startJob`), vòng đời và quyền: xem
+ * `docs/domains/purchase-requests.md` + `docs/decisions/no-procurement.md`.
  */
 export const purchaseRequests = pgTable(
   'purchase_requests',

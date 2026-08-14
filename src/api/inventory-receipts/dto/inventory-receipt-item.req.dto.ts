@@ -3,11 +3,17 @@ import {
   NumberFieldOptional,
   StringFieldOptional,
   UUIDField,
+  UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
 
 export class InventoryReceiptItemReqDto {
   @UUIDField({ description: 'Id mặt hàng (item)' })
   readonly itemId!: string;
+
+  @UUIDFieldOptional({
+    description: 'Dòng đơn mua tương ứng — phải thuộc purchaseOrderId ở header',
+  })
+  readonly purchaseOrderItemId?: string;
 
   @NumberField({ isPositive: true, description: 'Số lượng' })
   readonly quantity!: number;

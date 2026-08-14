@@ -17,24 +17,28 @@ nhận hàng theo phiếu. Đây không phải điểm khởi đầu của procu
 một LSX cụ thể; `NULL` là đề xuất chung (vd mua dự trữ), không gắn LSX nào. `productionJobId` thu hẹp
 thêm một bậc — LSX có nhiều Job, cột này cho biết đúng Job nào đã sinh ra đề xuất; cũng `NULL` được.
 
-**Có list + detail + gửi duyệt/duyệt/từ chối — chưa có route tạo.** Đường **sinh** duy nhất vào
-`purchase_requests`/`purchase_request_items` không phải một route của module này, mà là hệ quả của
-`POST /production-jobs/:jobId/start`: vật tư nào của Job thiếu tồn thì tự sinh một đề xuất cho đúng
-phần thiếu, xem `docs/workflows/production-job-execution.md`. Phiếu sinh ra luôn `status = DRAFT`,
-gắn cả `productionOrderId` lẫn `productionJobId`, SL mỗi dòng là **phần thiếu**
+**Có list + detail + gửi duyệt/duyệt/từ chối — hai đường tạo phiếu.** **Tay**: `POST
+/purchase-requests` — luôn `status = DRAFT`, `productionOrderId`/`productionJobId` luôn `NULL`
+(luôn là đề xuất chung), `neededDate`/`departmentId`/`quantity` lấy nguyên từ body người gọi gửi
+lên, mọi dòng bắt buộc `type = RM`. **Tự động**: hệ quả của `POST /production-jobs/:jobId/start` —
+vật tư nào của Job thiếu tồn thì tự sinh một đề xuất cho đúng phần thiếu, xem
+`docs/workflows/production-job-execution.md`. Phiếu sinh ra luôn `status = DRAFT`, gắn cả
+`productionOrderId` lẫn `productionJobId`, SL mỗi dòng là **phần thiếu**
 (`requiredQty − onHand` tại thời điểm start), không phải toàn bộ nhu cầu của Job.
 
 Sau khi sinh, người dùng chỉnh lại `quantity` ("SL đề xuất")/`note` của từng dòng qua
 `PATCH /purchase-requests/:purchaseRequestId/items/:purchaseRequestItemId`, hoặc xoá hẳn một dòng
 qua `DELETE` cùng path — cả hai chạy được khi đề xuất `DRAFT` **hoặc** `REJECTED` (xem Lifecycle).
 Xong thì `POST .../send` gửi duyệt, Giám đốc `POST .../approve` hoặc `POST .../reject` (kèm lý do).
+Muốn bỏ hẳn cả phiếu (không chỉ một dòng) thì `DELETE /purchase-requests/:purchaseRequestId`, cũng
+chỉ chạy được khi `DRAFT`/`REJECTED`.
 
 ## Entities
 
 | Entity | Vai trò |
 | --- | --- |
 | `purchase_requests` | Header — mã phiếu, ngày cần, bộ phận, LSX (tuỳ chọn), người đề xuất, trạng thái |
-| `purchase_request_items` | Dòng vật tư của phiếu — `itemId` (trỏ `items`, luôn RM trong thực tế) + `quantity` + `note` (tuỳ chọn) |
+| `purchase_request_items` | Dòng vật tư của phiếu — `itemId` (trỏ `items`, bắt buộc `type = RM`, `E148`) + `quantity` + `note` (tuỳ chọn) |
 
 ## Lifecycle
 
@@ -53,16 +57,27 @@ coi như "sửa lại từ đầu rồi gửi duyệt lại", không phải mộ
 (`PurchaseRequestsService.ensurePurchaseRequestEditable`). `PENDING_APPROVAL`/`APPROVED` khoá cứng
 sửa/xoá dòng (`E114`).
 
+Xoá cả phiếu (`deletePurchaseRequest`) nằm **ngoài** state machine trên — không có `CANCELLED` như
+`inventory_receipts`/`inventory_issues`/`purchase_orders`, nên với module này xoá là cơ chế loại bỏ
+duy nhất, chỉ mở ở `DRAFT`/`REJECTED` (khác edit dòng, xoá **không** tự đưa `REJECTED` về `DRAFT`
+trước). Chính cổng `DRAFT`/`REJECTED` này là thứ giữ cho `purchase_quotation_items`/
+`purchase_order_items` (FK `restrict` trên `purchaseRequestItemId`) không bao giờ chặn xoá bằng
+lỗi FK thô: một dòng ĐXMH chỉ vào được báo giá/PO khi phiếu đã `APPROVED`, và `APPROVED` là trạng
+thái cuối, không có đường quay lại `DRAFT`/`REJECTED`.
+
 ## Business rules
 
 - `code` bất biến, unique toàn bảng.
 - Mỗi dòng `purchase_request_items.quantity` phải dương (DB CHECK).
-- Không có soft delete cho header — chưa có route xoá cả phiếu. Dòng vật tư (`purchase_request_items`)
-  thì hard-delete được, qua `DELETE .../items/:purchaseRequestItemId`.
+- Không có soft delete cho header — `purchase_requests` không có `deletedAt`. Xoá cả phiếu là hard
+  delete (`DELETE /purchase-requests/:purchaseRequestId`, chỉ `DRAFT`/`REJECTED`, `purchase-requests:
+  delete`), dòng vật tư đi theo qua `ON DELETE CASCADE`. Dòng vật tư riêng lẻ thì hard-delete được
+  qua `DELETE .../items/:purchaseRequestItemId`.
 - Sửa/xoá dòng vật tư được khi đề xuất `DRAFT` hoặc `REJECTED` (`REJECTED` tự về `DRAFT`, xem
   Lifecycle) — `PENDING_APPROVAL`/`APPROVED` từ chối `E114`.
-- Xoá dòng vật tư phải giữ **≥ 1 dòng còn lại** — `E115` nếu đây là dòng cuối cùng. Vì chưa có route
-  xoá cả phiếu, cho xoá hết sẽ để lại một đề xuất 0 dòng sống vĩnh viễn, không ai dọn được.
+- Xoá dòng vật tư phải giữ **≥ 1 dòng còn lại** — `E115` nếu đây là dòng cuối cùng (một phiếu 0
+  dòng vẫn `send`/`approve` được vì không route nào đếm dòng, sẽ thành chứng từ rỗng trên sổ cái
+  mua hàng). Bỏ hẳn phiếu thì dùng `DELETE /purchase-requests/:purchaseRequestId`.
 - Gửi duyệt (`send`) chỉ hợp lệ từ đúng `DRAFT` (không tự mở như sửa/xoá dòng) — phiếu `REJECTED`
   phải qua một lần sửa/xoá dòng (tự về `DRAFT`) trước khi gửi lại được.
 - Duyệt/từ chối chỉ hợp lệ từ đúng `PENDING_APPROVAL` — sai trạng thái trả `E116`. Từ chối bắt buộc
@@ -70,26 +85,44 @@ sửa/xoá dòng (`E114`).
 - `purchase-requests:approve` là permission riêng, tách khỏi `:update` — người gửi duyệt (vd
   `PURCHASING`) không tự duyệt được, khuôn `orders:approve`/`production:approve`. Chỉ `DIRECTOR`
   được cấp.
+- `purchase-requests:create` (lập tay) cũng tách riêng, khuôn `orders:create`/`purchasing:create`.
+  Hiện **chỉ `PURCHASING`** được cấp. `PRODUCTION`/`WAREHOUSE` mới có `:read` — muốn cho họ tự lập
+  phải cấp thêm **cả** `:create` lẫn `:update` (thiếu `:update` thì tạo xong không `send` được), mà
+  `:update` không lọc theo chủ sở hữu nên sẽ mở luôn quyền sửa/xoá dòng của **mọi** phiếu trong hệ
+  thống, không riêng phiếu họ tạo — đó là quyết định phân quyền riêng, chưa làm.
+- `purchase-requests:delete` (xoá cả phiếu) tách riêng khỏi `:update`, khuôn `inventory:delete`/
+  `purchasing:delete`. Hiện cũng chỉ `PURCHASING` được cấp, cùng lý do với `:create`.
+- `code` sinh theo mã lớn nhất đang có (`MAX`), không phải `COUNT(*)` — vì có `DELETE`, đếm số dòng
+  còn lại sẽ tụt sau mỗi lần xoá và cấp lại một mã đã tồn tại, khuôn `ItemsService.generateItemCode`.
 - Dòng chi tiết (`GET /purchase-requests/:id`) mang thêm 4 số tính lúc đọc, không lưu cột nào:
   `onHand` (tồn gộp mọi kho), `bomDemand` (Σ `production_job_materials.requiredQty` của Job/LSX
   gắn với đề xuất), `available = onHand − bomDemand` (có thể âm), `fromStock = min(onHand, bomDemand)`.
   Công thức dùng chung với `InventoryReceiptsService`, sống ở
   `src/api/inventory/item-stock.query.ts` (`docs/domains/inventory.md`, khối "Bốn số khác").
+- Đề xuất lập tay (`POST /purchase-requests`): `items` tối thiểu 1 dòng (`E146`, không có route xoá
+  cả phiếu nên phiếu 0 dòng sống vĩnh viễn), không trùng `itemId` trong cùng payload (`E147`, tránh
+  nhân đôi nhu cầu trên sổ cái mua hàng), mọi dòng bắt buộc `type = RM` (`E148`).
 
 ## Cross-domain dependencies
 
-- **← Production**: `ProductionJobsService.startJob` là domain khác **duy nhất ghi vào** đây —
-  `productionOrderId`/`productionJobId` trỏ `production_orders`/`production_jobs`, cả hai tuỳ chọn.
+- **← Production**: `ProductionJobsService.startJob` là domain khác **duy nhất ghi vào** đây (đường
+  tự động) — `productionOrderId`/`productionJobId` trỏ `production_orders`/`production_jobs`, cả
+  hai tuỳ chọn và luôn `NULL` trên đường tay.
 - **→ Partners**: `departmentId` trỏ danh mục `departments`.
 - **→ Product Structure**: dòng phiếu trỏ `items` (`itemId`), xem `docs/domains/product-structure.md`.
-- **→ Identity**: `createdBy` trỏ `users.id` — người bấm start, không phải người "đề xuất" theo
-  nghĩa tự tay lập phiếu.
+- **→ Identity**: `createdBy` trỏ `users.id` — người bấm start (đường tự động) **hoặc** người tự
+  tay lập phiếu (đường tay); phân biệt hai đường bằng `productionJobId` có `NULL` hay không.
+- **→ Inventory**: `inventory_receipts.purchaseRequestId` là `set null` — xoá một đề xuất làm phiếu
+  nhập kho từng trỏ tới nó mất trace (`purchaseRequestId` về `NULL`) mà không bị chặn, có chủ ý.
 
 ## Common mistakes
 
 1. **Tưởng đây là bước đầu của procurement.** Không — xem `docs/decisions/no-procurement.md`.
-2. **Đi tìm route tạo.** Chưa có — đường **sinh** duy nhất là hệ quả tự động của `startJob`. Có
-   route sửa/xoá dòng, gửi duyệt, duyệt, từ chối — nhưng không route nào **tạo mới** một đề xuất.
+2. **Tưởng đề xuất lập tay cũng gắn được LSX/Job.** Không — `POST /purchase-requests` cố ý không
+   nhận `productionOrderId`/`productionJobId` (`ValidationPipe` `whitelist: true` âm thầm loại bỏ
+   nếu gửi lên, không báo 422), nên trên detail của phiếu lập tay `bomDemand` luôn `0`, `fromStock`
+   luôn `0`, `available = onHand`. Đúng thiết kế, không phải bug. Muốn gắn LSX/Job thì chỉ có đường
+   tự động.
 3. **Tưởng `REJECTED` có route riêng để "mở lại"/"khôi phục".** Không có — sửa hoặc xoá bất kỳ dòng
    vật tư nào của phiếu `REJECTED` tự động đưa `status` về `DRAFT`, đó chính là cách "mở lại".
 4. **Trừ `onHand` của `GET /purchase-requests/:id` cho `quantity` của từng dòng để suy ra "còn thiếu

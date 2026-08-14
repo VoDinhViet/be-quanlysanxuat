@@ -38,6 +38,9 @@ export class CreateInventoryReceiptReqDto {
   @UUIDFieldOptional({ description: 'LSX liên quan (tuỳ chọn)' })
   readonly productionOrderId?: string;
 
+  @UUIDFieldOptional({ description: 'Đơn mua hàng (PO) đã ORDERED' })
+  readonly purchaseOrderId?: string;
+
   @StringFieldOptional({ maxLength: 1000, nullable: true })
   readonly note?: string | null;
 

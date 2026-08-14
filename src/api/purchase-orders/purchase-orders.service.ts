@@ -537,9 +537,7 @@ export class PurchaseOrdersService {
     }
   }
 
-  /** Đơn mua đã có phiếu nhập `POSTED` nối tới thì không huỷ được nữa (`E124`) — hàng đã về kho.
-   * Hiện luôn `false` vì `inventory-receipts` chưa route nào ghi `purchaseOrderId`
-   * (`docs/domains/purchasing.md`), nhưng cột/logic đã sẵn cho khi route đó có. */
+  /** Đơn mua đã có phiếu nhập `POSTED` nối tới thì không huỷ được nữa (`E124`) — hàng đã về kho. */
   private async hasPostedReceiptsForOrder(
     purchaseOrderId: string,
   ): Promise<boolean> {

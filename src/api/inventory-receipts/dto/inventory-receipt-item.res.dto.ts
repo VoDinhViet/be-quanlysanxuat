@@ -2,12 +2,14 @@ import { Exclude, Expose } from 'class-transformer';
 
 import {
   ClassField,
+  ClassFieldOptional,
   NumberField,
   NumberFieldOptional,
   StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
 import { ItemRefResDto } from '../../items/dto/item-ref.res.dto';
+import { PurchaseOrderItemRefResDto } from '../../purchase-orders/dto/purchase-order-item-ref.res.dto';
 
 @Exclude()
 export class InventoryReceiptItemResDto {
@@ -30,6 +32,10 @@ export class InventoryReceiptItemResDto {
   @Expose()
   @StringFieldOptional({ nullable: true })
   note!: string | null;
+
+  @Expose()
+  @ClassFieldOptional(() => PurchaseOrderItemRefResDto, { nullable: true })
+  purchaseOrderItem!: PurchaseOrderItemRefResDto | null;
 
   @Expose()
   @NumberField({ description: 'Tồn thực tế (gộp mọi kho), đọc lúc gọi API' })

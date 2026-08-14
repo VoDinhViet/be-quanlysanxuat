@@ -28,6 +28,9 @@ import {
   InventoryTransactionType,
   items,
   productionOrders,
+  purchaseOrderItems,
+  purchaseOrders,
+  PurchaseOrderStatus,
   purchaseRequests,
   suppliers,
 } from '../../database/schemas';
@@ -84,6 +87,9 @@ export class InventoryReceiptsService {
       reqDto.productionOrderId
         ? eq(inventoryReceipts.productionOrderId, reqDto.productionOrderId)
         : undefined,
+      reqDto.purchaseOrderId
+        ? eq(inventoryReceipts.purchaseOrderId, reqDto.purchaseOrderId)
+        : undefined,
       reqDto.fromDate
         ? gte(inventoryReceipts.receiptDate, reqDto.fromDate)
         : undefined,
@@ -110,6 +116,7 @@ export class InventoryReceiptsService {
           supplier: true,
           purchaseRequest: true,
           productionOrder: true,
+          purchaseOrder: true,
           posterBy: true,
           creatorBy: true,
           items: { with: { item: true } },
@@ -136,6 +143,7 @@ export class InventoryReceiptsService {
         supplier: true,
         purchaseRequest: true,
         productionOrder: true,
+        purchaseOrder: true,
         posterBy: true,
         creatorBy: true,
       },
@@ -184,10 +192,15 @@ export class InventoryReceiptsService {
         unitPrice: inventoryReceiptItems.unitPrice,
         note: inventoryReceiptItems.note,
         item: getTableColumns(items),
+        purchaseOrderItem: getTableColumns(purchaseOrderItems),
         ...itemStockColumns(balance, demand),
       })
       .from(inventoryReceiptItems)
       .innerJoin(items, eq(items.id, inventoryReceiptItems.itemId))
+      .leftJoin(
+        purchaseOrderItems,
+        eq(purchaseOrderItems.id, inventoryReceiptItems.purchaseOrderItemId),
+      )
       .leftJoin(balance, eq(balance.itemId, items.id))
       .leftJoin(demand, eq(demand.itemId, items.id))
       .where(eq(inventoryReceiptItems.receiptId, receiptId))
@@ -201,6 +214,11 @@ export class InventoryReceiptsService {
     await this.warehousesService.ensureWarehouseActive(reqDto.warehouseId);
     await this.ensureItemsValid(reqDto.items);
     await this.ensureReferencesValid(reqDto);
+    await this.ensurePurchaseOrderOrdered(reqDto.purchaseOrderId);
+    await this.ensurePurchaseOrderItemsValid(
+      reqDto.purchaseOrderId,
+      reqDto.items,
+    );
 
     let code = reqDto.code;
     if (code) {
@@ -229,12 +247,20 @@ export class InventoryReceiptsService {
     receiptId: string,
     reqDto: UpdateInventoryReceiptReqDto,
   ): Promise<InventoryReceiptResDto> {
-    await this.ensureReceiptDraft(receiptId);
+    const receipt = await this.ensureReceiptDraft(receiptId);
 
     if (reqDto.items !== undefined) {
       await this.ensureItemsValid(reqDto.items);
     }
     await this.ensureReferencesValid(reqDto);
+    await this.ensurePurchaseOrderOrdered(reqDto.purchaseOrderId);
+
+    if (reqDto.items !== undefined) {
+      await this.ensurePurchaseOrderItemsValid(
+        reqDto.purchaseOrderId ?? receipt.purchaseOrderId,
+        reqDto.items,
+      );
+    }
 
     const { items, ...receiptFields } = reqDto;
 
@@ -261,14 +287,20 @@ export class InventoryReceiptsService {
   }
 
   /** `DRAFT → POSTED` — sinh bút toán + cập nhật tồn qua `InventoryPostingService`, sau đó phiếu
-   * bất biến. Xem `docs/workflows/stock-movement.md`. */
+   * bất biến. Đọc trạng thái nằm trong cùng transaction, sau `lockReceipt`. Xem
+   * `docs/workflows/stock-movement.md`. */
   async postInventoryReceipt(receiptId: string, userId: string): Promise<void> {
-    const receipt = await this.ensureReceiptDraft(receiptId);
-    const items = await this.db.query.inventoryReceiptItems.findMany({
-      where: eq(inventoryReceiptItems.receiptId, receiptId),
-    });
-
     await this.db.transaction(async (tx) => {
+      const receipt = await this.lockReceipt(tx, receiptId);
+
+      if (receipt.status !== InventoryDocumentStatus.DRAFT) {
+        throw new AppException(ErrorCode.E098, HttpStatus.CONFLICT);
+      }
+
+      const items = await tx.query.inventoryReceiptItems.findMany({
+        where: eq(inventoryReceiptItems.receiptId, receiptId),
+      });
+
       await this.inventoryPostingService.postDocument(tx, {
         warehouseId: receipt.warehouseId,
         referenceType: InventoryReferenceType.INVENTORY_RECEIPT,
@@ -299,26 +331,21 @@ export class InventoryReceiptsService {
     receiptId: string,
     userId: string,
   ): Promise<void> {
-    const receipt = await this.ensureReceiptExists(receiptId);
-    if (receipt.status === InventoryDocumentStatus.CANCELLED) {
-      throw new AppException(ErrorCode.E098, HttpStatus.CONFLICT);
-    }
-
-    if (receipt.status === InventoryDocumentStatus.DRAFT) {
-      await this.db
-        .update(inventoryReceipts)
-        .set({ status: InventoryDocumentStatus.CANCELLED })
-        .where(eq(inventoryReceipts.id, receiptId));
-      return;
-    }
-
     await this.db.transaction(async (tx) => {
-      await this.inventoryPostingService.reverseDocument(tx, {
-        referenceType: InventoryReferenceType.INVENTORY_RECEIPT,
-        referenceId: receiptId,
-        transactionDate: new Date(),
-        createdBy: userId,
-      });
+      const receipt = await this.lockReceipt(tx, receiptId);
+
+      if (receipt.status === InventoryDocumentStatus.CANCELLED) {
+        throw new AppException(ErrorCode.E098, HttpStatus.CONFLICT);
+      }
+
+      if (receipt.status === InventoryDocumentStatus.POSTED) {
+        await this.inventoryPostingService.reverseDocument(tx, {
+          referenceType: InventoryReferenceType.INVENTORY_RECEIPT,
+          referenceId: receiptId,
+          transactionDate: new Date(),
+          createdBy: userId,
+        });
+      }
 
       await tx
         .update(inventoryReceipts)
@@ -430,6 +457,81 @@ export class InventoryReceiptsService {
     if (!supplier || !purchaseRequest || !productionOrder) {
       throw new AppException(ErrorCode.E107, HttpStatus.BAD_REQUEST);
     }
+  }
+
+  private async ensurePurchaseOrderOrdered(
+    purchaseOrderId?: string,
+  ): Promise<void> {
+    if (!purchaseOrderId) {
+      return;
+    }
+
+    const purchaseOrder = await this.db.query.purchaseOrders.findFirst({
+      columns: { status: true },
+      where: eq(purchaseOrders.id, purchaseOrderId),
+    });
+
+    if (!purchaseOrder) {
+      throw new AppException(ErrorCode.E121, HttpStatus.NOT_FOUND);
+    }
+    if (purchaseOrder.status !== PurchaseOrderStatus.ORDERED) {
+      throw new AppException(ErrorCode.E145, HttpStatus.BAD_REQUEST);
+    }
+  }
+
+  /** Dòng có `purchaseOrderItemId` phải thuộc đúng `purchaseOrderId` ở header — thiếu header hoặc
+   * lệch PO đều là `E127`. */
+  private async ensurePurchaseOrderItemsValid(
+    purchaseOrderId: string | null | undefined,
+    lineItems: InventoryReceiptItemReqDto[],
+  ): Promise<void> {
+    const purchaseOrderItemIds = [
+      ...new Set(
+        lineItems
+          .map((item) => item.purchaseOrderItemId)
+          .filter((id): id is string => id !== undefined),
+      ),
+    ];
+
+    if (!purchaseOrderItemIds.length) {
+      return;
+    }
+    if (!purchaseOrderId) {
+      throw new AppException(ErrorCode.E127, HttpStatus.BAD_REQUEST);
+    }
+
+    const found = await this.db.query.purchaseOrderItems.findMany({
+      columns: { id: true, purchaseOrderId: true },
+      where: inArray(purchaseOrderItems.id, purchaseOrderItemIds),
+    });
+    const foundById = new Map(found.map((item) => [item.id, item]));
+
+    for (const id of purchaseOrderItemIds) {
+      const match = foundById.get(id);
+      if (!match) {
+        throw new AppException(ErrorCode.E123, HttpStatus.NOT_FOUND);
+      }
+      if (match.purchaseOrderId !== purchaseOrderId) {
+        throw new AppException(ErrorCode.E127, HttpStatus.BAD_REQUEST);
+      }
+    }
+  }
+
+  /** Khoá dòng phiếu (`FOR UPDATE`) rồi trả về — chỉ gọi bên trong transaction, bằng chính `tx`,
+   * vì khoá nhả ngay khi transaction kết thúc. Nhờ đó hai lệnh `post`/`cancel` gọi trùng lên cùng
+   * phiếu không cùng lọt qua kiểm trạng thái và cộng tồn hai lần. */
+  private async lockReceipt(tx: DbTransaction, receiptId: string) {
+    const [receipt] = await tx
+      .select()
+      .from(inventoryReceipts)
+      .where(eq(inventoryReceipts.id, receiptId))
+      .for('update');
+
+    if (!receipt) {
+      throw new AppException(ErrorCode.E096, HttpStatus.NOT_FOUND);
+    }
+
+    return receipt;
   }
 
   private async ensureReceiptExists(receiptId: string) {

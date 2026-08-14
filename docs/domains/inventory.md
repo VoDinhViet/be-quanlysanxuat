@@ -95,8 +95,8 @@ mọi LSX đang mở.
 | Entity | Vai trò |
 | --- | --- |
 | `warehouses` | Danh mục kho — `code`/`name`/`type`/`status`, không soft delete |
-| `inventory_receipts` | Phiếu nhập — header, vòng đời `DRAFT`/`POSTED`/`CANCELLED` |
-| `inventory_receipt_items` | Dòng phiếu nhập — `itemId` + `quantity` + `unitPrice` tuỳ chọn |
+| `inventory_receipts` | Phiếu nhập — header, vòng đời `DRAFT`/`POSTED`/`CANCELLED`; `purchaseOrderId` tuỳ chọn trỏ đơn mua (`docs/domains/purchasing.md`), validate PO phải `ORDERED` lúc tạo/sửa |
+| `inventory_receipt_items` | Dòng phiếu nhập — `itemId` + `quantity` + `unitPrice` tuỳ chọn; `purchaseOrderItemId` tuỳ chọn, phải thuộc đúng `purchaseOrderId` của header |
 | `inventory_issues` | Phiếu xuất — header, cùng vòng đời |
 | `inventory_issue_items` | Dòng phiếu xuất — cùng khuôn dòng nhập, thêm `orderItemId` tuỳ chọn |
 | `inventory_transactions` | Sổ cái — append-only, nguồn sự thật, `quantity` có dấu |
@@ -176,6 +176,11 @@ Không phải invariant dù dễ tưởng:
   `productionOrderId`/`productionJobId` cho người dùng gắn thủ công.
 - **→ Purchase Requests**: `inventory_receipts.purchaseRequestId` liên kết tuỳ chọn tới đề xuất mua
   đã sinh ra nhu cầu nhập — không đảo ngược `docs/decisions/no-procurement.md`.
+- **→ Purchasing**: `inventory_receipts.purchaseOrderId` +
+  `inventory_receipt_items.purchaseOrderItemId` liên kết tuỳ chọn tới đơn mua — validate mức cơ bản
+  lúc tạo/sửa (PO phải `ORDERED`, dòng phải thuộc đúng PO), không validate NCC/vật tư khớp 3 chiều
+  hay chặn nhận vượt SL đặt. `purchase-orders`/`purchase-ledger` đọc lại hai cột này để tính tiến độ
+  nhận hàng (`docs/domains/purchasing.md`).
 - **→ Purchasing / Suppliers**: `supplier_returns.purchaseOrderId`/`supplierId` liên kết tuỳ chọn/bắt
   buộc tới đơn mua/NCC gốc — thuần để trace, không đọc ngược (chưa có logic gì đọc lại các cột này).
 - **→ Quality**: `supplier_returns.iqcId` trỏ tới `iqc_inspections` — tuỳ chọn, thuần để trace phiếu

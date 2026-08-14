@@ -2,7 +2,6 @@ import { PageOptionsDto } from '../../../common/dto/offset-pagination/page-optio
 import {
   DateFieldOptional,
   EnumFieldOptional,
-  StringFieldOptional,
   UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
 import { PurchaseLedgerStatus } from '../purchase-ledger.constant';
@@ -10,9 +9,6 @@ import { PurchaseLedgerStatus } from '../purchase-ledger.constant';
 export class GetPurchaseLedgerReqDto extends PageOptionsDto {
   @UUIDFieldOptional({ description: 'Filter theo đề xuất mua hàng' })
   readonly purchaseRequestId?: string;
-
-  @StringFieldOptional({ description: 'Tìm theo tên hoặc mã vật tư' })
-  readonly materialKeyword?: string;
 
   @UUIDFieldOptional({ description: 'Filter theo vật tư' })
   readonly itemId?: string;
@@ -25,16 +21,19 @@ export class GetPurchaseLedgerReqDto extends PageOptionsDto {
   @EnumFieldOptional(() => PurchaseLedgerStatus)
   readonly status?: PurchaseLedgerStatus;
 
-  @DateFieldOptional({ description: 'Filter: neededDate = ngày này' })
-  readonly neededDate?: Date;
+  @DateFieldOptional({ description: 'Filter: neededDate >= neededDateFrom' })
+  readonly neededDateFrom?: Date;
+
+  @DateFieldOptional({ description: 'Filter: neededDate <= neededDateTo' })
+  readonly neededDateTo?: Date;
 
   @DateFieldOptional({
-    description: 'Filter: ngày tạo phiếu đề xuất >= fromDate',
+    description: 'Filter: ngày tạo phiếu đề xuất >= createdDateFrom',
   })
-  readonly fromDate?: Date;
+  readonly createdDateFrom?: Date;
 
   @DateFieldOptional({
-    description: 'Filter: ngày tạo phiếu đề xuất <= toDate',
+    description: 'Filter: ngày tạo phiếu đề xuất <= createdDateTo',
   })
-  readonly toDate?: Date;
+  readonly createdDateTo?: Date;
 }

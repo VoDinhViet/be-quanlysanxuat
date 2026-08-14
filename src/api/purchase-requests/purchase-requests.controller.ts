@@ -16,6 +16,7 @@ import { ApiAuth } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
+import { CreatePurchaseRequestReqDto } from './dto/create-purchase-request.req.dto';
 import { GetPurchaseRequestsReqDto } from './dto/get-purchase-requests.req.dto';
 import { PagePurchaseRequestResDto } from './dto/page-purchase-request.res.dto';
 import { PurchaseRequestResDto } from './dto/purchase-request.res.dto';
@@ -53,6 +54,38 @@ export class PurchaseRequestsController {
     @UUIDParam('purchaseRequestId') purchaseRequestId: string,
   ): Promise<PurchaseRequestResDto> {
     return this.purchaseRequestsService.getPurchaseRequest(purchaseRequestId);
+  }
+
+  @Post()
+  @Permissions('purchase-requests:create')
+  @ApiAuth({
+    summary:
+      'Lập đề xuất mua hàng tay — luôn DRAFT, không gắn LSX/Job, mọi dòng phải là vật tư RM',
+    statusCode: HttpStatus.NO_CONTENT,
+  })
+  createPurchaseRequest(
+    @Body() reqDto: CreatePurchaseRequestReqDto,
+    @CurrentUser() payload: JwtPayloadType,
+  ): Promise<void> {
+    return this.purchaseRequestsService.createPurchaseRequest(
+      reqDto,
+      payload.userId,
+    );
+  }
+
+  @Delete(':purchaseRequestId')
+  @Permissions('purchase-requests:delete')
+  @ApiAuth({
+    summary:
+      'Xoá cả đề xuất — chỉ khi DRAFT/REJECTED, xoá luôn mọi dòng vật tư, không khôi phục được',
+    statusCode: HttpStatus.NO_CONTENT,
+  })
+  deletePurchaseRequest(
+    @UUIDParam('purchaseRequestId') purchaseRequestId: string,
+  ): Promise<void> {
+    return this.purchaseRequestsService.deletePurchaseRequest(
+      purchaseRequestId,
+    );
   }
 
   @Post(':purchaseRequestId/send')

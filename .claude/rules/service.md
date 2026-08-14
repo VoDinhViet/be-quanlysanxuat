@@ -26,7 +26,7 @@ Nơi mọi business logic sống. Reference: `src/api/users/users.service.ts`.
 ## Responses
 
 - MUST map to a response DTO with `plainToInstance(XResDto, entity, { excludeExtraneousValues: true })`. MUST NOT return a raw Drizzle row from a service method a controller exposes.
-- MUST re-fetch by id after create/update and map that. MUST NOT map the raw `.returning()` result.
+- MUST NOT map the raw `.returning()` result. A create/update that returns a body MUST re-fetch by id and map that; a create/update MAY instead return `void` with `statusCode: HttpStatus.NO_CONTENT` on the controller and skip the re-fetch entirely. Both are live in this repo — MUST NOT mix the two within one module.
 - MUST return lists as `new OffsetPaginatedDto(items, new OffsetPaginationDto(total, reqDto))`, fetching page + count together via `Promise.all`.
 
 ## Checks & errors

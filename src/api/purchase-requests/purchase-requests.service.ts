@@ -9,6 +9,8 @@ import {
   exists,
   getTableColumns,
   gte,
+  inArray,
+  isNull,
   lt,
   or,
   sql,
@@ -21,8 +23,10 @@ import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
+  departments,
   files,
   inventoryReceipts,
+  ItemType,
   items,
   PurchaseRequestStatus,
   purchaseRequestItems,
@@ -35,6 +39,8 @@ import {
   itemStockColumns,
   jobMaterialDemandSubquery,
 } from '../inventory/item-stock.query';
+import { CreatePurchaseRequestItemReqDto } from './dto/create-purchase-request-item.req.dto';
+import { CreatePurchaseRequestReqDto } from './dto/create-purchase-request.req.dto';
 import { GetPurchaseRequestsReqDto } from './dto/get-purchase-requests.req.dto';
 import { PagePurchaseRequestResDto } from './dto/page-purchase-request.res.dto';
 import { PurchaseRequestResDto } from './dto/purchase-request.res.dto';
@@ -92,13 +98,13 @@ export class PurchaseRequestsService {
       reqDto.neededDate
         ? eq(purchaseRequests.neededDate, reqDto.neededDate)
         : undefined,
-      reqDto.fromDate
-        ? gte(purchaseRequests.createdAt, reqDto.fromDate)
+      reqDto.createdDateFrom
+        ? gte(purchaseRequests.createdAt, reqDto.createdDateFrom)
         : undefined,
-      reqDto.toDate
+      reqDto.createdDateTo
         ? lt(
             purchaseRequests.createdAt,
-            new Date(reqDto.toDate.getTime() + 24 * 60 * 60 * 1000),
+            new Date(reqDto.createdDateTo.getTime() + 24 * 60 * 60 * 1000),
           )
         : undefined,
     );
@@ -238,8 +244,8 @@ export class PurchaseRequestsService {
     });
   }
 
-  /** Phải còn ≥ 1 dòng sau khi xoá (`E115`) — module chưa có route xoá cả phiếu, xoá hết sẽ để lại
-   * một đề xuất rỗng sống vĩnh viễn. */
+  /** Phải còn ≥ 1 dòng sau khi xoá (`E115`): phiếu 0 dòng vẫn `send`/`approve` được vì không route
+   * nào đếm dòng. Bỏ hẳn phiếu thì dùng `deletePurchaseRequest`. */
   async deletePurchaseRequestItem(
     purchaseRequestId: string,
     purchaseRequestItemId: string,
@@ -272,6 +278,17 @@ export class PurchaseRequestsService {
         .delete(purchaseRequestItems)
         .where(eq(purchaseRequestItems.id, purchaseRequestItemId));
     });
+  }
+
+  /** Một `delete` chạm 3 bảng: dòng vật tư theo `ON DELETE CASCADE`, phiếu nhập kho chỉ bị bỏ
+   * trống `purchaseRequestId` (`set null`) — mất trace, có chủ ý. Xem
+   * `docs/domains/purchase-requests.md`. */
+  async deletePurchaseRequest(purchaseRequestId: string): Promise<void> {
+    await this.ensurePurchaseRequestDeletable(purchaseRequestId);
+
+    await this.db
+      .delete(purchaseRequests)
+      .where(eq(purchaseRequests.id, purchaseRequestId));
   }
 
   async sendPurchaseRequest(
@@ -378,6 +395,29 @@ export class PurchaseRequestsService {
     return purchaseRequest;
   }
 
+  /** Sibling read-only của `ensurePurchaseRequestEditable`: cùng cửa `DRAFT`/`REJECTED` nhưng cố
+   * ý không mở `REJECTED → DRAFT` vì phiếu bị xoá ngay sau đó. Read-only nên
+   * `deletePurchaseRequest` không cần transaction. */
+  private async ensurePurchaseRequestDeletable(purchaseRequestId: string) {
+    const purchaseRequest = await this.db.query.purchaseRequests.findFirst({
+      columns: { id: true, status: true },
+      where: eq(purchaseRequests.id, purchaseRequestId),
+    });
+
+    if (!purchaseRequest) {
+      throw new AppException(ErrorCode.E112, HttpStatus.NOT_FOUND);
+    }
+
+    if (
+      purchaseRequest.status !== PurchaseRequestStatus.DRAFT &&
+      purchaseRequest.status !== PurchaseRequestStatus.REJECTED
+    ) {
+      throw new AppException(ErrorCode.E114, HttpStatus.CONFLICT);
+    }
+
+    return purchaseRequest;
+  }
+
   /** `approve`/`reject` chỉ hợp lệ từ `PENDING_APPROVAL` — sibling của `ensurePurchaseRequestDraft`. */
   private async ensurePendingApproval(purchaseRequestId: string) {
     const purchaseRequest = await this.db.query.purchaseRequests.findFirst({
@@ -396,11 +436,80 @@ export class PurchaseRequestsService {
     return purchaseRequest;
   }
 
-  /** Ghi header + dòng vật tư của một đề xuất trong transaction của nơi gọi — đường sinh **tự
-   * động** duy nhất vào `purchase_requests`/`purchase_request_items`, gọi từ
-   * `ProductionJobsService.startJob` khi Job thiếu vật tư. `status` để mặc định `DRAFT` — chưa có
-   * route duyệt (`docs/domains/purchase-requests.md`). Sửa `quantity`/`note` từng dòng sau khi
-   * sinh qua `updatePurchaseRequestItem`. */
+  /** Đường sinh **tay** — luôn `DRAFT`, luôn là đề xuất chung (`productionOrderId`/
+   * `productionJobId` để `NULL`); muốn gắn LSX/Job thì chỉ có `createShortageRequest`. */
+  async createPurchaseRequest(
+    reqDto: CreatePurchaseRequestReqDto,
+    userId: string,
+  ): Promise<void> {
+    const { items: lineItems, ...purchaseRequestFields } = reqDto;
+
+    await Promise.all([
+      this.ensureDepartmentExists(purchaseRequestFields.departmentId),
+      this.ensureRequestItemsValid(lineItems),
+    ]);
+
+    await this.db.transaction(async (tx) => {
+      const code = await this.generatePurchaseRequestCode(tx);
+
+      const [purchaseRequest] = await tx
+        .insert(purchaseRequests)
+        .values({ ...purchaseRequestFields, code, createdBy: userId })
+        .returning({ id: purchaseRequests.id });
+
+      await tx.insert(purchaseRequestItems).values(
+        lineItems.map((item) => ({
+          ...item,
+          purchaseRequestId: purchaseRequest.id,
+        })),
+      );
+    });
+  }
+
+  private async ensureDepartmentExists(departmentId: string): Promise<void> {
+    const department = await this.db.query.departments.findFirst({
+      columns: { id: true },
+      where: eq(departments.id, departmentId),
+    });
+
+    if (!department) {
+      throw new AppException(ErrorCode.E014, HttpStatus.NOT_FOUND);
+    }
+  }
+
+  /** Ngoài "tồn tại" còn chốt ba bất biến chỉ đường tay mới phá được: không rỗng (`E146`), không
+   * trùng `itemId` trong cùng payload (`E147`) và mọi dòng phải là RM (`E148`) — đường tự động lấy
+   * dòng từ `production_job_materials` nên vốn đã đúng cả ba. */
+  private async ensureRequestItemsValid(
+    lineItems: CreatePurchaseRequestItemReqDto[],
+  ): Promise<void> {
+    if (!lineItems.length) {
+      throw new AppException(ErrorCode.E146, HttpStatus.BAD_REQUEST);
+    }
+
+    const itemIds = lineItems.map((item) => item.itemId);
+
+    if (new Set(itemIds).size !== itemIds.length) {
+      throw new AppException(ErrorCode.E147, HttpStatus.CONFLICT);
+    }
+
+    const found = await this.db.query.items.findMany({
+      columns: { id: true, type: true },
+      where: and(inArray(items.id, itemIds), isNull(items.deletedAt)),
+    });
+
+    if (found.length !== itemIds.length) {
+      throw new AppException(ErrorCode.E007, HttpStatus.NOT_FOUND);
+    }
+
+    if (found.some((item) => item.type !== ItemType.RM)) {
+      throw new AppException(ErrorCode.E148, HttpStatus.BAD_REQUEST);
+    }
+  }
+
+  /** Đường sinh **tự động** duy nhất — gọi từ `ProductionJobsService.startJob` khi Job thiếu vật
+   * tư, ghi header + dòng trong transaction của nơi gọi. Khác `createPurchaseRequest` (đường tay)
+   * ở chỗ luôn gắn `productionOrderId`/`productionJobId` và `quantity` là phần thiếu đã chốt. */
   async createShortageRequest(
     tx: DbTransaction,
     input: CreateShortageRequestInput,
@@ -421,15 +530,21 @@ export class PurchaseRequestsService {
     );
   }
 
-  /** Khuôn `InventoryReceiptsService.generateReceiptCode` — `COUNT(*) + 1` pad 5 chữ số, không
-   * tách theo năm; unique constraint trên `code` là chốt chặn thật, cùng giới hạn TOCTOU đã chấp
-   * nhận chung trong repo. */
+  /** Số thứ tự lấy từ `MAX` mã đang có, không phải `count(*)`: có route xoá phiếu nên count tụt
+   * lại sau mỗi lần xoá và sẽ cấp lại một mã đã tồn tại. Khuôn `ItemsService.generateItemCode`. */
   private async generatePurchaseRequestCode(
     tx: DbTransaction,
   ): Promise<string> {
-    const [totalRows] = await tx
-      .select({ total: count() })
+    const [maxRow] = await tx
+      .select({
+        maxNumber:
+          sql<number>`coalesce(max(substring(${purchaseRequests.code} from ${'^PR-([0-9]+)$'})::int), 0)`.mapWith(
+            Number,
+          ),
+      })
       .from(purchaseRequests);
-    return `PR-${String((totalRows?.total ?? 0) + 1).padStart(5, '0')}`;
+    const nextNumber = String((maxRow?.maxNumber ?? 0) + 1).padStart(5, '0');
+
+    return `PR-${nextNumber}`;
   }
 }

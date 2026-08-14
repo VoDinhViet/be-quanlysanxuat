@@ -11,16 +11,15 @@ import {
 
 import { items } from '../items/items';
 import { purchaseOrderItems } from '../purchasing/purchase-order-items';
-import { purchaseQuotationItems } from '../purchasing/purchase-quotation-items';
+import { purchaseQuotationItemAllocations } from '../purchasing/purchase-quotation-item-allocations';
 import { users } from '../identity-access/users';
 import { purchaseRequests } from './purchase-requests';
 
 /**
- * Một dòng vật tư của đề xuất mua hàng. Chưa có route ghi trực tiếp — đọc qua
- * `GET /purchase-requests` (lọc theo tên/mã vật tư trong dòng) và
- * `GET /purchase-requests/:purchaseRequestId` (trả nguyên dòng, kèm tồn hiện tại). Sổ cái mua hàng
- * (`docs/domains/purchasing.md`) đọc mọi dòng của phiếu `APPROVED`, hủy tay qua 3 cột
- * `cancelled*` bên dưới — chỉ khi dòng chưa có đơn mua sống.
+ * Một dòng vật tư của đề xuất mua hàng — luôn `type = RM`, sửa/xoá qua
+ * `PATCH`/`DELETE /purchase-requests/:purchaseRequestId/items/:id`, xem
+ * `docs/domains/purchase-requests.md`. Ba cột `cancelled*` chưa có nơi nào ghi; chỉ
+ * `PurchaseQuotationsService.validateAllocations` đọc `cancelled_at`.
  */
 export const purchaseRequestItems = pgTable(
   'purchase_request_items',
@@ -68,7 +67,7 @@ export const purchaseRequestItemsRelations = relations(
       fields: [purchaseRequestItems.cancelledBy],
       references: [users.id],
     }),
-    quotationItems: many(purchaseQuotationItems),
+    quotationAllocations: many(purchaseQuotationItemAllocations),
     orderItems: many(purchaseOrderItems),
   }),
 );

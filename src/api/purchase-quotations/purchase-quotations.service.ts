@@ -26,6 +26,7 @@ import {
   PurchaseRequestStatus,
   purchaseRequestItems,
   purchaseRequests,
+  purchaseQuotationItemAllocations,
   purchaseQuotationItems,
   purchaseQuotationItemSuppliers,
   purchaseQuotations,
@@ -72,27 +73,40 @@ export class PurchaseQuotationsService {
             this.db
               .select({ one: sql`1` })
               .from(purchaseQuotationItems)
-              .innerJoin(
-                purchaseRequestItems,
-                eq(
-                  purchaseRequestItems.id,
-                  purchaseQuotationItems.purchaseRequestItemId,
-                ),
-              )
-              .innerJoin(items, eq(items.id, purchaseRequestItems.itemId))
+              .innerJoin(items, eq(items.id, purchaseQuotationItems.itemId))
               .where(
                 and(
                   eq(purchaseQuotationItems.quotationId, purchaseQuotations.id),
-                  reqDto.purchaseRequestId
-                    ? eq(
-                        purchaseRequestItems.purchaseRequestId,
-                        reqDto.purchaseRequestId,
-                      )
-                    : undefined,
                   materialKeyword
                     ? or(
                         unaccentILike(items.name, materialKeyword),
                         unaccentILike(items.code, materialKeyword),
+                      )
+                    : undefined,
+                  reqDto.purchaseRequestId
+                    ? exists(
+                        this.db
+                          .select({ one: sql`1` })
+                          .from(purchaseQuotationItemAllocations)
+                          .innerJoin(
+                            purchaseRequestItems,
+                            eq(
+                              purchaseRequestItems.id,
+                              purchaseQuotationItemAllocations.purchaseRequestItemId,
+                            ),
+                          )
+                          .where(
+                            and(
+                              eq(
+                                purchaseQuotationItemAllocations.quotationItemId,
+                                purchaseQuotationItems.id,
+                              ),
+                              eq(
+                                purchaseRequestItems.purchaseRequestId,
+                                reqDto.purchaseRequestId,
+                              ),
+                            ),
+                          ),
                       )
                     : undefined,
                   reqDto.supplierId
@@ -186,8 +200,13 @@ export class PurchaseQuotationsService {
         creatorBy: true,
         items: {
           with: {
-            purchaseRequestItem: {
-              with: { purchaseRequest: true, item: { with: { unit: true } } },
+            item: { with: { unit: true } },
+            allocations: {
+              with: {
+                purchaseRequestItem: {
+                  with: { purchaseRequest: true, item: true },
+                },
+              },
             },
             suppliers: { with: { supplier: true, selectorBy: true } },
           },
@@ -199,16 +218,12 @@ export class PurchaseQuotationsService {
       throw new AppException(ErrorCode.E117, HttpStatus.NOT_FOUND);
     }
 
-    // Bốn tầng `with` lồng nhau (items -> purchaseRequestItem -> {purchaseRequest, item -> unit},
-    // items -> suppliers -> {supplier, selectorBy}) vượt độ sâu suy luận type của drizzle — ép kiểu
-    // tường minh để .map()/.flatMap() không rơi về `any`, dữ liệu thực tế lúc chạy không đổi.
+    // Năm tầng `with` lồng nhau (items -> allocations -> purchaseRequestItem -> {purchaseRequest,
+    // item}, items -> suppliers -> {supplier, selectorBy}) vượt độ sâu suy luận type của drizzle —
+    // ép kiểu tường minh để .map()/.flatMap() không rơi về `any`, dữ liệu thực tế lúc chạy không đổi.
     const quotationItems = quotation.items as QuotationDetailItem[];
 
-    const itemIds = [
-      ...new Set(
-        quotationItems.map((item) => item.purchaseRequestItem.item.id),
-      ),
-    ];
+    const itemIds = [...new Set(quotationItems.map((item) => item.item.id))];
     const supplierIds = [
       ...new Set(
         quotationItems.flatMap((item) =>
@@ -230,12 +245,15 @@ export class PurchaseQuotationsService {
 
     const quotationItemsWithLastPurchase = quotationItems.map((item) => ({
       ...item,
+      quantity: item.allocations.reduce(
+        (sum, allocation) => sum + allocation.quantity,
+        0,
+      ),
       suppliers: item.suppliers.map((supplier) => ({
         ...supplier,
         lastPurchase:
-          lastPurchaseByKey.get(
-            `${item.purchaseRequestItem.item.id}:${supplier.supplierId}`,
-          ) ?? null,
+          lastPurchaseByKey.get(`${item.item.id}:${supplier.supplierId}`) ??
+          null,
       })),
     }));
 
@@ -254,7 +272,7 @@ export class PurchaseQuotationsService {
     await this.ensureSuppliersExist(
       reqDto.items.flatMap((item) => item.suppliers.map((s) => s.supplierId)),
     );
-    await this.validateRequestItems(reqDto.items);
+    await this.validateAllocations(reqDto.items);
 
     const { items: quotationItems, ...quotationFields } = reqDto;
 
@@ -265,7 +283,7 @@ export class PurchaseQuotationsService {
         .values({ ...quotationFields, code, createdBy: userId })
         .returning({ id: purchaseQuotations.id });
 
-      await this.insertQuotationItems(tx, quotation.id, quotationItems);
+      await this.createQuotationItems(tx, quotation.id, quotationItems);
     });
   }
 
@@ -281,7 +299,7 @@ export class PurchaseQuotationsService {
     await this.ensureSuppliersExist(
       reqDto.items.flatMap((item) => item.suppliers.map((s) => s.supplierId)),
     );
-    await this.validateRequestItems(reqDto.items);
+    await this.validateAllocations(reqDto.items);
 
     const { items: quotationItems, ...quotationFields } = reqDto;
 
@@ -290,7 +308,7 @@ export class PurchaseQuotationsService {
         .delete(purchaseQuotationItems)
         .where(eq(purchaseQuotationItems.quotationId, quotationId));
 
-      await this.insertQuotationItems(tx, quotationId, quotationItems);
+      await this.createQuotationItems(tx, quotationId, quotationItems);
 
       await tx
         .update(purchaseQuotations)
@@ -356,9 +374,12 @@ export class PurchaseQuotationsService {
     );
 
     const items = await this.db.query.purchaseQuotationItems.findMany({
-      columns: { id: true, purchaseRequestItemId: true, quantity: true },
+      columns: { id: true },
       where: eq(purchaseQuotationItems.quotationId, quotationId),
       with: {
+        allocations: {
+          columns: { purchaseRequestItemId: true, quantity: true },
+        },
         suppliers: {
           columns: {
             id: true,
@@ -385,13 +406,15 @@ export class PurchaseQuotationsService {
         selection.quotationItemSupplierId,
       )!;
       const lines = linesBySupplierId.get(selectedSupplierRow.supplierId) ?? [];
-      lines.push({
-        purchaseRequestItemId: item.purchaseRequestItemId,
-        quotationItemSupplierId: selectedSupplierRow.id,
-        quantity: item.quantity,
-        unitPrice: selectedSupplierRow.unitPrice,
-        leadTimeDays: selectedSupplierRow.leadTimeDays,
-      });
+      for (const allocation of item.allocations) {
+        lines.push({
+          purchaseRequestItemId: allocation.purchaseRequestItemId,
+          quotationItemSupplierId: selectedSupplierRow.id,
+          quantity: allocation.quantity,
+          unitPrice: selectedSupplierRow.unitPrice,
+          leadTimeDays: selectedSupplierRow.leadTimeDays,
+        });
+      }
       linesBySupplierId.set(selectedSupplierRow.supplierId, lines);
     }
 
@@ -491,22 +514,28 @@ export class PurchaseQuotationsService {
     });
   }
 
-  private async insertQuotationItems(
+  private async createQuotationItems(
     tx: DbTransaction,
     quotationId: string,
     itemsReq: CreateQuotationItemReqDto[],
   ): Promise<void> {
-    const itemRows = itemsReq.map(
-      ({ suppliers: _suppliers, ...itemFields }) => ({
-        ...itemFields,
-        id: crypto.randomUUID(),
-        quotationId,
-      }),
-    );
+    if (!itemsReq.length) return;
 
-    if (itemRows.length) {
-      await tx.insert(purchaseQuotationItems).values(itemRows);
-    }
+    const itemRows = itemsReq.map((item) => ({
+      id: crypto.randomUUID(),
+      quotationId,
+      itemId: item.itemId,
+    }));
+    await tx.insert(purchaseQuotationItems).values(itemRows);
+
+    await tx.insert(purchaseQuotationItemAllocations).values(
+      itemsReq.flatMap((item, index) =>
+        item.allocations.map((allocation) => ({
+          ...allocation,
+          quotationItemId: itemRows[index].id,
+        })),
+      ),
+    );
 
     const supplierRows = itemsReq.flatMap((item, index) =>
       item.suppliers.map((supplier) => ({
@@ -572,20 +601,29 @@ export class PurchaseQuotationsService {
     }
   }
 
-  /** Mỗi dòng phải trỏ đúng một dòng ĐXMH `APPROVED` chưa hủy tay, và không trùng dòng nào trong
-   * cùng payload — trùng sẽ nhân đôi `quotedQuantity` của dòng đó trên sổ cái mua hàng. */
-  private async validateRequestItems(
+  /** Mỗi vật tư phải có ≥1 phân bổ (E150); không dòng ĐXMH nào lặp trong toàn payload kể cả khác vật
+   * tư (E128 — lặp sẽ nhân đôi quotedQuantity ở sổ cái); mọi dòng ĐXMH phải thuộc phiếu APPROVED và
+   * chưa hủy tay (E125), và đúng vật tư của dòng báo giá chứa nó (E149). */
+  private async validateAllocations(
     itemsReq: CreateQuotationItemReqDto[],
   ): Promise<void> {
-    const requestItemIds = itemsReq.map((item) => item.purchaseRequestItemId);
-    const uniqueIds = [...new Set(requestItemIds)];
+    if (itemsReq.some((item) => !item.allocations.length)) {
+      throw new AppException(ErrorCode.E150, HttpStatus.BAD_REQUEST);
+    }
 
-    if (uniqueIds.length !== requestItemIds.length) {
+    const allRequestItemIds = itemsReq.flatMap((item) =>
+      item.allocations.map((allocation) => allocation.purchaseRequestItemId),
+    );
+    const uniqueRequestItemIds = [...new Set(allRequestItemIds)];
+    if (uniqueRequestItemIds.length !== allRequestItemIds.length) {
       throw new AppException(ErrorCode.E128, HttpStatus.CONFLICT);
     }
 
-    const [{ total }] = await this.db
-      .select({ total: count() })
+    const requestItemRows = await this.db
+      .select({
+        id: purchaseRequestItems.id,
+        itemId: purchaseRequestItems.itemId,
+      })
       .from(purchaseRequestItems)
       .innerJoin(
         purchaseRequests,
@@ -593,14 +631,28 @@ export class PurchaseQuotationsService {
       )
       .where(
         and(
-          inArray(purchaseRequestItems.id, uniqueIds),
+          inArray(purchaseRequestItems.id, uniqueRequestItemIds),
           eq(purchaseRequests.status, PurchaseRequestStatus.APPROVED),
           isNull(purchaseRequestItems.cancelledAt),
         ),
       );
 
-    if (total !== uniqueIds.length) {
+    if (requestItemRows.length !== uniqueRequestItemIds.length) {
       throw new AppException(ErrorCode.E125, HttpStatus.CONFLICT);
+    }
+
+    const itemIdByRequestItemId = new Map(
+      requestItemRows.map((row) => [row.id, row.itemId]),
+    );
+    const hasItemMismatch = itemsReq.some((item) =>
+      item.allocations.some(
+        (allocation) =>
+          itemIdByRequestItemId.get(allocation.purchaseRequestItemId) !==
+          item.itemId,
+      ),
+    );
+    if (hasItemMismatch) {
+      throw new AppException(ErrorCode.E149, HttpStatus.CONFLICT);
     }
   }
 

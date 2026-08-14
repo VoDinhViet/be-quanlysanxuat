@@ -32,7 +32,11 @@ Lập/sửa phiếu — chạy **trước** transaction:
 2. Mọi dòng có `itemId` trỏ tới một item còn sống (`E100`).
 3. Tham chiếu tuỳ chọn (`supplierId`/`purchaseRequestId`/`productionOrderId`/`productionJobId`/
    `departmentId`/`requestedBy`/`orderItemId`) nếu có gửi phải tồn tại (`E107`).
-4. **Không kiểm** loại kho khớp loại hàng — cố ý, xem `docs/domains/inventory.md`.
+4. Riêng phiếu nhập: `purchaseOrderId` (nếu gửi) phải tồn tại (`E121`) và đang `ORDERED` (`E145`);
+   dòng có `purchaseOrderItemId` phải tồn tại (`E123`) và thuộc đúng `purchaseOrderId` đó (`E127`) —
+   chỉ validate mức này, không đối chiếu NCC/vật tư hay chặn nhận vượt SL đặt
+   (`docs/domains/purchasing.md`).
+5. **Không kiểm** loại kho khớp loại hàng — cố ý, xem `docs/domains/inventory.md`.
 
 `PATCH`/`DELETE`/`post`/`cancel` đều mở đầu bằng kiểm phiếu tồn tại + đúng trạng thái cho phép
 (`E096`/`E098`).
@@ -53,24 +57,30 @@ Không đụng `inventory_transactions`/`inventory_balances` ở bước này.
 
 ### `post`
 
-1. Đọc phiếu, kiểm `status = DRAFT` (`E098` nếu không).
-2. **Transaction**:
-   - Với mỗi dòng phiếu: `SELECT … FOR UPDATE` dòng `inventory_balances` khớp
-     `(warehouseId, itemId)` (tạo dòng mới nếu chưa có) → cộng/trừ theo dấu bút toán
-     tương ứng loại phiếu (xem bảng ánh xạ ở `docs/domains/inventory.md`) → nếu kết quả `< 0`, ném
-     `E106` và rollback toàn bộ phiếu → `INSERT`/`UPDATE` balance → `INSERT` một dòng
-     `inventory_transactions`.
-   - Cập nhật phiếu: `status = POSTED`, `postedBy`, `postedAt`.
-3. `204`, không trả nội dung.
+**Transaction** — khoá dòng phiếu bằng `SELECT … FOR UPDATE` trước rồi mới đọc/kiểm trạng thái, để
+hai lệnh `post` gọi trùng lên cùng phiếu không cùng lọt qua và cộng tồn hai lần:
+
+1. Khoá + đọc phiếu, kiểm `status = DRAFT` (`E098` nếu không).
+2. Với mỗi dòng phiếu: `SELECT … FOR UPDATE` dòng `inventory_balances` khớp
+   `(warehouseId, itemId)` (tạo dòng mới nếu chưa có) → cộng/trừ theo dấu bút toán
+   tương ứng loại phiếu (xem bảng ánh xạ ở `docs/domains/inventory.md`) → nếu kết quả `< 0`, ném
+   `E106` và rollback toàn bộ phiếu → `INSERT`/`UPDATE` balance → `INSERT` một dòng
+   `inventory_transactions`.
+3. Cập nhật phiếu: `status = POSTED`, `postedBy`, `postedAt`.
+4. `204`, không trả nội dung.
 
 ### `cancel`
 
-- Từ `DRAFT`: một `UPDATE` đổi `status = CANCELLED`. Không sinh bút toán.
-- Từ `POSTED`: **Transaction** — đọc lại mọi bút toán đã sinh khi `post` (theo
-  `referenceType`+`referenceId`), ghi bút toán **đảo dấu** cho từng dòng (append-only, không xoá
-  bút toán cũ), cộng dồn ngược vào balance (khoá dòng bằng `FOR UPDATE` như lúc `post`), rồi đổi
-  `status = CANCELLED`.
-- Không có đường `CANCELLED → *`.
+**Transaction** — cùng cách khoá dòng phiếu như `post`:
+
+1. Khoá + đọc phiếu, kiểm chưa `CANCELLED` (`E098` nếu đã huỷ).
+2. Nếu đang `POSTED`: đọc lại mọi bút toán đã sinh khi `post` (theo `referenceType`+`referenceId`),
+   ghi bút toán **đảo dấu** cho từng dòng (append-only, không xoá bút toán cũ), cộng dồn ngược vào
+   balance (khoá dòng bằng `FOR UPDATE` như lúc `post`). Nếu đang `DRAFT`: bỏ qua bước này — chưa
+   từng post thì chưa có gì để đảo.
+3. Đổi `status = CANCELLED`.
+
+Không có đường `CANCELLED → *`.
 
 ## State changes
 
@@ -99,10 +109,12 @@ Hai điều **không** xảy ra dù trực giác nghiệp vụ mong đợi:
 
 ## Transaction boundary
 
-`post`/`cancel` bao đúng: cập nhật `inventory_balances` (khoá `FOR UPDATE`) + ghi
-`inventory_transactions` + đổi `status` phiếu. Khác thiết kế cũ, **kiểm tồn âm giờ chạy trong
-transaction**, khoá đúng dòng balance — hai phiếu xuất `post` song song cùng một mặt hàng không còn
-race; đây là giới hạn đã biết của thiết kế cũ, nay được xử lý (xem
+`post`/`cancel` bao đúng: khoá dòng phiếu (`FOR UPDATE`) + cập nhật `inventory_balances` (khoá
+`FOR UPDATE`) + ghi `inventory_transactions` + đổi `status` phiếu — toàn bộ trong một transaction,
+kể cả bước đọc/kiểm trạng thái phiếu (khác thiết kế cũ đọc trạng thái ngoài transaction). Khoá dòng
+phiếu chặn hai lệnh `post` (hoặc hai lệnh `cancel`) gọi trùng lên cùng phiếu cộng/trừ tồn hai lần.
+Khoá dòng balance tương tự chặn hai phiếu khác nhau `post` song song cùng một mặt hàng — cả hai giới
+hạn race đều là giới hạn đã biết của thiết kế cũ, nay được xử lý (xem
 `docs/decisions/stored-inventory-balances.md`).
 
 Sinh mã (`PNK`/`PXK`) vẫn đếm-rồi-cộng-1 lúc lập phiếu, ngoài transaction `post` — unique constraint
@@ -117,9 +129,14 @@ trên `code` là chốt chặn thật, cùng giới hạn TOCTOU đã chấp nh�
 | Kho không `ACTIVE` | `E094` | 400 |
 | Mặt hàng trên dòng không tồn tại | `E100` | 404 |
 | Tham chiếu tuỳ chọn không tồn tại | `E107` | 400 |
+| (Phiếu nhập) `purchaseOrderId` không tồn tại | `E121` | 404 |
+| (Phiếu nhập) `purchaseOrderId` không phải `ORDERED` | `E145` | 400 |
+| (Phiếu nhập) `purchaseOrderItemId` không tồn tại | `E123` | 404 |
+| (Phiếu nhập) `purchaseOrderItemId` không thuộc `purchaseOrderId` gửi kèm | `E127` | 400 |
 | `PATCH`/`DELETE`/`post` gọi trên phiếu không còn `DRAFT` | `E098` | 409 |
 | `cancel` gọi trên phiếu đã `CANCELLED` | `E098` | 409 |
 | `post` làm tồn một mặt hàng xuống âm | `E106` | 409 |
+| `cancel` một phiếu `POSTED` mà đảo bút toán làm tồn xuống âm (hàng đã bị tiêu đi sau khi `post`) | `E106` | 409 |
 
 ## Business rules
 

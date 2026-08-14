@@ -24,9 +24,11 @@ nhận đặt hàng. `status` hiện tại là
 **bản rút gọn 4 giá trị** của riêng API này (`WAITING_TO_PURCHASE`/`QUOTING`/`ORDERED`/`COMPLETED`,
 xem `PurchaseLedgerService`) — **khác** bộ 7 giá trị đầy đủ mô tả ở "Bảy trạng thái" dưới đây, vẫn là
 **thiết kế đích** cho khi RFQ/PO đủ route (không dùng cho response hiện tại). `COMPLETED` cần
-`receivedQuantity` (nối qua `inventory_receipt_items.purchaseOrderItemId`, phiếu `POSTED`) — cột đã
-có nhưng `inventory-receipts` chưa route nào ghi, nên `COMPLETED` chưa thể xuất hiện thật. Không trả
-tồn kho (`onHand`/`bomDemand`/`available`/`fromStock`) hay `remainingQuantity`/`pendingPurchaseSince`.
+`receivedQuantity` (nối qua `inventory_receipt_items.purchaseOrderItemId`, phiếu `POSTED`) —
+`inventory-receipts` đã có route ghi cột này khi tạo/sửa phiếu (`purchaseOrderId`/
+`purchaseOrderItemId`, validate PO phải `ORDERED`), nên `COMPLETED` xuất hiện thật khi đã nhập đủ.
+Không trả tồn kho (`onHand`/`bomDemand`/`available`/`fromStock`) hay
+`remainingQuantity`/`pendingPurchaseSince`.
 
 **Cảnh báo (vd "Chưa tạo PO"/"Cần xử lý gấp") không do BE tính** — cùng nguyên tắc với highlight
 vàng/đỏ ở thiết kế đích: BE chỉ trả số thô (`orderedQuantity`, `neededDate`), FE tự so ngày lúc
@@ -38,22 +40,34 @@ response.
 **Bốn chứng từ, bốn vai trò khác nhau:**
 
 ```
-purchase_requests / purchase_request_items      — đề xuất đã duyệt (nguồn của nhu cầu, đọc-only ở đây)
-purchase_quotations / purchase_quotation_items   — báo giá (RFQ), mỗi dòng là MỘT vật tư
-purchase_quotation_item_suppliers                — giá của một NCC hỏi giá cho một dòng vật tư
-purchase_orders / purchase_order_items           — đơn mua, đặt với MỘT NCC, có thể không qua báo giá
+purchase_requests / purchase_request_items       — đề xuất đã duyệt (nguồn của nhu cầu, đọc-only ở đây)
+purchase_quotations / purchase_quotation_items    — báo giá (RFQ), mỗi dòng là MỘT vật tư (itemId)
+purchase_quotation_item_allocations               — phân bổ SL báo giá về từng dòng ĐXMH nguồn đã gộp
+purchase_quotation_item_suppliers                 — giá của một NCC hỏi giá cho một dòng vật tư
+purchase_orders / purchase_order_items            — đơn mua, đặt với MỘT NCC, có thể không qua báo giá
 ```
 
 Một báo giá/đơn mua gom nhiều dòng đề xuất **của nhiều đề xuất khác nhau** — không có FK
 header-to-header nào giữa `purchase_quotations`/`purchase_orders` và `purchase_requests`, chỉ nối ở
-mức dòng (`purchase_request_item_id`).
+mức dòng. Ở báo giá, mối nối đó đi qua `purchase_quotation_item_allocations` (không phải FK trực
+tiếp trên `purchase_quotation_items` — xem ngay dưới); ở đơn mua vẫn là FK trực tiếp
+`purchase_order_items.purchase_request_item_id`, không đổi.
 
-**`quantity` sống đúng một lần ở tầng vật tư (`purchase_quotation_items`), không phải ở tầng NCC.**
-Đây không phải lựa chọn thẩm mỹ — sổ cái mua hàng (`quotedQuantitySubquery`) `SUM` thẳng cột này theo
-`purchase_request_item_id`. Nếu SL nằm ở tầng NCC (một dòng/NCC như thiết kế cũ), một vật tư được hỏi
-3 NCC sẽ làm `quotedQuantity` nhân ba. Giá/leadtime/ghi chú/NCC nằm ở bảng con
-`purchase_quotation_item_suppliers` — một dòng/một NCC/một vật tư, số NCC không giới hạn, `quantity`
-của vật tư không đổi theo số đó.
+**Một dòng báo giá (`purchase_quotation_items`) là một vật tư, có thể gộp nhiều dòng ĐXMH nguồn cùng
+vật tư đó** (kể cả từ nhiều phiếu đề xuất khác nhau) — DB chặn tạo hai dòng cùng `(quotationId,
+itemId)` trong một báo giá (`uq_purchase_quotation_items_quotation_item`), buộc payload phải gộp
+tường minh thay vì tạo trùng. `purchase_quotation_items` bản thân **không giữ SL** — SL báo giá của
+một vật tư là `SUM(purchase_quotation_item_allocations.quantity)` của các phân bổ thuộc nó, tính lúc
+đọc, để SL chỉ sống một chỗ. Không phải lựa chọn thẩm mỹ: sổ cái mua hàng
+(`quotedQuantitySubquery`) `SUM` thẳng cột `quantity` của bảng phân bổ theo `purchase_request_item_id`
+— nếu SL nằm ở tầng NCC (một dòng/NCC như thiết kế cũ hơn), một vật tư được hỏi 3 NCC sẽ làm
+`quotedQuantity` nhân ba. Giá/leadtime/ghi chú/NCC nằm ở bảng con `purchase_quotation_item_suppliers`
+— một dòng/một NCC/một vật tư, số NCC không giới hạn, SL của vật tư không đổi theo số đó.
+
+Duyệt báo giá (`approveQuotation`) fan-out theo **phân bổ**, không theo dòng vật tư: một dòng báo
+giá gộp N phân bổ (N dòng ĐXMH nguồn) sinh đúng N dòng `purchase_order_items` khi duyệt, mỗi dòng
+lấy SL của đúng phân bổ đó — `purchase_order_items` vẫn 1:1 với một dòng ĐXMH như trước, không đổi
+schema, không đổi bất biến "PO item trace về đúng 1 dòng ĐXMH" (`docs/workflows/rfq-approval.md`).
 
 **Đơn mua không bắt buộc qua báo giá.** `purchase_order_items.quotationItemSupplierId` tuỳ chọn, trỏ
 **dòng NCC đã chốt** (`purchase_quotation_item_suppliers`), không trỏ dòng vật tư — đó là nơi duy
@@ -117,7 +131,8 @@ như `inventory-receipts`/`purchase-requests` detail đang dùng.
 | Entity | Vai trò |
 | --- | --- |
 | `purchase_quotations` | Báo giá (RFQ) — header, không mang NCC/giá, vòng đời `DRAFT`/`PENDING_APPROVAL`/`APPROVED`/`CANCELLED` |
-| `purchase_quotation_items` | Dòng vật tư của báo giá — `quantity` một lần/vật tư, `quantityAdjustmentReason` nếu chỉnh khác SL đề xuất |
+| `purchase_quotation_items` | Dòng vật tư của báo giá — chỉ `itemId`, không giữ SL |
+| `purchase_quotation_item_allocations` | Phân bổ SL báo giá về từng dòng ĐXMH nguồn đã gộp — `quantity`, `quantityAdjustmentReason` nếu chỉnh khác SL đề xuất của dòng đó |
 | `purchase_quotation_item_suppliers` | Giá một NCC báo cho một dòng vật tư — `unitPrice`/`leadTimeDays`/`note`, `selectedAt` nếu thắng thầu |
 | `purchase_orders` | Đơn mua — header, một NCC, vòng đời `DRAFT`/`ORDERED`/`CANCELLED`, `quotationId` tuỳ chọn trỏ RFQ sinh ra nó; `assignedUserId`/`paymentTerm`/`receiptWarehouseId` sửa được khi còn `DRAFT` |
 | `purchase_order_items` | Dòng đơn mua — SL/giá đặt, `quantityAdjustmentReason` nếu chỉnh khác SL báo giá, `quotationItemSupplierId` tuỳ chọn trỏ dòng NCC đã chốt |
@@ -166,11 +181,18 @@ gỡ hủy tay (không gỡ được hủy-do-đơn-mua, phải lập đơn mua 
 
 ## Business rules
 
-- `purchase_quotation_items`/`purchase_order_items` chỉ nhận `purchaseRequestItemId` thuộc phiếu
-  `APPROVED` và **chưa hủy tay** (`E125`).
-- Một báo giá không được chứa hai dòng vật tư cùng `purchaseRequestItemId` (`E128`,
-  `PurchaseQuotationsService`) — DB giữ qua `uq_purchase_quotation_items_quotation_request_item`;
-  trùng sẽ nhân đôi `quotedQuantity` của dòng đó trên sổ cái.
+- Phân bổ báo giá (`purchase_quotation_item_allocations`)/`purchase_order_items` chỉ nhận
+  `purchaseRequestItemId` thuộc phiếu `APPROVED` và **chưa hủy tay** (`E125`).
+- Một báo giá không được chứa hai dòng ĐXMH nguồn trùng nhau trong **toàn payload**, kể cả ở hai dòng
+  vật tư khác nhau (`E128`, `PurchaseQuotationsService.validateAllocations`) — trùng sẽ nhân đôi
+  `quotedQuantity` của dòng đó trên sổ cái.
+- Một dòng ĐXMH được phân bổ vào một dòng vật tư phải đúng `itemId` của dòng đó (`E149`) — phân bổ
+  không tự suy ra vật tư, phải khớp tường minh.
+- Một dòng vật tư trong payload phải có ≥1 phân bổ (`E150`) — không có dòng vật tư "rỗng".
+- Một báo giá không được chứa hai dòng vật tư cùng `itemId` (DB chặn qua
+  `uq_purchase_quotation_items_quotation_item`) — đây là cơ chế "gộp vật tư trùng nhau": không phải
+  gộp ngầm, mà là **chặn tạo trùng**, buộc payload gộp tường minh qua mảng `allocations` của một dòng
+  vật tư duy nhất.
 - Một dòng vật tư không được chứa hai NCC trùng `supplierId` (`E129`) — DB giữ qua
   `unique(quotationItemId, supplierId)` trên `purchase_quotation_item_suppliers`.
 - `send` (gửi duyệt) chặn nếu: RFQ không có vật tư nào (`E131`); có vật tư chưa có NCC nào
@@ -208,36 +230,41 @@ gỡ hủy tay (không gỡ được hủy-do-đơn-mua, phải lập đơn mua 
   duy nhất hiện có vào `purchase_orders`/`purchase_order_items`. `PurchaseOrdersModule` không import
   ngược `PurchaseQuotationsModule`, không vòng phụ thuộc.
 - **→ Inventory**: `inventory_receipts.purchaseOrderId`/`inventory_receipt_items.purchaseOrderItemId`
-  là chỗ nối duy nhất — phiếu nhập trace về đơn mua, không đọc ngược (`InventoryPostingService`
-  không đổi, xem `docs/domains/inventory.md`). Chiều ngược lại: `cancelPurchaseOrder` đọc thẳng
-  `inventory_receipts` (không qua service) để chặn huỷ khi đã có phiếu `POSTED` (`E124`) — luôn
-  `false` cho tới khi `inventory-receipts` có route ghi `purchaseOrderId` thật.
+  là chỗ nối duy nhất — phiếu nhập trace về đơn mua, validate mức cơ bản lúc tạo/sửa phiếu (PO phải
+  tồn tại + đang `ORDERED`, dòng phải thuộc đúng PO đó; `E121`/`E145`/`E123`/`E127`), không đọc
+  ngược gì khác (`InventoryPostingService` không đổi, xem `docs/domains/inventory.md`). Chiều ngược
+  lại: `cancelPurchaseOrder` đọc thẳng `inventory_receipts` (không qua service) để chặn huỷ khi đã
+  có phiếu `POSTED` nối tới (`E124`).
 - **→ Warehouses**: `purchase_orders.receiptWarehouseId` (tuỳ chọn) — kho dự kiến nhập hàng về khi PO
   hoàn tất, chỉ để tham chiếu/mặc định cho phiếu nhập sau này, chưa có logic đọc lại.
   `PurchaseOrdersModule` import `WarehousesModule` để validate qua
   `WarehousesService.ensureWarehouseActive` (`E092`/`E094`).
-- **→ Product Structure**: dòng báo giá/đơn mua trỏ gián tiếp tới `items` qua
-  `purchase_request_items.itemId`, không có FK riêng.
+- **→ Product Structure**: dòng báo giá (`purchase_quotation_items.itemId`) trỏ thẳng `items` bằng FK
+  riêng; dòng đơn mua vẫn trỏ gián tiếp qua `purchase_request_items.itemId`, không có FK riêng.
 
 ## Common mistakes
 
 1. **Tưởng `purchase_orders.status` có `RECEIVING`/`COMPLETED`.** Không — chỉ 3 giá trị lưu cột,
    tiến độ nhận luôn derived từ phiếu nhập, đọc ở sổ cái hoặc `GET /purchase-orders/:id`.
-2. **Tưởng thêm một NCC vào một vật tư là thêm một dòng vật tư mới.** Không — `quantity` sống ở
-   `purchase_quotation_items` (một lần/vật tư); thêm NCC chỉ thêm một dòng
-   `purchase_quotation_item_suppliers`. Nhầm hai thứ này sẽ nhân `quotedQuantity` trên sổ cái.
-3. **Trừ `orderedQuantity` cho `quantity` để tính "còn thiếu".** Không cộng/trừ được — `quantity` là
+2. **Tưởng thêm một NCC vào một vật tư là thêm một dòng vật tư mới.** Không — SL sống ở
+   `purchase_quotation_item_allocations` (tổng theo vật tư, không nhân theo NCC); thêm NCC chỉ thêm
+   một dòng `purchase_quotation_item_suppliers`. Nhầm hai thứ này sẽ nhân `quotedQuantity` trên sổ cái.
+3. **Tưởng gộp vật tư trùng nhau ở báo giá là gộp ngầm/tự động.** Không — DB chỉ **chặn tạo trùng**
+   (`uq_purchase_quotation_items_quotation_item`); client phải tự gộp tường minh, gửi nhiều dòng ĐXMH
+   nguồn vào cùng một dòng vật tư qua mảng `allocations`, không phải gửi nhiều dòng vật tư trùng
+   `itemId` rồi chờ BE tự gộp.
+4. **Trừ `orderedQuantity` cho `quantity` để tính "còn thiếu".** Không cộng/trừ được — `quantity` là
    SL đề xuất cố định, `orderedQuantity` có thể lớn hơn (mua dư) hoặc nhỏ hơn (mua từng phần).
    `remainingQuantity` đã là số đúng cho "còn phải nhận", tính từ `orderedQuantity − receivedQuantity`.
-4. **Tưởng hủy đơn mua thì dòng đề xuất tự "mở lại" để báo giá/đặt mua lại ngay.** Đúng là dòng về
+5. **Tưởng hủy đơn mua thì dòng đề xuất tự "mở lại" để báo giá/đặt mua lại ngay.** Đúng là dòng về
    `CANCELLED` trên sổ cái, nhưng đó là hủy **do đơn mua**, không tự khôi phục — phải lập đơn mua
    khác (dòng đề xuất vẫn còn, chỉ đơn mua cũ chết).
-5. **Đi tìm route `POST /purchase-orders` để lập PO tay.** Chưa có — PO hiện tại chỉ sinh tự động
+6. **Đi tìm route `POST /purchase-orders` để lập PO tay.** Chưa có — PO hiện tại chỉ sinh tự động
    từ `approve` một RFQ, đợt sau mới có lập tay.
-6. **Tưởng lập một PO `DRAFT` là dòng sổ cái đã "đặt hàng".** `orderedQuantity` chỉ đếm PO đã
+7. **Tưởng lập một PO `DRAFT` là dòng sổ cái đã "đặt hàng".** `orderedQuantity` chỉ đếm PO đã
    `ORDERED` — PO Draft (kể cả PO tự sinh từ duyệt RFQ) không tính, dòng sổ cái vẫn
    `QUOTING`/`WAITING_TO_PURCHASE` tuỳ đã có RFQ hay chưa.
-7. **Tưởng bị từ chối thì sửa lại gửi duyệt tiếp được.** Không — `CANCELLED` là điểm cuối, `reject`
+8. **Tưởng bị từ chối thì sửa lại gửi duyệt tiếp được.** Không — `CANCELLED` là điểm cuối, `reject`
    không có đường lùi về `DRAFT`; muốn sửa và gửi lại phải tạo RFQ mới (chưa có route "yêu cầu chỉnh
    sửa" riêng, đợt sau).
 

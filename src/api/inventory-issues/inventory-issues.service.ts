@@ -208,14 +208,20 @@ export class InventoryIssuesService {
   }
 
   /** `DRAFT → POSTED` — sinh bút toán + cập nhật tồn qua `InventoryPostingService`, sau đó phiếu
-   * bất biến. Xem `docs/workflows/stock-movement.md`. */
+   * bất biến. Đọc trạng thái nằm trong cùng transaction, sau `lockIssue`. Xem
+   * `docs/workflows/stock-movement.md`. */
   async postInventoryIssue(issueId: string, userId: string): Promise<void> {
-    const issue = await this.ensureIssueDraft(issueId);
-    const items = await this.db.query.inventoryIssueItems.findMany({
-      where: eq(inventoryIssueItems.issueId, issueId),
-    });
-
     await this.db.transaction(async (tx) => {
+      const issue = await this.lockIssue(tx, issueId);
+
+      if (issue.status !== InventoryDocumentStatus.DRAFT) {
+        throw new AppException(ErrorCode.E098, HttpStatus.CONFLICT);
+      }
+
+      const items = await tx.query.inventoryIssueItems.findMany({
+        where: eq(inventoryIssueItems.issueId, issueId),
+      });
+
       await this.inventoryPostingService.postDocument(tx, {
         warehouseId: issue.warehouseId,
         referenceType: InventoryReferenceType.INVENTORY_ISSUE,
@@ -245,26 +251,21 @@ export class InventoryIssuesService {
   /** `DRAFT`/`POSTED → CANCELLED`. Từ `POSTED` thì đảo bút toán trước khi đổi trạng thái — xem
    * `InventoryPostingService.reverseDocument`. */
   async cancelInventoryIssue(issueId: string, userId: string): Promise<void> {
-    const issue = await this.ensureIssueExists(issueId);
-    if (issue.status === InventoryDocumentStatus.CANCELLED) {
-      throw new AppException(ErrorCode.E098, HttpStatus.CONFLICT);
-    }
-
-    if (issue.status === InventoryDocumentStatus.DRAFT) {
-      await this.db
-        .update(inventoryIssues)
-        .set({ status: InventoryDocumentStatus.CANCELLED })
-        .where(eq(inventoryIssues.id, issueId));
-      return;
-    }
-
     await this.db.transaction(async (tx) => {
-      await this.inventoryPostingService.reverseDocument(tx, {
-        referenceType: InventoryReferenceType.INVENTORY_ISSUE,
-        referenceId: issueId,
-        transactionDate: new Date(),
-        createdBy: userId,
-      });
+      const issue = await this.lockIssue(tx, issueId);
+
+      if (issue.status === InventoryDocumentStatus.CANCELLED) {
+        throw new AppException(ErrorCode.E098, HttpStatus.CONFLICT);
+      }
+
+      if (issue.status === InventoryDocumentStatus.POSTED) {
+        await this.inventoryPostingService.reverseDocument(tx, {
+          referenceType: InventoryReferenceType.INVENTORY_ISSUE,
+          referenceId: issueId,
+          transactionDate: new Date(),
+          createdBy: userId,
+        });
+      }
 
       await tx
         .update(inventoryIssues)
@@ -415,6 +416,23 @@ export class InventoryIssuesService {
     if (!productionOrder || !productionJob || !department || !requester) {
       throw new AppException(ErrorCode.E107, HttpStatus.BAD_REQUEST);
     }
+  }
+
+  /** Khoá dòng phiếu (`FOR UPDATE`) rồi trả về — chỉ gọi bên trong transaction, bằng chính `tx`,
+   * vì khoá nhả ngay khi transaction kết thúc. Nhờ đó hai lệnh `post`/`cancel` gọi trùng lên cùng
+   * phiếu không cùng lọt qua kiểm trạng thái và trừ tồn hai lần. */
+  private async lockIssue(tx: DbTransaction, issueId: string) {
+    const [issue] = await tx
+      .select()
+      .from(inventoryIssues)
+      .where(eq(inventoryIssues.id, issueId))
+      .for('update');
+
+    if (!issue) {
+      throw new AppException(ErrorCode.E096, HttpStatus.NOT_FOUND);
+    }
+
+    return issue;
   }
 
   private async ensureIssueExists(issueId: string) {

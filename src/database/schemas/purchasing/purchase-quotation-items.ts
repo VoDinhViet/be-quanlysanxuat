@@ -1,22 +1,14 @@
-import { relations, sql } from 'drizzle-orm';
-import {
-  check,
-  index,
-  numeric,
-  pgTable,
-  unique,
-  uuid,
-  varchar,
-} from 'drizzle-orm/pg-core';
+import { relations } from 'drizzle-orm';
+import { index, pgTable, unique, uuid } from 'drizzle-orm/pg-core';
 
-import { purchaseRequestItems } from '../purchase-requests/purchase-request-items';
+import { items } from '../items/items';
+import { purchaseQuotationItemAllocations } from './purchase-quotation-item-allocations';
 import { purchaseQuotationItemSuppliers } from './purchase-quotation-item-suppliers';
 import { purchaseQuotations } from './purchase-quotations';
 
 /**
- * Một dòng vật tư của báo giá. `quantity` chỉ sống **một lần** ở đây dù bao nhiêu NCC báo giá — sổ
- * cái mua hàng SUM thẳng cột này (`purchase-ledger.query.ts`), nhân dòng theo NCC sẽ làm
- * `quotedQuantity` sai. Giá/NCC nằm ở `purchase_quotation_item_suppliers`
+ * Một vật tư được hỏi giá trong một phiếu báo giá. Bảng không giữ số lượng — SL báo giá là `SUM`
+ * của `purchase_quotation_item_allocations.quantity`, tính lúc đọc, để SL chỉ sống một chỗ
  * (`docs/domains/purchasing.md`).
  */
 export const purchaseQuotationItems = pgTable(
@@ -26,29 +18,17 @@ export const purchaseQuotationItems = pgTable(
     quotationId: uuid('quotation_id')
       .notNull()
       .references(() => purchaseQuotations.id, { onDelete: 'cascade' }),
-    purchaseRequestItemId: uuid('purchase_request_item_id')
+    itemId: uuid('item_id')
       .notNull()
-      .references(() => purchaseRequestItems.id, { onDelete: 'restrict' }),
-    quantity: numeric('quantity', {
-      precision: 18,
-      scale: 3,
-      mode: 'number',
-    }).notNull(),
-    // Lý do khi SL báo giá khác SL đề xuất gốc (vd mua gộp, tồn tối thiểu NCC) — text tự do.
-    quantityAdjustmentReason: varchar('quantity_adjustment_reason', {
-      length: 500,
-    }),
+      .references(() => items.id, { onDelete: 'restrict' }),
   },
   (table) => [
     index('idx_purchase_quotation_items_quotation_id').on(table.quotationId),
-    index('idx_purchase_quotation_items_purchase_request_item_id').on(
-      table.purchaseRequestItemId,
-    ),
-    unique('uq_purchase_quotation_items_quotation_request_item').on(
+    index('idx_purchase_quotation_items_item_id').on(table.itemId),
+    unique('uq_purchase_quotation_items_quotation_item').on(
       table.quotationId,
-      table.purchaseRequestItemId,
+      table.itemId,
     ),
-    check('chk_purchase_quotation_items_quantity_positive', sql`quantity > 0`),
   ],
 );
 
@@ -59,10 +39,11 @@ export const purchaseQuotationItemsRelations = relations(
       fields: [purchaseQuotationItems.quotationId],
       references: [purchaseQuotations.id],
     }),
-    purchaseRequestItem: one(purchaseRequestItems, {
-      fields: [purchaseQuotationItems.purchaseRequestItemId],
-      references: [purchaseRequestItems.id],
+    item: one(items, {
+      fields: [purchaseQuotationItems.itemId],
+      references: [items.id],
     }),
+    allocations: many(purchaseQuotationItemAllocations),
     suppliers: many(purchaseQuotationItemSuppliers),
   }),
 );

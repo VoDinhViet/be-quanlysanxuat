@@ -33,9 +33,9 @@ export class GetPurchaseRequestsReqDto extends PageOptionsDto {
   @DateFieldOptional({ description: 'Filter: neededDate = ngày này' })
   readonly neededDate?: Date;
 
-  @DateFieldOptional({ description: 'Filter: createdAt >= fromDate' })
-  readonly fromDate?: Date;
+  @DateFieldOptional({ description: 'Filter: createdAt >= createdDateFrom' })
+  readonly createdDateFrom?: Date;
 
-  @DateFieldOptional({ description: 'Filter: createdAt <= toDate' })
-  readonly toDate?: Date;
+  @DateFieldOptional({ description: 'Filter: createdAt <= createdDateTo' })
+  readonly createdDateTo?: Date;
 }

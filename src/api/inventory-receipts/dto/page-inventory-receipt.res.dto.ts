@@ -15,6 +15,7 @@ import {
   UUIDField,
 } from '../../../decorators/field.decorators';
 import { ProductionOrderRefResDto } from '../../production-orders/dto/production-order-ref.res.dto';
+import { PurchaseOrderRefResDto } from '../../purchase-orders/dto/purchase-order-ref.res.dto';
 import { PurchaseRequestRefResDto } from '../../purchase-requests/dto/purchase-request-ref.res.dto';
 import { SupplierRefResDto } from '../../suppliers/dto/supplier-ref.res.dto';
 import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
@@ -58,6 +59,10 @@ export class PageInventoryReceiptResDto {
   @Expose()
   @ClassFieldOptional(() => ProductionOrderRefResDto, { nullable: true })
   productionOrder!: ProductionOrderRefResDto | null;
+
+  @Expose()
+  @ClassFieldOptional(() => PurchaseOrderRefResDto, { nullable: true })
+  purchaseOrder!: PurchaseOrderRefResDto | null;
 
   @Expose()
   @StringFieldOptional({ nullable: true })

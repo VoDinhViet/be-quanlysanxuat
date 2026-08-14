@@ -238,7 +238,7 @@ export enum ErrorCode {
   E127 = 'purchase_order.error.receipt_item_mismatch',
   // Hai dòng cùng `purchaseRequestItemId` trong một payload tạo báo giá/đơn mua.
   E128 = 'purchase_quotation.error.duplicate_request_item',
-  // Khác `E128`: E128 là trùng vật tư giữa các dòng của một báo giá; E129 là trùng NCC giữa các
+  // Khác `E128`: E128 là trùng dòng ĐXMH giữa các dòng của một báo giá; E129 là trùng NCC giữa các
   // mục con (nhiều NCC chào giá) của cùng một dòng vật tư.
   E129 = 'purchase_quotation.error.duplicate_item_supplier',
   // Gửi duyệt khi một dòng vật tư chưa có NCC nào.
@@ -270,5 +270,18 @@ export enum ErrorCode {
   // `PATCH /iqc/:iqcId` (sửa lại thông tin ngữ cảnh sau confirm) khi `status` còn `NOT_INSPECTED`
   // — dòng phải confirm qua AQL sampling trước đã mới có gì để sửa.
   E144 = 'iqc_inspection.error.not_yet_confirmed',
+  // Nhập kho gắn `purchaseOrderId` khi PO chưa `ORDERED` (còn `DRAFT` hoặc đã `CANCELLED`).
+  E145 = 'purchase_order.error.not_ordered',
+  // Lập ĐXMH tay không kèm dòng nào. Khác `E131` (cùng nghĩa nhưng ở báo giá).
+  E146 = 'purchase_request.error.no_items',
+  // Hai dòng cùng `itemId` trong một ĐXMH. Khác `E128`: E128 là trùng dòng ĐXMH giữa các dòng
+  // của một báo giá.
+  E147 = 'purchase_request_item.error.duplicate_item',
+  // Dòng ĐXMH trỏ vật tư không phải RM. Nghịch đảo của `E111`, nơi RM mới là loại bị cấm.
+  E148 = 'purchase_request_item.error.item_not_raw_material',
+  // Dòng ĐXMH phân bổ vào một vật tư nhưng itemId của nó khác itemId của dòng báo giá chứa nó.
+  E149 = 'purchase_quotation_item.error.allocation_item_mismatch',
+  // Một dòng vật tư trong payload tạo/sửa báo giá không có phân bổ nào về dòng ĐXMH nguồn.
+  E150 = 'purchase_quotation_item.error.no_allocations',
   V003 = 'common.error.too_many_requests',
 }

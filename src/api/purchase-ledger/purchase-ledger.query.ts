@@ -9,6 +9,7 @@ import {
   purchaseOrderItems,
   purchaseOrders,
   PurchaseQuotationStatus,
+  purchaseQuotationItemAllocations,
   purchaseQuotationItems,
   purchaseQuotations,
 } from '../../database/schemas';
@@ -57,22 +58,32 @@ export function receivedQuantitySubquery(db: Database) {
     .as('received_quantity_aggregate');
 }
 
-/** SL báo giá theo dòng đề xuất — Σ `quantity` của **mọi** dòng báo giá chưa `CANCELLED`, kể cả
- * chưa được chọn giá (`selectedAt` không xét ở đây). */
+/** SL báo giá theo dòng đề xuất — Σ `quantity` của **mọi** phân bổ thuộc báo giá chưa `CANCELLED`,
+ * kể cả chưa được chọn giá (`selectedAt` không xét ở đây). Một dòng báo giá có thể gộp nhiều dòng
+ * ĐXMH cùng vật tư (`purchase_quotation_item_allocations`, `docs/domains/purchasing.md`). */
 export function quotedQuantitySubquery(db: Database) {
   return db
     .select({
-      purchaseRequestItemId: purchaseQuotationItems.purchaseRequestItemId,
-      quotedQuantity: sql<number>`sum(${purchaseQuotationItems.quantity})`
-        .mapWith(Number)
-        .as('quoted_quantity'),
+      purchaseRequestItemId:
+        purchaseQuotationItemAllocations.purchaseRequestItemId,
+      quotedQuantity:
+        sql<number>`sum(${purchaseQuotationItemAllocations.quantity})`
+          .mapWith(Number)
+          .as('quoted_quantity'),
     })
-    .from(purchaseQuotationItems)
+    .from(purchaseQuotationItemAllocations)
+    .innerJoin(
+      purchaseQuotationItems,
+      eq(
+        purchaseQuotationItems.id,
+        purchaseQuotationItemAllocations.quotationItemId,
+      ),
+    )
     .innerJoin(
       purchaseQuotations,
       eq(purchaseQuotations.id, purchaseQuotationItems.quotationId),
     )
     .where(ne(purchaseQuotations.status, PurchaseQuotationStatus.CANCELLED))
-    .groupBy(purchaseQuotationItems.purchaseRequestItemId)
+    .groupBy(purchaseQuotationItemAllocations.purchaseRequestItemId)
     .as('quoted_quantity_aggregate');
 }

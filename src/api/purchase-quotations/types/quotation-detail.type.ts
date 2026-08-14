@@ -1,5 +1,6 @@
 import type {
   ItemSelect,
+  PurchaseQuotationItemAllocationSelect,
   PurchaseQuotationItemSelect,
   PurchaseQuotationItemSupplierSelect,
 } from '../../../database/schemas';
@@ -9,8 +10,9 @@ import type {
  * (same class of issue as `SourceBomItemRow` in `production-jobs`), so the query result is cast to
  * this at the call site. */
 export type QuotationDetailItem = PurchaseQuotationItemSelect & {
-  purchaseRequestItem: {
-    item: Pick<ItemSelect, 'id'>;
-  };
+  item: Pick<ItemSelect, 'id'>;
+  allocations: (PurchaseQuotationItemAllocationSelect & {
+    purchaseRequestItem: { item: Pick<ItemSelect, 'id'> };
+  })[];
   suppliers: PurchaseQuotationItemSupplierSelect[];
 };

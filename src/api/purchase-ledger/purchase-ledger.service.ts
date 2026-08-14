@@ -8,6 +8,7 @@ import {
   getTableColumns,
   gte,
   lt,
+  lte,
   or,
   sql,
   type SQL,
@@ -41,9 +42,10 @@ type LedgerQuantityRefs = {
   quotedQuantity: SQL<number>;
 };
 
-/** Chưa có module `purchase-quotations`/`purchase-orders` — `quotedQuantity`/`orderedQuantity` đọc
- * thẳng bảng đã có ở schema nhưng chưa route nào ghi, luôn `0` tới khi hai module đó lên
- * (`docs/domains/purchasing.md`). */
+/** `quotedQuantity` đọc từ `purchase-quotations`, `orderedQuantity` từ `purchase-orders` — cả hai
+ * module đã có route ghi, nhưng `orderedQuantity` chỉ đếm PO `ORDERED` (PO `DRAFT` tự sinh từ duyệt
+ * RFQ không tính) nên phần lớn dòng vẫn dừng ở `WAITING_TO_PURCHASE`/`QUOTING` cho tới khi PO được
+ * `confirm` (`docs/domains/purchasing.md`). */
 @Injectable()
 export class PurchaseLedgerService {
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
@@ -52,9 +54,6 @@ export class PurchaseLedgerService {
     reqDto: GetPurchaseLedgerReqDto,
   ): Promise<OffsetPaginatedDto<PurchaseLedgerItemResDto>> {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
-    const materialKeyword = reqDto.materialKeyword
-      ? `%${reqDto.materialKeyword}%`
-      : undefined;
 
     const orderedAgg = orderedQuantitySubquery(this.db);
     const receivedAgg = receivedQuantitySubquery(this.db);
@@ -63,11 +62,11 @@ export class PurchaseLedgerService {
 
     const where = and(
       eq(purchaseRequests.status, PurchaseRequestStatus.APPROVED),
-      keyword ? unaccentILike(purchaseRequests.code, keyword) : undefined,
-      materialKeyword
+      keyword
         ? or(
-            unaccentILike(items.name, materialKeyword),
-            unaccentILike(items.code, materialKeyword),
+            unaccentILike(purchaseRequests.code, keyword),
+            unaccentILike(items.code, keyword),
+            unaccentILike(items.name, keyword),
           )
         : undefined,
       reqDto.purchaseRequestId
@@ -80,16 +79,19 @@ export class PurchaseLedgerService {
       reqDto.status
         ? this.buildStatusCondition(refs, reqDto.status)
         : undefined,
-      reqDto.neededDate
-        ? eq(purchaseRequests.neededDate, reqDto.neededDate)
+      reqDto.neededDateFrom
+        ? gte(purchaseRequests.neededDate, reqDto.neededDateFrom)
         : undefined,
-      reqDto.fromDate
-        ? gte(purchaseRequests.createdAt, reqDto.fromDate)
+      reqDto.neededDateTo
+        ? lte(purchaseRequests.neededDate, reqDto.neededDateTo)
         : undefined,
-      reqDto.toDate
+      reqDto.createdDateFrom
+        ? gte(purchaseRequests.createdAt, reqDto.createdDateFrom)
+        : undefined,
+      reqDto.createdDateTo
         ? lt(
             purchaseRequests.createdAt,
-            new Date(reqDto.toDate.getTime() + 24 * 60 * 60 * 1000),
+            new Date(reqDto.createdDateTo.getTime() + 24 * 60 * 60 * 1000),
           )
         : undefined,
     );
