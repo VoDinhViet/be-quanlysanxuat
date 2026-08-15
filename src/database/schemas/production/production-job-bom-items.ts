@@ -80,3 +80,6 @@ export const productionJobBomItemsRelations = relations(
     operations: many(productionJobOperations),
   }),
 );
+
+export type ProductionJobBomItemSelect =
+  typeof productionJobBomItems.$inferSelect;

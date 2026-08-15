@@ -41,6 +41,7 @@ import { UpdatePurchaseOrderItemReqDto } from './dto/update-purchase-order-item.
 import { UpdatePurchaseOrderReqDto } from './dto/update-purchase-order.req.dto';
 import { PurchaseOrderProgress } from './purchase-orders.constant';
 import {
+  getReceivedQuantityByPurchaseOrderItemId,
   orderAggregateSubquery,
   orderReceivedQuantitySubquery,
 } from './purchase-orders.query';
@@ -84,6 +85,12 @@ export class PurchaseOrdersService {
       reqDto.status ? eq(purchaseOrders.status, reqDto.status) : undefined,
       reqDto.progress
         ? this.buildProgressCondition(refs, reqDto.progress)
+        : undefined,
+      reqDto.hasRemainingReceipt
+        ? or(
+            this.buildProgressCondition(refs, PurchaseOrderProgress.ORDERED),
+            this.buildProgressCondition(refs, PurchaseOrderProgress.RECEIVING),
+          )
         : undefined,
       reqDto.purchaseRequestId || materialKeyword
         ? exists(
@@ -347,9 +354,25 @@ export class PurchaseOrdersService {
       throw new AppException(ErrorCode.E121, HttpStatus.NOT_FOUND);
     }
 
-    return plainToInstance(PurchaseOrderResDto, order, {
-      excludeExtraneousValues: true,
-    });
+    const receivedByItemId = await getReceivedQuantityByPurchaseOrderItemId(
+      this.db,
+      {
+        purchaseOrderItemIds: order.items.map((item) => item.id),
+        statuses: [InventoryDocumentStatus.POSTED],
+      },
+    );
+
+    return plainToInstance(
+      PurchaseOrderResDto,
+      {
+        ...order,
+        items: order.items.map((item) => ({
+          ...item,
+          receivedQuantity: receivedByItemId.get(item.id) ?? 0,
+        })),
+      },
+      { excludeExtraneousValues: true },
+    );
   }
 
   /** Sinh PO Draft từ NCC thắng thầu của một RFQ — một NCC nhiều vật tư gộp chung một PO. Bắt
@@ -381,6 +404,7 @@ export class PurchaseOrdersService {
           quotationItemSupplierId: line.quotationItemSupplierId,
           quantity: line.quantity,
           unitPrice: line.unitPrice,
+          quantityAdjustmentReason: line.quantityAdjustmentReason,
         })),
       );
     }
@@ -432,8 +456,11 @@ export class PurchaseOrdersService {
       .where(eq(purchaseOrderItems.id, purchaseOrderItemId));
   }
 
-  /** Xác nhận đặt hàng — `DRAFT → ORDERED`. Chặn nếu chưa có `expectedDate` (`E134`) hoặc còn dòng
-   * thiếu `unitPrice` (`E135`); `quantity` luôn > 0 sẵn (`CHECK` ở DB), không cần kiểm lại. */
+  /** Xác nhận đặt hàng — `DRAFT → ORDERED`. Chặn nếu chưa có `expectedDate` (`E134`), chưa chọn
+   * `receiptWarehouseId` (`E155`), chưa chọn `paymentTerm` (`E156` — cần để tính `dueDate` khi PO
+   * đạt COMPLETED tự sinh yêu cầu thanh toán, `PaymentRequestsService.createIfOrderCompleted`),
+   * hoặc còn dòng thiếu `unitPrice` (`E135`); `quantity` luôn > 0 sẵn (`CHECK` ở DB), không cần
+   * kiểm lại. */
   async confirmPurchaseOrder(
     purchaseOrderId: string,
     userId: string,
@@ -441,12 +468,22 @@ export class PurchaseOrdersService {
     await this.ensurePurchaseOrderDraft(purchaseOrderId);
 
     const order = await this.db.query.purchaseOrders.findFirst({
-      columns: { expectedDate: true },
+      columns: {
+        expectedDate: true,
+        receiptWarehouseId: true,
+        paymentTerm: true,
+      },
       where: eq(purchaseOrders.id, purchaseOrderId),
     });
 
     if (!order?.expectedDate) {
       throw new AppException(ErrorCode.E134, HttpStatus.BAD_REQUEST);
+    }
+    if (!order.receiptWarehouseId) {
+      throw new AppException(ErrorCode.E155, HttpStatus.BAD_REQUEST);
+    }
+    if (!order.paymentTerm) {
+      throw new AppException(ErrorCode.E156, HttpStatus.BAD_REQUEST);
     }
 
     const orderItems = await this.db.query.purchaseOrderItems.findMany({

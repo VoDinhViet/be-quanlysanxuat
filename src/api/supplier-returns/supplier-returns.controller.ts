@@ -1,10 +1,12 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, HttpStatus, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
+import { CurrentUser } from '../../decorators/current-user.decorator';
 import { ApiAuth } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
+import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
 import { GetSupplierReturnsReqDto } from './dto/get-supplier-returns.req.dto';
 import { PageSupplierReturnResDto } from './dto/page-supplier-return.res.dto';
 import { SupplierReturnResDto } from './dto/supplier-return.res.dto';
@@ -40,5 +42,23 @@ export class SupplierReturnsController {
     @UUIDParam('supplierReturnId') supplierReturnId: string,
   ): Promise<SupplierReturnResDto> {
     return this.supplierReturnsService.getSupplierReturn(supplierReturnId);
+  }
+
+  @Post(':supplierReturnId/post')
+  @Permissions('inventory:update')
+  @ApiAuth({
+    summary:
+      'Xác nhận xuất trả NCC (DRAFT → POSTED) — trừ tồn (nếu phiếu nhập gốc đã POSTED) và hoàn ' +
+      'tất luôn phiếu IQC liên kết',
+    statusCode: HttpStatus.NO_CONTENT,
+  })
+  postSupplierReturn(
+    @UUIDParam('supplierReturnId') supplierReturnId: string,
+    @CurrentUser() payload: JwtPayloadType,
+  ): Promise<void> {
+    return this.supplierReturnsService.postSupplierReturn(
+      supplierReturnId,
+      payload.userId,
+    );
   }
 }

@@ -54,9 +54,10 @@ tiếp trên `purchase_quotation_items` — xem ngay dưới); ở đơn mua v�
 `purchase_order_items.purchase_request_item_id`, không đổi.
 
 **Một dòng báo giá (`purchase_quotation_items`) là một vật tư, có thể gộp nhiều dòng ĐXMH nguồn cùng
-vật tư đó** (kể cả từ nhiều phiếu đề xuất khác nhau) — DB chặn tạo hai dòng cùng `(quotationId,
-itemId)` trong một báo giá (`uq_purchase_quotation_items_quotation_item`), buộc payload phải gộp
-tường minh thay vì tạo trùng. `purchase_quotation_items` bản thân **không giữ SL** — SL báo giá của
+vật tư đó** (kể cả từ nhiều phiếu đề xuất khác nhau) — `createQuotation`/`updateQuotation` tự gộp
+các dòng payload cùng `itemId` thành một dòng vật tư trước khi ghi (`mergeItemsByItemId`), DB chỉ
+còn giữ `uq_purchase_quotation_items_quotation_item` làm chốt chặn cuối. `purchase_quotation_items`
+bản thân **không giữ SL** — SL báo giá của
 một vật tư là `SUM(purchase_quotation_item_allocations.quantity)` của các phân bổ thuộc nó, tính lúc
 đọc, để SL chỉ sống một chỗ. Không phải lựa chọn thẩm mỹ: sổ cái mua hàng
 (`quotedQuantitySubquery`) `SUM` thẳng cột `quantity` của bảng phân bổ theo `purchase_request_item_id`
@@ -87,6 +88,15 @@ tư của báo giá đã có đúng một NCC thắng thầu (`E132`) — không
 nối qua `purchase_order_item_id`) — để `inventory-receipts` không phải ghi ngược vào `purchase_orders`
 mỗi lần `post`/`cancel` một phiếu nhập. `purchase_orders.quotationId` (tuỳ chọn) trỏ ngược về RFQ đã
 sinh ra PO đó — chỉ có giá trị cho PO tự sinh từ `approve`, `null` nếu (khi có route) lập tay.
+
+**`GET /purchase-orders` lọc được "còn hàng chưa nhập đủ"** qua `hasRemainingReceipt=true` —
+`status = ORDERED and (orderedQuantity = 0 or receivedQuantity < orderedQuantity)`, tức hợp của
+`progress=ORDERED` (chưa nhận gì) và `progress=RECEIVING` (nhận dở), loại `COMPLETED`. Độc lập với
+`progress` — gửi cả hai thì `AND` lại, không loại trừ nhau. Chỉ đếm phiếu nhập `POSTED`, giống hệt
+`orderedQuantity`/`receivedQuantity` ở trên — không đổi cách tính, chỉ thêm một điều kiện lọc.
+`GET /purchase-orders/:id` trả thêm `receivedQuantity` **theo từng dòng** (`purchase_order_items`),
+cùng nguồn tính, số thô không kèm `remainingQuantity` — FE tự trừ (cùng nguyên tắc "BE trả số thô"
+ở dưới).
 
 **Bảy trạng thái của một dòng sổ cái là derived, tính trong `GET /purchase-ledger`, không lưu cột
 nào.** Đánh giá theo đúng thứ tự, dừng ở nhánh khớp đầu tiên:
@@ -136,6 +146,7 @@ như `inventory-receipts`/`purchase-requests` detail đang dùng.
 | `purchase_quotation_item_suppliers` | Giá một NCC báo cho một dòng vật tư — `unitPrice`/`leadTimeDays`/`note`, `selectedAt` nếu thắng thầu |
 | `purchase_orders` | Đơn mua — header, một NCC, vòng đời `DRAFT`/`ORDERED`/`CANCELLED`, `quotationId` tuỳ chọn trỏ RFQ sinh ra nó; `assignedUserId`/`paymentTerm`/`receiptWarehouseId` sửa được khi còn `DRAFT` |
 | `purchase_order_items` | Dòng đơn mua — SL/giá đặt, `quantityAdjustmentReason` nếu chỉnh khác SL báo giá, `quotationItemSupplierId` tuỳ chọn trỏ dòng NCC đã chốt |
+| `payment_requests` | Yêu cầu thanh toán — header phẳng, 1 dòng = đúng 1 PO (`purchaseOrderId` unique), không có bảng con item (đọc lại `purchase_order_items` của PO đó); tự sinh khi PO đạt `COMPLETED`, vòng đời `PENDING`/`PAID`/`CANCELLED` |
 
 ## Lifecycle
 
@@ -145,7 +156,7 @@ Báo giá:  DRAFT ──send (E131/E130/E120)──────────> PEN
           PENDING_APPROVAL ──reject────────────────> CANCELLED
           APPROVED ──recall (chưa PO nào ORDERED, E133)──> DRAFT
 
-Đơn mua:  DRAFT ──confirm (đủ expectedDate + mọi dòng có unitPrice, E134/E135)──> ORDERED
+Đơn mua:  DRAFT ──confirm (đủ expectedDate + kho nhận + paymentTerm + mọi dòng có unitPrice, E134/E155/E156/E135)──> ORDERED
           DRAFT ──cancel (lý do bắt buộc)──> CANCELLED
           ORDERED ──cancel (chưa có phiếu nhập POSTED nối tới, E124)──> CANCELLED
 ```
@@ -168,9 +179,11 @@ PO Draft sinh ra sửa được qua `PATCH /purchase-orders/:id` (`expectedDate`
 từ NCC thắng thầu lúc `approve`.
 
 `POST /purchase-orders/:id/confirm` xác nhận đặt hàng — `DRAFT → ORDERED`, chặn nếu chưa có
-`expectedDate` (`E134`) hoặc còn dòng thiếu `unitPrice` (`E135`); `quantity` luôn > 0 sẵn (`CHECK` ở
-DB). `POST /purchase-orders/:id/cancel` huỷ — hợp lệ từ cả `DRAFT` lẫn `ORDERED`, lý do bắt buộc,
-chặn nếu đã có phiếu nhập `POSTED` nối tới (`E124`).
+`expectedDate` (`E134`), chưa chọn `receiptWarehouseId` (`E155`), chưa chọn `paymentTerm` (`E156`
+— cần để tính hạn thanh toán khi tự sinh yêu cầu thanh toán, xem mục "Yêu cầu thanh toán" bên
+dưới), hoặc còn dòng thiếu `unitPrice` (`E135`); `quantity` luôn > 0 sẵn (`CHECK` ở DB).
+`POST /purchase-orders/:id/cancel` huỷ — hợp lệ
+từ cả `DRAFT` lẫn `ORDERED`, lý do bắt buộc, chặn nếu đã có phiếu nhập `POSTED` nối tới (`E124`).
 
 Duyệt ĐXMH (`purchase-requests:approve`) vẫn không sinh chứng từ nào ở domain này — cả `DRAFT` báo
 giá lẫn từng bước tiếp theo đều do người mua hàng thao tác tay qua route của chính domain này.
@@ -178,6 +191,28 @@ giá lẫn từng bước tiếp theo đều do người mua hàng thao tác tay
 **Một dòng đề xuất** (`purchase_request_items`) hủy tay được khi **chưa có đơn mua sống** — hủy đơn
 mua chứa nó, hoặc `POST /purchase-ledger/:id/cancel`, đều lật dòng sổ cái sang `CANCELLED`; `restore`
 gỡ hủy tay (không gỡ được hủy-do-đơn-mua, phải lập đơn mua khác).
+
+### Yêu cầu thanh toán
+
+```
+              (PO đạt progress COMPLETED, tự sinh) ──> PENDING
+              PENDING ──mark-paid (purchasing:approve)──> PAID
+              PENDING ──cancel (purchasing:approve)──────> CANCELLED
+```
+
+`payment_requests` **không có route tạo tay** — sinh duy nhất qua
+`PaymentRequestsService.createIfOrderCompleted(tx, purchaseOrderId)`, gọi từ
+`InventoryReceiptsService.postInventoryReceipt` cùng transaction mỗi lần một phiếu nhập gắn PO được
+`post` (đúng khuôn `IqcService.createInspectionsFromReceipt`). Idempotent — gọi lại nhiều lần
+(PO nhận qua nhiều phiếu) không tạo trùng, chỉ tạo đúng một lần khi `receivedQuantity` vừa chạm
+`orderedQuantity`. `requestValue` = snapshot Σ `quantity*unitPrice` của PO lúc tạo (PO đã `ORDERED`
+nên items bất biến); `dueDate` = `orderDate + paymentTerm` (map ngày: `IMMEDIATE`=0/`NET_15`=15/
+`NET_30`=30/`NET_60`=60) — vì vậy `confirm` PO bắt buộc có `paymentTerm` (`E156`, xem trên). Nếu PO
+đã `confirm` từ trước khi có gate `E156` (không có `paymentTerm`), `createIfOrderCompleted` bỏ qua,
+không tạo bù — **giới hạn đã biết**, không có route tạo tay để vá các PO cũ này.
+`PENDING → PAID`/`CANCELLED` là chuyển trạng thái cuối, không rollback; cả hai đều `purchasing:approve`
+(không tách quyền riêng). Xem `docs/decisions/no-procurement.md` — đây là phần "thanh toán" đã đảo
+một phần, **không** phải công nợ/thanh toán/kế toán thật.
 
 ## Business rules
 
@@ -189,12 +224,13 @@ gỡ hủy tay (không gỡ được hủy-do-đơn-mua, phải lập đơn mua 
 - Một dòng ĐXMH được phân bổ vào một dòng vật tư phải đúng `itemId` của dòng đó (`E149`) — phân bổ
   không tự suy ra vật tư, phải khớp tường minh.
 - Một dòng vật tư trong payload phải có ≥1 phân bổ (`E150`) — không có dòng vật tư "rỗng".
-- Một báo giá không được chứa hai dòng vật tư cùng `itemId` (DB chặn qua
-  `uq_purchase_quotation_items_quotation_item`) — đây là cơ chế "gộp vật tư trùng nhau": không phải
-  gộp ngầm, mà là **chặn tạo trùng**, buộc payload gộp tường minh qua mảng `allocations` của một dòng
-  vật tư duy nhất.
-- Một dòng vật tư không được chứa hai NCC trùng `supplierId` (`E129`) — DB giữ qua
-  `unique(quotationItemId, supplierId)` trên `purchase_quotation_item_suppliers`.
+- Hai dòng payload cùng `itemId` được **BE tự gộp** thành một dòng vật tư
+  (`PurchaseQuotationsService.mergeItemsByItemId`): nối `allocations`, union NCC theo `supplierId`
+  — đây là cơ chế "gộp vật tư trùng nhau", DB chỉ còn giữ
+  `uq_purchase_quotation_items_quotation_item` làm chốt chặn cuối.
+- Một vật tư **sau khi gộp** không được có hai NCC trùng `supplierId` với
+  `unitPrice`/`leadTimeDays`/`note` khác nhau (`E129`, `mergeSuppliers`) — trùng khít (mọi field
+  giống hệt) thì gộp im lặng thành một dòng.
 - `send` (gửi duyệt) chặn nếu: RFQ không có vật tư nào (`E131`); có vật tư chưa có NCC nào
   (`E130`); có dòng NCC nào (đã thêm) còn thiếu `unitPrice` (`E120`) — mọi NCC đã liệt kê phải có
   giá trước khi trình duyệt, không chỉ cần một NCC có giá.
@@ -209,12 +245,15 @@ gỡ hủy tay (không gỡ được hủy-do-đơn-mua, phải lập đơn mua 
 - Sửa PO Draft (`PATCH /purchase-orders/:id`, `PATCH .../items/:id`) chặn nếu PO không còn `DRAFT`
   (`E122`) — đã `ORDERED`/`CANCELLED` thì SL/giá/ngày giao đã chốt, không sửa tay được nữa.
 - `confirm` (xác nhận đặt hàng) chặn nếu PO không còn `DRAFT` (`E122`), chưa có `expectedDate`
-  (`E134`), hoặc còn dòng thiếu `unitPrice` (`E135`).
+  (`E134`), chưa chọn `receiptWarehouseId` (`E155`), chưa chọn `paymentTerm` (`E156`), hoặc còn dòng
+  thiếu `unitPrice` (`E135`).
 - `PATCH` với `assignedUserId`/`receiptWarehouseId` kiểm tồn tại trước khi ghi — `E136` (người phụ
   trách không tồn tại), `E092`/`E094` (kho không tồn tại/không `ACTIVE`, tái dùng từ domain
   `warehouses`).
 - `POST /purchase-ledger/:id/cancel` chặn nếu dòng đã có đơn mua sống (`E126`) — muốn hủy phải hủy
   đơn mua trước.
+- `mark-paid`/`cancel` một yêu cầu thanh toán chặn nếu không còn `PENDING` (`E158`) — cả hai chuyển
+  trạng thái đều cuối, không đổi lại được.
 - Mã (`purchase_quotations.code` tiền tố `RFQ`, `purchase_orders.code` tiền tố `PO`) bất biến, unique
   toàn bảng, sinh theo khuôn `PurchaseRequestsService.generatePurchaseRequestCode` (đếm + pad, không
   tách năm).
@@ -230,15 +269,21 @@ gỡ hủy tay (không gỡ được hủy-do-đơn-mua, phải lập đơn mua 
   duy nhất hiện có vào `purchase_orders`/`purchase_order_items`. `PurchaseOrdersModule` không import
   ngược `PurchaseQuotationsModule`, không vòng phụ thuộc.
 - **→ Inventory**: `inventory_receipts.purchaseOrderId`/`inventory_receipt_items.purchaseOrderItemId`
-  là chỗ nối duy nhất — phiếu nhập trace về đơn mua, validate mức cơ bản lúc tạo/sửa phiếu (PO phải
-  tồn tại + đang `ORDERED`, dòng phải thuộc đúng PO đó; `E121`/`E145`/`E123`/`E127`), không đọc
-  ngược gì khác (`InventoryPostingService` không đổi, xem `docs/domains/inventory.md`). Chiều ngược
-  lại: `cancelPurchaseOrder` đọc thẳng `inventory_receipts` (không qua service) để chặn huỷ khi đã
-  có phiếu `POSTED` nối tới (`E124`).
-- **→ Warehouses**: `purchase_orders.receiptWarehouseId` (tuỳ chọn) — kho dự kiến nhập hàng về khi PO
-  hoàn tất, chỉ để tham chiếu/mặc định cho phiếu nhập sau này, chưa có logic đọc lại.
-  `PurchaseOrdersModule` import `WarehousesModule` để validate qua
-  `WarehousesService.ensureWarehouseActive` (`E092`/`E094`).
+  là chỗ nối duy nhất — phiếu nhập trace về đơn mua, validate mức cơ bản lúc tạo/sửa/`confirm` phiếu
+  (PO phải tồn tại + đang `ORDERED`, dòng phải thuộc đúng PO đó, SL cộng dồn các phiếu đã `confirm`
+  không vượt SL đặt của dòng; `E121`/`E145`/`E123`/`E127`/`E154`), không đọc ngược gì khác
+  (`InventoryPostingService` không đổi, xem `docs/domains/inventory.md`). Chiều ngược lại:
+  `orderReceivedQuantitySubquery` (dùng cho `progress`/`hasRemainingReceipt` và `receivedQuantity`
+  trên dòng detail) đọc `inventory_receipt_items` join `inventory_receipts` lọc `POSTED`;
+  `cancelPurchaseOrder` đọc thẳng `inventory_receipts` (không qua service) để chặn huỷ khi đã có
+  phiếu `POSTED` nối tới (`E124`). Chiều ngược lại: `InventoryReceiptsService.postInventoryReceipt`
+  gọi `PaymentRequestsService.createIfOrderCompleted(tx, purchaseOrderId)` cùng transaction —
+  `InventoryReceiptsModule` import `PaymentRequestsModule` (không vòng phụ thuộc, `purchasing` không
+  import ngược `inventory-receipts`).
+- **→ Warehouses**: `purchase_orders.receiptWarehouseId` — tuỳ chọn lúc `DRAFT`, bắt buộc trước khi
+  `confirm` (`E155`); kho dự kiến nhập hàng về khi PO hoàn tất, chỉ để tham chiếu/mặc định cho
+  phiếu nhập sau này, chưa có logic đọc lại. `PurchaseOrdersModule` import `WarehousesModule` để
+  validate qua `WarehousesService.ensureWarehouseActive` (`E092`/`E094`).
 - **→ Product Structure**: dòng báo giá (`purchase_quotation_items.itemId`) trỏ thẳng `items` bằng FK
   riêng; dòng đơn mua vẫn trỏ gián tiếp qua `purchase_request_items.itemId`, không có FK riêng.
 
@@ -249,10 +294,10 @@ gỡ hủy tay (không gỡ được hủy-do-đơn-mua, phải lập đơn mua 
 2. **Tưởng thêm một NCC vào một vật tư là thêm một dòng vật tư mới.** Không — SL sống ở
    `purchase_quotation_item_allocations` (tổng theo vật tư, không nhân theo NCC); thêm NCC chỉ thêm
    một dòng `purchase_quotation_item_suppliers`. Nhầm hai thứ này sẽ nhân `quotedQuantity` trên sổ cái.
-3. **Tưởng gộp vật tư trùng nhau ở báo giá là gộp ngầm/tự động.** Không — DB chỉ **chặn tạo trùng**
-   (`uq_purchase_quotation_items_quotation_item`); client phải tự gộp tường minh, gửi nhiều dòng ĐXMH
-   nguồn vào cùng một dòng vật tư qua mảng `allocations`, không phải gửi nhiều dòng vật tư trùng
-   `itemId` rồi chờ BE tự gộp.
+3. **Tưởng gửi hai dòng vật tư trùng `itemId` sẽ tạo hai dòng báo giá hoặc lỗi.** Không — BE tự gộp
+   (`mergeItemsByItemId`) thành một dòng trước khi ghi, DB chỉ còn là chốt chặn cuối. FE vẫn gộp sẵn
+   lúc tick chọn (không phải vì BE bắt buộc) vì UI Bước 2 cần dòng đã gộp để sửa SL từng phân bổ
+   riêng — hai lớp gộp độc lập, không lớp nào thay được lớp kia.
 4. **Trừ `orderedQuantity` cho `quantity` để tính "còn thiếu".** Không cộng/trừ được — `quantity` là
    SL đề xuất cố định, `orderedQuantity` có thể lớn hơn (mua dư) hoặc nhỏ hơn (mua từng phần).
    `remainingQuantity` đã là số đúng cho "còn phải nhận", tính từ `orderedQuantity − receivedQuantity`.
@@ -267,6 +312,13 @@ gỡ hủy tay (không gỡ được hủy-do-đơn-mua, phải lập đơn mua 
 8. **Tưởng bị từ chối thì sửa lại gửi duyệt tiếp được.** Không — `CANCELLED` là điểm cuối, `reject`
    không có đường lùi về `DRAFT`; muốn sửa và gửi lại phải tạo RFQ mới (chưa có route "yêu cầu chỉnh
    sửa" riêng, đợt sau).
+9. **Tưởng nhận hàng vượt SL đặt của PO vẫn luôn hợp lệ.** Đã đảo ngược — nhập kho qua phiếu (không
+   phải đặt mua qua PO) giờ chặn ở `E154` khi tổng SL các phiếu đã `confirm` cho một dòng PO vượt SL
+   đặt dòng đó (`docs/domains/inventory.md`). Mua dư (`orderedQuantity > quantity` đề xuất) không
+   đổi, vẫn hợp lệ như cũ — hai chuyện khác nhau.
+10. **Tưởng `progress=ORDERED` đã bao gồm cả PO nhận dở.** Không — `ORDERED` nghĩa là
+    `receivedQuantity = 0` (chưa nhận gì), PO nhận dở nằm ở `RECEIVING`. Muốn "còn hàng chưa nhập
+    đủ" (cả hai) thì dùng `hasRemainingReceipt=true`, không lọc `progress=ORDERED` một mình.
 
 ## Related docs
 

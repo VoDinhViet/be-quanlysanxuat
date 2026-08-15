@@ -1,5 +1,6 @@
 import { InventoryReceiptType } from '../../../database/schemas';
 import {
+  BooleanFieldOptional,
   ClassFieldOptional,
   DateFieldOptional,
   EnumFieldOptional,
@@ -25,8 +26,19 @@ export class UpdateInventoryReceiptReqDto {
   @UUIDFieldOptional()
   readonly productionOrderId?: string;
 
+  @UUIDFieldOptional({
+    description: 'Job liên quan — bắt buộc khi receiptType=PRODUCTION (E179)',
+  })
+  readonly productionJobId?: string;
+
   @UUIDFieldOptional({ description: 'Đơn mua hàng (PO) đã ORDERED' })
   readonly purchaseOrderId?: string;
+
+  @BooleanFieldOptional({
+    description:
+      'Yêu cầu kiểm tra chất lượng (IQC) — quyết định `confirm` chuyển phiếu sang PENDING_IQC hay PENDING_RECEIPT',
+  })
+  readonly requiresIqc?: boolean;
 
   @StringFieldOptional({ maxLength: 1000, nullable: true })
   readonly note?: string | null;

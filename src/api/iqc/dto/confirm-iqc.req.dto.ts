@@ -1,12 +1,25 @@
-import { IqcInspectionLevel } from '../../../database/schemas';
+import {
+  IqcDisposition,
+  IqcInspectionLevel,
+  IqcResult,
+} from '../../../database/schemas';
 import {
   DateFieldOptional,
   EnumField,
+  EnumFieldOptional,
   NumberField,
+  NumberFieldOptional,
   StringFieldOptional,
+  UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
 import { AQL_LEVELS } from '../iqc-aql.constant';
 
+/**
+ * Nút "Lưu" duy nhất của trang chi tiết IQC — ghi đè toàn bộ quyết định QC mỗi lần gọi (không
+ * phải patch một phần): field vắng mặt nghĩa là xoá, không phải giữ nguyên. QC tự chọn `result`;
+ * bảng AQL chỉ còn là gợi ý hiển thị (`IqcService.getIqc` tính `ac`/`re` tham khảo), không còn
+ * chặn được `confirm` (xem `docs/domains/quality.md`).
+ */
 export class ConfirmIqcReqDto {
   @EnumField(() => IqcInspectionLevel, {
     description: 'Mức kiểm tra (Inspection Level)',
@@ -55,4 +68,48 @@ export class ConfirmIqcReqDto {
       'Thời điểm kiểm thực tế — bỏ trống là giữ nguyên ngày kiểm lúc tạo',
   })
   readonly inspectionDate?: Date;
+
+  @EnumField(() => IqcResult, {
+    description: 'Kết quả QC — QC tự chọn, không suy từ bảng AQL',
+  })
+  readonly result!: IqcResult;
+
+  @StringFieldOptional({ maxLength: 500, description: 'Ghi chú kết quả' })
+  readonly resultNote?: string;
+
+  @UUIDFieldOptional({
+    each: true,
+    description: 'File bằng chứng kiểm tra (QC) — thay toàn bộ mỗi lần gọi',
+  })
+  readonly qcEvidenceFileIds?: string[];
+
+  @UUIDFieldOptional({ description: 'Bộ phận QC đã kiểm' })
+  readonly qcDepartmentId?: string;
+
+  @EnumFieldOptional(() => IqcDisposition, {
+    description:
+      'Phương án xử lý — chỉ gửi khi result = FAIL, không được kèm khi PASS (E139)',
+  })
+  readonly disposition?: IqcDisposition;
+
+  @NumberFieldOptional({
+    min: 0,
+    description: 'SL OK khi disposition = SORT',
+  })
+  readonly sortOkQty?: number;
+
+  @NumberFieldOptional({
+    min: 0,
+    description: 'SL NG (trả NCC) khi disposition = SORT',
+  })
+  readonly sortNgQty?: number;
+
+  @StringFieldOptional({ maxLength: 500, description: 'Ghi chú quyết định' })
+  readonly dispositionNote?: string;
+
+  @UUIDFieldOptional({
+    each: true,
+    description: 'File bằng chứng quyết định xử lý — thay toàn bộ mỗi lần gọi',
+  })
+  readonly dispositionEvidenceFileIds?: string[];
 }

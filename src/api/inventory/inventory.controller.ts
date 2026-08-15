@@ -7,11 +7,9 @@ import { Permissions } from '../../decorators/permissions.decorator';
 import { GetInventoryBalancesReqDto } from './dto/get-inventory-balances.req.dto';
 import { GetInventoryReqDto } from './dto/get-inventory.req.dto';
 import { GetInventoryTransactionsReqDto } from './dto/get-inventory-transactions.req.dto';
-import { GetMaterialInventoryReqDto } from './dto/get-material-inventory.req.dto';
 import { InventoryBalanceResDto } from './dto/inventory-balance.res.dto';
 import { InventoryItemResDto } from './dto/inventory-item.res.dto';
 import { InventoryTransactionResDto } from './dto/inventory-transaction.res.dto';
-import { MaterialInventoryItemResDto } from './dto/material-inventory-item.res.dto';
 import { InventoryService } from './inventory.service';
 
 @ApiTags('Inventory')
@@ -23,27 +21,14 @@ export class InventoryController {
   @Permissions('inventory:read')
   @ApiAuth({
     type: InventoryItemResDto,
-    summary: 'List finished-goods stock levels (onHand/reserved/available)',
+    summary:
+      'List stock levels (onHand/reserved/bomDemand/available/status) — filter theo itemType, bỏ trống = mọi loại (FG/WIP/RM)',
     isPaginated: true,
   })
   getInventory(
     @Query() reqDto: GetInventoryReqDto,
   ): Promise<OffsetPaginatedDto<InventoryItemResDto>> {
     return this.inventoryService.getInventory(reqDto);
-  }
-
-  @Get('materials')
-  @Permissions('inventory:read')
-  @ApiAuth({
-    type: MaterialInventoryItemResDto,
-    summary:
-      'List material stock levels (onHand/reserved/issuable/bomDemand/available/status)',
-    isPaginated: true,
-  })
-  getMaterialInventory(
-    @Query() reqDto: GetMaterialInventoryReqDto,
-  ): Promise<OffsetPaginatedDto<MaterialInventoryItemResDto>> {
-    return this.inventoryService.getMaterialInventory(reqDto);
   }
 
   @Get('balances')

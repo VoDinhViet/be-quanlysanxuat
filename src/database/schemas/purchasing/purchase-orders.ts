@@ -125,3 +125,5 @@ export const purchaseOrdersRelations = relations(
     items: many(purchaseOrderItems),
   }),
 );
+
+export type PurchaseOrderSelect = typeof purchaseOrders.$inferSelect;

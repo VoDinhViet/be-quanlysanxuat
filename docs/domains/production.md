@@ -159,6 +159,15 @@ Không phải invariant dù dễ tưởng:
 - **← Inventory**: chỉ đọc, qua `getStockLevels` (LSX, tham số `excludeOrderId`) và
   `getMaterialStockLevels` (`ProductionJobsService.startJob`, tính phần vật tư thiếu). Domain này
   **không ghi** gì vào sổ kho.
+- **→ Inventory (Gia công ngoài)**: `production_job_operations.type` (snapshot `OUTSOURCE`) +
+  `production_jobs.status` là **anchor đọc-một-chiều** cho `outsourcing_orders` — Inventory đọc,
+  Production không ghi/biết gì về OS-OUT/OS-IN. Đợt này **không** có gating nào ngược lại: tạo/hủy
+  chứng từ gia công ngoài không tự đổi `completedQuantity`/`completedDate` hay chặn công đoạn kế
+  tiếp. Xem `docs/domains/inventory.md`.
+- **→ Quality (OQC)**: `production_jobs.status`/`quantity` là **anchor đọc-một-chiều** cho
+  `oqc_inspections` — Quality đọc để validate lúc tạo (`IN_PROGRESS`) và giới hạn tổng lot size
+  (không vượt `quantity`), Production không ghi/biết gì về OQC. Cùng khuôn với gia công ngoài ở
+  trên. Xem `docs/domains/quality.md`.
 - **→ Purchase Requests**: `startJob` là domain khác **duy nhất ghi vào** `purchase_requests` —
   vật tư thiếu tồn khi bấm start tự sinh một đề xuất mua, xem
   `docs/workflows/production-job-execution.md`. Không đi ngược: Purchase Requests không đọc/ghi gì
@@ -192,6 +201,14 @@ Không phải invariant dù dễ tưởng:
 11. **Đi tìm bảng/route tài liệu đính kèm cho Job.** Không có, và cũng không có đường vòng qua sản
     phẩm — sản phẩm không còn bảng đính kèm. Bản vẽ kỹ thuật (nếu cần) tra ở BOM của sản phẩm, theo
     từng node.
+12. **Tưởng công đoạn `type = OUTSOURCE` tự chặn tiến độ hay cần "xác nhận gia công xong" mới cho
+    nhập `completedQuantity` cho công đoạn kế tiếp.** Không — đợt này gia công ngoài
+    (`docs/domains/inventory.md`) chỉ đọc Job để validate lúc tạo OS-OUT, không ghi/gate gì ngược
+    lại tiến độ Job.
+13. **Tưởng OQC (`docs/domains/quality.md`) ghi nhận sản lượng đạt/phế cho Job.** Không — OQC chỉ
+    đọc `production_jobs.status`/`quantity` để validate lúc tạo, kết quả OQC không ghi ngược vào
+    Job hay công đoạn nào. "Sản lượng đạt" chỉ tồn tại dưới dạng tổng `quantity` các dòng
+    `oqc_inspections` của Job, ở domain Quality — không phải một cột trên `production_jobs`.
 
 ## Related docs
 
@@ -199,3 +216,4 @@ Không phải invariant dù dễ tưởng:
   trình tự chạy của hai chặng.
 - `docs/domains/orders.md` — điều kiện để một đơn tới được đây.
 - `docs/domains/inventory.md` — nguồn `onHand`/`reserved`.
+- `docs/domains/quality.md` — OQC, đọc Job để kiểm chất lượng lô thành phẩm.

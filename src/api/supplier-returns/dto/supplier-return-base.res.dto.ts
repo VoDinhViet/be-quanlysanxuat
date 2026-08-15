@@ -14,6 +14,7 @@ import {
 import { InventoryReceiptRefResDto } from '../../inventory-receipts/dto/inventory-receipt-ref.res.dto';
 import { IqcRefResDto } from '../../iqc/dto/iqc-ref.res.dto';
 import { ItemUnitRefResDto } from '../../items/dto/item-unit-ref.res.dto';
+import { OutsourcingReceiptRefResDto } from '../../outsourcing-receipts/dto/outsourcing-receipt-ref.res.dto';
 import { PurchaseOrderRefResDto } from '../../purchase-orders/dto/purchase-order-ref.res.dto';
 import { SupplierRefResDto } from '../../suppliers/dto/supplier-ref.res.dto';
 import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
@@ -52,6 +53,10 @@ export class SupplierReturnBaseResDto {
   @Expose()
   @ClassFieldOptional(() => InventoryReceiptRefResDto, { nullable: true })
   inventoryReceipt!: InventoryReceiptRefResDto | null;
+
+  @Expose()
+  @ClassFieldOptional(() => OutsourcingReceiptRefResDto, { nullable: true })
+  outsourcingReceipt!: OutsourcingReceiptRefResDto | null;
 
   @Expose()
   @ClassFieldOptional(() => IqcRefResDto, { nullable: true })

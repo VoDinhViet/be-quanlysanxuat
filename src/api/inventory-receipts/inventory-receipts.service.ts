@@ -11,6 +11,8 @@ import {
   inArray,
   isNull,
   lt,
+  ne,
+  sql,
 } from 'drizzle-orm';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
@@ -27,6 +29,7 @@ import {
   InventoryReferenceType,
   InventoryTransactionType,
   items,
+  productionJobs,
   productionOrders,
   purchaseOrderItems,
   purchaseOrders,
@@ -40,7 +43,13 @@ import {
   itemStockColumns,
   jobMaterialDemandSubquery,
 } from '../inventory/item-stock.query';
+import type { InventoryPostingLine } from '../inventory/inventory-posting.service';
 import { InventoryPostingService } from '../inventory/inventory-posting.service';
+import { IqcService } from '../iqc/iqc.service';
+import { getPassedOqcQuantityByJobId } from '../oqc/oqc.query';
+import { PaymentRequestsService } from '../payment-requests/payment-requests.service';
+import { getReceivedQuantityByPurchaseOrderItemId } from '../purchase-orders/purchase-orders.query';
+import { getReturnedQuantityByReceiptItemId } from '../supplier-returns/supplier-returns.query';
 import { WarehousesService } from '../warehouses/warehouses.service';
 import { CreateInventoryReceiptReqDto } from './dto/create-inventory-receipt.req.dto';
 import { GetInventoryReceiptsReqDto } from './dto/get-inventory-receipts.req.dto';
@@ -66,6 +75,8 @@ export class InventoryReceiptsService {
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly warehousesService: WarehousesService,
     private readonly inventoryPostingService: InventoryPostingService,
+    private readonly iqcService: IqcService,
+    private readonly paymentRequestsService: PaymentRequestsService,
   ) {}
 
   async getInventoryReceipts(
@@ -86,6 +97,9 @@ export class InventoryReceiptsService {
         : undefined,
       reqDto.productionOrderId
         ? eq(inventoryReceipts.productionOrderId, reqDto.productionOrderId)
+        : undefined,
+      reqDto.productionJobId
+        ? eq(inventoryReceipts.productionJobId, reqDto.productionJobId)
         : undefined,
       reqDto.purchaseOrderId
         ? eq(inventoryReceipts.purchaseOrderId, reqDto.purchaseOrderId)
@@ -116,6 +130,7 @@ export class InventoryReceiptsService {
           supplier: true,
           purchaseRequest: true,
           productionOrder: true,
+          productionJob: true,
           purchaseOrder: true,
           posterBy: true,
           creatorBy: true,
@@ -143,6 +158,7 @@ export class InventoryReceiptsService {
         supplier: true,
         purchaseRequest: true,
         productionOrder: true,
+        productionJob: true,
         purchaseOrder: true,
         posterBy: true,
         creatorBy: true,
@@ -214,11 +230,16 @@ export class InventoryReceiptsService {
     await this.warehousesService.ensureWarehouseActive(reqDto.warehouseId);
     await this.ensureItemsValid(reqDto.items);
     await this.ensureReferencesValid(reqDto);
+    this.ensureProductionJobRequired(
+      reqDto.receiptType,
+      reqDto.productionJobId,
+    );
     await this.ensurePurchaseOrderOrdered(reqDto.purchaseOrderId);
     await this.ensurePurchaseOrderItemsValid(
       reqDto.purchaseOrderId,
       reqDto.items,
     );
+    await this.ensureReceiptQuantitiesWithinOrdered(this.db, reqDto.items);
 
     let code = reqDto.code;
     if (code) {
@@ -246,13 +267,17 @@ export class InventoryReceiptsService {
   async updateInventoryReceipt(
     receiptId: string,
     reqDto: UpdateInventoryReceiptReqDto,
-  ): Promise<InventoryReceiptResDto> {
+  ): Promise<void> {
     const receipt = await this.ensureReceiptDraft(receiptId);
 
     if (reqDto.items !== undefined) {
       await this.ensureItemsValid(reqDto.items);
     }
     await this.ensureReferencesValid(reqDto);
+    this.ensureProductionJobRequired(
+      reqDto.receiptType ?? receipt.receiptType,
+      reqDto.productionJobId ?? receipt.productionJobId,
+    );
     await this.ensurePurchaseOrderOrdered(reqDto.purchaseOrderId);
 
     if (reqDto.items !== undefined) {
@@ -260,6 +285,7 @@ export class InventoryReceiptsService {
         reqDto.purchaseOrderId ?? receipt.purchaseOrderId,
         reqDto.items,
       );
+      await this.ensureReceiptQuantitiesWithinOrdered(this.db, reqDto.items);
     }
 
     const { items, ...receiptFields } = reqDto;
@@ -274,8 +300,6 @@ export class InventoryReceiptsService {
         await this.replaceItems(tx, receiptId, items);
       }
     });
-
-    return this.getInventoryReceipt(receiptId);
   }
 
   async deleteInventoryReceipt(receiptId: string): Promise<void> {
@@ -286,14 +310,76 @@ export class InventoryReceiptsService {
       .where(eq(inventoryReceipts.id, receiptId));
   }
 
-  /** `DRAFT → POSTED` — sinh bút toán + cập nhật tồn qua `InventoryPostingService`, sau đó phiếu
-   * bất biến. Đọc trạng thái nằm trong cùng transaction, sau `lockReceipt`. Xem
-   * `docs/workflows/stock-movement.md`. */
-  async postInventoryReceipt(receiptId: string, userId: string): Promise<void> {
+  /** `DRAFT → PENDING_RECEIPT`/`PENDING_IQC` — chưa đụng tồn kho. `requiresIqc` sinh một phiếu
+   * IQC (`NOT_INSPECTED`) cho mỗi dòng, cùng transaction. Xem
+   * `docs/workflows/receipt-confirmation.md`. */
+  async confirmInventoryReceipt(
+    receiptId: string,
+    userId: string,
+  ): Promise<void> {
     await this.db.transaction(async (tx) => {
       const receipt = await this.lockReceipt(tx, receiptId);
 
       if (receipt.status !== InventoryDocumentStatus.DRAFT) {
+        throw new AppException(ErrorCode.E098, HttpStatus.CONFLICT);
+      }
+
+      const lineItems = await tx.query.inventoryReceiptItems.findMany({
+        where: eq(inventoryReceiptItems.receiptId, receiptId),
+      });
+
+      if (!lineItems.length) {
+        throw new AppException(ErrorCode.E151, HttpStatus.BAD_REQUEST);
+      }
+
+      await this.ensureReceiptQuantitiesWithinOrdered(tx, lineItems);
+
+      if (receipt.receiptType === InventoryReceiptType.PRODUCTION) {
+        await this.ensureProductionReceiptWithinOqcPass(tx, receipt, lineItems);
+      }
+
+      let status = InventoryDocumentStatus.PENDING_RECEIPT;
+
+      if (receipt.requiresIqc) {
+        const supplierId = await this.resolveIqcSupplierId(tx, receipt);
+
+        await this.iqcService.createInspectionsFromReceipt(tx, {
+          inventoryReceiptId: receiptId,
+          purchaseOrderId: receipt.purchaseOrderId,
+          supplierId,
+          inspectionDate: new Date(),
+          lines: lineItems.map((item) => ({
+            itemId: item.itemId,
+            quantity: item.quantity,
+          })),
+          userId,
+        });
+
+        status = InventoryDocumentStatus.PENDING_IQC;
+      }
+
+      await tx
+        .update(inventoryReceipts)
+        .set({ status })
+        .where(eq(inventoryReceipts.id, receiptId));
+    });
+  }
+
+  /** `PENDING_RECEIPT`/`PENDING_IQC → POSTED` — sinh bút toán + cập nhật tồn qua
+   * `InventoryPostingService`, sau đó phiếu bất biến. `PENDING_IQC` chặn (`E153`) nếu còn phiếu
+   * IQC nào chưa `COMPLETED`. Đọc trạng thái nằm trong cùng transaction, sau `lockReceipt`. Trước
+   * khi ghi bút toán, `buildReceiptPostingLines` bù trừ SL đã trả NCC (`POSTED`) khỏi từng dòng —
+   * hàng NG chưa bao giờ thật sự vào tồn thì không được cộng vào (`docs/workflows/
+   * supplier-return.md`). Nếu phiếu gắn PO, gọi `PaymentRequestsService.createIfOrderCompleted`
+   * cùng transaction — tự sinh yêu cầu thanh toán khi PO vừa đạt COMPLETED. Xem
+   * `docs/workflows/receipt-confirmation.md`. */
+  async postInventoryReceipt(receiptId: string, userId: string): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      const receipt = await this.lockReceipt(tx, receiptId);
+
+      if (receipt.status === InventoryDocumentStatus.PENDING_IQC) {
+        await this.ensureReceiptIqcCompleted(tx, receiptId);
+      } else if (receipt.status !== InventoryDocumentStatus.PENDING_RECEIPT) {
         throw new AppException(ErrorCode.E098, HttpStatus.CONFLICT);
       }
 
@@ -307,11 +393,7 @@ export class InventoryReceiptsService {
         referenceId: receiptId,
         transactionDate: receipt.receiptDate,
         createdBy: userId,
-        lines: items.map((item) => ({
-          itemId: item.itemId,
-          signedQuantity: item.quantity,
-          type: receiptTypeTransactionType[receipt.receiptType],
-        })),
+        lines: await this.buildReceiptPostingLines(tx, receipt, items),
       });
 
       await tx
@@ -322,7 +404,53 @@ export class InventoryReceiptsService {
           postedAt: new Date(),
         })
         .where(eq(inventoryReceipts.id, receiptId));
+
+      if (receipt.purchaseOrderId) {
+        await this.paymentRequestsService.createIfOrderCompleted(
+          tx,
+          receipt.purchaseOrderId,
+        );
+      }
     });
+  }
+
+  /** Bù trừ SL đã trả NCC (`supplier_returns` đã `POSTED`) khỏi từng dòng trước khi ghi bút toán
+   * `RECEIPT` — hàng NG bị trả không được cộng vào tồn. Dòng bị bù về 0 thì bỏ hẳn khỏi kết quả
+   * (`chk_inventory_transactions_quantity_sign` cấm dòng `RECEIPT` 0/âm). Nhiều dòng cùng `itemId`
+   * trên một phiếu → số đã trả trừ dần qua từng dòng theo thứ tự duyệt, không trừ hai lần. Xem
+   * `docs/workflows/supplier-return.md`. */
+  private async buildReceiptPostingLines(
+    tx: DbTransaction,
+    receipt: { id: string; receiptType: InventoryReceiptType },
+    lineItems: { itemId: string; quantity: number }[],
+  ): Promise<InventoryPostingLine[]> {
+    const remainingReturnedByItemId = await getReturnedQuantityByReceiptItemId(
+      tx,
+      receipt.id,
+    );
+
+    const lines: InventoryPostingLine[] = [];
+
+    for (const item of lineItems) {
+      const remaining = remainingReturnedByItemId.get(item.itemId) ?? 0;
+      const netQuantity = Math.max(item.quantity - remaining, 0);
+      remainingReturnedByItemId.set(
+        item.itemId,
+        Math.max(remaining - item.quantity, 0),
+      );
+
+      if (netQuantity <= 0) {
+        continue;
+      }
+
+      lines.push({
+        itemId: item.itemId,
+        signedQuantity: netQuantity,
+        type: receiptTypeTransactionType[receipt.receiptType],
+      });
+    }
+
+    return lines;
   }
 
   /** `DRAFT`/`POSTED → CANCELLED`. Từ `POSTED` thì đảo bút toán trước khi đổi trạng thái — xem
@@ -429,33 +557,55 @@ export class InventoryReceiptsService {
     supplierId?: string;
     purchaseRequestId?: string;
     productionOrderId?: string;
+    productionJobId?: string;
   }): Promise<void> {
-    const [supplier, purchaseRequest, productionOrder] = await Promise.all([
-      reqDto.supplierId
-        ? this.db.query.suppliers.findFirst({
-            columns: { id: true },
-            where: and(
-              eq(suppliers.id, reqDto.supplierId),
-              isNull(suppliers.deletedAt),
-            ),
-          })
-        : Promise.resolve(true),
-      reqDto.purchaseRequestId
-        ? this.db.query.purchaseRequests.findFirst({
-            columns: { id: true },
-            where: eq(purchaseRequests.id, reqDto.purchaseRequestId),
-          })
-        : Promise.resolve(true),
-      reqDto.productionOrderId
-        ? this.db.query.productionOrders.findFirst({
-            columns: { id: true },
-            where: eq(productionOrders.id, reqDto.productionOrderId),
-          })
-        : Promise.resolve(true),
-    ]);
+    const [supplier, purchaseRequest, productionOrder, productionJob] =
+      await Promise.all([
+        reqDto.supplierId
+          ? this.db.query.suppliers.findFirst({
+              columns: { id: true },
+              where: and(
+                eq(suppliers.id, reqDto.supplierId),
+                isNull(suppliers.deletedAt),
+              ),
+            })
+          : Promise.resolve(true),
+        reqDto.purchaseRequestId
+          ? this.db.query.purchaseRequests.findFirst({
+              columns: { id: true },
+              where: eq(purchaseRequests.id, reqDto.purchaseRequestId),
+            })
+          : Promise.resolve(true),
+        reqDto.productionOrderId
+          ? this.db.query.productionOrders.findFirst({
+              columns: { id: true },
+              where: eq(productionOrders.id, reqDto.productionOrderId),
+            })
+          : Promise.resolve(true),
+        reqDto.productionJobId
+          ? this.db.query.productionJobs.findFirst({
+              columns: { id: true },
+              where: eq(productionJobs.id, reqDto.productionJobId),
+            })
+          : Promise.resolve(true),
+      ]);
 
-    if (!supplier || !purchaseRequest || !productionOrder) {
+    if (!supplier || !purchaseRequest || !productionOrder || !productionJob) {
       throw new AppException(ErrorCode.E107, HttpStatus.BAD_REQUEST);
+    }
+  }
+
+  /** `receiptType = PRODUCTION` bắt buộc gắn `productionJobId` (`E179`) — nếu không thì gate nhập
+   * kho thành phẩm theo OQC (`docs/domains/inventory.md`) có lỗ hổng bỏ qua hoàn toàn. Đổi hành vi
+   * so với thiết kế ban đầu (cột này vốn chỉ để trace, không validate chéo với `receiptType`).
+   * `update` truyền vào giá trị **hiệu lực** (payload mới nếu có gửi, giữ nguyên giá trị cũ nếu
+   * không) — không tự suy bên trong hàm này. */
+  private ensureProductionJobRequired(
+    receiptType: InventoryReceiptType,
+    productionJobId: string | null | undefined,
+  ): void {
+    if (receiptType === InventoryReceiptType.PRODUCTION && !productionJobId) {
+      throw new AppException(ErrorCode.E179, HttpStatus.BAD_REQUEST);
     }
   }
 
@@ -514,6 +664,183 @@ export class InventoryReceiptsService {
       if (match.purchaseOrderId !== purchaseOrderId) {
         throw new AppException(ErrorCode.E127, HttpStatus.BAD_REQUEST);
       }
+    }
+  }
+
+  /** SL cộng dồn mọi phiếu đã `confirm` (`PENDING_IQC`/`PENDING_RECEIPT`/`POSTED`, `DRAFT` không
+   * tính vì nháp có thể không bao giờ được xác nhận) trỏ cùng một dòng PO, cộng thêm SL của
+   * payload đang xét, không được vượt SL đặt của dòng đó (`E154`). Nhận `Database | DbTransaction`
+   * (không bắt buộc `tx` như một write helper thường) vì đây thuần là đọc, và phải dùng được từ cả
+   * `create`/`update` (ngoài transaction) lẫn `confirm` (trong transaction) — cùng ngoại lệ với
+   * `IqcService.generateIqcCodes`. */
+  private async ensureReceiptQuantitiesWithinOrdered(
+    db: Database | DbTransaction,
+    lineItems: { purchaseOrderItemId?: string | null; quantity: number }[],
+  ): Promise<void> {
+    const payloadByPoItemId = new Map<string, number>();
+    for (const item of lineItems) {
+      if (!item.purchaseOrderItemId) {
+        continue;
+      }
+      payloadByPoItemId.set(
+        item.purchaseOrderItemId,
+        (payloadByPoItemId.get(item.purchaseOrderItemId) ?? 0) + item.quantity,
+      );
+    }
+
+    if (!payloadByPoItemId.size) {
+      return;
+    }
+
+    const poItemIds = [...payloadByPoItemId.keys()];
+
+    const [orderedRows, receivedByPoItemId] = await Promise.all([
+      db.query.purchaseOrderItems.findMany({
+        columns: { id: true, quantity: true },
+        where: inArray(purchaseOrderItems.id, poItemIds),
+      }),
+      getReceivedQuantityByPurchaseOrderItemId(db, {
+        purchaseOrderItemIds: poItemIds,
+        statuses: [
+          InventoryDocumentStatus.PENDING_IQC,
+          InventoryDocumentStatus.PENDING_RECEIPT,
+          InventoryDocumentStatus.POSTED,
+        ],
+      }),
+    ]);
+
+    const orderedByPoItemId = new Map(
+      orderedRows.map((row) => [row.id, row.quantity]),
+    );
+
+    for (const [poItemId, payloadQuantity] of payloadByPoItemId) {
+      const ordered = orderedByPoItemId.get(poItemId) ?? 0;
+      const received = receivedByPoItemId.get(poItemId) ?? 0;
+      if (received + payloadQuantity > ordered) {
+        throw new AppException(ErrorCode.E154, HttpStatus.BAD_REQUEST);
+      }
+    }
+  }
+
+  /** Gate nhập kho thành phẩm theo OQC (`docs/domains/inventory.md`, "Gate nhập kho thành phẩm";
+   * `docs/workflows/final-qc.md`) — chỉ chạy khi `receiptType = PRODUCTION`. `productionJobId`
+   * NULL tại đây nghĩa là một phiếu cũ tồn tại từ trước ràng buộc này (cột vốn không `NOT NULL` ở
+   * DB, chỉ service-enforced) — vẫn chặn bằng `E179` thay vì bỏ qua. Mọi dòng phải cùng `itemId`
+   * với Job (`E107`, tái dùng — cùng ngữ nghĩa `inventory_issues` dùng cho `orderItemId` lệch
+   * item), và tổng SL các dòng (cộng dồn mọi phiếu `PRODUCTION` khác đã `confirm` cùng Job, trừ
+   * chính phiếu này) không được vượt tổng SL các dòng OQC đã `COMPLETED` (PASS) của Job đó
+   * (`E180`). */
+  private async ensureProductionReceiptWithinOqcPass(
+    tx: DbTransaction,
+    receipt: { id: string; productionJobId: string | null },
+    lineItems: { itemId: string; quantity: number }[],
+  ): Promise<void> {
+    if (!receipt.productionJobId) {
+      throw new AppException(ErrorCode.E179, HttpStatus.BAD_REQUEST);
+    }
+
+    const job = await tx.query.productionJobs.findFirst({
+      columns: { itemId: true },
+      where: eq(productionJobs.id, receipt.productionJobId),
+    });
+
+    if (!job) {
+      throw new AppException(ErrorCode.E082, HttpStatus.NOT_FOUND);
+    }
+
+    let thisReceiptQuantity = 0;
+    for (const item of lineItems) {
+      if (item.itemId !== job.itemId) {
+        throw new AppException(ErrorCode.E107, HttpStatus.BAD_REQUEST);
+      }
+      thisReceiptQuantity += item.quantity;
+    }
+
+    const [passedQty, receivedSoFar] = await Promise.all([
+      getPassedOqcQuantityByJobId(tx, receipt.productionJobId),
+      this.getConfirmedProductionQuantityByJobId(
+        tx,
+        receipt.productionJobId,
+        receipt.id,
+      ),
+    ]);
+
+    if (receivedSoFar + thisReceiptQuantity > passedQty) {
+      throw new AppException(ErrorCode.E180, HttpStatus.BAD_REQUEST);
+    }
+  }
+
+  /** Σ SL các dòng mọi phiếu nhập `PRODUCTION` khác đã `confirm` (`PENDING_IQC`/`PENDING_RECEIPT`/
+   * `POSTED`) cùng Job, loại trừ chính phiếu đang xét — dùng bởi
+   * `ensureProductionReceiptWithinOqcPass`. */
+  private async getConfirmedProductionQuantityByJobId(
+    tx: DbTransaction,
+    productionJobId: string,
+    excludeReceiptId: string,
+  ): Promise<number> {
+    const [row] = await tx
+      .select({
+        total:
+          sql<number>`coalesce(sum(${inventoryReceiptItems.quantity}), 0)`.mapWith(
+            Number,
+          ),
+      })
+      .from(inventoryReceiptItems)
+      .innerJoin(
+        inventoryReceipts,
+        eq(inventoryReceipts.id, inventoryReceiptItems.receiptId),
+      )
+      .where(
+        and(
+          eq(inventoryReceipts.productionJobId, productionJobId),
+          inArray(inventoryReceipts.status, [
+            InventoryDocumentStatus.PENDING_IQC,
+            InventoryDocumentStatus.PENDING_RECEIPT,
+            InventoryDocumentStatus.POSTED,
+          ]),
+          ne(inventoryReceipts.id, excludeReceiptId),
+        ),
+      );
+
+    return row?.total ?? 0;
+  }
+
+  /** NCC của phiếu IQC sinh ra khi `confirm` — ưu tiên `receipt.supplierId`, rơi về NCC của PO gắn
+   * với phiếu. Không suy được cả hai → `E152` (`iqc_inspections.supplier_id` là NOT NULL). */
+  private async resolveIqcSupplierId(
+    tx: DbTransaction,
+    receipt: { supplierId: string | null; purchaseOrderId: string | null },
+  ): Promise<string> {
+    if (receipt.supplierId) {
+      return receipt.supplierId;
+    }
+
+    if (receipt.purchaseOrderId) {
+      const purchaseOrder = await tx.query.purchaseOrders.findFirst({
+        columns: { supplierId: true },
+        where: eq(purchaseOrders.id, receipt.purchaseOrderId),
+      });
+      if (purchaseOrder?.supplierId) {
+        return purchaseOrder.supplierId;
+      }
+    }
+
+    throw new AppException(ErrorCode.E152, HttpStatus.BAD_REQUEST);
+  }
+
+  /** `post` một phiếu `PENDING_IQC` chỉ chạy khi mọi phiếu IQC gắn với nó đã `COMPLETED` — thiếu
+   * điều kiện này, kể cả khi chưa có phiếu IQC nào, đều là `E153`. */
+  private async ensureReceiptIqcCompleted(
+    tx: DbTransaction,
+    receiptId: string,
+  ): Promise<void> {
+    const completed = await this.iqcService.areInspectionsCompletedForReceipt(
+      tx,
+      receiptId,
+    );
+
+    if (!completed) {
+      throw new AppException(ErrorCode.E153, HttpStatus.CONFLICT);
     }
   }
 

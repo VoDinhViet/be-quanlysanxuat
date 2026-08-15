@@ -29,7 +29,6 @@ import {
   inventoryTransactions,
   items,
   ItemStatus,
-  ItemType,
   orderItems,
   orders,
   OrderItemStatus,
@@ -40,12 +39,10 @@ import {
 import { GetInventoryBalancesReqDto } from './dto/get-inventory-balances.req.dto';
 import { GetInventoryReqDto } from './dto/get-inventory.req.dto';
 import { GetInventoryTransactionsReqDto } from './dto/get-inventory-transactions.req.dto';
-import { GetMaterialInventoryReqDto } from './dto/get-material-inventory.req.dto';
 import { InventoryBalanceResDto } from './dto/inventory-balance.res.dto';
 import { InventoryItemResDto } from './dto/inventory-item.res.dto';
 import { InventoryTransactionResDto } from './dto/inventory-transaction.res.dto';
-import { MaterialInventoryItemResDto } from './dto/material-inventory-item.res.dto';
-import { MaterialStockStatus } from './inventory.constant';
+import { StockStatus } from './inventory.constant';
 
 /** Đọc tồn — mọi số tính từ `inventory_balances` (bản chiếu `InventoryPostingService` ghi lúc
  * `post`/`cancel`) và `order_items`, gộp mọi kho trừ khi `warehouseId` được truyền. */
@@ -53,75 +50,30 @@ import { MaterialStockStatus } from './inventory.constant';
 export class InventoryService {
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
 
-  /** Liệt kê mọi FG ACTIVE, kể cả item chưa từng có phiếu nào — không chỉ item có phát sinh
-   * kho. Phân trang/lọc chạy trên `items`, `onHand`/`reserved` chỉ tra cho trang hiện tại. */
+  /** Liệt kê mọi item ACTIVE (bỏ trống `itemType` = mọi loại FG/WIP/RM), kể cả item chưa từng có
+   * phiếu nào — không chỉ item có phát sinh kho. Không thể phân trang trên `items` rồi tra tồn
+   * riêng — filter `status`/`itemType` (giá trị tính hoặc cần điều kiện tuỳ chọn trong `WHERE`)
+   * nên toàn bộ join + tính toán nằm trong một `.select()` duy nhất, dùng chung `where` cho cả
+   * trang lẫn `count()`. */
   async getInventory(
     reqDto: GetInventoryReqDto,
   ): Promise<OffsetPaginatedDto<InventoryItemResDto>> {
-    const where = and(
-      eq(items.type, ItemType.FG),
-      eq(items.status, ItemStatus.ACTIVE),
-      isNull(items.deletedAt),
-    );
-
-    const [entities, countRows] = await Promise.all([
-      this.db.query.items.findMany({
-        where,
-        limit: reqDto.limit,
-        offset: reqDto.offset,
-        orderBy: asc(items.code),
-        with: { unit: true, imageFile: true },
-      }),
-      this.db.select({ total: count() }).from(items).where(where),
-    ]);
-
-    const stockByItem = await this.getStockLevels(
-      entities.map((item) => item.id),
-      undefined,
-      reqDto.warehouseId,
-    );
-
-    const rows = entities.map((item) => {
-      const stock = stockByItem.get(item.id) ?? {
-        onHand: 0,
-        reserved: 0,
-      };
-      return {
-        ...item,
-        onHand: stock.onHand,
-        reserved: stock.reserved,
-        available: stock.onHand - stock.reserved,
-      };
-    });
-
-    return new OffsetPaginatedDto(
-      plainToInstance(InventoryItemResDto, rows, {
-        excludeExtraneousValues: true,
-      }),
-      new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
-    );
-  }
-
-  /** Không thể phân trang trên `items` rồi tra tồn riêng như `getInventory` — filter `status`
-   * (giá trị tính, không phải cột thật) phải chạy trong `WHERE`, nên toàn bộ join + tính toán nằm
-   * trong một `.select()` duy nhất, dùng chung `where` cho cả trang lẫn `count()`. */
-  async getMaterialInventory(
-    reqDto: GetMaterialInventoryReqDto,
-  ): Promise<OffsetPaginatedDto<MaterialInventoryItemResDto>> {
     const stock = this.balanceSubquery(reqDto.asOfDate, reqDto.warehouseId);
+    const reserved = this.reservedSubquery();
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
 
     const onHandSql = () => sql<number>`coalesce(${stock.onHand}, 0)`;
+    const reservedSql = () => sql<number>`coalesce(${reserved.reserved}, 0)`;
     // Literal `0` — đợt nổ BOM đa cấp sau này chỉ cần thay hàm này bằng subquery thật, công thức
     // `available`/`status` không phải sửa.
     const bomDemandSql = () => sql<number>`0`;
     const availableSql = () =>
-      sql<number>`(${onHandSql()}) - (${bomDemandSql()})`;
+      sql<number>`(${onHandSql()}) - (${reservedSql()}) - (${bomDemandSql()})`;
 
     const where = and(
-      eq(items.type, ItemType.RM),
       isNull(items.deletedAt),
       eq(items.status, ItemStatus.ACTIVE),
+      reqDto.itemType ? eq(items.type, reqDto.itemType) : undefined,
       keyword
         ? or(
             unaccentILike(items.code, keyword),
@@ -130,7 +82,7 @@ export class InventoryService {
         : undefined,
       reqDto.supplierId ? eq(items.supplierId, reqDto.supplierId) : undefined,
       reqDto.status
-        ? this.materialStatusCondition(availableSql, reqDto.status)
+        ? this.stockStatusCondition(availableSql, reqDto.status)
         : undefined,
     );
 
@@ -140,13 +92,13 @@ export class InventoryService {
           id: items.id,
           code: items.code,
           name: items.name,
+          type: items.type,
           unit: getTableColumns(units),
           supplier: getTableColumns(suppliers),
           image: getTableColumns(files),
           minStock: items.minStock,
           onHand: onHandSql().mapWith(Number).as('on_hand'),
-          reserved: sql<number>`0`.mapWith(Number).as('reserved'),
-          issuable: onHandSql().mapWith(Number).as('issuable'),
+          reserved: reservedSql().mapWith(Number).as('reserved'),
           bomDemand: bomDemandSql().mapWith(Number).as('bom_demand'),
           available: availableSql().mapWith(Number).as('available'),
         })
@@ -155,6 +107,7 @@ export class InventoryService {
         .leftJoin(suppliers, eq(suppliers.id, items.supplierId))
         .leftJoin(files, eq(files.id, items.imageFileId))
         .leftJoin(stock, eq(stock.itemId, items.id))
+        .leftJoin(reserved, eq(reserved.itemId, items.id))
         .where(where)
         .orderBy(asc(items.code))
         .limit(reqDto.limit)
@@ -163,16 +116,17 @@ export class InventoryService {
         .select({ total: count() })
         .from(items)
         .leftJoin(stock, eq(stock.itemId, items.id))
+        .leftJoin(reserved, eq(reserved.itemId, items.id))
         .where(where),
     ]);
 
     const rowsWithStatus = rows.map((row) => ({
       ...row,
-      status: this.materialStockStatus(row.available, row.minStock),
+      status: this.resolveStockStatus(row.available, row.minStock),
     }));
 
     return new OffsetPaginatedDto(
-      plainToInstance(MaterialInventoryItemResDto, rowsWithStatus, {
+      plainToInstance(InventoryItemResDto, rowsWithStatus, {
         excludeExtraneousValues: true,
       }),
       new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
@@ -279,37 +233,35 @@ export class InventoryService {
   }
 
   /** Trả boolean SQL trực tiếp (không qua CASE) — chỉ phục vụ lọc `WHERE`, không cần hiển thị. */
-  private materialStatusCondition(
+  private stockStatusCondition(
     availableSql: () => SQL<number>,
-    status: MaterialStockStatus,
+    status: StockStatus,
   ) {
     switch (status) {
-      case MaterialStockStatus.SHORTAGE:
+      case StockStatus.SHORTAGE:
         return sql`(${availableSql()}) < 0`;
-      case MaterialStockStatus.WARNING:
+      case StockStatus.WARNING:
         return sql`(${availableSql()}) >= 0 and (${availableSql()}) < ${items.minStock}`;
-      case MaterialStockStatus.NORMAL:
+      case StockStatus.NORMAL:
         return sql`(${availableSql()}) >= ${items.minStock}`;
     }
   }
 
-  /** Cùng ba ngưỡng với `materialStatusCondition`, tính trong JS. */
-  private materialStockStatus(
-    available: number,
-    minStock: number,
-  ): MaterialStockStatus {
+  /** Cùng ba ngưỡng với `stockStatusCondition`, tính trong JS. */
+  private resolveStockStatus(available: number, minStock: number): StockStatus {
     if (available < 0) {
-      return MaterialStockStatus.SHORTAGE;
+      return StockStatus.SHORTAGE;
     }
     if (available < minStock) {
-      return MaterialStockStatus.WARNING;
+      return StockStatus.WARNING;
     }
-    return MaterialStockStatus.NORMAL;
+    return StockStatus.NORMAL;
   }
 
   /** `excludeOrderId` loại một đơn khỏi `reserved` khi tính Khả dụng cho chính đơn đó — đơn này đã
    * tự giữ chỗ nên không loại trừ sẽ bị trừ nhu cầu của nó hai lần. Chỉ `ProductionOrdersService`
-   * truyền tham số này; `GET /inventory` luôn để trống. `warehouseId` gộp mọi kho nếu bỏ trống. */
+   * truyền tham số này — `GET /inventory` gọi `reservedSubquery` trực tiếp trong `getInventory`,
+   * không qua hàm này. `warehouseId` gộp mọi kho nếu bỏ trống. */
   async getStockLevels(
     itemIds: string[],
     excludeOrderId?: string,

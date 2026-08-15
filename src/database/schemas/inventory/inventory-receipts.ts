@@ -1,5 +1,6 @@
 import { relations } from 'drizzle-orm';
 import {
+  boolean,
   date,
   index,
   pgEnum,
@@ -15,6 +16,7 @@ import {
 } from './inventory-documents';
 import { inventoryReceiptItems } from './inventory-receipt-items';
 import { warehouses } from './warehouses';
+import { productionJobs } from '../production/production-jobs';
 import { productionOrders } from '../production/production-orders';
 import { purchaseOrders } from '../purchasing/purchase-orders';
 import { purchaseRequests } from '../purchase-requests/purchase-requests';
@@ -52,6 +54,7 @@ export const inventoryReceipts = pgTable(
     status: inventoryDocumentStatusEnum('status')
       .notNull()
       .default(InventoryDocumentStatus.DRAFT),
+    requiresIqc: boolean('requires_iqc').notNull().default(false),
     receiptDate: date('receipt_date', { mode: 'date' }).notNull(),
     supplierId: uuid('supplier_id').references(() => suppliers.id, {
       onDelete: 'set null',
@@ -64,6 +67,13 @@ export const inventoryReceipts = pgTable(
     // (`ProductionOrdersService.seedPlan`); phiếu đã post phải sống sót qua việc đó.
     productionOrderId: uuid('production_order_id').references(
       () => productionOrders.id,
+      { onDelete: 'set null' },
+    ),
+    // `set null`, cùng lý do `productionOrderId` — bắt buộc khi `receiptType = PRODUCTION`
+    // (service-enforced, `E179`), dùng làm neo cho gate OQC (`getPassedOqcQuantityByJobId`,
+    // `docs/domains/inventory.md`).
+    productionJobId: uuid('production_job_id').references(
+      () => productionJobs.id,
       { onDelete: 'set null' },
     ),
     // Trace mức phiếu về đơn mua sinh ra nó (`docs/domains/purchasing.md`) — thuần để trace, không
@@ -95,6 +105,7 @@ export const inventoryReceipts = pgTable(
     index('idx_inventory_receipts_production_order_id').on(
       table.productionOrderId,
     ),
+    index('idx_inventory_receipts_production_job_id').on(table.productionJobId),
     index('idx_inventory_receipts_purchase_order_id').on(table.purchaseOrderId),
     index('idx_inventory_receipts_created_by').on(table.createdBy),
   ],
@@ -118,6 +129,10 @@ export const inventoryReceiptsRelations = relations(
     productionOrder: one(productionOrders, {
       fields: [inventoryReceipts.productionOrderId],
       references: [productionOrders.id],
+    }),
+    productionJob: one(productionJobs, {
+      fields: [inventoryReceipts.productionJobId],
+      references: [productionJobs.id],
     }),
     purchaseOrder: one(purchaseOrders, {
       fields: [inventoryReceipts.purchaseOrderId],

@@ -19,11 +19,15 @@ import {
   StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
+import { DepartmentResDto } from '../../departments/dto/department.res.dto';
 import { InventoryReceiptRefResDto } from '../../inventory-receipts/dto/inventory-receipt-ref.res.dto';
 import { ItemUnitRefResDto } from '../../items/dto/item-unit-ref.res.dto';
+import { OutsourcingReceiptRefResDto } from '../../outsourcing-receipts/dto/outsourcing-receipt-ref.res.dto';
 import { PurchaseOrderRefResDto } from '../../purchase-orders/dto/purchase-order-ref.res.dto';
+import { SupplierReturnRefResDto } from '../../supplier-returns/dto/supplier-return-ref.res.dto';
 import { SupplierRefResDto } from '../../suppliers/dto/supplier-ref.res.dto';
 import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
+import { IqcAttachmentResDto } from './iqc-attachment.res.dto';
 
 @Exclude()
 export class IqcResDto {
@@ -38,6 +42,10 @@ export class IqcResDto {
   @Expose()
   @ClassFieldOptional(() => InventoryReceiptRefResDto, { nullable: true })
   inventoryReceipt!: InventoryReceiptRefResDto | null;
+
+  @Expose()
+  @ClassFieldOptional(() => OutsourcingReceiptRefResDto, { nullable: true })
+  outsourcingReceipt!: OutsourcingReceiptRefResDto | null;
 
   @Expose()
   @ClassFieldOptional(() => PurchaseOrderRefResDto, { nullable: true })
@@ -78,6 +86,45 @@ export class IqcResDto {
   @Expose()
   @StringFieldOptional({ nullable: true, description: 'Ghi chú' })
   note!: string | null;
+
+  @Expose()
+  @StringFieldOptional({ nullable: true, description: 'Ghi chú kết quả' })
+  resultNote!: string | null;
+
+  @Expose()
+  @StringFieldOptional({ nullable: true, description: 'Ghi chú quyết định' })
+  dispositionNote!: string | null;
+
+  @Expose()
+  @NumberFieldOptional({ nullable: true, description: 'SL OK khi Phân loại' })
+  sortOkQty!: number | null;
+
+  @Expose()
+  @NumberFieldOptional({
+    nullable: true,
+    description: 'SL NG (trả NCC) khi Phân loại',
+  })
+  sortNgQty!: number | null;
+
+  @Expose()
+  @ClassFieldOptional(() => DepartmentResDto, { nullable: true })
+  qcDepartment!: DepartmentResDto | null;
+
+  @Expose()
+  @ClassField(() => IqcAttachmentResDto, { each: true })
+  qcEvidence!: IqcAttachmentResDto[];
+
+  @Expose()
+  @ClassField(() => IqcAttachmentResDto, { each: true })
+  dispositionEvidence!: IqcAttachmentResDto[];
+
+  @Expose()
+  @ClassFieldOptional(() => SupplierReturnRefResDto, {
+    nullable: true,
+    description:
+      'Phiếu trả NCC tự sinh khi disposition SORT/RETURN — null nếu chưa/không có',
+  })
+  supplierReturn!: SupplierReturnRefResDto | null;
 
   @Expose()
   @EnumFieldOptional(() => IqcInspectionLevel, {

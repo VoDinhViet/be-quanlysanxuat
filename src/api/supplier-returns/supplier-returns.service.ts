@@ -1,28 +1,37 @@
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
-import { and, count, desc, eq, exists, or, sql } from 'drizzle-orm';
+import { and, count, desc, eq, exists, gte, lt, or, sql } from 'drizzle-orm';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
-import type { Database } from '../../database/database.type';
+import type { Database, DbTransaction } from '../../database/database.type';
 import {
+  InventoryDocumentStatus,
   inventoryReceipts,
+  InventoryReferenceType,
+  InventoryTransactionType,
   iqcInspections,
   items,
   purchaseOrders,
   supplierReturns,
+  type SupplierReturnSelect,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
+import { InventoryPostingService } from '../inventory/inventory-posting.service';
+import { completeIqcAfterSupplierReturn } from '../iqc/iqc.write';
 import { GetSupplierReturnsReqDto } from './dto/get-supplier-returns.req.dto';
 import { PageSupplierReturnResDto } from './dto/page-supplier-return.res.dto';
 import { SupplierReturnResDto } from './dto/supplier-return.res.dto';
 
 @Injectable()
 export class SupplierReturnsService {
-  constructor(@Inject(DRIZZLE) private readonly db: Database) {}
+  constructor(
+    @Inject(DRIZZLE) private readonly db: Database,
+    private readonly inventoryPostingService: InventoryPostingService,
+  ) {}
 
   async getSupplierReturns(
     reqDto: GetSupplierReturnsReqDto,
@@ -109,6 +118,7 @@ export class SupplierReturnsService {
           warehouse: true,
           purchaseOrder: true,
           inventoryReceipt: true,
+          outsourcingReceipt: true,
           iqc: true,
           creatorBy: true,
         },
@@ -135,8 +145,10 @@ export class SupplierReturnsService {
         warehouse: true,
         purchaseOrder: true,
         inventoryReceipt: true,
+        outsourcingReceipt: true,
         iqc: true,
         creatorBy: true,
+        posterBy: true,
       },
     });
 
@@ -147,5 +159,149 @@ export class SupplierReturnsService {
     return plainToInstance(SupplierReturnResDto, row, {
       excludeExtraneousValues: true,
     });
+  }
+
+  /** Tự sinh DRAFT — gọi bởi `IqcService.confirmIqc` khi QC chọn disposition SORT/RETURN, ngay
+   *  sau khi dòng IQC chuyển `WAITING_RETURN`, cùng transaction với việc khoá dòng đó lại (bắt
+   *  buộc `tx`, không mở transaction riêng). Xem `docs/workflows/supplier-return.md`. */
+  async createFromIqcDisposition(
+    tx: DbTransaction,
+    params: {
+      iqcId: string;
+      warehouseId: string;
+      supplierId: string;
+      itemId: string;
+      quantity: number;
+      purchaseOrderId: string | null;
+      inventoryReceiptId: string | null;
+      outsourcingReceiptId: string | null;
+      returnDate: Date;
+      userId: string;
+    },
+  ): Promise<void> {
+    const code = await this.generateReturnCode(tx, params.returnDate);
+
+    await tx.insert(supplierReturns).values({
+      code,
+      warehouseId: params.warehouseId,
+      supplierId: params.supplierId,
+      itemId: params.itemId,
+      quantity: params.quantity,
+      purchaseOrderId: params.purchaseOrderId,
+      inventoryReceiptId: params.inventoryReceiptId,
+      outsourcingReceiptId: params.outsourcingReceiptId,
+      iqcId: params.iqcId,
+      returnDate: params.returnDate,
+      status: InventoryDocumentStatus.DRAFT,
+      createdBy: params.userId,
+    });
+  }
+
+  /** `DRAFT → POSTED` — kho xác nhận đã thật sự xuất hàng trả NCC. Trừ tồn qua
+   *  `InventoryPostingService` (bỏ qua nếu phiếu nhập gốc chưa `POSTED` — xem `shouldPostStock`),
+   *  rồi hoàn tất luôn dòng IQC liên kết (`completeIqcAfterSupplierReturn`) trong cùng
+   *  transaction. Xem `docs/workflows/supplier-return.md`. */
+  async postSupplierReturn(
+    supplierReturnId: string,
+    userId: string,
+  ): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      const row = await this.lockSupplierReturn(tx, supplierReturnId);
+
+      if (row.status !== InventoryDocumentStatus.DRAFT) {
+        throw new AppException(ErrorCode.E098, HttpStatus.CONFLICT);
+      }
+
+      if (await this.shouldPostStock(tx, row)) {
+        await this.inventoryPostingService.postDocument(tx, {
+          warehouseId: row.warehouseId,
+          referenceType: InventoryReferenceType.SUPPLIER_RETURN,
+          referenceId: row.id,
+          transactionDate: row.returnDate,
+          createdBy: userId,
+          lines: [
+            {
+              itemId: row.itemId,
+              // Xuất trả luôn trừ tồn — dấu âm.
+              signedQuantity: -row.quantity,
+              type: InventoryTransactionType.ISSUE,
+            },
+          ],
+        });
+      }
+
+      await tx
+        .update(supplierReturns)
+        .set({
+          status: InventoryDocumentStatus.POSTED,
+          postedBy: userId,
+          postedAt: new Date(),
+        })
+        .where(eq(supplierReturns.id, supplierReturnId));
+
+      if (row.iqcId) {
+        await completeIqcAfterSupplierReturn(tx, row.iqcId);
+      }
+    });
+  }
+
+  /** Không trừ tồn nếu phiếu nhập gốc chưa `POSTED` — IQC chạy trước khi phiếu nhập ghi tồn
+   *  (`PENDING_IQC` chưa đụng `inventory_balances`), nên trừ vào đó sẽ trừ vào tồn chưa từng có,
+   *  ra âm giả (`E106`) hoặc trừ nhầm tồn của lô khác. `postInventoryReceipt` tự bù trừ số lượng
+   *  đã trả `POSTED` trước khi ghi bút toán `RECEIPT` (`getReturnedQuantityByReceiptItemId`), nên
+   *  không ghi thiếu tồn — hàng NG chưa bao giờ được cộng vào để phải trừ ra. Không có phiếu nhập
+   *  liên quan (IQC tạo tay) → luôn trừ tồn bình thường. */
+  private async shouldPostStock(
+    tx: DbTransaction,
+    row: Pick<SupplierReturnSelect, 'inventoryReceiptId'>,
+  ): Promise<boolean> {
+    if (!row.inventoryReceiptId) {
+      return true;
+    }
+
+    const receipt = await tx.query.inventoryReceipts.findFirst({
+      columns: { status: true },
+      where: eq(inventoryReceipts.id, row.inventoryReceiptId),
+    });
+
+    return receipt?.status === InventoryDocumentStatus.POSTED;
+  }
+
+  /** Khoá dòng phiếu (`FOR UPDATE`) rồi trả về — chỉ gọi bên trong transaction, cùng lý do
+   *  `InventoryIssuesService.lockIssue`: chặn `post` trùng lên cùng phiếu trừ tồn hai lần. */
+  private async lockSupplierReturn(
+    tx: DbTransaction,
+    supplierReturnId: string,
+  ) {
+    const [row] = await tx
+      .select()
+      .from(supplierReturns)
+      .where(eq(supplierReturns.id, supplierReturnId))
+      .for('update');
+
+    if (!row) {
+      throw new AppException(ErrorCode.E137, HttpStatus.NOT_FOUND);
+    }
+
+    return row;
+  }
+
+  private async generateReturnCode(
+    tx: DbTransaction,
+    returnDate: Date,
+  ): Promise<string> {
+    const year = returnDate.getFullYear();
+    const yearStart = new Date(year, 0, 1);
+    const yearEnd = new Date(year + 1, 0, 1);
+    const [totalRows] = await tx
+      .select({ total: count() })
+      .from(supplierReturns)
+      .where(
+        and(
+          gte(supplierReturns.returnDate, yearStart),
+          lt(supplierReturns.returnDate, yearEnd),
+        ),
+      );
+    return `PTNCC-${year}-${String((totalRows?.total ?? 0) + 1).padStart(5, '0')}`;
   }
 }

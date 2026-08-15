@@ -77,7 +77,19 @@ erDiagram
     IQC_INSPECTIONS }o--|| ITEMS : "vật tư kiểm"
     IQC_INSPECTIONS }o--o| INVENTORY_RECEIPTS : "trace mức phiếu (tuỳ chọn)"
     IQC_INSPECTIONS }o--o| PURCHASE_ORDERS : "trace mức phiếu (tuỳ chọn)"
-    SUPPLIER_RETURNS }o--o| IQC_INSPECTIONS : "phiếu trả sinh từ lần IQC nào (tuỳ chọn)"
+    IQC_INSPECTIONS }o--o| DEPARTMENTS : "bộ phận QC (tuỳ chọn)"
+    IQC_INSPECTIONS ||--o{ IQC_ATTACHMENTS : "bằng chứng QC + quyết định xử lý"
+    IQC_ATTACHMENTS }o--|| FILES : "file đính kèm"
+    IQC_INSPECTIONS ||--o{ SUPPLIER_RETURNS : "tự sinh khi disposition SORT/RETURN"
+
+    WAREHOUSES ||--o{ OUTSOURCING_ORDERS : "kho gửi"
+    SUPPLIERS ||--o{ OUTSOURCING_ORDERS : "NCC gia công"
+    PRODUCTION_JOB_OPERATIONS }o--o| OUTSOURCING_ORDERS : "anchor (Job IN_PROGRESS, type=OUTSOURCE)"
+    OUTSOURCING_ORDERS }o--|| ITEMS : "vật tư gửi/nhận"
+    OUTSOURCING_ORDERS ||--o{ OUTSOURCING_RECEIPTS : "nhận (partial)"
+    OUTSOURCING_RECEIPTS }o--o| IQC_INSPECTIONS : "sinh IQC nếu requiresIqc"
+    IQC_INSPECTIONS }o--o| OUTSOURCING_RECEIPTS : "trace mức phiếu (tuỳ chọn)"
+    SUPPLIER_RETURNS }o--o| OUTSOURCING_RECEIPTS : "trace mức phiếu (tuỳ chọn)"
 ```
 
 Master data (`client-groups`, `supplier-groups`, `countries`, `departments`, `positions`, `units`,
@@ -115,11 +127,24 @@ chính PO này). Chi tiết từng bước: `docs/workflows/order-approval.md`.
 `production_job_materials` — cùng trong transaction này.
 
 **Post/cancel phiếu kho** (`InventoryReceiptsService.postInventoryReceipt`/`InventoryIssuesService.postInventoryIssue`,
-chỉ hợp lệ từ `DRAFT`): validate kho + dòng phiếu (đọc, ngoài transaction) → trong transaction, gọi
-`InventoryPostingService.postDocument` — khoá từng dòng `inventory_balances` liên quan bằng
-`SELECT … FOR UPDATE`, cộng/trừ theo dấu bút toán, ghi `inventory_transactions`, rồi update
-`status` phiếu. `cancel` từ `POSTED` gọi `InventoryPostingService.reverseDocument` cùng khuôn, ghi
-bút toán đảo dấu thay vì xoá. Chi tiết: `docs/workflows/stock-movement.md`.
+hợp lệ từ `PENDING_RECEIPT`/`PENDING_IQC` — phiếu nhập có nhánh IQC, xem
+`docs/workflows/receipt-confirmation.md`): validate kho + dòng phiếu (đọc, ngoài transaction) →
+trong transaction, gọi `InventoryPostingService.postDocument` — khoá từng dòng `inventory_balances`
+liên quan bằng `SELECT … FOR UPDATE`, cộng/trừ theo dấu bút toán, ghi `inventory_transactions`, rồi
+update `status` phiếu. Phiếu nhập gắn `purchaseOrderId` thì gọi thêm
+`PaymentRequestsService.createIfOrderCompleted(tx, purchaseOrderId)` cùng transaction — tự sinh yêu
+cầu thanh toán nếu PO vừa đạt đủ hàng (`docs/domains/purchasing.md`). `cancel` từ `POSTED` gọi
+`InventoryPostingService.reverseDocument` cùng khuôn, ghi bút toán đảo dấu thay vì xoá. Chi tiết:
+`docs/workflows/stock-movement.md`.
+
+**Post OS-OUT/OS-IN** (`OutsourcingOrdersService.postOutsourcingOrder`/`OutsourcingReceiptsService.
+postOutsourcingReceipt`): cùng khuôn "Post/cancel phiếu kho" ở trên (khoá dòng, gọi
+`InventoryPostingService.postDocument`, update `status`). Riêng `postOutsourcingReceipt` có thêm một
+nhánh tuỳ chọn: nếu `requiresIqc = true`, cùng transaction gọi thêm
+`IqcService.createInspectionFromOutsourcingReceipt(tx, ...)` — bắc cầu sang module `iqc`, nhưng
+**không** gate việc `post` (khác nhánh IQC của `inventory-receipts`). Việc tạo OS-OUT đọc
+`production_job_operations.type`/`production_jobs.status` trước, ngoài transaction — chỉ đọc, không
+ghi ngược Production. Chi tiết: `docs/workflows/outsourcing-round-trip.md`.
 
 **Start Job** (`ProductionJobsService.startJob`, chỉ hợp lệ từ `PENDING`): đọc
 `production_job_materials` + `InventoryService.getMaterialStockLevels` (chỉ đọc, chạy trước
@@ -168,6 +193,25 @@ qua service của module khác. `BomsModule` import `FilesModule` để link/xo�
 `PurchaseQuotationsModule → PurchaseOrdersModule` (cho `approveQuotation`/`recallQuotation` gọi
 `createDraftOrdersFromQuotation`). Chiều ngược lại không tồn tại — `PurchaseOrdersModule` chỉ
 `export: [PurchaseOrdersService]`, không import `PurchaseQuotationsModule`.
+
+`IqcModule → FilesModule` (link file đính kèm lúc `confirm`) và `IqcModule → SupplierReturnsModule`
+(cho `confirmIqc` gọi `createFromIqcDisposition` khi disposition SORT/RETURN).
+`SupplierReturnsModule → InventoryModule` (cho `postSupplierReturn` gọi `InventoryPostingService`).
+Chiều ngược lại (`post` phiếu trả cần hoàn tất IQC) **không** đi qua DI — nếu
+`SupplierReturnsModule` import ngược `IqcModule` sẽ tạo vòng lặp, và repo hiện không dùng
+`forwardRef` ở đâu cả. Thay vào đó, `completeIqcAfterSupplierReturn`
+(`src/api/iqc/iqc.write.ts`) là một hàm thuần export, nhận `tx`, được `SupplierReturnsService` gọi
+trực tiếp như một import function — cùng lối thoát `purchase-orders.query.ts` đã dùng cho các đọc
+xuyên module không cần DI. Xem `docs/workflows/supplier-return.md`.
+
+`OutsourcingOrdersModule`/`OutsourcingReceiptsModule` đều import `InventoryModule` (cho
+`InventoryPostingService`) + `WarehousesModule`. Riêng `OutsourcingReceiptsModule` import thêm
+`IqcModule` (cho `createInspectionFromOutsourcingReceipt`) — chiều ngược lại không tồn tại,
+`IqcService` đọc bảng `outsourcing_receipts` thẳng qua `tx`/`this.db`, không cần DI ngược nên
+**không** tạo vòng lặp module như cặp `IqcModule`/`SupplierReturnsModule` ở trên.
+`OutsourcingOrdersModule` không import `OutsourcingReceiptsModule` và ngược lại — mỗi module đọc
+bảng của module kia thẳng qua `DRIZZLE` khi cần (cùng lối `BomsModule`/`RoutingsModule` đọc
+`operations` ở trên), tránh một cặp import chéo không cần thiết giữa hai module ngang hàng.
 
 ## Bất biến xuyên module
 

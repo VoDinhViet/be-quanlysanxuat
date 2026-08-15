@@ -1,6 +1,6 @@
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 
-import type { Database } from '../../database/database.type';
+import type { Database, DbTransaction } from '../../database/database.type';
 import {
   InventoryDocumentStatus,
   inventoryReceiptItems,
@@ -52,4 +52,51 @@ export function orderReceivedQuantitySubquery(db: Database) {
     .where(eq(inventoryReceipts.status, InventoryDocumentStatus.POSTED))
     .groupBy(purchaseOrderItems.purchaseOrderId)
     .as('order_received_quantity_aggregate');
+}
+
+/** SL đã nhận theo từng dòng đơn mua, gộp theo `purchaseOrderItemId` — dùng chung bởi
+ * `InventoryReceiptsService` (chặn SL vượt, tính trên các trạng thái đã `confirm`) và
+ * `PurchaseOrdersService` (hiển thị SL đã nhập trên dòng PO, chỉ tính `POSTED`). */
+export async function getReceivedQuantityByPurchaseOrderItemId(
+  db: Database | DbTransaction,
+  params: {
+    purchaseOrderItemIds: string[];
+    statuses: InventoryDocumentStatus[];
+  },
+): Promise<Map<string, number>> {
+  if (!params.purchaseOrderItemIds.length) {
+    return new Map();
+  }
+
+  const rows = await db
+    .select({
+      purchaseOrderItemId: inventoryReceiptItems.purchaseOrderItemId,
+      received: sql<number>`sum(${inventoryReceiptItems.quantity})`
+        .mapWith(Number)
+        .as('received'),
+    })
+    .from(inventoryReceiptItems)
+    .innerJoin(
+      inventoryReceipts,
+      eq(inventoryReceipts.id, inventoryReceiptItems.receiptId),
+    )
+    .where(
+      and(
+        inArray(
+          inventoryReceiptItems.purchaseOrderItemId,
+          params.purchaseOrderItemIds,
+        ),
+        inArray(inventoryReceipts.status, params.statuses),
+      ),
+    )
+    .groupBy(inventoryReceiptItems.purchaseOrderItemId);
+
+  return new Map(
+    rows
+      .filter(
+        (row): row is { purchaseOrderItemId: string; received: number } =>
+          row.purchaseOrderItemId !== null,
+      )
+      .map((row) => [row.purchaseOrderItemId, row.received]),
+  );
 }

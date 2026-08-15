@@ -14,11 +14,15 @@ import { users } from './identity-access/users';
 export enum FileKind {
   IMAGE = 'IMAGE',
   DOCUMENT = 'DOCUMENT',
+  // Ảnh ∪ tài liệu, cap theo `upload.maxDocumentSize` — bằng chứng IQC vừa có ảnh chụp thực tế
+  // vừa có tài liệu đo lường (PDF), không thuộc gọn về 1 trong 2 loại còn lại.
+  EVIDENCE = 'EVIDENCE',
 }
 
 export const fileKindEnum = pgEnum('file_kind', [
   FileKind.IMAGE,
   FileKind.DOCUMENT,
+  FileKind.EVIDENCE,
 ]);
 
 /**
@@ -42,6 +46,9 @@ export enum UploadType {
   SUPPLIER_DOCUMENT = 'SUPPLIER_DOCUMENT',
   BOM_ITEM_DRAWING = 'BOM_ITEM_DRAWING',
   ORDER_DOCUMENT = 'ORDER_DOCUMENT',
+  // Trang chi tiết IQC — 2 bộ bằng chứng riêng, xem `iqc_attachments.kind`.
+  IQC_EVIDENCE = 'IQC_EVIDENCE',
+  IQC_DISPOSITION_EVIDENCE = 'IQC_DISPOSITION_EVIDENCE',
 }
 
 export const uploadTypeEnum = pgEnum('upload_type', [
@@ -54,6 +61,8 @@ export const uploadTypeEnum = pgEnum('upload_type', [
   UploadType.SUPPLIER_DOCUMENT,
   UploadType.BOM_ITEM_DRAWING,
   UploadType.ORDER_DOCUMENT,
+  UploadType.IQC_EVIDENCE,
+  UploadType.IQC_DISPOSITION_EVIDENCE,
 ]);
 
 /**

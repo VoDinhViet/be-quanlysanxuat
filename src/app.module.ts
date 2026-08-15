@@ -32,7 +32,11 @@ import { InventoryReceiptsModule } from './api/inventory-receipts/inventory-rece
 import { IqcModule } from './api/iqc/iqc.module';
 import { ItemsModule } from './api/items/items.module';
 import { OperationsModule } from './api/operations/operations.module';
+import { OqcModule } from './api/oqc/oqc.module';
 import { OrdersModule } from './api/orders/orders.module';
+import { OutsourcingOrdersModule } from './api/outsourcing-orders/outsourcing-orders.module';
+import { OutsourcingReceiptsModule } from './api/outsourcing-receipts/outsourcing-receipts.module';
+import { PaymentRequestsModule } from './api/payment-requests/payment-requests.module';
 import { PositionsModule } from './api/positions/positions.module';
 import { ProductionJobsModule } from './api/production-jobs/production-jobs.module';
 import { ProductionOrdersModule } from './api/production-orders/production-orders.module';
@@ -83,7 +87,10 @@ import { WarehousesModule } from './api/warehouses/warehouses.module';
     InventoryReceiptsModule,
     InventoryIssuesModule,
     SupplierReturnsModule,
+    OutsourcingOrdersModule,
+    OutsourcingReceiptsModule,
     IqcModule,
+    OqcModule,
     ProductionJobsModule,
     ProductionOrdersModule,
     OrdersModule,
@@ -91,6 +98,7 @@ import { WarehousesModule } from './api/warehouses/warehouses.module';
     PurchaseLedgerModule,
     PurchaseQuotationsModule,
     PurchaseOrdersModule,
+    PaymentRequestsModule,
   ],
 
   controllers: [AppController],

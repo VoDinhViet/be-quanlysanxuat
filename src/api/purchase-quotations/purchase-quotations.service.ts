@@ -38,6 +38,7 @@ import type { PurchaseOrderDraftLine } from '../purchase-orders/types/draft-orde
 import { ApproveQuotationSelectedSupplierReqDto } from './dto/approve-quotation-selected-supplier.req.dto';
 import { ApproveQuotationReqDto } from './dto/approve-quotation.req.dto';
 import { CreateQuotationItemReqDto } from './dto/create-quotation-item.req.dto';
+import { CreateQuotationItemSupplierReqDto } from './dto/create-quotation-item-supplier.req.dto';
 import { CreateQuotationReqDto } from './dto/create-quotation.req.dto';
 import { GetQuotationsReqDto } from './dto/get-quotations.req.dto';
 import { PageQuotationResDto } from './dto/page-quotation.res.dto';
@@ -268,13 +269,8 @@ export class PurchaseQuotationsService {
     reqDto: CreateQuotationReqDto,
     userId: string,
   ): Promise<void> {
-    this.validateItemSuppliers(reqDto.items);
-    await this.ensureSuppliersExist(
-      reqDto.items.flatMap((item) => item.suppliers.map((s) => s.supplierId)),
-    );
-    await this.validateAllocations(reqDto.items);
-
-    const { items: quotationItems, ...quotationFields } = reqDto;
+    const { items: itemsReq, ...quotationFields } = reqDto;
+    const quotationItems = await this.prepareQuotationItems(itemsReq);
 
     await this.db.transaction(async (tx) => {
       const code = await this.generateQuotationCode(tx);
@@ -295,13 +291,9 @@ export class PurchaseQuotationsService {
       quotationId,
       PurchaseQuotationStatus.DRAFT,
     );
-    this.validateItemSuppliers(reqDto.items);
-    await this.ensureSuppliersExist(
-      reqDto.items.flatMap((item) => item.suppliers.map((s) => s.supplierId)),
-    );
-    await this.validateAllocations(reqDto.items);
 
-    const { items: quotationItems, ...quotationFields } = reqDto;
+    const { items: itemsReq, ...quotationFields } = reqDto;
+    const quotationItems = await this.prepareQuotationItems(itemsReq);
 
     await this.db.transaction(async (tx) => {
       await tx
@@ -378,7 +370,11 @@ export class PurchaseQuotationsService {
       where: eq(purchaseQuotationItems.quotationId, quotationId),
       with: {
         allocations: {
-          columns: { purchaseRequestItemId: true, quantity: true },
+          columns: {
+            purchaseRequestItemId: true,
+            quantity: true,
+            quantityAdjustmentReason: true,
+          },
         },
         suppliers: {
           columns: {
@@ -413,6 +409,7 @@ export class PurchaseQuotationsService {
           quantity: allocation.quantity,
           unitPrice: selectedSupplierRow.unitPrice,
           leadTimeDays: selectedSupplierRow.leadTimeDays,
+          quantityAdjustmentReason: allocation.quantityAdjustmentReason,
         });
       }
       linesBySupplierId.set(selectedSupplierRow.supplierId, lines);
@@ -549,15 +546,6 @@ export class PurchaseQuotationsService {
     }
   }
 
-  private validateItemSuppliers(itemsReq: CreateQuotationItemReqDto[]): void {
-    for (const item of itemsReq) {
-      const supplierIds = item.suppliers.map((supplier) => supplier.supplierId);
-      if (new Set(supplierIds).size !== supplierIds.length) {
-        throw new AppException(ErrorCode.E129, HttpStatus.CONFLICT);
-      }
-    }
-  }
-
   private validateSelectedSuppliers(
     items: { id: string; suppliers: { id: string }[] }[],
     selectedSuppliers: ApproveQuotationSelectedSupplierReqDto[],
@@ -586,6 +574,21 @@ export class PurchaseQuotationsService {
     }
   }
 
+  /** Gộp payload theo `itemId` rồi validate mảng đã gộp — dùng chung cho `createQuotation`/
+   * `updateQuotation`, cả hai đều cần đúng 3 bước này theo đúng thứ tự trước khi ghi. */
+  private async prepareQuotationItems(
+    itemsReq: CreateQuotationItemReqDto[],
+  ): Promise<CreateQuotationItemReqDto[]> {
+    const quotationItems = this.mergeItemsByItemId(itemsReq);
+
+    await this.ensureSuppliersExist(
+      quotationItems.flatMap((item) => item.suppliers.map((s) => s.supplierId)),
+    );
+    await this.validateAllocations(quotationItems);
+
+    return quotationItems;
+  }
+
   private async ensureSuppliersExist(supplierIds: string[]): Promise<void> {
     const uniqueIds = [...new Set(supplierIds)];
 
@@ -599,6 +602,56 @@ export class PurchaseQuotationsService {
     if (total !== uniqueIds.length) {
       throw new AppException(ErrorCode.E019, HttpStatus.NOT_FOUND);
     }
+  }
+
+  /** Gộp các dòng payload cùng `itemId` thành một dòng vật tư — nối `allocations`, union NCC qua
+   * `mergeAndValidateSuppliers` (có thể ném E129). DB vẫn giữ
+   * `uq_purchase_quotation_items_quotation_item` làm chốt chặn cuối, không còn là cơ chế chính
+   * (`docs/domains/purchasing.md`). */
+  private mergeItemsByItemId(
+    itemsReq: CreateQuotationItemReqDto[],
+  ): CreateQuotationItemReqDto[] {
+    const mergedByItemId = new Map<string, CreateQuotationItemReqDto>();
+
+    for (const item of itemsReq) {
+      const merged = mergedByItemId.get(item.itemId);
+      mergedByItemId.set(item.itemId, {
+        ...item,
+        allocations: [...(merged?.allocations ?? []), ...item.allocations],
+        suppliers: this.mergeAndValidateSuppliers(
+          merged?.suppliers ?? [],
+          item.suppliers,
+        ),
+      });
+    }
+
+    return [...mergedByItemId.values()];
+  }
+
+  /** Cùng `supplierId` mà `unitPrice`/`leadTimeDays`/`note` khác nhau là xung đột thật, ném E129
+   * — không tự chọn hộ giá nào. Trùng khít thì giữ lần xuất hiện đầu. */
+  private mergeAndValidateSuppliers(
+    base: CreateQuotationItemSupplierReqDto[],
+    incoming: CreateQuotationItemSupplierReqDto[],
+  ): CreateQuotationItemSupplierReqDto[] {
+    const bySupplierId = new Map(base.map((s) => [s.supplierId, s]));
+
+    for (const supplier of incoming) {
+      const existing = bySupplierId.get(supplier.supplierId);
+      if (!existing) {
+        bySupplierId.set(supplier.supplierId, supplier);
+        continue;
+      }
+      if (
+        existing.unitPrice !== supplier.unitPrice ||
+        existing.leadTimeDays !== supplier.leadTimeDays ||
+        existing.note !== supplier.note
+      ) {
+        throw new AppException(ErrorCode.E129, HttpStatus.CONFLICT);
+      }
+    }
+
+    return [...bySupplierId.values()];
   }
 
   /** Mỗi vật tư phải có ≥1 phân bổ (E150); không dòng ĐXMH nào lặp trong toàn payload kể cả khác vật

@@ -122,3 +122,5 @@ export const productionJobsRelations = relations(
     notes: many(productionJobNotes),
   }),
 );
+
+export type ProductionJobSelect = typeof productionJobs.$inferSelect;

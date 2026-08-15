@@ -45,6 +45,28 @@ export class FilesService {
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   ];
 
+  // `EVIDENCE` = ảnh ∪ tài liệu — bằng chứng IQC vừa có ảnh chụp thực tế vừa có tài liệu đo
+  // lường, không thuộc gọn về 1 trong 2 loại còn lại.
+  private static readonly MIME_TYPES_BY_KIND: Record<FileKind, string[]> = {
+    [FileKind.IMAGE]: FilesService.IMAGE_MIME_TYPES,
+    [FileKind.DOCUMENT]: FilesService.DOCUMENT_MIME_TYPES,
+    [FileKind.EVIDENCE]: [
+      ...FilesService.IMAGE_MIME_TYPES,
+      ...FilesService.DOCUMENT_MIME_TYPES,
+    ],
+  };
+
+  // `EVIDENCE` cap theo `maxDocumentSize` — luôn ≥ `maxImageSize`, nên dùng chung cap tài liệu
+  // không thu hẹp giới hạn ảnh so với upload ảnh thuần.
+  private static readonly MAX_SIZE_CONFIG_KEY: Record<
+    FileKind,
+    'upload.maxImageSize' | 'upload.maxDocumentSize'
+  > = {
+    [FileKind.IMAGE]: 'upload.maxImageSize',
+    [FileKind.DOCUMENT]: 'upload.maxDocumentSize',
+    [FileKind.EVIDENCE]: 'upload.maxDocumentSize',
+  };
+
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
     @Inject(STORAGE_PROVIDER) private readonly storageProvider: StorageProvider,
@@ -66,16 +88,11 @@ export class FilesService {
     // `kind` đến từ policy, không bao giờ từ client — nếu không, caller có thể xin USER_AVATAR
     // nhưng khai DOCUMENT để lách allowlist ảnh bằng một PDF.
     const { kind } = UPLOAD_POLICIES[options.type];
-    const allowedMimeTypes =
-      kind === FileKind.IMAGE
-        ? FilesService.IMAGE_MIME_TYPES
-        : FilesService.DOCUMENT_MIME_TYPES;
-    const maxSize =
-      kind === FileKind.IMAGE
-        ? this.configService.getOrThrow('upload.maxImageSize', { infer: true })
-        : this.configService.getOrThrow('upload.maxDocumentSize', {
-            infer: true,
-          });
+    const allowedMimeTypes = FilesService.MIME_TYPES_BY_KIND[kind];
+    const maxSize = this.configService.getOrThrow(
+      FilesService.MAX_SIZE_CONFIG_KEY[kind],
+      { infer: true },
+    );
 
     if (file.size > maxSize) {
       throw new AppException(ErrorCode.E017, HttpStatus.PAYLOAD_TOO_LARGE);

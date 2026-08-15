@@ -21,7 +21,6 @@ import { GetIqcsReqDto } from './dto/get-iqcs.req.dto';
 import { IqcResDto } from './dto/iqc.res.dto';
 import { IqcStatsResDto } from './dto/iqc-stats.res.dto';
 import { PageIqcResDto } from './dto/page-iqc.res.dto';
-import { ResolveIqcReqDto } from './dto/resolve-iqc.req.dto';
 import { UpdateIqcReqDto } from './dto/update-iqc.req.dto';
 import { IqcService } from './iqc.service';
 
@@ -68,14 +67,13 @@ export class IqcController {
   @Post()
   @Permissions('iqc:create')
   @ApiAuth({
-    type: IqcResDto,
     summary: 'Tạo phiếu IQC',
-    statusCode: HttpStatus.CREATED,
+    statusCode: HttpStatus.NO_CONTENT,
   })
   createIqc(
     @Body() reqDto: CreateIqcReqDto,
     @CurrentUser() payload: JwtPayloadType,
-  ): Promise<IqcResDto> {
+  ): Promise<void> {
     return this.iqcService.createIqc(reqDto, payload.userId);
   }
 
@@ -83,7 +81,8 @@ export class IqcController {
   @Permissions('iqc:update')
   @ApiAuth({
     summary:
-      'Xác nhận QC — chạy AQL sampling, chốt PASS/FAIL — chỉ khi NOT_INSPECTED',
+      'Lưu kết quả kiểm QC (nút "Lưu" duy nhất của trang chi tiết IQC) — QC tự chọn PASS/FAIL, ' +
+      'ghi đè toàn bộ quyết định mỗi lần gọi, gọi lại được nhiều lần trừ khi đã WAITING_RETURN',
     statusCode: HttpStatus.NO_CONTENT,
   })
   confirmIqc(
@@ -92,21 +91,6 @@ export class IqcController {
     @CurrentUser() payload: JwtPayloadType,
   ): Promise<void> {
     return this.iqcService.confirmIqc(iqcId, reqDto, payload.userId);
-  }
-
-  @Post(':iqcId/resolve')
-  @Permissions('iqc:update')
-  @ApiAuth({
-    summary:
-      'Xử lý QC FAIL — chọn phương án xử lý (disposition) cho dòng đang Chờ xử lý',
-    statusCode: HttpStatus.NO_CONTENT,
-  })
-  resolveIqcDisposition(
-    @UUIDParam('iqcId') iqcId: string,
-    @Body() reqDto: ResolveIqcReqDto,
-    @CurrentUser() payload: JwtPayloadType,
-  ): Promise<void> {
-    return this.iqcService.resolveIqcDisposition(iqcId, reqDto, payload.userId);
   }
 
   @Patch(':iqcId')

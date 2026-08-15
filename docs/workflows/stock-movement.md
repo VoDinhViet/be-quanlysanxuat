@@ -1,22 +1,29 @@
 # Lập / post / cancel phiếu nhập / xuất kho
 
-Con đường **duy nhất** làm tồn kho thay đổi qua API. Mô hình phiếu/sổ cái/tồn ở
-`docs/domains/inventory.md`.
+Con đường **chính** làm tồn kho thay đổi qua API — cùng qua `InventoryPostingService.postDocument`/
+`reverseDocument` như `SupplierReturnsService.postSupplierReturn` (phiếu trả NCC,
+`docs/workflows/supplier-return.md`), nhưng file này chỉ nói về nhập/xuất. Mô hình phiếu/sổ cái/tồn
+ở `docs/domains/inventory.md`. Riêng phiếu nhập có thêm bước `confirm` (và nhánh IQC) — trình tự
+đầy đủ ở `docs/workflows/receipt-confirmation.md`; file này vẫn là nguồn cho `post`/`cancel` chung
+của cả nhập lẫn xuất.
 
 ## Trigger
 
-Hai bộ route đối xứng, cùng khuôn:
+Hai bộ route gần như đối xứng — phiếu nhập có thêm `confirm`, phiếu xuất không:
 
 | Nhập | Xuất | Ý nghĩa |
 | --- | --- | --- |
 | `POST /inventory-receipts` | `POST /inventory-issues` | Lập phiếu, luôn ở `DRAFT` |
 | `PATCH /inventory-receipts/:id` | `PATCH /inventory-issues/:id` | Sửa phiếu — chỉ khi `DRAFT` |
 | `DELETE /inventory-receipts/:id` | `DELETE /inventory-issues/:id` | Xoá phiếu — chỉ khi `DRAFT` |
-| `POST /inventory-receipts/:id/post` | `POST /inventory-issues/:id/post` | `DRAFT → POSTED`, đụng tồn kho |
+| `POST /inventory-receipts/:id/confirm` | *(không có)* | `DRAFT → PENDING_RECEIPT`/`PENDING_IQC` — xem `docs/workflows/receipt-confirmation.md` |
+| `POST /inventory-receipts/:id/post` | `POST /inventory-issues/:id/post` | Đụng tồn kho — nhập nhận từ `PENDING_RECEIPT`/`PENDING_IQC` (có điều kiện), xuất vẫn nhận thẳng từ `DRAFT` |
 | `POST /inventory-receipts/:id/cancel` | `POST /inventory-issues/:id/cancel` | Huỷ phiếu, xem State changes |
 
 Tất cả do người dùng chủ động gọi, luôn là thao tác tay — không có nghiệp vụ nào khác trong hệ
 thống tự động lập hay `post` phiếu ở giai đoạn này (`docs/decisions/stored-inventory-balances.md`).
+Ngoại lệ duy nhất: `confirm` phiếu nhập có `requiresIqc = true` tự sinh phiếu IQC (vẫn là hệ quả
+trực tiếp của một thao tác tay, không phải nghiệp vụ nền).
 
 ## Actor
 
@@ -33,13 +40,18 @@ Lập/sửa phiếu — chạy **trước** transaction:
 3. Tham chiếu tuỳ chọn (`supplierId`/`purchaseRequestId`/`productionOrderId`/`productionJobId`/
    `departmentId`/`requestedBy`/`orderItemId`) nếu có gửi phải tồn tại (`E107`).
 4. Riêng phiếu nhập: `purchaseOrderId` (nếu gửi) phải tồn tại (`E121`) và đang `ORDERED` (`E145`);
-   dòng có `purchaseOrderItemId` phải tồn tại (`E123`) và thuộc đúng `purchaseOrderId` đó (`E127`) —
-   chỉ validate mức này, không đối chiếu NCC/vật tư hay chặn nhận vượt SL đặt
+   dòng có `purchaseOrderItemId` phải tồn tại (`E123`) và thuộc đúng `purchaseOrderId` đó (`E127`);
+   SL cộng dồn qua mọi phiếu đã `confirm` (kể cả phiếu đang sửa, trừ chính nó) không được vượt SL
+   đặt của dòng PO đó (`E154`) — chỉ validate mức này, vẫn không đối chiếu NCC/vật tư khớp 3 chiều
    (`docs/domains/purchasing.md`).
 5. **Không kiểm** loại kho khớp loại hàng — cố ý, xem `docs/domains/inventory.md`.
 
-`PATCH`/`DELETE`/`post`/`cancel` đều mở đầu bằng kiểm phiếu tồn tại + đúng trạng thái cho phép
-(`E096`/`E098`).
+`PATCH`/`DELETE`/`confirm`/`post`/`cancel` đều mở đầu bằng kiểm phiếu tồn tại + đúng trạng thái cho
+phép (`E096`/`E098`). Riêng phiếu nhập, `post` không chỉ kiểm `status` — xem nhánh `PENDING_IQC` ở
+Flow bên dưới.
+
+`confirm` (chỉ phiếu nhập) chạy lại kiểm tra #4 (SL vượt, `E154`) và chặn thêm phiếu rỗng dòng
+(`E151`) — cùng transaction, xem `docs/workflows/receipt-confirmation.md`.
 
 `post` thêm một bước không nằm trong service phiếu: gọi `InventoryPostingService.postDocument`,
 nơi duy nhất ghi `inventory_transactions`/`inventory_balances` — cả `InventoryReceiptsService` lẫn
@@ -60,7 +72,12 @@ Không đụng `inventory_transactions`/`inventory_balances` ở bước này.
 **Transaction** — khoá dòng phiếu bằng `SELECT … FOR UPDATE` trước rồi mới đọc/kiểm trạng thái, để
 hai lệnh `post` gọi trùng lên cùng phiếu không cùng lọt qua và cộng tồn hai lần:
 
-1. Khoá + đọc phiếu, kiểm `status = DRAFT` (`E098` nếu không).
+1. Khoá + đọc phiếu, kiểm trạng thái nguồn hợp lệ, khác nhau giữa hai loại phiếu:
+   - Phiếu xuất: `status = DRAFT` (`E098` nếu không) — không đổi.
+   - Phiếu nhập: `status = PENDING_RECEIPT` cho qua thẳng; `status = PENDING_IQC` thì đếm thêm
+     `iqc_inspections` gắn với phiếu — còn dòng nào `status !== COMPLETED` (kể cả **chưa có dòng
+     nào**) thì ném `E153`, không rollback bút toán vì bước 2 chưa chạy; mọi trạng thái khác
+     (`DRAFT`/`POSTED`/`CANCELLED`) → `E098`. Xem `docs/workflows/receipt-confirmation.md`.
 2. Với mỗi dòng phiếu: `SELECT … FOR UPDATE` dòng `inventory_balances` khớp
    `(warehouseId, itemId)` (tạo dòng mới nếu chưa có) → cộng/trừ theo dấu bút toán
    tương ứng loại phiếu (xem bảng ánh xạ ở `docs/domains/inventory.md`) → nếu kết quả `< 0`, ném
@@ -87,12 +104,16 @@ Không có đường `CANCELLED → *`.
 | Entity | Trigger | Trước | Sau |
 | --- | --- | --- | --- |
 | `inventory_receipts`/`inventory_issues` | lập | *(chưa có)* | `DRAFT` |
-| `inventory_receipts`/`inventory_issues` | `post` | `DRAFT` | `POSTED` |
-| `inventory_receipts`/`inventory_issues` | `cancel` | `DRAFT`/`POSTED` | `CANCELLED` |
+| `inventory_receipts` | `confirm` | `DRAFT` | `PENDING_RECEIPT` (`requiresIqc=false`) hoặc `PENDING_IQC` (`requiresIqc=true`) |
+| `iqc_inspections` | `confirm` phiếu nhập (`requiresIqc=true`) | *(chưa có)* | N dòng mới `NOT_INSPECTED` (N = số dòng phiếu) |
+| `inventory_issues` | `post` | `DRAFT` | `POSTED` |
+| `inventory_receipts` | `post` | `PENDING_RECEIPT` hoặc `PENDING_IQC` (mọi IQC `COMPLETED`) | `POSTED` |
+| `inventory_receipts`/`inventory_issues` | `cancel` | `DRAFT`/`PENDING_IQC`/`PENDING_RECEIPT`/`POSTED` (tuỳ loại phiếu) | `CANCELLED` |
 | `inventory_balances` | `post` | — | tăng/giảm theo dấu bút toán |
 | `inventory_balances` | `cancel` (từ `POSTED`) | — | đảo ngược đúng phần đã `post` |
 
-Không route nào khác đổi trạng thái đơn hàng, LSX hay Job.
+Không route nào khác đổi trạng thái đơn hàng, LSX hay Job. `confirm` không đụng
+`inventory_transactions`/`inventory_balances` — chỉ `post` mới ghi hai bảng đó.
 
 ## Side effects
 
@@ -133,7 +154,13 @@ trên `code` là chốt chặn thật, cùng giới hạn TOCTOU đã chấp nh�
 | (Phiếu nhập) `purchaseOrderId` không phải `ORDERED` | `E145` | 400 |
 | (Phiếu nhập) `purchaseOrderItemId` không tồn tại | `E123` | 404 |
 | (Phiếu nhập) `purchaseOrderItemId` không thuộc `purchaseOrderId` gửi kèm | `E127` | 400 |
-| `PATCH`/`DELETE`/`post` gọi trên phiếu không còn `DRAFT` | `E098` | 409 |
+| (Phiếu nhập) SL cộng dồn các phiếu đã `confirm` vượt SL đặt của dòng PO | `E154` | 400 |
+| (Phiếu nhập) `confirm` một phiếu không có dòng nào | `E151` | 400 |
+| (Phiếu nhập) `confirm` với `requiresIqc=true` mà không suy được `supplierId` (cả header lẫn PO đều thiếu) | `E152` | 400 |
+| `PATCH`/`DELETE`/`confirm` gọi trên phiếu không còn `DRAFT` | `E098` | 409 |
+| (Phiếu xuất) `post` gọi trên phiếu không còn `DRAFT` | `E098` | 409 |
+| (Phiếu nhập) `post` gọi trên phiếu không phải `PENDING_RECEIPT`/`PENDING_IQC` | `E098` | 409 |
+| (Phiếu nhập) `post` một phiếu `PENDING_IQC` còn phiếu IQC chưa `COMPLETED` (kể cả chưa có phiếu IQC nào) | `E153` | 409 |
 | `cancel` gọi trên phiếu đã `CANCELLED` | `E098` | 409 |
 | `post` làm tồn một mặt hàng xuống âm | `E106` | 409 |
 | `cancel` một phiếu `POSTED` mà đảo bút toán làm tồn xuống âm (hàng đã bị tiêu đi sau khi `post`) | `E106` | 409 |
@@ -148,13 +175,18 @@ trên `code` là chốt chặn thật, cùng giới hạn TOCTOU đã chấp nh�
 
 `inventory` là chủ; đọc `orders` (qua `orderItemId`), `production` (qua `productionOrderId`/
 `productionJobId`, chỉ liên kết tham khảo), `purchase-requests` (qua `purchaseRequestId`),
-`suppliers` (qua `supplierId`), `product-structure` (`items`, mặt hàng). Không domain nào ghi
+`purchasing` (qua `purchaseOrderId`/`purchaseOrderItemId`, hai chiều — validate PO lúc `confirm`,
+bị `purchase-orders` đọc lại để tính `progress`/`receivedQuantity`), `suppliers` (qua `supplierId`),
+`product-structure` (`items`, mặt hàng), `quality` (`confirm` phiếu nhập ghi sang `iqc_inspections`,
+`post` đọc lại — chỉ chiều phiếu nhập, phiếu xuất không đụng `quality`). Không domain nào khác ghi
 ngược vào đây.
 
 Code: `InventoryReceiptsService`/`InventoryIssuesService` (`createInventoryReceipt`/`createInventoryIssue`,
 `updateInventoryReceipt`/`updateInventoryIssue`, `deleteInventoryReceipt`/`deleteInventoryIssue`,
-`postInventoryReceipt`/`postInventoryIssue`, `cancelInventoryReceipt`/`cancelInventoryIssue`),
-`InventoryPostingService.postDocument`/`reverseDocument`,
-`InventoryService.getInventory`/`getMaterialInventory`/`getStockLevels`/`getMaterialStockLevels`.
-Ba module riêng — `warehouses`, `inventory` (đọc + `InventoryPostingService`), `inventory-receipts`/
-`inventory-issues` (mỗi loại phiếu một module, import `InventoryModule`+`WarehousesModule`).
+`confirmInventoryReceipt` (chỉ phiếu nhập), `postInventoryReceipt`/`postInventoryIssue`,
+`cancelInventoryReceipt`/`cancelInventoryIssue`), `InventoryPostingService.postDocument`/
+`reverseDocument`, `IqcService.createInspectionsFromReceipt` (gọi từ `confirmInventoryReceipt`),
+`InventoryService.getInventory`/`getStockLevels`/`getMaterialStockLevels`.
+Bốn module riêng — `warehouses`, `inventory` (đọc + `InventoryPostingService`), `inventory-receipts`
+(import `InventoryModule`+`WarehousesModule`+`IqcModule`), `inventory-issues` (import
+`InventoryModule`+`WarehousesModule`, không cần `IqcModule`).

@@ -58,7 +58,7 @@ không phải `/api/health`.
 
 ## Modules
 
-30 module dưới `src/api/`. `users` là module tham chiếu cho code mới (controller/service, DTO, lỗi,
+35 module dưới `src/api/`. `users` là module tham chiếu cho code mới (controller/service, DTO, lỗi,
 phân trang — chi tiết ở `.claude/rules/`). Đăng ký module mới trong `src/app.module.ts`. Cột `Domain`
 là file dưới `docs/domains/`, `—` nghĩa là hạ tầng thuần, không thuộc domain nghiệp vụ nào.
 
@@ -84,17 +84,21 @@ là file dưới `docs/domains/`, `—` nghĩa là hạ tầng thuần, không t
 | `operations` | partners | chỉ đọc (từng có CRUD) |
 | `orders` | orders | **mọi** route cần bearer token, kể cả đọc |
 | `warehouses` | inventory | danh mục kho — `code`/`name`/`type`/`status`, không soft delete |
-| `inventory` | inventory | chỉ đọc — `/inventory` (FG), `/inventory/materials` (RM), `/inventory/balances`, `/inventory/transactions`; sở hữu `InventoryPostingService` |
-| `inventory-receipts` | inventory | phiếu nhập — vòng đời `DRAFT`/`POSTED`/`CANCELLED`, import `InventoryModule`+`WarehousesModule` |
+| `inventory` | inventory | chỉ đọc — `/inventory` (mọi loại, lọc `itemType`), `/inventory/balances`, `/inventory/transactions`; sở hữu `InventoryPostingService` |
+| `inventory-receipts` | inventory | phiếu nhập — vòng đời 5 trạng thái `DRAFT`/`PENDING_IQC`/`PENDING_RECEIPT`/`POSTED`/`CANCELLED` (`confirm` xen giữa lập phiếu và `post`, nhánh IQC tự sinh phiếu kiểm khi `requiresIqc=true`, xem `docs/workflows/receipt-confirmation.md`); `receiptType=PRODUCTION` bắt buộc `productionJobId`, `confirm` chặn nhận vượt SL đã PASS OQC của Job (`docs/workflows/final-qc.md`); import `InventoryModule`+`WarehousesModule`+`IqcModule` |
 | `inventory-issues` | inventory | phiếu xuất — cùng vòng đời, cùng khuôn `inventory-receipts` |
-| `supplier-returns` | inventory | phiếu trả NCC — bảng phẳng (1 phiếu = 1 dòng vật tư); chỉ có `GET` list, chưa có route tạo/`post`/`cancel` |
+| `supplier-returns` | inventory | phiếu trả NCC — bảng phẳng (1 phiếu = 1 dòng vật tư); `GET` list/detail + `POST /:id/post` (trừ tồn nếu phiếu nhập gốc đã `POSTED`, hoàn tất luôn IQC liên kết); tự sinh (`DRAFT`) từ `iqc` khi disposition SORT/RETURN, chưa có route tạo tay/`cancel` |
+| `outsourcing-orders` | inventory | Phiếu gửi gia công ngoài (OS-OUT) — bảng phẳng, vòng đời `DRAFT`/`POSTED`/`CANCELLED`; bắt buộc gắn `productionJobOperationId` của một Job đang `IN_PROGRESS`, công đoạn snapshot `type = OUTSOURCE`; import `InventoryModule`+`WarehousesModule` |
+| `outsourcing-receipts` | inventory | Phiếu nhận gia công ngoài (OS-IN) — bảng phẳng, luôn trỏ đúng 1 OS-OUT (nhận nhiều lần/partial); `requiresIqc` tuỳ chọn tự sinh IQC lúc `post`, không gate `post`; import `InventoryModule`+`WarehousesModule`+`IqcModule` |
 | `iqc` | quality | Kiểm tra chất lượng hàng nhập — bảng phẳng (1 phiếu = 1 lần kiểm 1 vật tư); `GET` list/`GET stats`/`POST` tạo, `status` suy từ `result`/`disposition` lúc tạo, chưa có route đổi sau đó |
+| `oqc` | quality | Kiểm chất lượng lô thành phẩm (OQC) trước nhập kho — bảng phẳng, tách biệt IQC; bắt buộc gắn `productionJobId` của Job đang `IN_PROGRESS`; `status` chỉ 3 giá trị (`NOT_INSPECTED`/`PENDING`/`COMPLETED`, không có disposition/NCR); `COMPLETED` khoá `confirm` cứng; `DELETE` chỉ khi `NOT_INSPECTED`; `inventory-receipts` đọc `getPassedOqcQuantityByJobId` để gate nhập kho TP |
 | `production-orders` | production | 1 PO duyệt = 1 LSX |
 | `production-jobs` | production | 1 item FG = 1 Job trong một LSX |
 | `purchase-requests` | purchase-requests | Đề xuất mua hàng — `POST` lập tay (luôn `DRAFT`, không gắn LSX/Job, dòng bắt buộc RM) **hoặc** tự sinh khi `production-jobs` start Job thiếu vật tư; `GET` list/detail + `PATCH`/`DELETE .../items/:purchaseRequestItemId` (sửa/xoá dòng, chỉ `DRAFT`/`REJECTED`) + `DELETE /:purchaseRequestId` (xoá cả phiếu, chỉ `DRAFT`/`REJECTED`) + `POST .../send`/`.../approve`/`.../reject` (gửi duyệt/duyệt/từ chối, `REJECTED` là điểm cuối trừ khi sửa/xoá dòng lại đưa về `DRAFT`); chưa sửa được header sau khi tạo, cũng chưa thêm được dòng mới vào phiếu đã tạo |
 | `purchase-ledger` | purchasing | Sổ cái mua hàng — chỉ `GET /purchase-ledger`, 1 dòng/1 `purchase_request_items` của phiếu `APPROVED`, mọi số tính lúc đọc từ bốn bảng của `purchase-quotations`/`purchase-orders` |
 | `purchase-quotations` | purchasing | Báo giá (RFQ) — một vật tư có nhiều NCC chào giá, một dòng vật tư gộp được nhiều dòng ĐXMH cùng mã vật tư (bảng phân bổ `purchase_quotation_item_allocations` giữ SL từng dòng); `GET` list/detail + CRUD tay + `send`/`approve` (chọn NCC thắng thầu từng vật tư, tự sinh PO Draft)/`reject`/`request-changes`/`recall` |
-| `purchase-orders` | purchasing | Đơn mua (PO) — `GET` list/detail; chưa có `POST` tay, PO hiện chỉ sinh tự động từ duyệt RFQ (`purchase-quotations`); `PATCH /:id` + `PATCH /:id/items/:itemId` sửa người phụ trách/điều khoản TT/kho nhập/ngày giao/SL/giá khi còn `DRAFT`; `POST /:id/confirm` xác nhận đặt hàng (`DRAFT → ORDERED`); `POST /:id/cancel` huỷ (`DRAFT`/`ORDERED → CANCELLED`) |
+| `purchase-orders` | purchasing | Đơn mua (PO) — `GET` list/detail; chưa có `POST` tay, PO hiện chỉ sinh tự động từ duyệt RFQ (`purchase-quotations`); `PATCH /:id` + `PATCH /:id/items/:itemId` sửa người phụ trách/điều khoản TT/kho nhập/ngày giao/SL/giá khi còn `DRAFT`; `POST /:id/confirm` xác nhận đặt hàng (`DRAFT → ORDERED`, cần `paymentTerm`); `POST /:id/cancel` huỷ (`DRAFT`/`ORDERED → CANCELLED`) |
+| `payment-requests` | purchasing | Yêu cầu thanh toán — `GET` list/detail; **không có `POST` tay**, tự sinh khi PO đạt `COMPLETED` (gọi từ `inventory-receipts` lúc `post`); `POST /:id/mark-paid`/`.../cancel` (`PENDING → PAID`/`CANCELLED`, cuối, không rollback) |
 
 ## Domain docs
 
@@ -108,8 +112,9 @@ Bốn tầng, đọc từ trên xuống khi cần hiểu một vùng nghiệp v�
   Đọc trước khi làm feature trong vùng đó.
 - `docs/workflows/<flow>.md` — **"chạy theo trình tự nào"**: trigger, actor, precondition, các bước,
   đổi trạng thái gì, ranh giới transaction, nhánh lỗi. Đọc trước khi sửa một luồng nghiệp vụ đầu-cuối.
-  Năm luồng: `order-approval`, `production-order-approval`, `production-job-execution`,
-  `stock-movement`, `product-setup`.
+  Mười luồng: `order-approval`, `production-order-approval`, `production-job-execution`,
+  `stock-movement`, `receipt-confirmation`, `product-setup`, `rfq-approval`, `supplier-return`,
+  `outsourcing-round-trip`, `final-qc`.
 - `docs/decisions/<slug>.md` — **quyết định đảo chiều hoặc ranh giới phạm vi** không domain nào sở
   hữu. Đọc khi định làm ngược lại một thứ đang có, hoặc khi ngạc nhiên vì một tính năng "lẽ ra phải
   có" lại không có: `files-registry`, `testing-paused`, `swagger-owns-api-reference`,

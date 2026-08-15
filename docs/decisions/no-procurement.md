@@ -2,8 +2,9 @@
 
 **Trạng thái:** đã đảo ngược — xem `docs/domains/purchasing.md`. Giữ file này lại vì nó vẫn giải
 thích đúng vì sao `suppliers`/`creditLimit`/`rating` từng nằm không dùng, và ranh giới cũ (công nợ,
-thanh toán, bảng giá NCC theo thời gian) **vẫn còn hiệu lực** — chỉ phần "không có phiếu mua hàng"
-là đã đảo.
+bảng giá NCC theo thời gian) **vẫn còn hiệu lực** — phần "không có phiếu mua hàng" đã đảo, và phần
+"thanh toán" đã đảo **một phần nhỏ** (bảng `payment_requests`, xem mục "Đã đảo ngược — phần nào"
+bên dưới).
 
 ## Bối cảnh
 
@@ -36,9 +37,17 @@ thái báo giá `RECEIVED`), có trạng thái đơn mua riêng (`ORDERED`), và
 `inventory_receipt_items` giờ nối tới đúng dòng đơn mua qua `purchaseOrderId`/`purchaseOrderItemId`.
 `supplierId`/`unitPrice` trên phiếu nhập vẫn giữ nguyên vai trò cũ (ghi kèm, không tổng hợp).
 
-**Vẫn không làm**: công nợ NCC, thanh toán, bảng giá NCC theo thời gian (giá chỉ nằm trên từng dòng
-báo giá/đơn mua, không có lịch sử giá theo NCC×vật tư), duyệt đơn mua qua Giám đốc. `creditLimit`
-vẫn chỉ lưu, chưa route nào đọc.
+Đợt sau (`payment-requests`, `docs/domains/purchasing.md`) đảo tiếp một phần nhỏ của "thanh toán":
+mỗi PO đã nhận đủ hàng (`progress = COMPLETED`) tự sinh một **yêu cầu thanh toán**
+(`payment_requests`, 1 PO : 1 dòng, không thanh toán từng phần) — đánh dấu Đã thanh toán/Hủy qua
+`POST /payment-requests/:id/mark-paid`/`.../cancel`. Đây **vẫn không phải** thanh toán/kế toán thật:
+không ghi bút toán tiền, không tích hợp ngân hàng, không có hoá đơn NCC.
+
+**Vẫn không làm**: công nợ NCC tổng hợp (theo NCC, theo khoảng thời gian), thanh toán từng phần cho
+một PO, bảng giá NCC theo thời gian (giá chỉ nằm trên từng dòng báo giá/đơn mua, không có lịch sử
+giá theo NCC×vật tư), tích hợp kế toán/ngân hàng thật, hoá đơn NCC, duyệt đơn mua qua Giám đốc.
+`creditLimit` vẫn chỉ lưu, chưa route nào đọc. `defaultPaymentTerm` của `supplier_payment_info` vẫn
+chưa được copy sang PO lúc tạo — `paymentTerm` của PO vẫn phải chọn tay.
 
 ## Hệ quả
 

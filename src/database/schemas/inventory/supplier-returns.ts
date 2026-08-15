@@ -15,6 +15,7 @@ import {
   inventoryDocumentStatusEnum,
 } from './inventory-documents';
 import { inventoryReceipts } from './inventory-receipts';
+import { outsourcingReceipts } from './outsourcing-receipts';
 import { warehouses } from './warehouses';
 import { items } from '../items/items';
 import { purchaseOrders } from '../purchasing/purchase-orders';
@@ -23,9 +24,10 @@ import { suppliers } from '../suppliers/suppliers';
 import { users } from '../identity-access/users';
 
 /**
- * Phiếu trả NCC — bảng phẳng, 1 phiếu = đúng 1 dòng vật tư (không có bảng con). Chỉ có route
- * `GET` list ở đợt này — chưa có `post`/`cancel` nên `postedBy`/`cancelledBy`/... chưa xuất hiện
- * (`docs/domains/inventory.md`).
+ * Phiếu trả NCC — bảng phẳng, 1 phiếu = đúng 1 dòng vật tư (không có bảng con). `DRAFT → POSTED`
+ * qua `SupplierReturnsService.postSupplierReturn` — tự sinh (DRAFT) từ `IqcService.confirmIqc`
+ * khi QC chọn disposition SORT/RETURN, kho xác nhận xuất trả thì `post`. Chưa có `cancel` (huỷ một
+ * phiếu đã `POSTED` cần đường "un-complete" IQC liên kết, để đợt sau — `docs/domains/inventory.md`).
  */
 export const supplierReturns = pgTable(
   'supplier_returns',
@@ -54,6 +56,10 @@ export const supplierReturns = pgTable(
       () => inventoryReceipts.id,
       { onDelete: 'set null' },
     ),
+    outsourcingReceiptId: uuid('outsourcing_receipt_id').references(
+      () => outsourcingReceipts.id,
+      { onDelete: 'set null' },
+    ),
     iqcId: uuid('iqc_id').references(() => iqcInspections.id, {
       onDelete: 'set null',
     }),
@@ -62,6 +68,10 @@ export const supplierReturns = pgTable(
       .notNull()
       .default(InventoryDocumentStatus.DRAFT),
     note: varchar('note', { length: 1000 }),
+    postedBy: uuid('posted_by').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    postedAt: timestamp('posted_at'),
     createdBy: uuid('created_by').references(() => users.id, {
       onDelete: 'set null',
     }),
@@ -78,6 +88,9 @@ export const supplierReturns = pgTable(
     index('idx_supplier_returns_purchase_order_id').on(table.purchaseOrderId),
     index('idx_supplier_returns_inventory_receipt_id').on(
       table.inventoryReceiptId,
+    ),
+    index('idx_supplier_returns_outsourcing_receipt_id').on(
+      table.outsourcingReceiptId,
     ),
     index('idx_supplier_returns_iqc_id').on(table.iqcId),
     index('idx_supplier_returns_status').on(table.status),
@@ -110,6 +123,10 @@ export const supplierReturnsRelations = relations(
       fields: [supplierReturns.inventoryReceiptId],
       references: [inventoryReceipts.id],
     }),
+    outsourcingReceipt: one(outsourcingReceipts, {
+      fields: [supplierReturns.outsourcingReceiptId],
+      references: [outsourcingReceipts.id],
+    }),
     iqc: one(iqcInspections, {
       fields: [supplierReturns.iqcId],
       references: [iqcInspections.id],
@@ -118,5 +135,11 @@ export const supplierReturnsRelations = relations(
       fields: [supplierReturns.createdBy],
       references: [users.id],
     }),
+    posterBy: one(users, {
+      fields: [supplierReturns.postedBy],
+      references: [users.id],
+    }),
   }),
 );
+
+export type SupplierReturnSelect = typeof supplierReturns.$inferSelect;

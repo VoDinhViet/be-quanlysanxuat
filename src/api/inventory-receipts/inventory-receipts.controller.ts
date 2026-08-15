@@ -75,13 +75,13 @@ export class InventoryReceiptsController {
   @Patch(':receiptId')
   @Permissions('inventory:update')
   @ApiAuth({
-    type: InventoryReceiptResDto,
     summary: 'Update an inventory receipt — only while DRAFT',
+    statusCode: HttpStatus.NO_CONTENT,
   })
   updateInventoryReceipt(
     @UUIDParam('receiptId') receiptId: string,
     @Body() reqDto: UpdateInventoryReceiptReqDto,
-  ): Promise<InventoryReceiptResDto> {
+  ): Promise<void> {
     return this.inventoryReceiptsService.updateInventoryReceipt(
       receiptId,
       reqDto,
@@ -100,11 +100,28 @@ export class InventoryReceiptsController {
     return this.inventoryReceiptsService.deleteInventoryReceipt(receiptId);
   }
 
+  @Post(':receiptId/confirm')
+  @Permissions('inventory:update')
+  @ApiAuth({
+    summary:
+      'Confirm a DRAFT receipt — DRAFT → PENDING_RECEIPT/PENDING_IQC, sinh phiếu IQC nếu requiresIqc',
+    statusCode: HttpStatus.NO_CONTENT,
+  })
+  confirmInventoryReceipt(
+    @UUIDParam('receiptId') receiptId: string,
+    @CurrentUser() payload: JwtPayloadType,
+  ): Promise<void> {
+    return this.inventoryReceiptsService.confirmInventoryReceipt(
+      receiptId,
+      payload.userId,
+    );
+  }
+
   @Post(':receiptId/post')
   @Permissions('inventory:update')
   @ApiAuth({
     summary:
-      'Post a DRAFT receipt — sinh bút toán + cập nhật tồn, sau đó phiếu bất biến',
+      'Post a receipt — PENDING_RECEIPT hoặc PENDING_IQC (mọi IQC đã COMPLETED) → POSTED, sinh bút toán + cập nhật tồn, sau đó phiếu bất biến',
     statusCode: HttpStatus.NO_CONTENT,
   })
   postInventoryReceipt(

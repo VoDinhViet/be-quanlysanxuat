@@ -41,8 +41,10 @@ export const purchaseOrderItems = pgTable(
       scale: 2,
       mode: 'number',
     }),
-    // Lý do khi SL đặt khác SL báo giá RFQ (vd mua gộp, tồn tối thiểu NCC) — text tự do, mirror
-    // `purchase_quotation_items.quantityAdjustmentReason`.
+    // Lý do khi SL đặt khác SL báo giá RFQ (vd mua gộp, tồn tối thiểu NCC) — text tự do. Khi PO
+    // sinh từ duyệt RFQ, copy 1:1 từ `purchase_quotation_item_allocations.quantityAdjustmentReason`
+    // của đúng phân bổ đó (`PurchaseOrdersService.createDraftOrdersFromQuotation`); PO lập thẳng
+    // hoặc sửa sau thì nhập tay qua `PATCH .../items/:id`.
     quantityAdjustmentReason: varchar('quantity_adjustment_reason', {
       length: 500,
     }),
@@ -83,3 +85,5 @@ export const purchaseOrderItemsRelations = relations(
     }),
   }),
 );
+
+export type PurchaseOrderItemSelect = typeof purchaseOrderItems.$inferSelect;

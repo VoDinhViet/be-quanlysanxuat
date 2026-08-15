@@ -57,6 +57,12 @@ dòng BOM, gia công ngoài trên routing) **không nằm trong đợt này** �
 tên, `bom_items` không có `uom_id`/`scrap_percent`, routing không có `work_centers`/gia công ngoài.
 Đừng giả định các phần đó đã tồn tại chỉ vì `items`/`routings` đã theo đúng khuôn ERD.
 
+*Cập nhật:* "gia công ngoài" đã đảo ngược **một phần** — ở **tầng thực thi (Job)**, qua chứng từ
+OS-OUT/OS-IN khoá theo `production_job_operations` (`outsourcing_orders`/`outsourcing_receipts`,
+xem `docs/domains/inventory.md`). `routing_operations`/`bom_operations` **vẫn không có** cột NCC/
+chi phí gia công nào — phần loại trừ đó ở tầng cấu trúc BOM/routing còn nguyên hiệu lực, chỉ tầng
+thực thi Job là có thay đổi.
+
 ## Liên quan
 
 - `docs/domains/product-structure.md` — mô hình `items`/BOM đầy đủ sau khi gộp.

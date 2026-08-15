@@ -20,6 +20,10 @@ export class PurchaseOrderItemResDto {
   quantity!: number;
 
   @Expose()
+  @NumberField({ description: 'SL đã nhập kho (Σ phiếu nhập POSTED)' })
+  receivedQuantity!: number;
+
+  @Expose()
   @StringFieldOptional({ nullable: true, description: 'Lý do điều chỉnh SL' })
   quantityAdjustmentReason!: string | null;
 

@@ -56,6 +56,13 @@ export const PERMISSION_CODES = [
   'iqc:read',
   'iqc:create',
   'iqc:update',
+  'outsourcing:read',
+  'outsourcing:create',
+  'outsourcing:update',
+  'oqc:read',
+  'oqc:create',
+  'oqc:update',
+  'oqc:delete',
 ] as const;
 
 export type PermissionCode = (typeof PERMISSION_CODES)[number];

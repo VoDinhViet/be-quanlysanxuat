@@ -5,6 +5,7 @@ import {
   InventoryReceiptType,
 } from '../../../database/schemas';
 import {
+  BooleanField,
   ClassField,
   ClassFieldOptional,
   DateField,
@@ -14,6 +15,7 @@ import {
   StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
+import { ProductionJobRefResDto } from '../../production-jobs/dto/production-job-ref.res.dto';
 import { ProductionOrderRefResDto } from '../../production-orders/dto/production-order-ref.res.dto';
 import { PurchaseOrderRefResDto } from '../../purchase-orders/dto/purchase-order-ref.res.dto';
 import { PurchaseRequestRefResDto } from '../../purchase-requests/dto/purchase-request-ref.res.dto';
@@ -45,6 +47,10 @@ export class PageInventoryReceiptResDto {
   status!: InventoryDocumentStatus;
 
   @Expose()
+  @BooleanField()
+  requiresIqc!: boolean;
+
+  @Expose()
   @DateField({ description: 'Ngày chứng từ' })
   receiptDate!: Date;
 
@@ -59,6 +65,10 @@ export class PageInventoryReceiptResDto {
   @Expose()
   @ClassFieldOptional(() => ProductionOrderRefResDto, { nullable: true })
   productionOrder!: ProductionOrderRefResDto | null;
+
+  @Expose()
+  @ClassFieldOptional(() => ProductionJobRefResDto, { nullable: true })
+  productionJob!: ProductionJobRefResDto | null;
 
   @Expose()
   @ClassFieldOptional(() => PurchaseOrderRefResDto, { nullable: true })

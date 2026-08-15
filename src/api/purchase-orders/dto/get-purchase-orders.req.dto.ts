@@ -1,6 +1,7 @@
 import { PageOptionsDto } from '../../../common/dto/offset-pagination/page-options.dto';
 import { PurchaseOrderStatus } from '../../../database/schemas';
 import {
+  BooleanFieldOptional,
   DateFieldOptional,
   EnumFieldOptional,
   StringFieldOptional,
@@ -25,6 +26,12 @@ export class GetPurchaseOrdersReqDto extends PageOptionsDto {
       'Filter theo tiến độ nhận hàng (5 giá trị, suy từ status + receivedQuantity/orderedQuantity) — độc lập với status (3 giá trị, lọc thẳng cột)',
   })
   readonly progress?: PurchaseOrderProgress;
+
+  @BooleanFieldOptional({
+    description:
+      'Chỉ PO đã ORDERED và còn hàng chưa nhập đủ (progress=ORDERED hoặc RECEIVING) — độc lập với progress',
+  })
+  readonly hasRemainingReceipt?: boolean;
 
   @UUIDFieldOptional({
     description: 'Filter theo đề xuất mua hàng có dòng trong đơn mua',

@@ -260,12 +260,14 @@ export enum ErrorCode {
   // `chk_iqc_inspections_disposition_requires_fail` làm chốt chặn cuối.
   E139 = 'iqc_inspection.error.disposition_not_allowed_for_pass',
   E140 = 'iqc_inspection.error.code_exists',
-  // Xác nhận QC (`POST /iqc/:iqcId/confirm`) khi `status` không còn là `NOT_INSPECTED`.
+  // Nghỉ hưu — `confirm` giờ lưu lại được nhiều lần (không còn dùng-một-lần), điều kiện chặn duy
+  // nhất chuyển sang `E159`. Giữ comment, không tái sử dụng số.
   E141 = 'iqc_inspection.error.already_inspected',
-  // Không tra được sample size/Ac/Re cho tổ hợp (lot size, inspectionLevel, aqlLevel) gửi lên.
+  // Nghỉ hưu — bảng AQL nay chỉ là gợi ý hiển thị (Ac/Re tham khảo), tra hụt không còn được phép
+  // chặn `confirm` nữa (QC tự chọn PASS/FAIL). Giữ comment, không tái sử dụng số.
   E142 = 'iqc_inspection.error.invalid_aql_combination',
-  // Xử lý QC FAIL (`POST /iqc/:iqcId/resolve`) khi `status` không phải `PENDING` — bao trùm cả
-  // dòng chưa confirm lẫn dòng đã resolve rồi.
+  // Nghỉ hưu — `POST /iqc/:iqcId/resolve` đã gộp vào `confirm`, không còn transition riêng nào để
+  // chặn ở trạng thái `PENDING`. Giữ comment, không tái sử dụng số.
   E143 = 'iqc_inspection.error.not_pending',
   // `PATCH /iqc/:iqcId` (sửa lại thông tin ngữ cảnh sau confirm) khi `status` còn `NOT_INSPECTED`
   // — dòng phải confirm qua AQL sampling trước đã mới có gì để sửa.
@@ -283,5 +285,78 @@ export enum ErrorCode {
   E149 = 'purchase_quotation_item.error.allocation_item_mismatch',
   // Một dòng vật tư trong payload tạo/sửa báo giá không có phân bổ nào về dòng ĐXMH nguồn.
   E150 = 'purchase_quotation_item.error.no_allocations',
+  // Xác nhận phiếu nhập/xuất không có dòng nào. `items: []` lọt qua ValidationPipe nên phải chặn ở
+  // bước confirm, không phải lúc tạo.
+  E151 = 'inventory_document.error.no_items',
+  // Phiếu nhập yêu cầu IQC nhưng không suy ra được NCC (cả `supplierId` lẫn NCC của PO đều trống) —
+  // `iqc_inspections.supplier_id` là NOT NULL.
+  E152 = 'inventory_receipt.error.missing_supplier_for_iqc',
+  // `post` phiếu đang `PENDING_IQC` khi còn phiếu IQC chưa `COMPLETED`.
+  E153 = 'inventory_receipt.error.iqc_not_completed',
+  // SL nhận (cộng dồn mọi phiếu đã xác nhận) vượt SL đặt của dòng đơn mua.
+  E154 = 'purchase_order_item.error.received_quantity_exceeded',
+  // Xác nhận đặt hàng (`DRAFT → ORDERED`) khi chưa chọn kho nhận hàng.
+  E155 = 'purchase_order.error.missing_receipt_warehouse',
+  // Xác nhận đặt hàng khi chưa chọn điều khoản thanh toán — cần có để tính `dueDate` lúc PO đạt
+  // COMPLETED và tự sinh yêu cầu thanh toán.
+  E156 = 'purchase_order.error.missing_payment_term',
+  E157 = 'payment_request.error.not_found',
+  // `mark-paid`/`cancel` khi yêu cầu thanh toán không còn `PENDING`.
+  E158 = 'payment_request.error.invalid_status_transition',
+  // Lưu lại kết quả/quyết định QC (`POST /iqc/:iqcId/confirm`) khi dòng đã `WAITING_RETURN` —
+  // đường trả NCC đã chốt (đã sinh `supplier_returns`), không cho đổi kết quả nữa.
+  E159 = 'iqc_inspection.error.locked_for_return',
+  // Chọn `disposition = SORT` nhưng `sortOkQty + sortNgQty` không khớp `quantity` của dòng IQC.
+  E160 = 'iqc_inspection.error.sort_quantity_mismatch',
+  // Gửi `sortOkQty`/`sortNgQty` khi `disposition` không phải `SORT`.
+  E161 = 'iqc_inspection.error.sort_quantity_not_allowed',
+  // `disposition = SORT` nhưng thiếu `sortOkQty`/`sortNgQty`.
+  E162 = 'iqc_inspection.error.sort_quantity_required',
+  // Tự sinh phiếu trả NCC từ IQC (disposition SORT/RETURN) nhưng không suy được kho trả hàng —
+  // cả phiếu nhập liên quan lẫn kho nhận của PO liên quan đều trống.
+  E163 = 'iqc_inspection.error.missing_warehouse_for_return',
+  // Hoàn tất phiếu IQC sau khi phiếu trả NCC liên kết được `post` (`SupplierReturnsService.
+  // postSupplierReturn`) khi dòng IQC không còn `WAITING_RETURN`.
+  E164 = 'iqc_inspection.error.not_waiting_return',
+  E165 = 'outsourcing_order.error.not_found',
+  // Tạo OS-OUT trên một `productionJobOperationId` mà công đoạn snapshot không phải `OUTSOURCE` —
+  // đọc `production_job_operations.type` (đóng băng lúc duyệt LSX), không đọc `operations.type`
+  // sống.
+  E166 = 'outsourcing_order.error.operation_not_outsource',
+  // Tạo OS-OUT khi Job của công đoạn đó chưa/không còn `IN_PROGRESS` — khác `E087` (ném từ chính
+  // module Job khi cập nhật tiến độ công đoạn).
+  E167 = 'outsourcing_order.error.job_not_in_progress',
+  // Node BOM snapshot của công đoạn đã mất `itemId` (`set null` — item gốc bị xoá) nên không suy
+  // được mặt hàng để ghi bút toán.
+  E168 = 'outsourcing_order.error.item_not_resolvable',
+  // Huỷ OS-OUT đã `POSTED` khi còn `outsourcing_receipts` nào chưa `CANCELLED` trỏ vào.
+  E169 = 'outsourcing_order.error.has_receipts',
+  E170 = 'outsourcing_receipt.error.not_found',
+  // Tạo OS-IN khi OS-OUT chưa `POSTED` (còn `DRAFT`) hoặc đã `CANCELLED`.
+  E171 = 'outsourcing_receipt.error.order_not_posted',
+  // SL nhận (cộng dồn mọi OS-IN cùng `outsourcingOrderId`) vượt SL gửi của OS-OUT — khác `E154`
+  // (vượt SL đặt của dòng PO).
+  E172 = 'outsourcing_receipt.error.quantity_exceeded',
+  // Huỷ OS-IN đã `POSTED` khi đã sinh `iqc_inspections` trỏ vào — cùng lý do `supplier_returns`
+  // chưa có `cancel`.
+  E173 = 'outsourcing_receipt.error.locked_by_iqc',
+  E174 = 'oqc_inspection.error.not_found',
+  // Tạo OQC cho một Job chưa/không còn `IN_PROGRESS` — khác `E167` (ném từ `outsourcing_orders`,
+  // cùng khái niệm khác domain).
+  E175 = 'oqc_inspection.error.job_not_in_progress',
+  // Tổng lot size (mọi OQC chưa xoá của Job, cộng lô mới) vượt `production_jobs.quantity` (SL kế
+  // hoạch).
+  E176 = 'oqc_inspection.error.lot_size_exceeded',
+  // Lưu lại kết quả (`confirm`) khi đã `COMPLETED` — khoá cứng, khác IQC (chỉ `WAITING_RETURN`
+  // khoá).
+  E177 = 'oqc_inspection.error.already_completed',
+  // Xoá phiếu OQC khi không còn `NOT_INSPECTED`.
+  E178 = 'oqc_inspection.error.not_deletable',
+  E179 = 'inventory_receipt.error.production_job_required',
+  // SL các dòng phiếu nhập `PRODUCTION` (cộng dồn mọi phiếu khác cùng Job) vượt tổng SL các dòng
+  // OQC đã `COMPLETED` (PASS) của Job đó — khác `E154` (vượt SL đặt dòng PO) và `E172` (vượt SL
+  // gửi OS-OUT).
+  E180 = 'inventory_receipt.error.oqc_pass_quantity_exceeded',
+  E181 = 'oqc_inspection.error.code_exists',
   V003 = 'common.error.too_many_requests',
 }

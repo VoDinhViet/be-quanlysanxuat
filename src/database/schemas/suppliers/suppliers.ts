@@ -115,3 +115,5 @@ export const suppliersRelations = relations(suppliers, ({ one, many }) => ({
     references: [supplierPaymentInfo.supplierId],
   }),
 }));
+
+export type SupplierSelect = typeof suppliers.$inferSelect;

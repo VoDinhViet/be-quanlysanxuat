@@ -18,8 +18,8 @@ xem `docs/decisions/items-merge.md`. Cột riêng của RM (`supplierId`, `minSt
 trỏ WIP **có thể có BOM riêng của nó**, và cả FG lẫn WIP đều có thể có routing Cấp 0
 (`routings`/`routing_operations`). Khác biệt hành vi giữa ba `type`: chỉ RM bị chặn khỏi
 `POST /items/:itemId/bom/items` (khi được đặt làm cha, `E052`) và khỏi
-`POST /items/:itemId/operations` (`E111`); màn tồn kho tách theo `type` (`GET /inventory` = FG,
-`GET /inventory/materials` = RM); dòng phiếu nhập/xuất thành phẩm chỉ nhận FG (kiểm ở
+`POST /items/:itemId/operations` (`E111`); màn tồn kho là một route chung (`GET /inventory`, lọc
+tuỳ chọn qua `itemType`); dòng phiếu nhập/xuất thành phẩm chỉ nhận FG (kiểm ở
 `InventoryIssuesService.ensureItemsValid` khi có `orderItemId`). Mọi thứ còn lại (ảnh, mã tự sinh,
 clone) cả ba loại như nhau.
 
@@ -135,8 +135,8 @@ trình; độ sâu ≤ 50; item gốc của BOM/routing không phải RM.
 - Phép gộp vật tư (`SUM(quantity) GROUP BY itemId` trên mọi lá RM thuộc cây một item) — **không
   nhân qua số lượng của các node cha**, nên nó *không* phải BOM explosion.
   `production_job_materials.unitQty` thừa hưởng nguyên giới hạn này.
-- **Inventory** chỉ thấy item FG + ACTIVE trên `GET /inventory`, RM + ACTIVE trên
-  `GET /inventory/materials`; WIP không có mặt ở màn tồn kho nào.
+- **Inventory** `GET /inventory` chỉ thấy item ACTIVE, mọi `type` (FG/WIP/RM) khi bỏ trống filter
+  `itemType` — một route chung, không còn tách theo loại như trước.
 - **Orders** tham chiếu `items.id` trên từng dòng (chỉ FG hợp lệ, service-enforced không phải DB
   CHECK), và cố ý **không snapshot** tên/ảnh — luôn đọc qua quan hệ.
 

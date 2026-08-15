@@ -92,3 +92,6 @@ export const productionJobOperationsRelations = relations(
     }),
   }),
 );
+
+export type ProductionJobOperationSelect =
+  typeof productionJobOperations.$inferSelect;

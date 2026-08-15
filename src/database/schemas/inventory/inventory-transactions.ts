@@ -46,11 +46,17 @@ export const inventoryTransactionTypeEnum = pgEnum(
 export enum InventoryReferenceType {
   INVENTORY_RECEIPT = 'INVENTORY_RECEIPT',
   INVENTORY_ISSUE = 'INVENTORY_ISSUE',
+  SUPPLIER_RETURN = 'SUPPLIER_RETURN',
+  OUTSOURCING_ORDER = 'OUTSOURCING_ORDER',
+  OUTSOURCING_RECEIPT = 'OUTSOURCING_RECEIPT',
 }
 
 export const inventoryReferenceTypeEnum = pgEnum('inventory_reference_type', [
   InventoryReferenceType.INVENTORY_RECEIPT,
   InventoryReferenceType.INVENTORY_ISSUE,
+  InventoryReferenceType.SUPPLIER_RETURN,
+  InventoryReferenceType.OUTSOURCING_ORDER,
+  InventoryReferenceType.OUTSOURCING_RECEIPT,
 ]);
 
 /**
@@ -58,8 +64,9 @@ export const inventoryReferenceTypeEnum = pgEnum('inventory_reference_type', [
  * `reverseDocument` được ghi vào bảng này (`docs/domains/inventory.md`).
  *
  * Rules:
- * - `referenceId` trỏ về `inventory_receipts`/`inventory_issues` theo `referenceType` — cố ý
- *   không FK vì đa hình, DB không tự kiểm được.
+ * - `referenceId` trỏ về `inventory_receipts`/`inventory_issues`/`supplier_returns`/
+ *   `outsourcing_orders`/`outsourcing_receipts` theo `referenceType` — cố ý không FK vì đa hình, DB
+ *   không tự kiểm được.
  * - Không `updatedAt`/xoá mềm — sửa sai bằng bút toán đảo dấu mới, không sửa/xoá bút toán cũ.
  */
 export const inventoryTransactions = pgTable(
