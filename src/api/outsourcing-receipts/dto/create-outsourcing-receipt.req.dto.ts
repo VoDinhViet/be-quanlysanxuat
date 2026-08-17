@@ -1,36 +1,36 @@
 import {
   BooleanFieldOptional,
+  ClassField,
   DateField,
-  NumberField,
   StringFieldOptional,
   UUIDField,
-  UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
+import { OutsourcingReceiptItemReqDto } from './outsourcing-receipt-item.req.dto';
 
 export class CreateOutsourcingReceiptReqDto {
-  @UUIDField({ description: 'Phiếu gửi (OS-OUT) đang nhận về, phải POSTED' })
-  outsourcingOrderId!: string;
+  @UUIDField({
+    description: 'NCC — mọi dòng OS-OUT được chọn phải cùng NCC này (E187)',
+  })
+  readonly supplierId!: string;
 
-  @NumberField({ isPositive: true, description: 'SL nhận đợt này' })
-  quantity!: number;
+  @UUIDField({ description: 'Kho nhận' })
+  readonly warehouseId!: string;
 
   @DateField({ description: 'Ngày nhận' })
-  receiptDate!: Date;
-
-  @UUIDFieldOptional({
-    description: 'Kho nhận — bỏ trống thì lấy kho gửi của OS-OUT',
-  })
-  warehouseId?: string;
+  readonly receiptDate!: Date;
 
   @BooleanFieldOptional({
-    description: 'Yêu cầu QC — sinh IQC lúc post nếu true',
+    description: 'Yêu cầu QC — sinh IQC lúc post nếu true (1 phiếu/dòng)',
   })
-  requiresIqc?: boolean;
+  readonly requiresIqc?: boolean;
 
   @StringFieldOptional({
     nullable: true,
     maxLength: 1000,
     description: 'Ghi chú',
   })
-  note?: string | null;
+  readonly note?: string | null;
+
+  @ClassField(() => OutsourcingReceiptItemReqDto, { each: true })
+  readonly items!: OutsourcingReceiptItemReqDto[];
 }

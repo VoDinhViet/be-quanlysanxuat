@@ -9,8 +9,10 @@ import { Permissions } from '../../decorators/permissions.decorator';
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
 import { CreateOutsourcingReceiptReqDto } from './dto/create-outsourcing-receipt.req.dto';
 import { GetOutsourcingReceiptsReqDto } from './dto/get-outsourcing-receipts.req.dto';
+import { GetPendingOrderItemsReqDto } from './dto/get-pending-order-items.req.dto';
 import { OutsourcingReceiptResDto } from './dto/outsourcing-receipt.res.dto';
 import { PageOutsourcingReceiptResDto } from './dto/page-outsourcing-receipt.res.dto';
+import { PendingOrderItemResDto } from './dto/pending-order-item.res.dto';
 import { OutsourcingReceiptsService } from './outsourcing-receipts.service';
 
 @ApiTags('Outsourcing Receipts')
@@ -33,6 +35,20 @@ export class OutsourcingReceiptsController {
     return this.outsourcingReceiptsService.getOutsourcingReceipts(reqDto);
   }
 
+  @Get('pending-order-items')
+  @Permissions('outsourcing:read')
+  @ApiAuth({
+    type: PendingOrderItemResDto,
+    summary:
+      'Popup "chọn hàng cần nhận" — dòng OS-OUT thuộc phiếu POSTED còn SL chưa nhận hết',
+    isPaginated: true,
+  })
+  getPendingOrderItems(
+    @Query() reqDto: GetPendingOrderItemsReqDto,
+  ): Promise<OffsetPaginatedDto<PendingOrderItemResDto>> {
+    return this.outsourcingReceiptsService.getPendingOrderItems(reqDto);
+  }
+
   @Get(':outsourcingReceiptId')
   @Permissions('outsourcing:read')
   @ApiAuth({
@@ -50,33 +66,16 @@ export class OutsourcingReceiptsController {
   @Post()
   @Permissions('outsourcing:create')
   @ApiAuth({
-    type: OutsourcingReceiptResDto,
-    summary: 'Lập phiếu nhận gia công ngoài (OS-IN), luôn DRAFT',
-    statusCode: HttpStatus.CREATED,
+    summary:
+      'Lập phiếu nhận gia công ngoài (OS-IN), nhiều dòng, có thể gộp nhiều OS-OUT cùng NCC — POSTED ngay, cộng tồn kho nhận theo từng dòng, sinh IQC nếu requiresIqc',
+    statusCode: HttpStatus.NO_CONTENT,
   })
   createOutsourcingReceipt(
     @Body() reqDto: CreateOutsourcingReceiptReqDto,
     @CurrentUser() payload: JwtPayloadType,
-  ): Promise<OutsourcingReceiptResDto> {
+  ): Promise<void> {
     return this.outsourcingReceiptsService.createOutsourcingReceipt(
       reqDto,
-      payload.userId,
-    );
-  }
-
-  @Post(':outsourcingReceiptId/post')
-  @Permissions('outsourcing:update')
-  @ApiAuth({
-    summary:
-      'Xác nhận đã nhận hàng (DRAFT → POSTED) — cộng tồn kho nhận, sinh IQC nếu requiresIqc',
-    statusCode: HttpStatus.NO_CONTENT,
-  })
-  postOutsourcingReceipt(
-    @UUIDParam('outsourcingReceiptId') outsourcingReceiptId: string,
-    @CurrentUser() payload: JwtPayloadType,
-  ): Promise<void> {
-    return this.outsourcingReceiptsService.postOutsourcingReceipt(
-      outsourcingReceiptId,
       payload.userId,
     );
   }
@@ -85,7 +84,7 @@ export class OutsourcingReceiptsController {
   @Permissions('outsourcing:update')
   @ApiAuth({
     summary:
-      'Huỷ phiếu nhận gia công ngoài — đảo bút toán nếu đã POSTED, chặn nếu đã có IQC liên kết',
+      'Huỷ phiếu nhận gia công ngoài — đảo bút toán nếu đã POSTED, chặn nếu đã có IQC trỏ vào',
     statusCode: HttpStatus.NO_CONTENT,
   })
   cancelOutsourcingReceipt(

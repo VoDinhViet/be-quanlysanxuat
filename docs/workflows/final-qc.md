@@ -17,10 +17,9 @@ ba domain đó.
 
 ## Actor
 
-`oqc:create` cho bước tạo (production). `oqc:update` cho `confirm` (QC — vai trò khác, cùng khuôn
-tách actor tạo/xác nhận của `outsourcing_orders` create-vs-post). `oqc:delete` cho xoá phiếu
-`NOT_INSPECTED`. `inventory:update` cho `confirm`/`post` phiếu nhập — kho là bên xác nhận vật lý
-cuối cùng, không liên quan quyền OQC.
+`oqc:create` cho bước tạo (production). `oqc:update` cho `confirm` (QC — vai trò khác, tách actor
+tạo/xác nhận). `oqc:delete` cho xoá phiếu `NOT_INSPECTED`. `inventory:update` cho `confirm`/`post`
+phiếu nhập — kho là bên xác nhận vật lý cuối cùng, không liên quan quyền OQC.
 
 ## Preconditions
 
@@ -71,9 +70,8 @@ cuối cùng, không liên quan quyền OQC.
    - `receivedSoFar + thisReceiptQty > passedQty` → `E180`.
 2. Qua được gate thì tiếp tục như mọi phiếu nhập khác: `DRAFT → PENDING_RECEIPT`/`PENDING_IQC` tuỳ
    `requiresIqc` (`docs/workflows/receipt-confirmation.md`), rồi `post` sinh bút toán `PRODUCTION_IN`
-   như thường — `post` **không** kiểm lại gate OQC lần hai (khác OS-IN, kiểm 2 lần) vì `confirm`
-   phiếu nhập luôn chạy trong transaction có lock, không có cửa sổ race giữa `confirm` và `post`
-   như OS-IN (nơi `create` và `post` là hai bước tách rời).
+   như thường — `post` **không** kiểm lại gate OQC lần hai vì `confirm` phiếu nhập luôn chạy trong
+   transaction có lock, không có cửa sổ race giữa `confirm` và `post`.
 
 ## State changes
 

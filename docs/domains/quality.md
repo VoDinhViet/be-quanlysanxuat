@@ -19,12 +19,15 @@ sinh một dòng `iqc_inspections` (`NOT_INSPECTED`) cho mỗi dòng phiếu nh�
 `POST /iqc` tay. Các dòng sinh ra vẫn đi qua đúng vòng đời bên dưới — `confirm`/`PATCH` không phân
 biệt dòng tạo tay hay tạo tự động.
 
-**Đường tạo thứ ba, cũng tự động:** `POST /outsourcing-receipts/:id/post` với `requiresIqc = true`
-sinh 1 dòng tương tự qua `IqcService.createInspectionFromOutsourcingReceipt(tx, ...)` — **khác**
-đường thứ hai ở chỗ gọi lúc `post` (không phải một bước `confirm` riêng, `outsourcing_receipts`
-không có trạng thái `PENDING_IQC`) và **không gate** việc `post` — hàng đã về kho vật lý trước khi
-IQC chạy. `outsourcingReceiptId` trên dòng IQC sinh ra là chiều trace, tuỳ chọn, cùng vai trò
-`inventoryReceiptId`/`purchaseOrderId`. Xem `docs/domains/inventory.md`.
+**Đường tạo thứ ba, cũng tự động:** `POST /outsourcing-receipts` với `requiresIqc = true` sinh **N
+dòng** (1/dòng phiếu OS-IN) qua `IqcService.createInspectionsFromOutsourcingReceipt(tx, ...)` —
+**khác** đường thứ hai ở chỗ gọi ngay trong transaction `create` (không phải một bước `confirm`
+riêng, `outsourcing_receipts` không có bước nháp/trạng thái `PENDING_IQC` nào — xem
+`docs/decisions/outsourcing-no-draft.md`) và **không gate** việc tạo phiếu — hàng đã về kho vật lý
+trước khi IQC chạy. `outsourcingReceiptId` trên mỗi dòng IQC sinh ra là chiều trace, tuỳ chọn, cùng
+vai trò `inventoryReceiptId`/`purchaseOrderId` — trỏ về **header** OS-IN, không phân biệt được dòng
+phiếu nào sinh ra nó (đủ cho mục đích trace, không cần chính xác tới từng dòng). Xem
+`docs/domains/inventory.md`.
 
 Ba đường tạo trên (`POST /iqc` tay + 2 đường tự động) là toàn bộ cách một dòng `iqc_inspections`
 ra đời.
@@ -181,9 +184,9 @@ gọi bởi `SupplierReturnsService.postSupplierReturn` khi kho xác nhận đã
   `completeIqcAfterSupplierReturn` (plain function, không qua DI — tránh vòng lặp module vì
   `IqcModule` đã import `SupplierReturnsModule`) hoàn tất dòng IQC. Xem
   `docs/workflows/supplier-return.md`.
-- **← Inventory (Gia công ngoài)**: `POST /outsourcing-receipts/:id/post` với `requiresIqc = true`
-  là đường tạo tự động thứ ba (ngoài `POST /iqc` tay và `confirm` phiếu nhập) — xem "Đường tạo thứ
-  ba" ở Purpose. `outsourcingReceiptId` là chiều trace tuỳ chọn trên dòng IQC sinh ra.
+- **← Inventory (Gia công ngoài)**: `POST /outsourcing-receipts` với `requiresIqc = true` là đường
+  tạo tự động thứ ba (ngoài `POST /iqc` tay và `confirm` phiếu nhập) — xem "Đường tạo thứ ba" ở
+  Purpose. `outsourcingReceiptId` là chiều trace tuỳ chọn trên dòng IQC sinh ra.
 - **→ Purchasing**: `purchaseOrderId` liên kết tuỳ chọn tới PO — thuần để trace, không đọc ngược.
 - **→ Partners**: `supplierId` bắt buộc tới `suppliers`.
 - **→ Product Structure**: `itemId` bắt buộc tới `items`.
@@ -210,7 +213,7 @@ gọi bởi `SupplierReturnsService.postSupplierReturn` khi kho xác nhận đã
    nhận xuất trả. Đừng nhầm hàm này với `resolveIqcStatus`/`confirmIqc` — nó là một transition
    riêng, không đi qua `IqcService`.
 7. **Tưởng chỉ có 2 đường tạo (`POST /iqc` tay + phiếu nhập mua).** Từ khi có gia công ngoài, còn
-   đường thứ ba: `POST /outsourcing-receipts/:id/post` (`requiresIqc = true`) — xem Purpose.
+   đường thứ ba: `POST /outsourcing-receipts` (`requiresIqc = true`) — xem Purpose.
 
 ## OQC (Outgoing/Final QC)
 

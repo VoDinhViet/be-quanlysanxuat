@@ -5,7 +5,6 @@ import {
   BooleanField,
   DateField,
   EnumField,
-  NumberField,
   StringField,
   UUIDField,
 } from '../../../decorators/field.decorators';
@@ -26,10 +25,6 @@ export class OutsourcingReceiptRefResDto {
   @Expose()
   @EnumField(() => InventoryDocumentStatus)
   status!: InventoryDocumentStatus;
-
-  @Expose()
-  @NumberField({ description: 'SL nhận' })
-  quantity!: number;
 
   @Expose()
   @DateField({ description: 'Ngày nhận' })

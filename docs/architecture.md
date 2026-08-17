@@ -137,14 +137,17 @@ cầu thanh toán nếu PO vừa đạt đủ hàng (`docs/domains/purchasing.md
 `InventoryPostingService.reverseDocument` cùng khuôn, ghi bút toán đảo dấu thay vì xoá. Chi tiết:
 `docs/workflows/stock-movement.md`.
 
-**Post OS-OUT/OS-IN** (`OutsourcingOrdersService.postOutsourcingOrder`/`OutsourcingReceiptsService.
-postOutsourcingReceipt`): cùng khuôn "Post/cancel phiếu kho" ở trên (khoá dòng, gọi
-`InventoryPostingService.postDocument`, update `status`). Riêng `postOutsourcingReceipt` có thêm một
-nhánh tuỳ chọn: nếu `requiresIqc = true`, cùng transaction gọi thêm
-`IqcService.createInspectionFromOutsourcingReceipt(tx, ...)` — bắc cầu sang module `iqc`, nhưng
-**không** gate việc `post` (khác nhánh IQC của `inventory-receipts`). Việc tạo OS-OUT đọc
-`production_job_operations.type`/`production_jobs.status` trước, ngoài transaction — chỉ đọc, không
-ghi ngược Production. Chi tiết: `docs/workflows/outsourcing-round-trip.md`.
+**Tạo OS-OUT/OS-IN** (`OutsourcingOrdersService.createOutsourcingOrder`/`OutsourcingReceiptsService.
+createOutsourcingReceipt`): không có bước nháp — `create` gộp luôn phần việc trước đây thuộc `post`
+(`docs/decisions/outsourcing-no-draft.md`). Validate mềm chạy trước, ngoài transaction (đọc
+`production_job_operations.type`/`production_jobs.status` + `resolvePlannedQuantities` — chỉ đọc,
+không ghi ngược Production); trong transaction: `INSERT` header thẳng `POSTED` + `INSERT` mọi dòng
+(`.returning()`) → validate lại lần hai trên dữ liệu vừa insert (chốt chặn thật, loại chính phiếu
+đang tạo) → `InventoryPostingService.postDocument` một lần cho mỗi dòng. Riêng
+`createOutsourcingReceipt` có thêm một nhánh tuỳ chọn sau đó: nếu `requiresIqc = true`, cùng
+transaction gọi thêm `IqcService.createInspectionsFromOutsourcingReceipt(tx, ...)` — sinh N phiếu
+IQC (1/dòng phiếu), bắc cầu sang module `iqc`, nhưng **không** gate việc tạo phiếu (khác nhánh IQC
+của `inventory-receipts`). Chi tiết: `docs/workflows/outsourcing-round-trip.md`.
 
 **Start Job** (`ProductionJobsService.startJob`, chỉ hợp lệ từ `PENDING`): đọc
 `production_job_materials` + `InventoryService.getMaterialStockLevels` (chỉ đọc, chạy trước
@@ -206,12 +209,13 @@ xuyên module không cần DI. Xem `docs/workflows/supplier-return.md`.
 
 `OutsourcingOrdersModule`/`OutsourcingReceiptsModule` đều import `InventoryModule` (cho
 `InventoryPostingService`) + `WarehousesModule`. Riêng `OutsourcingReceiptsModule` import thêm
-`IqcModule` (cho `createInspectionFromOutsourcingReceipt`) — chiều ngược lại không tồn tại,
-`IqcService` đọc bảng `outsourcing_receipts` thẳng qua `tx`/`this.db`, không cần DI ngược nên
-**không** tạo vòng lặp module như cặp `IqcModule`/`SupplierReturnsModule` ở trên.
-`OutsourcingOrdersModule` không import `OutsourcingReceiptsModule` và ngược lại — mỗi module đọc
-bảng của module kia thẳng qua `DRIZZLE` khi cần (cùng lối `BomsModule`/`RoutingsModule` đọc
-`operations` ở trên), tránh một cặp import chéo không cần thiết giữa hai module ngang hàng.
+`IqcModule` (cho `createInspectionsFromOutsourcingReceipt`) — chiều ngược lại không tồn tại,
+`IqcService` đọc bảng `outsourcing_receipts`/`outsourcing_receipt_items`/`outsourcing_order_items`
+thẳng qua `tx`/`this.db`, không cần DI ngược nên **không** tạo vòng lặp module như cặp
+`IqcModule`/`SupplierReturnsModule` ở trên. `OutsourcingOrdersModule` không import
+`OutsourcingReceiptsModule` và ngược lại — mỗi module đọc bảng (kể cả bảng dòng) của module kia
+thẳng qua `DRIZZLE` khi cần (cùng lối `BomsModule`/`RoutingsModule` đọc `operations` ở trên), tránh
+một cặp import chéo không cần thiết giữa hai module ngang hàng.
 
 ## Bất biến xuyên module
 

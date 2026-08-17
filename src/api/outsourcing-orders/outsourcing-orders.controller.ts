@@ -8,7 +8,9 @@ import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
 import { CreateOutsourcingOrderReqDto } from './dto/create-outsourcing-order.req.dto';
+import { GetOutsourceableOperationsReqDto } from './dto/get-outsourceable-operations.req.dto';
 import { GetOutsourcingOrdersReqDto } from './dto/get-outsourcing-orders.req.dto';
+import { OutsourceableOperationResDto } from './dto/outsourceable-operation.res.dto';
 import { OutsourcingOrderResDto } from './dto/outsourcing-order.res.dto';
 import { PageOutsourcingOrderResDto } from './dto/page-outsourcing-order.res.dto';
 import { OutsourcingOrdersService } from './outsourcing-orders.service';
@@ -33,6 +35,20 @@ export class OutsourcingOrdersController {
     return this.outsourcingOrdersService.getOutsourcingOrders(reqDto);
   }
 
+  @Get('outsourceable-operations')
+  @Permissions('outsourcing:read')
+  @ApiAuth({
+    type: OutsourceableOperationResDto,
+    summary:
+      'Popup "chọn part cần gia công" — công đoạn OUTSOURCE của Job đang IN_PROGRESS, kèm định mức/đã gửi/còn được phép gửi',
+    isPaginated: true,
+  })
+  getOutsourceableOperations(
+    @Query() reqDto: GetOutsourceableOperationsReqDto,
+  ): Promise<OffsetPaginatedDto<OutsourceableOperationResDto>> {
+    return this.outsourcingOrdersService.getOutsourceableOperations(reqDto);
+  }
+
   @Get(':outsourcingOrderId')
   @Permissions('outsourcing:read')
   @ApiAuth({
@@ -50,32 +66,16 @@ export class OutsourcingOrdersController {
   @Post()
   @Permissions('outsourcing:create')
   @ApiAuth({
-    type: OutsourcingOrderResDto,
-    summary: 'Lập phiếu gửi gia công ngoài (OS-OUT), luôn DRAFT',
-    statusCode: HttpStatus.CREATED,
+    summary:
+      'Lập phiếu gửi gia công ngoài (OS-OUT), nhiều dòng — POSTED ngay, trừ tồn kho gửi theo từng dòng',
+    statusCode: HttpStatus.NO_CONTENT,
   })
   createOutsourcingOrder(
     @Body() reqDto: CreateOutsourcingOrderReqDto,
     @CurrentUser() payload: JwtPayloadType,
-  ): Promise<OutsourcingOrderResDto> {
+  ): Promise<void> {
     return this.outsourcingOrdersService.createOutsourcingOrder(
       reqDto,
-      payload.userId,
-    );
-  }
-
-  @Post(':outsourcingOrderId/post')
-  @Permissions('outsourcing:update')
-  @ApiAuth({
-    summary: 'Xác nhận đã gửi hàng (DRAFT → POSTED) — trừ tồn kho gửi',
-    statusCode: HttpStatus.NO_CONTENT,
-  })
-  postOutsourcingOrder(
-    @UUIDParam('outsourcingOrderId') outsourcingOrderId: string,
-    @CurrentUser() payload: JwtPayloadType,
-  ): Promise<void> {
-    return this.outsourcingOrdersService.postOutsourcingOrder(
-      outsourcingOrderId,
       payload.userId,
     );
   }

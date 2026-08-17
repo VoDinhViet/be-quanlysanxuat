@@ -4,15 +4,13 @@ import { InventoryDocumentStatus } from '../../../database/schemas';
 import {
   DateField,
   EnumField,
-  NumberField,
   StringField,
   UUIDField,
 } from '../../../decorators/field.decorators';
 
-// Không dùng `PickType(OutsourcingOrderResDto, ...)` — DTO đó nhúng `OutsourcingReceiptRefResDto`
-// (field `receipts`), mà `OutsourcingReceiptResDto` lại nhúng chính DTO này (field
-// `outsourcingOrder`), sẽ tạo vòng import. Khai riêng, chỉ vài field, không phụ thuộc gì bên
-// `outsourcing-receipts/` — cùng khuôn `supplier-return-ref.res.dto.ts`.
+// Không dùng `PickType(OutsourcingOrderResDto, ...)` — `OutsourcingReceiptResDto` nhúng DTO này
+// (field `outsourcingOrder`), tạo vòng import nếu đi ngược lại. Khai riêng, chỉ vài field, không
+// phụ thuộc gì bên `outsourcing-receipts/` — cùng khuôn `supplier-return-ref.res.dto.ts`.
 @Exclude()
 export class OutsourcingOrderRefResDto {
   @Expose()
@@ -26,10 +24,6 @@ export class OutsourcingOrderRefResDto {
   @Expose()
   @EnumField(() => InventoryDocumentStatus)
   status!: InventoryDocumentStatus;
-
-  @Expose()
-  @NumberField({ description: 'SL gửi' })
-  quantity!: number;
 
   @Expose()
   @DateField({ description: 'Ngày gửi' })

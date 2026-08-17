@@ -59,6 +59,7 @@ export const PERMISSION_CODES = [
   'outsourcing:read',
   'outsourcing:create',
   'outsourcing:update',
+  'outsourcing:delete',
   'oqc:read',
   'oqc:create',
   'oqc:update',

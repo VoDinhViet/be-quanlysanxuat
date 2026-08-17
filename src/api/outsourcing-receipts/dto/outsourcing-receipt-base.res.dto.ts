@@ -12,11 +12,11 @@ import {
   StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
-import { ItemUnitRefResDto } from '../../items/dto/item-unit-ref.res.dto';
-import { OutsourcingOrderRefResDto } from '../../outsourcing-orders/dto/outsourcing-order-ref.res.dto';
 import { SupplierRefResDto } from '../../suppliers/dto/supplier-ref.res.dto';
 import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
 import { WarehouseRefResDto } from '../../warehouses/dto/warehouse-ref.res.dto';
+import { OutsourcingReceiptProgress } from '../outsourcing-receipts.constant';
+import { OutsourcingReceiptItemResDto } from './outsourcing-receipt-item.res.dto';
 
 @Exclude()
 export class OutsourcingReceiptBaseResDto {
@@ -27,18 +27,6 @@ export class OutsourcingReceiptBaseResDto {
   @Expose()
   @StringField({ description: 'Mã phiếu nhận gia công ngoài' })
   code!: string;
-
-  @Expose()
-  @ClassField(() => OutsourcingOrderRefResDto)
-  outsourcingOrder!: OutsourcingOrderRefResDto;
-
-  @Expose()
-  @ClassField(() => ItemUnitRefResDto)
-  item!: ItemUnitRefResDto;
-
-  @Expose()
-  @NumberField({ description: 'SL nhận' })
-  quantity!: number;
 
   @Expose()
   @ClassField(() => SupplierRefResDto)
@@ -61,6 +49,21 @@ export class OutsourcingReceiptBaseResDto {
   @Expose()
   @EnumField(() => InventoryDocumentStatus)
   status!: InventoryDocumentStatus;
+
+  @Expose()
+  @EnumField(() => OutsourcingReceiptProgress, {
+    description:
+      'Tiến độ xử lý, suy từ status + SL từng dòng OS-OUT liên quan — không phải cột DB',
+  })
+  progress!: OutsourcingReceiptProgress;
+
+  @Expose()
+  @NumberField({ description: 'Tổng SL nhận mọi dòng' })
+  totalQuantity!: number;
+
+  @Expose()
+  @ClassField(() => OutsourcingReceiptItemResDto, { each: true })
+  items!: OutsourcingReceiptItemResDto[];
 
   @Expose()
   @StringFieldOptional({ nullable: true, description: 'Ghi chú' })

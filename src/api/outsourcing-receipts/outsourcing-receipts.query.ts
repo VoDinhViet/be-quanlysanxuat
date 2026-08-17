@@ -3,55 +3,84 @@ import { and, eq, inArray, ne, sql } from 'drizzle-orm';
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
   InventoryDocumentStatus,
+  iqcInspections,
+  IqcStatus,
+  outsourcingReceiptItems,
   outsourcingReceipts,
 } from '../../database/schemas';
 
-/** Aggregate SL đã nhận theo OS-OUT, chỉ OS-IN `POSTED` — dùng trong
- * `OutsourcingOrdersService.getOutsourcingOrders` (lọc/hiển thị `progress`). Khuôn
- * `orderReceivedQuantitySubquery` (`purchase-orders.query.ts`). */
-export function receivedQuantityByOutsourcingOrderSubquery(db: Database) {
-  return db
-    .select({
-      outsourcingOrderId: outsourcingReceipts.outsourcingOrderId,
-      receivedQuantity: sql<number>`sum(${outsourcingReceipts.quantity})`
-        .mapWith(Number)
-        .as('received_quantity'),
-    })
-    .from(outsourcingReceipts)
-    .where(eq(outsourcingReceipts.status, InventoryDocumentStatus.POSTED))
-    .groupBy(outsourcingReceipts.outsourcingOrderId)
-    .as('outsourcing_received_quantity_aggregate');
-}
-
-/** Σ SL đã nhận của một OS-OUT theo tập `statuses` truyền vào — `create` kiểm sớm với
- * `[DRAFT, POSTED]`, `post` kiểm chốt trong transaction với `[POSTED]` + `excludeReceiptId` (loại
- * trừ chính dòng đang `post`). Khuôn `getReceivedQuantityByPurchaseOrderItemId`
- * (`purchase-orders.query.ts`) — cũng tham số hoá `statuses` đúng vì lý do này. */
-export async function getReceivedQuantityByOutsourcingOrderId(
+/** Σ SL đã nhận theo từng dòng OS-OUT (`outsourcingOrderItemId`) — dùng cho popup "chọn hàng cần
+ * nhận", validate `E172` (create OS-IN), và tính tiến độ dòng OS-OUT. `statuses` luôn chỉ còn
+ * `[POSTED]` (không còn phiếu nào ở `DRAFT`). `excludeReceiptId` bắt buộc phải truyền = chính phiếu
+ * đang tạo khi gọi từ transaction `create` — header đã `INSERT` với `POSTED` ngay trong `tx` đó nên
+ * nhìn thấy chính dòng của nó, không loại sẽ bị cộng dồn hai lần. */
+export async function getReceivedQuantityByOrderItemIds(
   db: Database | DbTransaction,
   params: {
-    outsourcingOrderId: string;
+    orderItemIds: string[];
     statuses: InventoryDocumentStatus[];
     excludeReceiptId?: string;
   },
-): Promise<number> {
-  const [row] = await db
+): Promise<Map<string, number>> {
+  if (!params.orderItemIds.length) {
+    return new Map();
+  }
+
+  const rows = await db
     .select({
-      total:
-        sql<number>`coalesce(sum(${outsourcingReceipts.quantity}), 0)`.mapWith(
+      outsourcingOrderItemId: outsourcingReceiptItems.outsourcingOrderItemId,
+      received:
+        sql<number>`coalesce(sum(${outsourcingReceiptItems.quantity}), 0)`.mapWith(
           Number,
         ),
     })
-    .from(outsourcingReceipts)
+    .from(outsourcingReceiptItems)
+    .innerJoin(
+      outsourcingReceipts,
+      eq(outsourcingReceipts.id, outsourcingReceiptItems.outsourcingReceiptId),
+    )
     .where(
       and(
-        eq(outsourcingReceipts.outsourcingOrderId, params.outsourcingOrderId),
+        inArray(
+          outsourcingReceiptItems.outsourcingOrderItemId,
+          params.orderItemIds,
+        ),
         inArray(outsourcingReceipts.status, params.statuses),
         params.excludeReceiptId
           ? ne(outsourcingReceipts.id, params.excludeReceiptId)
           : undefined,
       ),
+    )
+    .groupBy(outsourcingReceiptItems.outsourcingOrderItemId);
+
+  return new Map(rows.map((row) => [row.outsourcingOrderItemId, row.received]));
+}
+
+/** Tập `outsourcingReceiptId` còn ≥ 1 dòng IQC chưa `COMPLETED` — dùng cho `progress` (OS-IN),
+ * tính hàng loạt theo trang thay vì gọi lại mỗi dòng. */
+export async function getReceiptIdsWithPendingIqc(
+  db: Database | DbTransaction,
+  outsourcingReceiptIds: string[],
+): Promise<Set<string>> {
+  if (!outsourcingReceiptIds.length) {
+    return new Set();
+  }
+
+  const rows = await db
+    .selectDistinct({
+      outsourcingReceiptId: iqcInspections.outsourcingReceiptId,
+    })
+    .from(iqcInspections)
+    .where(
+      and(
+        inArray(iqcInspections.outsourcingReceiptId, outsourcingReceiptIds),
+        ne(iqcInspections.status, IqcStatus.COMPLETED),
+      ),
     );
 
-  return row?.total ?? 0;
+  return new Set(
+    rows.flatMap((row) =>
+      row.outsourcingReceiptId ? [row.outsourcingReceiptId] : [],
+    ),
+  );
 }

@@ -252,33 +252,45 @@ export class IqcService {
     );
   }
 
-  /** Sinh 1 phiếu IQC cho một phiếu nhận gia công ngoài có `requiresIqc = true` — đường tạo tự
-   *  động thứ ba (song sinh `createInspectionsFromReceipt`), gọi trong transaction của
-   *  `OutsourcingReceiptsService.postOutsourcingReceipt`. **Không** gate `post` — hàng đã về kho
-   *  vật lý trước khi dòng IQC này được kiểm. Xem `docs/workflows/outsourcing-round-trip.md`. */
-  async createInspectionFromOutsourcingReceipt(
+  /** Sinh 1 phiếu IQC cho MỖI dòng phiếu nhận gia công ngoài có `requiresIqc = true` — đường tạo
+   *  tự động thứ ba (song sinh `createInspectionsFromReceipt`), gọi trong transaction của
+   *  `OutsourcingReceiptsService.createOutsourcingReceipt`. **Không** gate `create` — hàng đã về kho
+   *  vật lý trước khi các dòng IQC này được kiểm. Cấp mã 1 lần cho cả N dòng (`generateIqcCodes`),
+   *  không lặp gọi từng dòng — gọi lặp trong cùng transaction sẽ ra mã trùng
+   *  (`generateIqcCodes` đếm-rồi-cộng, chưa commit thì chưa thấy dòng vừa insert). Xem
+   *  `docs/workflows/outsourcing-round-trip.md`. */
+  async createInspectionsFromOutsourcingReceipt(
     tx: DbTransaction,
     params: {
       outsourcingReceiptId: string;
       supplierId: string;
-      itemId: string;
-      quantity: number;
       inspectionDate: Date;
+      lines: { itemId: string; quantity: number }[];
       userId: string;
     },
   ): Promise<void> {
-    const [code] = await this.generateIqcCodes(tx, params.inspectionDate, 1);
+    if (!params.lines.length) {
+      return;
+    }
 
-    await tx.insert(iqcInspections).values({
-      code,
-      outsourcingReceiptId: params.outsourcingReceiptId,
-      supplierId: params.supplierId,
-      itemId: params.itemId,
-      quantity: params.quantity,
-      inspectionDate: params.inspectionDate,
-      status: IqcStatus.NOT_INSPECTED,
-      createdBy: params.userId,
-    });
+    const codes = await this.generateIqcCodes(
+      tx,
+      params.inspectionDate,
+      params.lines.length,
+    );
+
+    await tx.insert(iqcInspections).values(
+      params.lines.map((line, index) => ({
+        code: codes[index],
+        outsourcingReceiptId: params.outsourcingReceiptId,
+        supplierId: params.supplierId,
+        itemId: line.itemId,
+        quantity: line.quantity,
+        inspectionDate: params.inspectionDate,
+        status: IqcStatus.NOT_INSPECTED,
+        createdBy: params.userId,
+      })),
+    );
   }
 
   /** `true` chỉ khi phiếu nhập có ≥ 1 phiếu IQC và **mọi** phiếu đã `COMPLETED` — dùng bởi

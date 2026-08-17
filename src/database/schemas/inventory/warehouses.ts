@@ -67,3 +67,5 @@ export const warehousesRelations = relations(warehouses, ({ many }) => ({
   transactions: many(inventoryTransactions),
   balances: many(inventoryBalances),
 }));
+
+export type WarehouseSelect = typeof warehouses.$inferSelect;

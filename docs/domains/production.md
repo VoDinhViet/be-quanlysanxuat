@@ -39,9 +39,12 @@ copy nguyên từ `bom_items.level` lúc duyệt LSX, cùng quy ước với `GE
 
 Mỗi node còn có `plannedQuantity` — **tính lúc đọc, không lưu cột**: SL Job (`production_jobs.quantity`)
 nhân luỹ kế `quantity` (định mức trên 1 đơn vị cha) từ gốc xuống tới node đó
-(`ProductionJobsService.resolvePlannedQuantities`). An toàn tính lại mỗi lần vì `quantity`/`parentId`
-của node và SL Job đều bất biến sau khi duyệt. Khác `production_job_materials.requiredQty` — vẫn cố ý
-không nổ theo cấp, xem `docs/domains/product-structure.md`. Mỗi `production_job_operations` con của
+(`resolvePlannedQuantities`, `src/api/production-jobs/production-job-planned-quantity.ts` — pure
+function, không DI, tách khỏi `ProductionJobsService` để `outsourcing-orders` gọi thẳng cho popup
+"chọn part cần gia công" và chặn gửi vượt định mức, `docs/domains/inventory.md`). An toàn tính lại
+mỗi lần vì `quantity`/`parentId` của node và SL Job đều bất biến sau khi duyệt. Khác
+`production_job_materials.requiredQty` — vẫn cố ý không nổ theo cấp, xem
+`docs/domains/product-structure.md`. Mỗi `production_job_operations` con của
 một node mang cùng `plannedQuantity` với node đó, cộng thêm `completedQuantity`/`completedDate` —
 tiến độ **tự nhập, ghi đè, theo từng công đoạn** (không phải theo node): cùng một part có thể công
 đoạn này đã xong trong khi công đoạn khác chưa, xem `docs/workflows/production-job-execution.md`.
@@ -160,10 +163,12 @@ Không phải invariant dù dễ tưởng:
   `getMaterialStockLevels` (`ProductionJobsService.startJob`, tính phần vật tư thiếu). Domain này
   **không ghi** gì vào sổ kho.
 - **→ Inventory (Gia công ngoài)**: `production_job_operations.type` (snapshot `OUTSOURCE`) +
-  `production_jobs.status` là **anchor đọc-một-chiều** cho `outsourcing_orders` — Inventory đọc,
-  Production không ghi/biết gì về OS-OUT/OS-IN. Đợt này **không** có gating nào ngược lại: tạo/hủy
-  chứng từ gia công ngoài không tự đổi `completedQuantity`/`completedDate` hay chặn công đoạn kế
-  tiếp. Xem `docs/domains/inventory.md`.
+  `production_jobs.status` là **anchor đọc-một-chiều** cho mỗi dòng `outsourcing_order_items` —
+  Inventory đọc, Production không ghi/biết gì về OS-OUT/OS-IN. `outsourcing-orders` còn gọi thẳng
+  `resolvePlannedQuantities` (pure function, cùng file mọi module import — không qua DI) để tính
+  định mức cho popup "chọn part cần gia công" và chặn gửi vượt định mức. Đợt này **không** có
+  gating nào ngược lại: tạo/hủy chứng từ gia công ngoài không tự đổi
+  `completedQuantity`/`completedDate` hay chặn công đoạn kế tiếp. Xem `docs/domains/inventory.md`.
 - **→ Quality (OQC)**: `production_jobs.status`/`quantity` là **anchor đọc-một-chiều** cho
   `oqc_inspections` — Quality đọc để validate lúc tạo (`IN_PROGRESS`) và giới hạn tổng lot size
   (không vượt `quantity`), Production không ghi/biết gì về OQC. Cùng khuôn với gia công ngoài ở

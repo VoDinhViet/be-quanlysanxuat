@@ -54,6 +54,7 @@ import { ProductionJobNoteResDto } from './dto/production-job-note.res.dto';
 import { ProductionJobOperationResDto } from './dto/production-job-operation.res.dto';
 import { ProductionJobResDto } from './dto/production-job.res.dto';
 import { UpdateProductionJobOperationReqDto } from './dto/update-production-job-operation.req.dto';
+import { resolvePlannedQuantities } from './production-job-planned-quantity';
 import {
   SourceBomItemRow,
   SourceBomOperationRow,
@@ -205,7 +206,7 @@ export class ProductionJobsService {
       ],
     });
 
-    const plannedById = this.resolvePlannedQuantities(nodes, job.quantity);
+    const plannedById = resolvePlannedQuantities(nodes, job.quantity);
     const rows = nodes.map((node) => ({
       ...node,
       plannedQuantity: plannedById.get(node.id)!,
@@ -244,7 +245,7 @@ export class ProductionJobsService {
       where: eq(productionJobBomItems.productionJobId, jobId),
       columns: { id: true, parentId: true, quantity: true },
     });
-    const planned = this.resolvePlannedQuantities(nodes, job.quantity).get(
+    const planned = resolvePlannedQuantities(nodes, job.quantity).get(
       operation.productionJobBomItemId,
     )!;
 
@@ -267,39 +268,6 @@ export class ProductionJobsService {
     return plainToInstance(ProductionJobOperationResDto, updated, {
       excludeExtraneousValues: true,
     });
-  }
-
-  /** SL kế hoạch của một node = SL kế hoạch node cha (gốc là SL Job) × định mức (`quantity`) của
-   * chính node — nhân luỹ kế theo cây cha-con, vì `quantity` là định mức trên 1 đơn vị cha, không
-   * phải số tuyệt đối (khác `production_job_materials.requiredQty`, cố ý không nổ theo cấp). Không
-   * lưu cột — `quantity`/`parentId`/SL Job đều bất biến sau khi Job duyệt nên tính lại lúc đọc
-   * không có rủi ro lệch dữ liệu (khác lý do từng khiến `level` phải chuyển sang lưu cột thật). */
-  private resolvePlannedQuantities(
-    nodes: { id: string; parentId: string | null; quantity: number }[],
-    jobQuantity: number,
-  ): Map<string, number> {
-    const nodeById = new Map(nodes.map((node) => [node.id, node]));
-    const planned = new Map<string, number>();
-
-    const resolve = (id: string): number => {
-      const cached = planned.get(id);
-      if (cached !== undefined) {
-        return cached;
-      }
-      const node = nodeById.get(id)!;
-      const parentPlanned = node.parentId
-        ? resolve(node.parentId)
-        : jobQuantity;
-      const value = parentPlanned * node.quantity;
-      planned.set(id, value);
-      return value;
-    };
-
-    for (const node of nodes) {
-      resolve(node.id);
-    }
-
-    return planned;
   }
 
   /** Read-only, danh sách vật tư khởi tạo từ BOM lúc duyệt. Đọc thẳng cột snapshot trên

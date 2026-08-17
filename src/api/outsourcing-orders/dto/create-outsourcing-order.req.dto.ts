@@ -1,37 +1,32 @@
 import {
+  ClassField,
   DateField,
   DateFieldOptional,
-  NumberField,
   StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
+import { OutsourcingOrderItemReqDto } from './outsourcing-order-item.req.dto';
 
 export class CreateOutsourcingOrderReqDto {
-  @UUIDField({
-    description:
-      'Công đoạn as-used của Job (production_job_operations) — bắt buộc snapshot type=OUTSOURCE, Job đang IN_PROGRESS',
-  })
-  productionJobOperationId!: string;
-
   @UUIDField({ description: 'NCC gia công' })
-  supplierId!: string;
+  readonly supplierId!: string;
 
   @UUIDField({ description: 'Kho xuất hàng đi' })
-  warehouseId!: string;
-
-  @NumberField({ isPositive: true, description: 'SL gửi' })
-  quantity!: number;
+  readonly warehouseId!: string;
 
   @DateField({ description: 'Ngày gửi' })
-  sendDate!: Date;
+  readonly sendDate!: Date;
 
   @DateFieldOptional({ nullable: true, description: 'Ngày hẹn về' })
-  expectedReturnDate?: Date | null;
+  readonly expectedReturnDate?: Date | null;
 
   @StringFieldOptional({
     nullable: true,
     maxLength: 1000,
     description: 'Ghi chú',
   })
-  note?: string | null;
+  readonly note?: string | null;
+
+  @ClassField(() => OutsourcingOrderItemReqDto, { each: true })
+  readonly items!: OutsourcingOrderItemReqDto[];
 }

@@ -1,11 +1,9 @@
 import { Exclude, Expose } from 'class-transformer';
 
 import {
-  ClassField,
   ClassFieldOptional,
   DateFieldOptional,
 } from '../../../decorators/field.decorators';
-import { OutsourcingReceiptRefResDto } from '../../outsourcing-receipts/dto/outsourcing-receipt-ref.res.dto';
 import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
 import { OutsourcingOrderBaseResDto } from './outsourcing-order-base.res.dto';
 
@@ -21,8 +19,4 @@ export class OutsourcingOrderResDto extends OutsourcingOrderBaseResDto {
     description: 'Thời điểm xác nhận gửi hàng',
   })
   postedAt!: Date | null;
-
-  @Expose()
-  @ClassField(() => OutsourcingReceiptRefResDto, { each: true })
-  receipts!: OutsourcingReceiptRefResDto[];
 }

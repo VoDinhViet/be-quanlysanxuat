@@ -332,10 +332,10 @@ export enum ErrorCode {
   // Huỷ OS-OUT đã `POSTED` khi còn `outsourcing_receipts` nào chưa `CANCELLED` trỏ vào.
   E169 = 'outsourcing_order.error.has_receipts',
   E170 = 'outsourcing_receipt.error.not_found',
-  // Tạo OS-IN khi OS-OUT chưa `POSTED` (còn `DRAFT`) hoặc đã `CANCELLED`.
+  // Tạo OS-IN khi dòng OS-OUT nguồn đã `CANCELLED`.
   E171 = 'outsourcing_receipt.error.order_not_posted',
-  // SL nhận (cộng dồn mọi OS-IN cùng `outsourcingOrderId`) vượt SL gửi của OS-OUT — khác `E154`
-  // (vượt SL đặt của dòng PO).
+  // SL nhận (cộng dồn mọi dòng OS-IN cùng `outsourcingOrderItemId`) vượt SL gửi của dòng OS-OUT đó
+  // — khác `E154` (vượt SL đặt của dòng PO).
   E172 = 'outsourcing_receipt.error.quantity_exceeded',
   // Huỷ OS-IN đã `POSTED` khi đã sinh `iqc_inspections` trỏ vào — cùng lý do `supplier_returns`
   // chưa có `cancel`.
@@ -358,5 +358,18 @@ export enum ErrorCode {
   // gửi OS-OUT).
   E180 = 'inventory_receipt.error.oqc_pass_quantity_exceeded',
   E181 = 'oqc_inspection.error.code_exists',
+  E182 = 'outsourcing_order.error.items_required',
+  // Hai dòng trong cùng payload OS-OUT trỏ cùng một `productionJobOperationId` — mỗi công đoạn chỉ
+  // được xuất hiện một lần trên một phiếu.
+  E183 = 'outsourcing_order.error.duplicate_operation',
+  // SL gửi (cộng dồn mọi dòng OS-OUT khác cùng `productionJobOperationId`, cộng SL payload) vượt
+  // SL kế hoạch của node BOM đó (`resolvePlannedQuantities`) — khác `E172` (chặn ở đầu nhận, OS-IN).
+  E184 = 'outsourcing_order.error.planned_quantity_exceeded',
+  E185 = 'outsourcing_receipt.error.items_required',
+  // Hai dòng trong cùng payload OS-IN trỏ cùng một `outsourcingOrderItemId`.
+  E186 = 'outsourcing_receipt.error.duplicate_order_item',
+  // Dòng trỏ tới một `outsourcingOrderItemId` mà NCC của OS-OUT chứa nó khác `supplierId` của
+  // header OS-IN — bất biến "1 phiếu OS-IN = 1 NCC".
+  E187 = 'outsourcing_receipt.error.supplier_mismatch',
   V003 = 'common.error.too_many_requests',
 }

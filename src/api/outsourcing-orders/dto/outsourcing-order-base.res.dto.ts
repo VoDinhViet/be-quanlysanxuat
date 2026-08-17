@@ -12,12 +12,11 @@ import {
   StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
-import { ItemUnitRefResDto } from '../../items/dto/item-unit-ref.res.dto';
-import { ProductionJobRefResDto } from '../../production-jobs/dto/production-job-ref.res.dto';
 import { SupplierRefResDto } from '../../suppliers/dto/supplier-ref.res.dto';
 import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
 import { WarehouseRefResDto } from '../../warehouses/dto/warehouse-ref.res.dto';
 import { OutsourcingOrderProgress } from '../outsourcing-orders.constant';
+import { OutsourcingOrderItemResDto } from './outsourcing-order-item.res.dto';
 
 @Exclude()
 export class OutsourcingOrderBaseResDto {
@@ -30,36 +29,12 @@ export class OutsourcingOrderBaseResDto {
   code!: string;
 
   @Expose()
-  @ClassField(() => ItemUnitRefResDto)
-  item!: ItemUnitRefResDto;
-
-  @Expose()
-  @NumberField({ description: 'SL gửi' })
-  quantity!: number;
-
-  @Expose()
-  @NumberField({ description: 'SL đã nhận (Σ OS-IN POSTED)' })
-  receivedQuantity!: number;
-
-  @Expose()
   @ClassField(() => SupplierRefResDto)
   supplier!: SupplierRefResDto;
 
   @Expose()
   @ClassField(() => WarehouseRefResDto)
   warehouse!: WarehouseRefResDto;
-
-  @Expose()
-  @StringField({ description: 'Mã công đoạn (snapshot lúc gửi)' })
-  operationCode!: string;
-
-  @Expose()
-  @StringField({ description: 'Tên công đoạn (snapshot lúc gửi)' })
-  operationName!: string;
-
-  @Expose()
-  @ClassFieldOptional(() => ProductionJobRefResDto, { nullable: true })
-  productionJob!: ProductionJobRefResDto | null;
 
   @Expose()
   @DateField({ description: 'Ngày gửi' })
@@ -76,9 +51,17 @@ export class OutsourcingOrderBaseResDto {
   @Expose()
   @EnumField(() => OutsourcingOrderProgress, {
     description:
-      'Tiến độ nhận hàng, suy từ status + receivedQuantity — không phải cột DB',
+      'Tiến độ nhận hàng, suy từ status + SL từng dòng — không phải cột DB',
   })
   progress!: OutsourcingOrderProgress;
+
+  @Expose()
+  @NumberField({ description: 'Tổng SL gửi mọi dòng' })
+  totalQuantity!: number;
+
+  @Expose()
+  @ClassField(() => OutsourcingOrderItemResDto, { each: true })
+  items!: OutsourcingOrderItemResDto[];
 
   @Expose()
   @StringFieldOptional({ nullable: true, description: 'Ghi chú' })

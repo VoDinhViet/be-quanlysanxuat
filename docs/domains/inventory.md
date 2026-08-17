@@ -113,8 +113,10 @@ mọi LSX đang mở.
 | `inventory_transactions` | Sổ cái — append-only, nguồn sự thật, `quantity` có dấu |
 | `inventory_balances` | Tồn hiện tại — một dòng/(kho × mặt hàng), dựng lại được từ sổ cái |
 | `supplier_returns` | Phiếu trả NCC — bảng phẳng (1 phiếu = 1 dòng vật tư), tái dùng `status` của phiếu nhập/xuất (chỉ `DRAFT`/`POSTED`/`CANCELLED` — 2 giá trị `PENDING_*` không bao giờ xuất hiện ở bảng này); **tự sinh** (`DRAFT`) từ `IqcService.confirmIqc` khi QC chọn `disposition = SORT`/`RETURN` (`docs/domains/quality.md`), `iqcId` trỏ ngược lại lần IQC đó; `post` (kho xác nhận xuất trả) trừ tồn + hoàn tất luôn IQC liên kết — **chưa có `cancel`** (huỷ một phiếu đã `POSTED` cần đường "un-complete" IQC, để đợt sau) |
-| `outsourcing_orders` | Phiếu gửi gia công ngoài (OS-OUT) — bảng phẳng (1 phiếu = 1 dòng vật tư), cùng khuôn `supplier_returns`, tái dùng `status` phiếu nhập/xuất (chỉ `DRAFT`/`POSTED`/`CANCELLED`); **bắt buộc** gắn `productionJobOperationId` (Job đang `IN_PROGRESS`, công đoạn snapshot `type = OUTSOURCE`) — đây là chỗ nối vào luồng sản xuất, xem "Gia công ngoài" bên dưới |
-| `outsourcing_receipts` | Phiếu nhận gia công ngoài (OS-IN) — bảng phẳng, luôn trỏ đúng 1 `outsourcingOrderId`; một OS-OUT nhận được nhiều lần (partial); `requiresIqc` tuỳ chọn tự sinh 1 dòng `iqc_inspections` lúc `post` |
+| `outsourcing_orders` | Phiếu gửi gia công ngoài (OS-OUT) — header + nhiều dòng (`outsourcing_order_items`), tái dùng `status` phiếu nhập/xuất nhưng **không còn nháp** — `create` là `POSTED` ngay (`docs/decisions/outsourcing-no-draft.md`); mỗi dòng **bắt buộc** gắn `productionJobOperationId` (Job đang `IN_PROGRESS`, công đoạn snapshot `type = OUTSOURCE`) — đây là chỗ nối vào luồng sản xuất, xem "Gia công ngoài" bên dưới |
+| `outsourcing_order_items` | Dòng OS-OUT — `itemId`/`quantity` + snapshot công đoạn (`operationCode`/`operationName`, NOT NULL) + snapshot `plannedQuantity`/`sentBeforeQuantity` (chỉ để hiển thị/in, không dùng để validate — số sống tính lại lúc `create`, 2 lượt) + `weight`(kg)/`area`(m²) tuỳ chọn, **không** tham gia tính tồn; SL cộng dồn theo `productionJobOperationId` không được vượt định mức Job (`E184`) |
+| `outsourcing_receipts` | Phiếu nhận gia công ngoài (OS-IN) — header + nhiều dòng (`outsourcing_receipt_items`), cũng không còn nháp; mỗi dòng trỏ đúng 1 `outsourcingOrderItemId`, **cho phép gộp dòng từ nhiều OS-OUT khác nhau miễn cùng một NCC** (`supplierId` ở header, bất biến 1 phiếu = 1 NCC, `E187`); một dòng OS-OUT nhận được nhiều lần (partial); `requiresIqc` tuỳ chọn tự sinh N dòng `iqc_inspections` (1/dòng phiếu) lúc `create` |
+| `outsourcing_receipt_items` | Dòng OS-IN — `outsourcingOrderItemId` trỏ đúng 1 dòng OS-OUT nguồn, `itemId` denormalize từ dòng đó; `weight`/`area` mặc định copy từ dòng OS-OUT, sửa được |
 
 `orderItemId` trên dòng phiếu xuất (và bút toán sinh ra từ nó) là **chỗ nối duy nhất sang Orders** —
 vừa là cơ sở tính `reserved`, vừa chính là delivery tracking mà Orders chưa có. Chỉ hợp lệ trên dòng
@@ -188,26 +190,33 @@ không bao giờ ở `PENDING_IQC`/`PENDING_RECEIPT` (2 giá trị đó chỉ ph
   (`COMPLETED → WAITING_RETURN`), trong khi phiếu nhập gốc rất có thể đã `post` dựa trên đó rồi; để
   đợt sau. Xem `docs/workflows/supplier-return.md`.
 
-**`outsourcing_orders`/`outsourcing_receipts` (gia công ngoài)** cũng đi vòng đời đơn giản
-`DRAFT → POSTED → CANCELLED`, nhưng **có route tạo tay** (khác `supplier_returns` — không tự sinh
-từ đâu cả) và **có `cancel`** cho cả hai:
+**`outsourcing_orders`/`outsourcing_receipts` (gia công ngoài)** **không có bước nháp** — `create`
+là `POSTED` ngay, có `cancel`, **không còn `PATCH`/`DELETE`** (đã xoá hẳn — 2 route đó chỉ chạy được
+lúc còn `DRAFT`, mà `create` không bao giờ để lại `DRAFT` nữa; xem
+`docs/decisions/outsourcing-no-draft.md`):
 
 ```
-(tạo tay) ──> DRAFT ──post──> POSTED ──cancel──> CANCELLED
-DRAFT ──cancel──────────────────────────────────> CANCELLED
+(tạo tay, POSTED ngay) ──cancel──> CANCELLED
 ```
 
-- `outsourcing_orders` (OS-OUT) tạo tay, bắt buộc `productionJobOperationId` của một Job đang
-  `IN_PROGRESS`, công đoạn snapshot `type = OUTSOURCE` — validate ở `create`, không phải DB CHECK.
-  `post` trừ tồn kho gửi (`ISSUE`, âm). `cancel` từ `POSTED` chặn (`E169`) nếu còn
-  `outsourcing_receipts` nào chưa `CANCELLED` trỏ vào — phải huỷ hết OS-IN con trước.
-- `outsourcing_receipts` (OS-IN) tạo tay, bắt buộc trỏ đúng 1 OS-OUT đã `POSTED`; **một OS-OUT nhận
-  được nhiều OS-IN** (partial) — SL cộng dồn các OS-IN `DRAFT`/`POSTED` không được vượt SL gửi của
-  OS-OUT (`E172`, kiểm lại lần hai trong transaction `post`, chỉ tính `POSTED`). `post` cộng tồn kho
-  nhận (`RECEIPT`, dương); nếu `requiresIqc = true` thì cùng transaction sinh 1 dòng `iqc_inspections`
-  (`NOT_INSPECTED`) — **khác** phiếu nhập mua, IQC ở đây **không** gate `post` (hàng đã về nhà máy
-  vật lý ngay khi lập OS-IN, không phải chờ IQC mới cho nhập kho). `cancel` từ `POSTED` chặn
-  (`E173`) nếu đã có dòng `iqc_inspections` trỏ vào — cùng lý do `supplier_returns` chưa có `cancel`.
+- `outsourcing_orders` (OS-OUT) tạo tay, header + nhiều dòng; mỗi dòng bắt buộc
+  `productionJobOperationId` của một Job đang `IN_PROGRESS`, công đoạn snapshot `type = OUTSOURCE`
+  — validate ở `create` (2 lượt: mềm trước khi insert, chốt thật trên dữ liệu vừa insert), không
+  phải DB CHECK. Cùng transaction `create`, trừ tồn kho gửi (`ISSUE`, âm) — một bút toán riêng cho
+  mỗi dòng, **không gộp** các dòng cùng `itemId` (khuôn `buildReceiptPostingLines` của
+  `inventory-receipts` chấp nhận điều này). `cancel` từ `POSTED` chặn (`E169`) nếu còn
+  `outsourcing_receipts` nào chưa `CANCELLED` trỏ tới bất kỳ dòng nào của phiếu — phải huỷ hết OS-IN
+  con trước.
+- `outsourcing_receipts` (OS-IN) tạo tay, header + nhiều dòng; mỗi dòng trỏ đúng 1 dòng OS-OUT
+  thuộc phiếu đã `POSTED`, **mọi dòng OS-OUT được chọn phải cùng NCC với header** (`E187`) — cho
+  phép gộp nhiều OS-OUT khác nhau vào một OS-IN, miễn cùng một NCC. **Một dòng OS-OUT nhận được
+  nhiều lần** (partial) — SL cộng dồn theo `outsourcingOrderItemId` không được vượt SL gửi của dòng
+  đó (`E172`, kiểm lại lần hai trong cùng transaction `create`, chỉ tính `POSTED`, loại chính phiếu
+  đang tạo). Cùng transaction, cộng tồn kho nhận (`RECEIPT`, dương) theo từng dòng; nếu
+  `requiresIqc = true` thì sau đó sinh **N** dòng `iqc_inspections` (`NOT_INSPECTED`, 1 dòng IQC / 1
+  dòng phiếu) — **khác** phiếu nhập mua, IQC ở đây **không** gate `create` (hàng đã về nhà máy vật
+  lý ngay khi lập OS-IN, không phải chờ IQC mới cho nhập kho). `cancel` từ `POSTED` chặn (`E173`)
+  nếu đã có dòng `iqc_inspections` trỏ vào — cùng lý do `supplier_returns` chưa có `cancel`.
 
 Xem `docs/workflows/outsourcing-round-trip.md`.
 
@@ -263,18 +272,38 @@ tồn) hay ở một luồng "giao hàng" nào (không tồn tại — `OrderSta
   không tính `DRAFT`/`CANCELLED`) trỏ cùng một `purchaseOrderItemId`, cộng SL của payload đang xét,
   không được vượt `purchaseOrderItems.quantity` của dòng đó. Đảo ngược quyết định cũ "không chặn" —
   xem Common mistakes.
-- **Chặn nhận vượt SL gửi ở OS-OUT** (`E172`) — cùng ý tưởng với `E154` nhưng khác cặp bảng:
-  `Σ quantity` mọi OS-IN trỏ cùng một `outsourcingOrderId` không được vượt `outsourcing_orders.
-  quantity`. Kiểm hai lần — sớm ở `create` OS-IN (tính cả `DRAFT`+`POSTED`, chặn sai sót nhập liệu
-  sớm) và lại ở `post` OS-IN trong transaction (chỉ tính `POSTED`, loại trừ chính dòng đang `post` —
-  đây mới là chốt chặn thật, hai OS-IN cùng `DRAFT` có thể lọt qua lượt kiểm đầu).
+- **Chặn nhận vượt SL gửi ở dòng OS-OUT** (`E172`) — cùng ý tưởng với `E154` nhưng khác cặp bảng:
+  `Σ quantity` mọi dòng OS-IN trỏ cùng một `outsourcingOrderItemId` không được vượt
+  `outsourcing_order_items.quantity` của dòng đó. Kiểm hai lần trong **cùng một request** `create`
+  OS-IN (không còn nháp nên không còn cách nhau qua hai lần gọi API khác nhau) — lượt mềm trước khi
+  insert (chặn sai sót nhập liệu sớm), lượt chốt thật ngay sau khi insert trong transaction (chỉ
+  tính `POSTED`, loại trừ chính phiếu vừa insert — bắt buộc, xem
+  `docs/decisions/outsourcing-no-draft.md`).
+- **Chặn gửi vượt định mức Job ở dòng OS-OUT** (`E184`) — `Σ quantity` mọi dòng OS-OUT `POSTED` cùng
+  `productionJobOperationId`, cộng SL của payload đang xét, không được vượt SL kế hoạch của node BOM
+  đó (`resolvePlannedQuantities`, `docs/domains/production.md`); `CANCELLED` không tính. Kiểm hai
+  lần trong cùng một request `create` OS-OUT, cùng khuôn `E172` ở trên.
+- **`outsourcing_order_items.plannedQuantity`/`sentBeforeQuantity` là snapshot, chỉ để hiển thị/in**
+  — đóng băng đúng lúc tạo dòng vì Job có thể bị hard-delete khi LSX duyệt lại
+  (`ProductionOrdersService.seedPlan`) và "đã gửi trước" đổi theo thời gian. **Không** dùng hai cột
+  này để validate `E184` — validate luôn đọc số sống (định mức tính lại từ BOM, đã gửi tính lại từ
+  DB) tại thời điểm `create`.
+- **Trọng lượng (`weight`, kg) và diện tích (`area`, m²) trên dòng OS-OUT/OS-IN không tham gia tính
+  tồn kho hay bất kỳ validate nào** — thuần là số hiển thị/in phiếu, phục vụ cách một số NCC tính
+  phí gia công theo kg/m² thay vì theo số lượng.
+- **Bất biến "1 phiếu OS-IN = 1 NCC"** (`E187`) — mọi dòng OS-OUT được chọn vào một OS-IN phải cùng
+  `supplierId` với header OS-IN đó. Cho phép gộp nhiều phiếu OS-OUT (kể cả khác đợt gửi) miễn cùng
+  một NCC; khác NCC thì phải tách thành 2 phiếu OS-IN riêng.
 - **Không ép NCC của OS-OUT phải thuộc nhóm "Gia công" (`supplier_groups.code = 'GC'`)** — nhóm đó
   chỉ là gợi ý lọc dropdown ở FE, backend nhận bất kỳ `supplierId` hợp lệ nào, cùng cách `items.
   supplierId` không ép nhóm.
-- **Tiến độ OS-OUT tính lúc đọc, không lưu cột** — cùng khuôn `PurchaseOrderProgress`
-  (`docs/domains/purchasing.md`): `DRAFT`/`CANCELLED` đọc thẳng `status`; còn lại suy từ SL đã nhận
-  (`Σ` OS-IN `POSTED`) so với SL gửi — `SENT` (0 đã nhận), `PARTIAL` (đã nhận một phần), `COMPLETED`
-  (đã nhận đủ).
+- **Tiến độ OS-OUT/OS-IN tính lúc đọc, không lưu cột** — cùng khuôn `PurchaseOrderProgress`
+  (`docs/domains/purchasing.md`): `DRAFT`/`CANCELLED` đọc thẳng `status` (`DRAFT` giờ chỉ còn khớp
+  dữ liệu cũ trước khi bỏ nháp — không route nào tạo `DRAFT` nữa, nhưng nhánh này vẫn giữ lại, xem
+  `docs/decisions/outsourcing-no-draft.md`); còn lại suy từ SL đã nhận (`Σ` OS-IN `POSTED`) so với
+  SL gửi và (nếu `requiresIqc`) trạng thái các dòng IQC liên quan — `SENT` (0 đã nhận), `PARTIAL`
+  (đã nhận một phần), `WAITING_QC` (đã nhận đủ nhưng còn IQC chưa `COMPLETED`), `COMPLETED` (đã
+  nhận đủ, IQC xong hoặc không yêu cầu IQC).
 
 ## Invariants
 
@@ -308,11 +337,13 @@ Không phải invariant dù dễ tưởng:
   `productionOrderId`/`productionJobId` cho người dùng gắn thủ công — `productionJobId` trên
   `inventory_receipts` **bắt buộc** khi `receiptType = PRODUCTION` (khác `productionOrderId`, vẫn
   tuỳ chọn; khác `inventory_issues.productionJobId`, vẫn tuỳ chọn cho mọi `issueType`).
-- **← Production (Gia công ngoài)**: `outsourcing_orders` đọc `production_job_operations.type`
-  (snapshot, không đọc `operations.type` sống) + `production_jobs.status` lúc `create` — validate
-  công đoạn phải `OUTSOURCE` và Job phải `IN_PROGRESS` (`E166`/`E167`). Một chiều — không ghi
-  ngược vào `production_job_operations`/`production_jobs`, đợt này **không** có gating/block tiến
-  độ Job theo trạng thái OS-OUT/OS-IN (`docs/domains/production.md`).
+- **← Production (Gia công ngoài)**: mỗi dòng `outsourcing_order_items` đọc
+  `production_job_operations.type` (snapshot, không đọc `operations.type` sống) +
+  `production_jobs.status` lúc `create` — validate công đoạn phải `OUTSOURCE` và Job phải
+  `IN_PROGRESS` (`E166`/`E167`), và đọc `resolvePlannedQuantities` (pure function dùng chung,
+  `docs/domains/production.md`) để chặn gửi vượt định mức (`E184`). Một chiều — không ghi ngược vào
+  `production_job_operations`/`production_jobs`, đợt này **không** có gating/block tiến độ Job hay
+  công đoạn kế tiếp theo trạng thái OS-OUT/OS-IN.
 - **→ Purchase Requests**: `inventory_receipts.purchaseRequestId` liên kết tuỳ chọn tới đề xuất mua
   đã sinh ra nhu cầu nhập — không đảo ngược `docs/decisions/no-procurement.md`.
 - **→ Purchasing**: `inventory_receipts.purchaseOrderId` +
@@ -334,14 +365,15 @@ Không phải invariant dù dễ tưởng:
   không thể đi qua DI mà không tạo vòng lặp module) hoàn tất dòng IQC đó. `iqc_inspections.
   inventoryReceiptId` là chiều trace riêng, tuỳ chọn. Xem `docs/domains/quality.md`,
   `docs/workflows/supplier-return.md`.
-- **→ Quality (Gia công ngoài)**: `POST /outsourcing-receipts/:id/post` với `requiresIqc = true` gọi
-  `IqcService.createInspectionFromOutsourcingReceipt(tx, ...)` cùng transaction — đường tạo thứ ba
-  vào `iqc_inspections` (`docs/domains/quality.md`). **Khác** phiếu nhập mua: IQC ở đây **không**
-  gate `post` — cổng IQC (`E153`) chỉ tồn tại ở `inventory_receipts`, `outsourcing_receipts` luôn
-  `post` thẳng, sinh IQC xong vẫn `POSTED` ngay. Nếu QC sau đó FAIL + `SORT`/`RETURN`, dòng
-  `supplier_returns` tự sinh có `inventoryReceiptId = null` nên `shouldPostStock` trả `true` đúng
-  nghĩa (hàng OS-IN đã thật sự vào kho, không phải ca "chưa từng vào tồn" như IQC-trên-phiếu-nhập-
-  mua) — không cần nhánh bù trừ nào khác.
+- **→ Quality (Gia công ngoài)**: `POST /outsourcing-receipts` với `requiresIqc = true` gọi
+  `IqcService.createInspectionsFromOutsourcingReceipt(tx, ...)` cùng transaction — sinh **1 dòng
+  `iqc_inspections` cho mỗi dòng phiếu OS-IN** (khác trước khi còn là phiếu phẳng, lúc đó luôn đúng
+  1 dòng), đường tạo thứ ba vào `iqc_inspections` (`docs/domains/quality.md`). **Khác** phiếu nhập
+  mua: IQC ở đây **không** gate `create` — cổng IQC (`E153`) chỉ tồn tại ở `inventory_receipts`,
+  `outsourcing_receipts` luôn `POSTED` ngay lúc tạo, sinh IQC xong vẫn `POSTED`. Nếu QC sau đó FAIL +
+  `SORT`/`RETURN`, dòng `supplier_returns` tự sinh có `inventoryReceiptId = null` nên
+  `shouldPostStock` trả `true` đúng nghĩa (hàng OS-IN đã thật sự vào kho, không phải ca "chưa từng
+  vào tồn" như IQC-trên-phiếu-nhập-mua) — không cần nhánh bù trừ nào khác.
 - **← Quality (OQC)**: `confirmInventoryReceipt` đọc `getPassedOqcQuantityByJobId` (plain function,
   `src/api/oqc/oqc.query.ts`, không qua DI — `InventoryReceiptsModule` không import `OqcModule`) để
   chặn (`E180`) nhận vượt SL đã PASS OQC của Job. Một chiều — Inventory đọc `oqc_inspections`,
@@ -384,9 +416,9 @@ Không phải invariant dù dễ tưởng:
     khi disposition SORT/RETURN. Không có `POST /supplier-returns`.
 13. **Tưởng `postSupplierReturn` luôn trừ tồn.** Không — bỏ qua nếu phiếu nhập gốc chưa `POSTED`
     (xem "Bù trừ SL đã trả" ở Business rules); `postInventoryReceipt` mới là nơi bù trừ thật.
-14. **Tưởng `post` OS-IN bị chặn (gate) bởi IQC như phiếu nhập mua.** Sai — `outsourcing_receipts`
+14. **Tưởng `create` OS-IN bị chặn (gate) bởi IQC như phiếu nhập mua.** Sai — `outsourcing_receipts`
     không có trạng thái `PENDING_IQC` nào, IQC (nếu `requiresIqc = true`) sinh ra **sau** khi đã
-    `POSTED`, không phải điều kiện để `post` được.
+    `POSTED` trong cùng transaction `create`, không phải điều kiện để tạo được.
 15. **Tưởng NCC của OS-OUT phải thuộc nhóm "Gia công".** Không bị ép ở backend — nhóm `GC` chỉ là
     gợi ý lọc FE.
 16. **Tưởng công đoạn `OUTSOURCE` tự chặn/gate tiến độ Job hay công đoạn kế tiếp.** Đợt này chưa có
@@ -400,6 +432,18 @@ Không phải invariant dù dễ tưởng:
     Không — luật xuất kho sản xuất đã tự thoả mãn từ `E153` (hàng NG chưa từng vào tồn nên không
     xuất được), và không có luồng "giao hàng" nào tồn tại để mà chặn. Gate duy nhất cần thêm là ở
     nhập kho thành phẩm (`E179`/`E180`).
+19. **Tưởng `outsourcing_orders`/`outsourcing_receipts` vẫn là bảng phẳng 1 phiếu = 1 dòng.** Không
+    còn — header + nhiều dòng (`outsourcing_order_items`/`outsourcing_receipt_items`), cùng khuôn
+    `inventory_receipts`/`inventory_receipt_items`. `itemId`/`quantity` không còn trên header.
+20. **Tưởng một OS-IN chỉ nhận được từ một OS-OUT.** Không còn đúng — một OS-IN gộp được nhiều dòng
+    từ nhiều phiếu OS-OUT khác nhau, miễn cùng một NCC (`E187`).
+21. **Đọc `outsourcing_order_items.plannedQuantity`/`sentBeforeQuantity` để validate.** Hai cột này
+    là **snapshot chỉ để hiển thị/in**, đã đóng băng lúc tạo dòng — mọi validate (`E184`/`E172`)
+    phải tính lại số sống, không đọc hai cột này.
+22. **Tưởng `outsourcing_orders`/`outsourcing_receipts` có bước nháp thật như phiếu nhập/xuất.**
+    Không còn — `create` là `POSTED` ngay, không có `PATCH`/`DELETE`/`post` riêng nữa. `status` cột
+    vẫn default `DRAFT` (không đổi migration) nhưng không route nào ghi giá trị đó nữa, xem
+    `docs/decisions/outsourcing-no-draft.md`.
 
 ## Related docs
 
