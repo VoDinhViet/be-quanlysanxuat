@@ -29,7 +29,6 @@ import {
   IqcResult,
   IqcStatus,
   items,
-  outsourcingReceipts,
   purchaseOrders,
   suppliers,
 } from '../../database/schemas';
@@ -254,8 +253,9 @@ export class IqcService {
 
   /** Sinh 1 phiếu IQC cho MỖI dòng phiếu nhận gia công ngoài có `requiresIqc = true` — đường tạo
    *  tự động thứ ba (song sinh `createInspectionsFromReceipt`), gọi trong transaction của
-   *  `OutsourcingReceiptsService.createOutsourcingReceipt`. **Không** gate `create` — hàng đã về kho
-   *  vật lý trước khi các dòng IQC này được kiểm. Cấp mã 1 lần cho cả N dòng (`generateIqcCodes`),
+   *  `OutsourcingReceiptsService.createOutsourcingReceipt`. **Không** gate `create` — hàng đã về nhà
+   *  máy vật lý trước khi các dòng IQC này được kiểm (không phải ghi tồn — gia công ngoài không đụng
+   *  `inventory_balances`, `docs/decisions/wip-not-stocked.md`). Cấp mã 1 lần cho cả N dòng (`generateIqcCodes`),
    *  không lặp gọi từng dòng — gọi lặp trong cùng transaction sẽ ra mã trùng
    *  (`generateIqcCodes` đếm-rồi-cộng, chưa commit thì chưa thấy dòng vừa insert). Xem
    *  `docs/workflows/outsourcing-round-trip.md`. */
@@ -539,26 +539,20 @@ export class IqcService {
     return inspection.quantity;
   }
 
-  /** Kho nhận hàng trả — suy từ phiếu nhập liên quan trước, phiếu nhận gia công ngoài liên quan
-   *  sau, PO liên quan cuối cùng (cùng thứ tự `InventoryReceiptsService.resolveIqcSupplierId` suy
-   *  `supplierId`). Một dòng IQC thực tế chỉ có tối đa một trong ba FK trace khác `null`. Không
-   *  suy được (dòng IQC tạo tay, không gắn phiếu/PO/OS-IN nào) → E163. */
+  /** Kho nhận hàng trả — suy từ phiếu nhập liên quan trước, PO liên quan sau (cùng thứ tự
+   *  `InventoryReceiptsService.resolveIqcSupplierId` suy `supplierId`). `outsourcing_receipts`
+   *  không còn cột `warehouseId` (`docs/decisions/wip-not-stocked.md`) nên dòng IQC xuất phát từ
+   *  OS-IN không còn nguồn nào để suy kho trả — luôn rơi vào E163 cho tới khi có điểm nhập kho
+   *  khác cho nhánh này (vd chọn tay lúc SORT/RETURN). */
   private async resolveReturnWarehouseId(inspection: {
     inventoryReceiptId: string | null;
-    outsourcingReceiptId: string | null;
     purchaseOrderId: string | null;
   }): Promise<string> {
-    const [receipt, outsourcingReceipt, purchaseOrder] = await Promise.all([
+    const [receipt, purchaseOrder] = await Promise.all([
       inspection.inventoryReceiptId
         ? this.db.query.inventoryReceipts.findFirst({
             columns: { warehouseId: true },
             where: eq(inventoryReceipts.id, inspection.inventoryReceiptId),
-          })
-        : Promise.resolve(null),
-      inspection.outsourcingReceiptId
-        ? this.db.query.outsourcingReceipts.findFirst({
-            columns: { warehouseId: true },
-            where: eq(outsourcingReceipts.id, inspection.outsourcingReceiptId),
           })
         : Promise.resolve(null),
       inspection.purchaseOrderId
@@ -570,10 +564,7 @@ export class IqcService {
     ]);
 
     const warehouseId =
-      receipt?.warehouseId ??
-      outsourcingReceipt?.warehouseId ??
-      purchaseOrder?.receiptWarehouseId ??
-      null;
+      receipt?.warehouseId ?? purchaseOrder?.receiptWarehouseId ?? null;
 
     if (!warehouseId) {
       throw new AppException(ErrorCode.E163, HttpStatus.BAD_REQUEST);
@@ -640,6 +631,24 @@ export class IqcService {
     if (!existing) {
       throw new AppException(ErrorCode.E014, HttpStatus.NOT_FOUND);
     }
+  }
+
+  /** Đường gỡ cho phiếu tạo nhầm — chỉ xoá được khi còn `NOT_INSPECTED` (chưa từng `confirm`),
+   * khuôn `OqcService.deleteOqc` nhưng mint riêng `E206` vì hai domain khác nhau. */
+  async deleteIqc(iqcId: string): Promise<void> {
+    const inspection = await this.db.query.iqcInspections.findFirst({
+      columns: { status: true },
+      where: eq(iqcInspections.id, iqcId),
+    });
+
+    if (!inspection) {
+      throw new AppException(ErrorCode.E138, HttpStatus.NOT_FOUND);
+    }
+    if (inspection.status !== IqcStatus.NOT_INSPECTED) {
+      throw new AppException(ErrorCode.E206, HttpStatus.CONFLICT);
+    }
+
+    await this.db.delete(iqcInspections).where(eq(iqcInspections.id, iqcId));
   }
 
   /** Sửa lại 4 field ngữ cảnh (`inspectionStandard`/`inspectorName`/`measuringTools`/

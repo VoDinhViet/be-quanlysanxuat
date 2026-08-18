@@ -11,6 +11,7 @@ import { CreateOutsourcingOrderReqDto } from './dto/create-outsourcing-order.req
 import { GetOutsourceableOperationsReqDto } from './dto/get-outsourceable-operations.req.dto';
 import { GetOutsourcingOrdersReqDto } from './dto/get-outsourcing-orders.req.dto';
 import { OutsourceableOperationResDto } from './dto/outsourceable-operation.res.dto';
+import { OutsourcingOrderItemResDto } from './dto/outsourcing-order-item.res.dto';
 import { OutsourcingOrderResDto } from './dto/outsourcing-order.res.dto';
 import { PageOutsourcingOrderResDto } from './dto/page-outsourcing-order.res.dto';
 import { OutsourcingOrdersService } from './outsourcing-orders.service';
@@ -63,11 +64,24 @@ export class OutsourcingOrdersController {
     );
   }
 
+  @Get(':outsourcingOrderId/items')
+  @Permissions('outsourcing:read')
+  @ApiAuth({
+    type: OutsourcingOrderItemResDto,
+    summary: 'Danh sách chi tiết dòng của phiếu gửi gia công ngoài (OS-OUT)',
+    isArray: true,
+  })
+  getOrderItems(
+    @UUIDParam('outsourcingOrderId') outsourcingOrderId: string,
+  ): Promise<OutsourcingOrderItemResDto[]> {
+    return this.outsourcingOrdersService.getOrderItems(outsourcingOrderId);
+  }
+
   @Post()
   @Permissions('outsourcing:create')
   @ApiAuth({
     summary:
-      'Lập phiếu gửi gia công ngoài (OS-OUT), nhiều dòng — POSTED ngay, trừ tồn kho gửi theo từng dòng',
+      'Lập phiếu gửi gia công ngoài (OS-OUT), nhiều dòng — POSTED ngay, không đụng tồn kho (mặt hàng gửi luôn là WIP, kho không quản tồn WIP)',
     statusCode: HttpStatus.NO_CONTENT,
   })
   createOutsourcingOrder(
@@ -83,17 +97,14 @@ export class OutsourcingOrdersController {
   @Post(':outsourcingOrderId/cancel')
   @Permissions('outsourcing:update')
   @ApiAuth({
-    summary:
-      'Huỷ phiếu gửi gia công ngoài — đảo bút toán nếu đã POSTED, chặn nếu còn OS-IN chưa huỷ',
+    summary: 'Huỷ phiếu gửi gia công ngoài — chặn nếu còn OS-IN chưa huỷ',
     statusCode: HttpStatus.NO_CONTENT,
   })
   cancelOutsourcingOrder(
     @UUIDParam('outsourcingOrderId') outsourcingOrderId: string,
-    @CurrentUser() payload: JwtPayloadType,
   ): Promise<void> {
     return this.outsourcingOrdersService.cancelOutsourcingOrder(
       outsourcingOrderId,
-      payload.userId,
     );
   }
 }

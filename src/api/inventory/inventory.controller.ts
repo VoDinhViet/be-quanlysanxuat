@@ -22,7 +22,7 @@ export class InventoryController {
   @ApiAuth({
     type: InventoryItemResDto,
     summary:
-      'List stock levels (onHand/reserved/bomDemand/available/status) — filter theo itemType, bỏ trống = mọi loại (FG/WIP/RM)',
+      'List stock levels (onHand/reserved/bomDemand/available/status) — filter theo itemType, bỏ trống = FG/RM (kho không quản tồn WIP)',
     isPaginated: true,
   })
   getInventory(

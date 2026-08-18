@@ -224,3 +224,5 @@ export const ordersRelations = relations(orders, ({ one, many }) => ({
   items: many(orderItems),
   attachments: many(orderAttachments),
 }));
+
+export type OrderSelect = typeof orders.$inferSelect;

@@ -1,7 +1,13 @@
-import { IqcInspectionLevel, IqcResult } from '../../../database/schemas';
+import {
+  IqcInspectionLevel,
+  IqcResult,
+  OqcDisposition,
+} from '../../../database/schemas';
 import {
   EnumField,
+  EnumFieldOptional,
   NumberField,
+  NumberFieldOptional,
   StringFieldOptional,
 } from '../../../decorators/field.decorators';
 import { AQL_LEVELS } from '../../iqc/iqc-aql.constant';
@@ -9,7 +15,9 @@ import { AQL_LEVELS } from '../../iqc/iqc-aql.constant';
 /**
  * Nút "Lưu" duy nhất của trang chi tiết OQC — ghi đè toàn bộ quyết định QC mỗi lần gọi (field vắng
  * mặt nghĩa là xoá, không phải giữ nguyên). Gọi lại được nhiều lần trừ khi đã `COMPLETED` (`E177`
- * — khoá cứng, khác IQC). Xem `docs/domains/quality.md`.
+ * — khoá cứng, khác IQC). `sampleSize`/`result` vắng thì server tự suy từ bảng AQL
+ * (`resolveAqlPlan`/`resolveAqlResult`) — cả hai đều không suy được thì `E200`. Xem
+ * `docs/domains/quality.md`.
  */
 export class ConfirmOqcReqDto {
   @EnumField(() => IqcInspectionLevel, {
@@ -22,12 +30,12 @@ export class ConfirmOqcReqDto {
   })
   readonly aqlLevel!: number;
 
-  @NumberField({
+  @NumberFieldOptional({
     int: true,
     isPositive: true,
-    description: 'Cỡ mẫu — auto tính từ bảng AQL, cho sửa tay',
+    description: 'Cỡ mẫu — auto tính từ bảng AQL nếu vắng, cho ghi đè tay',
   })
-  readonly sampleSize!: number;
+  readonly sampleSize?: number;
 
   @NumberField({
     int: true,
@@ -36,11 +44,24 @@ export class ConfirmOqcReqDto {
   })
   readonly defectQty!: number;
 
-  @EnumField(() => IqcResult, {
-    description: 'Kết quả QC — QC tự chọn, không suy từ bảng AQL',
+  @EnumFieldOptional(() => IqcResult, {
+    description:
+      'Kết quả QC — vắng thì lấy theo Ac/Re tự suy (resultAuto); ghi đè khác resultAuto bắt buộc kèm resultNote (E201)',
   })
-  readonly result!: IqcResult;
+  readonly result?: IqcResult;
 
-  @StringFieldOptional({ maxLength: 500, description: 'Ghi chú kết quả' })
+  @StringFieldOptional({
+    maxLength: 500,
+    description: 'Ghi chú kết quả — bắt buộc khi result ghi đè resultAuto',
+  })
   readonly resultNote?: string;
+
+  @EnumFieldOptional(() => OqcDisposition, {
+    description:
+      'Cách xử lý khi FAIL — chỉ hợp lệ khi result cuối cùng = FAIL (E202)',
+  })
+  readonly disposition?: OqcDisposition;
+
+  @StringFieldOptional({ maxLength: 500, description: 'Ghi chú xử lý' })
+  readonly dispositionNote?: string;
 }

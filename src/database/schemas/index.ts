@@ -26,6 +26,8 @@ export * from './orders/orders';
 export * from './orders/order-items';
 export * from './orders/order-attachments';
 export * from './inventory/warehouses';
+export * from './inventory/outbound-orders';
+export * from './inventory/outbound-order-items';
 export * from './inventory/inventory-documents';
 export * from './inventory/inventory-receipts';
 export * from './inventory/inventory-receipt-items';

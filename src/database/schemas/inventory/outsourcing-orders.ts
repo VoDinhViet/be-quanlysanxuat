@@ -2,26 +2,33 @@ import { relations } from 'drizzle-orm';
 import {
   date,
   index,
+  pgEnum,
   pgTable,
   timestamp,
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core';
 
-import {
-  InventoryDocumentStatus,
-  inventoryDocumentStatusEnum,
-} from './inventory-documents';
 import { outsourcingOrderItems } from './outsourcing-order-items';
 import { warehouses } from './warehouses';
 import { suppliers } from '../suppliers/suppliers';
 import { users } from '../identity-access/users';
 
+export enum OutsourcingOrderStatus {
+  POSTED = 'POSTED',
+  CANCELLED = 'CANCELLED',
+}
+
+export const outsourcingOrderStatusEnum = pgEnum('outsourcing_order_status', [
+  OutsourcingOrderStatus.POSTED,
+  OutsourcingOrderStatus.CANCELLED,
+]);
+
 /**
- * Phiếu gửi gia công ngoài (OS-OUT) — header, nhiều dòng ở `outsourcing_order_items`, tái dùng
- * `InventoryDocumentStatus`. Service luôn set `POSTED` lúc tạo, không còn đường nào ghi `DRAFT` nữa
- * — cột vẫn default `DRAFT` để không cần migration (xem `docs/domains/inventory.md`,
- * `docs/workflows/outsourcing-round-trip.md`).
+ * Phiếu gửi gia công ngoài (OS-OUT) — header, nhiều dòng ở `outsourcing_order_items`. Không có
+ * nháp — service luôn set `POSTED` lúc tạo, không route nào ghi giá trị khác `POSTED`/`CANCELLED`
+ * (xem `docs/domains/inventory.md`, `docs/workflows/outsourcing-round-trip.md`,
+ * `docs/decisions/outsourcing-no-draft.md`).
  */
 export const outsourcingOrders = pgTable(
   'outsourcing_orders',
@@ -36,9 +43,9 @@ export const outsourcingOrders = pgTable(
       .references(() => suppliers.id, { onDelete: 'restrict' }),
     sendDate: date('send_date', { mode: 'date' }).notNull(),
     expectedReturnDate: date('expected_return_date', { mode: 'date' }),
-    status: inventoryDocumentStatusEnum('status')
+    status: outsourcingOrderStatusEnum('status')
       .notNull()
-      .default(InventoryDocumentStatus.DRAFT),
+      .default(OutsourcingOrderStatus.POSTED),
     note: varchar('note', { length: 1000 }),
     postedBy: uuid('posted_by').references(() => users.id, {
       onDelete: 'set null',

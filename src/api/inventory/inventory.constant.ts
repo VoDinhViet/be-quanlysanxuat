@@ -1,6 +1,7 @@
 /**
  * Trạng thái tồn kho — tính lúc đọc (`InventoryService.getInventory`), không lưu cột nào nên không
- * cần `pgEnum`. Áp dụng cho mọi loại item (FG/WIP/RM), không riêng vật tư.
+ * cần `pgEnum`. Công thức áp dụng cho mọi loại item (FG/WIP/RM) như nhau, không riêng vật tư — dù
+ * `GET /inventory` mặc định chỉ trả FG/RM (`docs/decisions/wip-not-stocked.md`).
  *
  * Rules:
  * - `SHORTAGE`: `available < 0`.

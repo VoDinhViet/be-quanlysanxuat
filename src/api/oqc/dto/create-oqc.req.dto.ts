@@ -12,8 +12,11 @@ export class CreateOqcReqDto {
   })
   readonly code?: string;
 
-  @UUIDField({ description: 'Job (đang IN_PROGRESS) cần kiểm lô thành phẩm' })
-  readonly productionJobId!: string;
+  @UUIDField({
+    description:
+      'Công đoạn (production_job_operations) của Job đang IN_PROGRESS cần kiểm',
+  })
+  readonly productionJobOperationId!: string;
 
   @NumberField({
     isPositive: true,

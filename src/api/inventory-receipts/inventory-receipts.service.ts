@@ -39,14 +39,14 @@ import {
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import {
-  itemOnHandSubquery,
+  onHandQuantityByItemSubquery,
   itemStockColumns,
   jobMaterialDemandSubquery,
 } from '../inventory/item-stock.query';
 import type { InventoryPostingLine } from '../inventory/inventory-posting.service';
 import { InventoryPostingService } from '../inventory/inventory-posting.service';
 import { IqcService } from '../iqc/iqc.service';
-import { getPassedOqcQuantityByJobId } from '../oqc/oqc.query';
+import { getJobOqcClearance } from '../oqc/oqc.query';
 import { PaymentRequestsService } from '../payment-requests/payment-requests.service';
 import { getReceivedQuantityByPurchaseOrderItemId } from '../purchase-orders/purchase-orders.query';
 import { getReturnedQuantityByReceiptItemId } from '../supplier-returns/supplier-returns.query';
@@ -71,6 +71,13 @@ const receiptTypeTransactionType: Record<
 
 @Injectable()
 export class InventoryReceiptsService {
+  /** Phiếu coi như đã `confirm` — `DRAFT` không tính. */
+  private static readonly CONFIRMED_STATUSES = [
+    InventoryDocumentStatus.PENDING_IQC,
+    InventoryDocumentStatus.PENDING_RECEIPT,
+    InventoryDocumentStatus.POSTED,
+  ];
+
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly warehousesService: WarehousesService,
@@ -198,7 +205,7 @@ export class InventoryReceiptsService {
       productionOrderId?: string | null;
     },
   ) {
-    const balance = itemOnHandSubquery(this.db);
+    const balance = onHandQuantityByItemSubquery(this.db);
     const demand = jobMaterialDemandSubquery(this.db, scope);
 
     return this.db
@@ -335,7 +342,7 @@ export class InventoryReceiptsService {
       await this.ensureReceiptQuantitiesWithinOrdered(tx, lineItems);
 
       if (receipt.receiptType === InventoryReceiptType.PRODUCTION) {
-        await this.ensureProductionReceiptWithinOqcPass(tx, receipt, lineItems);
+        await this.ensureProductionReceiptOqcCleared(tx, receipt, lineItems);
       }
 
       let status = InventoryDocumentStatus.PENDING_RECEIPT;
@@ -701,11 +708,7 @@ export class InventoryReceiptsService {
       }),
       getReceivedQuantityByPurchaseOrderItemId(db, {
         purchaseOrderItemIds: poItemIds,
-        statuses: [
-          InventoryDocumentStatus.PENDING_IQC,
-          InventoryDocumentStatus.PENDING_RECEIPT,
-          InventoryDocumentStatus.POSTED,
-        ],
+        statuses: InventoryReceiptsService.CONFIRMED_STATUSES,
       }),
     ]);
 
@@ -727,10 +730,11 @@ export class InventoryReceiptsService {
    * NULL tại đây nghĩa là một phiếu cũ tồn tại từ trước ràng buộc này (cột vốn không `NOT NULL` ở
    * DB, chỉ service-enforced) — vẫn chặn bằng `E179` thay vì bỏ qua. Mọi dòng phải cùng `itemId`
    * với Job (`E107`, tái dùng — cùng ngữ nghĩa `inventory_issues` dùng cho `orderItemId` lệch
-   * item), và tổng SL các dòng (cộng dồn mọi phiếu `PRODUCTION` khác đã `confirm` cùng Job, trừ
-   * chính phiếu này) không được vượt tổng SL các dòng OQC đã `COMPLETED` (PASS) của Job đó
-   * (`E180`). */
-  private async ensureProductionReceiptWithinOqcPass(
+   * item). Job phải có ≥1 phiếu OQC và không còn phiếu nào chưa `COMPLETED` (`E196`) — không còn so
+   * SL như `E180` cũ vì OQC giờ ở đơn vị part theo công đoạn, không cùng đơn vị FG của phiếu nhập;
+   * SL nhập (cộng dồn mọi phiếu `PRODUCTION` khác đã `confirm` cùng Job, trừ chính phiếu này) vẫn
+   * chặn trần theo `production_jobs.quantity` (`E197`). */
+  private async ensureProductionReceiptOqcCleared(
     tx: DbTransaction,
     receipt: { id: string; productionJobId: string | null },
     lineItems: { itemId: string; quantity: number }[],
@@ -740,7 +744,7 @@ export class InventoryReceiptsService {
     }
 
     const job = await tx.query.productionJobs.findFirst({
-      columns: { itemId: true },
+      columns: { itemId: true, quantity: true },
       where: eq(productionJobs.id, receipt.productionJobId),
     });
 
@@ -756,8 +760,8 @@ export class InventoryReceiptsService {
       thisReceiptQuantity += item.quantity;
     }
 
-    const [passedQty, receivedSoFar] = await Promise.all([
-      getPassedOqcQuantityByJobId(tx, receipt.productionJobId),
+    const [clearance, receivedSoFar] = await Promise.all([
+      getJobOqcClearance(tx, receipt.productionJobId),
       this.getConfirmedProductionQuantityByJobId(
         tx,
         receipt.productionJobId,
@@ -765,14 +769,17 @@ export class InventoryReceiptsService {
       ),
     ]);
 
-    if (receivedSoFar + thisReceiptQuantity > passedQty) {
-      throw new AppException(ErrorCode.E180, HttpStatus.BAD_REQUEST);
+    if (clearance.total === 0 || clearance.open > 0) {
+      throw new AppException(ErrorCode.E196, HttpStatus.BAD_REQUEST);
+    }
+
+    if (receivedSoFar + thisReceiptQuantity > job.quantity) {
+      throw new AppException(ErrorCode.E197, HttpStatus.BAD_REQUEST);
     }
   }
 
   /** Σ SL các dòng mọi phiếu nhập `PRODUCTION` khác đã `confirm` (`PENDING_IQC`/`PENDING_RECEIPT`/
-   * `POSTED`) cùng Job, loại trừ chính phiếu đang xét — dùng bởi
-   * `ensureProductionReceiptWithinOqcPass`. */
+   * `POSTED`) cùng Job, loại trừ chính phiếu đang xét — dùng bởi `ensureProductionReceiptOqcCleared`. */
   private async getConfirmedProductionQuantityByJobId(
     tx: DbTransaction,
     productionJobId: string,
@@ -793,11 +800,10 @@ export class InventoryReceiptsService {
       .where(
         and(
           eq(inventoryReceipts.productionJobId, productionJobId),
-          inArray(inventoryReceipts.status, [
-            InventoryDocumentStatus.PENDING_IQC,
-            InventoryDocumentStatus.PENDING_RECEIPT,
-            InventoryDocumentStatus.POSTED,
-          ]),
+          inArray(
+            inventoryReceipts.status,
+            InventoryReceiptsService.CONFIRMED_STATUSES,
+          ),
           ne(inventoryReceipts.id, excludeReceiptId),
         ),
       );

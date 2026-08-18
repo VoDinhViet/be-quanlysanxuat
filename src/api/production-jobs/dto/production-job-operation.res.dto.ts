@@ -2,6 +2,7 @@ import { Exclude, Expose } from 'class-transformer';
 
 import { OperationType } from '../../../database/schemas';
 import {
+  ClassField,
   DateField,
   DateFieldOptional,
   EnumField,
@@ -11,6 +12,29 @@ import {
   UUIDField,
   UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
+
+/** Tóm tắt OQC của một công đoạn — đọc một chiều qua `getOqcSummaryByJobOperationIds`
+ * (`src/api/oqc/oqc.query.ts`, plain function, không import `OqcModule`), xem
+ * `docs/domains/production.md`. */
+@Exclude()
+export class ProductionJobOperationOqcSummaryResDto {
+  @Expose()
+  @NumberField({ description: 'SL đã xin QC (trừ dòng SCRAP)' })
+  inspectedQuantity!: number;
+
+  @Expose()
+  @NumberField({
+    description: 'Còn được phép xin QC = completedQuantity − inspectedQuantity',
+  })
+  remainingQuantity!: number;
+
+  @Expose()
+  @NumberField({
+    int: true,
+    description: 'Số phiếu OQC chưa COMPLETED (NOT_INSPECTED/PENDING/REWORK)',
+  })
+  openCount!: number;
+}
 
 @Exclude()
 export class ProductionJobOperationResDto {
@@ -65,4 +89,8 @@ export class ProductionJobOperationResDto {
   @Expose()
   @DateField()
   createdAt!: Date;
+
+  @Expose()
+  @ClassField(() => ProductionJobOperationOqcSummaryResDto)
+  oqc!: ProductionJobOperationOqcSummaryResDto;
 }

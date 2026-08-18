@@ -9,6 +9,8 @@ export class GetInventoryBalancesReqDto extends PageOptionsDto {
   @UUIDFieldOptional()
   readonly warehouseId?: string;
 
-  @EnumFieldOptional(() => ItemType)
+  @EnumFieldOptional(() => ItemType, {
+    description: 'Bỏ trống = FG/RM (kho không quản tồn WIP)',
+  })
   readonly itemType?: ItemType;
 }

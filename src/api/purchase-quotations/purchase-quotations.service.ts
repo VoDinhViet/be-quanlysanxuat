@@ -46,7 +46,6 @@ import { QuotationResDto } from './dto/quotation.res.dto';
 import { RejectQuotationReqDto } from './dto/reject-quotation.req.dto';
 import { UpdateQuotationReqDto } from './dto/update-quotation.req.dto';
 import { lastPurchaseQuery } from './purchase-quotations.query';
-import type { QuotationDetailItem } from './types/quotation-detail.type';
 
 @Injectable()
 export class PurchaseQuotationsService {
@@ -219,10 +218,7 @@ export class PurchaseQuotationsService {
       throw new AppException(ErrorCode.E117, HttpStatus.NOT_FOUND);
     }
 
-    // Năm tầng `with` lồng nhau (items -> allocations -> purchaseRequestItem -> {purchaseRequest,
-    // item}, items -> suppliers -> {supplier, selectorBy}) vượt độ sâu suy luận type của drizzle —
-    // ép kiểu tường minh để .map()/.flatMap() không rơi về `any`, dữ liệu thực tế lúc chạy không đổi.
-    const quotationItems = quotation.items as QuotationDetailItem[];
+    const quotationItems = quotation.items;
 
     const itemIds = [...new Set(quotationItems.map((item) => item.item.id))];
     const supplierIds = [

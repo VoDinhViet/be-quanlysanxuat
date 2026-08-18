@@ -29,6 +29,7 @@ import {
   inventoryTransactions,
   items,
   ItemStatus,
+  ItemType,
   orderItems,
   orders,
   OrderItemStatus,
@@ -50,11 +51,11 @@ import { StockStatus } from './inventory.constant';
 export class InventoryService {
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
 
-  /** Liệt kê mọi item ACTIVE (bỏ trống `itemType` = mọi loại FG/WIP/RM), kể cả item chưa từng có
-   * phiếu nào — không chỉ item có phát sinh kho. Không thể phân trang trên `items` rồi tra tồn
-   * riêng — filter `status`/`itemType` (giá trị tính hoặc cần điều kiện tuỳ chọn trong `WHERE`)
-   * nên toàn bộ join + tính toán nằm trong một `.select()` duy nhất, dùng chung `where` cho cả
-   * trang lẫn `count()`. */
+  /** Liệt kê mọi item ACTIVE (bỏ trống `itemType` = FG/RM — kho không quản tồn WIP,
+   * `docs/decisions/wip-not-stocked.md`), kể cả item chưa từng có phiếu nào — không chỉ item có
+   * phát sinh kho. Không thể phân trang trên `items` rồi tra tồn riêng — filter `status`/`itemType`
+   * (giá trị tính hoặc cần điều kiện tuỳ chọn trong `WHERE`) nên toàn bộ join + tính toán nằm trong
+   * một `.select()` duy nhất, dùng chung `where` cho cả trang lẫn `count()`. */
   async getInventory(
     reqDto: GetInventoryReqDto,
   ): Promise<OffsetPaginatedDto<InventoryItemResDto>> {
@@ -73,7 +74,11 @@ export class InventoryService {
     const where = and(
       isNull(items.deletedAt),
       eq(items.status, ItemStatus.ACTIVE),
-      reqDto.itemType ? eq(items.type, reqDto.itemType) : undefined,
+      // Bỏ trống `itemType` = FG/RM (kho không quản tồn WIP,
+      // `docs/decisions/wip-not-stocked.md`) — gửi tường minh `itemType=WIP` vẫn xem được.
+      reqDto.itemType
+        ? eq(items.type, reqDto.itemType)
+        : inArray(items.type, [ItemType.FG, ItemType.RM]),
       keyword
         ? or(
             unaccentILike(items.code, keyword),
@@ -141,15 +146,19 @@ export class InventoryService {
       reqDto.warehouseId
         ? eq(inventoryBalances.warehouseId, reqDto.warehouseId)
         : undefined,
-      reqDto.itemType
-        ? inArray(
-            inventoryBalances.itemId,
-            this.db
-              .select({ id: items.id })
-              .from(items)
-              .where(eq(items.type, reqDto.itemType)),
-          )
-        : undefined,
+      // Bỏ trống `itemType` = FG/RM (kho không quản tồn WIP,
+      // `docs/decisions/wip-not-stocked.md`) — gửi tường minh `itemType=WIP` vẫn xem được.
+      inArray(
+        inventoryBalances.itemId,
+        this.db
+          .select({ id: items.id })
+          .from(items)
+          .where(
+            reqDto.itemType
+              ? eq(items.type, reqDto.itemType)
+              : inArray(items.type, [ItemType.FG, ItemType.RM]),
+          ),
+      ),
     );
 
     const [entities, countRows] = await Promise.all([
@@ -261,17 +270,16 @@ export class InventoryService {
   /** `excludeOrderId` loại một đơn khỏi `reserved` khi tính Khả dụng cho chính đơn đó — đơn này đã
    * tự giữ chỗ nên không loại trừ sẽ bị trừ nhu cầu của nó hai lần. Chỉ `ProductionOrdersService`
    * truyền tham số này — `GET /inventory` gọi `reservedSubquery` trực tiếp trong `getInventory`,
-   * không qua hàm này. `warehouseId` gộp mọi kho nếu bỏ trống. */
+   * không qua hàm này. Luôn gộp mọi kho. */
   async getStockLevels(
     itemIds: string[],
     excludeOrderId?: string,
-    warehouseId?: string,
   ): Promise<Map<string, { onHand: number; reserved: number }>> {
     if (!itemIds.length) {
       return new Map();
     }
 
-    const balance = this.balanceSubquery(undefined, warehouseId);
+    const balance = this.balanceSubquery();
     const reserved = this.reservedSubquery(excludeOrderId);
 
     const rows = await this.db
@@ -295,16 +303,15 @@ export class InventoryService {
     );
   }
 
-  /** Per-item on-hand, gộp mọi kho trừ khi `warehouseId` được truyền. */
+  /** Per-item on-hand, luôn gộp mọi kho. */
   async getMaterialStockLevels(
     itemIds: string[],
-    warehouseId?: string,
   ): Promise<Map<string, number>> {
     if (!itemIds.length) {
       return new Map();
     }
 
-    const balance = this.balanceSubquery(undefined, warehouseId);
+    const balance = this.balanceSubquery();
 
     const rows = await this.db
       .select({

@@ -35,7 +35,6 @@ import {
 import { GetPaymentRequestsReqDto } from './dto/get-payment-requests.req.dto';
 import { PagePaymentRequestResDto } from './dto/page-payment-request.res.dto';
 import { PaymentRequestResDto } from './dto/payment-request.res.dto';
-import type { PaymentRequestDetail } from './types/payment-request-row.type';
 
 /** Số ngày tính hạn thanh toán từ `orderDate` của PO — `createIfOrderCompleted` là consumer thật
  * đầu tiên của `purchase_orders.paymentTerm`. */
@@ -129,8 +128,7 @@ export class PaymentRequestsService {
 
   /** Giữ relational query (không chuyển `.select()` như `getPaymentRequests` ở trên) —
    * `purchaseOrder.items` là quan hệ 1-nhiều và cần tự alias bảng `users` 3 lần
-   * (`paidByUser`/`cancelledByUser`/`creatorBy`) nếu viết tay bằng `.select()`, tốn công hơn hẳn
-   * 1 cast tường minh. */
+   * (`paidByUser`/`cancelledByUser`/`creatorBy`) nếu viết tay bằng `.select()`. */
   async getPaymentRequest(
     paymentRequestId: string,
   ): Promise<PaymentRequestResDto> {
@@ -159,7 +157,7 @@ export class PaymentRequestsService {
       throw new AppException(ErrorCode.E157, HttpStatus.NOT_FOUND);
     }
 
-    const row = found as PaymentRequestDetail;
+    const row = found;
 
     const receivedByItemId = await getReceivedQuantityByPurchaseOrderItemId(
       this.db,

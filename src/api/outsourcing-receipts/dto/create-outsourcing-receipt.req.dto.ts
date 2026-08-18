@@ -13,14 +13,11 @@ export class CreateOutsourcingReceiptReqDto {
   })
   readonly supplierId!: string;
 
-  @UUIDField({ description: 'Kho nhận' })
-  readonly warehouseId!: string;
-
   @DateField({ description: 'Ngày nhận' })
   readonly receiptDate!: Date;
 
   @BooleanFieldOptional({
-    description: 'Yêu cầu QC — sinh IQC lúc post nếu true (1 phiếu/dòng)',
+    description: 'Yêu cầu QC — sinh IQC lúc tạo nếu true (1 phiếu/dòng)',
   })
   readonly requiresIqc?: boolean;
 

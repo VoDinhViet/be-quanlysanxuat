@@ -17,6 +17,7 @@ import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
 import { CreateOrderReqDto } from './dto/create-order.req.dto';
 import { GetOrdersReqDto } from './dto/get-orders.req.dto';
+import { OrderItemResDto } from './dto/order-item.res.dto';
 import { OrderResDto } from './dto/order.res.dto';
 import { OrderStatsResDto } from './dto/order-stats.res.dto';
 import { PageOrderResDto } from './dto/page-order.res.dto';
@@ -62,6 +63,19 @@ export class OrdersController {
   })
   getOrder(@UUIDParam('orderId') orderId: string): Promise<OrderResDto> {
     return this.ordersService.getOrder(orderId);
+  }
+
+  @Get(':orderId/items')
+  @Permissions('orders:read')
+  @ApiAuth({
+    type: OrderItemResDto,
+    summary: 'Danh sách dòng sản phẩm của đơn hàng',
+    isArray: true,
+  })
+  getOrderItems(
+    @UUIDParam('orderId') orderId: string,
+  ): Promise<OrderItemResDto[]> {
+    return this.ordersService.getOrderItems(orderId);
   }
 
   @Post()

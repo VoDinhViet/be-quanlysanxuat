@@ -9,7 +9,7 @@ import { StockStatus } from '../inventory.constant';
 
 export class GetInventoryReqDto extends PageOptionsDto {
   @EnumFieldOptional(() => ItemType, {
-    description: 'Bỏ trống = mọi loại (FG/WIP/RM)',
+    description: 'Bỏ trống = FG/RM (kho không quản tồn WIP)',
   })
   readonly itemType?: ItemType;
 

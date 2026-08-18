@@ -34,6 +34,7 @@ import { ItemsModule } from './api/items/items.module';
 import { OperationsModule } from './api/operations/operations.module';
 import { OqcModule } from './api/oqc/oqc.module';
 import { OrdersModule } from './api/orders/orders.module';
+import { OutboundOrdersModule } from './api/outbound-orders/outbound-orders.module';
 import { OutsourcingOrdersModule } from './api/outsourcing-orders/outsourcing-orders.module';
 import { OutsourcingReceiptsModule } from './api/outsourcing-receipts/outsourcing-receipts.module';
 import { PaymentRequestsModule } from './api/payment-requests/payment-requests.module';
@@ -89,6 +90,7 @@ import { WarehousesModule } from './api/warehouses/warehouses.module';
     SupplierReturnsModule,
     OutsourcingOrdersModule,
     OutsourcingReceiptsModule,
+    OutboundOrdersModule,
     IqcModule,
     OqcModule,
     ProductionJobsModule,

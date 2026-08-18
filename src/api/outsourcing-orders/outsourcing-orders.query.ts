@@ -2,11 +2,10 @@ import { and, eq, inArray, ne, sql } from 'drizzle-orm';
 
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
-  InventoryDocumentStatus,
-  iqcInspections,
-  IqcStatus,
+  OutsourcingOrderStatus,
   outsourcingOrderItems,
   outsourcingOrders,
+  OutsourcingReceiptStatus,
   outsourcingReceiptItems,
   outsourcingReceipts,
   productionJobBomItems,
@@ -16,64 +15,11 @@ import {
   resolvePlannedQuantities,
 } from '../production-jobs/production-job-planned-quantity';
 
-/** Σ SL đã gửi theo từng công đoạn Job (`productionJobOperationId`) — dùng cho popup "chọn part
- * cần gia công" và validate `E184` (gửi vượt định mức). `statuses` luôn chỉ còn `[POSTED]` (không
- * còn phiếu nào ở `DRAFT`). `excludeOrderId` bắt buộc phải truyền = chính phiếu đang tạo khi gọi từ
- * transaction `create` — header đã `INSERT` với `POSTED` ngay trong `tx` đó nên nhìn thấy chính dòng
- * của nó, không loại sẽ bị cộng dồn hai lần. Bỏ qua id `null` — dòng OS-OUT có
- * `productionJobOperationId` đã `set null` (Job bị hard-delete) không còn gì để chặn. */
-export async function getSentQuantityByJobOperationIds(
-  db: Database | DbTransaction,
-  params: {
-    productionJobOperationIds: string[];
-    statuses: InventoryDocumentStatus[];
-    excludeOrderId?: string;
-  },
-): Promise<Map<string, number>> {
-  if (!params.productionJobOperationIds.length) {
-    return new Map();
-  }
-
-  const rows = await db
-    .select({
-      productionJobOperationId: outsourcingOrderItems.productionJobOperationId,
-      sent: sql<number>`coalesce(sum(${outsourcingOrderItems.quantity}), 0)`.mapWith(
-        Number,
-      ),
-    })
-    .from(outsourcingOrderItems)
-    .innerJoin(
-      outsourcingOrders,
-      eq(outsourcingOrders.id, outsourcingOrderItems.outsourcingOrderId),
-    )
-    .where(
-      and(
-        inArray(
-          outsourcingOrderItems.productionJobOperationId,
-          params.productionJobOperationIds,
-        ),
-        inArray(outsourcingOrders.status, params.statuses),
-        params.excludeOrderId
-          ? ne(outsourcingOrders.id, params.excludeOrderId)
-          : undefined,
-      ),
-    )
-    .groupBy(outsourcingOrderItems.productionJobOperationId);
-
-  const sentByOperationId = new Map<string, number>();
-  for (const row of rows) {
-    if (row.productionJobOperationId !== null) {
-      sentByOperationId.set(row.productionJobOperationId, row.sent);
-    }
-  }
-
-  return sentByOperationId;
-}
-
-/** Bản subquery-table của `getSentQuantityByJobOperationIds` — cùng logic SUM, cố định `POSTED`,
- * không tham số hoá `excludeOrderId` — để LEFT JOIN thẳng vào SELECT hiển thị
- * (`getOutsourceableOperations`) thay vì round-trip `Map` riêng, đúng khuôn `orderLineStatsSubquery`.
- * Nơi validate `E184` (`create`) vẫn dùng bản `Map` vì cần `excludeOrderId`. */
+/** Σ SL đã gửi theo từng công đoạn Job — dùng cho popup "chọn part cần gia công"
+ * (`getOutsourceableOperations`), LEFT JOIN thẳng vào SELECT hiển thị thay vì round-trip `Map`
+ * riêng. Chỉ tính phiếu `POSTED` (không còn phiếu nào ở `DRAFT`). Không còn dùng để validate —
+ * `createOutsourcingOrder` nhận dòng do client gửi đủ cột, không tự tính lại số đã gửi
+ * (`docs/decisions/outsourcing-no-draft.md`). */
 export function sentQuantityByJobOperationSubquery(db: Database) {
   return db
     .select({
@@ -88,9 +34,60 @@ export function sentQuantityByJobOperationSubquery(db: Database) {
       outsourcingOrders,
       eq(outsourcingOrders.id, outsourcingOrderItems.outsourcingOrderId),
     )
-    .where(eq(outsourcingOrders.status, InventoryDocumentStatus.POSTED))
+    .where(eq(outsourcingOrders.status, OutsourcingOrderStatus.POSTED))
     .groupBy(outsourcingOrderItems.productionJobOperationId)
     .as('sent_quantity_by_job_operation');
+}
+
+/** Bản subquery-table Σ SL gửi theo từng phiếu OS-OUT (`totalQuantity`) — không lọc `status` phiếu
+ * (khác bản trên theo `productionJobOperationId`, chỉ tính `POSTED`), khớp cách `getOutsourcingOrder`
+ * (chi tiết) cộng thẳng `quantity` mọi dòng của chính phiếu, kể cả phiếu đã `CANCELLED`. LEFT JOIN
+ * thẳng vào `getOutsourcingOrders` (list), không round-trip `Map` riêng. */
+export function sentQuantityByOrderIdSubquery(db: Database) {
+  return db
+    .select({
+      outsourcingOrderId: outsourcingOrderItems.outsourcingOrderId,
+      totalQuantity: sql<number>`sum(${outsourcingOrderItems.quantity})`
+        .mapWith(Number)
+        .as('total_quantity'),
+    })
+    .from(outsourcingOrderItems)
+    .groupBy(outsourcingOrderItems.outsourcingOrderId)
+    .as('sent_quantity_by_order');
+}
+
+/** Bản subquery-table Σ SL đã nhận theo từng phiếu OS-OUT (`receivedQuantity`) — gộp mọi dòng OS-IN
+ * `POSTED` trỏ tới bất kỳ dòng nào của phiếu, khớp cách lọc `status` của
+ * `getReceivedQuantityByOrderItemIds` (`outsourcing-receipts.query.ts`), chỉ khác gom theo phiếu
+ * OS-OUT thay vì theo từng dòng. LEFT JOIN thẳng vào `getOutsourcingOrders` (list). */
+export function receivedQuantityByOrderIdSubquery(db: Database) {
+  return db
+    .select({
+      outsourcingOrderId: outsourcingOrderItems.outsourcingOrderId,
+      receivedQuantity: sql<number>`sum(${outsourcingReceiptItems.quantity})`
+        .mapWith(Number)
+        .as('received_quantity'),
+    })
+    .from(outsourcingOrderItems)
+    .innerJoin(
+      outsourcingReceiptItems,
+      eq(
+        outsourcingReceiptItems.outsourcingOrderItemId,
+        outsourcingOrderItems.id,
+      ),
+    )
+    .innerJoin(
+      outsourcingReceipts,
+      and(
+        eq(
+          outsourcingReceipts.id,
+          outsourcingReceiptItems.outsourcingReceiptId,
+        ),
+        eq(outsourcingReceipts.status, OutsourcingReceiptStatus.POSTED),
+      ),
+    )
+    .groupBy(outsourcingOrderItems.outsourcingOrderId)
+    .as('received_quantity_by_order');
 }
 
 /** Gom theo Job vì `resolvePlannedQuantities` nhân theo SL của đúng Job đó — 1 lượt query cho mọi
@@ -132,148 +129,6 @@ export async function getPlannedQuantitiesByJob(
   );
 }
 
-/** Thống kê theo dòng OS-OUT, gộp lên mức phiếu — nguồn cho `progress` (OS-OUT). `received` chỉ
- * cộng dòng OS-IN thuộc phiếu `POSTED` (điều kiện nằm ở `ON`, không phải `WHERE` — dòng OS-OUT
- * chưa từng được nhận vẫn phải xuất hiện với `received = 0`, không bị LEFT JOIN nuốt mất). Ép về 0
- * bằng `CASE` thay vì lọc ở `WHERE` vì dòng OS-IN có thể tồn tại (khác `DRAFT`) mà không được tính. */
-export function orderLineStatsSubquery(db: Database) {
-  const lineReceived = db
-    .select({
-      outsourcingOrderId: outsourcingOrderItems.outsourcingOrderId,
-      sent: outsourcingOrderItems.quantity,
-      received:
-        sql<number>`coalesce(sum(case when ${outsourcingReceipts.id} is not null then ${outsourcingReceiptItems.quantity} else 0 end), 0)`.as(
-          'received',
-        ),
-    })
-    .from(outsourcingOrderItems)
-    .leftJoin(
-      outsourcingReceiptItems,
-      eq(
-        outsourcingReceiptItems.outsourcingOrderItemId,
-        outsourcingOrderItems.id,
-      ),
-    )
-    .leftJoin(
-      outsourcingReceipts,
-      and(
-        eq(
-          outsourcingReceipts.id,
-          outsourcingReceiptItems.outsourcingReceiptId,
-        ),
-        eq(outsourcingReceipts.status, InventoryDocumentStatus.POSTED),
-      ),
-    )
-    .groupBy(
-      outsourcingOrderItems.id,
-      outsourcingOrderItems.outsourcingOrderId,
-      outsourcingOrderItems.quantity,
-    )
-    .as('outsourcing_order_line_received');
-
-  return db
-    .select({
-      outsourcingOrderId: lineReceived.outsourcingOrderId,
-      sentQuantity: sql<number>`sum(${lineReceived.sent})`
-        .mapWith(Number)
-        .as('sent_quantity'),
-      receivedQuantity: sql<number>`sum(${lineReceived.received})`
-        .mapWith(Number)
-        .as('received_quantity'),
-      // Còn dòng chưa nhận đủ.
-      openLineCount:
-        sql<number>`count(*) filter (where ${lineReceived.received} < ${lineReceived.sent})`
-          .mapWith(Number)
-          .as('open_line_count'),
-      receivedLineCount:
-        sql<number>`count(*) filter (where ${lineReceived.received} > 0)`
-          .mapWith(Number)
-          .as('received_line_count'),
-    })
-    .from(lineReceived)
-    .groupBy(lineReceived.outsourcingOrderId)
-    .as('outsourcing_order_line_stats');
-}
-
-/** Danh sách `outsourcingOrderId` còn ≥ 1 dòng IQC (sinh từ OS-IN `POSTED` của chính phiếu đó,
- * khớp `itemId`) chưa `COMPLETED` — dùng LEFT JOIN cho `progress = WAITING_QC` ở list. Khớp theo
- * `(outsourcingReceiptId, itemId)` vì `iqc_inspections` không có FK trực tiếp tới
- * `outsourcing_receipt_items` — độ chính xác ở mức phiếu, không ở mức dòng (đủ cho một nhãn trạng
- * thái hiển thị, xem `docs/domains/inventory.md`). */
-export function orderPendingIqcSubquery(db: Database) {
-  return db
-    .selectDistinct({
-      outsourcingOrderId: outsourcingOrderItems.outsourcingOrderId,
-    })
-    .from(outsourcingOrderItems)
-    .innerJoin(
-      outsourcingReceiptItems,
-      eq(
-        outsourcingReceiptItems.outsourcingOrderItemId,
-        outsourcingOrderItems.id,
-      ),
-    )
-    .innerJoin(
-      outsourcingReceipts,
-      and(
-        eq(
-          outsourcingReceipts.id,
-          outsourcingReceiptItems.outsourcingReceiptId,
-        ),
-        eq(outsourcingReceipts.status, InventoryDocumentStatus.POSTED),
-      ),
-    )
-    .innerJoin(
-      iqcInspections,
-      and(
-        eq(iqcInspections.outsourcingReceiptId, outsourcingReceipts.id),
-        eq(iqcInspections.itemId, outsourcingOrderItems.itemId),
-        ne(iqcInspections.status, IqcStatus.COMPLETED),
-      ),
-    )
-    .as('outsourcing_order_pending_iqc');
-}
-
-/** Bản đơn-phiếu của `orderPendingIqcSubquery` — dùng ở `getOutsourcingOrder` (chi tiết), không
- * cần dựng subquery cho cả bảng. */
-export async function hasPendingIqcForOrder(
-  db: Database | DbTransaction,
-  outsourcingOrderId: string,
-): Promise<boolean> {
-  const [row] = await db
-    .select({ one: sql`1` })
-    .from(outsourcingOrderItems)
-    .innerJoin(
-      outsourcingReceiptItems,
-      eq(
-        outsourcingReceiptItems.outsourcingOrderItemId,
-        outsourcingOrderItems.id,
-      ),
-    )
-    .innerJoin(
-      outsourcingReceipts,
-      and(
-        eq(
-          outsourcingReceipts.id,
-          outsourcingReceiptItems.outsourcingReceiptId,
-        ),
-        eq(outsourcingReceipts.status, InventoryDocumentStatus.POSTED),
-      ),
-    )
-    .innerJoin(
-      iqcInspections,
-      and(
-        eq(iqcInspections.outsourcingReceiptId, outsourcingReceipts.id),
-        eq(iqcInspections.itemId, outsourcingOrderItems.itemId),
-        ne(iqcInspections.status, IqcStatus.COMPLETED),
-      ),
-    )
-    .where(eq(outsourcingOrderItems.outsourcingOrderId, outsourcingOrderId))
-    .limit(1);
-
-  return !!row;
-}
-
 /** Huỷ OS-OUT đã `POSTED` bị chặn (`E169`) nếu còn dòng OS-IN nào chưa `CANCELLED` trỏ tới bất kỳ
  * dòng nào của phiếu — phải huỷ hết OS-IN con trước. */
 export async function hasActiveReceiptsForOrder(
@@ -297,7 +152,7 @@ export async function hasActiveReceiptsForOrder(
     .where(
       and(
         eq(outsourcingOrderItems.outsourcingOrderId, outsourcingOrderId),
-        ne(outsourcingReceipts.status, InventoryDocumentStatus.CANCELLED),
+        ne(outsourcingReceipts.status, OutsourcingReceiptStatus.CANCELLED),
       ),
     )
     .limit(1);

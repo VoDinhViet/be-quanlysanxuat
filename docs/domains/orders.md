@@ -92,7 +92,7 @@ Không phải invariant dù dễ tưởng:
 1. **Tưởng có thể set `status = AWAITING_PRODUCTION`/`REJECTED` bằng `PATCH`.** Không — `E075`. Đây là chốt chặn cố ý của luồng duyệt/từ chối.
 2. **Gửi `total`/`subtotal` từ client rồi thắc mắc sao không có tác dụng.** Bị `whitelist: true` loại bỏ lặng lẽ, không báo lỗi.
 3. **Gửi thiếu dòng khi `PATCH items`.** Là replace-all, không phải partial — gửi thiếu là xoá.
-4. **Tưởng `GET /orders` trả kèm `items`/`attachments`.** Không; chỉ `GET /orders/:id` và response ngay sau `POST`/`PATCH` mới có.
+4. **Tưởng `GET /orders/:id` trả kèm `items`.** Không — detail chỉ có header + `attachments`; dòng sản phẩm đọc riêng qua `GET /orders/:id/items` (khuôn giống OS-OUT/OS-IN/DO). `POST`/`PATCH` trả 204 rỗng, cũng không có body để đọc.
 5. **Dựa vào `GET /orders/stats` như số liệu chính xác.** Hai field là xấp xỉ: `completedValue` ("Đã giao") dùng `status = COMPLETED` làm proxy vì chưa có bảng giao hàng thật; `expiredTrendCount` so trạng thái *hiện tại* với mốc 7 ngày trước vì không có bảng lịch sử trạng thái.
 6. **Tìm route xoá đơn hàng.** Không có, đã bỏ hẳn — huỷ đơn dùng `PATCH status = CANCELLED`. Xem `docs/decisions/orders-no-delete.md`.
 7. **Tưởng sửa được đơn đang chờ duyệt (`PENDING_CONFIRMATION`).** Không — `E090`, khoá cho tới khi Giám đốc duyệt/từ chối xong.

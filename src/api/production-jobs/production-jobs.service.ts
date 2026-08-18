@@ -40,6 +40,7 @@ import {
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { InventoryService } from '../inventory/inventory.service';
+import { getOqcSummaryByJobOperationIds } from '../oqc/oqc.query';
 import { PurchaseRequestsService } from '../purchase-requests/purchase-requests.service';
 import { PurchaseRequestShortageItem } from '../purchase-requests/types/shortage-request.type';
 import { UsersService } from '../users/users.service';
@@ -55,10 +56,6 @@ import { ProductionJobOperationResDto } from './dto/production-job-operation.res
 import { ProductionJobResDto } from './dto/production-job.res.dto';
 import { UpdateProductionJobOperationReqDto } from './dto/update-production-job-operation.req.dto';
 import { resolvePlannedQuantities } from './production-job-planned-quantity';
-import {
-  SourceBomItemRow,
-  SourceBomOperationRow,
-} from './types/job-bom-tree.type';
 
 /** Job sản xuất — 1 sản phẩm (FG) = 1 Job trong một LSX. Chỉ tạo được qua `createJobs`, gọi từ
  * transaction duyệt LSX (`ProductionOrdersService.approveProductionOrder`) — không có route tạo
@@ -181,9 +178,10 @@ export class ProductionJobsService {
 
   /** `GET /production-jobs/:jobId/bom` — cây BOM của Job đã đóng băng lúc duyệt LSX: danh sách
    * phẳng cha-con (FE tự dựng cây qua `parentId`), mỗi node kèm công đoạn as-used của nó và
-   * `plannedQuantity` (tính lúc đọc, xem `resolvePlannedQuantities`). Không gồm sản phẩm FG gốc —
-   * chỉ node BOM thật (`production_job_bom_items`); `parentId = null` là node top-level, con trực
-   * tiếp của FG. */
+   * `plannedQuantity` (tính lúc đọc, xem `resolvePlannedQuantities`). Mỗi công đoạn kèm tóm tắt OQC
+   * (đọc qua plain function `getOqcSummaryByJobOperationIds`, một chiều — module này không import
+   * `OqcModule`). Không gồm sản phẩm FG gốc — chỉ node BOM thật (`production_job_bom_items`);
+   * `parentId = null` là node top-level, con trực tiếp của FG. */
   async getProductionJobBom(
     jobId: string,
   ): Promise<ProductionJobBomItemResDto[]> {
@@ -207,9 +205,29 @@ export class ProductionJobsService {
     });
 
     const plannedById = resolvePlannedQuantities(nodes, job.quantity);
+    const operationIds = nodes.flatMap((node) =>
+      node.operations.map((operation) => operation.id),
+    );
+    const oqcByOperationId = await getOqcSummaryByJobOperationIds(
+      this.db,
+      operationIds,
+    );
+
     const rows = nodes.map((node) => ({
       ...node,
       plannedQuantity: plannedById.get(node.id)!,
+      operations: node.operations.map((operation) => {
+        const oqc = oqcByOperationId.get(operation.id);
+        const inspectedQuantity = oqc?.inspectedQuantity ?? 0;
+        return {
+          ...operation,
+          oqc: {
+            inspectedQuantity,
+            remainingQuantity: operation.completedQuantity - inspectedQuantity,
+            openCount: oqc?.openCount ?? 0,
+          },
+        };
+      }),
     }));
 
     return plainToInstance(ProductionJobBomItemResDto, rows, {
@@ -408,27 +426,23 @@ export class ProductionJobsService {
     itemIds: string[],
     jobIdByItemId: Map<string, string>,
   ): Promise<void> {
-    const bomHeaders = await tx.query.boms.findMany({
+    const bomRefs = await tx.query.boms.findMany({
       where: inArray(boms.itemId, itemIds),
       columns: { id: true, itemId: true },
     });
 
-    if (!bomHeaders.length) {
+    if (!bomRefs.length) {
       return;
     }
 
-    const bomIds = bomHeaders.map((bom) => bom.id);
-    const itemIdByBomId = new Map(
-      bomHeaders.map((bom) => [bom.id, bom.itemId]),
-    );
+    const bomIds = bomRefs.map((bom) => bom.id);
+    const itemIdByBomId = new Map(bomRefs.map((bom) => [bom.id, bom.itemId]));
 
-    const sourceBomItems = (await tx.query.bomItems.findMany({
+    const sourceBomItems = await tx.query.bomItems.findMany({
       where: inArray(bomItems.bomId, bomIds),
       orderBy: [asc(bomItems.level), asc(bomItems.sortOrder)],
-      with: {
-        item: { columns: { code: true, name: true, type: true } },
-      },
-    })) as SourceBomItemRow[];
+      with: { item: true },
+    });
 
     if (!sourceBomItems.length) {
       return;
@@ -452,9 +466,9 @@ export class ProductionJobsService {
         parentId: node.parentId
           ? (newIdByOldId.get(node.parentId) ?? null)
           : null,
-        itemType: node.item!.type,
-        code: node.item!.code,
-        name: node.item!.name,
+        itemType: node.item.type,
+        code: node.item.code,
+        name: node.item.name,
         quantity: node.quantity,
         sortOrder: node.sortOrder,
         level: node.level,
@@ -467,13 +481,11 @@ export class ProductionJobsService {
     // As-used routing của từng node nguồn — node RM không có bom_operations (chặn từ lúc ghi),
     // nên query này tự nhiên chỉ khớp node WIP, không cần lọc riêng.
     const sourceBomItemIds = sourceBomItems.map((node) => node.id);
-    const asUsedSteps = (await tx.query.bomOperations.findMany({
+    const asUsedSteps = await tx.query.bomOperations.findMany({
       where: inArray(bomOperations.bomItemId, sourceBomItemIds),
-      with: {
-        operation: { columns: { code: true, name: true, type: true } },
-      },
+      with: { operation: true },
       orderBy: [asc(bomOperations.sortOrder), asc(bomOperations.createdAt)],
-    })) as SourceBomOperationRow[];
+    });
 
     if (!asUsedSteps.length) {
       return;

@@ -1,5 +1,6 @@
 import { relations } from 'drizzle-orm';
 import {
+  type AnyPgColumn,
   index,
   integer,
   pgEnum,
@@ -92,7 +93,7 @@ export const files = pgTable(
     storageDriver: varchar('storage_driver', { length: 20 })
       .notNull()
       .default('local'),
-    uploadedBy: uuid('uploaded_by').references(() => users.id, {
+    uploadedBy: uuid('uploaded_by').references((): AnyPgColumn => users.id, {
       onDelete: 'set null',
     }),
     /** When an entity first referenced this file. `NULL` means uploaded but never linked (the

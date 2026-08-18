@@ -8,7 +8,10 @@ import {
   StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
-import { OrderItemRefResDto } from './order-item-ref.res.dto';
+import { FileField } from '../../files/dto/file.field';
+import { FileResDto } from '../../files/dto/file.res.dto';
+import { ItemRefResDto } from '../../items/dto/item-ref.res.dto';
+import { UnitResDto } from '../../units/dto/unit.res.dto';
 
 @Exclude()
 export class OrderItemResDto {
@@ -48,6 +51,14 @@ export class OrderItemResDto {
   sortOrder!: number;
 
   @Expose()
-  @ClassField(() => OrderItemRefResDto)
-  item!: OrderItemRefResDto;
+  @ClassField(() => ItemRefResDto)
+  item!: ItemRefResDto;
+
+  @Expose()
+  @ClassField(() => UnitResDto)
+  unit!: UnitResDto;
+
+  @Expose()
+  @FileField('imageFile', 'Item image')
+  image!: FileResDto | null;
 }

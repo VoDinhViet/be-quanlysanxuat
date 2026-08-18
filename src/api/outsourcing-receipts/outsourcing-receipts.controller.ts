@@ -10,6 +10,7 @@ import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
 import { CreateOutsourcingReceiptReqDto } from './dto/create-outsourcing-receipt.req.dto';
 import { GetOutsourcingReceiptsReqDto } from './dto/get-outsourcing-receipts.req.dto';
 import { GetPendingOrderItemsReqDto } from './dto/get-pending-order-items.req.dto';
+import { OutsourcingReceiptItemResDto } from './dto/outsourcing-receipt-item.res.dto';
 import { OutsourcingReceiptResDto } from './dto/outsourcing-receipt.res.dto';
 import { PageOutsourcingReceiptResDto } from './dto/page-outsourcing-receipt.res.dto';
 import { PendingOrderItemResDto } from './dto/pending-order-item.res.dto';
@@ -63,11 +64,26 @@ export class OutsourcingReceiptsController {
     );
   }
 
+  @Get(':outsourcingReceiptId/items')
+  @Permissions('outsourcing:read')
+  @ApiAuth({
+    type: OutsourcingReceiptItemResDto,
+    summary: 'Danh sách chi tiết dòng của phiếu nhận gia công ngoài (OS-IN)',
+    isArray: true,
+  })
+  getReceiptItems(
+    @UUIDParam('outsourcingReceiptId') outsourcingReceiptId: string,
+  ): Promise<OutsourcingReceiptItemResDto[]> {
+    return this.outsourcingReceiptsService.getReceiptItems(
+      outsourcingReceiptId,
+    );
+  }
+
   @Post()
   @Permissions('outsourcing:create')
   @ApiAuth({
     summary:
-      'Lập phiếu nhận gia công ngoài (OS-IN), nhiều dòng, có thể gộp nhiều OS-OUT cùng NCC — POSTED ngay, cộng tồn kho nhận theo từng dòng, sinh IQC nếu requiresIqc',
+      'Lập phiếu nhận gia công ngoài (OS-IN), nhiều dòng, có thể gộp nhiều OS-OUT cùng NCC — POSTED ngay, không đụng tồn kho, sinh IQC nếu requiresIqc',
     statusCode: HttpStatus.NO_CONTENT,
   })
   createOutsourcingReceipt(
@@ -83,17 +99,14 @@ export class OutsourcingReceiptsController {
   @Post(':outsourcingReceiptId/cancel')
   @Permissions('outsourcing:update')
   @ApiAuth({
-    summary:
-      'Huỷ phiếu nhận gia công ngoài — đảo bút toán nếu đã POSTED, chặn nếu đã có IQC trỏ vào',
+    summary: 'Huỷ phiếu nhận gia công ngoài — chặn nếu đã có IQC trỏ vào',
     statusCode: HttpStatus.NO_CONTENT,
   })
   cancelOutsourcingReceipt(
     @UUIDParam('outsourcingReceiptId') outsourcingReceiptId: string,
-    @CurrentUser() payload: JwtPayloadType,
   ): Promise<void> {
     return this.outsourcingReceiptsService.cancelOutsourcingReceipt(
       outsourcingReceiptId,
-      payload.userId,
     );
   }
 }

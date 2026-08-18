@@ -785,6 +785,55 @@
       "when": 1786934742669,
       "tag": "0111_thin_warbound",
       "breakpoints": true
+    },
+    {
+      "idx": 112,
+      "version": "7",
+      "when": 1786970115296,
+      "tag": "0112_ambitious_apocalypse",
+      "breakpoints": true
+    },
+    {
+      "idx": 113,
+      "version": "7",
+      "when": 1787017954257,
+      "tag": "0113_crazy_gorgon",
+      "breakpoints": true
+    },
+    {
+      "idx": 114,
+      "version": "7",
+      "when": 1787026346857,
+      "tag": "0114_bumpy_blizzard",
+      "breakpoints": true
+    },
+    {
+      "idx": 115,
+      "version": "7",
+      "when": 1787037730680,
+      "tag": "0115_military_switch",
+      "breakpoints": true
+    },
+    {
+      "idx": 116,
+      "version": "7",
+      "when": 1787042161060,
+      "tag": "0116_safe_hairball",
+      "breakpoints": true
+    },
+    {
+      "idx": 117,
+      "version": "7",
+      "when": 1787045150400,
+      "tag": "0117_normal_deathstrike",
+      "breakpoints": true
+    },
+    {
+      "idx": 118,
+      "version": "7",
+      "when": 1787045333091,
+      "tag": "0118_watery_princess_powerful",
+      "breakpoints": true
     }
   ]
 }

@@ -3,6 +3,7 @@ import { Exclude, Expose } from 'class-transformer';
 import {
   IqcInspectionLevel,
   IqcResult,
+  OqcDisposition,
   OqcStatus,
 } from '../../../database/schemas';
 import {
@@ -41,6 +42,22 @@ export class OqcResDto {
   orderCode!: string | null;
 
   @Expose()
+  @StringField({ description: 'Mã công đoạn (snapshot lúc tạo)' })
+  operationCode!: string;
+
+  @Expose()
+  @StringField({ description: 'Tên công đoạn (snapshot lúc tạo)' })
+  operationName!: string;
+
+  @Expose()
+  @StringField({ description: 'Mã part (snapshot BOM của Job)' })
+  partCode!: string;
+
+  @Expose()
+  @StringField({ description: 'Tên chi tiết (snapshot BOM của Job)' })
+  partName!: string;
+
+  @Expose()
   @ClassField(() => ItemUnitRefResDto)
   item!: ItemUnitRefResDto;
 
@@ -61,7 +78,27 @@ export class OqcResDto {
   aqlLevel!: number | null;
 
   @Expose()
-  @NumberFieldOptional({ int: true, nullable: true, description: 'Cỡ mẫu' })
+  @StringFieldOptional({
+    nullable: true,
+    description: 'Code letter tra từ bảng AQL, không lưu cột riêng',
+  })
+  codeLetter!: string | null;
+
+  @Expose()
+  @NumberFieldOptional({
+    int: true,
+    nullable: true,
+    description:
+      'Cỡ mẫu (n) tra từ bảng AQL — auto-suggest, không phải giá trị đã lưu',
+  })
+  suggestedSampleSize!: number | null;
+
+  @Expose()
+  @NumberFieldOptional({
+    int: true,
+    nullable: true,
+    description: 'Cỡ mẫu đã lưu',
+  })
   sampleSize!: number | null;
 
   @Expose()
@@ -89,7 +126,18 @@ export class OqcResDto {
   re!: number | null;
 
   @Expose()
-  @EnumFieldOptional(() => IqcResult, { nullable: true })
+  @EnumFieldOptional(() => IqcResult, {
+    nullable: true,
+    description:
+      'Kết quả server tự suy từ Ac/Re — mốc so sánh khi QC ghi đè result',
+  })
+  resultAuto!: IqcResult | null;
+
+  @Expose()
+  @EnumFieldOptional(() => IqcResult, {
+    nullable: true,
+    description: 'Kết quả QC — lấy theo resultAuto nếu QC không ghi đè',
+  })
   result!: IqcResult | null;
 
   @Expose()
@@ -97,8 +145,22 @@ export class OqcResDto {
   status!: OqcStatus;
 
   @Expose()
-  @StringFieldOptional({ nullable: true, description: 'Ghi chú kết quả' })
+  @StringFieldOptional({
+    nullable: true,
+    description: 'Ghi chú kết quả — bắt buộc khi result ghi đè resultAuto',
+  })
   resultNote!: string | null;
+
+  @Expose()
+  @EnumFieldOptional(() => OqcDisposition, {
+    nullable: true,
+    description: 'Cách xử lý khi FAIL',
+  })
+  disposition!: OqcDisposition | null;
+
+  @Expose()
+  @StringFieldOptional({ nullable: true, description: 'Ghi chú xử lý' })
+  dispositionNote!: string | null;
 
   @Expose()
   @StringFieldOptional({ nullable: true, description: 'Ghi chú' })
@@ -111,6 +173,17 @@ export class OqcResDto {
   @Expose()
   @DateFieldOptional({ nullable: true, description: 'Thời điểm xác nhận QC' })
   confirmedAt!: Date | null;
+
+  @Expose()
+  @ClassFieldOptional(() => UserRefResDto, { nullable: true })
+  resolverBy!: UserRefResDto | null;
+
+  @Expose()
+  @DateFieldOptional({
+    nullable: true,
+    description: 'Thời điểm chọn phương án xử lý (disposition)',
+  })
+  resolvedAt!: Date | null;
 
   @Expose()
   @ClassFieldOptional(() => UserRefResDto, { nullable: true })

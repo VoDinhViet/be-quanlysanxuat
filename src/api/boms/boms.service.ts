@@ -25,14 +25,8 @@ import type { BomItem, BomOperation } from './types/bom-tree.type';
 
 // Hai join riêng biệt vào cùng bảng `files` (ảnh item + bản vẽ riêng của node) cần alias để
 // không đụng nhau trong cùng một query.
-// `as unknown as typeof files` — `files` có quan hệ trỏ `users` (`uploader`), khiến Drizzle suy sai
-// kiểu cột của alias trên bảng này (rơi về `{ [x: string]: any }`/union với `PgView`); ép lại tường
-// minh qua `unknown`, không đổi hành vi runtime — `alias()` chỉ đổi tên SQL, không đổi cột.
-const imageFiles = alias(files, 'image_files') as unknown as typeof files;
-const bomItemDrawingFiles = alias(
-  files,
-  'bom_item_drawing_files',
-) as unknown as typeof files;
+const imageFiles = alias(files, 'image_files');
+const bomItemDrawingFiles = alias(files, 'bom_item_drawing_files');
 
 /**
  * Cây BOM một item (FG/WIP gốc) — `bom_items` chứa cả node WIP lẫn lá RM (không còn bảng
@@ -312,7 +306,7 @@ export class BomsService {
 
     // `item` là FK bắt buộc, đúng 1 dòng — Drizzle suy sai kiểu thành one|many sau khi schema có
     // thêm nhiều quan hệ trỏ `users`, ép lại cho đúng thực tế thay vì đổi logic.
-    const item = node?.item as { type: ItemType } | undefined;
+    const item = node?.item;
     if (item?.type === ItemType.RM) {
       throw new AppException(ErrorCode.E052, HttpStatus.BAD_REQUEST);
     }
@@ -330,7 +324,7 @@ export class BomsService {
     if (!node) {
       throw new AppException(ErrorCode.E050, HttpStatus.NOT_FOUND);
     }
-    const item = node.item as { type: ItemType };
+    const item = node.item;
     if (item.type === ItemType.RM) {
       throw new AppException(ErrorCode.E063, HttpStatus.BAD_REQUEST);
     }
@@ -353,7 +347,7 @@ export class BomsService {
     }
     // `bomId` là FK bắt buộc, đúng 1 dòng — Drizzle suy sai kiểu `bom` thành one|many sau khi
     // schema có thêm nhiều quan hệ trỏ `users`, ép lại cho đúng thực tế thay vì đổi logic.
-    const bom = node.bom as { itemId: string };
+    const bom = node.bom;
     if (bom.itemId !== itemId) {
       throw new AppException(ErrorCode.E051, HttpStatus.NOT_FOUND);
     }
@@ -438,7 +432,7 @@ export class BomsService {
     }
 
     // Same Drizzle type-inference quirk as `ensureBomItemCanHaveOperations`.
-    const item = node.item as { type: ItemType };
+    const item = node.item;
 
     return {
       id: node.id,

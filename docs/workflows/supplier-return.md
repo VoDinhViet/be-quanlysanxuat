@@ -52,11 +52,14 @@ là bên xác nhận vật lý, khác vai trò với QC.
 
 1. Khoá dòng phiếu trả (`SELECT … FOR UPDATE`, cùng lý do chống double-submit như
    `InventoryReceiptsService.lockReceipt`), kiểm `status = DRAFT` (`E098`).
-2. **`shouldPostStock`** — đọc phiếu nhập liên quan (nếu có): đã `POSTED` thì trừ tồn thật qua
-   `InventoryPostingService.postDocument` (`referenceType: SUPPLIER_RETURN`, `signedQuantity` âm,
-   `type: ISSUE`); còn `DRAFT`/`PENDING_IQC`/`PENDING_RECEIPT` thì **bỏ qua** — hàng chưa từng thật
-   sự vào `inventory_balances` (IQC chạy trước `post` phiếu nhập), trừ vào đó sẽ trừ vào tồn chưa
-   từng có. Không có phiếu nhập liên quan (IQC tạo tay) → luôn trừ tồn bình thường.
+2. **`shouldPostStock`** — hai ca bỏ qua trừ tồn, còn lại luôn trừ:
+   - Phiếu trả sinh từ IQC của OS-IN (`outsourcingReceiptId` có giá trị) — hàng gia công ngoài chưa
+     từng vào `inventory_balances` (`docs/decisions/wip-not-stocked.md`), kiểm ca này **trước**.
+   - Còn lại, đọc phiếu nhập liên quan (nếu có): đã `POSTED` thì trừ tồn thật qua
+     `InventoryPostingService.postDocument` (`referenceType: SUPPLIER_RETURN`, `signedQuantity` âm,
+     `type: ISSUE`); còn `DRAFT`/`PENDING_IQC`/`PENDING_RECEIPT` thì **bỏ qua** — hàng chưa từng
+     thật sự vào `inventory_balances` (IQC chạy trước `post` phiếu nhập), trừ vào đó sẽ trừ vào tồn
+     chưa từng có. Không có phiếu nhập/OS-IN liên quan (IQC tạo tay) → luôn trừ tồn bình thường.
 3. Cập nhật `status = POSTED`, `postedBy`, `postedAt`.
 4. Gọi `completeIqcAfterSupplierReturn(tx, row.iqcId)` (nếu có `iqcId`) — **cuối cùng**, sau khi
    trạng thái phiếu trả đã ổn định: kiểm dòng IQC còn `WAITING_RETURN` (`E164` nếu không), rồi
@@ -106,14 +109,16 @@ RETURN) có thể trùng mã, unique constraint trên `code` là chốt chặn t
 `E138` (dòng IQC không tồn tại), `E159` (lưu lại kết quả QC khi đã `WAITING_RETURN`), `E163`
 (không suy được kho trả), `E137` (phiếu trả không tồn tại), `E098` (`post` khi không còn `DRAFT`),
 `E106` (thiếu tồn — chỉ có thể xảy ra khi `shouldPostStock = true` mà tồn thực tế đã bị tiêu bởi
-giao dịch khác từ lúc phiếu nhập `post`), `E164` (hoàn tất IQC khi không còn `WAITING_RETURN` — về
+giao dịch khác từ lúc phiếu nhập `post`; **không bao giờ** xảy ra ở nhánh sinh từ OS-IN vì
+`shouldPostStock` luôn `false` ở đó), `E164` (hoàn tất IQC khi không còn `WAITING_RETURN` — về
 lý thuyết không tự xảy ra vì `post` là transition duy nhất gọi hàm này, nhưng vẫn giữ làm chốt chặn
 cuối phòng gọi sai).
 
 ## Business rules
 
 - Vì sao `postSupplierReturn` không phải lúc nào cũng trừ tồn, và vì sao `postInventoryReceipt` tự
-  bù trừ → `docs/domains/inventory.md`, "Bù trừ SL đã trả".
+  bù trừ → `docs/domains/inventory.md`, mục Business rules ("`shouldPostStock` bỏ qua trừ tồn ở 2
+  ca").
 - Quy tắc suy `status` của một dòng IQC, và vì sao `WAITING_RETURN` khoá `confirm` →
   `docs/domains/quality.md`.
 - **Chưa có `cancel`** cho `supplier_returns` — huỷ một phiếu đã `POSTED` cần đường "un-complete"

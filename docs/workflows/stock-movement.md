@@ -73,7 +73,11 @@ Không đụng `inventory_transactions`/`inventory_balances` ở bước này.
 hai lệnh `post` gọi trùng lên cùng phiếu không cùng lọt qua và cộng tồn hai lần:
 
 1. Khoá + đọc phiếu, kiểm trạng thái nguồn hợp lệ, khác nhau giữa hai loại phiếu:
-   - Phiếu xuất: `status = DRAFT` (`E098` nếu không) — không đổi.
+   - Phiếu xuất: `status = DRAFT` (`E098` nếu không) — không đổi. Riêng `issueType = PRODUCTION`,
+     chạy thêm gate IQC **trước** khi gọi `postDocument`: còn ≥1 phiếu IQC chưa `COMPLETED` của cùng
+     `(itemId, warehouseId)` với bất kỳ dòng nào của phiếu → `E203`
+     (`hasPendingIqcForItems`, `src/api/iqc/iqc.query.ts`) — vật tư chưa qua IQC (hoặc còn FAIL
+     chưa xử lý) không được xuất cho sản xuất, xem `docs/decisions/qc-gates-on-stock-moves.md`.
    - Phiếu nhập: `status = PENDING_RECEIPT` cho qua thẳng; `status = PENDING_IQC` thì đếm thêm
      `iqc_inspections` gắn với phiếu — còn dòng nào `status !== COMPLETED` (kể cả **chưa có dòng
      nào**) thì ném `E153`, không rollback bút toán vì bước 2 chưa chạy; mọi trạng thái khác
@@ -159,6 +163,7 @@ trên `code` là chốt chặn thật, cùng giới hạn TOCTOU đã chấp nh�
 | (Phiếu nhập) `confirm` với `requiresIqc=true` mà không suy được `supplierId` (cả header lẫn PO đều thiếu) | `E152` | 400 |
 | `PATCH`/`DELETE`/`confirm` gọi trên phiếu không còn `DRAFT` | `E098` | 409 |
 | (Phiếu xuất) `post` gọi trên phiếu không còn `DRAFT` | `E098` | 409 |
+| (Phiếu xuất `PRODUCTION`) `post` khi còn IQC chưa `COMPLETED` của cùng (item, kho) | `E203` | 409 |
 | (Phiếu nhập) `post` gọi trên phiếu không phải `PENDING_RECEIPT`/`PENDING_IQC` | `E098` | 409 |
 | (Phiếu nhập) `post` một phiếu `PENDING_IQC` còn phiếu IQC chưa `COMPLETED` (kể cả chưa có phiếu IQC nào) | `E153` | 409 |
 | `cancel` gọi trên phiếu đã `CANCELLED` | `E098` | 409 |
@@ -177,16 +182,18 @@ trên `code` là chốt chặn thật, cùng giới hạn TOCTOU đã chấp nh�
 `productionJobId`, chỉ liên kết tham khảo), `purchase-requests` (qua `purchaseRequestId`),
 `purchasing` (qua `purchaseOrderId`/`purchaseOrderItemId`, hai chiều — validate PO lúc `confirm`,
 bị `purchase-orders` đọc lại để tính `progress`/`receivedQuantity`), `suppliers` (qua `supplierId`),
-`product-structure` (`items`, mặt hàng), `quality` (`confirm` phiếu nhập ghi sang `iqc_inspections`,
-`post` đọc lại — chỉ chiều phiếu nhập, phiếu xuất không đụng `quality`). Không domain nào khác ghi
-ngược vào đây.
+`product-structure` (`items`, mặt hàng), `quality` — hai chiều, khác nhau giữa nhập/xuất: phiếu
+**nhập** `confirm` ghi sang `iqc_inspections`, `post` đọc lại (`E153`); phiếu **xuất**
+(`issueType = PRODUCTION`) chỉ **đọc** `iqc_inspections` lúc `post` (`E203`, gate mới — xem
+`docs/decisions/qc-gates-on-stock-moves.md`), không ghi gì. Không domain nào khác ghi ngược vào đây.
 
 Code: `InventoryReceiptsService`/`InventoryIssuesService` (`createInventoryReceipt`/`createInventoryIssue`,
 `updateInventoryReceipt`/`updateInventoryIssue`, `deleteInventoryReceipt`/`deleteInventoryIssue`,
 `confirmInventoryReceipt` (chỉ phiếu nhập), `postInventoryReceipt`/`postInventoryIssue`,
 `cancelInventoryReceipt`/`cancelInventoryIssue`), `InventoryPostingService.postDocument`/
 `reverseDocument`, `IqcService.createInspectionsFromReceipt` (gọi từ `confirmInventoryReceipt`),
+`hasPendingIqcForItems` (`src/api/iqc/iqc.query.ts`, gọi từ `postInventoryIssue`),
 `InventoryService.getInventory`/`getStockLevels`/`getMaterialStockLevels`.
 Bốn module riêng — `warehouses`, `inventory` (đọc + `InventoryPostingService`), `inventory-receipts`
 (import `InventoryModule`+`WarehousesModule`+`IqcModule`), `inventory-issues` (import
-`InventoryModule`+`WarehousesModule`, không cần `IqcModule`).
+`InventoryModule`+`WarehousesModule` — gate IQC qua plain function, không cần import `IqcModule`).

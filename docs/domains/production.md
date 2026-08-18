@@ -169,10 +169,18 @@ Không phải invariant dù dễ tưởng:
   định mức cho popup "chọn part cần gia công" và chặn gửi vượt định mức. Đợt này **không** có
   gating nào ngược lại: tạo/hủy chứng từ gia công ngoài không tự đổi
   `completedQuantity`/`completedDate` hay chặn công đoạn kế tiếp. Xem `docs/domains/inventory.md`.
-- **→ Quality (OQC)**: `production_jobs.status`/`quantity` là **anchor đọc-một-chiều** cho
-  `oqc_inspections` — Quality đọc để validate lúc tạo (`IN_PROGRESS`) và giới hạn tổng lot size
-  (không vượt `quantity`), Production không ghi/biết gì về OQC. Cùng khuôn với gia công ngoài ở
-  trên. Xem `docs/domains/quality.md`.
+- **↔ Quality (OQC)**: `production_job_operations` (không phải `production_jobs`) là **anchor** cho
+  `oqc_inspections` — mỗi dòng OQC gắn `productionJobOperationId`, Quality đọc `operation.
+  productionJob.status` (phải `IN_PROGRESS`), `operation.completedQuantity` (trần chặn lot size) và
+  node BOM chứa nó (`itemId`/`code`/`name` để snapshot) lúc tạo (`docs/decisions/
+  oqc-per-operation.md`). Chiều ngược lại, **duy nhất** ở domain này: `GET
+  /production-jobs/:jobId/bom` đọc tóm tắt OQC (`inspectedQuantity`/`remainingQuantity`/
+  `openCount`) cho mỗi công đoạn qua `getOqcSummaryByJobOperationIds` (plain function,
+  `src/api/oqc/oqc.query.ts`, không qua DI — `ProductionJobsModule` không import `OqcModule`). Đây
+  là đọc hiển thị **thuần tuý** — không nhánh nào của OQC ghi ngược `completedQuantity`/
+  `completedDate`, kể cả khi `disposition = SCRAP` (giải phóng quota bằng cách loại trừ khỏi Σ đã
+  xin QC, không phải bằng cách trừ `completedQuantity`) — tránh race với thao tác tay của xưởng qua
+  `PATCH .../operations/:operationId`. Xem `docs/domains/quality.md`.
 - **→ Purchase Requests**: `startJob` là domain khác **duy nhất ghi vào** `purchase_requests` —
   vật tư thiếu tồn khi bấm start tự sinh một đề xuất mua, xem
   `docs/workflows/production-job-execution.md`. Không đi ngược: Purchase Requests không đọc/ghi gì
@@ -210,10 +218,16 @@ Không phải invariant dù dễ tưởng:
     nhập `completedQuantity` cho công đoạn kế tiếp.** Không — đợt này gia công ngoài
     (`docs/domains/inventory.md`) chỉ đọc Job để validate lúc tạo OS-OUT, không ghi/gate gì ngược
     lại tiến độ Job.
-13. **Tưởng OQC (`docs/domains/quality.md`) ghi nhận sản lượng đạt/phế cho Job.** Không — OQC chỉ
-    đọc `production_jobs.status`/`quantity` để validate lúc tạo, kết quả OQC không ghi ngược vào
-    Job hay công đoạn nào. "Sản lượng đạt" chỉ tồn tại dưới dạng tổng `quantity` các dòng
-    `oqc_inspections` của Job, ở domain Quality — không phải một cột trên `production_jobs`.
+13. **Tưởng OQC (`docs/domains/quality.md`) ghi nhận sản lượng đạt/phế cho Job hay công đoạn.**
+    Không — OQC chỉ đọc `operation.productionJob.status`/`operation.completedQuantity` để validate
+    lúc tạo, kết quả OQC (kể cả `disposition = SCRAP`) không ghi ngược `completedQuantity`/
+    `completedDate` của bất kỳ công đoạn nào. `GET /production-jobs/:jobId/bom` có hiển thị tóm tắt
+    OQC theo công đoạn, nhưng đó là đọc một chiều qua plain function, không phải dữ liệu Production
+    tự sinh ra.
+14. **Tưởng OQC vẫn gắn theo cả Job như trước.** Đã đổi — từ khi `docs/decisions/
+    oqc-per-operation.md`, một dòng OQC gắn theo **một công đoạn** (`production_job_operations`),
+    không phải cả Job; `itemId` của dòng OQC là part đang QC ở đúng công đoạn đó, không phải thành
+    phẩm cuối cùng của Job.
 
 ## Related docs
 
@@ -221,4 +235,5 @@ Không phải invariant dù dễ tưởng:
   trình tự chạy của hai chặng.
 - `docs/domains/orders.md` — điều kiện để một đơn tới được đây.
 - `docs/domains/inventory.md` — nguồn `onHand`/`reserved`.
-- `docs/domains/quality.md` — OQC, đọc Job để kiểm chất lượng lô thành phẩm.
+- `docs/domains/quality.md` — OQC, gắn theo công đoạn để kiểm chất lượng.
+- `docs/decisions/oqc-per-operation.md` — vì sao OQC đổi từ gắn Job sang gắn công đoạn.

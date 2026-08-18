@@ -24,6 +24,7 @@ import {
   users,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
+import { hasPendingIqcForItems } from '../iqc/iqc.query';
 import { InventoryPostingService } from '../inventory/inventory-posting.service';
 import { WarehousesService } from '../warehouses/warehouses.service';
 import { CreateInventoryIssueReqDto } from './dto/create-inventory-issue.req.dto';
@@ -208,8 +209,9 @@ export class InventoryIssuesService {
   }
 
   /** `DRAFT → POSTED` — sinh bút toán + cập nhật tồn qua `InventoryPostingService`, sau đó phiếu
-   * bất biến. Đọc trạng thái nằm trong cùng transaction, sau `lockIssue`. Xem
-   * `docs/workflows/stock-movement.md`. */
+   * bất biến. Đọc trạng thái nằm trong cùng transaction, sau `lockIssue`. `issueType = PRODUCTION`
+   * kèm gate IQC (`E203`, `docs/decisions/qc-gates-on-stock-moves.md`) — vật tư chưa qua IQC (hoặc
+   * còn FAIL chưa xử lý) không được xuất cho sản xuất. Xem `docs/workflows/stock-movement.md`. */
   async postInventoryIssue(issueId: string, userId: string): Promise<void> {
     await this.db.transaction(async (tx) => {
       const issue = await this.lockIssue(tx, issueId);
@@ -221,6 +223,16 @@ export class InventoryIssuesService {
       const items = await tx.query.inventoryIssueItems.findMany({
         where: eq(inventoryIssueItems.issueId, issueId),
       });
+
+      if (issue.issueType === InventoryIssueType.PRODUCTION) {
+        const hasPendingIqc = await hasPendingIqcForItems(tx, {
+          itemIds: items.map((item) => item.itemId),
+          warehouseId: issue.warehouseId,
+        });
+        if (hasPendingIqc) {
+          throw new AppException(ErrorCode.E203, HttpStatus.CONFLICT);
+        }
+      }
 
       await this.inventoryPostingService.postDocument(tx, {
         warehouseId: issue.warehouseId,

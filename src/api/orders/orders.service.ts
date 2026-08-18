@@ -6,6 +6,7 @@ import {
   count,
   desc,
   eq,
+  getTableColumns,
   gte,
   inArray,
   isNull,
@@ -22,6 +23,7 @@ import type { Database, DbTransaction } from '../../database/database.type';
 import {
   clients,
   Currency,
+  files,
   orderAttachments,
   orderItems,
   orders,
@@ -29,6 +31,7 @@ import {
   productionOrders,
   ProductionOrderStatus,
   items,
+  units,
   users,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
@@ -37,6 +40,7 @@ import { ProductionOrdersService } from '../production-orders/production-orders.
 import { CreateOrderReqDto } from './dto/create-order.req.dto';
 import { GetOrdersReqDto } from './dto/get-orders.req.dto';
 import { OrderItemReqDto } from './dto/order-item.req.dto';
+import { OrderItemResDto } from './dto/order-item.res.dto';
 import { OrderResDto } from './dto/order.res.dto';
 import { OrderStatsResDto } from './dto/order-stats.res.dto';
 import { PageOrderResDto } from './dto/page-order.res.dto';
@@ -182,10 +186,6 @@ export class OrdersService {
         creatorBy: true,
         approverBy: true,
         rejecterBy: true,
-        items: {
-          with: { item: { with: { unit: true, imageFile: true } } },
-          orderBy: [asc(orderItems.sortOrder), asc(orderItems.createdAt)],
-        },
         attachments: { with: { file: true } },
       },
     });
@@ -195,6 +195,28 @@ export class OrdersService {
     }
 
     return plainToInstance(OrderResDto, order, {
+      excludeExtraneousValues: true,
+    });
+  }
+
+  async getOrderItems(orderId: string): Promise<OrderItemResDto[]> {
+    await this.ensureOrderExists(orderId);
+
+    const rows = await this.db
+      .select({
+        ...getTableColumns(orderItems),
+        item: getTableColumns(items),
+        unit: getTableColumns(units),
+        imageFile: getTableColumns(files),
+      })
+      .from(orderItems)
+      .innerJoin(items, eq(items.id, orderItems.itemId))
+      .innerJoin(units, eq(units.id, items.unitId))
+      .leftJoin(files, eq(files.id, items.imageFileId))
+      .where(eq(orderItems.orderId, orderId))
+      .orderBy(asc(orderItems.sortOrder), asc(orderItems.createdAt));
+
+    return plainToInstance(OrderItemResDto, rows, {
       excludeExtraneousValues: true,
     });
   }

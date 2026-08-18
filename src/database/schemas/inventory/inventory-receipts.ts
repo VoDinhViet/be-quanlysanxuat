@@ -70,7 +70,7 @@ export const inventoryReceipts = pgTable(
       { onDelete: 'set null' },
     ),
     // `set null`, cùng lý do `productionOrderId` — bắt buộc khi `receiptType = PRODUCTION`
-    // (service-enforced, `E179`), dùng làm neo cho gate OQC (`getPassedOqcQuantityByJobId`,
+    // (service-enforced, `E179`), dùng làm neo cho gate OQC (`getJobOqcClearance`,
     // `docs/domains/inventory.md`).
     productionJobId: uuid('production_job_id').references(
       () => productionJobs.id,

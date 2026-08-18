@@ -198,9 +198,9 @@ export class SupplierReturnsService {
   }
 
   /** `DRAFT → POSTED` — kho xác nhận đã thật sự xuất hàng trả NCC. Trừ tồn qua
-   *  `InventoryPostingService` (bỏ qua nếu phiếu nhập gốc chưa `POSTED` — xem `shouldPostStock`),
-   *  rồi hoàn tất luôn dòng IQC liên kết (`completeIqcAfterSupplierReturn`) trong cùng
-   *  transaction. Xem `docs/workflows/supplier-return.md`. */
+   *  `InventoryPostingService` (bỏ qua nếu phiếu nhập gốc chưa `POSTED` hoặc sinh từ OS-IN — xem
+   *  `shouldPostStock`), rồi hoàn tất luôn dòng IQC liên kết (`completeIqcAfterSupplierReturn`)
+   *  trong cùng transaction. Xem `docs/workflows/supplier-return.md`. */
   async postSupplierReturn(
     supplierReturnId: string,
     userId: string,
@@ -245,16 +245,26 @@ export class SupplierReturnsService {
     });
   }
 
-  /** Không trừ tồn nếu phiếu nhập gốc chưa `POSTED` — IQC chạy trước khi phiếu nhập ghi tồn
-   *  (`PENDING_IQC` chưa đụng `inventory_balances`), nên trừ vào đó sẽ trừ vào tồn chưa từng có,
-   *  ra âm giả (`E106`) hoặc trừ nhầm tồn của lô khác. `postInventoryReceipt` tự bù trừ số lượng
-   *  đã trả `POSTED` trước khi ghi bút toán `RECEIPT` (`getReturnedQuantityByReceiptItemId`), nên
-   *  không ghi thiếu tồn — hàng NG chưa bao giờ được cộng vào để phải trừ ra. Không có phiếu nhập
-   *  liên quan (IQC tạo tay) → luôn trừ tồn bình thường. */
+  /** Hai ca bỏ qua trừ tồn, còn lại luôn trừ:
+   *  1. Phiếu nhập gốc chưa `POSTED` — IQC chạy trước khi phiếu nhập ghi tồn (`PENDING_IQC` chưa
+   *     đụng `inventory_balances`), trừ vào đó sẽ ra âm giả (`E106`) hoặc trừ nhầm tồn của lô khác.
+   *     `postInventoryReceipt` tự bù trừ số lượng đã trả `POSTED` trước khi ghi bút toán `RECEIPT`
+   *     (`getReturnedQuantityByReceiptItemId`), nên không ghi thiếu tồn.
+   *  2. Sinh từ IQC của OS-IN (`outsourcingReceiptId` có giá trị) — hàng đó chưa từng vào tồn
+   *     (`docs/decisions/wip-not-stocked.md`, gia công ngoài không ghi `inventory_balances`), trừ
+   *     vào cũng ra âm giả.
+   *  Không có phiếu nhập/OS-IN liên quan (IQC tạo tay) → luôn trừ tồn bình thường. */
   private async shouldPostStock(
     tx: DbTransaction,
-    row: Pick<SupplierReturnSelect, 'inventoryReceiptId'>,
+    row: Pick<
+      SupplierReturnSelect,
+      'inventoryReceiptId' | 'outsourcingReceiptId'
+    >,
   ): Promise<boolean> {
+    if (row.outsourcingReceiptId) {
+      return false;
+    }
+
     if (!row.inventoryReceiptId) {
       return true;
     }

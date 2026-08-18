@@ -10,7 +10,9 @@ lý cho dòng FAIL đang chờ xử lý) — **route này đã bị xoá ở pha
 thêm `PATCH :iqcId` (sửa lại 4 field ngữ cảnh — không đụng PASS/FAIL); **phase 5** làm lại
 `confirm` thành nút "Lưu" duy nhất của trang chi tiết (QC tự chọn `result`, gộp cả phần chọn
 `disposition`, thêm ghi chú/SL OK-NG/bộ phận QC/2 bộ file đính kèm), và nối `WAITING_RETURN →
-COMPLETED` vào `supplier_returns.post` (xem "Cross-domain dependencies").
+COMPLETED` vào `supplier_returns.post` (xem "Cross-domain dependencies"); **phase 6** thêm
+`DELETE :iqcId` (đường gỡ phiếu tạo nhầm, chỉ khi còn `NOT_INSPECTED`) đi cùng gate mới ở
+`inventory-issues` (xem "Cross-domain dependencies").
 
 **Đường tạo thứ hai, tự động:** `POST /inventory-receipts/:id/confirm` với `requiresIqc = true`
 sinh một dòng `iqc_inspections` (`NOT_INSPECTED`) cho mỗi dòng phiếu nhập, qua
@@ -23,8 +25,10 @@ biệt dòng tạo tay hay tạo tự động.
 dòng** (1/dòng phiếu OS-IN) qua `IqcService.createInspectionsFromOutsourcingReceipt(tx, ...)` —
 **khác** đường thứ hai ở chỗ gọi ngay trong transaction `create` (không phải một bước `confirm`
 riêng, `outsourcing_receipts` không có bước nháp/trạng thái `PENDING_IQC` nào — xem
-`docs/decisions/outsourcing-no-draft.md`) và **không gate** việc tạo phiếu — hàng đã về kho vật lý
-trước khi IQC chạy. `outsourcingReceiptId` trên mỗi dòng IQC sinh ra là chiều trace, tuỳ chọn, cùng
+`docs/decisions/outsourcing-no-draft.md`) và **không gate** việc tạo phiếu — hàng đã về nhà máy vật
+lý trước khi IQC chạy, không phải "về kho" theo nghĩa `inventory_balances` (gia công ngoài không
+ghi tồn, `docs/decisions/wip-not-stocked.md`). `outsourcingReceiptId` trên mỗi dòng IQC sinh ra là
+chiều trace, tuỳ chọn, cùng
 vai trò `inventoryReceiptId`/`purchaseOrderId` — trỏ về **header** OS-IN, không phân biệt được dòng
 phiếu nào sinh ra nó (đủ cho mục đích trace, không cần chính xác tới từng dòng). Xem
 `docs/domains/inventory.md`.
@@ -178,6 +182,12 @@ gọi bởi `SupplierReturnsService.postSupplierReturn` khi kho xác nhận đã
 - **→ Inventory**: `POST /inventory-receipts/:id/post` chặn (`E153`) khi phiếu đang `PENDING_IQC`
   mà còn phiếu IQC nào của nó chưa `COMPLETED` (kể cả khi chưa có phiếu IQC nào) — cổng chất lượng
   nằm ở phía `inventory-receipts`, domain này không tự đẩy trạng thái phiếu nhập.
+- **→ Inventory (Gate xuất kho sản xuất)**: `InventoryIssuesService.postInventoryIssue`
+  (`issueType = PRODUCTION`) chặn (`E203`) nếu còn ≥1 phiếu IQC chưa `COMPLETED` của cùng
+  `(itemId, warehouseId)` — `hasPendingIqcForItems` (`src/api/iqc/iqc.query.ts`, plain function,
+  không DI). Suy kho qua `inventoryReceipt.warehouseId`; phiếu IQC tạo tay hoặc sinh từ OS-IN (không
+  gắn `inventoryReceiptId`) không suy được kho thì bỏ qua, không chặn — xem
+  `docs/decisions/qc-gates-on-stock-moves.md`.
 - **↔ Inventory (Supplier Returns)**: `confirmIqc` tự sinh một dòng `supplier_returns` (DRAFT) khi
   `status` chuyển `WAITING_RETURN` (`SupplierReturnsService.createFromIqcDisposition`, cùng
   transaction). Chiều ngược lại, khi kho `post` phiếu trả đó,
@@ -214,110 +224,170 @@ gọi bởi `SupplierReturnsService.postSupplierReturn` khi kho xác nhận đã
    riêng, không đi qua `IqcService`.
 7. **Tưởng chỉ có 2 đường tạo (`POST /iqc` tay + phiếu nhập mua).** Từ khi có gia công ngoài, còn
    đường thứ ba: `POST /outsourcing-receipts` (`requiresIqc = true`) — xem Purpose.
+8. **Tưởng IQC không có route xoá.** Có từ phase 6 — `DELETE /iqc/:iqcId`, chỉ khi còn
+   `NOT_INSPECTED` (`E206`) — đường gỡ đi kèm gate IQC mới ở `inventory-issues` (xem "Cross-domain
+   dependencies"), không phải một route CRUD đầy đủ.
 
 ## OQC (Outgoing/Final QC)
 
-Kiểm chất lượng **lô thành phẩm** theo phương pháp AQL trước khi cho nhập kho — bảng riêng
-`oqc_inspections`, độc lập hoàn toàn với `iqc_inspections` ở trên. Cùng gốc khái niệm AQL
-(`resolveAqlPlan()`, `AQL_LEVELS`, `IqcInspectionLevel`, `IqcResult` — tái dùng thẳng, cùng pgEnum
-Postgres, không nhân đôi) nhưng **không có `disposition`/NCR** — hàng FAIL không tách nhánh trả
-NCC/sort/chấp nhận đặc biệt như IQC, xử lý FAIL đơn giản hơn nhiều (xem "Lưu kết quả OQC" dưới đây).
-Quyết định hoãn NCR cho OQC là tường minh, không phải thiếu sót.
+Kiểm chất lượng **công đoạn** theo phương pháp AQL, trước khi cho nhập kho thành phẩm — bảng riêng
+`oqc_inspections`, độc lập hoàn toàn với `iqc_inspections` ở trên. Khung phân vai: **IQC đảm nhiệm
+QC vật tư** (hàng nhập từ NCC), **OQC đảm nhiệm QC công đoạn** (bước gia công/lắp ráp bên trong một
+Job sản xuất). Đổi từ gắn theo cả Job sang gắn theo từng công đoạn (`production_job_operations`) —
+xem `docs/decisions/oqc-per-operation.md`. Cùng gốc khái niệm AQL (`resolveAqlPlan()`, `AQL_LEVELS`,
+`IqcInspectionLevel`, `IqcResult` — tái dùng thẳng, cùng pgEnum Postgres, không nhân đôi) nhưng
+`OqcDisposition` (`ACCEPT`/`REWORK`/`SCRAP`) là enum **riêng**, không dùng `IqcDisposition`
+(`CONCESSION`/`SORT`/`RETURN`) — OQC là QC nội bộ sản xuất, không có NCC để trả hàng.
 
 ### Core concepts
 
-**Bảng phẳng, một dòng = một lô kiểm của một Job.** `productionJobId` liên kết tới `production_jobs`
-(nullable, `SET NULL` — một Job có thể bị hard-delete khi LSX chứa nó được duyệt lại,
-`ProductionOrdersService.seedPlan`, cùng rủi ro đã chấp nhận ở `outsourcing_orders`,
-`docs/domains/production.md`). `itemId` **NOT NULL**, snapshot từ `job.itemId` lúc tạo — sống sót
-qua việc Job biến mất vì `items` chỉ xoá mềm, không hard-delete (khác `productionJobId`).
+**Bảng phẳng, một dòng = một lô kiểm của một công đoạn.** `productionJobOperationId` liên kết tới
+`production_job_operations` (nullable, `SET NULL` — một công đoạn có thể bị hard-delete cùng Job
+khi LSX chứa nó được duyệt lại, `ProductionOrdersService.seedPlan`), bắt buộc ở service
+(`CreateOqcReqDto`), không bắt buộc ở DB để dữ liệu cũ (gắn thẳng Job, trước đợt đổi model) sống
+sót. `productionJobId` vẫn giữ, denormalize từ `operation.productionJobId`, server tự set — dùng để
+lọc/join theo Job không phải qua `production_job_operations`, và là neo cho 2 gate cross-domain (xem
+bên dưới). `operationCode`/`operationName`/`partCode`/`partName` là **snapshot bắt buộc** (NOT NULL)
+lúc tạo — nguồn hiển thị chính khi `productionJobOperationId` về `null`, khuôn
+`outsourcing_order_items`. `itemId` NOT NULL, snapshot từ `bomItem.itemId` của node BOM chứa công
+đoạn — node mất `itemId` (`set null`, item gốc bị xoá) thì không tạo được OQC (`E199`).
 
-**`quantity` là lot size QC tự nhập, không suy tự động.** `production_jobs` không lưu sản lượng
-thực tế (`producedQty`/`rejectedQty` đã từng có rồi bị xoá,
-`docs/domains/production.md`) — không có nguồn nào để OQC tự tính lô đang kiểm là bao nhiêu, QC
-luôn phải nhập tay.
+**`quantity` là lot size QC tự nhập, không suy tự động.** Trần chặn không phải một số cố định mà là
+tiến độ thật của chính công đoạn: `operation.completedQuantity` (xưởng tự báo qua
+`PATCH /production-jobs/:jobId/operations/:operationId`) — xem "Điều kiện tạo" bên dưới.
 
-**Hai enum, một quy tắc suy `status`** (đơn giản hơn IQC — không có `disposition`):
+**Bốn enum, hai quy tắc suy `status`:**
 
 ```
-result   PASS | FAIL                       — nullable (chưa kiểm = NULL)
-status   NOT_INSPECTED | PENDING | COMPLETED
+result       PASS | FAIL                        — nullable (chưa kiểm = NULL)
+resultAuto   PASS | FAIL                        — server tự suy từ Ac/Re, nullable
+disposition  ACCEPT | REWORK | SCRAP  — chỉ có nghĩa khi result = FAIL
+status       NOT_INSPECTED | PENDING | REWORK | COMPLETED
 ```
 
-- Tạo mới luôn `status = NOT_INSPECTED` — `POST /oqc` **không** nhận `result` (khác `POST /iqc`,
-  vốn cho gửi `result` ngay lúc tạo) vì luồng OQC luôn tách 2 bước: production "yêu cầu QC" trước,
-  QC "xác nhận" sau.
+- Tạo mới luôn `status = NOT_INSPECTED` — `POST /oqc` **không** nhận `result` vì luồng OQC luôn
+  tách 2 bước: production "Yêu cầu QC" trước, QC "xác nhận" sau (xem "Trigger từ production" bên
+  dưới).
+- `resultAuto` server tự suy từ `defectQty` so `ac` của plan AQL (`resolveAqlResult()`) — `result`
+  QC gửi lên **thắng** nếu có, vắng thì lấy `resultAuto`; lệch `resultAuto` mà không kèm `resultNote`
+  bị chặn (`E201`) — ghi đè auto-suggest phải có lý do, có vết.
 - `result = PASS` → `status = COMPLETED` — **khoá cứng**, không `confirm` lại được nữa (`E177`).
   Đây là điểm khác biệt lớn nhất với IQC (`COMPLETED` của IQC vẫn confirm lại được) — `COMPLETED`
-  của OQC là mốc "đã dùng để mở khoá nhập kho TP" (xem Cross-domain dependencies), khoá lại để QC
-  không thể âm thầm đổi kết quả sau khi kho đã nhập hàng dựa vào nó.
-- `result = FAIL` → `status = PENDING` ("FAIL chờ xử lý") — QC sửa mẫu/kết quả rồi gọi lại
-  `POST /oqc/:oqcId/confirm` trên **chính phiếu đó**, lặp lại tới khi PASS. Không có
-  `disposition`/NCR tách nhánh.
+  của OQC là mốc dùng để tính "Job đã QC xong hết" (xem Cross-domain dependencies), khoá lại để QC
+  không thể âm thầm đổi kết quả sau khi kho/giao hàng đã dựa vào nó.
+- `result = FAIL`, chưa gửi `disposition` → `status = PENDING` ("FAIL chờ xử lý").
+- `result = FAIL`, `disposition = ACCEPT` (chấp nhận đặc biệt, dùng tiếp dù có lỗi) hoặc `SCRAP`
+  (loại bỏ hẳn) → `status = COMPLETED` ngay — cả hai đều là điểm dừng.
+- `result = FAIL`, `disposition = REWORK` (trả xưởng sửa lại) → `status = REWORK` — phiếu **vẫn
+  mở**, QC kiểm lại trên chính phiếu đó tới khi PASS, khác `PENDING` chỉ ở tên gọi/ý nghĩa hiển thị,
+  cùng cho `confirm` lại (chỉ `COMPLETED` mới khoá).
+- `PASS` mà vẫn gửi `disposition` bị chặn (`E202`, khớp
+  `chk_oqc_inspections_disposition_requires_fail`).
 
-`resolveOqcStatus` (pure, private trong `OqcService`) là nơi duy nhất áp quy tắc này — khuôn rút
-gọn của `IqcService.resolveIqcStatus`.
+`OqcService.resolveOqcStatus` là nơi duy nhất áp quy tắc suy `status`. Không nhánh nào ghi ngược
+`production_job_operations.completedQuantity` — kể cả `SCRAP` (giải phóng lại quota bằng cách không
+tính vào Σ đã xin QC, không phải bằng cách trừ `completedQuantity`) — tránh race với thao tác tay
+của xưởng, xem `docs/domains/production.md`.
+
+### Trigger từ production — "Yêu cầu QC" (`GET /oqc/inspectable-operations`, `POST /oqc`)
+
+`GET /oqc/inspectable-operations` là popup "chọn công đoạn cần QC" — copy khuôn
+`OutsourcingOrdersService.getOutsourceableOperations`, khác: không lọc `type = OUTSOURCE` (OQC áp
+cho mọi công đoạn, không riêng gia công ngoài), và mốc hiển thị là tiến độ QC
+(`completedQuantity` so `inspectedQuantity`, không phải SL gửi gia công). Trả về
+`productionJobOperationId` — id thật sự cần gửi lại khi tạo OQC.
+
+`POST /oqc` nhận `productionJobOperationId!`, `quantity!` (lot size), `inspectionDate!`, `code?`,
+`note?`. Thứ tự kiểm:
+
+1. Công đoạn tồn tại (`E091`, tái dùng — cùng ngữ nghĩa `production-jobs`).
+2. Job chứa công đoạn đó phải `IN_PROGRESS` (`E175`).
+3. Node BOM chứa công đoạn còn `itemId` để snapshot `partCode`/`partName` (`E199`).
+4. Σ `quantity` đã xin QC của **mọi công đoạn as-used cùng một node BOM** (không riêng công đoạn
+   đang tạo — 1 node có thể có nhiều bước nhưng cùng 1 part vật lý), cộng lô mới, không vượt SL kế
+   hoạch của chính node đó (`resolvePlannedQuantities`) — vượt thì `E176` (đổi mốc từ
+   `production_jobs.quantity` cũ, giờ so ở cấp node vì OQC không còn 1:1 với Job).
+5. Σ `quantity` đã xin QC của **riêng công đoạn này** (trừ dòng `disposition = SCRAP` — hàng đã
+   loại bỏ hẳn, giải phóng lại quota), cộng lô mới, không vượt `operation.completedQuantity` hiện
+   tại — vượt thì `E198`. QC không được xin kiểm nhiều hơn phần xưởng đã báo hoàn thành.
+
+`GET /production-jobs/:jobId/bom` kèm tóm tắt OQC (`inspectedQuantity`/`remainingQuantity`/
+`openCount`) cho mỗi công đoạn — đọc một chiều qua `getOqcSummaryByJobOperationIds`
+(`src/api/oqc/oqc.query.ts`, plain function, không qua DI) — `ProductionJobsModule` **không** import
+`OqcModule`, bất biến "Production không biết OQC tồn tại" vẫn giữ (chỉ nới ở chiều đọc hiển thị).
+
+### AQL auto-suggest (`GET /oqc/aql-plan`)
+
+Route mới, trả `{codeLetter, sampleSize, ac, re}` tra từ `resolveAqlPlan()` theo `quantity`
+(lot size)/`inspectionLevel`/`aqlLevel` — tra hụt (bảng `SAMPLING_PLAN` chưa phủ hết mọi tổ hợp)
+trả `E200`. FE gọi route này để gợi ý `sampleSize` trước khi QC nhập `defectQty`.
+
+⚠️ Bảng `SAMPLING_PLAN` (`src/api/iqc/iqc-aql.constant.ts`) do Claude tự điền lại từ kiến thức
+chuẩn ANSI/ASQ Z1.4 (không tra trực tiếp bản giấy gốc) — **bắt buộc QC/kỹ thuật đối chiếu từng ô**
+với bảng chính thức và ký duyệt trước khi coi là số liệu go-live. Dùng chung với IQC (không nhân
+đôi bảng), nhưng chỉ OQC dùng để **auto-suy `result`** — IQC vẫn giữ hành vi cũ (QC tự chọn `result`
+hoàn toàn, bảng AQL chỉ tính `ac`/`re` tham khảo). Hai module cố tình lệch nhau ở điểm này, đừng
+"đồng bộ hoá" nhầm sau này.
 
 ### Lưu kết quả OQC (`POST /oqc/:oqcId/confirm`)
 
-1. Chặn nếu đã `COMPLETED` (`E177`) — mọi status khác (`NOT_INSPECTED`/`PENDING`) confirm lại được
-   nhiều lần, ghi đè toàn bộ mỗi lần gọi (field vắng mặt = xoá, cùng ngữ nghĩa `confirmIqc`).
-2. Nhận `inspectionLevel`/`aqlLevel`/`sampleSize`/`defectQty`/`result`/`resultNote?` — QC tự chọn
-   `result`, không suy từ Ac/Re (`GET /oqc/:oqcId` vẫn tính `ac`/`re` tham khảo qua
-   `resolveAqlPlan()`, cùng hạn chế `SAMPLING_PLAN` chưa điền hết như IQC).
-3. `confirmedBy`/`confirmedAt` chỉ ghi ở lần lưu đầu tiên — sửa lại kết quả (từ `PENDING` gọi lại)
-   không ghi đè mốc này, `updatedAt` đã ghi lại việc sửa.
-
-### Điều kiện tạo (`POST /oqc`)
-
-Nhận `productionJobId!`, `quantity!` (lot size), `inspectionDate!`, `code?`, `note?`. Server tự suy
-`itemId = job.itemId`.
-
-1. Job phải `IN_PROGRESS` (`E175`) — Job không tồn tại dùng lại `E082`
-   (`production_job.error.not_found`, cùng ngữ nghĩa `production-jobs`, không mint mã mới).
-2. Tổng `quantity` mọi OQC **chưa xoá** (mọi `status`, kể cả `NOT_INSPECTED`/`PENDING` đang giữ
-   chỗ — không chỉ `COMPLETED`) của cùng `productionJobId`, cộng lô mới, không được vượt
-   `production_jobs.quantity` (SL kế hoạch) — vượt thì `E176`. Cho phép kiểm nhiều lần từng phần
-   (partial) cộng dồn tới đủ SL kế hoạch.
+1. Chặn nếu đã `COMPLETED` (`E177`) — mọi status khác (`NOT_INSPECTED`/`PENDING`/`REWORK`) confirm
+   lại được nhiều lần, ghi đè toàn bộ mỗi lần gọi (field vắng mặt = xoá).
+2. Nhận `inspectionLevel!`/`aqlLevel!`/`defectQty!` bắt buộc; `sampleSize?`/`result?` giờ **tuỳ
+   chọn** — vắng thì server tự điền (`sampleSize` từ plan AQL, `result` từ `resultAuto`); cả
+   `result` lẫn `resultAuto` đều vắng (không tra được plan, QC cũng không tự chọn) → `E200`.
+3. `disposition?`/`dispositionNote?` — chỉ hợp lệ khi `result` cuối cùng = FAIL (`E202` nếu PASS mà
+   vẫn gửi).
+4. `confirmedBy`/`confirmedAt` chỉ ghi ở lần lưu đầu tiên. `resolvedBy`/`resolvedAt` chỉ ghi khi
+   `disposition` **mới xuất hiện** lần đầu — cùng khuôn IQC.
 
 ### Xoá phiếu (`DELETE /oqc/:oqcId`)
 
 Chỉ hợp lệ khi `status = NOT_INSPECTED` ("chưa kiểm", trước khi QC lưu kết quả lần đầu) — ngược
 lại `E178`. Hard delete, không soft-delete (bảng không có `deletedAt`, không có bảng con nào phải
-dọn kèm — khác IQC không có route xoá vì luôn phải giữ vết `disposition`/`supplier_returns`).
+dọn kèm). `REWORK` **không** xoá được (đã từng confirm) — chỉ tiếp tục sửa qua `confirm`, không có
+đường xoá riêng cho nhánh rework.
 
 ### Business rules
 
 - `code` bất biến, unique, tự sinh `OQC-{năm}-{đếm trong năm + 1, pad 5}` nếu không gửi — cùng
-  khuôn `IQC-*`/`PNK-*`/`PXK-*`/`PTNCC-*`. Cho phép client gửi `code` ghi đè (khuôn `CreateIqcReqDto`
-  — cùng họ `quality`, khác quy ước `outsourcing` không nhận `code` từ client).
+  khuôn `IQC-*`/`PNK-*`/`PXK-*`/`PTNCC-*`. Cho phép client gửi `code` ghi đè.
 - Không có file đính kèm bằng chứng đợt này — khác IQC (`iqc_attachments`), có thể mở rộng sau theo
   đúng khuôn `replaceAttachments`/discriminator `kind` nếu cần.
-- "PO" hiển thị trên màn OQC = `orders.code` (tên hiển thị chính thức trong repo, xem
-  `ProductionJobResDto.orderCode`, description `'Mã đơn hàng (PO)'`) — tính lúc đọc bằng join
-  `production_jobs → production_orders → orders`, **không lưu cột** (LSX/đơn hàng đổi tên sau vẫn
-  hiển thị đúng).
+- "PO" hiển thị trên màn OQC = `orders.code` — tính lúc đọc bằng join
+  `production_jobs → production_orders → orders`, **không lưu cột**.
+- Công đoạn Cấp 0 của chính FG (`routings`/`routing_operations`) vẫn không có nơi để QC riêng —
+  không tạo bảng mới cho tầng đó (quyết định đã chốt, xem
+  `docs/decisions/oqc-per-operation.md`); gate nhập kho TP (`E196`) là thứ gần nhất thay thế được.
 
 ### Cross-domain dependencies
 
-- **← Production**: `productionJobId` bắt buộc trỏ tới một Job `IN_PROGRESS` lúc tạo — đọc một
-  chiều, Production không biết gì về OQC (cùng khuôn `outsourcing_orders`,
-  `docs/domains/production.md`).
-- **→ Inventory**: `POST /inventory-receipts/:id/confirm` với `receiptType = PRODUCTION` chặn
-  (`E180`) nếu tổng SL các dòng phiếu (cộng dồn mọi phiếu PRODUCTION khác cùng Job, trừ chính
-  phiếu này) vượt tổng `quantity` các OQC `COMPLETED` (PASS) của Job đó —
-  `getPassedOqcQuantityByJobId` (`src/api/oqc/oqc.query.ts`, plain function, không DI). Đây là chốt
-  chặn nhập kho thành phẩm duy nhất trong hệ thống theo kết quả QC — xem
-  `docs/domains/inventory.md`.
+- **← Production**: `productionJobOperationId` bắt buộc trỏ tới một công đoạn của Job `IN_PROGRESS`
+  lúc tạo — đọc một chiều. `GET /production-jobs/:jobId/bom` đọc ngược tóm tắt OQC để hiển thị,
+  nhưng vẫn qua plain function, không import module — Production không biết OQC tồn tại theo nghĩa
+  dependency injection.
+- **→ Inventory (Gate nhập kho TP)**: `POST /inventory-receipts/:id/confirm` với
+  `receiptType = PRODUCTION` chặn nếu Job chưa có phiếu OQC nào hoặc còn phiếu nào chưa `COMPLETED`
+  (`E196`) — `getJobOqcClearance` (`src/api/oqc/oqc.query.ts`, plain function, không DI). SL nhập
+  (cộng dồn mọi phiếu PRODUCTION khác cùng Job) vẫn chặn trần theo `production_jobs.quantity`
+  (`E197`, không còn so với SL OQC PASS như thiết kế cũ — xem
+  `docs/decisions/oqc-per-operation.md`). Xem `docs/domains/inventory.md`.
+- **→ Inventory (Gate giao hàng)**: `POST /outbound-orders/:id/confirm` (`DRAFT →
+  PENDING_DELIVERY`) chặn (`E205`) nếu còn Job nào (suy từ `outbound_order_items.productionJobId`)
+  chưa qua hết OQC — tái dùng nguyên `getJobOqcClearance`. Xem `docs/domains/inventory.md`.
 
 ## Related docs
 
-- `docs/domains/inventory.md` — `supplier_returns`, nơi IQC `WAITING_RETURN` nối vào; gate nhập kho
-  TP theo OQC PASS.
-- `docs/domains/production.md` — `production_jobs`, nơi OQC trace tới.
-- `docs/workflows/final-qc.md` — luồng đầy đủ OQC: tạo → confirm (PASS/FAIL lặp lại) → nhập kho TP.
+- `docs/domains/inventory.md` — `supplier_returns`, nơi IQC `WAITING_RETURN` nối vào; gate xuất kho
+  sản xuất theo IQC; gate nhập kho TP + gate giao hàng theo OQC.
+- `docs/domains/production.md` — `production_jobs`/`production_job_operations`, nơi OQC gắn vào.
+- `docs/workflows/final-qc.md` — luồng đầy đủ OQC: "Yêu cầu QC" từ production → confirm (auto-suggest
+  + rework) → 2 gate nhập kho/giao hàng.
+- `docs/workflows/stock-movement.md` — gate IQC chặn xuất kho sản xuất.
 - `docs/workflows/supplier-return.md` — luồng đầy đủ từ disposition tới hoàn tất IQC.
 - `docs/workflows/outsourcing-round-trip.md` — luồng OS-OUT → OS-IN → QC tuỳ chọn (đường tạo thứ
   ba vào bảng này).
+- `docs/decisions/oqc-per-operation.md` — vì sao OQC đổi từ gắn Job sang gắn công đoạn.
+- `docs/decisions/qc-gates-on-stock-moves.md` — vì sao thêm gate IQC/OQC vào luồng xuất/nhập kho.
 - `docs/domains/purchasing.md` — `purchaseOrders` mà IQC trace tới.
 - `docs/domains/partners.md` — `suppliers` mà IQC bắt buộc gắn vào.

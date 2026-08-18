@@ -13,6 +13,8 @@ import {
   inventoryIssues,
   inventoryReceipts,
   inventoryTransactions,
+  outsourcingOrders,
+  supplierReturns,
   warehouses,
   WarehouseStatus,
 } from '../../database/schemas';
@@ -167,28 +169,55 @@ export class WarehousesService {
     }
   }
 
+  /** Kiểm trực tiếp từng bảng có `warehouseId` FK `restrict`, không suy qua
+   * `inventory_transactions`/`inventory_balances` — gia công ngoài không còn ghi hai bảng đó
+   * (`docs/decisions/wip-not-stocked.md`), nên một kho chỉ được `outsourcing_orders`/
+   * `supplier_returns` tham chiếu vẫn phải chặn ở đây, không thì rơi thẳng xuống lỗi FK constraint
+   * thô (500) ở `deleteWarehouse`. `outsourcing_receipts` không còn cột `warehouseId` (gia công
+   * ngoài không gắn kho nhận — WIP không quản theo kho, xem `docs/decisions/wip-not-stocked.md`). */
   private async ensureWarehouseNotInUse(warehouseId: string): Promise<void> {
-    const [usedInReceipt, usedInIssue, usedInTransaction, usedInBalance] =
-      await Promise.all([
-        this.db.query.inventoryReceipts.findFirst({
-          columns: { id: true },
-          where: eq(inventoryReceipts.warehouseId, warehouseId),
-        }),
-        this.db.query.inventoryIssues.findFirst({
-          columns: { id: true },
-          where: eq(inventoryIssues.warehouseId, warehouseId),
-        }),
-        this.db.query.inventoryTransactions.findFirst({
-          columns: { id: true },
-          where: eq(inventoryTransactions.warehouseId, warehouseId),
-        }),
-        this.db.query.inventoryBalances.findFirst({
-          columns: { id: true },
-          where: eq(inventoryBalances.warehouseId, warehouseId),
-        }),
-      ]);
+    const [
+      usedInReceipt,
+      usedInIssue,
+      usedInTransaction,
+      usedInBalance,
+      usedInOutsourcingOrder,
+      usedInSupplierReturn,
+    ] = await Promise.all([
+      this.db.query.inventoryReceipts.findFirst({
+        columns: { id: true },
+        where: eq(inventoryReceipts.warehouseId, warehouseId),
+      }),
+      this.db.query.inventoryIssues.findFirst({
+        columns: { id: true },
+        where: eq(inventoryIssues.warehouseId, warehouseId),
+      }),
+      this.db.query.inventoryTransactions.findFirst({
+        columns: { id: true },
+        where: eq(inventoryTransactions.warehouseId, warehouseId),
+      }),
+      this.db.query.inventoryBalances.findFirst({
+        columns: { id: true },
+        where: eq(inventoryBalances.warehouseId, warehouseId),
+      }),
+      this.db.query.outsourcingOrders.findFirst({
+        columns: { id: true },
+        where: eq(outsourcingOrders.warehouseId, warehouseId),
+      }),
+      this.db.query.supplierReturns.findFirst({
+        columns: { id: true },
+        where: eq(supplierReturns.warehouseId, warehouseId),
+      }),
+    ]);
 
-    if (usedInReceipt || usedInIssue || usedInTransaction || usedInBalance) {
+    if (
+      usedInReceipt ||
+      usedInIssue ||
+      usedInTransaction ||
+      usedInBalance ||
+      usedInOutsourcingOrder ||
+      usedInSupplierReturn
+    ) {
       throw new AppException(ErrorCode.E095, HttpStatus.CONFLICT);
     }
   }

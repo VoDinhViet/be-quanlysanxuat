@@ -28,6 +28,11 @@ erDiagram
     CLIENTS ||--o{ ORDERS : đặt
     ORDERS ||--o{ ORDER_ITEMS : gồm
     ORDER_ITEMS }o--|| ITEMS : "item đặt (FG)"
+    CLIENTS ||--o{ OUTBOUND_ORDERS : "1 phiếu DO = 1 khách hàng"
+    WAREHOUSES ||--o{ OUTBOUND_ORDERS : "kho xuất TP (phase sau)"
+    OUTBOUND_ORDERS ||--o{ OUTBOUND_ORDER_ITEMS : "dòng giao"
+    ORDER_ITEMS ||--o{ OUTBOUND_ORDER_ITEMS : "dòng PO nguồn (giao nhiều lần)"
+    PRODUCTION_JOBS }o--o| OUTBOUND_ORDER_ITEMS : "snapshot Job hiển thị (tuỳ chọn)"
     ORDERS ||--o| PRODUCTION_ORDERS : "1 PO duyệt = 1 LSX"
     PRODUCTION_ORDERS ||--o{ PRODUCTION_ORDER_ITEMS : "quyết định SX"
     PRODUCTION_ORDER_ITEMS }o--|| ORDER_ITEMS : "1-1"
@@ -84,9 +89,13 @@ erDiagram
 
     WAREHOUSES ||--o{ OUTSOURCING_ORDERS : "kho gửi"
     SUPPLIERS ||--o{ OUTSOURCING_ORDERS : "NCC gia công"
-    PRODUCTION_JOB_OPERATIONS }o--o| OUTSOURCING_ORDERS : "anchor (Job IN_PROGRESS, type=OUTSOURCE)"
-    OUTSOURCING_ORDERS }o--|| ITEMS : "vật tư gửi/nhận"
-    OUTSOURCING_ORDERS ||--o{ OUTSOURCING_RECEIPTS : "nhận (partial)"
+    OUTSOURCING_ORDERS ||--o{ OUTSOURCING_ORDER_ITEMS : "dòng gửi"
+    PRODUCTION_JOB_OPERATIONS }o--o| OUTSOURCING_ORDER_ITEMS : "anchor (Job IN_PROGRESS, type=OUTSOURCE)"
+    OUTSOURCING_ORDER_ITEMS }o--|| ITEMS : "vật tư gửi"
+    SUPPLIERS ||--o{ OUTSOURCING_RECEIPTS : "NCC gia công"
+    OUTSOURCING_RECEIPTS ||--o{ OUTSOURCING_RECEIPT_ITEMS : "dòng nhận"
+    OUTSOURCING_ORDER_ITEMS ||--o{ OUTSOURCING_RECEIPT_ITEMS : "nhận (partial)"
+    OUTSOURCING_RECEIPT_ITEMS }o--|| ITEMS : "vật tư nhận (denormalized)"
     OUTSOURCING_RECEIPTS }o--o| IQC_INSPECTIONS : "sinh IQC nếu requiresIqc"
     IQC_INSPECTIONS }o--o| OUTSOURCING_RECEIPTS : "trace mức phiếu (tuỳ chọn)"
     SUPPLIER_RETURNS }o--o| OUTSOURCING_RECEIPTS : "trace mức phiếu (tuỳ chọn)"
@@ -139,15 +148,26 @@ cầu thanh toán nếu PO vừa đạt đủ hàng (`docs/domains/purchasing.md
 
 **Tạo OS-OUT/OS-IN** (`OutsourcingOrdersService.createOutsourcingOrder`/`OutsourcingReceiptsService.
 createOutsourcingReceipt`): không có bước nháp — `create` gộp luôn phần việc trước đây thuộc `post`
-(`docs/decisions/outsourcing-no-draft.md`). Validate mềm chạy trước, ngoài transaction (đọc
+(`docs/decisions/outsourcing-no-draft.md`), nhưng **không đụng `inventory_balances`/
+`inventory_transactions`** — mặt hàng gửi gia công ngoài luôn là WIP, kho không quản tồn WIP
+(`docs/decisions/wip-not-stocked.md`). Validate mềm chạy trước, ngoài transaction (đọc
 `production_job_operations.type`/`production_jobs.status` + `resolvePlannedQuantities` — chỉ đọc,
 không ghi ngược Production); trong transaction: `INSERT` header thẳng `POSTED` + `INSERT` mọi dòng
 (`.returning()`) → validate lại lần hai trên dữ liệu vừa insert (chốt chặn thật, loại chính phiếu
-đang tạo) → `InventoryPostingService.postDocument` một lần cho mỗi dòng. Riêng
-`createOutsourcingReceipt` có thêm một nhánh tuỳ chọn sau đó: nếu `requiresIqc = true`, cùng
-transaction gọi thêm `IqcService.createInspectionsFromOutsourcingReceipt(tx, ...)` — sinh N phiếu
-IQC (1/dòng phiếu), bắc cầu sang module `iqc`, nhưng **không** gate việc tạo phiếu (khác nhánh IQC
-của `inventory-receipts`). Chi tiết: `docs/workflows/outsourcing-round-trip.md`.
+đang tạo). Riêng `createOutsourcingReceipt` có thêm một nhánh tuỳ chọn sau đó: nếu
+`requiresIqc = true`, cùng transaction gọi thêm
+`IqcService.createInspectionsFromOutsourcingReceipt(tx, ...)` — sinh N phiếu IQC (1/dòng phiếu),
+bắc cầu sang module `iqc`, nhưng **không** gate việc tạo phiếu (khác nhánh IQC của
+`inventory-receipts`). Chi tiết: `docs/workflows/outsourcing-round-trip.md`.
+
+**Tạo DO** (`OutboundOrdersService.createOutboundOrder`, phase 1 — chỉ tạo nháp, xem
+`docs/domains/inventory.md`, mục "Giao hàng"): validate chạy trước transaction (đọc
+`order_items`/`orders`, chặn SL dòng vượt SL đặt — chỉ đọc, không ghi ngược Orders,
+`OutboundOrdersModule` không import `OrdersModule`, đọc thẳng qua `DRIZZLE` cùng lối
+`BomsModule`/`RoutingsModule` đọc `operations`); trong transaction: sinh mã `DO-{yyMMdd}-seq` (đếm
+trong ngày, trong tx) → `INSERT` header (`status = DRAFT`) + mọi dòng. Không đụng
+`inventory_balances`/`inventory_transactions` ở bước này — khác `createOutsourcingOrder` (POSTED
+ngay), DO vẫn ở `DRAFT`, phase sau mới có bước xác nhận giao.
 
 **Start Job** (`ProductionJobsService.startJob`, chỉ hợp lệ từ `PENDING`): đọc
 `production_job_materials` + `InventoryService.getMaterialStockLevels` (chỉ đọc, chạy trước
@@ -207,9 +227,16 @@ Chiều ngược lại (`post` phiếu trả cần hoàn tất IQC) **không** �
 trực tiếp như một import function — cùng lối thoát `purchase-orders.query.ts` đã dùng cho các đọc
 xuyên module không cần DI. Xem `docs/workflows/supplier-return.md`.
 
-`OutsourcingOrdersModule`/`OutsourcingReceiptsModule` đều import `InventoryModule` (cho
-`InventoryPostingService`) + `WarehousesModule`. Riêng `OutsourcingReceiptsModule` import thêm
-`IqcModule` (cho `createInspectionsFromOutsourcingReceipt`) — chiều ngược lại không tồn tại,
+`OutboundOrdersModule` chỉ import `AuthModule` (chuẩn)/`WarehousesModule` (cho
+`ensureWarehouseActive`) — **không** import `OrdersModule`/`InventoryModule`, đọc thẳng bảng
+`orders`/`order_items`/`production_jobs`/`inventory_balances` qua `DRIZZLE` khi cần (cùng lối
+`BomsModule`/`RoutingsModule` đọc `operations` ở dưới), vì phase 1 chỉ đọc, chưa gọi
+`InventoryPostingService`.
+
+`OutsourcingOrdersModule` chỉ import `WarehousesModule`; `OutsourcingReceiptsModule` chỉ import
+`IqcModule` (cho `createInspectionsFromOutsourcingReceipt`) — không import `WarehousesModule` (OS-IN
+không gắn kho, `docs/decisions/wip-not-stocked.md`). Cả hai **không** import `InventoryModule`, vì
+gia công ngoài không còn gọi `InventoryPostingService` (cùng quyết định). Chiều ngược lại không tồn tại,
 `IqcService` đọc bảng `outsourcing_receipts`/`outsourcing_receipt_items`/`outsourcing_order_items`
 thẳng qua `tx`/`this.db`, không cần DI ngược nên **không** tạo vòng lặp module như cặp
 `IqcModule`/`SupplierReturnsModule` ở trên. `OutsourcingOrdersModule` không import

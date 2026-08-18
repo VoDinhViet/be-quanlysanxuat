@@ -65,3 +65,5 @@ export const bomOperationsRelations = relations(bomOperations, ({ one }) => ({
     references: [users.id],
   }),
 }));
+
+export type BomOperationSelect = typeof bomOperations.$inferSelect;

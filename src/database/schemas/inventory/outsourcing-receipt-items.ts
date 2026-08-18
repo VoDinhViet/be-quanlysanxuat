@@ -18,9 +18,9 @@ import { items } from '../items/items';
 /**
  * Dòng phiếu nhận gia công ngoài (OS-IN) — mỗi dòng trỏ đúng 1 dòng OS-OUT nguồn
  * (`outsourcingOrderItemId`, `restrict` — dòng nguồn không được xoá khi còn dòng nhận trỏ vào).
- * `itemId` denormalize từ dòng OS-OUT, **server tự copy, không nhận từ client** — cần cho
- * `postDocument`/sinh IQC không phải join 2 tầng. `weight`/`area` mặc định copy từ dòng OS-OUT lúc
- * tạo, sửa được. Xem `docs/domains/inventory.md`.
+ * `itemId` denormalize từ dòng OS-OUT, **server tự copy, không nhận từ client** — cần cho sinh IQC
+ * không phải join 2 tầng. `weight`/`area` mặc định copy từ dòng OS-OUT lúc tạo, sửa được. Xem
+ * `docs/domains/inventory.md`.
  */
 export const outsourcingReceiptItems = pgTable(
   'outsourcing_receipt_items',

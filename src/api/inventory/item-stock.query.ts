@@ -9,7 +9,7 @@ import {
 
 /** Tồn theo item, gộp mọi kho — bản rút gọn của `InventoryService`'s balance subquery, không có
  * nhánh `asOfDate`/`warehouseId` vì hai nơi gọi hàm này luôn đọc tồn hiện tại, mọi kho. */
-export function itemOnHandSubquery(db: Database) {
+export function onHandQuantityByItemSubquery(db: Database) {
   return db
     .select({
       itemId: inventoryBalances.itemId,
@@ -57,9 +57,11 @@ export function jobMaterialDemandSubquery(
 }
 
 /** 4 cột số spread vào `.select()` — `available` cố ý có thể âm (nhu cầu vượt tồn thực tế);
- * `fromStock` không lưu ở đâu, luôn tính lại lúc đọc. */
+ * `fromStock` không lưu ở đâu, luôn tính lại lúc đọc. `available` ở đây = `onHand − bomDemand`
+ * (**không** trừ `reserved`) — khác `available` của `GET /inventory`
+ * (`inventory.service.ts`, `onHand − reserved − bomDemand`), đừng nhầm hai field cùng tên. */
 export function itemStockColumns(
-  balance: ReturnType<typeof itemOnHandSubquery>,
+  balance: ReturnType<typeof onHandQuantityByItemSubquery>,
   demand: ReturnType<typeof jobMaterialDemandSubquery>,
 ) {
   const onHandSql = sql<number>`coalesce(${balance.onHand}, 0)`;

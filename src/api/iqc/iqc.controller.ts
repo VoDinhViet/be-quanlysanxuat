@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpStatus,
   Patch,
@@ -105,5 +106,15 @@ export class IqcController {
     @Body() reqDto: UpdateIqcReqDto,
   ): Promise<void> {
     return this.iqcService.updateIqc(iqcId, reqDto);
+  }
+
+  @Delete(':iqcId')
+  @Permissions('iqc:delete')
+  @ApiAuth({
+    summary: 'Xoá phiếu IQC — chỉ khi còn NOT_INSPECTED',
+    statusCode: HttpStatus.NO_CONTENT,
+  })
+  deleteIqc(@UUIDParam('iqcId') iqcId: string): Promise<void> {
+    return this.iqcService.deleteIqc(iqcId);
   }
 }

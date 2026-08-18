@@ -47,6 +47,8 @@ export enum InventoryReferenceType {
   INVENTORY_RECEIPT = 'INVENTORY_RECEIPT',
   INVENTORY_ISSUE = 'INVENTORY_ISSUE',
   SUPPLIER_RETURN = 'SUPPLIER_RETURN',
+  // Gia công ngoài không còn ghi `inventory_transactions` (`docs/decisions/wip-not-stocked.md`) —
+  // giữ 2 giá trị này chỉ để tương thích bút toán cũ/`GET /inventory/transactions?referenceType=`.
   OUTSOURCING_ORDER = 'OUTSOURCING_ORDER',
   OUTSOURCING_RECEIPT = 'OUTSOURCING_RECEIPT',
 }

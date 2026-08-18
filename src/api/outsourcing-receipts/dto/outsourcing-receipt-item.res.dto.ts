@@ -8,8 +8,9 @@ import {
   StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
-import { ItemUnitRefResDto } from '../../items/dto/item-unit-ref.res.dto';
+import { ItemRefResDto } from '../../items/dto/item-ref.res.dto';
 import { OutsourcingOrderRefResDto } from '../../outsourcing-orders/dto/outsourcing-order-ref.res.dto';
+import { UnitResDto } from '../../units/dto/unit.res.dto';
 
 @Exclude()
 export class OutsourcingReceiptItemResDto {
@@ -22,8 +23,12 @@ export class OutsourcingReceiptItemResDto {
   outsourcingOrder!: OutsourcingOrderRefResDto;
 
   @Expose()
-  @ClassField(() => ItemUnitRefResDto)
-  item!: ItemUnitRefResDto;
+  @ClassField(() => ItemRefResDto)
+  item!: ItemRefResDto;
+
+  @Expose()
+  @ClassField(() => UnitResDto)
+  unit!: UnitResDto;
 
   @Expose()
   @StringField({ description: 'Mã công đoạn (theo dòng OS-OUT nguồn)' })

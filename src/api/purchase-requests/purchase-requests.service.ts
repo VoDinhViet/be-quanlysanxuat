@@ -35,7 +35,7 @@ import {
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import {
-  itemOnHandSubquery,
+  onHandQuantityByItemSubquery,
   itemStockColumns,
   jobMaterialDemandSubquery,
 } from '../inventory/item-stock.query';
@@ -185,7 +185,7 @@ export class PurchaseRequestsService {
       productionOrderId: string | null;
     },
   ) {
-    const balance = itemOnHandSubquery(this.db);
+    const balance = onHandQuantityByItemSubquery(this.db);
     const demand = jobMaterialDemandSubquery(this.db, scope);
 
     const rows = await this.db

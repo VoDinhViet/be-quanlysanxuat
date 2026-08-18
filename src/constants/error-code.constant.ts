@@ -319,15 +319,16 @@ export enum ErrorCode {
   // postSupplierReturn`) khi dòng IQC không còn `WAITING_RETURN`.
   E164 = 'iqc_inspection.error.not_waiting_return',
   E165 = 'outsourcing_order.error.not_found',
-  // Tạo OS-OUT trên một `productionJobOperationId` mà công đoạn snapshot không phải `OUTSOURCE` —
-  // đọc `production_job_operations.type` (đóng băng lúc duyệt LSX), không đọc `operations.type`
-  // sống.
+  // E166 (outsourcing_order.error.operation_not_outsource) dự phòng — trước ném khi snapshot
+  // `productionJobOperationId` không phải `type = OUTSOURCE`; `createOutsourcingOrder` không còn
+  // resolve/validate công đoạn phía server, client gửi thẳng các cột của dòng
+  // (`docs/decisions/outsourcing-no-draft.md`).
   E166 = 'outsourcing_order.error.operation_not_outsource',
-  // Tạo OS-OUT khi Job của công đoạn đó chưa/không còn `IN_PROGRESS` — khác `E087` (ném từ chính
-  // module Job khi cập nhật tiến độ công đoạn).
+  // E167 (outsourcing_order.error.job_not_in_progress) dự phòng — cùng lý do bỏ như E166; trước
+  // ném khi Job của công đoạn chưa/không còn `IN_PROGRESS`.
   E167 = 'outsourcing_order.error.job_not_in_progress',
-  // Node BOM snapshot của công đoạn đã mất `itemId` (`set null` — item gốc bị xoá) nên không suy
-  // được mặt hàng để ghi bút toán.
+  // E168 (outsourcing_order.error.item_not_resolvable) dự phòng — cùng lý do bỏ như E166; trước
+  // ném khi node BOM snapshot mất `itemId`.
   E168 = 'outsourcing_order.error.item_not_resolvable',
   // Huỷ OS-OUT đã `POSTED` khi còn `outsourcing_receipts` nào chưa `CANCELLED` trỏ vào.
   E169 = 'outsourcing_order.error.has_receipts',
@@ -353,17 +354,18 @@ export enum ErrorCode {
   // Xoá phiếu OQC khi không còn `NOT_INSPECTED`.
   E178 = 'oqc_inspection.error.not_deletable',
   E179 = 'inventory_receipt.error.production_job_required',
-  // SL các dòng phiếu nhập `PRODUCTION` (cộng dồn mọi phiếu khác cùng Job) vượt tổng SL các dòng
-  // OQC đã `COMPLETED` (PASS) của Job đó — khác `E154` (vượt SL đặt dòng PO) và `E172` (vượt SL
-  // gửi OS-OUT).
+  // E180 (inventory_receipt.error.oqc_pass_quantity_exceeded) dự phòng — OQC đổi từ gắn theo Job
+  // sang gắn theo công đoạn (`docs/decisions/oqc-per-operation.md`), SL OQC giờ ở đơn vị part, so
+  // trực tiếp với SL nhập kho (đơn vị FG) là sai đơn vị. Thay bằng `E196`/`E197`.
   E180 = 'inventory_receipt.error.oqc_pass_quantity_exceeded',
   E181 = 'oqc_inspection.error.code_exists',
   E182 = 'outsourcing_order.error.items_required',
   // Hai dòng trong cùng payload OS-OUT trỏ cùng một `productionJobOperationId` — mỗi công đoạn chỉ
   // được xuất hiện một lần trên một phiếu.
   E183 = 'outsourcing_order.error.duplicate_operation',
-  // SL gửi (cộng dồn mọi dòng OS-OUT khác cùng `productionJobOperationId`, cộng SL payload) vượt
-  // SL kế hoạch của node BOM đó (`resolvePlannedQuantities`) — khác `E172` (chặn ở đầu nhận, OS-IN).
+  // E184 (outsourcing_order.error.planned_quantity_exceeded) dự phòng — trước ném khi Σ SL gửi
+  // (cộng dồn theo `productionJobOperationId`) vượt SL kế hoạch của node BOM
+  // (`resolvePlannedQuantities`); cùng lý do bỏ như E166 — không còn validate phía server.
   E184 = 'outsourcing_order.error.planned_quantity_exceeded',
   E185 = 'outsourcing_receipt.error.items_required',
   // Hai dòng trong cùng payload OS-IN trỏ cùng một `outsourcingOrderItemId`.
@@ -371,5 +373,66 @@ export enum ErrorCode {
   // Dòng trỏ tới một `outsourcingOrderItemId` mà NCC của OS-OUT chứa nó khác `supplierId` của
   // header OS-IN — bất biến "1 phiếu OS-IN = 1 NCC".
   E187 = 'outsourcing_receipt.error.supplier_mismatch',
+  // E188 (outbound_order.error.items_required) dự phòng — trước ném khi `items[]` rỗng;
+  // `createOutboundOrder` không còn resolve/validate dòng phía server (lý do ở comment hàm đó).
+  E188 = 'outbound_order.error.items_required',
+  // E189 (outbound_order.error.duplicate_order_item) dự phòng — trước ném khi 2 dòng cùng payload
+  // trỏ cùng một `orderItemId`; giao một dòng PO nhiều lần là hợp lệ theo thiết kế
+  // (`outbound_order_items`, doc-comment của bảng).
+  E189 = 'outbound_order.error.duplicate_order_item',
+  // E190 (outbound_order.error.order_item_not_found) dự phòng — cùng lý do bỏ như E188.
+  E190 = 'outbound_order.error.order_item_not_found',
+  // E191 (outbound_order.error.order_item_not_deliverable) dự phòng — cùng lý do bỏ như E188;
+  // trước ném khi dòng PO đã bị huỷ (`order_items.status = CANCELLED`), đơn đã xoá mềm, hoặc đơn
+  // chưa/không còn ở trạng thái được phép giao (`AWAITING_PRODUCTION`/`IN_PROGRESS`).
+  E191 = 'outbound_order.error.order_item_not_deliverable',
+  // E192 (outbound_order.error.client_mismatch) dự phòng — cùng lý do bỏ như E188; trước ném khi
+  // `order_items` trỏ tới một đơn có `clientId` khác `clientId` của header DO.
+  E192 = 'outbound_order.error.client_mismatch',
+  // E193 (outbound_order.error.quantity_exceeds_ordered) dự phòng — cùng lý do bỏ như E188; trước
+  // ném khi SL dòng vượt SL đặt của `order_items` đó (`order_items.quantity`).
+  E193 = 'outbound_order.error.quantity_exceeds_ordered',
+  // E194 (outbound_order.error.quantity_exceeds_deliverable) dự phòng — chặn theo tồn kho/giữ chỗ
+  // kiểu ATP đã gỡ khỏi `create`, chờ thiết kế lại "giữ trước".
+  E194 = 'outbound_order.error.quantity_exceeds_deliverable',
+  E195 = 'outbound_order.error.not_found',
+  // Nhập kho thành phẩm (`receiptType = PRODUCTION`) khi Job chưa có phiếu OQC nào, hoặc còn phiếu
+  // OQC nào chưa `COMPLETED` (`NOT_INSPECTED`/`PENDING`/`REWORK`) — thay `E180` cũ (so SL, giờ đổi
+  // sang so trạng thái vì đơn vị OQC không còn khớp đơn vị FG).
+  E196 = 'inventory_receipt.error.oqc_not_completed',
+  // SL các dòng phiếu nhập `PRODUCTION` (cộng dồn mọi phiếu khác đã `confirm` cùng Job, trừ chính
+  // phiếu này) vượt `production_jobs.quantity` (SL kế hoạch) — khác `E154` (vượt SL đặt dòng PO) và
+  // `E172` (vượt SL gửi OS-OUT).
+  E197 = 'inventory_receipt.error.job_planned_quantity_exceeded',
+  // Σ `quantity` mọi OQC (trừ dòng `disposition = SCRAP`) của một công đoạn, cộng lô mới, vượt
+  // `completedQuantity` hiện tại của chính công đoạn đó — QC không được xin kiểm nhiều hơn phần
+  // xưởng đã báo hoàn thành.
+  E198 = 'oqc_inspection.error.operation_completed_quantity_insufficient',
+  // Node BOM chứa công đoạn đã mất `itemId` (item gốc bị xoá, `set null`) — không snapshot được
+  // `partCode`/`partName` để tạo OQC.
+  E199 = 'oqc_inspection.error.item_not_resolvable',
+  // `GET /oqc/aql-plan` không tra được plan (lot size/inspection level/AQL rơi vào ô bảng chuẩn
+  // chưa điền — xem `iqc-aql.constant.ts`); hoặc `confirmOqc` không có cả `result` gửi lên lẫn
+  // `resultAuto` tự suy để dùng làm mặc định.
+  E200 = 'oqc_inspection.error.aql_plan_not_found',
+  // `result` gửi lên khác `resultAuto` (Ac/Re tự suy từ `defectQty`) mà thiếu `resultNote` — ghi đè
+  // auto-suggest phải có lý do, có vết.
+  E201 = 'oqc_inspection.error.result_override_reason_required',
+  // `result` cuối cùng = PASS mà vẫn gửi `disposition` — disposition chỉ có ý nghĩa khi FAIL
+  // (`chk_oqc_inspections_disposition_requires_fail`).
+  E202 = 'oqc_inspection.error.disposition_not_allowed_for_pass',
+  // `postInventoryIssue` (`issueType = PRODUCTION`) khi còn ≥1 phiếu IQC chưa `COMPLETED` của cùng
+  // (item, kho) — vật tư chưa qua IQC (hoặc IQC còn FAIL chưa xử lý) không được xuất cho sản xuất.
+  // Chỉ tính IQC suy được kho qua `inventoryReceipt.warehouseId`; IQC tạo tay/từ OS-IN không suy
+  // được kho thì bỏ qua, không chặn (`docs/decisions/qc-gates-on-stock-moves.md`).
+  E203 = 'inventory_issue.error.iqc_pending',
+  // `DELETE /iqc/:iqcId` khi đã từng `confirm` (`confirmedAt` khác null) — chỉ xoá được phiếu chưa
+  // ai đụng vào, khuôn `E178` (OQC) nhưng mint riêng vì hai domain khác nhau.
+  E206 = 'iqc_inspection.error.not_deletable',
+  // `POST /outbound-orders/:id/confirm` khi phiếu không còn `DRAFT`.
+  E204 = 'outbound_order.error.not_confirmable',
+  // Còn ≥1 Job (suy từ `outbound_order_items.productionJobId`, bỏ qua dòng `null`) chưa qua hết
+  // OQC (`getJobOqcClearance`, tái dùng `E196`) — hàng lỗi/chưa kiểm chưa được giao cho khách.
+  E205 = 'outbound_order.error.oqc_not_completed',
   V003 = 'common.error.too_many_requests',
 }

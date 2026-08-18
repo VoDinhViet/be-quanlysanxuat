@@ -1,6 +1,6 @@
 import { Exclude, Expose } from 'class-transformer';
 
-import { InventoryDocumentStatus } from '../../../database/schemas';
+import { OutsourcingOrderStatus } from '../../../database/schemas';
 import {
   DateField,
   EnumField,
@@ -22,8 +22,8 @@ export class OutsourcingOrderRefResDto {
   code!: string;
 
   @Expose()
-  @EnumField(() => InventoryDocumentStatus)
-  status!: InventoryDocumentStatus;
+  @EnumField(() => OutsourcingOrderStatus)
+  status!: OutsourcingOrderStatus;
 
   @Expose()
   @DateField({ description: 'Ngày gửi' })

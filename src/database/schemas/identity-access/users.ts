@@ -49,9 +49,12 @@ export const users = pgTable(
     phoneNumber: varchar('phone_number', { length: 30 }),
     email: varchar('email', { length: 255 }),
     address: varchar('address', { length: 500 }),
-    avatarFileId: uuid('avatar_file_id').references(() => files.id, {
-      onDelete: 'set null',
-    }),
+    avatarFileId: uuid('avatar_file_id').references(
+      (): AnyPgColumn => files.id,
+      {
+        onDelete: 'set null',
+      },
+    ),
     departmentId: uuid('department_id')
       .notNull()
       .references(() => departments.id, { onDelete: 'restrict' }),

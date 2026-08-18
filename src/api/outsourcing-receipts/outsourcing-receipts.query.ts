@@ -1,28 +1,20 @@
-import { and, eq, inArray, ne, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
-  InventoryDocumentStatus,
-  iqcInspections,
-  IqcStatus,
   outsourcingReceiptItems,
   outsourcingReceipts,
+  OutsourcingReceiptStatus,
 } from '../../database/schemas';
 
 /** Σ SL đã nhận theo từng dòng OS-OUT (`outsourcingOrderItemId`) — dùng cho popup "chọn hàng cần
- * nhận", validate `E172` (create OS-IN), và tính tiến độ dòng OS-OUT. `statuses` luôn chỉ còn
- * `[POSTED]` (không còn phiếu nào ở `DRAFT`). `excludeReceiptId` bắt buộc phải truyền = chính phiếu
- * đang tạo khi gọi từ transaction `create` — header đã `INSERT` với `POSTED` ngay trong `tx` đó nên
- * nhìn thấy chính dòng của nó, không loại sẽ bị cộng dồn hai lần. */
+ * nhận", validate `E172` (create OS-IN), và tính tiến độ dòng OS-OUT. Chỉ tính phiếu `POSTED`
+ * (không còn phiếu nào ở `DRAFT`). */
 export async function getReceivedQuantityByOrderItemIds(
   db: Database | DbTransaction,
-  params: {
-    orderItemIds: string[];
-    statuses: InventoryDocumentStatus[];
-    excludeReceiptId?: string;
-  },
+  orderItemIds: string[],
 ): Promise<Map<string, number>> {
-  if (!params.orderItemIds.length) {
+  if (!orderItemIds.length) {
     return new Map();
   }
 
@@ -41,14 +33,8 @@ export async function getReceivedQuantityByOrderItemIds(
     )
     .where(
       and(
-        inArray(
-          outsourcingReceiptItems.outsourcingOrderItemId,
-          params.orderItemIds,
-        ),
-        inArray(outsourcingReceipts.status, params.statuses),
-        params.excludeReceiptId
-          ? ne(outsourcingReceipts.id, params.excludeReceiptId)
-          : undefined,
+        inArray(outsourcingReceiptItems.outsourcingOrderItemId, orderItemIds),
+        eq(outsourcingReceipts.status, OutsourcingReceiptStatus.POSTED),
       ),
     )
     .groupBy(outsourcingReceiptItems.outsourcingOrderItemId);
@@ -56,31 +42,25 @@ export async function getReceivedQuantityByOrderItemIds(
   return new Map(rows.map((row) => [row.outsourcingOrderItemId, row.received]));
 }
 
-/** Tập `outsourcingReceiptId` còn ≥ 1 dòng IQC chưa `COMPLETED` — dùng cho `progress` (OS-IN),
- * tính hàng loạt theo trang thay vì gọi lại mỗi dòng. */
-export async function getReceiptIdsWithPendingIqc(
-  db: Database | DbTransaction,
-  outsourcingReceiptIds: string[],
-): Promise<Set<string>> {
-  if (!outsourcingReceiptIds.length) {
-    return new Set();
-  }
-
-  const rows = await db
-    .selectDistinct({
-      outsourcingReceiptId: iqcInspections.outsourcingReceiptId,
+/** Bản subquery-table của `getReceivedQuantityByOrderItemIds` — cùng logic SUM, cố định `POSTED` —
+ * để LEFT JOIN thẳng vào SELECT hiển thị (`OutsourcingOrdersService.getOrderItems`) thay vì
+ * round-trip `Map` riêng. Nơi validate `E172` (create OS-IN) vẫn dùng bản `Map` vì không có SELECT
+ * nào để join vào. */
+export function receivedQuantityByOrderItemIdSubquery(db: Database) {
+  return db
+    .select({
+      outsourcingOrderItemId: outsourcingReceiptItems.outsourcingOrderItemId,
+      receivedQuantity:
+        sql<number>`coalesce(sum(${outsourcingReceiptItems.quantity}), 0)`
+          .mapWith(Number)
+          .as('received_quantity'),
     })
-    .from(iqcInspections)
-    .where(
-      and(
-        inArray(iqcInspections.outsourcingReceiptId, outsourcingReceiptIds),
-        ne(iqcInspections.status, IqcStatus.COMPLETED),
-      ),
-    );
-
-  return new Set(
-    rows.flatMap((row) =>
-      row.outsourcingReceiptId ? [row.outsourcingReceiptId] : [],
-    ),
-  );
+    .from(outsourcingReceiptItems)
+    .innerJoin(
+      outsourcingReceipts,
+      eq(outsourcingReceipts.id, outsourcingReceiptItems.outsourcingReceiptId),
+    )
+    .where(eq(outsourcingReceipts.status, OutsourcingReceiptStatus.POSTED))
+    .groupBy(outsourcingReceiptItems.outsourcingOrderItemId)
+    .as('received_quantity_by_order_item');
 }

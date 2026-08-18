@@ -1,6 +1,10 @@
 import { Exclude, Expose } from 'class-transformer';
 
-import { IqcResult, OqcStatus } from '../../../database/schemas';
+import {
+  IqcResult,
+  OqcDisposition,
+  OqcStatus,
+} from '../../../database/schemas';
 import {
   ClassField,
   ClassFieldOptional,
@@ -35,6 +39,22 @@ export class PageOqcResDto {
   orderCode!: string | null;
 
   @Expose()
+  @StringField({ description: 'Mã công đoạn (snapshot lúc tạo)' })
+  operationCode!: string;
+
+  @Expose()
+  @StringField({ description: 'Tên công đoạn (snapshot lúc tạo)' })
+  operationName!: string;
+
+  @Expose()
+  @StringField({ description: 'Mã part (snapshot BOM của Job)' })
+  partCode!: string;
+
+  @Expose()
+  @StringField({ description: 'Tên chi tiết (snapshot BOM của Job)' })
+  partName!: string;
+
+  @Expose()
   @ClassField(() => ItemUnitRefResDto)
   item!: ItemUnitRefResDto;
 
@@ -53,6 +73,13 @@ export class PageOqcResDto {
   @Expose()
   @EnumField(() => OqcStatus)
   status!: OqcStatus;
+
+  @Expose()
+  @EnumFieldOptional(() => OqcDisposition, {
+    nullable: true,
+    description: 'Cách xử lý khi FAIL',
+  })
+  disposition!: OqcDisposition | null;
 
   @Expose()
   @StringFieldOptional({ nullable: true, description: 'Ghi chú' })

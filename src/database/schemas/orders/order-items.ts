@@ -105,3 +105,5 @@ export const orderItemsRelations = relations(orderItems, ({ one }) => ({
     references: [items.id],
   }),
 }));
+
+export type OrderItemSelect = typeof orderItems.$inferSelect;

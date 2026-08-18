@@ -19,13 +19,10 @@ import { productionJobOperations } from '../production/production-job-operations
 import { productionJobs } from '../production/production-jobs';
 
 /**
- * Dòng phiếu gửi gia công ngoài (OS-OUT) — mỗi dòng bắt buộc gắn `productionJobOperationId` của một
- * Job đang `IN_PROGRESS`, công đoạn snapshot `type = OUTSOURCE` — validate ở service
- * (`OutsourcingOrdersService.createOutsourcingOrder`), không phải DB CHECK. `plannedQuantity`/
- * `sentBeforeQuantity` là **snapshot chỉ để hiển thị/in** lúc tạo dòng, nullable vì dữ liệu backfill
- * từ thiết kế bảng-phẳng trước đó không dựng lại được cây BOM lịch sử — mọi validate đọc số sống,
- * không đọc hai cột này (`docs/domains/inventory.md`). Xem
- * `docs/workflows/outsourcing-round-trip.md`.
+ * Dòng phiếu gửi gia công ngoài (OS-OUT) — client gửi đủ cột (`itemId`/`productionJobId`/
+ * `operationCode`/`operationName`/...) lấy từ popup `GET .../outsourceable-operations`, server
+ * không resolve/validate lại — chỉ FK + `.notNull()` ràng buộc
+ * (`docs/decisions/outsourcing-no-draft.md`). Xem `docs/workflows/outsourcing-round-trip.md`.
  */
 export const outsourcingOrderItems = pgTable(
   'outsourcing_order_items',
@@ -61,18 +58,6 @@ export const outsourcingOrderItems = pgTable(
       scale: 3,
       mode: 'number',
     }).notNull(),
-    // Snapshot chỉ để hiển thị/in — KHÔNG dùng để validate, nullable vì backfill không tính lại
-    // được (cần cây BOM của Job tại đúng thời điểm lịch sử).
-    plannedQuantity: numeric('planned_quantity', {
-      precision: 18,
-      scale: 3,
-      mode: 'number',
-    }),
-    sentBeforeQuantity: numeric('sent_before_quantity', {
-      precision: 18,
-      scale: 3,
-      mode: 'number',
-    }),
     weight: numeric('weight', { precision: 12, scale: 3, mode: 'number' }),
     area: numeric('area', { precision: 12, scale: 3, mode: 'number' }),
     note: varchar('note', { length: 500 }),
