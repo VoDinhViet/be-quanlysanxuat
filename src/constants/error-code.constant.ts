@@ -434,5 +434,8 @@ export enum ErrorCode {
   // Còn ≥1 Job (suy từ `outbound_order_items.productionJobId`, bỏ qua dòng `null`) chưa qua hết
   // OQC (`getJobOqcClearance`, tái dùng `E196`) — hàng lỗi/chưa kiểm chưa được giao cho khách.
   E205 = 'outbound_order.error.oqc_not_completed',
+  // `PATCH /users/:userId` gửi `credential` cho user chưa có tài khoản đăng nhập nhưng thiếu
+  // `password` — tạo credential mới thì mật khẩu là bắt buộc (sửa credential sẵn có thì không).
+  E207 = 'credential.error.password_required',
   V003 = 'common.error.too_many_requests',
 }

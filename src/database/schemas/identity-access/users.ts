@@ -47,7 +47,6 @@ export const users = pgTable(
     dateOfBirth: date('date_of_birth', { mode: 'date' }),
     idNumber: varchar('id_number', { length: 20 }).unique(),
     phoneNumber: varchar('phone_number', { length: 30 }),
-    email: varchar('email', { length: 255 }),
     address: varchar('address', { length: 500 }),
     avatarFileId: uuid('avatar_file_id').references(
       (): AnyPgColumn => files.id,

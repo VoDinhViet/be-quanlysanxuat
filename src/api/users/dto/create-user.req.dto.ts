@@ -3,7 +3,6 @@ import {
   ClassFieldOptional,
   DateField,
   DateFieldOptional,
-  EmailFieldOptional,
   EnumField,
   EnumFieldOptional,
   StringField,
@@ -32,9 +31,6 @@ export class CreateUserReqDto {
 
   @StringFieldOptional({ nullable: true, maxLength: 30 })
   phoneNumber?: string | null;
-
-  @EmailFieldOptional({ description: 'Personal email', nullable: true })
-  email?: string | null;
 
   @StringFieldOptional({
     description: 'Permanent address',

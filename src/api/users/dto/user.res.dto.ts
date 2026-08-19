@@ -6,7 +6,6 @@ import {
   ClassFieldOptional,
   DateField,
   DateFieldOptional,
-  EmailFieldOptional,
   EnumField,
   StringField,
   StringFieldOptional,
@@ -47,10 +46,6 @@ export class UserResDto {
   @Expose()
   @StringFieldOptional({ nullable: true })
   phoneNumber!: string | null;
-
-  @Expose()
-  @EmailFieldOptional({ nullable: true })
-  email!: string | null;
 
   @Expose()
   @StringFieldOptional({ nullable: true })

@@ -12,6 +12,7 @@ import {
   isNull,
   ne,
   or,
+  type SQL,
 } from 'drizzle-orm';
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
@@ -60,31 +61,49 @@ export class UsersService {
     reqDto: GetUsersReqDto,
   ): Promise<OffsetPaginatedDto<PageUserResDto>> {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
-    const where = keyword
-      ? or(ilike(users.fullName, keyword), ilike(users.code, keyword))
-      : undefined;
+    // `credentials.isProtected` (hiện chỉ tài khoản admin) ẩn khỏi danh sách — cờ riêng trên
+    // credential, không suy từ role, nên đổi role của tài khoản không tự ý làm nó hiện/ẩn lại.
+    // `isNull` bắt buộc vì `LEFT JOIN credentials` để NULL khi user chưa có credential nào.
+    const baseFilter = and(
+      keyword
+        ? or(ilike(users.fullName, keyword), ilike(users.code, keyword))
+        : undefined,
+      or(isNull(credentials.isProtected), eq(credentials.isProtected, false)),
+    );
     const orderBy = desc(users.createdAt);
 
-    const [entities, countRows] = await Promise.all([
-      this.db.query.users.findMany({
-        where,
-        limit: reqDto.limit,
-        offset: reqDto.offset,
-        orderBy,
-        with: {
-          department: true,
-          position: true,
-          avatarFile: true,
-        },
-      }),
-      this.db.select({ total: count() }).from(users).where(where),
+    const [entities, [{ total }]] = await Promise.all([
+      this.db
+        .select({
+          ...getTableColumns(users),
+          department: getTableColumns(departments),
+          position: getTableColumns(positions),
+          avatarFile: getTableColumns(files),
+          email: credentials.email,
+          role: getTableColumns(roles),
+        })
+        .from(users)
+        .innerJoin(departments, eq(departments.id, users.departmentId))
+        .innerJoin(positions, eq(positions.id, users.positionId))
+        .leftJoin(files, eq(files.id, users.avatarFileId))
+        .leftJoin(credentials, eq(credentials.userId, users.id))
+        .leftJoin(roles, eq(roles.id, credentials.roleId))
+        .where(baseFilter)
+        .orderBy(orderBy)
+        .limit(reqDto.limit)
+        .offset(reqDto.offset),
+      this.db
+        .select({ total: count() })
+        .from(users)
+        .leftJoin(credentials, eq(credentials.userId, users.id))
+        .where(baseFilter),
     ]);
 
     return new OffsetPaginatedDto(
       plainToInstance(PageUserResDto, entities, {
         excludeExtraneousValues: true,
       }),
-      new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
+      new OffsetPaginationDto(total, reqDto),
     );
   }
 
@@ -143,14 +162,7 @@ export class UsersService {
 
     return plainToInstance(
       CurrentUserResDto,
-      // A left-joined miss surfaces as an all-null object, not `null` — collapse `role`/`avatarFile`
-      // so the DTO renders `null` instead of a ref/file full of null fields.
-      {
-        ...row,
-        role: row.role?.id ? row.role : null,
-        avatarFile: row.avatarFile?.id ? row.avatarFile : null,
-        permissions,
-      },
+      { ...row, permissions },
       { excludeExtraneousValues: true },
     );
   }
@@ -164,7 +176,7 @@ export class UsersService {
     reqDto: CreateUserReqDto,
     actorCredentialId: string,
     actorUserId: string,
-  ): Promise<UserResDto> {
+  ): Promise<void> {
     // `credential` is a nested object, not a column on `users` — peel it off so the spread below
     // only carries real columns.
     const { credential, ...userFields } = reqDto;
@@ -192,7 +204,7 @@ export class UsersService {
 
     const code = await this.generateUserCode();
 
-    const userId = await this.db.transaction(async (tx) => {
+    await this.db.transaction(async (tx) => {
       const [user] = await tx
         .insert(users)
         .values({
@@ -206,18 +218,14 @@ export class UsersService {
       if (credential) {
         await this.createCredential(tx, credential, user.id);
       }
-
-      return user.id;
     });
-
-    return this.getUser(userId);
   }
 
   async updateUser(
     userId: string,
     reqDto: UpdateUserReqDto,
     actorCredentialId: string,
-  ): Promise<UserResDto> {
+  ): Promise<void> {
     const existing = await this.ensureUserExists(userId);
 
     // Re-validate the (department, position) pair whenever either side changes — including when
@@ -240,53 +248,86 @@ export class UsersService {
     if (reqDto.avatarFileId) {
       await this.filesService.linkFiles([reqDto.avatarFileId]);
     }
-    // Role assignment rides along on the profile update, but the role itself lives on the login
-    // credential — a user with no credential has nothing to assign to (E032). Same rules as the
-    // dedicated `PATCH /users/:userId/role`; both go through `resolveRoleForAssignment`.
-    const linkedCredential =
-      reqDto.roleId || reqDto.credentialEnabled !== undefined
-        ? await this.findCredentialByUserId(userId)
-        : undefined;
 
-    if (reqDto.roleId) {
-      if (!linkedCredential) {
-        throw new AppException(ErrorCode.E032, HttpStatus.BAD_REQUEST);
+    // `credential` không có cột trên `users` — peel ra khỏi spread trước khi ghi hồ sơ. Không
+    // gửi `credential` thì không đụng bảng `credentials` chút nào — user chưa có tài khoản đăng
+    // nhập vẫn sửa được hồ sơ bình thường (trước đây `credentialEnabled` bắt buộc trên DTO nên
+    // mọi lần PATCH đều đòi có credential sẵn, E032, kể cả khi chỉ sửa `note`).
+    const { credential, ...userFields } = reqDto;
+
+    const linkedCredential = credential
+      ? await this.db.query.credentials.findFirst({
+          where: eq(credentials.userId, userId),
+          columns: { id: true },
+        })
+      : null;
+
+    if (credential) {
+      // Chưa có credential thì đây là tạo mới — mật khẩu bắt buộc (E207), khác nhánh sửa
+      // credential sẵn có (bỏ trống = giữ mật khẩu cũ).
+      if (!linkedCredential && !credential.password) {
+        throw new AppException(ErrorCode.E207, HttpStatus.BAD_REQUEST);
       }
-      await this.resolveRoleForAssignment(reqDto.roleId, actorCredentialId);
+      if (credential.roleId) {
+        await this.resolveRoleForAssignment(
+          credential.roleId,
+          actorCredentialId,
+        );
+      }
+      await Promise.all([
+        this.validateCredentialUsernameUniqueness(
+          credential.username,
+          linkedCredential?.id,
+        ),
+        this.validateCredentialEmailUniqueness(
+          credential.email,
+          linkedCredential?.id,
+        ),
+      ]);
     }
-
-    if (reqDto.credentialEnabled !== undefined && !linkedCredential) {
-      throw new AppException(ErrorCode.E032, HttpStatus.BAD_REQUEST);
-    }
-
-    // `roleId` and `credentialEnabled` have no column on `users` — peel them off before the spread.
-    const { roleId, credentialEnabled, ...userFields } = reqDto;
 
     // `updated_at` is bumped by the column's own `$onUpdate`.
     await this.db.update(users).set(userFields).where(eq(users.id, userId));
 
-    if (linkedCredential) {
-      const updateData: Partial<typeof credentials.$inferInsert> = {};
-      if (roleId) updateData.roleId = roleId;
-      if (credentialEnabled !== undefined) {
-        updateData.credentialEnabled = credentialEnabled;
-      }
-
-      if (Object.keys(updateData).length > 0) {
-        await this.db
-          .update(credentials)
-          .set(updateData)
-          .where(eq(credentials.id, linkedCredential.id));
-
-        if (roleId) {
-          await this.permissionsService.invalidateCredential(
-            linkedCredential.id,
-          );
-        }
-      }
+    if (!credential) {
+      return;
     }
 
-    return this.getUser(userId);
+    if (linkedCredential) {
+      await this.db
+        .update(credentials)
+        .set({
+          username: credential.username,
+          email: credential.email,
+          roleId: credential.roleId,
+          credentialEnabled: credential.credentialEnabled,
+          ...(credential.password
+            ? {
+                password: await hash(
+                  credential.password,
+                  UsersService.PASSWORD_SALT_ROUNDS,
+                ),
+              }
+            : {}),
+        })
+        .where(eq(credentials.id, linkedCredential.id));
+
+      if (credential.roleId) {
+        await this.permissionsService.invalidateCredential(linkedCredential.id);
+      }
+      return;
+    }
+
+    // Nhánh này chỉ chạy khi `linkedCredential` là null — mật khẩu đã được đảm bảo tồn tại ở
+    // kiểm tra E207 phía trên; destructure lại ở đây chỉ để TS thu hẹp kiểu `string | undefined`
+    // về `string` mà không cần `!`.
+    const { password, ...credentialFields } = credential;
+    if (!password) {
+      throw new AppException(ErrorCode.E207, HttpStatus.BAD_REQUEST);
+    }
+    await this.db.transaction((tx) =>
+      this.createCredential(tx, { ...credentialFields, password }, userId),
+    );
   }
 
   /**
@@ -303,7 +344,7 @@ export class UsersService {
     userId: string,
     reqDto: AssignRoleReqDto,
     actorCredentialId: string,
-  ): Promise<UserResDto> {
+  ): Promise<void> {
     const user = await this.db.query.users.findFirst({
       columns: { id: true },
       where: eq(users.id, userId),
@@ -313,17 +354,11 @@ export class UsersService {
       throw new AppException(ErrorCode.E012, HttpStatus.NOT_FOUND);
     }
 
-    const linkedCredential = await this.findCredentialByUserId(userId);
-
-    if (!linkedCredential) {
-      throw new AppException(ErrorCode.E032, HttpStatus.BAD_REQUEST);
-    }
+    const linkedCredential = await this.ensureCredentialLinked(userId);
 
     await this.resolveRoleForAssignment(reqDto.roleId, actorCredentialId);
 
     await this.applyRoleToCredential(linkedCredential.id, reqDto.roleId);
-
-    return this.getUser(userId);
   }
 
   /**
@@ -369,15 +404,21 @@ export class UsersService {
     }
   }
 
-  /** `users` không còn giữ `credentialId` — tra ngược qua `credentials.userId` (unique) mỗi khi
-   * cần biết user này có credential hay không. */
-  private async findCredentialByUserId(
+  /** `users` không còn giữ `credentialId` — tra ngược qua `credentials.userId` (unique); ném E032
+   * nếu user chưa có credential, vì mọi nơi gọi hàm này đều cần ghi thẳng xuống credential đó. */
+  private async ensureCredentialLinked(
     userId: string,
-  ): Promise<{ id: string } | undefined> {
-    return this.db.query.credentials.findFirst({
+  ): Promise<{ id: string }> {
+    const credential = await this.db.query.credentials.findFirst({
       where: eq(credentials.userId, userId),
       columns: { id: true },
     });
+
+    if (!credential) {
+      throw new AppException(ErrorCode.E032, HttpStatus.BAD_REQUEST);
+    }
+
+    return credential;
   }
 
   /** Writes the role onto the credential and drops its cached role→permissions mapping, so the
@@ -557,10 +598,16 @@ export class UsersService {
 
   private async validateCredentialUsernameUniqueness(
     username: string,
+    ignoredCredentialId?: string,
   ): Promise<void> {
+    let where: SQL | undefined = eq(credentials.username, username);
+    if (ignoredCredentialId) {
+      where = and(where, ne(credentials.id, ignoredCredentialId));
+    }
+
     const existing = await this.db.query.credentials.findFirst({
       columns: { id: true },
-      where: eq(credentials.username, username),
+      where,
     });
 
     if (existing) {
@@ -570,11 +617,20 @@ export class UsersService {
 
   private async validateCredentialEmailUniqueness(
     email: string,
+    ignoredCredentialId?: string,
   ): Promise<void> {
-    const existing = await this.db.query.credentials.findFirst({
-      columns: { id: true },
-      where: eq(credentials.email, email),
-    });
+    const [existing] = await this.db
+      .select({ id: credentials.id })
+      .from(credentials)
+      .where(
+        ignoredCredentialId
+          ? and(
+              eq(credentials.email, email),
+              ne(credentials.id, ignoredCredentialId),
+            )
+          : eq(credentials.email, email),
+      )
+      .limit(1);
 
     if (existing) {
       throw new AppException(ErrorCode.E003, HttpStatus.CONFLICT);

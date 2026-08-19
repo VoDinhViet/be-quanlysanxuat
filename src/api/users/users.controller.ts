@@ -81,42 +81,41 @@ export class UsersController {
   @Post()
   @Permissions('users:create')
   @ApiAuth({
-    type: UserResDto,
     summary: 'Create user (user + optional ERP credential, with optional role)',
-    statusCode: HttpStatus.CREATED,
+    statusCode: HttpStatus.NO_CONTENT,
   })
   createUser(
     @Body() reqDto: CreateUserReqDto,
     @CurrentUser() payload: JwtPayloadType,
-  ): Promise<UserResDto> {
+  ): Promise<void> {
     return this.usersService.createUser(reqDto, payload.sub, payload.userId);
   }
 
   @Patch(':userId')
   @Permissions('users:update')
   @ApiAuth({
-    type: UserResDto,
     summary: 'Update user profile (and optionally their role)',
+    statusCode: HttpStatus.NO_CONTENT,
   })
   updateUser(
     @UUIDParam('userId') userId: string,
     @Body() reqDto: UpdateUserReqDto,
     @CurrentUser() payload: JwtPayloadType,
-  ): Promise<UserResDto> {
+  ): Promise<void> {
     return this.usersService.updateUser(userId, reqDto, payload.sub);
   }
 
   @Patch(':userId/role')
   @Permissions('roles:update')
   @ApiAuth({
-    type: UserResDto,
     summary: 'Assign a role to a user',
+    statusCode: HttpStatus.NO_CONTENT,
   })
   assignRole(
     @UUIDParam('userId') userId: string,
     @Body() reqDto: AssignRoleReqDto,
     @CurrentUser() payload: JwtPayloadType,
-  ): Promise<UserResDto> {
+  ): Promise<void> {
     return this.usersService.assignRole(userId, reqDto, payload.sub);
   }
 

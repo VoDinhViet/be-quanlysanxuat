@@ -18,6 +18,7 @@ import type { PermissionCode } from '../../../constants/permission.constant';
  *   (re)assign permissions to them at runtime without a deploy, while the set of possible
  *   permissions stays code-controlled.
  * - `isSystem` roles (e.g. Super Admin) are seeded and protected from edit/delete.
+ * - `isProtected` roles are hidden from `GET /roles`; still assignable directly by known `roleId`.
  */
 export const roles = pgTable('roles', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -29,6 +30,7 @@ export const roles = pgTable('roles', {
     .notNull()
     .default([]),
   isSystem: boolean('is_system').notNull().default(false),
+  isProtected: boolean('is_protected').notNull().default(false),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at')
     .defaultNow()

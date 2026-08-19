@@ -27,6 +27,7 @@ interface RoleSeed {
   name: string;
   permissions: PermissionCode[];
   isSystem: boolean;
+  isProtected: boolean;
 }
 
 interface AccountSeed {
@@ -37,6 +38,7 @@ interface AccountSeed {
   position: { code: string; name: string };
   userCode: string;
   fullName: string;
+  isProtected: boolean;
 }
 
 const ROLES = {
@@ -45,6 +47,7 @@ const ROLES = {
     name: 'Quản trị hệ thống',
     permissions: [SUPER_PERMISSION],
     isSystem: true,
+    isProtected: true,
   },
   DIRECTOR: {
     code: 'DIRECTOR',
@@ -67,6 +70,7 @@ const ROLES = {
       'outbound:read',
     ],
     isSystem: false,
+    isProtected: false,
   },
   SALES: {
     code: 'SALES',
@@ -82,6 +86,7 @@ const ROLES = {
       'outbound:update',
     ],
     isSystem: false,
+    isProtected: false,
   },
   PURCHASING: {
     code: 'PURCHASING',
@@ -102,6 +107,7 @@ const ROLES = {
       'purchasing:delete',
     ],
     isSystem: false,
+    isProtected: false,
   },
   WAREHOUSE: {
     code: 'WAREHOUSE',
@@ -125,6 +131,7 @@ const ROLES = {
       'outbound:read',
     ],
     isSystem: false,
+    isProtected: false,
   },
   PRODUCTION: {
     code: 'PRODUCTION',
@@ -145,6 +152,7 @@ const ROLES = {
       'oqc:delete',
     ],
     isSystem: false,
+    isProtected: false,
   },
   QC: {
     code: 'QC',
@@ -160,6 +168,7 @@ const ROLES = {
       'oqc:update',
     ],
     isSystem: false,
+    isProtected: false,
   },
 } as const satisfies Record<string, RoleSeed>;
 
@@ -172,6 +181,7 @@ const ACCOUNTS: AccountSeed[] = [
     position: { code: 'ADMIN', name: 'Quản trị viên' },
     userCode: 'NV-ADMIN',
     fullName: 'Quản trị hệ thống',
+    isProtected: true,
   },
   {
     username: 'giamdoc',
@@ -181,6 +191,7 @@ const ACCOUNTS: AccountSeed[] = [
     position: { code: 'DIRECTOR', name: 'Giám đốc' },
     userCode: 'NV-GD',
     fullName: 'Giám đốc',
+    isProtected: false,
   },
   {
     username: 'kinhdoanh',
@@ -190,6 +201,7 @@ const ACCOUNTS: AccountSeed[] = [
     position: { code: 'STAFF-KD', name: 'NV Kinh doanh' },
     userCode: 'NV-KD',
     fullName: 'Nhân viên Kinh doanh',
+    isProtected: false,
   },
   {
     username: 'muahang',
@@ -199,6 +211,7 @@ const ACCOUNTS: AccountSeed[] = [
     position: { code: 'STAFF-MH', name: 'NV Mua hàng' },
     userCode: 'NV-MH',
     fullName: 'Nhân viên Mua hàng',
+    isProtected: false,
   },
   {
     username: 'kho',
@@ -208,6 +221,7 @@ const ACCOUNTS: AccountSeed[] = [
     position: { code: 'STAFF-KHO', name: 'NV Kho' },
     userCode: 'NV-KHO',
     fullName: 'Nhân viên Kho',
+    isProtected: false,
   },
   {
     username: 'sanxuat',
@@ -217,6 +231,7 @@ const ACCOUNTS: AccountSeed[] = [
     position: { code: 'STAFF-SX', name: 'NV Sản xuất' },
     userCode: 'NV-SX',
     fullName: 'Nhân viên Sản xuất',
+    isProtected: false,
   },
   {
     username: 'qc',
@@ -226,6 +241,7 @@ const ACCOUNTS: AccountSeed[] = [
     position: { code: 'STAFF-QC', name: 'NV QC' },
     userCode: 'NV-QC',
     fullName: 'Nhân viên QC',
+    isProtected: false,
   },
 ];
 
@@ -251,6 +267,7 @@ async function ensureRole(db: SeedDatabase, role: RoleSeed): Promise<string> {
       name: role.name,
       permissions: role.permissions,
       isSystem: role.isSystem,
+      isProtected: role.isProtected,
     })
     .returning({ id: roles.id });
 
@@ -345,7 +362,7 @@ async function ensureUser(
 
 async function ensureCredential(
   db: SeedDatabase,
-  account: { username: string; email: string },
+  account: { username: string; email: string; isProtected: boolean },
   roleId: string,
   userId: string,
   password: string,
@@ -381,6 +398,7 @@ async function ensureCredential(
     password: hashedPassword,
     roleId,
     userId,
+    isProtected: account.isProtected,
   });
 
   console.log(`Credential "${account.username}" created.`);

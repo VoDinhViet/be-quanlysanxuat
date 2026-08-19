@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
-import { and, desc, isNull, or } from 'drizzle-orm';
+import { and, desc, eq, isNull, or } from 'drizzle-orm';
 
 import { unaccentILike } from '../../common/utils/search.util';
 import { DRIZZLE } from '../../database/database.module';
@@ -19,6 +19,7 @@ export class RolesService {
     const entities = await this.db.query.roles.findMany({
       where: and(
         isNull(roles.deletedAt),
+        eq(roles.isProtected, false),
         keyword
           ? or(
               unaccentILike(roles.code, keyword),

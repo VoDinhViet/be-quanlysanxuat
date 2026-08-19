@@ -22,6 +22,9 @@ import { users } from './users';
  *   to read `users`.
  * - `onDelete: 'restrict'` trên `userId` — không có route xoá `users` nào tồn tại, đây là lưới an
  *   toàn: không cho một `users` biến mất trong khi vẫn còn credential trỏ vào.
+ * - `isProtected` ẩn đúng tài khoản đó khỏi `GET /users` — cờ trên credential, độc lập với
+ *   `roles.isProtected` (ẩn role khỏi `GET /roles`), vì đổi role của một tài khoản không nên tự
+ *   động đổi việc nó có bị ẩn khỏi danh sách hay không.
  */
 export const credentials = pgTable(
   'credentials',
@@ -38,6 +41,7 @@ export const credentials = pgTable(
       onDelete: 'set null',
     }),
     credentialEnabled: boolean('credential_enabled').default(true).notNull(),
+    isProtected: boolean('is_protected').notNull().default(false),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at')
       .defaultNow()
@@ -57,3 +61,5 @@ export const credentialsRelations = relations(credentials, ({ one }) => ({
     references: [users.id],
   }),
 }));
+
+export type CredentialSelect = typeof credentials.$inferSelect;

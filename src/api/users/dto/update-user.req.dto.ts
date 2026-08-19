@@ -1,12 +1,12 @@
 import { UserGender, UserStatus } from '../../../database/schemas';
 import {
-  BooleanFieldOptional,
+  ClassFieldOptional,
   DateFieldOptional,
-  EmailFieldOptional,
   EnumFieldOptional,
   StringFieldOptional,
   UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
+import { UpdateCredentialReqDto } from './update-credential.req.dto';
 
 export class UpdateUserReqDto {
   @StringFieldOptional({ description: 'Full name', maxLength: 255 })
@@ -27,9 +27,6 @@ export class UpdateUserReqDto {
 
   @StringFieldOptional({ nullable: true, maxLength: 30 })
   phoneNumber?: string | null;
-
-  @EmailFieldOptional({ description: 'Personal email', nullable: true })
-  email?: string | null;
 
   @StringFieldOptional({
     description: 'Permanent address',
@@ -58,13 +55,10 @@ export class UpdateUserReqDto {
   @EnumFieldOptional(() => UserStatus)
   status?: UserStatus;
 
-  @UUIDFieldOptional({
-    description: "Role id to assign to this user's login credential",
+  @ClassFieldOptional(() => UpdateCredentialReqDto, {
+    nullable: true,
+    description:
+      "Provision or update this user's ERP login credential. Omit entirely to leave the credential untouched",
   })
-  roleId?: string;
-
-  @BooleanFieldOptional({
-    description: "Enable or disable this user's login credential",
-  })
-  credentialEnabled?: boolean;
+  credential?: UpdateCredentialReqDto | null;
 }
