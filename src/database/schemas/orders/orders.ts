@@ -13,6 +13,7 @@ import {
 import { clients } from '../clients/clients';
 import { orderAttachments } from './order-attachments';
 import { orderItems } from './order-items';
+import { orderPayments } from './order-payments';
 import {
   PaymentTerm,
   paymentTermEnum,
@@ -223,6 +224,7 @@ export const ordersRelations = relations(orders, ({ one, many }) => ({
   }),
   items: many(orderItems),
   attachments: many(orderAttachments),
+  payments: many(orderPayments),
 }));
 
 export type OrderSelect = typeof orders.$inferSelect;

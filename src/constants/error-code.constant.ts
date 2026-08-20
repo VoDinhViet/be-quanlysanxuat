@@ -437,5 +437,8 @@ export enum ErrorCode {
   // `PATCH /users/:userId` gửi `credential` cho user chưa có tài khoản đăng nhập nhưng thiếu
   // `password` — tạo credential mới thì mật khẩu là bắt buộc (sửa credential sẵn có thì không).
   E207 = 'credential.error.password_required',
+  // `POST /orders/:orderId/payments` với `amount = 0` — DB CHECK
+  // `chk_order_payments_amount_nonzero` là chốt chặn thật, mã này chỉ để trả lỗi rõ ràng.
+  E208 = 'order_payment.error.amount_zero',
   V003 = 'common.error.too_many_requests',
 }

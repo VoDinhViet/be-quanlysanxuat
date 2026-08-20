@@ -157,7 +157,7 @@ export class ClientsService {
   async createClient(
     reqDto: CreateClientReqDto,
     userId: string,
-  ): Promise<ClientResDto> {
+  ): Promise<void> {
     let code = reqDto.code;
     if (code) {
       await this.validateCodeUniqueness(code);
@@ -187,14 +187,12 @@ export class ClientsService {
     if (contacts?.length) {
       await this.replaceContacts(client.id, contacts);
     }
-
-    return this.getClient(client.id);
   }
 
   async updateClient(
     clientId: string,
     reqDto: UpdateClientReqDto,
-  ): Promise<ClientResDto> {
+  ): Promise<void> {
     await this.ensureClientExists(clientId);
 
     if (reqDto.code) {
@@ -218,8 +216,6 @@ export class ClientsService {
     if (contacts) {
       await this.replaceContacts(clientId, contacts);
     }
-
-    return this.getClient(clientId);
   }
 
   async deleteClient(clientId: string): Promise<void> {

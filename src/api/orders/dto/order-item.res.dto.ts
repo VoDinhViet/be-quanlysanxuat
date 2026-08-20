@@ -24,6 +24,18 @@ export class OrderItemResDto {
   quantity!: number;
 
   @Expose()
+  @NumberField({
+    description: 'SL đã xuất/giao thật (từ inventory_transactions.orderItemId)',
+  })
+  issuedQty!: number;
+
+  @Expose()
+  @NumberField({
+    description: 'quantity - issuedQty; có thể âm nếu bị xuất vượt SL đặt',
+  })
+  remainingQty!: number;
+
+  @Expose()
   @NumberField({ description: 'Đơn giá' })
   unitPrice!: number;
 

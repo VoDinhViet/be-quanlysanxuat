@@ -13,6 +13,7 @@ import {
   lte,
   sql,
 } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
@@ -26,6 +27,7 @@ import {
   files,
   orderAttachments,
   orderItems,
+  orderPayments,
   orders,
   OrderStatus,
   productionOrders,
@@ -37,15 +39,22 @@ import {
 import { AppException } from '../../exceptions/app.exception';
 import { FilesService } from '../files/files.service';
 import { ProductionOrdersService } from '../production-orders/production-orders.service';
+import { CreateOrderPaymentReqDto } from './dto/create-order-payment.req.dto';
 import { CreateOrderReqDto } from './dto/create-order.req.dto';
 import { GetOrdersReqDto } from './dto/get-orders.req.dto';
 import { OrderItemReqDto } from './dto/order-item.req.dto';
 import { OrderItemResDto } from './dto/order-item.res.dto';
+import { OrderPaymentResDto } from './dto/order-payment.res.dto';
 import { OrderResDto } from './dto/order.res.dto';
 import { OrderStatsResDto } from './dto/order-stats.res.dto';
 import { PageOrderResDto } from './dto/page-order.res.dto';
 import { RejectOrderReqDto } from './dto/reject-order.req.dto';
 import { UpdateOrderReqDto } from './dto/update-order.req.dto';
+import { OrderPaymentStatus } from './orders.constant';
+import {
+  issuedQuantityByOrderItemIdSubquery,
+  paidAmountByOrderIdSubquery,
+} from './orders.query';
 
 /** `.mapWith(Number)` biến SQL `null` thành `0` (`Number(null) === 0`) — sai cho % trend nghĩa là
  * "chưa có kỳ trước để so sánh". Dùng `.mapWith` này ở mọi biểu thức có thể thật sự trả `null`. */
@@ -177,30 +186,69 @@ export class OrdersService {
   }
 
   async getOrder(orderId: string): Promise<OrderResDto> {
-    const order = await this.db.query.orders.findFirst({
-      where: and(eq(orders.id, orderId), isNull(orders.deletedAt)),
-      extras: { expired: this.expiredSql(), totalVnd: this.totalVndSql() },
-      with: {
-        client: true,
-        assignedUser: true,
-        creatorBy: true,
-        approverBy: true,
-        rejecterBy: true,
-        attachments: { with: { file: true } },
-      },
-    });
+    // `orders` có 4 FK riêng biệt trỏ `users` (assignedUser/creator/approver/rejecter) — mỗi FK
+    // cần một alias `users` khác nhau để LEFT JOIN cùng lúc, cùng khuôn `creatorBy`/`posterBy` ở
+    // `OutsourcingOrdersService.getOutsourcingOrder`.
+    const assignedUserAlias = alias(users, 'assigned_user');
+    const creatorAlias = alias(users, 'creator');
+    const approverAlias = alias(users, 'approver');
+    const rejecterAlias = alias(users, 'rejecter');
+    const paidByOrder = paidAmountByOrderIdSubquery(this.db);
+
+    const [[order], attachments] = await Promise.all([
+      this.db
+        .select({
+          ...getTableColumns(orders),
+          expired: this.expiredSql(),
+          totalVnd: this.totalVndSql(),
+          client: getTableColumns(clients),
+          assignedUser: getTableColumns(assignedUserAlias),
+          creatorBy: getTableColumns(creatorAlias),
+          approverBy: getTableColumns(approverAlias),
+          rejecterBy: getTableColumns(rejecterAlias),
+          paidAmount:
+            sql<number>`coalesce(${paidByOrder.paidAmount}, 0)`.mapWith(Number),
+        })
+        .from(orders)
+        .leftJoin(clients, eq(clients.id, orders.clientId))
+        .leftJoin(
+          assignedUserAlias,
+          eq(assignedUserAlias.id, orders.assignedUserId),
+        )
+        .leftJoin(creatorAlias, eq(creatorAlias.id, orders.createdBy))
+        .leftJoin(approverAlias, eq(approverAlias.id, orders.approvedBy))
+        .leftJoin(rejecterAlias, eq(rejecterAlias.id, orders.rejectedBy))
+        .leftJoin(paidByOrder, eq(paidByOrder.orderId, orders.id))
+        .where(and(eq(orders.id, orderId), isNull(orders.deletedAt))),
+      this.db
+        .select({
+          ...getTableColumns(orderAttachments),
+          file: getTableColumns(files),
+        })
+        .from(orderAttachments)
+        .innerJoin(files, eq(files.id, orderAttachments.fileId))
+        .where(eq(orderAttachments.orderId, orderId)),
+    ]);
 
     if (!order) {
       throw new AppException(ErrorCode.E057, HttpStatus.NOT_FOUND);
     }
 
-    return plainToInstance(OrderResDto, order, {
-      excludeExtraneousValues: true,
-    });
+    return plainToInstance(
+      OrderResDto,
+      {
+        ...order,
+        attachments,
+        paymentStatus: this.resolvePaymentStatus(order.paidAmount, order.total),
+      },
+      { excludeExtraneousValues: true },
+    );
   }
 
   async getOrderItems(orderId: string): Promise<OrderItemResDto[]> {
     await this.ensureOrderExists(orderId);
+
+    const issuedByItem = issuedQuantityByOrderItemIdSubquery(this.db);
 
     const rows = await this.db
       .select({
@@ -208,17 +256,72 @@ export class OrdersService {
         item: getTableColumns(items),
         unit: getTableColumns(units),
         imageFile: getTableColumns(files),
+        issuedQty: sql<number>`coalesce(${issuedByItem.issuedQty}, 0)`.mapWith(
+          Number,
+        ),
+        // Không kẹp sàn 0 — để lộ ra nếu dòng bị xuất vượt SL đặt thay vì giấu đi (chưa bị chặn
+        // ở tầng ghi, xem `docs/domains/inventory.md`).
+        remainingQty:
+          sql<number>`${orderItems.quantity} - coalesce(${issuedByItem.issuedQty}, 0)`.mapWith(
+            Number,
+          ),
       })
       .from(orderItems)
       .innerJoin(items, eq(items.id, orderItems.itemId))
       .innerJoin(units, eq(units.id, items.unitId))
       .leftJoin(files, eq(files.id, items.imageFileId))
+      .leftJoin(issuedByItem, eq(issuedByItem.orderItemId, orderItems.id))
       .where(eq(orderItems.orderId, orderId))
       .orderBy(asc(orderItems.sortOrder), asc(orderItems.createdAt));
 
     return plainToInstance(OrderItemResDto, rows, {
       excludeExtraneousValues: true,
     });
+  }
+
+  async getOrderPayments(orderId: string): Promise<OrderPaymentResDto[]> {
+    await this.ensureOrderExists(orderId);
+
+    const rows = await this.db.query.orderPayments.findMany({
+      where: eq(orderPayments.orderId, orderId),
+      orderBy: [desc(orderPayments.paidAt), desc(orderPayments.createdAt)],
+      with: { creatorBy: true },
+    });
+
+    return plainToInstance(OrderPaymentResDto, rows, {
+      excludeExtraneousValues: true,
+    });
+  }
+
+  async createOrderPayment(
+    orderId: string,
+    reqDto: CreateOrderPaymentReqDto,
+    userId: string,
+  ): Promise<void> {
+    await this.ensureOrderExists(orderId);
+
+    if (reqDto.amount === 0) {
+      throw new AppException(ErrorCode.E208, HttpStatus.BAD_REQUEST);
+    }
+
+    await this.db.insert(orderPayments).values({
+      ...reqDto,
+      orderId,
+      createdBy: userId,
+    });
+  }
+
+  private resolvePaymentStatus(
+    paidAmount: number,
+    total: number,
+  ): OrderPaymentStatus {
+    if (paidAmount <= 0) {
+      return OrderPaymentStatus.UNPAID;
+    } else if (paidAmount >= total) {
+      return OrderPaymentStatus.PAID;
+    } else {
+      return OrderPaymentStatus.PARTIAL;
+    }
   }
 
   async createOrder(reqDto: CreateOrderReqDto, userId: string): Promise<void> {

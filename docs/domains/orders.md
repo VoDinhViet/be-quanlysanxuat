@@ -21,6 +21,7 @@ Chứng từ ghi nhận **khách đặt gì, giá bao nhiêu, giao khi nào** �
 | `orders` | Header: khách, NVKD phụ trách, ngày đặt/giao, tiền tệ + tỷ giá, khối tiền, trạng thái, lý do từ chối |
 | `order_items` | Dòng sản phẩm; `sortOrder` do client tự quản khi kéo-thả |
 | `order_attachments` | Tài liệu đính kèm qua registry `files` |
+| `order_payments` | Sổ cái thanh toán — append-only, 1 dòng/1 lần ghi nhận; `paymentStatus` (`GET /orders/:orderId`) tính lúc đọc, không lưu cột |
 
 `clientId` hiện **tạm thời optional** khi tạo — không phải quyết định lâu dài; `OrderResDto.client` do đó có thể `null`.
 
@@ -63,6 +64,11 @@ Mọi chuyển trạng thái **khác** đều lỏng: không có state machine �
 - `items` trên `PATCH` là **replace-all**: gửi mảng mới (kể cả `[]`) thay hoàn toàn dòng cũ; bỏ trống field thì giữ nguyên.
 - `code` (`SOxxxx`) tự sinh nếu không gửi, và **bất biến** sau khi tạo.
 - **Mọi route `/orders*` đều cần bearer token, kể cả đọc** — khác phần lớn master data.
+- **`order_payments` là sổ cái append-only** — cùng khuôn `inventory_transactions`: ghi sai thì
+  `POST` thêm 1 dòng `amount` âm để đảo, không có `PATCH`/`DELETE`. Ghi nhận thanh toán được ở
+  **mọi trạng thái đơn**, không chặn theo `status`. `paymentStatus` (`UNPAID`/`PARTIAL`/`PAID` trên
+  `GET /orders/:orderId`) tính lúc đọc từ `SUM(order_payments.amount)` so với `orders.total`,
+  không lưu cột — không tự động đổi `orders.status` khi đã `PAID`, hai khái niệm tách biệt.
 
 ## Invariants
 
@@ -82,6 +88,10 @@ Không phải invariant dù dễ tưởng:
 - **→ Production**: duyệt đơn seed `production_orders` + `production_order_items`. Đây là ranh giới quan trọng nhất của hệ thống.
 - **← Production**: duyệt LSX đẩy đơn từ `AWAITING_PRODUCTION` sang `IN_PROGRESS`, và khoá việc sửa `items`.
 - **← Inventory**: đơn đã duyệt (`AWAITING_PRODUCTION`/`IN_PROGRESS`) là thứ tạo ra `reserved` (hàng đã giữ chỗ) trong công thức tồn kho. Đơn chưa duyệt **không** giữ chỗ.
+- **→ Inventory**: `GET /orders/:orderId/items` đọc thẳng `inventory_transactions` (qua
+  `issuedQuantityByOrderItemIdSubquery`, `src/api/orders/orders.query.ts`) để tính `issuedQty`/
+  `remainingQty` từng dòng — không qua `InventoryModule`, cùng logic
+  `InventoryService.deliveredSubquery` (copy có chủ ý, không dùng chung).
 - **→ Clients**: `clientId`, liên hệ đọc qua quan hệ (xem "Core concepts").
 - **→ Identity**: `assignedUserId` → `users.id`.
 - **→ Product Structure**: `itemId` mỗi dòng (luôn FG).

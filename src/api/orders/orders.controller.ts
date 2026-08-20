@@ -15,9 +15,11 @@ import { CurrentUser } from '../../decorators/current-user.decorator';
 import { ApiAuth } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
+import { CreateOrderPaymentReqDto } from './dto/create-order-payment.req.dto';
 import { CreateOrderReqDto } from './dto/create-order.req.dto';
 import { GetOrdersReqDto } from './dto/get-orders.req.dto';
 import { OrderItemResDto } from './dto/order-item.res.dto';
+import { OrderPaymentResDto } from './dto/order-payment.res.dto';
 import { OrderResDto } from './dto/order.res.dto';
 import { OrderStatsResDto } from './dto/order-stats.res.dto';
 import { PageOrderResDto } from './dto/page-order.res.dto';
@@ -76,6 +78,38 @@ export class OrdersController {
     @UUIDParam('orderId') orderId: string,
   ): Promise<OrderItemResDto[]> {
     return this.ordersService.getOrderItems(orderId);
+  }
+
+  @Get(':orderId/payments')
+  @Permissions('orders:read')
+  @ApiAuth({
+    type: OrderPaymentResDto,
+    summary: 'Lịch sử thanh toán của đơn hàng',
+    isArray: true,
+  })
+  getOrderPayments(
+    @UUIDParam('orderId') orderId: string,
+  ): Promise<OrderPaymentResDto[]> {
+    return this.ordersService.getOrderPayments(orderId);
+  }
+
+  @Post(':orderId/payments')
+  @Permissions('orders:update')
+  @ApiAuth({
+    summary:
+      'Ghi nhận một lần thanh toán — amount âm để đảo một lần ghi nhận trước đó',
+    statusCode: HttpStatus.NO_CONTENT,
+  })
+  createOrderPayment(
+    @UUIDParam('orderId') orderId: string,
+    @Body() reqDto: CreateOrderPaymentReqDto,
+    @CurrentUser() payload: JwtPayloadType,
+  ): Promise<void> {
+    return this.ordersService.createOrderPayment(
+      orderId,
+      reqDto,
+      payload.userId,
+    );
   }
 
   @Post()

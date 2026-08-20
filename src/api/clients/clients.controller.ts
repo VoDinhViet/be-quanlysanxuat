@@ -83,27 +83,26 @@ export class ClientsController {
   @Post()
   @Permissions('clients:create')
   @ApiAuth({
-    type: ClientResDto,
     summary: 'Create client',
-    statusCode: HttpStatus.CREATED,
+    statusCode: HttpStatus.NO_CONTENT,
   })
   createClient(
     @Body() reqDto: CreateClientReqDto,
     @CurrentUser() payload: JwtPayloadType,
-  ): Promise<ClientResDto> {
+  ): Promise<void> {
     return this.clientsService.createClient(reqDto, payload.userId);
   }
 
   @Patch(':clientId')
   @Permissions('clients:update')
   @ApiAuth({
-    type: ClientResDto,
     summary: 'Update client',
+    statusCode: HttpStatus.NO_CONTENT,
   })
   updateClient(
     @UUIDParam('clientId') clientId: string,
     @Body() reqDto: UpdateClientReqDto,
-  ): Promise<ClientResDto> {
+  ): Promise<void> {
     return this.clientsService.updateClient(clientId, reqDto);
   }
 

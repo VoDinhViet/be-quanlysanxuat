@@ -370,6 +370,10 @@ Không phải invariant dù dễ tưởng:
 
 - **← Orders**: dòng đơn của đơn **đã duyệt** tạo ra `reserved`. Một chiều — Inventory đọc Orders,
   không ghi ngược.
+- **→ Orders**: `OrdersService.getOrderItems` đọc thẳng `inventory_transactions` (lọc
+  `orderItemId IS NOT NULL`, `src/api/orders/orders.query.ts`) để tính `issuedQty`/`remainingQty` —
+  đọc thẳng bảng, không qua `InventoryModule`/DI, cùng tiền lệ
+  `hasPendingIqcForItems`/`getJobOqcClearance`.
 - **← Production**: chỉ đọc, qua `getStockLevels(excludeOrderId)`/`getMaterialStockLevels`.
   Production hiện **không** tự động lập phiếu kho — auto-post là feature ngoài phạm vi đợt này
   (`docs/decisions/stored-inventory-balances.md`). Phiếu vẫn có cột liên kết

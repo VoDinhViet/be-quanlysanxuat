@@ -1,8 +1,10 @@
 import { Exclude, Expose } from 'class-transformer';
 
+import { OrderPaymentStatus } from '../orders.constant';
 import {
   BooleanField,
   ClassFieldOptional,
+  EnumField,
   NumberField,
 } from '../../../decorators/field.decorators';
 import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
@@ -44,4 +46,12 @@ export class OrderResDto extends OrderBaseResDto {
   @Expose()
   @ClassFieldOptional(() => OrderAttachmentResDto, { each: true })
   attachments!: OrderAttachmentResDto[];
+
+  @Expose()
+  @NumberField({ description: 'Tổng đã trả — SUM(order_payments.amount)' })
+  paidAmount!: number;
+
+  @Expose()
+  @EnumField(() => OrderPaymentStatus)
+  paymentStatus!: OrderPaymentStatus;
 }
