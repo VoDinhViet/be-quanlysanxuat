@@ -449,6 +449,10 @@ export class OrdersService {
   async approveOrder(orderId: string, userId: string): Promise<void> {
     const existing = await this.ensureOrderExists(orderId);
     this.ensurePendingConfirmation(existing.status);
+    // Đơn quay lại PENDING_CONFIRMATION rồi duyệt lại (qua PATCH không kèm items) mà LSX cũ đã
+    // APPROVED thì seedPlan bên dưới xoá production_orders — cascade luôn Job/operations đang có
+    // OQC restrict trỏ vào, ra 23503 thay vì lỗi nghiệp vụ rõ ràng.
+    await this.ensureItemsNotLockedByProduction(orderId);
 
     const planItems =
       await this.productionOrdersService.getInitialPlanItems(orderId);
