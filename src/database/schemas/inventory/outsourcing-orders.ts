@@ -35,9 +35,14 @@ export const outsourcingOrders = pgTable(
   {
     id: uuid('id').defaultRandom().primaryKey(),
     code: varchar('code', { length: 50 }).notNull().unique(),
-    warehouseId: uuid('warehouse_id')
-      .notNull()
-      .references(() => warehouses.id, { onDelete: 'restrict' }),
+    // Tuỳ chọn — không còn dùng để trừ/theo dõi tồn kho (WIP không quản tồn,
+    // docs/decisions/wip-not-stocked.md), không đọc lại ở bất kỳ response nào. Giữ cột (không
+    // DROP) để không mất dữ liệu các phiếu cũ đã có warehouseId. ⚠️ Đổi NOT NULL → nullable cần
+    // migration (`pnpm db:generate`) — chưa chạy ở đây vì repo đang có nhiều thay đổi schema khác
+    // chưa commit, tự generate khi gộp xong.
+    warehouseId: uuid('warehouse_id').references(() => warehouses.id, {
+      onDelete: 'restrict',
+    }),
     supplierId: uuid('supplier_id')
       .notNull()
       .references(() => suppliers.id, { onDelete: 'restrict' }),
