@@ -24,6 +24,28 @@ import { ProductionJobRefResDto } from '../../production-jobs/dto/production-job
 import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
 
 @Exclude()
+export class OqcOperationResDto {
+  @Expose()
+  @StringField({ description: 'Mã công đoạn' })
+  code!: string;
+
+  @Expose()
+  @StringField({ description: 'Tên công đoạn' })
+  name!: string;
+}
+
+@Exclude()
+export class OqcBomItemResDto {
+  @Expose()
+  @StringField({ description: 'Mã part (snapshot BOM của Job)' })
+  code!: string;
+
+  @Expose()
+  @StringField({ description: 'Tên chi tiết (snapshot BOM của Job)' })
+  name!: string;
+}
+
+@Exclude()
 export class OqcResDto {
   @Expose()
   @UUIDField()
@@ -34,28 +56,20 @@ export class OqcResDto {
   code!: string;
 
   @Expose()
-  @ClassFieldOptional(() => ProductionJobRefResDto, { nullable: true })
-  productionJob!: ProductionJobRefResDto | null;
+  @ClassField(() => ProductionJobRefResDto)
+  productionJob!: ProductionJobRefResDto;
 
   @Expose()
   @StringFieldOptional({ nullable: true, description: 'Mã đơn hàng (PO)' })
   orderCode!: string | null;
 
   @Expose()
-  @StringField({ description: 'Mã công đoạn (snapshot lúc tạo)' })
-  operationCode!: string;
+  @ClassField(() => OqcOperationResDto)
+  operation!: OqcOperationResDto;
 
   @Expose()
-  @StringField({ description: 'Tên công đoạn (snapshot lúc tạo)' })
-  operationName!: string;
-
-  @Expose()
-  @StringField({ description: 'Mã part (snapshot BOM của Job)' })
-  partCode!: string;
-
-  @Expose()
-  @StringField({ description: 'Tên chi tiết (snapshot BOM của Job)' })
-  partName!: string;
+  @ClassField(() => OqcBomItemResDto)
+  bomItem!: OqcBomItemResDto;
 
   @Expose()
   @ClassField(() => ItemUnitRefResDto)

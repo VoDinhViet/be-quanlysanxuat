@@ -1,12 +1,4 @@
-import {
-  and,
-  eq,
-  inArray,
-  ne,
-  or,
-  isNull as sqlIsNull,
-  sql,
-} from 'drizzle-orm';
+import { and, eq, ne, or, isNull as sqlIsNull, sql } from 'drizzle-orm';
 
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
@@ -25,19 +17,14 @@ const notScrapped = or(
   ne(oqcInspections.disposition, OqcDisposition.SCRAP),
 );
 
-/** Σ `quantity` mọi OQC (trừ `disposition = SCRAP`) theo từng công đoạn — dùng để validate
- * `E176`/`E198` khi tạo OQC mới (`OqcService.createOqc`). */
-export async function getInspectedQuantityByOperationIds(
+/** Σ `quantity` mọi OQC (trừ `disposition = SCRAP`) của riêng một công đoạn — dùng để validate
+ * `E198` khi tạo OQC mới (`OqcService.createOqc`). */
+export async function getInspectedQuantityByOperationId(
   db: Database | DbTransaction,
-  productionJobOperationIds: string[],
-): Promise<Map<string, number>> {
-  if (!productionJobOperationIds.length) {
-    return new Map();
-  }
-
-  const rows = await db
+  productionJobOperationId: string,
+): Promise<number> {
+  const [row] = await db
     .select({
-      productionJobOperationId: oqcInspections.productionJobOperationId,
       total: sql<number>`coalesce(sum(${oqcInspections.quantity}), 0)`.mapWith(
         Number,
       ),
@@ -45,23 +32,12 @@ export async function getInspectedQuantityByOperationIds(
     .from(oqcInspections)
     .where(
       and(
-        inArray(
-          oqcInspections.productionJobOperationId,
-          productionJobOperationIds,
-        ),
+        eq(oqcInspections.productionJobOperationId, productionJobOperationId),
         notScrapped,
       ),
-    )
-    .groupBy(oqcInspections.productionJobOperationId);
+    );
 
-  const total = new Map<string, number>();
-  for (const row of rows) {
-    if (row.productionJobOperationId !== null) {
-      total.set(row.productionJobOperationId, row.total);
-    }
-  }
-
-  return total;
+  return row?.total ?? 0;
 }
 
 /** Σ `quantity` mọi OQC (trừ `disposition = SCRAP`) của MỌI công đoạn thuộc cùng một node BOM (join
@@ -96,7 +72,7 @@ export async function getInspectedQuantityByBomItemId(
   return row?.total ?? 0;
 }
 
-/** Bản subquery-table của `getInspectedQuantityByOperationIds` — LEFT JOIN thẳng vào SELECT hiển
+/** Bản subquery-table của `getInspectedQuantityByOperationId` — LEFT JOIN thẳng vào SELECT hiển
  * thị (`OqcService.getInspectableOperations`) thay vì round-trip `Map` riêng, cùng khuôn
  * `sentQuantityByJobOperationSubquery` bên `outsourcing-orders.query.ts`. */
 export function inspectedQuantityByJobOperationSubquery(db: Database) {
@@ -132,50 +108,4 @@ export async function getJobOqcClearance(
     .where(eq(oqcInspections.productionJobId, productionJobId));
 
   return { total: row?.total ?? 0, open: row?.open ?? 0 };
-}
-
-/** Tóm tắt OQC theo từng công đoạn — hiển thị ở `GET /production-jobs/:jobId/bom`
- * (`ProductionJobsService.getProductionJobBom`), đọc một chiều, không ghi ngược gì vào
- * `production_job_operations` (`docs/domains/production.md`). */
-export async function getOqcSummaryByJobOperationIds(
-  db: Database | DbTransaction,
-  productionJobOperationIds: string[],
-): Promise<Map<string, { inspectedQuantity: number; openCount: number }>> {
-  if (!productionJobOperationIds.length) {
-    return new Map();
-  }
-
-  const rows = await db
-    .select({
-      productionJobOperationId: oqcInspections.productionJobOperationId,
-      inspectedQuantity: sql<number>`coalesce(sum(${oqcInspections.quantity})
-        filter (where ${notScrapped}), 0)`.mapWith(Number),
-      openCount:
-        sql<number>`count(*) filter (where ${oqcInspections.status} != ${OqcStatus.COMPLETED})`.mapWith(
-          Number,
-        ),
-    })
-    .from(oqcInspections)
-    .where(
-      inArray(
-        oqcInspections.productionJobOperationId,
-        productionJobOperationIds,
-      ),
-    )
-    .groupBy(oqcInspections.productionJobOperationId);
-
-  const summary = new Map<
-    string,
-    { inspectedQuantity: number; openCount: number }
-  >();
-  for (const row of rows) {
-    if (row.productionJobOperationId !== null) {
-      summary.set(row.productionJobOperationId, {
-        inspectedQuantity: row.inspectedQuantity,
-        openCount: row.openCount,
-      });
-    }
-  }
-
-  return summary;
 }

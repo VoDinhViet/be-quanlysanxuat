@@ -364,8 +364,8 @@ export enum ErrorCode {
   // được xuất hiện một lần trên một phiếu.
   E183 = 'outsourcing_order.error.duplicate_operation',
   // E184 (outsourcing_order.error.planned_quantity_exceeded) dự phòng — trước ném khi Σ SL gửi
-  // (cộng dồn theo `productionJobOperationId`) vượt SL kế hoạch của node BOM
-  // (`resolvePlannedQuantities`); cùng lý do bỏ như E166 — không còn validate phía server.
+  // (cộng dồn theo `productionJobOperationId`) vượt `plannedQuantity` của node BOM; cùng lý do bỏ
+  // như E166 — không còn validate phía server.
   E184 = 'outsourcing_order.error.planned_quantity_exceeded',
   E185 = 'outsourcing_receipt.error.items_required',
   // Hai dòng trong cùng payload OS-IN trỏ cùng một `outsourcingOrderItemId`.
@@ -408,8 +408,8 @@ export enum ErrorCode {
   // `completedQuantity` hiện tại của chính công đoạn đó — QC không được xin kiểm nhiều hơn phần
   // xưởng đã báo hoàn thành.
   E198 = 'oqc_inspection.error.operation_completed_quantity_insufficient',
-  // Node BOM chứa công đoạn đã mất `itemId` (item gốc bị xoá, `set null`) — không snapshot được
-  // `partCode`/`partName` để tạo OQC.
+  // Node BOM chứa công đoạn đã mất `itemId` (item gốc bị xoá, `set null`) — không có gì để
+  // snapshot vào `oqc_inspections.itemId` (NOT NULL) khi tạo OQC.
   E199 = 'oqc_inspection.error.item_not_resolvable',
   // `GET /oqc/aql-plan` không tra được plan (lot size/inspection level/AQL rơi vào ô bảng chuẩn
   // chưa điền — xem `iqc-aql.constant.ts`); hoặc `confirmOqc` không có cả `result` gửi lên lẫn

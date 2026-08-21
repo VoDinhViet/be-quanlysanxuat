@@ -25,24 +25,26 @@ Hai phương án tầng để gắn OQC được cân nhắc:
 **Chọn phương án 1 — `oqc_inspections` gắn theo `production_job_operations`, không tạo bảng mới cho
 tầng Cấp 0.**
 
-- Thêm cột `productionJobOperationId` (nullable, `SET NULL` — cùng lý do `productionJobId`, một
-  công đoạn có thể hard-delete cùng Job khi LSX được duyệt lại), bắt buộc ở service
-  (`CreateOqcReqDto`), không bắt buộc ở DB để dữ liệu cũ (gắn thẳng Job, trước đợt đổi này) sống
-  sót.
-- Giữ `productionJobId`, đổi ngữ nghĩa: server tự set, denormalize từ `operation.productionJobId`
-  — không còn là FK chính, chỉ để lọc/join theo Job không phải qua `production_job_operations`, và
-  là neo cho 2 gate cross-domain (gate nhập kho TP, gate giao hàng — cả hai đều hỏi "Job này đã QC
+- Thêm cột `productionJobOperationId`, **bắt buộc** (`NOT NULL`, `onDelete: 'restrict'`) — LSX một
+  khi `APPROVED` không có đường nào xoá được cây `production_job_operations`/`production_job_bom_items`
+  của nó nữa (`ensureItemsNotLockedByProduction` chặn cứng `E080` khi còn thao tác trên LSX đã
+  duyệt), nên FK không cần phòng hờ mồ côi. Ban đầu cột này nullable (`SET NULL`) để dữ liệu OQC cũ
+  (gắn thẳng Job, trước đợt đổi model) sống sót — không còn dữ liệu đó nữa nên siết lại `NOT NULL`
+  cùng lúc bỏ 4 cột snapshot bên dưới. Chi tiết: `docs/domains/quality.md`.
+- Giữ `productionJobId`, cũng đổi sang bắt buộc cùng lý do trên — denormalize từ
+  `operation.productionJobId`, dùng để lọc/join theo Job không phải qua `production_job_operations`,
+  và là neo cho 2 gate cross-domain (gate nhập kho TP, gate giao hàng — cả hai đều hỏi "Job này đã QC
   xong hết chưa", không hỏi "công đoạn này đã QC xong chưa").
-- Thêm 4 cột snapshot bắt buộc (NOT NULL) lúc tạo: `operationCode`/`operationName`/`partCode`/
-  `partName` — khuôn `outsourcing_order_items`, nguồn hiển thị chính khi
-  `productionJobOperationId` về `null`.
+- `operationCode`/`operationName`/`bomItem.code`/`bomItem.name` **không còn là cột lưu** — đọc thẳng
+  qua relation `productionJobOperation`/`productionJobOperation.bomItem` lúc `GET`, response DTO vẫn
+  trả nested `operation`/`bomItem` (xem `docs/domains/quality.md`).
 - `itemId` đổi nguồn: từ `job.itemId` (thành phẩm) sang `bomItem.itemId` (part của node BOM chứa
   công đoạn) — đây là thay đổi ngữ nghĩa quan trọng nhất: **`itemId` của một dòng OQC không còn là
   thành phẩm cuối cùng, mà là part đang được QC ở đúng công đoạn đó** (có thể là WIP trung gian).
-- Trần chặn SL đổi từ `production_jobs.quantity` (SL kế hoạch FG) sang hai mốc: SL kế hoạch của
-  chính node BOM (`E176`, `resolvePlannedQuantities`) và `completedQuantity` của chính công đoạn
-  (`E198`, mới) — không còn ý nghĩa "so với SL kế hoạch của cả Job" vì đơn vị QC giờ là part, không
-  phải FG.
+- Trần chặn SL đổi từ `production_jobs.quantity` (SL kế hoạch FG) sang hai mốc: cột `plannedQuantity`
+  (đã đóng băng lúc duyệt LSX) của chính node BOM (`E176`) và `completedQuantity` của chính công
+  đoạn (`E198`, mới) — không còn ý nghĩa "so với SL kế hoạch của cả Job" vì đơn vị QC giờ là part,
+  không phải FG.
 
 ## Hệ quả kéo theo — khai tử E180, thay bằng E196/E197
 

@@ -18,6 +18,11 @@ import {
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
+import {
+  DocumentType,
+  generateDocumentSequence,
+} from '../../common/utils/document-sequence.util';
+import { extractPostgresError } from '../../common/utils/postgres-error.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
@@ -38,7 +43,6 @@ import {
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { resolveAqlPlan, resolveAqlResult } from '../iqc/iqc-aql.constant';
-import { getPlannedQuantitiesByJob } from '../outsourcing-orders/outsourcing-orders.query';
 import { AqlPlanResDto } from './dto/aql-plan.res.dto';
 import { ConfirmOqcReqDto } from './dto/confirm-oqc.req.dto';
 import { CreateOqcReqDto } from './dto/create-oqc.req.dto';
@@ -50,7 +54,7 @@ import { OqcResDto } from './dto/oqc.res.dto';
 import { PageOqcResDto } from './dto/page-oqc.res.dto';
 import {
   getInspectedQuantityByBomItemId,
-  getInspectedQuantityByOperationIds,
+  getInspectedQuantityByOperationId,
   inspectedQuantityByJobOperationSubquery,
 } from './oqc.query';
 
@@ -129,19 +133,7 @@ export class OqcService {
         .orderBy(desc(oqcInspections.createdAt))
         .limit(reqDto.limit)
         .offset(reqDto.offset),
-      this.db
-        .select({ total: count() })
-        .from(oqcInspections)
-        .leftJoin(
-          productionJobs,
-          eq(productionJobs.id, oqcInspections.productionJobId),
-        )
-        .leftJoin(
-          productionOrders,
-          eq(productionOrders.id, productionJobs.productionOrderId),
-        )
-        .leftJoin(orders, eq(orders.id, productionOrders.orderId))
-        .where(where),
+      this.db.select({ total: count() }).from(oqcInspections).where(where),
     ]);
 
     const ids = idRows.map((row) => row.id);
@@ -152,6 +144,7 @@ export class OqcService {
           where: inArray(oqcInspections.id, ids),
           with: {
             productionJob: true,
+            productionJobOperation: { with: { bomItem: true } },
             item: { with: { unit: true } },
             creatorBy: true,
           },
@@ -164,7 +157,14 @@ export class OqcService {
     const rows = idRows.flatMap((row) => {
       const entity = entityById.get(row.id);
       if (!entity) return [];
-      return [{ ...entity, orderCode: row.orderCode }];
+      return [
+        {
+          ...entity,
+          orderCode: row.orderCode,
+          operation: entity.productionJobOperation,
+          bomItem: entity.productionJobOperation.bomItem,
+        },
+      ];
     });
 
     return new OffsetPaginatedDto(
@@ -184,6 +184,7 @@ export class OqcService {
         creatorBy: true,
         confirmerBy: true,
         resolverBy: true,
+        productionJobOperation: { with: { bomItem: true } },
       },
     });
 
@@ -191,9 +192,7 @@ export class OqcService {
       throw new AppException(ErrorCode.E174, HttpStatus.NOT_FOUND);
     }
 
-    const orderCode = row.productionJobId
-      ? await this.resolveOrderCode(row.productionJobId)
-      : null;
+    const orderCode = await this.resolveOrderCode(row.productionJobId);
 
     const plan =
       row.inspectionLevel && row.aqlLevel
@@ -204,6 +203,8 @@ export class OqcService {
       OqcResDto,
       {
         ...row,
+        operation: row.productionJobOperation,
+        bomItem: row.productionJobOperation.bomItem,
         orderCode,
         codeLetter: plan?.codeLetter ?? null,
         suggestedSampleSize: plan?.sampleSize ?? null,
@@ -250,7 +251,7 @@ export class OqcService {
           productionJobOperationId: productionJobOperations.id,
           operation: getTableColumns(productionJobOperations),
           job: getTableColumns(productionJobs),
-          part: getTableColumns(productionJobBomItems),
+          bomItem: getTableColumns(productionJobBomItems),
           unit: getTableColumns(units),
           inspectedQuantity:
             sql<number>`coalesce(${inspectedQuantityByOperation.inspectedQuantity}, 0)`.mapWith(
@@ -351,30 +352,37 @@ export class OqcService {
     }
 
     await this.ensureLotSizeWithinPlannedNode(
-      operation.productionJob,
-      operation.bomItem.id,
+      operation.bomItem,
       reqDto.quantity,
     );
     await this.ensureWithinCompletedQuantity(operation, reqDto.quantity);
 
-    let code = reqDto.code;
-    if (code) {
-      await this.validateCodeUniqueness(code);
-    } else {
-      code = await this.generateOqcCode(this.db, reqDto.inspectionDate);
+    if (reqDto.code) {
+      await this.validateCodeUniqueness(reqDto.code);
     }
 
-    await this.db.insert(oqcInspections).values({
-      ...reqDto,
-      code,
-      productionJobId: operation.productionJob.id,
-      operationCode: operation.code,
-      operationName: operation.name,
-      partCode: operation.bomItem.code,
-      partName: operation.bomItem.name,
-      itemId,
-      createdBy: userId,
-    });
+    try {
+      await this.db.transaction(async (tx) => {
+        const code =
+          reqDto.code ??
+          (await this.generateOqcCode(tx, reqDto.inspectionDate));
+
+        await tx.insert(oqcInspections).values({
+          ...reqDto,
+          code,
+          productionJobId: operation.productionJob.id,
+          itemId,
+          createdBy: userId,
+        });
+      });
+    } catch (error) {
+      // Mã client tự gửi vẫn còn TOCTOU giữa `validateCodeUniqueness` và `INSERT` — bắt ở đây
+      // thay vì để lỗi Postgres thô 500 lọt ra ngoài.
+      if (extractPostgresError(error)?.code === '23505') {
+        throw new AppException(ErrorCode.E181, HttpStatus.CONFLICT);
+      }
+      throw error;
+    }
   }
 
   getAqlPlan(reqDto: GetAqlPlanReqDto): AqlPlanResDto {
@@ -517,12 +525,7 @@ export class OqcService {
   private async ensureOperationExists(productionJobOperationId: string) {
     const operation = await this.db.query.productionJobOperations.findFirst({
       where: eq(productionJobOperations.id, productionJobOperationId),
-      with: {
-        productionJob: { columns: { id: true, status: true, quantity: true } },
-        bomItem: {
-          columns: { id: true, code: true, name: true, itemId: true },
-        },
-      },
+      with: { productionJob: true, bomItem: true },
     });
 
     if (!operation) {
@@ -533,22 +536,19 @@ export class OqcService {
   }
 
   /** Σ SL đã xin QC của MỌI công đoạn as-used cùng một node BOM (không riêng công đoạn đang tạo),
-   * cộng lô mới, không được vượt SL kế hoạch của chính node đó (`resolvePlannedQuantities`) — 1 node
+   * cộng lô mới, không được vượt `plannedQuantity` (cột đã đóng băng) của chính node đó — 1 node
    * có thể có nhiều bước, nhưng cùng là 1 part vật lý nên trần phải tính gộp. Cho phép kiểm nhiều
    * lần từng phần (partial). */
   private async ensureLotSizeWithinPlannedNode(
-    job: { id: string; quantity: number },
-    bomItemId: string,
+    bomItem: { id: string; plannedQuantity: number },
     newQuantity: number,
   ): Promise<void> {
-    const plannedByJob = await getPlannedQuantitiesByJob(
+    const inspected = await getInspectedQuantityByBomItemId(
       this.db,
-      new Map([[job.id, job.quantity]]),
+      bomItem.id,
     );
-    const planned = plannedByJob.get(job.id)?.get(bomItemId) ?? 0;
-    const inspected = await getInspectedQuantityByBomItemId(this.db, bomItemId);
 
-    if (inspected + newQuantity > planned) {
+    if (inspected + newQuantity > bomItem.plannedQuantity) {
       throw new AppException(ErrorCode.E176, HttpStatus.BAD_REQUEST);
     }
   }
@@ -559,11 +559,10 @@ export class OqcService {
     operation: { id: string; completedQuantity: number },
     newQuantity: number,
   ): Promise<void> {
-    const inspectedByOperation = await getInspectedQuantityByOperationIds(
+    const inspected = await getInspectedQuantityByOperationId(
       this.db,
-      [operation.id],
+      operation.id,
     );
-    const inspected = inspectedByOperation.get(operation.id) ?? 0;
 
     if (inspected + newQuantity > operation.completedQuantity) {
       throw new AppException(ErrorCode.E198, HttpStatus.BAD_REQUEST);
@@ -607,21 +606,12 @@ export class OqcService {
   }
 
   private async generateOqcCode(
-    db: Database | DbTransaction,
+    tx: DbTransaction,
     inspectionDate: Date,
   ): Promise<string> {
     const year = inspectionDate.getFullYear();
-    const yearStart = new Date(year, 0, 1);
-    const yearEnd = new Date(year + 1, 0, 1);
-    const [totalRows] = await db
-      .select({ total: count() })
-      .from(oqcInspections)
-      .where(
-        and(
-          gte(oqcInspections.inspectionDate, yearStart),
-          lt(oqcInspections.inspectionDate, yearEnd),
-        ),
-      );
-    return `OQC-${year}-${String((totalRows?.total ?? 0) + 1).padStart(5, '0')}`;
+    const sequence = await generateDocumentSequence(tx, DocumentType.OQC, year);
+
+    return `OQC-${year}-${String(sequence).padStart(5, '0')}`;
   }
 }

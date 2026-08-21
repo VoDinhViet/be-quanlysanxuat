@@ -10,7 +10,7 @@ import { ProductionJobRefResDto } from '../../production-jobs/dto/production-job
 import { UnitResDto } from '../../units/dto/unit.res.dto';
 
 @Exclude()
-export class InspectablePartResDto {
+export class InspectableBomItemResDto {
   @Expose()
   @StringField({ description: 'Mã part (snapshot BOM của Job)' })
   code!: string;
@@ -46,8 +46,8 @@ export class InspectableOperationResDto {
   job!: ProductionJobRefResDto;
 
   @Expose()
-  @ClassField(() => InspectablePartResDto)
-  part!: InspectablePartResDto;
+  @ClassField(() => InspectableBomItemResDto)
+  bomItem!: InspectableBomItemResDto;
 
   @Expose()
   @ClassField(() => InspectableOperationSnapshotResDto)

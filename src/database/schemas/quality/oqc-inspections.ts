@@ -64,34 +64,28 @@ export const oqcDispositionEnum = pgEnum('oqc_disposition', [
  * của Job), độc lập hoàn toàn với `iqc_inspections` (kiểm hàng nhập — vật tư từ NCC). Đổi từ gắn
  * theo cả Job sang gắn theo công đoạn — xem `docs/decisions/oqc-per-operation.md`.
  *
- * `productionJobOperationId` nullable (`set null`, cùng lý do `productionJobId`) — bắt buộc ở
- * service (`CreateOqcReqDto`), không bắt buộc ở DB để dữ liệu cũ (gắn thẳng Job, trước đợt đổi
- * này) sống sót. `productionJobId` denormalize từ `operation.productionJobId`, server tự set —
- * giữ để lọc/join theo Job không phải qua `production_job_operations`. `operationCode`/
- * `operationName`/`partCode`/`partName` là snapshot bắt buộc (NOT NULL) lúc tạo — nguồn hiển thị
- * chính khi `productionJobOperationId` về `null`. `itemId` NOT NULL, snapshot từ `bomItem.itemId`
- * của node chứa công đoạn — node mất `itemId` (`set null`, item gốc bị xoá) thì không tạo được
- * OQC (`E199`). `quantity` (lot size) luôn QC nhập tay, chặn không vượt `completedQuantity` của
- * chính công đoạn đó (`E198`) — `production_jobs` không lưu sản lượng thực tế cấp Job. Xem
- * `docs/domains/quality.md`.
+ * `productionJobId`/`productionJobOperationId` bắt buộc (`NOT NULL`, `restrict`) — LSX một khi
+ * `APPROVED` không có đường nào xoá được cây Job/công đoạn của nó nữa
+ * (`ensureItemsNotLockedByProduction`), nên hai FK này không cần phòng hờ mồ côi; mã/tên công đoạn
+ * và node BOM không lưu cột riêng, đọc thẳng qua relation lúc `GET`.
+ * `productionJobId` denormalize từ `operation.productionJobId`, server tự set — giữ để
+ * lọc/join theo Job không phải qua `production_job_operations`. `itemId` NOT NULL, snapshot từ
+ * `bomItem.itemId` của node chứa công đoạn — node mất `itemId` (`set null`, item gốc bị xoá) thì
+ * không tạo được OQC (`E199`). `quantity` (lot size) luôn QC nhập tay, chặn không vượt
+ * `completedQuantity` của chính công đoạn đó (`E198`) — `production_jobs` không lưu sản lượng thực
+ * tế cấp Job. Xem `docs/domains/quality.md`.
  */
 export const oqcInspections = pgTable(
   'oqc_inspections',
   {
     id: uuid('id').defaultRandom().primaryKey(),
     code: varchar('code', { length: 50 }).notNull().unique(),
-    productionJobId: uuid('production_job_id').references(
-      () => productionJobs.id,
-      { onDelete: 'set null' },
-    ),
-    productionJobOperationId: uuid('production_job_operation_id').references(
-      () => productionJobOperations.id,
-      { onDelete: 'set null' },
-    ),
-    operationCode: varchar('operation_code', { length: 50 }).notNull(),
-    operationName: varchar('operation_name', { length: 255 }).notNull(),
-    partCode: varchar('part_code', { length: 50 }).notNull(),
-    partName: varchar('part_name', { length: 255 }).notNull(),
+    productionJobId: uuid('production_job_id')
+      .notNull()
+      .references(() => productionJobs.id, { onDelete: 'restrict' }),
+    productionJobOperationId: uuid('production_job_operation_id')
+      .notNull()
+      .references(() => productionJobOperations.id, { onDelete: 'restrict' }),
     itemId: uuid('item_id')
       .notNull()
       .references(() => items.id, { onDelete: 'restrict' }),

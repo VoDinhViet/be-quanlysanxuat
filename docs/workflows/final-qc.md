@@ -56,18 +56,18 @@ nối các domain đó. OQC đổi từ gắn theo Job sang gắn theo công đo
 1. `GET /oqc/inspectable-operations` — copy khuôn `OutsourcingOrdersService.getOutsourceableOperations`,
    khác: không lọc `type = OUTSOURCE`, mốc hiển thị là `completedQuantity` so `inspectedQuantity`
    (không phải SL gửi gia công).
-2. `POST /oqc` — `ensureOperationExists` (load công đoạn + `productionJob`/`bomItem` qua relational
-   query) → không thấy → `E091`. `job.status ≠ IN_PROGRESS` → `E175`. `bomItem.itemId = null` →
-   `E199`.
+2. `POST /oqc` — `ensureOperationExists` (load công đoạn kèm `productionJob`/`bomItem`) → không thấy
+   → `E091`. `job.status ≠ IN_PROGRESS` → `E175`. `bomItem.itemId = null` → `E199`.
 3. `ensureLotSizeWithinPlannedNode` — Σ `quantity` mọi OQC (trừ `disposition = SCRAP`) của **mọi
    công đoạn as-used cùng node** (join qua `productionJobOperationId → productionJobBomItemId`),
-   cộng lô mới, so với SL kế hoạch node (`resolvePlannedQuantities`) — vượt → `E176`.
+   cộng lô mới, so với cột `plannedQuantity` (đã đóng băng lúc duyệt LSX) của node — vượt → `E176`.
 4. `ensureWithinCompletedQuantity` — Σ `quantity` mọi OQC (trừ `SCRAP`) của **riêng công đoạn này**,
    cộng lô mới, so với `operation.completedQuantity` — vượt → `E198`.
-5. Sinh mã `OQC-{năm}-{đếm trong năm + 1, pad 5}` nếu client không gửi `code`; check unique nếu có
-   gửi.
-6. 1 câu `INSERT`, không transaction (1 write) — `productionJobId`/`operationCode`/`operationName`/
-   `partCode`/`partName`/`itemId` server tự set từ công đoạn + node BOM, `status: NOT_INSPECTED`.
+5. Check unique nếu client có gửi `code`, rồi trong **một** transaction: cấp mã
+   `OQC-{năm}-{số thứ tự trong năm, pad 5}` qua `document_sequences` (`docs/architecture.md`, mục
+   "Bất biến xuyên module") nếu client không gửi + 1 câu `INSERT` — `productionJobId`/`itemId` server
+   tự set từ công đoạn + node BOM, `status: NOT_INSPECTED`. Không còn cột snapshot nào để ghi —
+   `operationCode`/`operationName`/`bomItem.code`/`bomItem.name` đọc lại qua relation lúc `GET`.
 
 ### Xác nhận (`OqcService.confirmOqc`) — auto-suggest + rework/disposition
 
@@ -134,7 +134,8 @@ nối các domain đó. OQC đổi từ gắn theo Job sang gắn theo công đo
 
 ## Transaction boundary
 
-`createOqc`/`confirmOqc` đều 1 write, không mở transaction (Postgres tự atomic cho một câu lệnh).
+`createOqc` mở transaction chỉ để gói cấp mã + `INSERT` (`document_sequences`); `confirmOqc` vẫn 1
+write, không mở transaction (Postgres tự atomic cho một câu lệnh).
 `confirmInventoryReceipt` đã tự mở transaction sẵn (khuôn `docs/workflows/receipt-confirmation.md`)
 — gate OQC chỉ thêm kiểm tra bên trong, không thêm transaction mới. `confirmOutboundOrder` tự mở
 transaction (`lockOutboundOrder` + gate + `UPDATE`). Cả `getJobOqcClearance` lẫn các hàm đọc SL khác
