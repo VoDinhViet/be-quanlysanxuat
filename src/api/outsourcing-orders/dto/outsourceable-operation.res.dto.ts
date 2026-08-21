@@ -5,12 +5,13 @@ import {
   NumberField,
   StringField,
   UUIDField,
+  UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
 import { ProductionJobRefResDto } from '../../production-jobs/dto/production-job-ref.res.dto';
 import { UnitResDto } from '../../units/dto/unit.res.dto';
 
 @Exclude()
-export class OutsourceablePartResDto {
+export class OutsourceableBomItemResDto {
   @Expose()
   @StringField({ description: 'Mã part (snapshot BOM của Job)' })
   code!: string;
@@ -23,17 +24,27 @@ export class OutsourceablePartResDto {
 @Exclude()
 export class OutsourceableOperationSnapshotResDto {
   @Expose()
-  @StringField({ description: 'Mã công đoạn' })
+  @UUIDFieldOptional({
+    nullable: true,
+    description:
+      'Công đoạn danh mục (operations) — null nếu snapshot mất liên kết',
+  })
+  operationId!: string | null;
+
+  @Expose()
+  @StringField({ description: 'Mã công đoạn (snapshot)' })
   code!: string;
 
   @Expose()
-  @StringField({ description: 'Tên công đoạn' })
+  @StringField({ description: 'Tên công đoạn (snapshot)' })
   name!: string;
 }
 
-/** Một dòng popup "Tìm kiếm part cần gia công" — `productionJobOperationId` là id thật sự cần gửi
- * lại khi tạo dòng OS-OUT (`OutsourcingOrderItemReqDto.productionJobOperationId`), không phải một
- * FK rò rỉ — đây là mục đích chính của route này. */
+/** Một dòng popup "chọn part cần gia công" — `productionJobOperationId`/`itemId`/`job.id`/
+ * `operation.*` là đúng bộ giá trị client gửi lại khi tạo dòng OS-OUT
+ * (`OutsourcingOrderItemReqDto`); `bomItem`/`unit` chỉ để hiển thị. Cùng khuôn popup OQC
+ * (`InspectableOperationResDto`) nhưng mốc so sánh khác: đây là SL gửi gia công, không phải tiến
+ * độ QC. */
 @Exclude()
 export class OutsourceableOperationResDto {
   @Expose()
@@ -41,12 +52,16 @@ export class OutsourceableOperationResDto {
   productionJobOperationId!: string;
 
   @Expose()
+  @UUIDField({ description: 'Mặt hàng WIP của công đoạn trên' })
+  itemId!: string;
+
+  @Expose()
   @ClassField(() => ProductionJobRefResDto)
   job!: ProductionJobRefResDto;
 
   @Expose()
-  @ClassField(() => OutsourceablePartResDto)
-  part!: OutsourceablePartResDto;
+  @ClassField(() => OutsourceableBomItemResDto)
+  bomItem!: OutsourceableBomItemResDto;
 
   @Expose()
   @ClassField(() => OutsourceableOperationSnapshotResDto)
@@ -57,7 +72,9 @@ export class OutsourceableOperationResDto {
   unit!: UnitResDto;
 
   @Expose()
-  @NumberField({ description: 'SL định mức (theo Job) — tính từ cây BOM' })
+  @NumberField({
+    description: 'SL định mức (theo Job) — đóng băng lúc duyệt LSX',
+  })
   plannedQuantity!: number;
 
   @Expose()

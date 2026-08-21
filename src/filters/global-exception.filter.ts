@@ -12,18 +12,14 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { STATUS_CODES } from 'http';
+import postgres from 'postgres';
 import { ErrorDetailDto } from '../common/dto/error-detail.dto';
 import { ErrorDto } from '../common/dto/error.dto';
+import { extractPostgresError } from '../common/utils/postgres-error.util';
 import { AllConfigType } from '../config/config.type';
 import { ErrorCode } from '../constants/error-code.constant';
 import { AppException } from '../exceptions/app.exception';
 import { Environment } from '../constants/app.constant';
-
-export interface PostgresError extends Error {
-  code: string;
-  detail?: string;
-  constraint?: string;
-}
 
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
@@ -42,6 +38,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       Environment.PRODUCTION;
 
     let error: ErrorDto;
+    const pgError = extractPostgresError(exception);
 
     if (exception instanceof AppException) {
       error = this.handleAppException(exception);
@@ -56,13 +53,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       error = this.handlePayloadTooLargeException(exception);
     } else if (exception instanceof HttpException) {
       error = this.handleHttpException(exception);
-    } else if (
-      exception &&
-      typeof exception === 'object' &&
-      'code' in exception
-    ) {
-      // Handling Postgres database errors naturally for Drizzle + pg
-      error = this.handleDatabaseError(exception as PostgresError);
+    } else if (pgError) {
+      error = this.handleDatabaseError(pgError);
     } else {
       error = this.handleError(exception as Error);
     }
@@ -161,7 +153,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     return errorRes;
   }
 
-  private handleDatabaseError(error: PostgresError): ErrorDto {
+  private handleDatabaseError(error: postgres.PostgresError): ErrorDto {
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
     let message = 'Internal database error';
 

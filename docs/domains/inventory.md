@@ -71,7 +71,7 @@ vẫn nhận được thành phẩm nếu người dùng chủ động lập phi
 
 **Bốn field trên `GET /inventory`, một công thức chung cho mọi loại item** (FG/WIP/RM — route này
 không còn tách theo `type`, xem đoạn "Danh sách tồn kho" bên dưới). `bomDemand` ở đây là placeholder
-`0`, **khác** `bomDemand` thật (từ `production_job_materials`) ở "Bốn số khác" ngay dưới đây — hai
+`0`, **khác** `bomDemand` thật (từ `production_job_issues`) ở "Bốn số khác" ngay dưới đây — hai
 field cùng tên nhưng hai nguồn số khác nhau, đừng nhầm:
 
 ```
@@ -105,7 +105,7 @@ dùng chung công thức ở `item-stock.query.ts`:
 
 ```
 onHand    = SUM(inventory_balances.quantity) gộp mọi kho              (giống trên)
-bomDemand = SUM(production_job_materials.requiredQty) của Job liên kết với
+bomDemand = SUM(production_job_issues.requiredQty) của Job liên kết với
             phiếu/đề xuất, hoặc mọi Job của LSX nếu không có Job cụ thể
 available = onHand − bomDemand                                        (cố ý có thể âm)
 fromStock = min(onHand, bomDemand)                                     (phần tồn bị LSX này chiếm)
@@ -276,8 +276,10 @@ Lý do gốc từng cho rằng gate này thừa ("hàng NG chưa từng vào t�
 
 ## Business rules
 
-- `code` bất biến, unique toàn bảng, sinh theo năm: `PNK-{năm}-{đếm trong năm + 1, pad 5}` (nhập),
-  `PXK-{năm}-{...}` (xuất), `PTNCC-{năm}-{...}` (trả NCC).
+- `code` bất biến, unique toàn bảng, sinh theo năm: `PNK-{năm}-{số thứ tự trong năm, pad 5}` (nhập),
+  `PXK-{năm}-{...}` (xuất), `PTNCC-{năm}-{...}` (trả NCC). `PNK`/`PXK` cấp qua bảng đếm dùng chung
+  `document_sequences` (`docs/architecture.md`, mục "Bất biến xuyên module"); `PTNCC` là ngoại lệ
+  còn lại, vẫn đếm-rồi-cộng trên chính bảng.
 - **`shouldPostStock` bỏ qua trừ tồn ở 2 ca, còn lại luôn trừ** (`postSupplierReturn`):
   1. **Bù trừ SL đã trả trước khi ghi bút toán `RECEIPT`**: một IQC `FAIL` chạy **trước** khi phiếu
      nhập gốc `post` (cổng IQC nằm ở `confirm`, xem Lifecycle), nên tại thời điểm `disposition` ra
@@ -360,7 +362,7 @@ Không phải invariant dù dễ tưởng:
 - **`reservedQuantity` trên `inventory_balances` luôn bằng 0** — cột có sẵn, chưa route nào ghi.
 - **`bomDemand` trên `GET /inventory` luôn bằng 0, mọi loại item** — chưa nổ BOM đa cấp; khác
   `reserved` (tính thật, xem "Bốn field" ở Core concepts). Dòng chi tiết phiếu nhập/đề xuất mua
-  (khối "Bốn số khác" ở Core concepts) tính `bomDemand` thật từ `production_job_materials` — không
+  (khối "Bốn số khác" ở Core concepts) tính `bomDemand` thật từ `production_job_issues` — không
   cùng công thức.
 - **`SHORTAGE` trên `GET /inventory` không còn "chưa bao giờ xuất hiện thực tế"** như bản RM cũ —
   giờ có thể thật sự xảy ra ở dòng FG nếu `reserved > onHand` (đơn đã duyệt giữ chỗ nhiều hơn tồn
@@ -382,8 +384,9 @@ Không phải invariant dù dễ tưởng:
   tuỳ chọn; khác `inventory_issues.productionJobId`, vẫn tuỳ chọn cho mọi `issueType`).
 - **← Production (Gia công ngoài)**: mỗi dòng `outsourcing_order_items` mang snapshot
   `productionJobId`/`itemId`/`operationCode`/`operationName` do client gửi từ popup `GET
-  .../outsourceable-operations` (đọc `production_job_operations`/`resolvePlannedQuantities`,
-  `docs/domains/production.md`) — server không tự đọc lại `production_job_operations`/
+  .../outsourceable-operations` (đọc `production_job_operations`/
+  `production_job_bom_items.plannedQuantity`, `docs/domains/production.md`) — server không tự đọc
+  lại `production_job_operations`/
   `production_jobs` lúc `create` (`docs/decisions/outsourcing-no-draft.md`). Một chiều — không ghi
   ngược vào `production_job_operations`/`production_jobs`, đợt này **không** có gating/block tiến độ
   Job hay công đoạn kế tiếp theo trạng thái OS-OUT/OS-IN.

@@ -9,7 +9,7 @@ import {
 export class CreateWarehouseReqDto {
   @StringFieldOptional({
     maxLength: 50,
-    description: 'Mã kho; tự sinh (KHOxxxx) nếu không truyền',
+    description: 'Mã kho; tự sinh (WHxxxx) nếu không truyền',
   })
   readonly code?: string;
 

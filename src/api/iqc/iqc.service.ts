@@ -1,20 +1,14 @@
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
-import {
-  and,
-  count,
-  desc,
-  eq,
-  exists,
-  gte,
-  isNull,
-  lt,
-  or,
-  sql,
-} from 'drizzle-orm';
+import { and, count, desc, eq, exists, isNull, or, sql } from 'drizzle-orm';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
+import {
+  DocumentType,
+  generateDocumentSequences,
+} from '../../common/utils/document-sequence.util';
+import { extractPostgresError } from '../../common/utils/postgres-error.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
@@ -199,16 +193,28 @@ export class IqcService {
 
     const status = this.resolveIqcStatus(reqDto.result, reqDto.disposition);
 
-    let code = reqDto.code;
-    if (code) {
-      await this.validateCodeUniqueness(code);
-    } else {
-      code = await this.generateIqcCode(reqDto.inspectionDate);
+    if (reqDto.code) {
+      await this.validateCodeUniqueness(reqDto.code);
     }
 
-    await this.db
-      .insert(iqcInspections)
-      .values({ ...reqDto, code, status, createdBy: userId });
+    try {
+      await this.db.transaction(async (tx) => {
+        const code =
+          reqDto.code ??
+          (await this.generateIqcCode(tx, reqDto.inspectionDate));
+
+        await tx
+          .insert(iqcInspections)
+          .values({ ...reqDto, code, status, createdBy: userId });
+      });
+    } catch (error) {
+      // Mã client tự gửi vẫn còn TOCTOU giữa `validateCodeUniqueness` và `INSERT` — bắt ở đây
+      // thay vì để lỗi Postgres thô 500 lọt ra ngoài.
+      if (extractPostgresError(error)?.code === '23505') {
+        throw new AppException(ErrorCode.E140, HttpStatus.CONFLICT);
+      }
+      throw error;
+    }
   }
 
   /** Sinh phiếu IQC cho từng dòng phiếu nhập khi phiếu được xác nhận có yêu cầu QC — đường ghi tự
@@ -255,9 +261,7 @@ export class IqcService {
    *  tự động thứ ba (song sinh `createInspectionsFromReceipt`), gọi trong transaction của
    *  `OutsourcingReceiptsService.createOutsourcingReceipt`. **Không** gate `create` — hàng đã về nhà
    *  máy vật lý trước khi các dòng IQC này được kiểm (không phải ghi tồn — gia công ngoài không đụng
-   *  `inventory_balances`, `docs/decisions/wip-not-stocked.md`). Cấp mã 1 lần cho cả N dòng (`generateIqcCodes`),
-   *  không lặp gọi từng dòng — gọi lặp trong cùng transaction sẽ ra mã trùng
-   *  (`generateIqcCodes` đếm-rồi-cộng, chưa commit thì chưa thấy dòng vừa insert). Xem
+   *  `inventory_balances`, `docs/decisions/wip-not-stocked.md`). Xem
    *  `docs/workflows/outsourcing-round-trip.md`. */
   async createInspectionsFromOutsourcingReceipt(
     tx: DbTransaction,
@@ -683,38 +687,32 @@ export class IqcService {
     }
   }
 
-  private async generateIqcCode(inspectionDate: Date): Promise<string> {
-    const [code] = await this.generateIqcCodes(this.db, inspectionDate, 1);
+  private async generateIqcCode(
+    tx: DbTransaction,
+    inspectionDate: Date,
+  ): Promise<string> {
+    const [code] = await this.generateIqcCodes(tx, inspectionDate, 1);
     return code;
   }
 
-  /** Đếm một lần rồi cấp `quantity` mã liên tiếp — bắt buộc khi sinh hàng loạt trong cùng một
-   *  transaction: gọi lặp `generateIqcCode` N lần sẽ ra N mã trùng nhau vì mỗi lần đều `COUNT(*)`
-   *  lại, không thấy các dòng vừa insert nhưng chưa commit của chính vòng lặp đó. Nhận
-   *  `Database | DbTransaction` (không bắt buộc `tx` như một write helper thường) vì đây thuần là
-   *  đọc, và phải dùng được từ cả `generateIqcCode` (ngoài transaction) lẫn
-   *  `createInspectionsFromReceipt` (trong transaction). */
+  /** Cấp `quantity` mã liên tiếp trong năm của `inspectionDate` qua `generateDocumentSequences` —
+   *  dùng được từ cả `generateIqcCode` (đơn, `quantity = 1`) lẫn `createInspectionsFromReceipt`/
+   *  `createInspectionsFromOutsourcingReceipt` (N phiếu/lượt). */
   private async generateIqcCodes(
-    db: Database | DbTransaction,
+    tx: DbTransaction,
     inspectionDate: Date,
     quantity: number,
   ): Promise<string[]> {
     const year = inspectionDate.getFullYear();
-    const yearStart = new Date(year, 0, 1);
-    const yearEnd = new Date(year + 1, 0, 1);
-    const [totalRows] = await db
-      .select({ total: count() })
-      .from(iqcInspections)
-      .where(
-        and(
-          gte(iqcInspections.inspectionDate, yearStart),
-          lt(iqcInspections.inspectionDate, yearEnd),
-        ),
-      );
-    const start = (totalRows?.total ?? 0) + 1;
-    return Array.from(
-      { length: quantity },
-      (_, index) => `IQC-${year}-${String(start + index).padStart(5, '0')}`,
+    const sequences = await generateDocumentSequences(
+      tx,
+      DocumentType.IQC,
+      year,
+      quantity,
+    );
+
+    return sequences.map(
+      (sequence) => `IQC-${year}-${String(sequence).padStart(5, '0')}`,
     );
   }
 

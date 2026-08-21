@@ -17,6 +17,11 @@ import {
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
+import {
+  DocumentType,
+  generateDocumentSequence,
+} from '../../common/utils/document-sequence.util';
+import { extractPostgresError } from '../../common/utils/postgres-error.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
@@ -41,7 +46,7 @@ import { AppException } from '../../exceptions/app.exception';
 import {
   onHandQuantityByItemSubquery,
   itemStockColumns,
-  jobMaterialDemandSubquery,
+  jobIssueDemandSubquery,
 } from '../inventory/item-stock.query';
 import type { InventoryPostingLine } from '../inventory/inventory-posting.service';
 import { InventoryPostingService } from '../inventory/inventory-posting.service';
@@ -50,7 +55,6 @@ import { getJobOqcClearance } from '../oqc/oqc.query';
 import { PaymentRequestsService } from '../payment-requests/payment-requests.service';
 import { getReceivedQuantityByPurchaseOrderItemId } from '../purchase-orders/purchase-orders.query';
 import { getReturnedQuantityByReceiptItemId } from '../supplier-returns/supplier-returns.query';
-import { WarehousesService } from '../warehouses/warehouses.service';
 import { CreateInventoryReceiptReqDto } from './dto/create-inventory-receipt.req.dto';
 import { GetInventoryReceiptsReqDto } from './dto/get-inventory-receipts.req.dto';
 import { InventoryReceiptItemReqDto } from './dto/inventory-receipt-item.req.dto';
@@ -80,7 +84,6 @@ export class InventoryReceiptsService {
 
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
-    private readonly warehousesService: WarehousesService,
     private readonly inventoryPostingService: InventoryPostingService,
     private readonly iqcService: IqcService,
     private readonly paymentRequestsService: PaymentRequestsService,
@@ -206,7 +209,7 @@ export class InventoryReceiptsService {
     },
   ) {
     const balance = onHandQuantityByItemSubquery(this.db);
-    const demand = jobMaterialDemandSubquery(this.db, scope);
+    const demand = jobIssueDemandSubquery(this.db, scope);
 
     return this.db
       .select({
@@ -234,7 +237,6 @@ export class InventoryReceiptsService {
     reqDto: CreateInventoryReceiptReqDto,
     userId: string,
   ): Promise<InventoryReceiptResDto> {
-    await this.warehousesService.ensureWarehouseActive(reqDto.warehouseId);
     await this.ensureItemsValid(reqDto.items);
     await this.ensureReferencesValid(reqDto);
     this.ensureProductionJobRequired(
@@ -248,25 +250,36 @@ export class InventoryReceiptsService {
     );
     await this.ensureReceiptQuantitiesWithinOrdered(this.db, reqDto.items);
 
-    let code = reqDto.code;
-    if (code) {
-      await this.validateCodeUniqueness(code);
-    } else {
-      code = await this.generateReceiptCode(reqDto.receiptDate);
+    if (reqDto.code) {
+      await this.validateCodeUniqueness(reqDto.code);
     }
 
     const { items, ...receiptFields } = reqDto;
 
-    const receiptId = await this.db.transaction(async (tx) => {
-      const [receipt] = await tx
-        .insert(inventoryReceipts)
-        .values({ ...receiptFields, code, createdBy: userId })
-        .returning();
+    let receiptId: string;
+    try {
+      receiptId = await this.db.transaction(async (tx) => {
+        const code =
+          reqDto.code ??
+          (await this.generateReceiptCode(tx, reqDto.receiptDate));
 
-      await this.createItems(tx, receipt.id, items);
+        const [receipt] = await tx
+          .insert(inventoryReceipts)
+          .values({ ...receiptFields, code, createdBy: userId })
+          .returning();
 
-      return receipt.id;
-    });
+        await this.createItems(tx, receipt.id, items);
+
+        return receipt.id;
+      });
+    } catch (error) {
+      // Mã client tự gửi vẫn còn TOCTOU giữa `validateCodeUniqueness` và `INSERT` — bắt ở đây
+      // thay vì để lỗi Postgres thô 500 lọt ra ngoài.
+      if (extractPostgresError(error)?.code === '23505') {
+        throw new AppException(ErrorCode.E097, HttpStatus.CONFLICT);
+      }
+      throw error;
+    }
 
     return this.getInventoryReceipt(receiptId);
   }
@@ -513,20 +526,18 @@ export class InventoryReceiptsService {
     }
   }
 
-  private async generateReceiptCode(receiptDate: Date): Promise<string> {
+  private async generateReceiptCode(
+    tx: DbTransaction,
+    receiptDate: Date,
+  ): Promise<string> {
     const year = receiptDate.getFullYear();
-    const yearStart = new Date(year, 0, 1);
-    const yearEnd = new Date(year + 1, 0, 1);
-    const [totalRows] = await this.db
-      .select({ total: count() })
-      .from(inventoryReceipts)
-      .where(
-        and(
-          gte(inventoryReceipts.receiptDate, yearStart),
-          lt(inventoryReceipts.receiptDate, yearEnd),
-        ),
-      );
-    return `PNK-${year}-${String((totalRows?.total ?? 0) + 1).padStart(5, '0')}`;
+    const sequence = await generateDocumentSequence(
+      tx,
+      DocumentType.INVENTORY_RECEIPT,
+      year,
+    );
+
+    return `PNK-${year}-${String(sequence).padStart(5, '0')}`;
   }
 
   private async validateCodeUniqueness(code: string): Promise<void> {

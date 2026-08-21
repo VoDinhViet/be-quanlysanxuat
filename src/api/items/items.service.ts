@@ -9,15 +9,17 @@ import {
   getTableColumns,
   inArray,
   isNull,
-  like,
   ne,
   or,
-  sql,
 } from 'drizzle-orm';
-import postgres from 'postgres';
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
+import {
+  DocumentType,
+  generateDocumentSequence,
+} from '../../common/utils/document-sequence.util';
+import { extractPostgresError } from '../../common/utils/postgres-error.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
@@ -151,11 +153,8 @@ export class ItemsService {
   async createItem(reqDto: CreateItemReqDto, userId: string): Promise<void> {
     const type = reqDto.type ?? ItemType.FG;
 
-    let code = reqDto.code;
-    if (code) {
-      await this.validateCodeUniqueness(code);
-    } else {
-      code = await this.generateItemCode(type);
+    if (reqDto.code) {
+      await this.validateCodeUniqueness(reqDto.code);
     }
 
     await this.ensureUnitExists(reqDto.unitId, type);
@@ -170,16 +169,20 @@ export class ItemsService {
     }
 
     try {
-      // `type`/`status`/`minStock` đều có default ở cột schema, bỏ trống là DB tự điền.
-      await this.db.insert(items).values({
-        ...reqDto,
-        code,
-        createdBy: userId,
+      await this.db.transaction(async (tx) => {
+        const code = reqDto.code ?? (await this.generateItemCode(tx, type));
+
+        // `type`/`status`/`minStock` đều có default ở cột schema, bỏ trống là DB tự điền.
+        await tx.insert(items).values({
+          ...reqDto,
+          code,
+          createdBy: userId,
+        });
       });
     } catch (error) {
-      // `generateItemCode` chỉ đọc mã lớn nhất tại thời điểm gọi — hai request tạo đồng thời vẫn
-      // có thể đụng cùng một mã. Bắt ở đây thay vì để lỗi Postgres thô 500 lọt ra ngoài.
-      if (error instanceof postgres.PostgresError && error.code === '23505') {
+      // Mã client tự gửi vẫn còn TOCTOU giữa `validateCodeUniqueness` và `INSERT` — bắt ở đây
+      // thay vì để lỗi Postgres thô 500 lọt ra ngoài.
+      if (extractPostgresError(error)?.code === '23505') {
         throw new AppException(ErrorCode.E008, HttpStatus.CONFLICT);
       }
       throw error;
@@ -274,8 +277,6 @@ export class ItemsService {
       throw new AppException(ErrorCode.E110, HttpStatus.BAD_REQUEST);
     }
 
-    const code = await this.generateItemCode(item.type);
-
     // 1. Đọc BOM gốc trước khi mở transaction
     const bom = await this.db.query.boms.findFirst({
       columns: { id: true },
@@ -291,6 +292,8 @@ export class ItemsService {
 
     // 2. Mở transaction để ghi dữ liệu mới
     await this.db.transaction(async (tx) => {
+      const code = await this.generateItemCode(tx, item.type);
+
       const {
         id: clonedFromItemId,
         code: _code,
@@ -434,23 +437,15 @@ export class ItemsService {
     }
   }
 
-  // Số thứ tự lấy từ mã lớn nhất đang có của tiền tố, không phải `count(*)` — count trùng khi có
-  // mã nhập tay chen ngang giữa hai số đã tồn tại, và vẫn có thể đụng race giữa hai request tạo
-  // đồng thời (bắt ở `createItem`'s catch, phía trên). Không lọc `isNull(deletedAt)`: dòng đã xoá
-  // mềm vẫn giữ mã của nó, số thứ tự phải tính cả chúng để không cấp lại một mã đã dùng.
-  private async generateItemCode(type: ItemType): Promise<string> {
+  private async generateItemCode(
+    tx: DbTransaction,
+    type: ItemType,
+  ): Promise<string> {
     const prefix = type === ItemType.RM ? 'VT' : 'SP';
-    const [maxRow] = await this.db
-      .select({
-        maxNumber:
-          sql<number>`coalesce(max(substring(${items.code} from ${`^${prefix}([0-9]+)$`})::int), 0)`.mapWith(
-            Number,
-          ),
-      })
-      .from(items)
-      .where(like(items.code, `${prefix}%`));
-    const nextNumber = String((maxRow?.maxNumber ?? 0) + 1).padStart(4, '0');
+    const documentType =
+      type === ItemType.RM ? DocumentType.ITEM_RM : DocumentType.ITEM_FG_WIP;
+    const sequence = await generateDocumentSequence(tx, documentType);
 
-    return `${prefix}${nextNumber}`;
+    return `${prefix}${String(sequence).padStart(4, '0')}`;
   }
 }

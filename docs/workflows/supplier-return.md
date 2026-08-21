@@ -42,8 +42,8 @@ là bên xác nhận vật lý, khác vai trò với QC.
      hợp lệ ở `validateDecision`, cộng đúng `quantity` cùng `sortOkQty`).
 2. Trong transaction, sau khi `UPDATE` dòng IQC (khoá `WAITING_RETURN`) và replace-all 2 bộ file
    đính kèm, gọi `SupplierReturnsService.createFromIqcDisposition(tx, {...})`: sinh mã
-   `PTNCC-{năm}-{đếm trong năm + 1, pad 5}` (đọc trong `tx`, cùng giới hạn đếm-rồi-cộng đã chấp
-   nhận chung — xem "Transaction boundary"), insert một dòng `status = DRAFT`,
+   `PTNCC-{năm}-{đếm trong năm + 1, pad 5}` (đọc trong `tx`, vẫn đếm-rồi-cộng trên chính bảng — xem
+   "Transaction boundary"), insert một dòng `status = DRAFT`,
    `iqcId` = dòng IQC vừa khoá.
 3. Vì `WAITING_RETURN` khoá mọi lần `confirm` sau đó (`E159`), đây là lần **duy nhất** dòng IQC này
    chuyển sang trạng thái đó — không cần guard chống tạo phiếu trả trùng.
@@ -100,9 +100,10 @@ trực tiếp (import function, không qua service/DI) từ `postSupplierReturn`
 việc trừ tồn, đảm bảo "đã trừ tồn (hoặc quyết định không trừ) + IQC hoàn tất" là một đơn vị nguyên
 tử.
 
-Sinh mã phiếu trả nằm **trong** transaction `confirm`, cùng giới hạn đếm-rồi-cộng đã chấp nhận
-chung trong repo — hai lượt `confirm` song song (hai dòng IQC khác nhau, cùng disposition SORT/
-RETURN) có thể trùng mã, unique constraint trên `code` là chốt chặn thật.
+Sinh mã phiếu trả nằm **trong** transaction `confirm` nhưng **chưa** chuyển sang bảng đếm dùng chung
+`document_sequences` như phần lớn chứng từ khác (`docs/architecture.md`, mục "Bất biến xuyên
+module") — vẫn đếm-rồi-cộng, nên hai lượt `confirm` song song (hai dòng IQC khác nhau, cùng
+disposition SORT/RETURN) có thể trùng mã, unique constraint trên `code` là chốt chặn thật.
 
 ## Failure cases
 

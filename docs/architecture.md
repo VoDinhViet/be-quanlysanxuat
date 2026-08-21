@@ -41,7 +41,9 @@ erDiagram
     PRODUCTION_JOBS ||--o{ PRODUCTION_JOB_BOM_ITEMS : "snapshot cây BOM (WIP + RM)"
     PRODUCTION_JOB_BOM_ITEMS }o--o| PRODUCTION_JOB_BOM_ITEMS : "parentId"
     PRODUCTION_JOB_BOM_ITEMS ||--o{ PRODUCTION_JOB_OPERATIONS : "công đoạn as-used"
-    PRODUCTION_JOBS ||--o{ PRODUCTION_JOB_MATERIALS : "snapshot vật tư (gộp theo itemId)"
+    PRODUCTION_JOBS ||--o{ PRODUCTION_JOB_ISSUES : "snapshot vật tư (gộp theo itemId)"
+    PRODUCTION_JOB_ISSUES }o--|| PRODUCTION_JOB_ITEMS : "mã/tên vật tư (bảng chiều, SCD)"
+    PRODUCTION_JOB_ISSUES }o--|| PRODUCTION_JOB_UNITS : "mã/tên ĐVT (bảng chiều, SCD)"
     PRODUCTION_JOBS ||--o{ PRODUCTION_JOB_NOTES : "ghi chú"
 
     PRODUCTION_ORDERS ||--o{ PURCHASE_REQUESTS : "đề xuất mua vật tư (tuỳ chọn)"
@@ -108,7 +110,8 @@ phân loại, xem `docs/decisions/items-merge.md`.
 
 ## Thứ tự ghi của các luồng bắc cầu nhiều module
 
-**Tạo item** (`ItemsService.createItem`): một `INSERT` đơn vào `items`, không cần transaction.
+**Tạo item** (`ItemsService.createItem`): transaction bao cấp mã (`document_sequences`) + một
+`INSERT` vào `items`, không ghi bảng nào khác.
 **`boms`/`bom_items`/`routings`/`routing_operations` KHÔNG được tạo ở bước này** — cả BOM lẫn
 routing Cấp 0 sinh ra lười (get-or-create), ngay trong transaction ghi dòng đầu tiên. BOM ghi qua
 `POST /items/:itemId/bom/items` (`BomsModule`) — một node có thể trỏ WIP (node) hoặc RM (lá).
@@ -133,7 +136,9 @@ chính PO này). Chi tiết từng bước: `docs/workflows/order-approval.md`.
 `ProductionJobsService.createJobs` tạo 1 `production_jobs` row/item FG, rồi nhân bản toàn bộ cây
 `bom_items` (WIP + RM) sang `production_job_bom_items`, copy routing as-used của từng node WIP sang
 `production_job_operations`, và gộp riêng mọi lá RM theo `itemId` × SL Job sang
-`production_job_materials` — cùng trong transaction này.
+`production_job_issues` — cùng trong transaction này. Trước khi ghi `production_job_issues`,
+get-or-create theo bộ ba nội dung (mã/tên) hai bảng chiều dùng chung
+`production_job_items`/`production_job_units`, cùng transaction (`docs/domains/production.md`).
 
 **Post/cancel phiếu kho** (`InventoryReceiptsService.postInventoryReceipt`/`InventoryIssuesService.postInventoryIssue`,
 hợp lệ từ `PENDING_RECEIPT`/`PENDING_IQC` — phiếu nhập có nhánh IQC, xem
@@ -151,8 +156,9 @@ createOutsourcingReceipt`): không có bước nháp — `create` gộp luôn ph
 (`docs/decisions/outsourcing-no-draft.md`), nhưng **không đụng `inventory_balances`/
 `inventory_transactions`** — mặt hàng gửi gia công ngoài luôn là WIP, kho không quản tồn WIP
 (`docs/decisions/wip-not-stocked.md`). Validate mềm chạy trước, ngoài transaction (đọc
-`production_job_operations.type`/`production_jobs.status` + `resolvePlannedQuantities` — chỉ đọc,
-không ghi ngược Production); trong transaction: `INSERT` header thẳng `POSTED` + `INSERT` mọi dòng
+`production_job_operations.type`/`production_jobs.status` + cột
+`production_job_bom_items.plannedQuantity` — chỉ đọc, không ghi ngược Production); trong
+transaction: `INSERT` header thẳng `POSTED` + `INSERT` mọi dòng
 (`.returning()`) → validate lại lần hai trên dữ liệu vừa insert (chốt chặn thật, loại chính phiếu
 đang tạo). Riêng `createOutsourcingReceipt` có thêm một nhánh tuỳ chọn sau đó: nếu
 `requiresIqc = true`, cùng transaction gọi thêm
@@ -170,7 +176,7 @@ trong ngày, trong tx) → `INSERT` header (`status = DRAFT`) + mọi dòng. Kh�
 ngay), DO vẫn ở `DRAFT`, phase sau mới có bước xác nhận giao.
 
 **Start Job** (`ProductionJobsService.startJob`, chỉ hợp lệ từ `PENDING`): đọc
-`production_job_materials` + `InventoryService.getMaterialStockLevels` (chỉ đọc, chạy trước
+`production_job_issues` + `InventoryService.getMaterialStockLevels` (chỉ đọc, chạy trước
 transaction) để tính vật tư thiếu → trong transaction: update `production_jobs.status =
 IN_PROGRESS` → nếu có thiếu, `PurchaseRequestsService.createShortageRequest` ghi thêm
 `purchase_requests` (`DRAFT`) + `purchase_request_items` cho đúng phần thiếu. Không thiếu gì thì
@@ -280,6 +286,17 @@ Những sự thật này không nằm trọn trong một `docs/domains/<x>.md` n
   ...) trỏ `users.id`, không phải `credentials.id` (đảo lại 2026-08-01 — `orders.assignedUserId`
   từng là ngoại lệ duy nhất, giờ mọi cột audit dùng chung một quy ước). Xem
   `docs/domains/identity-access.md`.
+- **Mã chứng từ tự sinh của 11 bảng** (`items` VT/SP, `purchase_requests` PR-, `oqc_inspections`
+  OQC-, `iqc_inspections` IQC-, `inventory_receipts` PNK-, `inventory_issues` PXK-,
+  `purchase_quotations` RFQ-, `purchase_orders` PO-, `warehouses` WH, `outsourcing_orders` OS-OUT-,
+  `outsourcing_receipts` OS-IN-) đọc số qua bảng đếm dùng chung `document_sequences` —
+  `generateDocumentSequence(s)` (`src/common/utils/document-sequence.util.ts`), 1 câu
+  `INSERT ... ON CONFLICT DO UPDATE ... RETURNING` atomic theo `(documentType, year)`, không tự
+  `MAX`/`COUNT` riêng từng bảng nữa. Bắt buộc gọi trong transaction của chính lượt tạo chứng từ.
+  Số còn lại **chưa** chuyển, vẫn đếm-rồi-cộng trên chính bảng (mã có thể trùng khi chạy song song,
+  unique constraint là chốt chặn thật): `orders` SO, `production_orders` LSX, `production_jobs` JOB,
+  `outbound_orders` DO-, `supplier_returns` PTNCC-, `payment_requests` YCTT-, `clients` KH,
+  `suppliers` NCC, `users` NV.
 
 ## Xem thêm
 

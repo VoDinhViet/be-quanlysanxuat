@@ -255,8 +255,8 @@ một phần, **không** phải công nợ/thanh toán/kế toán thật.
 - `mark-paid`/`cancel` một yêu cầu thanh toán chặn nếu không còn `PENDING` (`E158`) — cả hai chuyển
   trạng thái đều cuối, không đổi lại được.
 - Mã (`purchase_quotations.code` tiền tố `RFQ`, `purchase_orders.code` tiền tố `PO`) bất biến, unique
-  toàn bảng, sinh theo khuôn `PurchaseRequestsService.generatePurchaseRequestCode` (đếm + pad, không
-  tách năm).
+  toàn bảng, cấp qua bảng đếm dùng chung `document_sequences` (`docs/architecture.md`, mục "Bất biến
+  xuyên module") — số + pad, không tách năm.
 
 ## Cross-domain dependencies
 

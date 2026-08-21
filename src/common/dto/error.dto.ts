@@ -22,5 +22,5 @@ export class ErrorDto {
 
   stack?: string;
 
-  trace?: Error | unknown;
+  trace?: unknown;
 }

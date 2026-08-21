@@ -77,7 +77,7 @@ theo nó; BOM, đơn hàng và sản xuất đều nhận item `INACTIVE`.
 - Thêm công đoạn Cấp 0: transaction bao get-or-create header `routings` + ghi bước.
 - Nhân bản: một transaction bao **toàn bộ** item + cây. Đây là lý do mọi phần đọc phải xong trước
   khi mở.
-- Tạo item: một `INSERT` đơn, không cần transaction.
+- Tạo item: transaction bao cấp mã (`document_sequences`) + một `INSERT` vào `items`.
 
 ## Failure cases
 

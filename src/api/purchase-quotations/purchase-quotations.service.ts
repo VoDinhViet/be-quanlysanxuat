@@ -16,6 +16,10 @@ import {
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
+import {
+  DocumentType,
+  generateDocumentSequence,
+} from '../../common/utils/document-sequence.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
@@ -724,9 +728,11 @@ export class PurchaseQuotationsService {
   }
 
   private async generateQuotationCode(tx: DbTransaction): Promise<string> {
-    const [totalRows] = await tx
-      .select({ total: count() })
-      .from(purchaseQuotations);
-    return `RFQ-${String((totalRows?.total ?? 0) + 1).padStart(5, '0')}`;
+    const sequence = await generateDocumentSequence(
+      tx,
+      DocumentType.PURCHASE_QUOTATION,
+    );
+
+    return `RFQ-${String(sequence).padStart(5, '0')}`;
   }
 }

@@ -142,8 +142,9 @@ Khoá dòng balance tương tự chặn hai phiếu khác nhau `post` song song 
 hạn race đều là giới hạn đã biết của thiết kế cũ, nay được xử lý (xem
 `docs/decisions/stored-inventory-balances.md`).
 
-Sinh mã (`PNK`/`PXK`) vẫn đếm-rồi-cộng-1 lúc lập phiếu, ngoài transaction `post` — unique constraint
-trên `code` là chốt chặn thật, cùng giới hạn TOCTOU đã chấp nhận chung trong repo.
+Sinh mã (`PNK`/`PXK`) nằm **trong** transaction lập phiếu (`create`), không dính gì tới `post`, và
+cấp qua bảng đếm dùng chung `document_sequences` (`docs/architecture.md`, mục "Bất biến xuyên
+module") — atomic, hai lượt lập phiếu song song không thể ra cùng mã.
 
 ## Failure cases
 

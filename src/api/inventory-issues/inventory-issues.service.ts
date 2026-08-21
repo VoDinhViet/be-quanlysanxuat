@@ -4,6 +4,11 @@ import { and, count, desc, eq, gte, inArray, isNull, lt } from 'drizzle-orm';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
+import {
+  DocumentType,
+  generateDocumentSequence,
+} from '../../common/utils/document-sequence.util';
+import { extractPostgresError } from '../../common/utils/postgres-error.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
@@ -26,7 +31,6 @@ import {
 import { AppException } from '../../exceptions/app.exception';
 import { hasPendingIqcForItems } from '../iqc/iqc.query';
 import { InventoryPostingService } from '../inventory/inventory-posting.service';
-import { WarehousesService } from '../warehouses/warehouses.service';
 import { CreateInventoryIssueReqDto } from './dto/create-inventory-issue.req.dto';
 import { GetInventoryIssuesReqDto } from './dto/get-inventory-issues.req.dto';
 import { InventoryIssueItemReqDto } from './dto/inventory-issue-item.req.dto';
@@ -49,7 +53,6 @@ const issueTypeTransactionType: Record<
 export class InventoryIssuesService {
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
-    private readonly warehousesService: WarehousesService,
     private readonly inventoryPostingService: InventoryPostingService,
   ) {}
 
@@ -146,29 +149,38 @@ export class InventoryIssuesService {
     reqDto: CreateInventoryIssueReqDto,
     userId: string,
   ): Promise<InventoryIssueResDto> {
-    await this.warehousesService.ensureWarehouseActive(reqDto.warehouseId);
     await this.ensureItemsValid(reqDto.items);
     await this.ensureReferencesValid(reqDto);
 
-    let code = reqDto.code;
-    if (code) {
-      await this.validateCodeUniqueness(code);
-    } else {
-      code = await this.generateIssueCode(reqDto.issueDate);
+    if (reqDto.code) {
+      await this.validateCodeUniqueness(reqDto.code);
     }
 
     const { items, ...issueFields } = reqDto;
 
-    const issueId = await this.db.transaction(async (tx) => {
-      const [issue] = await tx
-        .insert(inventoryIssues)
-        .values({ ...issueFields, code, createdBy: userId })
-        .returning();
+    let issueId: string;
+    try {
+      issueId = await this.db.transaction(async (tx) => {
+        const code =
+          reqDto.code ?? (await this.generateIssueCode(tx, reqDto.issueDate));
 
-      await this.createItems(tx, issue.id, items);
+        const [issue] = await tx
+          .insert(inventoryIssues)
+          .values({ ...issueFields, code, createdBy: userId })
+          .returning();
 
-      return issue.id;
-    });
+        await this.createItems(tx, issue.id, items);
+
+        return issue.id;
+      });
+    } catch (error) {
+      // Mã client tự gửi vẫn còn TOCTOU giữa `validateCodeUniqueness` và `INSERT` — bắt ở đây
+      // thay vì để lỗi Postgres thô 500 lọt ra ngoài.
+      if (extractPostgresError(error)?.code === '23505') {
+        throw new AppException(ErrorCode.E097, HttpStatus.CONFLICT);
+      }
+      throw error;
+    }
 
     return this.getInventoryIssue(issueId);
   }
@@ -310,20 +322,18 @@ export class InventoryIssuesService {
     }
   }
 
-  private async generateIssueCode(issueDate: Date): Promise<string> {
+  private async generateIssueCode(
+    tx: DbTransaction,
+    issueDate: Date,
+  ): Promise<string> {
     const year = issueDate.getFullYear();
-    const yearStart = new Date(year, 0, 1);
-    const yearEnd = new Date(year + 1, 0, 1);
-    const [totalRows] = await this.db
-      .select({ total: count() })
-      .from(inventoryIssues)
-      .where(
-        and(
-          gte(inventoryIssues.issueDate, yearStart),
-          lt(inventoryIssues.issueDate, yearEnd),
-        ),
-      );
-    return `PXK-${year}-${String((totalRows?.total ?? 0) + 1).padStart(5, '0')}`;
+    const sequence = await generateDocumentSequence(
+      tx,
+      DocumentType.INVENTORY_ISSUE,
+      year,
+    );
+
+    return `PXK-${year}-${String(sequence).padStart(5, '0')}`;
   }
 
   private async validateCodeUniqueness(code: string): Promise<void> {

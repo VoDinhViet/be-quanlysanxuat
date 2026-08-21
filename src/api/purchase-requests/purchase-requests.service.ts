@@ -18,6 +18,10 @@ import {
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
+import {
+  DocumentType,
+  generateDocumentSequence,
+} from '../../common/utils/document-sequence.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
@@ -37,7 +41,7 @@ import { AppException } from '../../exceptions/app.exception';
 import {
   onHandQuantityByItemSubquery,
   itemStockColumns,
-  jobMaterialDemandSubquery,
+  jobIssueDemandSubquery,
 } from '../inventory/item-stock.query';
 import { CreatePurchaseRequestItemReqDto } from './dto/create-purchase-request-item.req.dto';
 import { CreatePurchaseRequestReqDto } from './dto/create-purchase-request.req.dto';
@@ -186,7 +190,7 @@ export class PurchaseRequestsService {
     },
   ) {
     const balance = onHandQuantityByItemSubquery(this.db);
-    const demand = jobMaterialDemandSubquery(this.db, scope);
+    const demand = jobIssueDemandSubquery(this.db, scope);
 
     const rows = await this.db
       .select({
@@ -479,7 +483,7 @@ export class PurchaseRequestsService {
 
   /** Ngoài "tồn tại" còn chốt ba bất biến chỉ đường tay mới phá được: không rỗng (`E146`), không
    * trùng `itemId` trong cùng payload (`E147`) và mọi dòng phải là RM (`E148`) — đường tự động lấy
-   * dòng từ `production_job_materials` nên vốn đã đúng cả ba. */
+   * dòng từ `production_job_issues` nên vốn đã đúng cả ba. */
   private async ensureRequestItemsValid(
     lineItems: CreatePurchaseRequestItemReqDto[],
   ): Promise<void> {
@@ -530,21 +534,14 @@ export class PurchaseRequestsService {
     );
   }
 
-  /** Số thứ tự lấy từ `MAX` mã đang có, không phải `count(*)`: có route xoá phiếu nên count tụt
-   * lại sau mỗi lần xoá và sẽ cấp lại một mã đã tồn tại. Khuôn `ItemsService.generateItemCode`. */
   private async generatePurchaseRequestCode(
     tx: DbTransaction,
   ): Promise<string> {
-    const [maxRow] = await tx
-      .select({
-        maxNumber:
-          sql<number>`coalesce(max(substring(${purchaseRequests.code} from ${'^PR-([0-9]+)$'})::int), 0)`.mapWith(
-            Number,
-          ),
-      })
-      .from(purchaseRequests);
-    const nextNumber = String((maxRow?.maxNumber ?? 0) + 1).padStart(5, '0');
+    const sequence = await generateDocumentSequence(
+      tx,
+      DocumentType.PURCHASE_REQUEST,
+    );
 
-    return `PR-${nextNumber}`;
+    return `PR-${String(sequence).padStart(5, '0')}`;
   }
 }

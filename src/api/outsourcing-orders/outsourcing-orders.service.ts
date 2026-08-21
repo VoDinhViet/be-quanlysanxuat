@@ -15,6 +15,10 @@ import { alias } from 'drizzle-orm/pg-core';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
+import {
+  DocumentType,
+  generateDocumentSequence,
+} from '../../common/utils/document-sequence.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
@@ -44,7 +48,6 @@ import { OutsourcingOrderItemResDto } from './dto/outsourcing-order-item.res.dto
 import { OutsourcingOrderResDto } from './dto/outsourcing-order.res.dto';
 import { PageOutsourcingOrderResDto } from './dto/page-outsourcing-order.res.dto';
 import {
-  getPlannedQuantitiesByJob,
   hasActiveReceiptsForOrder,
   receivedQuantityByOrderIdSubquery,
   sentQuantityByJobOperationSubquery,
@@ -218,12 +221,20 @@ export class OutsourcingOrdersService {
       this.db
         .select({
           productionJobOperationId: productionJobOperations.id,
-          operation: getTableColumns(productionJobOperations),
+          // Lấy từ `items.id` (innerJoin ⇒ non-null), KHÔNG lấy `productionJobBomItems.itemId` —
+          // cột đó `set null` nên nullable, trong khi req DTO của dòng OS-OUT bắt buộc `itemId`.
+          itemId: items.id,
           job: getTableColumns(productionJobs),
-          part: getTableColumns(productionJobBomItems),
+          bomItem: getTableColumns(productionJobBomItems),
+          operation: getTableColumns(productionJobOperations),
           unit: getTableColumns(units),
+          plannedQuantity: productionJobBomItems.plannedQuantity,
           sentQuantity:
             sql<number>`coalesce(${sentQuantityByJobOperation.sentQuantity}, 0)`.mapWith(
+              Number,
+            ),
+          remainingQuantity:
+            sql<number>`${productionJobBomItems.plannedQuantity} - coalesce(${sentQuantityByJobOperation.sentQuantity}, 0)`.mapWith(
               Number,
             ),
         })
@@ -287,26 +298,8 @@ export class OutsourcingOrdersService {
         .where(where),
     ]);
 
-    // `plannedQuantity` phụ thuộc cả cây BOM của Job — không tính được bằng 1 câu SQL phẳng, chỉ
-    // tính cho đúng trang hiện tại (đã phân trang ở bước SQL trên). `sentQuantity` đã có sẵn từ
-    // SELECT (LEFT JOIN `sentQuantityByJobOperation`), không cần round-trip riêng.
-    const plannedByJob = await getPlannedQuantitiesByJob(
-      this.db,
-      new Map(operations.map((row) => [row.job.id, row.job.quantity])),
-    );
-
-    const rows = operations.map((row) => {
-      const plannedQuantity =
-        plannedByJob.get(row.job.id)?.get(row.part.id) ?? 0;
-      return {
-        ...row,
-        plannedQuantity,
-        remainingQuantity: plannedQuantity - row.sentQuantity,
-      };
-    });
-
     return new OffsetPaginatedDto(
-      plainToInstance(OutsourceableOperationResDto, rows, {
+      plainToInstance(OutsourceableOperationResDto, operations, {
         excludeExtraneousValues: true,
       }),
       new OffsetPaginationDto(total, reqDto),
@@ -324,10 +317,10 @@ export class OutsourcingOrdersService {
     await this.ensureSupplierExists(reqDto.supplierId);
     this.validateOrderItems(reqDto.items);
 
-    const code = await this.generateOutsourcingOrderCode();
     const { items: reqItems, ...orderFields } = reqDto;
 
     await this.db.transaction(async (tx) => {
+      const code = await this.generateOutsourcingOrderCode(tx);
       const [order] = await tx
         .insert(outsourcingOrders)
         .values({
@@ -429,10 +422,14 @@ export class OutsourcingOrdersService {
     return row;
   }
 
-  private async generateOutsourcingOrderCode(): Promise<string> {
-    const [totalRows] = await this.db
-      .select({ total: count() })
-      .from(outsourcingOrders);
-    return `OS-OUT-${String((totalRows?.total ?? 0) + 1).padStart(4, '0')}`;
+  private async generateOutsourcingOrderCode(
+    tx: DbTransaction,
+  ): Promise<string> {
+    const sequence = await generateDocumentSequence(
+      tx,
+      DocumentType.OUTSOURCING_ORDER,
+    );
+
+    return `OS-OUT-${String(sequence).padStart(4, '0')}`;
   }
 }

@@ -16,6 +16,10 @@ import {
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
+import {
+  DocumentType,
+  generateDocumentSequence,
+} from '../../common/utils/document-sequence.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
@@ -32,7 +36,6 @@ import {
   users,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
-import { WarehousesService } from '../warehouses/warehouses.service';
 import { CancelPurchaseOrderReqDto } from './dto/cancel-purchase-order.req.dto';
 import { GetPurchaseOrdersReqDto } from './dto/get-purchase-orders.req.dto';
 import { PagePurchaseOrderResDto } from './dto/page-purchase-order.res.dto';
@@ -57,10 +60,7 @@ type OrderProgressRefs = {
 
 @Injectable()
 export class PurchaseOrdersService {
-  constructor(
-    @Inject(DRIZZLE) private readonly db: Database,
-    private readonly warehousesService: WarehousesService,
-  ) {}
+  constructor(@Inject(DRIZZLE) private readonly db: Database) {}
 
   async getPurchaseOrders(
     reqDto: GetPurchaseOrdersReqDto,
@@ -419,11 +419,6 @@ export class PurchaseOrdersService {
     if (reqDto.assignedUserId) {
       await this.ensureAssignedUserExists(reqDto.assignedUserId);
     }
-    if (reqDto.receiptWarehouseId) {
-      await this.warehousesService.ensureWarehouseActive(
-        reqDto.receiptWarehouseId,
-      );
-    }
 
     await this.db
       .update(purchaseOrders)
@@ -592,10 +587,12 @@ export class PurchaseOrdersService {
   }
 
   private async generatePurchaseOrderCode(tx: DbTransaction): Promise<string> {
-    const [totalRows] = await tx
-      .select({ total: count() })
-      .from(purchaseOrders);
-    return `PO-${String((totalRows?.total ?? 0) + 1).padStart(5, '0')}`;
+    const sequence = await generateDocumentSequence(
+      tx,
+      DocumentType.PURCHASE_ORDER,
+    );
+
+    return `PO-${String(sequence).padStart(5, '0')}`;
   }
 
   /** Ngày giao dự kiến = ngày đặt + leadtime dài nhất trong nhóm dòng cùng NCC — một PO chỉ có một

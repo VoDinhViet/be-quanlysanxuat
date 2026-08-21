@@ -1,0 +1,1 @@
+ALTER TABLE "outsourcing_orders" ALTER COLUMN "warehouse_id" DROP NOT NULL;

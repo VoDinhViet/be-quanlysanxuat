@@ -97,9 +97,9 @@ bắt buộc nhận `tx`, không tự mở transaction (`.claude/rules/transacti
 dòng IQC — dòng IQC không bị `post` phiếu nhập ghi lại) rồi mới quyết định có ghi
 `inventory_balances`/`inventory_transactions` hay không.
 
-Sinh mã IQC hàng loạt nằm **trong** transaction `confirm`, cùng giới hạn đếm-rồi-cộng-N đã chấp nhận
-chung trong repo — hai lượt `confirm` song song có thể trùng mã, unique constraint trên `code` là
-chốt chặn thật.
+Sinh mã IQC hàng loạt nằm **trong** transaction `confirm`: một câu cấp luôn N số liên tiếp qua bảng
+đếm dùng chung `document_sequences` (`docs/architecture.md`, mục "Bất biến xuyên module") — atomic,
+hai lượt `confirm` song song không thể ra cùng mã.
 
 ## Failure cases
 

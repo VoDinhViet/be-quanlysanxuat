@@ -17,6 +17,10 @@ import {
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
+import {
+  DocumentType,
+  generateDocumentSequence,
+} from '../../common/utils/document-sequence.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
@@ -274,10 +278,10 @@ export class OutsourcingReceiptsService {
       reqDto.supplierId,
     );
 
-    const code = await this.generateOutsourcingReceiptCode();
     const { items: _items, ...receiptFields } = reqDto;
 
     await this.db.transaction(async (tx) => {
+      const code = await this.generateOutsourcingReceiptCode(tx);
       const [receipt] = await tx
         .insert(outsourcingReceipts)
         .values({
@@ -481,10 +485,14 @@ export class OutsourcingReceiptsService {
     }
   }
 
-  private async generateOutsourcingReceiptCode(): Promise<string> {
-    const [totalRows] = await this.db
-      .select({ total: count() })
-      .from(outsourcingReceipts);
-    return `OS-IN-${String((totalRows?.total ?? 0) + 1).padStart(4, '0')}`;
+  private async generateOutsourcingReceiptCode(
+    tx: DbTransaction,
+  ): Promise<string> {
+    const sequence = await generateDocumentSequence(
+      tx,
+      DocumentType.OUTSOURCING_RECEIPT,
+    );
+
+    return `OS-IN-${String(sequence).padStart(4, '0')}`;
   }
 }

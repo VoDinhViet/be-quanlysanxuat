@@ -4,10 +4,15 @@ import { and, asc, count, eq, or } from 'drizzle-orm';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
+import {
+  DocumentType,
+  generateDocumentSequence,
+} from '../../common/utils/document-sequence.util';
+import { extractPostgresError } from '../../common/utils/postgres-error.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
-import type { Database } from '../../database/database.type';
+import type { Database, DbTransaction } from '../../database/database.type';
 import {
   inventoryBalances,
   inventoryIssues,
@@ -86,21 +91,31 @@ export class WarehousesService {
   async createWarehouse(
     reqDto: CreateWarehouseReqDto,
   ): Promise<WarehouseResDto> {
-    let code = reqDto.code;
-    if (code) {
-      await this.validateCodeUniqueness(code);
-    } else {
-      code = await this.generateWarehouseCode();
+    if (reqDto.code) {
+      await this.validateCodeUniqueness(reqDto.code);
     }
 
-    const [warehouse] = await this.db
-      .insert(warehouses)
-      .values({ ...reqDto, code })
-      .returning();
+    let warehouseId: string;
+    try {
+      warehouseId = await this.db.transaction(async (tx) => {
+        const code = reqDto.code ?? (await this.generateWarehouseCode(tx));
+        const [warehouse] = await tx
+          .insert(warehouses)
+          .values({ ...reqDto, code })
+          .returning({ id: warehouses.id });
 
-    return plainToInstance(WarehouseResDto, warehouse, {
-      excludeExtraneousValues: true,
-    });
+        return warehouse.id;
+      });
+    } catch (error) {
+      // Mã client tự gửi vẫn còn TOCTOU giữa `validateCodeUniqueness` và `INSERT` — bắt ở đây thay
+      // vì để lỗi Postgres thô 500 lọt ra ngoài.
+      if (extractPostgresError(error)?.code === '23505') {
+        throw new AppException(ErrorCode.E093, HttpStatus.CONFLICT);
+      }
+      throw error;
+    }
+
+    return this.getWarehouse(warehouseId);
   }
 
   async updateWarehouse(
@@ -151,11 +166,10 @@ export class WarehousesService {
     }
   }
 
-  private async generateWarehouseCode(): Promise<string> {
-    const [totalRows] = await this.db
-      .select({ total: count() })
-      .from(warehouses);
-    return `KHO${String((totalRows?.total ?? 0) + 1).padStart(4, '0')}`;
+  private async generateWarehouseCode(tx: DbTransaction): Promise<string> {
+    const sequence = await generateDocumentSequence(tx, DocumentType.WAREHOUSE);
+
+    return `WH${String(sequence).padStart(4, '0')}`;
   }
 
   private async validateCodeUniqueness(code: string): Promise<void> {

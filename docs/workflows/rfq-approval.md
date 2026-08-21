@@ -111,9 +111,9 @@ phải tạo RFQ mới.
 transaction (`.claude/rules/transactions.md`). `recall` mở transaction tương tự nhưng theo chiều
 ngược (xoá thay vì tạo).
 
-Sinh mã PO nằm **trong** transaction, cùng giới hạn đếm-rồi-cộng-1 đã chấp nhận chung trong repo
-(`PurchaseRequestsService.generatePurchaseRequestCode`) — hai lượt duyệt song song có thể trùng mã,
-unique constraint là chốt chặn thật.
+Sinh mã PO nằm **trong** transaction, cấp qua bảng đếm dùng chung `document_sequences`
+(`docs/architecture.md`, mục "Bất biến xuyên module") — atomic, hai lượt duyệt song song không thể
+ra cùng mã.
 
 ## Failure cases
 
