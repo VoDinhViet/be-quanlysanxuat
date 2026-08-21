@@ -7,14 +7,10 @@ import {
 import {
   DateFieldOptional,
   EnumFieldOptional,
-  StringFieldOptional,
   UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
 
 export class GetOqcsReqDto extends PageOptionsDto {
-  @StringFieldOptional({ description: 'Tìm theo tên hoặc mã vật tư' })
-  readonly materialKeyword?: string;
-
   @UUIDFieldOptional({ description: 'Filter theo Job (LSX)' })
   readonly productionJobId?: string;
 

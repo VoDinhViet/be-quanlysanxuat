@@ -9,7 +9,9 @@ import {
   getTableColumns,
   gte,
   inArray,
+  isNull,
   lte,
+  ne,
   or,
   sql,
 } from 'drizzle-orm';
@@ -38,10 +40,13 @@ import {
   ProductionJobStatus,
   productionJobUnits,
   productionOrders,
+  routingOperations,
+  routings,
   units,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { InventoryService } from '../inventory/inventory.service';
+import { OqcService } from '../oqc/oqc.service';
 import { PurchaseRequestsService } from '../purchase-requests/purchase-requests.service';
 import { PurchaseRequestShortageItem } from '../purchase-requests/types/shortage-request.type';
 import { UsersService } from '../users/users.service';
@@ -74,6 +79,7 @@ export class ProductionJobsService {
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly inventoryService: InventoryService,
+    private readonly oqcService: OqcService,
     private readonly purchaseRequestsService: PurchaseRequestsService,
     private readonly usersService: UsersService,
   ) {}
@@ -315,6 +321,32 @@ export class ProductionJobsService {
       throw new AppException(ErrorCode.E091, HttpStatus.NOT_FOUND);
     }
 
+    // Bước Lắp ráp (node `itemType = 'FG'`, xem `copyFinalAssemblyRouting`) chỉ mở khi mọi part
+    // khác của Job đã báo hoàn thành đủ — "A, B, C đều ✔ mới mở Assembly".
+    if (operation.bomItem.itemType === ItemType.FG) {
+      const [{ pendingCount }] = await this.db
+        .select({ pendingCount: count() })
+        .from(productionJobOperations)
+        .innerJoin(
+          productionJobBomItems,
+          eq(
+            productionJobBomItems.id,
+            productionJobOperations.productionJobBomItemId,
+          ),
+        )
+        .where(
+          and(
+            eq(productionJobOperations.productionJobId, jobId),
+            ne(productionJobBomItems.itemType, ItemType.FG),
+            isNull(productionJobOperations.completedDate),
+          ),
+        );
+
+      if (pendingCount > 0) {
+        throw new AppException(ErrorCode.E210, HttpStatus.BAD_REQUEST);
+      }
+    }
+
     const planned = operation.bomItem.plannedQuantity;
 
     if (reqDto.completedQuantity > planned) {
@@ -336,6 +368,10 @@ export class ProductionJobsService {
     return plainToInstance(ProductionJobOperationResDto, updated, {
       excludeExtraneousValues: true,
     });
+  }
+
+  async requestJobQc(jobId: string, userId: string): Promise<void> {
+    return this.oqcService.createOqcForJob(jobId, userId);
   }
 
   async createProductionJobNote(
@@ -383,7 +419,8 @@ export class ProductionJobsService {
   /** Sinh Job cho một LSX vừa duyệt — 1 Job/item FG (SL > 0), gộp mọi dòng
    * `production_order_items` cùng `itemId`. Bắt buộc truyền `tx` — chỉ gọi được từ transaction
    * duyệt của `ProductionOrdersService.approveProductionOrder`. Đồng thời nhân bản cây BOM
-   * (`copyBomTree`, cả node WIP lẫn lá RM) đúng một lần. */
+   * (`copyBomTree`, cả node WIP lẫn lá RM) và routing Cấp 0 của chính FG (`copyFinalAssemblyRouting`) đúng
+   * một lần mỗi thứ. */
   async createJobs(
     tx: DbTransaction,
     productionOrderId: string,
@@ -412,6 +449,12 @@ export class ProductionJobsService {
 
     const jobIdByItemId = new Map(jobRows.map((job) => [job.itemId, job.id]));
     await this.copyBomTree(tx, itemIds, jobIdByItemId, quantityByItem);
+    await this.copyFinalAssemblyRouting(
+      tx,
+      itemIds,
+      jobIdByItemId,
+      quantityByItem,
+    );
     await this.copyBomIssues(tx, itemIds, jobIdByItemId, quantityByItem);
   }
 
@@ -520,6 +563,105 @@ export class ProductionJobsService {
           note: step.note,
         };
       }),
+    );
+  }
+
+  /**
+   * Nhân bản routing Cấp 0 (lắp ráp/đóng gói) của chính FG vào một node `production_job_bom_items`
+   * riêng, `itemType = 'FG'` (xem doc comment bảng đó và `docs/decisions/oqc-per-operation.md`
+   * mục "Đừng hoàn lại") — để OQC có công đoạn để gắn vào cho bước QC thành phẩm cuối cùng, và
+   * `getProductionJobOperations` hiện được nhóm đó ở cuối tab "Công đoạn sản xuất". Độc lập hoàn
+   * toàn với `copyBomTree` (không qua `boms`/`bom_items`) — chỉ đọc `routings`/`routing_operations`
+   * của chính `itemIds`. Bỏ qua item nào không khai routing Cấp 0 — không tạo node rỗng.
+   * `sortOrder` = lớn nhất hiện có của Job + 1, để node FG luôn đứng cuối cây (gọi sau
+   * `copyBomTree` trong cùng transaction nên đọc lại `production_job_bom_items` đã thấy đủ node
+   * WIP/RM vừa insert).
+   */
+  private async copyFinalAssemblyRouting(
+    tx: DbTransaction,
+    itemIds: string[],
+    jobIdByItemId: Map<string, string>,
+    quantityByItem: Map<string, number>,
+  ): Promise<void> {
+    const finalAssemblyRoutings = await tx.query.routings.findMany({
+      where: inArray(routings.itemId, itemIds),
+      with: {
+        item: true,
+        operations: {
+          orderBy: [
+            asc(routingOperations.sortOrder),
+            asc(routingOperations.createdAt),
+          ],
+          with: { operation: true },
+        },
+      },
+    });
+
+    const withSteps = finalAssemblyRoutings.filter(
+      (routing) => routing.operations.length > 0,
+    );
+
+    if (!withSteps.length) {
+      return;
+    }
+
+    const jobIds = withSteps.map(
+      (routing) => jobIdByItemId.get(routing.itemId)!,
+    );
+    const maxSortOrderRows = await tx
+      .select({
+        productionJobId: productionJobBomItems.productionJobId,
+        maxSortOrder:
+          sql<number>`coalesce(max(${productionJobBomItems.sortOrder}), -1)`.mapWith(
+            Number,
+          ),
+      })
+      .from(productionJobBomItems)
+      .where(inArray(productionJobBomItems.productionJobId, jobIds))
+      .groupBy(productionJobBomItems.productionJobId);
+    const maxSortOrderByJobId = new Map(
+      maxSortOrderRows.map((row) => [row.productionJobId, row.maxSortOrder]),
+    );
+
+    const newIdByItemId = new Map<string, string>();
+    const finalAssemblyItems = withSteps.map((routing) => {
+      const newId = crypto.randomUUID();
+      newIdByItemId.set(routing.itemId, newId);
+      const productionJobId = jobIdByItemId.get(routing.itemId)!;
+      const nextSortOrder =
+        (maxSortOrderByJobId.get(productionJobId) ?? -1) + 1;
+
+      return {
+        id: newId,
+        productionJobId,
+        parentId: null,
+        itemType: ItemType.FG,
+        code: routing.item.code,
+        name: routing.item.name,
+        quantity: 1,
+        plannedQuantity: quantityByItem.get(routing.itemId)!,
+        sortOrder: nextSortOrder,
+        level: 0,
+        itemId: routing.itemId,
+        imageFileId: routing.item.imageFileId,
+      };
+    });
+
+    await tx.insert(productionJobBomItems).values(finalAssemblyItems);
+
+    await tx.insert(productionJobOperations).values(
+      withSteps.flatMap((routing) =>
+        routing.operations.map((step) => ({
+          productionJobId: jobIdByItemId.get(routing.itemId)!,
+          productionJobBomItemId: newIdByItemId.get(routing.itemId)!,
+          operationId: step.operationId,
+          code: step.operation.code,
+          name: step.operation.name,
+          type: step.operation.type,
+          sortOrder: step.sortOrder,
+          note: step.note,
+        })),
+      ),
     );
   }
 

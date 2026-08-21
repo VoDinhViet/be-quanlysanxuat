@@ -34,7 +34,7 @@ import {
   units,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
-import { getJobOqcClearance } from '../oqc/oqc.query';
+import { getJobQcCoverage } from '../oqc/oqc.query';
 import { CreateOutboundOrderReqDto } from './dto/create-outbound-order.req.dto';
 import { GetOutboundOrdersReqDto } from './dto/get-outbound-orders.req.dto';
 import { GetUnfulfilledOrderItemsReqDto } from './dto/get-unfulfilled-order-items.req.dto';
@@ -216,8 +216,8 @@ export class OutboundOrdersService {
   /** `DRAFT → PENDING_DELIVERY` — chưa phải "giao thật" (chưa `DELIVERED`, chưa trừ tồn, chưa sinh
    * `inventory_issues`), đó là phase giao hàng 2 (`docs/domains/inventory.md`, mục "Giao hàng",
    * Common mistake #22). Chặn theo Job (`E205`): mỗi `productionJobId` distinct trong các dòng
-   * (bỏ qua dòng `null` — DO không trỏ Job nào không có gì để chặn), Job nào chưa có OQC hoặc còn
-   * OQC chưa `COMPLETED` (`getJobOqcClearance`, tái dùng gate `E196`) thì chặn cả phiếu. */
+   * (bỏ qua dòng `null` — DO không trỏ Job nào không có gì để chặn), Job nào chưa có dòng QC nào
+   * hoặc còn dòng chưa `COMPLETED` (`getJobQcCoverage`, tái dùng gate `E196`) thì chặn cả phiếu. */
   async confirmOutboundOrder(outboundOrderId: string): Promise<void> {
     await this.db.transaction(async (tx) => {
       const order = await this.lockOutboundOrder(tx, outboundOrderId);
@@ -240,8 +240,8 @@ export class OutboundOrdersService {
       ];
 
       for (const jobId of jobIds) {
-        const clearance = await getJobOqcClearance(tx, jobId);
-        if (clearance.total === 0 || clearance.open > 0) {
+        const coverage = await getJobQcCoverage(tx, jobId);
+        if (coverage.total === 0 || coverage.open > 0) {
           throw new AppException(ErrorCode.E205, HttpStatus.CONFLICT);
         }
       }

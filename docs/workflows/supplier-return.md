@@ -1,9 +1,10 @@
 # Trả hàng NCC từ IQC FAIL đến hoàn tất
 
 Chặng nối `quality` → `inventory`: từ lúc QC chọn phương án xử lý một dòng IQC FAIL, tới lúc kho
-xác nhận đã thật sự xuất hàng trả nhà cung cấp, và IQC gốc được hoàn tất. Mô hình `iqc_inspections`
-ở `docs/domains/quality.md`, mô hình `supplier_returns`/bù trừ tồn ở `docs/domains/inventory.md`;
-đây là trình tự đầy đủ nối hai domain đó.
+xác nhận đã thật sự xuất hàng trả nhà cung cấp, và IQC gốc được hoàn tất. Mô hình QC (bảng gộp
+`quality_inspections`, `kind = INCOMING` cho IQC, `docs/decisions/qc-single-table.md`) ở
+`docs/domains/quality.md`, mô hình `supplier_returns`/bù trừ tồn ở `docs/domains/inventory.md`; đây
+là trình tự đầy đủ nối hai domain đó.
 
 ## Trigger
 
@@ -70,11 +71,11 @@ là bên xác nhận vật lý, khác vai trò với QC.
 
 | Entity | Trigger | Trước | Sau |
 | --- | --- | --- | --- |
-| `iqc_inspections.status` | `confirm` (disposition SORT/RETURN) | `PENDING`/`NOT_INSPECTED` | `WAITING_RETURN` |
+| `quality_inspections.status` (`kind = INCOMING`) | `confirm` (disposition SORT/RETURN) | `PENDING`/`NOT_INSPECTED` | `WAITING_RETURN` |
 | `supplier_returns` | `confirm` (disposition SORT/RETURN) | *(chưa có)* | 1 dòng `DRAFT` |
 | `supplier_returns.status` | `post` | `DRAFT` | `POSTED` |
 | `inventory_balances`/`inventory_transactions` | `post` (nếu `shouldPostStock`) | — | cập nhật (xem `docs/workflows/stock-movement.md`) |
-| `iqc_inspections.status` | `post` (qua `completeIqcAfterSupplierReturn`) | `WAITING_RETURN` | `COMPLETED` |
+| `quality_inspections.status` (`kind = INCOMING`) | `post` (qua `completeIqcAfterSupplierReturn`) | `WAITING_RETURN` | `COMPLETED` |
 
 ## Side effects
 
@@ -87,8 +88,8 @@ là bên xác nhận vật lý, khác vai trò với QC.
 
 ## Transaction boundary
 
-`confirm` mở transaction bao **hai module**: `iqc_inspections` (khoá + đổi `status`, replace-all 2
-bộ file đính kèm) và `supplier_returns` (insert) — lý do
+`confirm` mở transaction bao **hai module**: `quality_inspections` (khoá + đổi `status`,
+replace-all 2 bộ file đính kèm) và `supplier_returns` (insert) — lý do
 `SupplierReturnsService.createFromIqcDisposition` bắt buộc nhận `tx`, không tự mở transaction
 (`.claude/rules/transactions.md`), cùng khuôn `IqcService.createInspectionsFromReceipt` ở
 `docs/workflows/receipt-confirmation.md`. Chiều ngược lại (`post` → hoàn tất IQC) **không** đi qua

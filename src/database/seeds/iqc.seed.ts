@@ -2,7 +2,7 @@ import * as dotenv from 'dotenv';
 dotenv.config({ path: `.env.${process.env.NODE_ENV || 'development'}` });
 dotenv.config();
 
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 
@@ -11,10 +11,11 @@ import { credentials } from '../schemas/identity-access/credentials';
 import { ItemType, items } from '../schemas/items/items';
 import {
   IqcDisposition,
-  iqcInspections,
   IqcResult,
   IqcStatus,
-} from '../schemas/quality/iqc-inspections';
+  QcKind,
+  qualityInspections,
+} from '../schemas/quality/quality-inspections';
 
 type SeedDatabase = ReturnType<typeof drizzle<typeof schema>>;
 
@@ -122,8 +123,11 @@ async function seedIqcInspections(db: SeedDatabase): Promise<void> {
   for (let index = 0; index < IQC_COUNT; index++) {
     const code = `IQC-${year}-${String(index + 1).padStart(5, '0')}`;
 
-    const existing = await db.query.iqcInspections.findFirst({
-      where: eq(iqcInspections.code, code),
+    const existing = await db.query.qualityInspections.findFirst({
+      where: and(
+        eq(qualityInspections.kind, QcKind.INCOMING),
+        eq(qualityInspections.code, code),
+      ),
       columns: { id: true },
     });
 
@@ -141,8 +145,9 @@ async function seedIqcInspections(db: SeedDatabase): Promise<void> {
     const inventoryReceiptId = index === 0 ? (receipt?.id ?? null) : null;
     const purchaseOrderId = index === 1 ? (purchaseOrder?.id ?? null) : null;
 
-    await db.insert(iqcInspections).values({
+    await db.insert(qualityInspections).values({
       code,
+      kind: QcKind.INCOMING,
       inventoryReceiptId,
       purchaseOrderId,
       supplierId,

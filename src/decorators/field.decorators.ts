@@ -3,6 +3,7 @@ import { Constructor } from '../common/types/types';
 import { ApiProperty, type ApiPropertyOptions } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  ArrayMinSize,
   IsBoolean,
   IsDate,
   IsDefined,
@@ -53,7 +54,10 @@ interface IEnumFieldOptions extends IFieldOptions {
 
 type IBooleanFieldOptions = IFieldOptions;
 type ITokenFieldOptions = IFieldOptions;
-type IClassFieldOptions = IFieldOptions;
+
+interface IClassFieldOptions extends IFieldOptions {
+  minItems?: number;
+}
 
 export function NumberField(
   options: Omit<ApiPropertyOptions, 'type'> & INumberFieldOptions = {},
@@ -419,6 +423,10 @@ export function ClassField<TClass extends Constructor>(
     decorators.push(IsNullable());
   } else {
     decorators.push(NotEquals(null));
+  }
+
+  if (typeof options.minItems === 'number') {
+    decorators.push(ArrayMinSize(options.minItems));
   }
 
   if (options.swagger !== false) {

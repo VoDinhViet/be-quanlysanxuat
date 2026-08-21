@@ -8,7 +8,6 @@ import {
   DocumentType,
   generateDocumentSequences,
 } from '../../common/utils/document-sequence.util';
-import { extractPostgresError } from '../../common/utils/postgres-error.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
@@ -17,13 +16,15 @@ import {
   departments,
   inventoryReceipts,
   IqcAttachmentKind,
-  iqcAttachments,
   IqcDisposition,
-  iqcInspections,
   IqcResult,
   IqcStatus,
   items,
   purchaseOrders,
+  qcAttachments,
+  QcKind,
+  qualityInspections,
+  type QualityInspectionSelect,
   suppliers,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
@@ -38,17 +39,20 @@ import { PageIqcResDto } from './dto/page-iqc.res.dto';
 import { UpdateIqcReqDto } from './dto/update-iqc.req.dto';
 import { resolveAqlPlan } from './iqc-aql.constant';
 
-type IqcSavableInspection = {
-  quantity: number;
-  status: IqcStatus;
-  confirmedAt: Date | null;
-  resolvedAt: Date | null;
-  inventoryReceiptId: string | null;
-  outsourcingReceiptId: string | null;
-  purchaseOrderId: string | null;
-  supplierId: string;
-  itemId: string;
-};
+// `supplierId` ghi đè non-null — cột vật lý nullable (dùng chung với OUTGOING) nhưng
+// `chk_quality_inspections_incoming_supplier` đảm bảo luôn có giá trị ở dòng `kind = INCOMING`, tập query này luôn
+// lọc (`.claude/rules/service.md`, mẫu `XSelect` + field ghi đè).
+type IqcSavableInspection = Pick<
+  QualityInspectionSelect,
+  | 'quantity'
+  | 'status'
+  | 'confirmedAt'
+  | 'resolvedAt'
+  | 'inventoryReceiptId'
+  | 'outsourcingReceiptId'
+  | 'purchaseOrderId'
+  | 'itemId'
+> & { supplierId: string };
 
 @Injectable()
 export class IqcService {
@@ -69,15 +73,16 @@ export class IqcService {
     const nkKeyword = reqDto.nkCode ? `%${reqDto.nkCode}%` : undefined;
 
     const where = and(
-      keyword ? unaccentILike(iqcInspections.code, keyword) : undefined,
+      eq(qualityInspections.kind, QcKind.INCOMING),
+      keyword ? unaccentILike(qualityInspections.code, keyword) : undefined,
       reqDto.supplierId
-        ? eq(iqcInspections.supplierId, reqDto.supplierId)
+        ? eq(qualityInspections.supplierId, reqDto.supplierId)
         : undefined,
-      reqDto.result ? eq(iqcInspections.result, reqDto.result) : undefined,
+      reqDto.result ? eq(qualityInspections.result, reqDto.result) : undefined,
       reqDto.disposition
-        ? eq(iqcInspections.disposition, reqDto.disposition)
+        ? eq(qualityInspections.disposition, reqDto.disposition)
         : undefined,
-      reqDto.status ? eq(iqcInspections.status, reqDto.status) : undefined,
+      reqDto.status ? eq(qualityInspections.status, reqDto.status) : undefined,
       materialKeyword
         ? exists(
             this.db
@@ -85,7 +90,7 @@ export class IqcService {
               .from(items)
               .where(
                 and(
-                  eq(items.id, iqcInspections.itemId),
+                  eq(items.id, qualityInspections.itemId),
                   or(
                     unaccentILike(items.name, materialKeyword),
                     unaccentILike(items.code, materialKeyword),
@@ -101,7 +106,7 @@ export class IqcService {
               .from(purchaseOrders)
               .where(
                 and(
-                  eq(purchaseOrders.id, iqcInspections.purchaseOrderId),
+                  eq(purchaseOrders.id, qualityInspections.purchaseOrderId),
                   unaccentILike(purchaseOrders.code, poKeyword),
                 ),
               ),
@@ -114,7 +119,10 @@ export class IqcService {
               .from(inventoryReceipts)
               .where(
                 and(
-                  eq(inventoryReceipts.id, iqcInspections.inventoryReceiptId),
+                  eq(
+                    inventoryReceipts.id,
+                    qualityInspections.inventoryReceiptId,
+                  ),
                   unaccentILike(inventoryReceipts.code, nkKeyword),
                 ),
               ),
@@ -123,20 +131,22 @@ export class IqcService {
     );
 
     const [entities, countRows] = await Promise.all([
-      this.db.query.iqcInspections.findMany({
+      this.db.query.qualityInspections.findMany({
         where,
         limit: reqDto.limit,
         offset: reqDto.offset,
-        orderBy: desc(iqcInspections.createdAt),
+        orderBy: desc(qualityInspections.createdAt),
         with: {
           item: { with: { unit: true } },
           supplier: true,
           inventoryReceipt: true,
           purchaseOrder: true,
+          productionJob: true,
+          productionJobOperation: true,
           creatorBy: true,
         },
       }),
-      this.db.select({ total: count() }).from(iqcInspections).where(where),
+      this.db.select({ total: count() }).from(qualityInspections).where(where),
     ]);
 
     return new OffsetPaginatedDto(
@@ -152,25 +162,26 @@ export class IqcService {
       .select({
         total: count(),
         notInspected: count(
-          sql`case when ${iqcInspections.status} = ${IqcStatus.NOT_INSPECTED} then 1 end`,
+          sql`case when ${qualityInspections.status} = ${IqcStatus.NOT_INSPECTED} then 1 end`,
         ),
         pass: count(
-          sql`case when ${iqcInspections.result} = ${IqcResult.PASS} then 1 end`,
+          sql`case when ${qualityInspections.result} = ${IqcResult.PASS} then 1 end`,
         ),
         fail: count(
-          sql`case when ${iqcInspections.result} = ${IqcResult.FAIL} then 1 end`,
+          sql`case when ${qualityInspections.result} = ${IqcResult.FAIL} then 1 end`,
         ),
         pending: count(
-          sql`case when ${iqcInspections.status} = ${IqcStatus.PENDING} then 1 end`,
+          sql`case when ${qualityInspections.status} = ${IqcStatus.PENDING} then 1 end`,
         ),
         waitingReturn: count(
-          sql`case when ${iqcInspections.status} = ${IqcStatus.WAITING_RETURN} then 1 end`,
+          sql`case when ${qualityInspections.status} = ${IqcStatus.WAITING_RETURN} then 1 end`,
         ),
         completed: count(
-          sql`case when ${iqcInspections.status} = ${IqcStatus.COMPLETED} then 1 end`,
+          sql`case when ${qualityInspections.status} = ${IqcStatus.COMPLETED} then 1 end`,
         ),
       })
-      .from(iqcInspections);
+      .from(qualityInspections)
+      .where(eq(qualityInspections.kind, QcKind.INCOMING));
 
     return plainToInstance(IqcStatsResDto, row, {
       excludeExtraneousValues: true,
@@ -193,32 +204,21 @@ export class IqcService {
 
     const status = this.resolveIqcStatus(reqDto.result, reqDto.disposition);
 
-    if (reqDto.code) {
-      await this.validateCodeUniqueness(reqDto.code);
-    }
+    await this.db.transaction(async (tx) => {
+      const code = await this.generateIqcCode(tx, reqDto.inspectionDate);
 
-    try {
-      await this.db.transaction(async (tx) => {
-        const code =
-          reqDto.code ??
-          (await this.generateIqcCode(tx, reqDto.inspectionDate));
-
-        await tx
-          .insert(iqcInspections)
-          .values({ ...reqDto, code, status, createdBy: userId });
+      await tx.insert(qualityInspections).values({
+        ...reqDto,
+        code,
+        kind: QcKind.INCOMING,
+        status,
+        createdBy: userId,
       });
-    } catch (error) {
-      // Mã client tự gửi vẫn còn TOCTOU giữa `validateCodeUniqueness` và `INSERT` — bắt ở đây
-      // thay vì để lỗi Postgres thô 500 lọt ra ngoài.
-      if (extractPostgresError(error)?.code === '23505') {
-        throw new AppException(ErrorCode.E140, HttpStatus.CONFLICT);
-      }
-      throw error;
-    }
+    });
   }
 
   /** Sinh phiếu IQC cho từng dòng phiếu nhập khi phiếu được xác nhận có yêu cầu QC — đường ghi tự
-   *  động duy nhất vào `iqc_inspections`. Gọi trong transaction của
+   *  động duy nhất vào `quality_inspections` (`kind = INCOMING`). Gọi trong transaction của
    *  `InventoryReceiptsService.confirmInventoryReceipt`; xem
    *  `docs/workflows/receipt-confirmation.md`. */
   async createInspectionsFromReceipt(
@@ -242,9 +242,10 @@ export class IqcService {
       params.lines.length,
     );
 
-    await tx.insert(iqcInspections).values(
+    await tx.insert(qualityInspections).values(
       params.lines.map((line, index) => ({
         code: codes[index],
+        kind: QcKind.INCOMING,
         inventoryReceiptId: params.inventoryReceiptId,
         purchaseOrderId: params.purchaseOrderId,
         supplierId: params.supplierId,
@@ -261,7 +262,11 @@ export class IqcService {
    *  tự động thứ ba (song sinh `createInspectionsFromReceipt`), gọi trong transaction của
    *  `OutsourcingReceiptsService.createOutsourcingReceipt`. **Không** gate `create` — hàng đã về nhà
    *  máy vật lý trước khi các dòng IQC này được kiểm (không phải ghi tồn — gia công ngoài không đụng
-   *  `inventory_balances`, `docs/decisions/wip-not-stocked.md`). Xem
+   *  `inventory_balances`, `docs/decisions/wip-not-stocked.md`). Mỗi dòng neo thẳng vào công đoạn
+   *  `OUTSOURCE` sinh ra nó (`productionJobOperationId`/`productionJobId`, denormalize từ dòng
+   *  OS-OUT nguồn qua `outsourcingOrderItemId`) — đây là neo mà `getJobQcCoverage` dùng để gộp
+   *  chung với OQC, thay vì suy mờ qua `(outsourcingReceiptId, itemId)` như trước (một OS-IN gộp
+   *  được nhiều Job khác nhau cùng NCC, suy theo cặp đó có thể lẫn Job). Xem
    *  `docs/workflows/outsourcing-round-trip.md`. */
   async createInspectionsFromOutsourcingReceipt(
     tx: DbTransaction,
@@ -269,7 +274,13 @@ export class IqcService {
       outsourcingReceiptId: string;
       supplierId: string;
       inspectionDate: Date;
-      lines: { itemId: string; quantity: number }[];
+      lines: {
+        outsourcingReceiptItemId: string;
+        itemId: string;
+        quantity: number;
+        productionJobId: string | null;
+        productionJobOperationId: string | null;
+      }[];
       userId: string;
     },
   ): Promise<void> {
@@ -283,10 +294,14 @@ export class IqcService {
       params.lines.length,
     );
 
-    await tx.insert(iqcInspections).values(
+    await tx.insert(qualityInspections).values(
       params.lines.map((line, index) => ({
         code: codes[index],
+        kind: QcKind.INCOMING,
         outsourcingReceiptId: params.outsourcingReceiptId,
+        outsourcingReceiptItemId: line.outsourcingReceiptItemId,
+        productionJobId: line.productionJobId,
+        productionJobOperationId: line.productionJobOperationId,
         supplierId: params.supplierId,
         itemId: line.itemId,
         quantity: line.quantity,
@@ -303,9 +318,12 @@ export class IqcService {
     tx: DbTransaction,
     inventoryReceiptId: string,
   ): Promise<boolean> {
-    const inspections = await tx.query.iqcInspections.findMany({
+    const inspections = await tx.query.qualityInspections.findMany({
       columns: { status: true },
-      where: eq(iqcInspections.inventoryReceiptId, inventoryReceiptId),
+      where: and(
+        eq(qualityInspections.kind, QcKind.INCOMING),
+        eq(qualityInspections.inventoryReceiptId, inventoryReceiptId),
+      ),
     });
 
     return (
@@ -317,8 +335,11 @@ export class IqcService {
   }
 
   async getIqc(iqcId: string): Promise<IqcResDto> {
-    const row = await this.db.query.iqcInspections.findFirst({
-      where: eq(iqcInspections.id, iqcId),
+    const row = await this.db.query.qualityInspections.findFirst({
+      where: and(
+        eq(qualityInspections.kind, QcKind.INCOMING),
+        eq(qualityInspections.id, iqcId),
+      ),
       with: {
         item: { with: { unit: true } },
         supplier: true,
@@ -326,6 +347,8 @@ export class IqcService {
         outsourcingReceipt: true,
         purchaseOrder: true,
         qcDepartment: true,
+        productionJob: true,
+        productionJobOperation: true,
         creatorBy: true,
         confirmerBy: true,
         resolverBy: true,
@@ -422,7 +445,7 @@ export class IqcService {
 
     await this.db.transaction(async (tx) => {
       await tx
-        .update(iqcInspections)
+        .update(qualityInspections)
         .set({
           inspectionLevel: reqDto.inspectionLevel,
           aqlLevel: reqDto.aqlLevel,
@@ -442,8 +465,8 @@ export class IqcService {
           confirmedBy: isFirstConfirm ? userId : undefined,
           confirmedAt: isFirstConfirm ? new Date() : undefined,
           // PASS ép null toàn bộ nhóm disposition trong cùng 1 UPDATE — CHECK
-          // `chk_iqc_inspections_disposition_requires_fail` chỉ đánh giá cuối câu lệnh nên không
-          // bao giờ ở trạng thái vi phạm tạm thời khi lật FAIL → PASS.
+          // `chk_quality_inspections_disposition_requires_fail` chỉ đánh giá cuối câu lệnh nên không bao giờ ở
+          // trạng thái vi phạm tạm thời khi lật FAIL → PASS.
           disposition: isPass ? null : (reqDto.disposition ?? null),
           sortOkQty:
             !isPass && reqDto.disposition === IqcDisposition.SORT
@@ -467,7 +490,7 @@ export class IqcService {
                 ? new Date()
                 : undefined,
         })
-        .where(eq(iqcInspections.id, iqcId));
+        .where(eq(qualityInspections.id, iqcId));
 
       await this.replaceAttachments(
         tx,
@@ -544,14 +567,21 @@ export class IqcService {
   }
 
   /** Kho nhận hàng trả — suy từ phiếu nhập liên quan trước, PO liên quan sau (cùng thứ tự
-   *  `InventoryReceiptsService.resolveIqcSupplierId` suy `supplierId`). `outsourcing_receipts`
-   *  không còn cột `warehouseId` (`docs/decisions/wip-not-stocked.md`) nên dòng IQC xuất phát từ
-   *  OS-IN không còn nguồn nào để suy kho trả — luôn rơi vào E163 cho tới khi có điểm nhập kho
-   *  khác cho nhánh này (vd chọn tay lúc SORT/RETURN). */
+   *  `InventoryReceiptsService.resolveIqcSupplierId` suy `supplierId`). Dòng IQC xuất phát từ OS-IN
+   *  (không có cả hai nguồn trên, `outsourcing_receipts` không có cột kho —
+   *  `docs/decisions/wip-not-stocked.md`) trả `null` — hợp lệ, không phải lỗi:
+   *  `SupplierReturnsService.shouldPostStock` không bao giờ trừ tồn cho phiếu trả gốc OS-IN nên
+   *  không cần kho. `E163` chỉ còn ném khi thực sự không suy được từ nguồn nào cả (không phải
+   *  purchase, không phải OS-IN — dữ liệu bất thường). */
   private async resolveReturnWarehouseId(inspection: {
     inventoryReceiptId: string | null;
     purchaseOrderId: string | null;
-  }): Promise<string> {
+    outsourcingReceiptId: string | null;
+  }): Promise<string | null> {
+    if (inspection.outsourcingReceiptId) {
+      return null;
+    }
+
     const [receipt, purchaseOrder] = await Promise.all([
       inspection.inventoryReceiptId
         ? this.db.query.inventoryReceipts.findFirst({
@@ -577,8 +607,8 @@ export class IqcService {
     return warehouseId;
   }
 
-  /** Replace-all theo `(iqcId, kind)` — 2 bộ bằng chứng độc lập nhau. Bắt buộc `tx` để tránh ghi
-   *  ra ngoài transaction. */
+  /** Replace-all theo `(inspectionId, kind)` — 2 bộ bằng chứng độc lập nhau. Bắt buộc `tx` để
+   *  tránh ghi ra ngoài transaction. */
   private async replaceAttachments(
     tx: DbTransaction,
     iqcId: string,
@@ -586,20 +616,25 @@ export class IqcService {
     fileIds: string[],
   ): Promise<void> {
     await tx
-      .delete(iqcAttachments)
+      .delete(qcAttachments)
       .where(
-        and(eq(iqcAttachments.iqcId, iqcId), eq(iqcAttachments.kind, kind)),
+        and(
+          eq(qcAttachments.inspectionId, iqcId),
+          eq(qcAttachments.kind, kind),
+        ),
       );
 
     if (fileIds.length) {
       await tx
-        .insert(iqcAttachments)
-        .values(fileIds.map((fileId) => ({ iqcId, fileId, kind })));
+        .insert(qcAttachments)
+        .values(
+          fileIds.map((fileId) => ({ inspectionId: iqcId, fileId, kind })),
+        );
     }
   }
 
   private async ensureIqcSavable(iqcId: string): Promise<IqcSavableInspection> {
-    const inspection = await this.db.query.iqcInspections.findFirst({
+    const inspection = await this.db.query.qualityInspections.findFirst({
       columns: {
         id: true,
         quantity: true,
@@ -612,7 +647,10 @@ export class IqcService {
         supplierId: true,
         itemId: true,
       },
-      where: eq(iqcInspections.id, iqcId),
+      where: and(
+        eq(qualityInspections.kind, QcKind.INCOMING),
+        eq(qualityInspections.id, iqcId),
+      ),
     });
 
     if (!inspection) {
@@ -623,7 +661,8 @@ export class IqcService {
       throw new AppException(ErrorCode.E159, HttpStatus.CONFLICT);
     }
 
-    return inspection;
+    // `chk_quality_inspections_incoming_supplier` đảm bảo non-null cho dòng `kind = INCOMING` vừa lọc ở trên.
+    return { ...inspection, supplierId: inspection.supplierId! };
   }
 
   private async ensureDepartmentExists(departmentId: string): Promise<void> {
@@ -640,9 +679,12 @@ export class IqcService {
   /** Đường gỡ cho phiếu tạo nhầm — chỉ xoá được khi còn `NOT_INSPECTED` (chưa từng `confirm`),
    * khuôn `OqcService.deleteOqc` nhưng mint riêng `E206` vì hai domain khác nhau. */
   async deleteIqc(iqcId: string): Promise<void> {
-    const inspection = await this.db.query.iqcInspections.findFirst({
+    const inspection = await this.db.query.qualityInspections.findFirst({
       columns: { status: true },
-      where: eq(iqcInspections.id, iqcId),
+      where: and(
+        eq(qualityInspections.kind, QcKind.INCOMING),
+        eq(qualityInspections.id, iqcId),
+      ),
     });
 
     if (!inspection) {
@@ -652,7 +694,9 @@ export class IqcService {
       throw new AppException(ErrorCode.E206, HttpStatus.CONFLICT);
     }
 
-    await this.db.delete(iqcInspections).where(eq(iqcInspections.id, iqcId));
+    await this.db
+      .delete(qualityInspections)
+      .where(eq(qualityInspections.id, iqcId));
   }
 
   /** Sửa lại 4 field ngữ cảnh (`inspectionStandard`/`inspectorName`/`measuringTools`/
@@ -662,20 +706,23 @@ export class IqcService {
     await this.ensureIqcConfirmed(iqcId);
 
     await this.db
-      .update(iqcInspections)
+      .update(qualityInspections)
       .set({
         inspectionStandard: reqDto.inspectionStandard,
         inspectorName: reqDto.inspectorName,
         measuringTools: reqDto.measuringTools,
         inspectionDate: reqDto.inspectionDate,
       })
-      .where(eq(iqcInspections.id, iqcId));
+      .where(eq(qualityInspections.id, iqcId));
   }
 
   private async ensureIqcConfirmed(iqcId: string): Promise<void> {
-    const inspection = await this.db.query.iqcInspections.findFirst({
+    const inspection = await this.db.query.qualityInspections.findFirst({
       columns: { id: true, status: true },
-      where: eq(iqcInspections.id, iqcId),
+      where: and(
+        eq(qualityInspections.kind, QcKind.INCOMING),
+        eq(qualityInspections.id, iqcId),
+      ),
     });
 
     if (!inspection) {
@@ -714,17 +761,6 @@ export class IqcService {
     return sequences.map(
       (sequence) => `IQC-${year}-${String(sequence).padStart(5, '0')}`,
     );
-  }
-
-  private async validateCodeUniqueness(code: string): Promise<void> {
-    const existing = await this.db.query.iqcInspections.findFirst({
-      columns: { id: true },
-      where: eq(iqcInspections.code, code),
-    });
-
-    if (existing) {
-      throw new AppException(ErrorCode.E140, HttpStatus.CONFLICT);
-    }
   }
 
   private async ensureSupplierExists(supplierId: string): Promise<void> {

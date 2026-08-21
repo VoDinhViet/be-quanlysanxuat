@@ -152,4 +152,19 @@ export class ProductionJobsController {
       reqDto,
     );
   }
+
+  @Post(':jobId/qc')
+  @Permissions('oqc:create')
+  @ApiAuth({
+    summary:
+      'Yêu cầu QC thành phẩm cho cả Job — 1 cú bấm, không cần nhập gì; chỉ chạy được khi mọi công ' +
+      'đoạn đã hoàn thành và Job có node Cấp 0',
+    statusCode: HttpStatus.NO_CONTENT,
+  })
+  requestJobQc(
+    @UUIDParam('jobId') jobId: string,
+    @CurrentUser() payload: JwtPayloadType,
+  ): Promise<void> {
+    return this.productionJobsService.requestJobQc(jobId, payload.userId);
+  }
 }

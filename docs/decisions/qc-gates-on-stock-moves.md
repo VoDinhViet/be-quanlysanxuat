@@ -41,10 +41,12 @@ không có gì chặn việc giao cho khách qua `outbound-orders`.
   nếu còn ≥1 phiếu IQC chưa `COMPLETED` của cùng `(itemId, warehouseId)` với dòng đang xuất —
   `hasPendingIqcForItems` (`src/api/iqc/iqc.query.ts`). Đặt ở `post`, không phải `create`, vì
   `post` mới là lúc hàng thật rời kho — `create` vẫn là nháp sửa được.
-- **Gate D2 (OQC → giao hàng):** `POST /outbound-orders/:id/confirm` (mới, `DRAFT →
+- **Gate D2 (QC → giao hàng):** `POST /outbound-orders/:id/confirm` (mới, `DRAFT →
   PENDING_DELIVERY`) chặn (`E205`) nếu còn Job nào (suy từ `outbound_order_items.productionJobId`,
-  bỏ qua dòng `null`) chưa qua hết OQC — `getJobOqcClearance`, tái dùng nguyên gate `E196`
-  (`docs/decisions/oqc-per-operation.md`).
+  bỏ qua dòng `null`) chưa qua hết QC — `getJobQcCoverage`, tái dùng nguyên gate `E196`
+  (`docs/decisions/oqc-per-operation.md`, `docs/decisions/qc-single-table.md`). Từ khi IQC/OQC gộp
+  bảng, `getJobQcCoverage` phủ cả OQC (công đoạn `INHOUSE`) lẫn IQC sinh từ OS-IN (công đoạn
+  `OUTSOURCE`) — D2 không đổi ngữ nghĩa, chỉ đổi nguồn đọc.
 
 **Đường gỡ đi kèm gate D1:** thêm `DELETE /iqc/:iqcId` (chỉ khi còn `NOT_INSPECTED`, `E206`) — IQC
 trước đó không có route xoá nào; một khi có gate chặn cứng luồng xuất kho theo IQC, cần một cách gỡ
@@ -75,5 +77,6 @@ tồn, chưa sinh `inventory_issues` (SALES). Đó là phase giao hàng 2, chưa
 
 ## Related docs
 
-`docs/decisions/oqc-per-operation.md` (nguồn của `getJobOqcClearance` dùng chung ở gate D2).
-`docs/domains/quality.md`, `docs/domains/inventory.md`, `docs/workflows/stock-movement.md`.
+`docs/decisions/oqc-per-operation.md` (gốc gate theo công đoạn). `docs/decisions/qc-single-table.md`
+(`getJobQcCoverage` dùng chung ở gate D2, sau khi IQC/OQC gộp bảng). `docs/domains/quality.md`,
+`docs/domains/inventory.md`, `docs/workflows/stock-movement.md`.

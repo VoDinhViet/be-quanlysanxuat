@@ -47,7 +47,7 @@ export enum UploadType {
   SUPPLIER_DOCUMENT = 'SUPPLIER_DOCUMENT',
   BOM_ITEM_DRAWING = 'BOM_ITEM_DRAWING',
   ORDER_DOCUMENT = 'ORDER_DOCUMENT',
-  // Trang chi tiết IQC — 2 bộ bằng chứng riêng, xem `iqc_attachments.kind`.
+  // Trang chi tiết IQC — 2 bộ bằng chứng riêng, xem `qc_attachments.kind`.
   IQC_EVIDENCE = 'IQC_EVIDENCE',
   IQC_DISPOSITION_EVIDENCE = 'IQC_DISPOSITION_EVIDENCE',
 }

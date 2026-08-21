@@ -1,9 +1,9 @@
 import { HttpStatus } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 
 import { ErrorCode } from '../../constants/error-code.constant';
 import type { DbTransaction } from '../../database/database.type';
-import { iqcInspections, IqcStatus } from '../../database/schemas';
+import { IqcStatus, QcKind, qualityInspections } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 
 /** Hoàn tất phiếu IQC sau khi phiếu trả NCC liên kết được `post` — gọi bởi
@@ -18,9 +18,12 @@ export async function completeIqcAfterSupplierReturn(
   tx: DbTransaction,
   iqcId: string,
 ): Promise<void> {
-  const inspection = await tx.query.iqcInspections.findFirst({
+  const inspection = await tx.query.qualityInspections.findFirst({
     columns: { id: true, status: true },
-    where: eq(iqcInspections.id, iqcId),
+    where: and(
+      eq(qualityInspections.kind, QcKind.INCOMING),
+      eq(qualityInspections.id, iqcId),
+    ),
   });
 
   if (!inspection) {
@@ -32,7 +35,7 @@ export async function completeIqcAfterSupplierReturn(
   }
 
   await tx
-    .update(iqcInspections)
+    .update(qualityInspections)
     .set({ status: IqcStatus.COMPLETED })
-    .where(eq(iqcInspections.id, iqcId));
+    .where(eq(qualityInspections.id, iqcId));
 }

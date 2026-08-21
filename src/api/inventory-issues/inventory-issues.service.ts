@@ -8,7 +8,6 @@ import {
   DocumentType,
   generateDocumentSequence,
 } from '../../common/utils/document-sequence.util';
-import { extractPostgresError } from '../../common/utils/postgres-error.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
@@ -148,52 +147,31 @@ export class InventoryIssuesService {
   async createInventoryIssue(
     reqDto: CreateInventoryIssueReqDto,
     userId: string,
-  ): Promise<InventoryIssueResDto> {
+  ): Promise<void> {
     await this.ensureItemsValid(reqDto.items);
     await this.ensureReferencesValid(reqDto);
 
-    if (reqDto.code) {
-      await this.validateCodeUniqueness(reqDto.code);
-    }
-
     const { items, ...issueFields } = reqDto;
 
-    let issueId: string;
-    try {
-      issueId = await this.db.transaction(async (tx) => {
-        const code =
-          reqDto.code ?? (await this.generateIssueCode(tx, reqDto.issueDate));
+    await this.db.transaction(async (tx) => {
+      const code = await this.generateIssueCode(tx, reqDto.issueDate);
 
-        const [issue] = await tx
-          .insert(inventoryIssues)
-          .values({ ...issueFields, code, createdBy: userId })
-          .returning();
+      const [issue] = await tx
+        .insert(inventoryIssues)
+        .values({ ...issueFields, code, createdBy: userId })
+        .returning();
 
-        await this.createItems(tx, issue.id, items);
-
-        return issue.id;
-      });
-    } catch (error) {
-      // Mã client tự gửi vẫn còn TOCTOU giữa `validateCodeUniqueness` và `INSERT` — bắt ở đây
-      // thay vì để lỗi Postgres thô 500 lọt ra ngoài.
-      if (extractPostgresError(error)?.code === '23505') {
-        throw new AppException(ErrorCode.E097, HttpStatus.CONFLICT);
-      }
-      throw error;
-    }
-
-    return this.getInventoryIssue(issueId);
+      await this.createItems(tx, issue.id, items);
+    });
   }
 
   async updateInventoryIssue(
     issueId: string,
     reqDto: UpdateInventoryIssueReqDto,
-  ): Promise<InventoryIssueResDto> {
+  ): Promise<void> {
     await this.ensureIssueDraft(issueId);
 
-    if (reqDto.items !== undefined) {
-      await this.ensureItemsValid(reqDto.items);
-    }
+    await this.ensureItemsValid(reqDto.items);
     await this.ensureReferencesValid(reqDto);
 
     const { items, ...issueFields } = reqDto;
@@ -204,12 +182,8 @@ export class InventoryIssuesService {
         .set(issueFields)
         .where(eq(inventoryIssues.id, issueId));
 
-      if (items !== undefined) {
-        await this.replaceItems(tx, issueId, items);
-      }
+      await this.replaceItems(tx, issueId, items);
     });
-
-    return this.getInventoryIssue(issueId);
   }
 
   async deleteInventoryIssue(issueId: string): Promise<void> {
@@ -317,9 +291,7 @@ export class InventoryIssuesService {
       .delete(inventoryIssueItems)
       .where(eq(inventoryIssueItems.issueId, issueId));
 
-    if (items.length) {
-      await this.createItems(tx, issueId, items);
-    }
+    await this.createItems(tx, issueId, items);
   }
 
   private async generateIssueCode(
@@ -334,17 +306,6 @@ export class InventoryIssuesService {
     );
 
     return `PXK-${year}-${String(sequence).padStart(5, '0')}`;
-  }
-
-  private async validateCodeUniqueness(code: string): Promise<void> {
-    const existing = await this.db.query.inventoryIssues.findFirst({
-      columns: { id: true },
-      where: eq(inventoryIssues.code, code),
-    });
-
-    if (existing) {
-      throw new AppException(ErrorCode.E097, HttpStatus.CONFLICT);
-    }
   }
 
   /** Mặt hàng của mỗi dòng phải tồn tại (`E100`), và `orderItemId` (nếu có) chỉ hợp lệ trên dòng

@@ -27,8 +27,9 @@ export const outsourcingReceiptStatusEnum = pgEnum(
 /**
  * Phiếu nhận gia công ngoài (OS-IN) — header, nhiều dòng ở `outsourcing_receipt_items`, mỗi dòng trỏ
  * đúng 1 dòng OS-OUT nguồn, cho gộp dòng từ nhiều OS-OUT khác nhau miễn cùng NCC — `supplierId` ở
- * đây là chốt bất biến đó, service-enforced (`E187`). `requiresIqc` tự sinh N `iqc_inspections` lúc
- * tạo, không gate `create`. Không gắn kho — hàng gia công ngoài là WIP, không quản tồn theo kho
+ * đây là chốt bất biến đó, service-enforced (`E187`). `requiresIqc` tự sinh N `quality_inspections`
+ * (`kind = INCOMING`) lúc tạo, không gate `create`. Không gắn kho — hàng gia công ngoài là WIP, không
+ * quản tồn theo kho
  * (`docs/decisions/wip-not-stocked.md`). Không có nháp — cùng lý do `outsourcing_orders`, xem
  * `docs/domains/inventory.md`, `docs/workflows/outsourcing-round-trip.md`,
  * `docs/decisions/outsourcing-no-draft.md`.

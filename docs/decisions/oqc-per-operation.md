@@ -62,7 +62,8 @@ cho chính Cấp 0 (bước cuối ra thành phẩm) — quy đổi từ QC các
 **Thay bằng `E196`/`E197`** — đổi hẳn bản chất phép so sánh, từ so **số lượng** sang so **trạng
 thái + trần kế hoạch**:
 
-- `E196`: Job phải có ≥1 phiếu OQC, và không còn phiếu nào chưa `COMPLETED` (`getJobOqcClearance`).
+- `E196`: Job phải có ≥1 phiếu OQC, và không còn phiếu nào chưa `COMPLETED` — hàm đọc gate này đã đổi
+  tên/hợp nhất thành `getJobQcCoverage` (`docs/decisions/qc-single-table.md`), cùng ngữ nghĩa.
 - `E197`: SL nhập kho TP (cộng dồn) vẫn chặn trần theo `production_jobs.quantity` — giữ nguyên ý
   nghĩa "không nhập vượt kế hoạch", chỉ tách riêng khỏi điều kiện QC.
 
@@ -83,18 +84,50 @@ kết quả). Hai module cố tình lệch nhau ở điểm này.
   hàng.
 - `E175`/`E177`/`E178`/`E181` (Job không `IN_PROGRESS`, đã `COMPLETED`, không xoá được, mã trùng) —
   không đổi ngữ nghĩa.
-- Công đoạn Cấp 0 của chính FG vẫn không có nơi để QC riêng — `E196` (mọi OQC công đoạn phải xong)
-  là thứ gần nhất thay thế được, chấp nhận có chủ ý.
+
+## QC cho Cấp 0 (bước cuối ra thành phẩm) — đã làm, không phải bảng mới
+
+Mục "Đừng hoàn lại" bản trước từng nói: nếu cần QC riêng cho Cấp 0 thì phải thêm bảng/snapshot riêng
+cho `routings`/`routing_operations` theo Job. Khi thật sự cần (gate `E209` — Job chưa từng QC thành
+phẩm thì không cho nhập kho), quyết định cuối **không** làm vậy — tái dùng thẳng
+`production_job_bom_items`/`production_job_operations` đã có, không tạo bảng thứ ba:
+
+- `production_job_bom_items` nhận thêm **đúng một** node mỗi Job, `itemType = 'FG'` (dùng chung enum
+  `ItemType` sẵn có, không phải enum riêng), `parentId = NULL`, `level = 0` (ngoài quy ước 1-based
+  của cây BOM — cố ý, không phải một cấp con), `sortOrder` lớn nhất Job (đứng cuối), `quantity = 1`,
+  `plannedQuantity = job.quantity`. Chỉ tạo khi item FG có khai routing Cấp 0
+  (`ProductionJobsService.copyFinalAssemblyRouting`, gọi ngay sau `copyBomTree` trong transaction
+  duyệt LSX) — bỏ qua, không tạo node rỗng, nếu item không khai routing Cấp 0.
+- `production_job_operations` snapshot công đoạn của node đó y hệt cách snapshot node WIP thường —
+  không nhánh code riêng.
+- **Một Job nhiều nhất một node Cấp 0** — `uniqueIndex('uq_production_job_bom_items_final_assembly')
+  .on(productionJobId).where(item_type = 'FG')`.
+- Bước Lắp ráp (công đoạn của node Cấp 0) chỉ mở khi **mọi** công đoạn khác của Job đã báo hoàn
+  thành (`completedDate` khác null) — `E210` chặn `PATCH .../operations/:operationId` nếu chưa.
+- OQC gắn vào công đoạn của node Cấp 0 y hệt mọi công đoạn khác — không route/bảng riêng.
+  `getJobQcCoverage` (`docs/decisions/qc-single-table.md`) đọc cờ `isFinalAssembly` qua
+  `productionJobBomItems.itemType = 'FG'` để tính `E209` tách khỏi `E196`.
+- **Entry point tạo OQC cho Cấp 0 đổi chỗ (2026-08-21):** từ popup chọn tay `GET
+  /oqc/inspectable-operations` + `POST /oqc` (tạo được cho bất kỳ công đoạn nào, kể cả Cấp 0) sang
+  đúng một route cấp Job, không nhận body: `POST /production-jobs/:jobId/qc` —
+  `OqcService.createOqcForJob` tự tìm công đoạn Cấp 0 của Job (1 Job = 1 FG nên "QC cho Job" nghĩa
+  là QC cho chính bước lắp ráp cuối), tự suy `quantity`/`inspectionDate`, không tạo được cho công
+  đoạn nào khác ngoài Cấp 0 qua API nữa. Chi tiết: `docs/workflows/final-qc.md`.
+
+Lý do tái dùng thay vì bảng mới: node Cấp 0 cần đúng những gì `production_job_bom_items`/
+`production_job_operations` đã cung cấp cho mọi node khác (snapshot, `plannedQuantity` đóng băng,
+neo cho OQC) — một bảng thứ ba sẽ trùng lặp toàn bộ cột mà không thêm gì, và mọi query đọc "công
+đoạn của Job" (`getProductionJobOperations`, `getJobQcCoverage`) sẽ phải hợp nhất 2 nguồn thay vì 1.
 
 ## Đừng hoàn lại
 
-Nếu sau này thật sự cần QC riêng cho bước cuối ra thành phẩm (Cấp 0), thiết kế đúng là thêm một
-bảng/snapshot riêng cho `routings`/`routing_operations` theo Job (tương tự
-`production_job_operations` đã làm cho WIP) — không phải quay lại gắn OQC thẳng vào `production_
-jobs` như model cũ, vì đó là bước lùi mất khả năng QC từng công đoạn trung gian.
+Đừng tạo bảng/snapshot riêng cho routing Cấp 0 theo Job — đã cân nhắc và bác, xem mục trên. Node Cấp
+0 **luôn luôn** là một node `production_job_bom_items` bình thường với `itemType = 'FG'`, phân biệt
+bằng cột đó, không bằng bảng khác.
 
 ## Related docs
 
-`docs/decisions/qc-gates-on-stock-moves.md` (quyết định song song, thêm 2 gate cross-domain dùng
-chung `getJobOqcClearance` với quyết định này). `docs/domains/quality.md`, `docs/domains/
-production.md`, `docs/domains/inventory.md`, `docs/workflows/final-qc.md`.
+`docs/decisions/qc-gates-on-stock-moves.md` (quyết định song song, thêm 2 gate cross-domain).
+`docs/decisions/qc-single-table.md` (`getJobQcCoverage` hợp nhất OQC + IQC gia công ngoài theo công
+đoạn, kế thừa neo `production_job_operations` mà quyết định này thiết lập). `docs/domains/
+quality.md`, `docs/domains/production.md`, `docs/domains/inventory.md`, `docs/workflows/final-qc.md`.

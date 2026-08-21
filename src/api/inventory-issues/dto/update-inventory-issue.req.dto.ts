@@ -1,6 +1,6 @@
 import { InventoryIssueType } from '../../../database/schemas';
 import {
-  ClassFieldOptional,
+  ClassField,
   DateFieldOptional,
   EnumFieldOptional,
   StringFieldOptional,
@@ -31,6 +31,6 @@ export class UpdateInventoryIssueReqDto {
   @StringFieldOptional({ maxLength: 1000, nullable: true })
   readonly note?: string | null;
 
-  @ClassFieldOptional(() => InventoryIssueItemReqDto, { each: true })
-  readonly items?: InventoryIssueItemReqDto[];
+  @ClassField(() => InventoryIssueItemReqDto, { each: true, minItems: 1 })
+  readonly items!: InventoryIssueItemReqDto[];
 }

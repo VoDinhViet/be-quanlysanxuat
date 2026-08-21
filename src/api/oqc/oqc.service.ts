@@ -2,19 +2,15 @@ import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import {
   and,
-  asc,
   count,
   desc,
   eq,
-  exists,
   getTableColumns,
   gte,
-  inArray,
-  isNull,
   lt,
-  or,
-  sql,
+  ne,
 } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
@@ -22,7 +18,6 @@ import {
   DocumentType,
   generateDocumentSequence,
 } from '../../common/utils/document-sequence.util';
-import { extractPostgresError } from '../../common/utils/postgres-error.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
@@ -30,8 +25,9 @@ import type { Database, DbTransaction } from '../../database/database.type';
 import {
   IqcResult,
   items,
+  ItemType,
+  OperationType,
   OqcDisposition,
-  oqcInspections,
   OqcStatus,
   orders,
   productionJobBomItems,
@@ -39,23 +35,22 @@ import {
   productionJobs,
   productionOrders,
   ProductionJobStatus,
+  QcKind,
+  qualityInspections,
   units,
+  users,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { resolveAqlPlan, resolveAqlResult } from '../iqc/iqc-aql.constant';
 import { AqlPlanResDto } from './dto/aql-plan.res.dto';
 import { ConfirmOqcReqDto } from './dto/confirm-oqc.req.dto';
-import { CreateOqcReqDto } from './dto/create-oqc.req.dto';
 import { GetAqlPlanReqDto } from './dto/get-aql-plan.req.dto';
-import { GetInspectableOperationsReqDto } from './dto/get-inspectable-operations.req.dto';
 import { GetOqcsReqDto } from './dto/get-oqcs.req.dto';
-import { InspectableOperationResDto } from './dto/inspectable-operation.res.dto';
 import { OqcResDto } from './dto/oqc.res.dto';
 import { PageOqcResDto } from './dto/page-oqc.res.dto';
 import {
   getInspectedQuantityByBomItemId,
   getInspectedQuantityByOperationId,
-  inspectedQuantityByJobOperationSubquery,
 } from './oqc.query';
 
 @Injectable()
@@ -66,106 +61,98 @@ export class OqcService {
     reqDto: GetOqcsReqDto,
   ): Promise<OffsetPaginatedDto<PageOqcResDto>> {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
-    const materialKeyword = reqDto.materialKeyword
-      ? `%${reqDto.materialKeyword}%`
-      : undefined;
 
     const where = and(
-      keyword ? unaccentILike(oqcInspections.code, keyword) : undefined,
+      eq(qualityInspections.kind, QcKind.OUTGOING),
+      keyword ? unaccentILike(qualityInspections.code, keyword) : undefined,
       reqDto.productionJobId
-        ? eq(oqcInspections.productionJobId, reqDto.productionJobId)
+        ? eq(qualityInspections.productionJobId, reqDto.productionJobId)
         : undefined,
       reqDto.productionJobOperationId
         ? eq(
-            oqcInspections.productionJobOperationId,
+            qualityInspections.productionJobOperationId,
             reqDto.productionJobOperationId,
           )
         : undefined,
-      reqDto.itemId ? eq(oqcInspections.itemId, reqDto.itemId) : undefined,
-      reqDto.result ? eq(oqcInspections.result, reqDto.result) : undefined,
-      reqDto.status ? eq(oqcInspections.status, reqDto.status) : undefined,
+      reqDto.itemId ? eq(qualityInspections.itemId, reqDto.itemId) : undefined,
+      reqDto.result ? eq(qualityInspections.result, reqDto.result) : undefined,
+      reqDto.status ? eq(qualityInspections.status, reqDto.status) : undefined,
       reqDto.disposition
-        ? eq(oqcInspections.disposition, reqDto.disposition)
-        : undefined,
-      materialKeyword
-        ? exists(
-            this.db
-              .select({ one: sql`1` })
-              .from(items)
-              .where(
-                and(
-                  eq(items.id, oqcInspections.itemId),
-                  or(
-                    unaccentILike(items.name, materialKeyword),
-                    unaccentILike(items.code, materialKeyword),
-                  ),
-                ),
-              ),
-          )
+        ? eq(qualityInspections.disposition, reqDto.disposition)
         : undefined,
       reqDto.fromDate
-        ? gte(oqcInspections.inspectionDate, reqDto.fromDate)
+        ? gte(qualityInspections.inspectionDate, reqDto.fromDate)
         : undefined,
       reqDto.toDate
         ? lt(
-            oqcInspections.inspectionDate,
+            qualityInspections.inspectionDate,
             new Date(reqDto.toDate.getTime() + 24 * 60 * 60 * 1000),
           )
         : undefined,
     );
 
-    // Bước 1: lọc/phân trang trên bảng gốc, `orderCode` cưỡi cùng qua LEFT JOIN (không dùng để
-    // lọc/sort — chỉ là cột hiển thị suy từ Job, relational query API không diễn đạt được).
-    const [idRows, countRows] = await Promise.all([
+    // Một `.select()` phẳng — join tường minh thay vì `db.query` quan hệ + hydrate riêng
+    // (`docs/decisions/qc-single-table.md`). `productionJobOperations`/`productionJobBomItems`/
+    // `items` dùng `innerJoin` — `chk_quality_inspections_outgoing_job` đảm bảo mọi dòng
+    // `kind = OUTGOING` (đã lọc ở `where`) luôn có cả hai, nên Drizzle tự suy kiểu non-null, không
+    // cần assertion. `items` join qua `qualityInspections.itemId` (snapshot riêng, `NOT NULL`) —
+    // KHÔNG PHẢI `productionJobBomItems.itemId` (cột đó nullable, `bomItem` chỉ cho `code`/`name`).
+    // `item`/`unit` ngang hàng (không lồng `item.unit`) — cùng khuôn `OutboundOrderItemResDto`,
+    // khớp thẳng shape select nên không cần map lại.
+    const [rows, countRows] = await Promise.all([
       this.db
-        .select({ id: oqcInspections.id, orderCode: orders.code })
-        .from(oqcInspections)
-        .leftJoin(
+        .select({
+          id: qualityInspections.id,
+          code: qualityInspections.code,
+          quantity: qualityInspections.quantity,
+          inspectionDate: qualityInspections.inspectionDate,
+          result: qualityInspections.result,
+          status: qualityInspections.status,
+          disposition: qualityInspections.disposition,
+          note: qualityInspections.note,
+          createdAt: qualityInspections.createdAt,
+          updatedAt: qualityInspections.updatedAt,
+          productionJob: getTableColumns(productionJobs),
+          orderCode: orders.code,
+          operation: getTableColumns(productionJobOperations),
+          bomItem: getTableColumns(productionJobBomItems),
+          item: getTableColumns(items),
+          unit: getTableColumns(units),
+          creatorBy: getTableColumns(users),
+        })
+        .from(qualityInspections)
+        .innerJoin(
           productionJobs,
-          eq(productionJobs.id, oqcInspections.productionJobId),
+          eq(productionJobs.id, qualityInspections.productionJobId),
         )
         .leftJoin(
           productionOrders,
           eq(productionOrders.id, productionJobs.productionOrderId),
         )
         .leftJoin(orders, eq(orders.id, productionOrders.orderId))
+        .innerJoin(
+          productionJobOperations,
+          eq(
+            productionJobOperations.id,
+            qualityInspections.productionJobOperationId,
+          ),
+        )
+        .innerJoin(
+          productionJobBomItems,
+          eq(
+            productionJobBomItems.id,
+            productionJobOperations.productionJobBomItemId,
+          ),
+        )
+        .innerJoin(items, eq(items.id, qualityInspections.itemId))
+        .innerJoin(units, eq(units.id, items.unitId))
+        .leftJoin(users, eq(users.id, qualityInspections.createdBy))
         .where(where)
-        .orderBy(desc(oqcInspections.createdAt))
+        .orderBy(desc(qualityInspections.createdAt))
         .limit(reqDto.limit)
         .offset(reqDto.offset),
-      this.db.select({ total: count() }).from(oqcInspections).where(where),
+      this.db.select({ total: count() }).from(qualityInspections).where(where),
     ]);
-
-    const ids = idRows.map((row) => row.id);
-
-    // Bước 2: hydrate quan hệ — chỉ cho đúng trang hiện tại.
-    const entities = ids.length
-      ? await this.db.query.oqcInspections.findMany({
-          where: inArray(oqcInspections.id, ids),
-          with: {
-            productionJob: true,
-            productionJobOperation: { with: { bomItem: true } },
-            item: { with: { unit: true } },
-            creatorBy: true,
-          },
-        })
-      : [];
-
-    const entityById = new Map(entities.map((entity) => [entity.id, entity]));
-
-    // Giữ đúng thứ tự đã sắp/phân trang ở bước 1 — `findMany` không đảm bảo giữ thứ tự `inArray`.
-    const rows = idRows.flatMap((row) => {
-      const entity = entityById.get(row.id);
-      if (!entity) return [];
-      return [
-        {
-          ...entity,
-          orderCode: row.orderCode,
-          operation: entity.productionJobOperation,
-          bomItem: entity.productionJobOperation.bomItem,
-        },
-      ];
-    });
 
     return new OffsetPaginatedDto(
       plainToInstance(PageOqcResDto, rows, {
@@ -176,23 +163,91 @@ export class OqcService {
   }
 
   async getOqc(oqcId: string): Promise<OqcResDto> {
-    const row = await this.db.query.oqcInspections.findFirst({
-      where: eq(oqcInspections.id, oqcId),
-      with: {
-        productionJob: true,
-        item: { with: { unit: true } },
-        creatorBy: true,
-        confirmerBy: true,
-        resolverBy: true,
-        productionJobOperation: { with: { bomItem: true } },
-      },
-    });
+    // Cùng khuôn `getOqcs` — `.select()` phẳng + join tường minh, không qua `db.query` quan hệ.
+    // `productionJobOperations`/`productionJobBomItems`/`items` dùng `innerJoin`
+    // (`chk_quality_inspections_outgoing_job` đảm bảo non-null cho `kind = OUTGOING`), 3 alias
+    // `users` riêng cho `creatorBy`/`confirmerBy`/`resolverBy` (ba FK độc lập, cùng bảng đích).
+    const creatorUsers = alias(users, 'oqc_creator');
+    const confirmerUsers = alias(users, 'oqc_confirmer');
+    const resolverUsers = alias(users, 'oqc_resolver');
+
+    const [row] = await this.db
+      .select({
+        id: qualityInspections.id,
+        code: qualityInspections.code,
+        quantity: qualityInspections.quantity,
+        inspectionDate: qualityInspections.inspectionDate,
+        inspectionLevel: qualityInspections.inspectionLevel,
+        aqlLevel: qualityInspections.aqlLevel,
+        sampleSize: qualityInspections.sampleSize,
+        defectQty: qualityInspections.defectQty,
+        resultAuto: qualityInspections.resultAuto,
+        result: qualityInspections.result,
+        status: qualityInspections.status,
+        resultNote: qualityInspections.resultNote,
+        disposition: qualityInspections.disposition,
+        dispositionNote: qualityInspections.dispositionNote,
+        note: qualityInspections.note,
+        confirmedAt: qualityInspections.confirmedAt,
+        resolvedAt: qualityInspections.resolvedAt,
+        createdAt: qualityInspections.createdAt,
+        updatedAt: qualityInspections.updatedAt,
+        productionJob: getTableColumns(productionJobs),
+        orderCode: orders.code,
+        operation: getTableColumns(productionJobOperations),
+        bomItem: getTableColumns(productionJobBomItems),
+        item: getTableColumns(items),
+        unit: getTableColumns(units),
+        creatorBy: getTableColumns(creatorUsers),
+        confirmerBy: getTableColumns(confirmerUsers),
+        resolverBy: getTableColumns(resolverUsers),
+      })
+      .from(qualityInspections)
+      .innerJoin(
+        productionJobs,
+        eq(productionJobs.id, qualityInspections.productionJobId),
+      )
+      .leftJoin(
+        productionOrders,
+        eq(productionOrders.id, productionJobs.productionOrderId),
+      )
+      .leftJoin(orders, eq(orders.id, productionOrders.orderId))
+      .innerJoin(
+        productionJobOperations,
+        eq(
+          productionJobOperations.id,
+          qualityInspections.productionJobOperationId,
+        ),
+      )
+      .innerJoin(
+        productionJobBomItems,
+        eq(
+          productionJobBomItems.id,
+          productionJobOperations.productionJobBomItemId,
+        ),
+      )
+      .innerJoin(items, eq(items.id, qualityInspections.itemId))
+      .innerJoin(units, eq(units.id, items.unitId))
+      .leftJoin(creatorUsers, eq(creatorUsers.id, qualityInspections.createdBy))
+      .leftJoin(
+        confirmerUsers,
+        eq(confirmerUsers.id, qualityInspections.confirmedBy),
+      )
+      .leftJoin(
+        resolverUsers,
+        eq(resolverUsers.id, qualityInspections.resolvedBy),
+      )
+      .where(
+        and(
+          eq(qualityInspections.kind, QcKind.OUTGOING),
+          eq(qualityInspections.id, oqcId),
+        ),
+      )
+      .limit(1);
 
     if (!row) {
       throw new AppException(ErrorCode.E174, HttpStatus.NOT_FOUND);
     }
-
-    const orderCode = await this.resolveOrderCode(row.productionJobId);
 
     const plan =
       row.inspectionLevel && row.aqlLevel
@@ -203,9 +258,6 @@ export class OqcService {
       OqcResDto,
       {
         ...row,
-        operation: row.productionJobOperation,
-        bomItem: row.productionJobOperation.bomItem,
-        orderCode,
         codeLetter: plan?.codeLetter ?? null,
         suggestedSampleSize: plan?.sampleSize ?? null,
         ac: plan?.ac ?? null,
@@ -215,174 +267,110 @@ export class OqcService {
     );
   }
 
-  /** Popup "Yêu cầu QC" — copy khuôn `OutsourcingOrdersService.getOutsourceableOperations`, khác:
-   * không lọc `type = OUTSOURCE` (OQC áp cho mọi công đoạn, không riêng gia công ngoài), và mốc so
-   * sánh là tiến độ QC (`completedQuantity` so `inspectedQuantity`), không phải SL gửi gia công. */
-  async getInspectableOperations(
-    reqDto: GetInspectableOperationsReqDto,
-  ): Promise<OffsetPaginatedDto<InspectableOperationResDto>> {
-    const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
-
-    const where = and(
-      eq(productionJobs.status, ProductionJobStatus.IN_PROGRESS),
-      reqDto.productionJobId
-        ? eq(productionJobs.id, reqDto.productionJobId)
-        : undefined,
-      reqDto.operationId
-        ? eq(productionJobOperations.operationId, reqDto.operationId)
-        : undefined,
-      keyword
-        ? or(
-            unaccentILike(productionJobs.code, keyword),
-            unaccentILike(productionJobBomItems.code, keyword),
-            unaccentILike(productionJobBomItems.name, keyword),
-            unaccentILike(productionJobOperations.code, keyword),
-            unaccentILike(productionJobOperations.name, keyword),
-          )
-        : undefined,
-    );
-
-    const inspectedQuantityByOperation =
-      inspectedQuantityByJobOperationSubquery(this.db);
-
-    const [operations, [{ total }]] = await Promise.all([
-      this.db
-        .select({
-          productionJobOperationId: productionJobOperations.id,
-          operation: getTableColumns(productionJobOperations),
-          job: getTableColumns(productionJobs),
-          bomItem: getTableColumns(productionJobBomItems),
-          unit: getTableColumns(units),
-          inspectedQuantity:
-            sql<number>`coalesce(${inspectedQuantityByOperation.inspectedQuantity}, 0)`.mapWith(
-              Number,
-            ),
-        })
-        .from(productionJobOperations)
-        .innerJoin(
-          productionJobs,
-          eq(productionJobs.id, productionJobOperations.productionJobId),
-        )
-        .innerJoin(
-          productionJobBomItems,
+  /** "Yêu cầu QC" cấp Job — 1 cú bấm, không cần nhập gì. Một câu `SELECT` gộp mọi điều kiện: Job
+   * tồn tại + `IN_PROGRESS` (`E082`/`E175`), có node Cấp 0 hợp lệ (`itemType='FG'`, `type ≠
+   * OUTSOURCE` — gia công ngoài chỉ QC qua IQC, không qua OQC, thiếu thì `E213`), công đoạn đó đã
+   * `completedDate` (`E214`), còn `itemId` để snapshot (`E199`) — `uq_production_job_bom_items_
+   * final_assembly` đảm bảo tối đa 1 node Cấp 0/Job, và `E210` đã đảm bảo công đoạn Cấp 0 không thể
+   * `completedDate` trừ khi mọi công đoạn khác của Job xong trước, nên kiểm đúng công đoạn này là
+   * đủ, không cần lặp qua cả Job. Hai `LEFT JOIN` (không phải `INNER`) để phân biệt đúng "Job không
+   * tồn tại" khỏi "Job tồn tại nhưng thiếu node/công đoạn hợp lệ" — cả hai ca sau vẫn phải trả về 1
+   * dòng, không phải 0. `quantity` lấy thẳng `completedQuantity` của công đoạn Cấp 0 — lô kiểm
+   * luôn là toàn bộ SL đã hoàn thành, không phải một phần. */
+  async createOqcForJob(jobId: string, userId: string): Promise<void> {
+    const [row] = await this.db
+      .select({
+        jobStatus: productionJobs.status,
+        operationId: productionJobOperations.id,
+        completedDate: productionJobOperations.completedDate,
+        completedQuantity: productionJobOperations.completedQuantity,
+        bomItemId: productionJobBomItems.id,
+        itemId: productionJobBomItems.itemId,
+        plannedQuantity: productionJobBomItems.plannedQuantity,
+      })
+      .from(productionJobs)
+      .leftJoin(
+        productionJobBomItems,
+        and(
+          eq(productionJobBomItems.productionJobId, productionJobs.id),
+          eq(productionJobBomItems.itemType, ItemType.FG),
+        ),
+      )
+      .leftJoin(
+        productionJobOperations,
+        and(
           eq(
-            productionJobBomItems.id,
             productionJobOperations.productionJobBomItemId,
-          ),
-        )
-        .innerJoin(
-          items,
-          and(
-            eq(items.id, productionJobBomItems.itemId),
-            isNull(items.deletedAt),
-          ),
-        )
-        .innerJoin(units, eq(units.id, items.unitId))
-        .leftJoin(
-          inspectedQuantityByOperation,
-          eq(
-            inspectedQuantityByOperation.productionJobOperationId,
-            productionJobOperations.id,
-          ),
-        )
-        .where(where)
-        .orderBy(
-          asc(productionJobs.code),
-          asc(productionJobBomItems.sortOrder),
-          asc(productionJobOperations.sortOrder),
-        )
-        .limit(reqDto.limit)
-        .offset(reqDto.offset),
-      this.db
-        .select({ total: count() })
-        .from(productionJobOperations)
-        .innerJoin(
-          productionJobs,
-          eq(productionJobs.id, productionJobOperations.productionJobId),
-        )
-        .innerJoin(
-          productionJobBomItems,
-          eq(
             productionJobBomItems.id,
-            productionJobOperations.productionJobBomItemId,
           ),
-        )
-        .innerJoin(
-          items,
-          and(
-            eq(items.id, productionJobBomItems.itemId),
-            isNull(items.deletedAt),
-          ),
-        )
-        .innerJoin(units, eq(units.id, items.unitId))
-        .where(where),
-    ]);
+          ne(productionJobOperations.type, OperationType.OUTSOURCE),
+        ),
+      )
+      .where(eq(productionJobs.id, jobId))
+      .orderBy(desc(productionJobOperations.sortOrder))
+      .limit(1);
 
-    const rows = operations.map((row) => ({
-      ...row,
-      completedQuantity: row.operation.completedQuantity,
-      remainingQuantity:
-        row.operation.completedQuantity - row.inspectedQuantity,
-    }));
+    if (!row) {
+      throw new AppException(ErrorCode.E082, HttpStatus.NOT_FOUND);
+    }
 
-    return new OffsetPaginatedDto(
-      plainToInstance(InspectableOperationResDto, rows, {
-        excludeExtraneousValues: true,
-      }),
-      new OffsetPaginationDto(total, reqDto),
-    );
-  }
-
-  /** Thứ tự kiểm: công đoạn tồn tại (`E091`) → Job đang `IN_PROGRESS` (`E175`) → node BOM chứa công
-   * đoạn còn `itemId` để snapshot (`E199`) → Σ SL đã xin QC của cả node (mọi công đoạn as-used cùng
-   * node) không vượt SL kế hoạch node (`E176`) → Σ SL đã xin QC của riêng công đoạn này không vượt
-   * `completedQuantity` xưởng đã báo hoàn thành (`E198`). */
-  async createOqc(reqDto: CreateOqcReqDto, userId: string): Promise<void> {
-    const operation = await this.ensureOperationExists(
-      reqDto.productionJobOperationId,
-    );
-
-    if (operation.productionJob.status !== ProductionJobStatus.IN_PROGRESS) {
+    if (row.jobStatus !== ProductionJobStatus.IN_PROGRESS) {
       throw new AppException(ErrorCode.E175, HttpStatus.CONFLICT);
     }
 
-    const itemId = operation.bomItem.itemId;
-    if (!itemId) {
+    if (!row.operationId) {
+      throw new AppException(ErrorCode.E213, HttpStatus.BAD_REQUEST);
+    }
+
+    if (!row.completedDate) {
+      throw new AppException(ErrorCode.E214, HttpStatus.BAD_REQUEST);
+    }
+
+    if (!row.itemId) {
       throw new AppException(ErrorCode.E199, HttpStatus.CONFLICT);
     }
 
-    await this.ensureLotSizeWithinPlannedNode(
-      operation.bomItem,
-      reqDto.quantity,
-    );
-    await this.ensureWithinCompletedQuantity(operation, reqDto.quantity);
+    // LEFT JOIN khiến các cột trên khiến kiểu nullable, nhưng đã qua đủ 4 kiểm phía trên nghĩa là
+    // đúng có 1 công đoạn khớp — bomItemId/itemId/completedQuantity/plannedQuantity (đều NOT NULL)
+    // chắc chắn có giá trị.
+    const operationId = row.operationId;
+    const itemId = row.itemId;
+    const quantity = row.completedQuantity!;
 
-    if (reqDto.code) {
-      await this.validateCodeUniqueness(reqDto.code);
+    const [inspectedByBomItem, inspectedByOperation] = await Promise.all([
+      getInspectedQuantityByBomItemId(this.db, row.bomItemId!),
+      getInspectedQuantityByOperationId(this.db, operationId),
+    ]);
+
+    // Σ SL đã xin QC của mọi công đoạn as-used cùng node BOM (1 node có thể nhiều bước, cùng 1 part
+    // vật lý) + lô mới không vượt `plannedQuantity` đã đóng băng của node.
+    if (inspectedByBomItem + quantity > row.plannedQuantity!) {
+      throw new AppException(ErrorCode.E176, HttpStatus.BAD_REQUEST);
     }
 
-    try {
-      await this.db.transaction(async (tx) => {
-        const code =
-          reqDto.code ??
-          (await this.generateOqcCode(tx, reqDto.inspectionDate));
+    // `quantity` luôn là toàn bộ `completedQuantity`, không phải một phần — nên còn dòng nào đã xin
+    // QC trước đó cho đúng công đoạn này (`inspectedByOperation > 0`) nghĩa là xin lại lần hai, chắc
+    // chắn vượt trần.
+    if (inspectedByOperation > 0) {
+      throw new AppException(ErrorCode.E198, HttpStatus.BAD_REQUEST);
+    }
 
-        await tx.insert(oqcInspections).values({
-          ...reqDto,
-          code,
-          productionJobId: operation.productionJob.id,
-          itemId,
-          createdBy: userId,
-        });
+    await this.db.transaction(async (tx) => {
+      const inspectionDate = new Date();
+      const code = await this.generateOqcCode(tx, inspectionDate);
+
+      await tx.insert(qualityInspections).values({
+        quantity,
+        inspectionDate,
+        note: null,
+        code,
+        kind: QcKind.OUTGOING,
+        productionJobOperationId: operationId,
+        productionJobId: jobId,
+        itemId,
+        createdBy: userId,
       });
-    } catch (error) {
-      // Mã client tự gửi vẫn còn TOCTOU giữa `validateCodeUniqueness` và `INSERT` — bắt ở đây
-      // thay vì để lỗi Postgres thô 500 lọt ra ngoài.
-      if (extractPostgresError(error)?.code === '23505') {
-        throw new AppException(ErrorCode.E181, HttpStatus.CONFLICT);
-      }
-      throw error;
-    }
+    });
   }
 
   getAqlPlan(reqDto: GetAqlPlanReqDto): AqlPlanResDto {
@@ -442,7 +430,7 @@ export class OqcService {
       !isPass && !!reqDto.disposition && !inspection.resolvedAt;
 
     await this.db
-      .update(oqcInspections)
+      .update(qualityInspections)
       .set({
         inspectionLevel: reqDto.inspectionLevel,
         aqlLevel: reqDto.aqlLevel,
@@ -469,13 +457,16 @@ export class OqcService {
               ? new Date()
               : undefined,
       })
-      .where(eq(oqcInspections.id, oqcId));
+      .where(eq(qualityInspections.id, oqcId));
   }
 
   async deleteOqc(oqcId: string): Promise<void> {
-    const inspection = await this.db.query.oqcInspections.findFirst({
+    const inspection = await this.db.query.qualityInspections.findFirst({
       columns: { status: true },
-      where: eq(oqcInspections.id, oqcId),
+      where: and(
+        eq(qualityInspections.kind, QcKind.OUTGOING),
+        eq(qualityInspections.id, oqcId),
+      ),
     });
 
     if (!inspection) {
@@ -485,26 +476,9 @@ export class OqcService {
       throw new AppException(ErrorCode.E178, HttpStatus.CONFLICT);
     }
 
-    await this.db.delete(oqcInspections).where(eq(oqcInspections.id, oqcId));
-  }
-
-  /** "PO" hiển thị trên màn OQC = `orders.code` (tên chính thức, xem
-   * `ProductionJobResDto.orderCode`) — tính lúc đọc qua join, không lưu cột. Chỉ dùng cho 1 dòng
-   * (`getOqc`) — list tự cưỡi cùng qua LEFT JOIN ở `getOqcs`, không lặp gọi hàm này N lần. */
-  private async resolveOrderCode(
-    productionJobId: string,
-  ): Promise<string | null> {
-    const [row] = await this.db
-      .select({ orderCode: orders.code })
-      .from(productionJobs)
-      .innerJoin(
-        productionOrders,
-        eq(productionOrders.id, productionJobs.productionOrderId),
-      )
-      .innerJoin(orders, eq(orders.id, productionOrders.orderId))
-      .where(eq(productionJobs.id, productionJobId));
-
-    return row?.orderCode ?? null;
+    await this.db
+      .delete(qualityInspections)
+      .where(eq(qualityInspections.id, oqcId));
   }
 
   private resolveOqcStatus(
@@ -522,66 +496,22 @@ export class OqcService {
       : OqcStatus.COMPLETED;
   }
 
-  private async ensureOperationExists(productionJobOperationId: string) {
-    const operation = await this.db.query.productionJobOperations.findFirst({
-      where: eq(productionJobOperations.id, productionJobOperationId),
-      with: { productionJob: true, bomItem: true },
-    });
-
-    if (!operation) {
-      throw new AppException(ErrorCode.E091, HttpStatus.NOT_FOUND);
-    }
-
-    return operation;
-  }
-
-  /** Σ SL đã xin QC của MỌI công đoạn as-used cùng một node BOM (không riêng công đoạn đang tạo),
-   * cộng lô mới, không được vượt `plannedQuantity` (cột đã đóng băng) của chính node đó — 1 node
-   * có thể có nhiều bước, nhưng cùng là 1 part vật lý nên trần phải tính gộp. Cho phép kiểm nhiều
-   * lần từng phần (partial). */
-  private async ensureLotSizeWithinPlannedNode(
-    bomItem: { id: string; plannedQuantity: number },
-    newQuantity: number,
-  ): Promise<void> {
-    const inspected = await getInspectedQuantityByBomItemId(
-      this.db,
-      bomItem.id,
-    );
-
-    if (inspected + newQuantity > bomItem.plannedQuantity) {
-      throw new AppException(ErrorCode.E176, HttpStatus.BAD_REQUEST);
-    }
-  }
-
-  /** Σ SL đã xin QC của riêng công đoạn này, cộng lô mới, không được vượt `completedQuantity` hiện
-   * tại — QC không được xin kiểm nhiều hơn phần xưởng đã báo hoàn thành ở đúng bước đó. */
-  private async ensureWithinCompletedQuantity(
-    operation: { id: string; completedQuantity: number },
-    newQuantity: number,
-  ): Promise<void> {
-    const inspected = await getInspectedQuantityByOperationId(
-      this.db,
-      operation.id,
-    );
-
-    if (inspected + newQuantity > operation.completedQuantity) {
-      throw new AppException(ErrorCode.E198, HttpStatus.BAD_REQUEST);
-    }
-  }
-
   private async ensureOqcConfirmable(oqcId: string): Promise<{
     quantity: number;
     confirmedAt: Date | null;
     resolvedAt: Date | null;
   }> {
-    const inspection = await this.db.query.oqcInspections.findFirst({
+    const inspection = await this.db.query.qualityInspections.findFirst({
       columns: {
         quantity: true,
         confirmedAt: true,
         resolvedAt: true,
         status: true,
       },
-      where: eq(oqcInspections.id, oqcId),
+      where: and(
+        eq(qualityInspections.kind, QcKind.OUTGOING),
+        eq(qualityInspections.id, oqcId),
+      ),
     });
 
     if (!inspection) {
@@ -592,17 +522,6 @@ export class OqcService {
     }
 
     return inspection;
-  }
-
-  private async validateCodeUniqueness(code: string): Promise<void> {
-    const existing = await this.db.query.oqcInspections.findFirst({
-      columns: { id: true },
-      where: eq(oqcInspections.code, code),
-    });
-
-    if (existing) {
-      throw new AppException(ErrorCode.E181, HttpStatus.CONFLICT);
-    }
   }
 
   private async generateOqcCode(

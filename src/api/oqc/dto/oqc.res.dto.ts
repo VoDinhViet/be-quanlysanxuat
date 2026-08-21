@@ -19,20 +19,11 @@ import {
   StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
-import { ItemUnitRefResDto } from '../../items/dto/item-unit-ref.res.dto';
+import { ItemRefResDto } from '../../items/dto/item-ref.res.dto';
+import { ProductionJobOperationRefResDto } from '../../production-jobs/dto/production-job-operation-ref.res.dto';
 import { ProductionJobRefResDto } from '../../production-jobs/dto/production-job-ref.res.dto';
+import { UnitResDto } from '../../units/dto/unit.res.dto';
 import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
-
-@Exclude()
-export class OqcOperationResDto {
-  @Expose()
-  @StringField({ description: 'Mã công đoạn' })
-  code!: string;
-
-  @Expose()
-  @StringField({ description: 'Tên công đoạn' })
-  name!: string;
-}
 
 @Exclude()
 export class OqcBomItemResDto {
@@ -64,16 +55,20 @@ export class OqcResDto {
   orderCode!: string | null;
 
   @Expose()
-  @ClassField(() => OqcOperationResDto)
-  operation!: OqcOperationResDto;
+  @ClassField(() => ProductionJobOperationRefResDto)
+  operation!: ProductionJobOperationRefResDto;
 
   @Expose()
   @ClassField(() => OqcBomItemResDto)
   bomItem!: OqcBomItemResDto;
 
   @Expose()
-  @ClassField(() => ItemUnitRefResDto)
-  item!: ItemUnitRefResDto;
+  @ClassField(() => ItemRefResDto)
+  item!: ItemRefResDto;
+
+  @Expose()
+  @ClassField(() => UnitResDto)
+  unit!: UnitResDto;
 
   @Expose()
   @NumberField({ description: 'Lot size (SL sản xuất thực tế)' })

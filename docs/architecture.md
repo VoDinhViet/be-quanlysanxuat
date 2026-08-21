@@ -80,14 +80,15 @@ erDiagram
     SUPPLIER_RETURNS }o--o| PURCHASE_ORDERS : "trace mức phiếu (tuỳ chọn)"
     SUPPLIER_RETURNS }o--o| INVENTORY_RECEIPTS : "trace mức phiếu (tuỳ chọn)"
 
-    SUPPLIERS ||--o{ IQC_INSPECTIONS : "NCC bị kiểm"
-    IQC_INSPECTIONS }o--|| ITEMS : "vật tư kiểm"
-    IQC_INSPECTIONS }o--o| INVENTORY_RECEIPTS : "trace mức phiếu (tuỳ chọn)"
-    IQC_INSPECTIONS }o--o| PURCHASE_ORDERS : "trace mức phiếu (tuỳ chọn)"
-    IQC_INSPECTIONS }o--o| DEPARTMENTS : "bộ phận QC (tuỳ chọn)"
-    IQC_INSPECTIONS ||--o{ IQC_ATTACHMENTS : "bằng chứng QC + quyết định xử lý"
-    IQC_ATTACHMENTS }o--|| FILES : "file đính kèm"
-    IQC_INSPECTIONS ||--o{ SUPPLIER_RETURNS : "tự sinh khi disposition SORT/RETURN"
+    SUPPLIERS ||--o{ QUALITY_INSPECTIONS : "NCC bị kiểm (kind=INCOMING)"
+    QUALITY_INSPECTIONS }o--|| ITEMS : "vật tư/part kiểm"
+    QUALITY_INSPECTIONS }o--o| INVENTORY_RECEIPTS : "trace mức phiếu (tuỳ chọn, INCOMING)"
+    QUALITY_INSPECTIONS }o--o| PURCHASE_ORDERS : "trace mức phiếu (tuỳ chọn, INCOMING)"
+    QUALITY_INSPECTIONS }o--o| DEPARTMENTS : "bộ phận QC (tuỳ chọn, INCOMING)"
+    QUALITY_INSPECTIONS }o--o| PRODUCTION_JOB_OPERATIONS : "anchor (OUTGOING bắt buộc, INCOMING khi từ OS-IN)"
+    QUALITY_INSPECTIONS ||--o{ QC_ATTACHMENTS : "bằng chứng QC + quyết định xử lý"
+    QC_ATTACHMENTS }o--|| FILES : "file đính kèm"
+    QUALITY_INSPECTIONS ||--o{ SUPPLIER_RETURNS : "tự sinh khi disposition SORT/RETURN (INCOMING only)"
 
     WAREHOUSES ||--o{ OUTSOURCING_ORDERS : "kho gửi"
     SUPPLIERS ||--o{ OUTSOURCING_ORDERS : "NCC gia công"
@@ -98,8 +99,9 @@ erDiagram
     OUTSOURCING_RECEIPTS ||--o{ OUTSOURCING_RECEIPT_ITEMS : "dòng nhận"
     OUTSOURCING_ORDER_ITEMS ||--o{ OUTSOURCING_RECEIPT_ITEMS : "nhận (partial)"
     OUTSOURCING_RECEIPT_ITEMS }o--|| ITEMS : "vật tư nhận (denormalized)"
-    OUTSOURCING_RECEIPTS }o--o| IQC_INSPECTIONS : "sinh IQC nếu requiresIqc"
-    IQC_INSPECTIONS }o--o| OUTSOURCING_RECEIPTS : "trace mức phiếu (tuỳ chọn)"
+    OUTSOURCING_RECEIPTS }o--o| QUALITY_INSPECTIONS : "sinh IQC (kind=INCOMING) nếu requiresIqc"
+    QUALITY_INSPECTIONS }o--o| OUTSOURCING_RECEIPTS : "trace mức phiếu (tuỳ chọn)"
+    QUALITY_INSPECTIONS }o--o| OUTSOURCING_RECEIPT_ITEMS : "trace mức dòng (tuỳ chọn, INCOMING)"
     SUPPLIER_RETURNS }o--o| OUTSOURCING_RECEIPTS : "trace mức phiếu (tuỳ chọn)"
 ```
 
@@ -286,8 +288,9 @@ Những sự thật này không nằm trọn trong một `docs/domains/<x>.md` n
   ...) trỏ `users.id`, không phải `credentials.id` (đảo lại 2026-08-01 — `orders.assignedUserId`
   từng là ngoại lệ duy nhất, giờ mọi cột audit dùng chung một quy ước). Xem
   `docs/domains/identity-access.md`.
-- **Mã chứng từ tự sinh của 11 bảng** (`items` VT/SP, `purchase_requests` PR-, `oqc_inspections`
-  OQC-, `iqc_inspections` IQC-, `inventory_receipts` PNK-, `inventory_issues` PXK-,
+- **Mã chứng từ tự sinh của 11 loại chứng từ** (`items` VT/SP, `purchase_requests` PR-, OQC- và IQC-
+  (hai `documentType` khác nhau, cùng ghi vào một bảng vật lý `quality_inspections` —
+  `docs/decisions/qc-single-table.md`), `inventory_receipts` PNK-, `inventory_issues` PXK-,
   `purchase_quotations` RFQ-, `purchase_orders` PO-, `warehouses` WH, `outsourcing_orders` OS-OUT-,
   `outsourcing_receipts` OS-IN-) đọc số qua bảng đếm dùng chung `document_sequences` —
   `generateDocumentSequence(s)` (`src/common/utils/document-sequence.util.ts`), 1 câu

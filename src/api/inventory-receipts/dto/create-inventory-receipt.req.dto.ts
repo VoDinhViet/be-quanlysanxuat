@@ -11,12 +11,6 @@ import {
 import { InventoryReceiptItemReqDto } from './inventory-receipt-item.req.dto';
 
 export class CreateInventoryReceiptReqDto {
-  @StringFieldOptional({
-    maxLength: 50,
-    description: 'Mã phiếu; tự sinh (PNK-{năm}-xxxxx) nếu không truyền',
-  })
-  readonly code?: string;
-
   @UUIDField({ description: 'Kho nhận' })
   readonly warehouseId!: string;
 
@@ -57,6 +51,6 @@ export class CreateInventoryReceiptReqDto {
   @StringFieldOptional({ maxLength: 1000, nullable: true })
   readonly note?: string | null;
 
-  @ClassField(() => InventoryReceiptItemReqDto, { each: true })
+  @ClassField(() => InventoryReceiptItemReqDto, { each: true, minItems: 1 })
   readonly items!: InventoryReceiptItemReqDto[];
 }

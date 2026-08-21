@@ -21,7 +21,6 @@ import {
   DocumentType,
   generateDocumentSequence,
 } from '../../common/utils/document-sequence.util';
-import { extractPostgresError } from '../../common/utils/postgres-error.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
@@ -51,7 +50,7 @@ import {
 import type { InventoryPostingLine } from '../inventory/inventory-posting.service';
 import { InventoryPostingService } from '../inventory/inventory-posting.service';
 import { IqcService } from '../iqc/iqc.service';
-import { getJobOqcClearance } from '../oqc/oqc.query';
+import { getJobQcCoverage } from '../oqc/oqc.query';
 import { PaymentRequestsService } from '../payment-requests/payment-requests.service';
 import { getReceivedQuantityByPurchaseOrderItemId } from '../purchase-orders/purchase-orders.query';
 import { getReturnedQuantityByReceiptItemId } from '../supplier-returns/supplier-returns.query';
@@ -236,7 +235,7 @@ export class InventoryReceiptsService {
   async createInventoryReceipt(
     reqDto: CreateInventoryReceiptReqDto,
     userId: string,
-  ): Promise<InventoryReceiptResDto> {
+  ): Promise<void> {
     await this.ensureItemsValid(reqDto.items);
     await this.ensureReferencesValid(reqDto);
     this.ensureProductionJobRequired(
@@ -250,38 +249,18 @@ export class InventoryReceiptsService {
     );
     await this.ensureReceiptQuantitiesWithinOrdered(this.db, reqDto.items);
 
-    if (reqDto.code) {
-      await this.validateCodeUniqueness(reqDto.code);
-    }
-
     const { items, ...receiptFields } = reqDto;
 
-    let receiptId: string;
-    try {
-      receiptId = await this.db.transaction(async (tx) => {
-        const code =
-          reqDto.code ??
-          (await this.generateReceiptCode(tx, reqDto.receiptDate));
+    await this.db.transaction(async (tx) => {
+      const code = await this.generateReceiptCode(tx, reqDto.receiptDate);
 
-        const [receipt] = await tx
-          .insert(inventoryReceipts)
-          .values({ ...receiptFields, code, createdBy: userId })
-          .returning();
+      const [receipt] = await tx
+        .insert(inventoryReceipts)
+        .values({ ...receiptFields, code, createdBy: userId })
+        .returning();
 
-        await this.createItems(tx, receipt.id, items);
-
-        return receipt.id;
-      });
-    } catch (error) {
-      // Mã client tự gửi vẫn còn TOCTOU giữa `validateCodeUniqueness` và `INSERT` — bắt ở đây
-      // thay vì để lỗi Postgres thô 500 lọt ra ngoài.
-      if (extractPostgresError(error)?.code === '23505') {
-        throw new AppException(ErrorCode.E097, HttpStatus.CONFLICT);
-      }
-      throw error;
-    }
-
-    return this.getInventoryReceipt(receiptId);
+      await this.createItems(tx, receipt.id, items);
+    });
   }
 
   async updateInventoryReceipt(
@@ -290,23 +269,18 @@ export class InventoryReceiptsService {
   ): Promise<void> {
     const receipt = await this.ensureReceiptDraft(receiptId);
 
-    if (reqDto.items !== undefined) {
-      await this.ensureItemsValid(reqDto.items);
-    }
+    await this.ensureItemsValid(reqDto.items);
     await this.ensureReferencesValid(reqDto);
     this.ensureProductionJobRequired(
       reqDto.receiptType ?? receipt.receiptType,
       reqDto.productionJobId ?? receipt.productionJobId,
     );
     await this.ensurePurchaseOrderOrdered(reqDto.purchaseOrderId);
-
-    if (reqDto.items !== undefined) {
-      await this.ensurePurchaseOrderItemsValid(
-        reqDto.purchaseOrderId ?? receipt.purchaseOrderId,
-        reqDto.items,
-      );
-      await this.ensureReceiptQuantitiesWithinOrdered(this.db, reqDto.items);
-    }
+    await this.ensurePurchaseOrderItemsValid(
+      reqDto.purchaseOrderId ?? receipt.purchaseOrderId,
+      reqDto.items,
+    );
+    await this.ensureReceiptQuantitiesWithinOrdered(this.db, reqDto.items);
 
     const { items, ...receiptFields } = reqDto;
 
@@ -316,9 +290,7 @@ export class InventoryReceiptsService {
         .set(receiptFields)
         .where(eq(inventoryReceipts.id, receiptId));
 
-      if (items !== undefined) {
-        await this.replaceItems(tx, receiptId, items);
-      }
+      await this.replaceItems(tx, receiptId, items);
     });
   }
 
@@ -521,9 +493,7 @@ export class InventoryReceiptsService {
       .delete(inventoryReceiptItems)
       .where(eq(inventoryReceiptItems.receiptId, receiptId));
 
-    if (items.length) {
-      await this.createItems(tx, receiptId, items);
-    }
+    await this.createItems(tx, receiptId, items);
   }
 
   private async generateReceiptCode(
@@ -538,17 +508,6 @@ export class InventoryReceiptsService {
     );
 
     return `PNK-${year}-${String(sequence).padStart(5, '0')}`;
-  }
-
-  private async validateCodeUniqueness(code: string): Promise<void> {
-    const existing = await this.db.query.inventoryReceipts.findFirst({
-      columns: { id: true },
-      where: eq(inventoryReceipts.code, code),
-    });
-
-    if (existing) {
-      throw new AppException(ErrorCode.E097, HttpStatus.CONFLICT);
-    }
   }
 
   /** Mặt hàng của mỗi dòng phải tồn tại (`E100`). Không kiểm loại kho ↔ loại hàng — cố ý, xem
@@ -736,15 +695,22 @@ export class InventoryReceiptsService {
     }
   }
 
-  /** Gate nhập kho thành phẩm theo OQC (`docs/domains/inventory.md`, "Gate nhập kho thành phẩm";
+  /** Gate nhập kho thành phẩm theo QC (`docs/domains/inventory.md`, "Gate nhập kho thành phẩm";
    * `docs/workflows/final-qc.md`) — chỉ chạy khi `receiptType = PRODUCTION`. `productionJobId`
    * NULL tại đây nghĩa là một phiếu cũ tồn tại từ trước ràng buộc này (cột vốn không `NOT NULL` ở
    * DB, chỉ service-enforced) — vẫn chặn bằng `E179` thay vì bỏ qua. Mọi dòng phải cùng `itemId`
    * với Job (`E107`, tái dùng — cùng ngữ nghĩa `inventory_issues` dùng cho `orderItemId` lệch
-   * item). Job phải có ≥1 phiếu OQC và không còn phiếu nào chưa `COMPLETED` (`E196`) — không còn so
-   * SL như `E180` cũ vì OQC giờ ở đơn vị part theo công đoạn, không cùng đơn vị FG của phiếu nhập;
-   * SL nhập (cộng dồn mọi phiếu `PRODUCTION` khác đã `confirm` cùng Job, trừ chính phiếu này) vẫn
-   * chặn trần theo `production_jobs.quantity` (`E197`). */
+   * item). Job phải có ≥1 dòng QC (OQC công đoạn `INHOUSE` + IQC công đoạn `OUTSOURCE`, hợp nhất
+   * qua `getJobQcCoverage`) và không còn dòng nào chưa `COMPLETED` (`E196`) — không còn so SL như
+   * `E180` cũ vì QC giờ ở đơn vị part theo công đoạn, không cùng đơn vị FG của phiếu nhập; công
+   * đoạn `OUTSOURCE` chưa từng `requiresIqc` (không có dòng QC nào) không tự nó chặn `E196` — xem
+   * comment `getJobQcCoverage` (`E212` cũ đã khai tử, điều kiện của nó nay là tập con của `E196`).
+   * Riêng công đoạn Cấp 0 (bước Lắp ráp, node `itemType = 'FG'`) phải có ≥1 phiếu OQC `COMPLETED`
+   * (`E209`) — Job chưa từng QC thành phẩm thì không cho nhập, dù mọi dòng QC khác đã xong hết (đó
+   * là điều kiện của `E196`, khác điều kiện này); bỏ qua gate này nếu Job không có node Cấp 0 (item
+   * không khai routing Cấp 0 — lỗ hổng đã biết, `docs/decisions/oqc-per-operation.md`). SL nhập
+   * (cộng dồn mọi phiếu `PRODUCTION` khác đã `confirm` cùng Job, trừ chính phiếu này) vẫn chặn trần
+   * theo `production_jobs.quantity` (`E197`). */
   private async ensureProductionReceiptOqcCleared(
     tx: DbTransaction,
     receipt: { id: string; productionJobId: string | null },
@@ -771,8 +737,8 @@ export class InventoryReceiptsService {
       thisReceiptQuantity += item.quantity;
     }
 
-    const [clearance, receivedSoFar] = await Promise.all([
-      getJobOqcClearance(tx, receipt.productionJobId),
+    const [coverage, receivedSoFar] = await Promise.all([
+      getJobQcCoverage(tx, receipt.productionJobId),
       this.getConfirmedProductionQuantityByJobId(
         tx,
         receipt.productionJobId,
@@ -780,8 +746,12 @@ export class InventoryReceiptsService {
       ),
     ]);
 
-    if (clearance.total === 0 || clearance.open > 0) {
+    if (coverage.total === 0 || coverage.open > 0) {
       throw new AppException(ErrorCode.E196, HttpStatus.BAD_REQUEST);
+    }
+
+    if (coverage.hasFinalAssembly && coverage.finalCompleted === 0) {
+      throw new AppException(ErrorCode.E209, HttpStatus.BAD_REQUEST);
     }
 
     if (receivedSoFar + thisReceiptQuantity > job.quantity) {
@@ -823,7 +793,8 @@ export class InventoryReceiptsService {
   }
 
   /** NCC của phiếu IQC sinh ra khi `confirm` — ưu tiên `receipt.supplierId`, rơi về NCC của PO gắn
-   * với phiếu. Không suy được cả hai → `E152` (`iqc_inspections.supplier_id` là NOT NULL). */
+   * với phiếu. Không suy được cả hai → `E152` (`chk_quality_inspections_incoming_supplier` đòi `supplier_id` khác
+   * null cho dòng `kind = INCOMING`). */
   private async resolveIqcSupplierId(
     tx: DbTransaction,
     receipt: { supplierId: string | null; purchaseOrderId: string | null },

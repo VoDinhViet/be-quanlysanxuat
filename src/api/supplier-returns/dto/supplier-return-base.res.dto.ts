@@ -43,8 +43,8 @@ export class SupplierReturnBaseResDto {
   supplier!: SupplierRefResDto;
 
   @Expose()
-  @ClassField(() => WarehouseRefResDto)
-  warehouse!: WarehouseRefResDto;
+  @ClassFieldOptional(() => WarehouseRefResDto, { nullable: true })
+  warehouse!: WarehouseRefResDto | null;
 
   @Expose()
   @ClassFieldOptional(() => PurchaseOrderRefResDto, { nullable: true })

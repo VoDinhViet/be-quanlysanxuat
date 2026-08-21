@@ -50,22 +50,34 @@ lỗi. Bản đơn giản hoá có chủ đích — chưa trả
 Cây cha-con của Job (`parentId`, `level`, `quantity` từng node) **không được trả ra qua `/bom`** —
 snapshot vẫn nằm nguyên trong DB, chỉ là không có API đọc trực tiếp cây đó.
 `GET /production-jobs/:jobId/operations` đọc **mọi** công đoạn as-used (cả `INHOUSE` lẫn
-`OUTSOURCE`), **nhóm theo BOM item** chứa nó — mỗi phần tử là `{id, code, name, operations: [...]}`,
-dùng quan hệ `productionJobBomItems.operations` có sẵn (`with`, không phải `.select()`/join thủ
-công). Chỉ BOM item **có** công đoạn as-used mới xuất hiện (RM lá và WIP không routing không có
-`production_job_operations` nên bị lọc ra sau khi fetch). Cũng là nguồn duy nhất để FE lấy
-`operationId` cho `PATCH .../operations/:operationId`. Mỗi công đoạn kèm `plannedQuantity` — đọc
-thẳng cột `production_job_bom_items.planned_quantity`, tính **một lần** lúc duyệt LSX (nhân luỹ kế
-định mức từ gốc xuống × SL Job, `copyBomTree`) rồi đóng băng, không tính lại lúc đọc. Cùng một node
+`OUTSOURCE`, cộng công đoạn của node Cấp 0 — xem dưới), **nhóm theo BOM item** chứa nó — mỗi phần
+tử là `{id, code, name, itemType, operations: [...]}`, dùng quan hệ `productionJobBomItems.operations`
+có sẵn (`with`, không phải `.select()`/join thủ công). Chỉ BOM item **có** công đoạn as-used mới
+xuất hiện (RM lá và WIP không routing không có `production_job_operations` nên bị lọc ra sau khi
+fetch). Cũng là nguồn duy nhất để FE lấy `operationId` cho `PATCH .../operations/:operationId`. Mỗi
+công đoạn kèm `plannedQuantity` — đọc thẳng cột `production_job_bom_items.planned_quantity`, tính
+**một lần** lúc duyệt LSX (nhân luỹ kế định mức từ gốc xuống × SL Job, `copyBomTree`; node Cấp 0
+dùng thẳng `plannedQuantity = job.quantity`) rồi đóng băng, không tính lại lúc đọc. Cùng một node
 BOM thì mọi công đoạn của nó có cùng số, vì đây là SL kế hoạch của **node**, không phải của riêng
 từng bước; cũng là trần mà `PATCH` đối chiếu (`E088`), và `updateProductionJobOperation`/
 `getOutsourceableOperations`/`oqc` đọc chung đúng cột này. Bản đơn giản hoá có chủ đích — vẫn chưa
 trả ảnh part hay số đã gửi/nhận gia công ngoài.
-Không có khái
-niệm "Cấp 0" riêng ở tầng Job — routing Cấp 0 của chính FG (`routings`/`routing_operations`, khoá
-`itemId`) không được snapshot, đọc trực tiếp qua `job.itemId` nếu cần. `completedQuantity`/
-`completedDate` sửa theo **từng công đoạn** (`PATCH .../operations/:operationId`, không phải theo
-node): cùng một part có thể công đoạn này đã xong trong khi công đoạn khác chưa. Xem
+
+**Node Cấp 0 — công đoạn của chính FG có snapshot, khác mô tả cũ.** `production_job_bom_items` nhận
+thêm **đúng một** node `itemType = 'FG'` mỗi Job (`ProductionJobsService.copyFinalAssemblyRouting`,
+gọi ngay sau `copyBomTree` trong cùng transaction duyệt LSX), chỉ khi item FG có khai routing Cấp 0
+(`routings`/`routing_operations` của chính `job.itemId`) — bỏ qua, không tạo node rỗng, nếu không.
+Node này `parentId = null`, `level = 0` (ngoài quy ước 1-based của cây con — cố ý), `sortOrder` lớn
+nhất Job (đứng cuối danh sách trả về), `quantity = 1`, `plannedQuantity = job.quantity`; công đoạn
+của nó snapshot y hệt cách snapshot node WIP thường, không nhánh code riêng. Một Job nhiều nhất một
+node như vậy (`uq_production_job_bom_items_final_assembly`, partial unique index). Bước Lắp ráp
+(công đoạn duy nhất/đầu tiên của node này, thường vậy) chỉ mở khi **mọi** công đoạn khác của Job đã
+báo `completedDate` khác null — `PATCH .../operations/:operationId` chặn `E210` nếu chưa, trước cả
+khi kiểm `E088`. Node Cấp 0 là neo để OQC kiểm chất lượng thành phẩm cuối cùng — xem
+`docs/decisions/oqc-per-operation.md` mục "QC cho Cấp 0", `docs/domains/quality.md`.
+
+`completedQuantity`/`completedDate` sửa theo **từng công đoạn** (`PATCH .../operations/:operationId`,
+không phải theo node): cùng một part có thể công đoạn này đã xong trong khi công đoạn khác chưa. Xem
 `docs/workflows/production-job-execution.md`.
 
 Job tạo trước khi các bảng này tồn tại (chưa migrate) trả về rỗng — không phải lỗi, giống
@@ -199,18 +211,24 @@ Không phải invariant dù dễ tưởng:
   "chọn part cần gia công" và chặn gửi vượt định mức. Đợt này **không** có
   gating nào ngược lại: tạo/hủy chứng từ gia công ngoài không tự đổi
   `completedQuantity`/`completedDate` hay chặn công đoạn kế tiếp. Xem `docs/domains/inventory.md`.
-- **↔ Quality (OQC)**: `production_job_operations` (không phải `production_jobs`) là **anchor** cho
-  `oqc_inspections` — mỗi dòng OQC gắn `productionJobOperationId`, Quality đọc `operation.
-  productionJob.status` (phải `IN_PROGRESS`), `operation.completedQuantity` (trần chặn lot size) và
-  node BOM chứa nó (`itemId`/`code`/`name` để snapshot) lúc tạo (`docs/decisions/
-  oqc-per-operation.md`). Chiều ngược lại: **không có gì cả** — tóm tắt OQC từng công đoạn (từng
-  hiển thị trên `GET /production-jobs/:jobId/bom`) đã bỏ cùng lúc route đó đổi sang trả bảng vật tư;
-  `getOqcSummaryByJobOperationIds` đã xoá khỏi `src/api/oqc/oqc.query.ts`. Bất biến
-  "`ProductionJobsModule` không import `OqcModule`" giờ đúng tuyệt đối, kể cả ở chiều đọc hiển thị.
-  Không nhánh nào của OQC ghi ngược `completedQuantity`/`completedDate`, kể cả khi
+- **↔ Quality (IQC/OQC hợp nhất)**: `production_job_operations` (không phải `production_jobs`) là
+  **anchor** cho cả hai nhánh QC (`quality_inspections.kind`, `docs/decisions/qc-single-table.md`)
+  — công đoạn `INHOUSE` (kể cả node Cấp 0) nhận dòng `OUTGOING` (OQC), công đoạn `OUTSOURCE` nhận
+  dòng `INCOMING` (IQC sinh từ OS-IN). Quality đọc `operation.productionJob.status` (phải
+  `IN_PROGRESS`), `operation.completedQuantity` (trần chặn lot size) và node BOM chứa nó
+  (`itemId`/`code`/`name` để snapshot) lúc tạo OQC (`docs/decisions/oqc-per-operation.md`). **Chiều
+  ghi**: `ProductionJobsModule` nay import `OqcModule` — `POST /production-jobs/:jobId/qc`
+  (`ProductionJobsService.requestJobQc`) gọi thẳng `OqcService.createOqcForJob` qua DI, đúng 1 cạnh
+  duy nhất, có chủ đích (thay cho route `POST /oqc` cấp-công-đoạn cũ đã bỏ). **Chiều đọc** vẫn không
+  đổi — tóm tắt QC từng công đoạn (từng hiển thị trên `GET /production-jobs/:jobId/bom`) đã bỏ cùng
+  lúc route đó đổi sang trả bảng vật tư; `getOqcSummaryByJobOperationIds` đã xoá khỏi
+  `src/api/oqc/oqc.query.ts`; `getJobQcCoverage` (gate nhập kho/giao hàng) vẫn là plain function,
+  không qua DI. Không nhánh nào của OQC ghi ngược `completedQuantity`/`completedDate`, kể cả khi
   `disposition = SCRAP` (giải phóng quota bằng cách loại trừ khỏi Σ đã xin QC, không phải bằng cách
   trừ `completedQuantity`) — tránh race với thao tác tay của xưởng qua
-  `PATCH .../operations/:operationId`. Xem `docs/domains/quality.md`.
+  `PATCH .../operations/:operationId`. Chiều ngược lại của node Cấp 0: bước Lắp ráp của nó tự khoá
+  (`E210`) cho tới khi mọi công đoạn khác báo xong — xem "Core concepts" ở trên. Xem
+  `docs/domains/quality.md`.
 - **→ Purchase Requests**: `startJob` là domain khác **duy nhất ghi vào** `purchase_requests` —
   vật tư thiếu tồn khi bấm start tự sinh một đề xuất mua, xem
   `docs/workflows/production-job-execution.md`. Không đi ngược: Purchase Requests không đọc/ghi gì
@@ -259,12 +277,26 @@ Không phải invariant dù dễ tưởng:
     oqc-per-operation.md`, một dòng OQC gắn theo **một công đoạn** (`production_job_operations`),
     không phải cả Job; `itemId` của dòng OQC là part đang QC ở đúng công đoạn đó, không phải thành
     phẩm cuối cùng của Job.
+16. **Tưởng không có khái niệm "Cấp 0" ở tầng Job, phải đọc `job.itemId → routings` trực tiếp.** Sai
+    — `copyFinalAssemblyRouting` snapshot routing Cấp 0 của FG thành một node
+    `production_job_bom_items` thật (`itemType = 'FG'`) ngay lúc duyệt LSX, y hệt mọi node WIP khác.
+    Xem "Core concepts" ở trên, `docs/decisions/oqc-per-operation.md` mục "QC cho Cấp 0".
+17. **Tưởng `PATCH .../operations/:operationId` trên bước Lắp ráp chỉ kiểm `E088` như mọi công
+    đoạn khác.** Còn kiểm thêm `E210` trước đó — chặn nếu còn công đoạn nào khác của Job chưa báo
+    `completedDate`, vì bước Lắp ráp là bước cuối, cần mọi part đã xong.
+18. **Tưởng `oqc_inspections` là bảng riêng của module `oqc`.** Đã gộp vào `quality_inspections`
+    (cột `kind`) cùng với IQC, xem `docs/decisions/qc-single-table.md` và `docs/domains/quality.md`.
 15. **Tưởng `GET /production-jobs/:jobId/bom` trả về cây BOM.** Không — tên route giữ nguyên nhưng
     nội dung là **bảng vật tư phẳng đã gộp**, phân trang. Cây snapshot của Job
     (`production_job_bom_items`/`production_job_operations`) hiện **không có route đọc nào** — chỉ
     còn `GET .../operations` đọc công đoạn (kèm part chứa nó), phục vụ `PATCH
     .../operations/:operationId`. Cây BOM của sản phẩm thì tra `GET /items/:id/bom` (BOM **sống**,
     không phải snapshot của Job — hai thứ khác nhau).
+19. **Tưởng vẫn tạo OQC theo từng công đoạn qua `POST /oqc`.** Đã bỏ — tạo OQC nay chỉ qua
+    `POST /production-jobs/:jobId/qc`, **cấp Job, không nhận body**: 1 cú bấm, server tự resolve
+    công đoạn Cấp 0 và tự suy `quantity`/`inspectionDate`. Job không khai báo routing Cấp 0 → `E213`;
+    Job còn công đoạn nào chưa `completedDate` (kể cả chính công đoạn Cấp 0) → `E214`. Xem
+    `docs/domains/quality.md` mục "Trigger từ production".
 
 ## Related docs
 

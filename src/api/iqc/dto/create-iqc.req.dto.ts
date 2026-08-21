@@ -9,12 +9,6 @@ import {
 } from '../../../decorators/field.decorators';
 
 export class CreateIqcReqDto {
-  @StringFieldOptional({
-    maxLength: 50,
-    description: 'Mã IQC; tự sinh (IQC-{năm}-xxxxx) nếu không truyền',
-  })
-  readonly code?: string;
-
   @UUIDFieldOptional({ description: 'Phiếu nhập kho liên quan (nếu có)' })
   readonly inventoryReceiptId?: string;
 

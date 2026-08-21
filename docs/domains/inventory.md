@@ -129,7 +129,7 @@ mọi LSX đang mở.
 | `supplier_returns` | Phiếu trả NCC — bảng phẳng (1 phiếu = 1 dòng vật tư), tái dùng `status` của phiếu nhập/xuất (chỉ `DRAFT`/`POSTED`/`CANCELLED` — 2 giá trị `PENDING_*` không bao giờ xuất hiện ở bảng này); **tự sinh** (`DRAFT`) từ `IqcService.confirmIqc` khi QC chọn `disposition = SORT`/`RETURN` (`docs/domains/quality.md`), `iqcId` trỏ ngược lại lần IQC đó; `post` (kho xác nhận xuất trả) trừ tồn + hoàn tất luôn IQC liên kết — **chưa có `cancel`** (huỷ một phiếu đã `POSTED` cần đường "un-complete" IQC, để đợt sau) |
 | `outsourcing_orders` | Phiếu gửi gia công ngoài (OS-OUT) — header + nhiều dòng (`outsourcing_order_items`), `status` là enum riêng `outsourcing_order_status` (chỉ `POSTED`/`CANCELLED`, tách khỏi `inventory_document_status` — không còn nháp nên không cần 5 giá trị, `docs/decisions/outsourcing-no-draft.md`), **không đụng `inventory_balances`** (`docs/decisions/wip-not-stocked.md`); mỗi dòng gắn `productionJobOperationId` — đây là chỗ nối vào luồng sản xuất, xem "Gia công ngoài" bên dưới |
 | `outsourcing_order_items` | Dòng OS-OUT — `itemId`/`quantity` + snapshot công đoạn (`operationCode`/`operationName`, NOT NULL), client gửi thẳng từ popup, server không resolve/validate lại (`docs/decisions/outsourcing-no-draft.md`) + `weight`(kg)/`area`(m²) tuỳ chọn, **không** tham gia tính tồn |
-| `outsourcing_receipts` | Phiếu nhận gia công ngoài (OS-IN) — header + nhiều dòng (`outsourcing_receipt_items`), cũng không còn nháp, cũng không đụng `inventory_balances`; mỗi dòng trỏ đúng 1 `outsourcingOrderItemId`, **cho phép gộp dòng từ nhiều OS-OUT khác nhau miễn cùng một NCC** (`supplierId` ở header, bất biến 1 phiếu = 1 NCC, `E187`); một dòng OS-OUT nhận được nhiều lần (partial); `requiresIqc` tuỳ chọn tự sinh N dòng `iqc_inspections` (1/dòng phiếu) lúc `create` |
+| `outsourcing_receipts` | Phiếu nhận gia công ngoài (OS-IN) — header + nhiều dòng (`outsourcing_receipt_items`), cũng không còn nháp, cũng không đụng `inventory_balances`; mỗi dòng trỏ đúng 1 `outsourcingOrderItemId`, **cho phép gộp dòng từ nhiều OS-OUT khác nhau miễn cùng một NCC** (`supplierId` ở header, bất biến 1 phiếu = 1 NCC, `E187`); một dòng OS-OUT nhận được nhiều lần (partial); `requiresIqc` tuỳ chọn tự sinh N dòng `quality_inspections` (`kind = INCOMING`, 1/dòng phiếu) lúc `create` |
 | `outsourcing_receipt_items` | Dòng OS-IN — `outsourcingOrderItemId` trỏ đúng 1 dòng OS-OUT nguồn, `itemId` denormalize từ dòng đó; `weight`/`area` mặc định copy từ dòng OS-OUT, sửa được |
 | `outbound_orders` | Phiếu giao hàng (DO) — header, `POST` tạo nháp + `GET` list/detail + `POST :id/confirm` (`DRAFT → PENDING_DELIVERY`, chặn `E205` nếu còn Job nào chưa qua hết OQC, xem "Giao hàng" bên dưới); chưa có duyệt/xác nhận giao thật/trừ tồn; `status` khai đủ 5 giá trị `DRAFT`/`PENDING_APPROVAL`/`PENDING_DELIVERY`/`DELIVERED`/`CANCELLED`; `clientId` bắt buộc, bất biến "1 phiếu = 1 khách hàng" |
 | `outbound_order_items` | Dòng DO — `orderItemId` trỏ dòng PO nguồn (**không** unique, một dòng PO được chọn ở nhiều phiếu DO khác nhau qua nhiều lần giao), `itemId` denormalize, `productionJobId` snapshot Job hiển thị (tuỳ chọn, `set null`) |
@@ -176,8 +176,9 @@ DRAFT ──confirm (requiresIqc=true)───> PENDING_IQC ──post (mọi I
 - `DRAFT`: sửa (replace-all items)/xoá tự do, không đụng tồn kho.
 - `confirm` (`POST /inventory-receipts/:id/confirm`, chỉ phiếu nhập): `DRAFT → PENDING_RECEIPT`
   hoặc `DRAFT → PENDING_IQC` tuỳ cờ `requiresIqc`. Rỗng dòng thì chặn (`E151`). Khi
-  `requiresIqc = true`, cùng transaction sinh một dòng `iqc_inspections` (`NOT_INSPECTED`) cho mỗi
-  dòng phiếu — đường ghi tự động duy nhất vào `iqc_inspections`, xem `docs/domains/quality.md`.
+  `requiresIqc = true`, cùng transaction sinh một dòng `quality_inspections` (`kind = INCOMING`,
+  `NOT_INSPECTED`) cho mỗi dòng phiếu — đường ghi tự động duy nhất vào bảng đó, xem
+  `docs/domains/quality.md`.
   `supplierId` của các dòng IQC đó suy từ `receipt.supplierId ?? purchaseOrder.supplierId`; không
   suy ra được thì chặn (`E152`). Không đụng tồn kho, không sinh bút toán ở bước này. Nếu
   `receiptType = PRODUCTION`, cùng bước `confirm` còn chạy gate OQC (`E107`/`E196`/`E197`, xem "Gate
@@ -241,10 +242,11 @@ WIP, kho không quản tồn WIP (`docs/decisions/wip-not-stocked.md`). `create`
   phép gộp nhiều OS-OUT khác nhau vào một OS-IN, miễn cùng một NCC. **Một dòng OS-OUT nhận được
   nhiều lần** (partial) — SL cộng dồn theo `outsourcingOrderItemId` không được vượt SL gửi của dòng
   đó (`E172`, validate trước khi mở transaction, chỉ tính `POSTED`). Nếu `requiresIqc = true` thì
-  sau đó sinh **N** dòng `iqc_inspections` (`NOT_INSPECTED`,
+  sau đó sinh **N** dòng `quality_inspections` (`kind = INCOMING`, `NOT_INSPECTED`,
   1 dòng IQC / 1 dòng phiếu) — **khác** phiếu nhập mua, IQC ở đây **không** gate `create` (hàng đã
   về nhà máy vật lý ngay khi lập OS-IN, không phải chờ IQC mới ghi nhận). `cancel` từ `POSTED` chặn
-  (`E173`) nếu đã có dòng `iqc_inspections` trỏ vào — cùng lý do `supplier_returns` chưa có `cancel`.
+  (`E173`) nếu đã có dòng `quality_inspections` trỏ vào — cùng lý do `supplier_returns` chưa có
+  `cancel`.
 
 Xem `docs/workflows/outsourcing-round-trip.md`.
 
@@ -254,17 +256,23 @@ chịu thêm 3 kiểm tra tại `confirm` (không phải `post`), cùng chỗ `E
 1. `productionJobId` **bắt buộc** (`E179`) — không còn tuỳ chọn-không-ép như trước; và mọi dòng
    phiếu phải có `itemId = job.itemId` (`E107`, tái dùng — cùng ngữ nghĩa `inventory_issues` dùng
    cho `orderItemId` lệch item).
-2. Job phải có ≥1 phiếu OQC, và không còn phiếu nào chưa `COMPLETED` — vượt thì `E196`
-   (`getJobOqcClearance`, `src/api/oqc/oqc.query.ts`). **Không còn so số lượng** như thiết kế cũ
-   (`E180`, khai tử) — OQC giờ ở đơn vị part theo công đoạn (`docs/domains/quality.md`), so trực
-   tiếp với SL nhập kho (đơn vị FG) là sai đơn vị; xem `docs/decisions/oqc-per-operation.md`.
+2. Job phải có ≥1 dòng QC, và không còn dòng nào chưa `COMPLETED` — vượt thì `E196`
+   (`getJobQcCoverage`, `src/api/oqc/oqc.query.ts`, đọc bảng gộp `quality_inspections`,
+   `docs/decisions/qc-single-table.md`). Có node Cấp 0 (`itemType = FG`) mà chưa `COMPLETED` thì
+   `E209`, tách khỏi `E196`. **Không còn so số lượng** như thiết kế cũ (`E180`, khai tử) — OQC giờ ở
+   đơn vị part theo công đoạn (`docs/domains/quality.md`), so trực tiếp với SL nhập kho (đơn vị FG)
+   là sai đơn vị; xem `docs/decisions/oqc-per-operation.md`.
 3. Tổng `quantity` các dòng phiếu này, cộng dồn mọi phiếu `PRODUCTION` khác đã `confirm`
    (`PENDING_IQC`/`PENDING_RECEIPT`/`POSTED`) cùng `productionJobId`, không được vượt
    `production_jobs.quantity` (SL kế hoạch) — vượt thì `E197`.
 
+`E212` (Job có công đoạn `OUTSOURCE` mà chưa có IQC) chưa từng phát hành, nay khai tử — điều kiện
+của nó là tập con của `E196` sau khi `getJobQcCoverage` gộp cả OQC lẫn IQC gia công ngoài theo cùng
+`productionJobOperationId`. Xem `docs/decisions/qc-single-table.md`.
+
 **Gate xuất kho sản xuất (IQC)** — `inventory_issues` với `issueType = PRODUCTION` chịu 1 kiểm tra
-tại `post` (không phải `create`, vì `post` mới là lúc hàng thật rời kho): còn ≥1 phiếu IQC chưa
-`COMPLETED` của cùng `(itemId, warehouseId)` với dòng đang xuất → `E203`
+tại `post` (không phải `create`, vì `post` mới là lúc hàng thật rời kho): còn ≥1 dòng IQC (`kind =
+INCOMING`) chưa `COMPLETED` của cùng `(itemId, warehouseId)` với dòng đang xuất → `E203`
 (`hasPendingIqcForItems`, `src/api/iqc/iqc.query.ts`). Suy kho qua `inventoryReceipt.warehouseId` —
 IQC không suy được kho (tạo tay/từ OS-IN) thì bỏ qua, không chặn.
 
@@ -305,7 +313,9 @@ Lý do gốc từng cho rằng gate này thừa ("hàng NG chưa từng vào t�
   `TRANSFER_IN`/`PRODUCTION_IN`/`ADJUSTMENT_IN` dương, còn lại âm. Dòng phiếu (`quantity` trên
   `inventory_receipt_items`/`inventory_issue_items`) luôn dương — dấu chỉ xuất hiện ở bút toán,
   không ở dòng phiếu.
-- `items` trên `PATCH` phiếu `DRAFT` là **replace-all**.
+- `items` trên `PATCH` phiếu `DRAFT` là **replace-all** — và bắt buộc tối thiểu 1 dòng trên cả
+  `POST` lẫn `PATCH`, nên `PATCH` sửa mỗi field header cũng phải gửi lại đủ mảng `items`; phiếu rỗng
+  dòng không tạo/sửa được nữa.
 - Danh sách tồn kho (`GET /inventory`, một route cho mọi loại item, lọc tuỳ chọn qua `itemType`)
   chạy trên **danh mục**, không phải trên phiếu — một sản phẩm chưa từng nhập kho vẫn hiện với
   `onHand: 0`. Bỏ trống `itemType` trả FG/RM (kho không quản tồn WIP,
@@ -375,7 +385,7 @@ Không phải invariant dù dễ tưởng:
 - **→ Orders**: `OrdersService.getOrderItems` đọc thẳng `inventory_transactions` (lọc
   `orderItemId IS NOT NULL`, `src/api/orders/orders.query.ts`) để tính `issuedQty`/`remainingQty` —
   đọc thẳng bảng, không qua `InventoryModule`/DI, cùng tiền lệ
-  `hasPendingIqcForItems`/`getJobOqcClearance`.
+  `hasPendingIqcForItems`/`getJobQcCoverage`.
 - **← Production**: chỉ đọc, qua `getStockLevels(excludeOrderId)`/`getMaterialStockLevels`.
   Production hiện **không** tự động lập phiếu kho — auto-post là feature ngoài phạm vi đợt này
   (`docs/decisions/stored-inventory-balances.md`). Phiếu vẫn có cột liên kết
@@ -400,8 +410,8 @@ Không phải invariant dù dễ tưởng:
   /purchase-orders/:id` còn trả `receivedQuantity` theo dòng, tính từ cùng nguồn.
 - **→ Quality**: `POST /inventory-receipts/:id/confirm` với `requiresIqc = true` gọi
   `IqcService.createInspectionsFromReceipt(tx, ...)` trong cùng transaction — đường ghi tự động duy
-  nhất vào `iqc_inspections`, và `post` phiếu nhập đọc lại `status` các dòng IQC đó để quyết định
-  cho ghi tồn hay không (`E153`). Xem `docs/domains/quality.md`.
+  nhất vào `quality_inspections` (`kind = INCOMING`), và `post` phiếu nhập đọc lại `status` các dòng
+  IQC đó để quyết định cho ghi tồn hay không (`E153`). Xem `docs/domains/quality.md`.
 - **← Quality (Gate xuất kho sản xuất)**: `InventoryIssuesService.postInventoryIssue`
   (`issueType = PRODUCTION`) đọc `hasPendingIqcForItems` (plain function,
   `src/api/iqc/iqc.query.ts`, không qua DI) để chặn (`E203`) xuất vật tư chưa qua IQC — xem "Gate
@@ -412,28 +422,33 @@ Không phải invariant dù dễ tưởng:
   `WAITING_RETURN` (`SupplierReturnsService.createFromIqcDisposition`, cùng transaction) — chiều
   ngược lại, `SupplierReturnsService.postSupplierReturn` gọi `completeIqcAfterSupplierReturn`
   (plain function, không qua DI — `IqcModule` đã import `SupplierReturnsModule` nên chiều ngược lại
-  không thể đi qua DI mà không tạo vòng lặp module) hoàn tất dòng IQC đó. `iqc_inspections.
+  không thể đi qua DI mà không tạo vòng lặp module) hoàn tất dòng IQC đó. `quality_inspections.
   inventoryReceiptId` là chiều trace riêng, tuỳ chọn. Xem `docs/domains/quality.md`,
   `docs/workflows/supplier-return.md`.
 - **→ Quality (Gia công ngoài)**: `POST /outsourcing-receipts` với `requiresIqc = true` gọi
   `IqcService.createInspectionsFromOutsourcingReceipt(tx, ...)` cùng transaction — sinh **1 dòng
-  `iqc_inspections` cho mỗi dòng phiếu OS-IN** (khác trước khi còn là phiếu phẳng, lúc đó luôn đúng
-  1 dòng), đường tạo thứ ba vào `iqc_inspections` (`docs/domains/quality.md`). **Khác** phiếu nhập
-  mua: IQC ở đây **không** gate `create` — cổng IQC (`E153`) chỉ tồn tại ở `inventory_receipts`,
+  `quality_inspections` (`kind = INCOMING`) cho mỗi dòng phiếu OS-IN** (khác trước khi còn là phiếu
+  phẳng, lúc đó luôn đúng 1 dòng), đường tạo thứ ba vào bảng QC gộp (`docs/domains/quality.md`,
+  `docs/decisions/qc-single-table.md`) — kèm neo `outsourcingReceiptItemId`/`productionJobId`/
+  `productionJobOperationId` suy từ dòng OS-OUT nguồn, tránh join mờ theo `(outsourcingReceiptId,
+  itemId)` mà thiết kế cũ dùng (một OS-IN có thể gộp OS-OUT của nhiều Job khác nhau). **Khác** phiếu
+  nhập mua: IQC ở đây **không** gate `create` — cổng IQC (`E153`) chỉ tồn tại ở `inventory_receipts`,
   `outsourcing_receipts` luôn `POSTED` ngay lúc tạo, sinh IQC xong vẫn `POSTED`, và **không đụng
   `inventory_balances` ở bất kỳ bước nào** (`docs/decisions/wip-not-stocked.md`). Nếu QC sau đó FAIL
   + `SORT`/`RETURN`, dòng `supplier_returns` tự sinh có cả `inventoryReceiptId = null` lẫn
   `outsourcingReceiptId` khác null — `shouldPostStock` trả **`false`**: hàng OS-IN chưa từng vào tồn
   nên phiếu trả không trừ tồn, cùng lý do case "chưa từng vào tồn" của IQC-trên-phiếu-nhập-mua, chỉ
   khác là ở đây không có phiếu nhập nào để bù trừ ngược lại.
-- **← Quality (OQC, gate nhập kho TP)**: `confirmInventoryReceipt` đọc `getJobOqcClearance` (plain
+- **← Quality (gate nhập kho TP)**: `confirmInventoryReceipt` đọc `getJobQcCoverage` (plain
   function, `src/api/oqc/oqc.query.ts`, không qua DI — `InventoryReceiptsModule` không import
-  `OqcModule`) để chặn (`E196`/`E197`) nhận khi Job chưa qua hết OQC/vượt SL kế hoạch. Một chiều —
-  Inventory đọc `oqc_inspections`, không ghi ngược; OQC cũng không biết `inventory_receipts` có tồn
-  tại. Xem "Gate nhập kho thành phẩm" ở Lifecycle, `docs/domains/quality.md`.
-- **← Quality (OQC, gate giao hàng)**: `OutboundOrdersService.confirmOutboundOrder` cũng đọc
-  `getJobOqcClearance` (tái dùng nguyên hàm trên) để chặn (`E205`) xác nhận DO khi còn Job nào chưa
-  qua hết OQC — `outbound-orders` không import `OqcModule`. Xem "Giao hàng" bên dưới.
+  `OqcModule`/`IqcModule`) để chặn (`E196`/`E197`/`E209`) nhận khi Job chưa qua hết QC (OQC công
+  đoạn `INHOUSE` + IQC công đoạn `OUTSOURCE`, cùng một bảng `quality_inspections`)/chưa QC node Cấp
+  0/vượt SL kế hoạch. Một chiều — Inventory đọc, không ghi ngược; Quality cũng không biết
+  `inventory_receipts` có tồn tại. Xem "Gate nhập kho thành phẩm" ở Lifecycle, `docs/domains/
+  quality.md`.
+- **← Quality (gate giao hàng)**: `OutboundOrdersService.confirmOutboundOrder` cũng đọc
+  `getJobQcCoverage` (tái dùng nguyên hàm trên) để chặn (`E205`) xác nhận DO khi còn Job nào chưa
+  qua hết QC — `outbound-orders` không import `OqcModule`/`IqcModule`. Xem "Giao hàng" bên dưới.
 - **← Product Structure**: `GET /inventory` chỉ thấy item `ACTIVE` + chưa xoá mềm, mặc định lọc
   FG/RM khi bỏ trống `itemType` (`docs/decisions/wip-not-stocked.md`) — gửi tường minh `itemType=WIP`
   vẫn xem được (luôn `onHand: 0`), dù `minStock`/`supplierId` trên dòng WIP luôn `0`/`null` (chỉ RM
@@ -487,9 +502,12 @@ Không phải invariant dù dễ tưởng:
 18. **Tưởng xuất kho sản xuất không gate theo IQC, hoặc "giao hàng" không gate theo OQC.** Không
     còn đúng — cả hai đã có: `inventory_issues` (`issueType = PRODUCTION`) chặn (`E203`) ở `post`
     nếu còn IQC chưa `COMPLETED` cùng `(item, kho)`; `POST /outbound-orders/:id/confirm` chặn
-    (`E205`) nếu còn Job nào chưa qua hết OQC. Lý do gốc từng cho là thừa ("hàng NG chưa từng vào
+    (`E205`) nếu còn Job nào chưa qua hết QC. Lý do gốc từng cho là thừa ("hàng NG chưa từng vào
     tồn") có 3 lỗ hổng thật — xem `docs/decisions/qc-gates-on-stock-moves.md`. `outbound-orders`
     vẫn chưa trừ tồn/chưa "giao thật" — xem #22.
+26. **Tưởng `iqc_inspections`/`oqc_inspections` vẫn là hai bảng riêng.** Đã gộp thành
+    `quality_inspections` (cột `kind`), xem `docs/decisions/qc-single-table.md` — mọi tham chiếu
+    trong tài liệu này tới "OQC"/"IQC" là tên nghiệp vụ (module, route), không còn là tên bảng.
 19. **Tưởng `outsourcing_orders`/`outsourcing_receipts` vẫn là bảng phẳng 1 phiếu = 1 dòng.** Không
     còn — header + nhiều dòng (`outsourcing_order_items`/`outsourcing_receipt_items`), cùng khuôn
     `inventory_receipts`/`inventory_receipt_items`. `itemId`/`quantity` không còn trên header.
@@ -531,7 +549,8 @@ Không phải invariant dù dễ tưởng:
 - `docs/workflows/final-qc.md` — luồng OQC → 2 gate nhập kho thành phẩm/giao hàng.
 - `docs/decisions/oqc-per-operation.md` — vì sao gate nhập kho TP đổi từ so SL sang so trạng thái.
 - `docs/decisions/qc-gates-on-stock-moves.md` — vì sao thêm gate IQC/OQC vào xuất kho/giao hàng.
+- `docs/decisions/qc-single-table.md` — IQC/OQC gộp một bảng `quality_inspections`, `getJobQcCoverage`.
 - `docs/domains/orders.md` — nguồn của `reserved`.
 - `docs/domains/production.md` — nơi tiêu thụ `onHand`/`reserved`.
-- `docs/domains/quality.md` — IQC/OQC, nguồn `hasPendingIqcForItems`/`getJobOqcClearance`.
+- `docs/domains/quality.md` — IQC/OQC, nguồn `hasPendingIqcForItems`/`getJobQcCoverage`.
 - `docs/domains/purchase-requests.md` — `purchaseRequestId` trên phiếu nhập.

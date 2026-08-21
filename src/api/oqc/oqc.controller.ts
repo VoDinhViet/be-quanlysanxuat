@@ -17,11 +17,8 @@ import { Permissions } from '../../decorators/permissions.decorator';
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
 import { AqlPlanResDto } from './dto/aql-plan.res.dto';
 import { ConfirmOqcReqDto } from './dto/confirm-oqc.req.dto';
-import { CreateOqcReqDto } from './dto/create-oqc.req.dto';
 import { GetAqlPlanReqDto } from './dto/get-aql-plan.req.dto';
-import { GetInspectableOperationsReqDto } from './dto/get-inspectable-operations.req.dto';
 import { GetOqcsReqDto } from './dto/get-oqcs.req.dto';
-import { InspectableOperationResDto } from './dto/inspectable-operation.res.dto';
 import { OqcResDto } from './dto/oqc.res.dto';
 import { PageOqcResDto } from './dto/page-oqc.res.dto';
 import { OqcService } from './oqc.service';
@@ -44,19 +41,6 @@ export class OqcController {
     return this.oqcService.getOqcs(reqDto);
   }
 
-  @Get('inspectable-operations')
-  @Permissions('oqc:read')
-  @ApiAuth({
-    type: InspectableOperationResDto,
-    summary: 'Popup "Yêu cầu QC" — chọn công đoạn cần kiểm',
-    isPaginated: true,
-  })
-  getInspectableOperations(
-    @Query() reqDto: GetInspectableOperationsReqDto,
-  ): Promise<OffsetPaginatedDto<InspectableOperationResDto>> {
-    return this.oqcService.getInspectableOperations(reqDto);
-  }
-
   @Get('aql-plan')
   @Permissions('oqc:read')
   @ApiAuth({
@@ -75,19 +59,6 @@ export class OqcController {
   })
   getOqc(@UUIDParam('oqcId') oqcId: string): Promise<OqcResDto> {
     return this.oqcService.getOqc(oqcId);
-  }
-
-  @Post()
-  @Permissions('oqc:create')
-  @ApiAuth({
-    summary: 'Yêu cầu QC cho một công đoạn của Job đang IN_PROGRESS',
-    statusCode: HttpStatus.NO_CONTENT,
-  })
-  createOqc(
-    @Body() reqDto: CreateOqcReqDto,
-    @CurrentUser() payload: JwtPayloadType,
-  ): Promise<void> {
-    return this.oqcService.createOqc(reqDto, payload.userId);
   }
 
   @Post(':oqcId/confirm')

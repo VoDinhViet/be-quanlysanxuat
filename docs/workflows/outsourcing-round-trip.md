@@ -4,7 +4,8 @@ Chặng nối `production` → `inventory` → `quality`: từ lúc lập phiế
 công ngoài, tới lúc nhận hàng về, và (tuỳ chọn) kiểm chất lượng hàng nhận về giống hệt cách IQC xử
 lý hàng nhập mua. Mô hình `outsourcing_orders`/`outsourcing_order_items`/`outsourcing_receipts`/
 `outsourcing_receipt_items` ở `docs/domains/inventory.md`, mô hình `production_job_operations`
-(anchor) + cột `plannedQuantity` ở `docs/domains/production.md`, mô hình `iqc_inspections` ở
+(anchor) + cột `plannedQuantity` ở `docs/domains/production.md`, mô hình QC (bảng gộp
+`quality_inspections`, `kind = INCOMING` cho IQC, `docs/decisions/qc-single-table.md`) ở
 `docs/domains/quality.md`; đây là trình tự đầy đủ nối ba domain đó.
 
 Cả hai chứng từ là **header + nhiều dòng** (khác thiết kế lần đầu — bảng phẳng 1 phiếu = 1 dòng vật
@@ -27,7 +28,7 @@ mặt hàng gửi gia công ngoài luôn là WIP, kho không quản tồn WIP
 - `POST /outsourcing-receipts` — lập phiếu nhận gia công ngoài (OS-IN), nhiều dòng, mỗi dòng trỏ
   đúng 1 dòng OS-OUT (thuộc phiếu đã `POSTED`), tay. Một dòng OS-OUT nhận được nhiều lần (partial).
   `POSTED` ngay, không đụng tồn kho; nếu `requiresIqc = true`, cùng transaction sinh N dòng
-  `iqc_inspections` (1/dòng phiếu).
+  `quality_inspections` (`kind = INCOMING`, 1/dòng phiếu).
 - `POST /outsourcing-orders/:id/cancel` / `POST /outsourcing-receipts/:id/cancel` — huỷ phiếu đã
   `POSTED`, không có bút toán nào để đảo.
 - (Nếu có IQC) `POST /iqc/:iqcId/confirm` với `result = FAIL` + `disposition = SORT`/`RETURN` — tự
@@ -62,8 +63,8 @@ trở đi.
 
 1. (Tuỳ chọn) `GET /outsourcing-orders/outsourceable-operations` — dựng popup chọn part: mỗi dòng
    là một `production_job_operations.type = OUTSOURCE` của Job `IN_PROGRESS`, trả `itemId` top-level
-   cùng `job`/`bomItem`/`operation`/`unit` gom nhóm (cùng khuôn popup `oqc/inspectable-operations`),
-   đủ để client gửi thẳng lại ở bước 2 mà không resolve riêng. `plannedQuantity` đọc thẳng cột
+   cùng `job`/`bomItem`/`operation`/`unit` gom nhóm, đủ để client gửi thẳng lại ở bước 2 mà không
+   resolve riêng. `plannedQuantity` đọc thẳng cột
    `production_job_bom_items.plannedQuantity`, `sentQuantity`/`remainingQuantity` là SUM
    `outsourcing_order_items` cùng `productionJobOperationId` trạng thái `POSTED` — tất cả trong cùng
    một `.select()`, chỉ tính cho đúng trang đã phân trang.
@@ -86,9 +87,12 @@ trở đi.
    OS-OUT. Trong **một** transaction: sinh mã `OS-IN-xxxx` qua `document_sequences` + `INSERT` header
    thẳng `status = POSTED` + `INSERT` mọi dòng (`.returning()` — dùng để sinh IQC ngay dưới) → nếu
    `requiresIqc`, gọi `IqcService.createInspectionsFromOutsourcingReceipt(tx, {...})` — sinh **N dòng**
-   `iqc_inspections` (`NOT_INSPECTED`, 1/dòng phiếu OS-IN), **không** gate transaction này (hàng đã
-   về nhà máy vật lý ngay khi lập phiếu, không phải ghi tồn — gia công ngoài không gọi
-   `InventoryPostingService`, `docs/decisions/wip-not-stocked.md`).
+   `quality_inspections` (`kind = INCOMING`, `NOT_INSPECTED`, 1/dòng phiếu OS-IN), kèm neo
+   `outsourcingReceiptItemId`/`productionJobId`/`productionJobOperationId` suy thẳng từ dòng OS-OUT
+   nguồn (không phải join mờ theo `(outsourcingReceiptId, itemId)` như thiết kế cũ,
+   `docs/decisions/qc-single-table.md`), **không** gate transaction này (hàng đã về nhà máy vật lý
+   ngay khi lập phiếu, không phải ghi tồn — gia công ngoài không gọi `InventoryPostingService`,
+   `docs/decisions/wip-not-stocked.md`).
 
 ### QC (chỉ khi `requiresIqc = true`)
 
@@ -114,16 +118,16 @@ trở đi.
 | `outsourcing_orders` + `outsourcing_order_items`                       | `create`                           | _(chưa có)_ | 1 header `POSTED` + N dòng            |
 | `outsourcing_orders.status`                                            | `cancel`                           | `POSTED`    | `CANCELLED`                           |
 | `outsourcing_receipts` + `outsourcing_receipt_items`                   | `create`                           | _(chưa có)_ | 1 header `POSTED` + N dòng            |
-| `iqc_inspections`                                                      | `create` OS-IN (nếu `requiresIqc`) | _(chưa có)_ | N dòng `NOT_INSPECTED` (1/dòng phiếu) |
+| `quality_inspections` (`kind = INCOMING`)                              | `create` OS-IN (nếu `requiresIqc`) | _(chưa có)_ | N dòng `NOT_INSPECTED` (1/dòng phiếu) |
 | `outsourcing_receipts.status`                                          | `cancel`                           | `POSTED`    | `CANCELLED`                           |
 | ...(từ đây giống `docs/workflows/supplier-return.md`, "State changes") |                                    |             |                                       |
 
 ## Side effects
 
 - `create` OS-OUT: không side effect nào khác — chỉ header + N dòng, không đụng module nào khác.
-- `create` OS-IN với `requiresIqc = true`: thêm N dòng `iqc_inspections` (bằng số dòng phiếu OS-IN),
-  mã `IQC-{năm}-xxxxx` — dùng chung bộ đếm với IQC sinh từ phiếu nhập mua (cùng bảng, cùng hàm
-  `generateIqcCodes`, sinh N mã liên tiếp trong một lượt).
+- `create` OS-IN với `requiresIqc = true`: thêm N dòng `quality_inspections` (`kind = INCOMING`,
+  bằng số dòng phiếu OS-IN), mã `IQC-{năm}-xxxxx` — dùng chung bộ đếm với IQC sinh từ phiếu nhập mua
+  (cùng bảng, cùng hàm `generateIqcCodes`, sinh N mã liên tiếp trong một lượt).
 - Nhánh QC (nếu FAIL + SORT/RETURN): xem "Side effects" ở `docs/workflows/supplier-return.md` —
   không có gì khác nguồn OS-IN so với nguồn phiếu nhập mua từ bước `confirm` IQC trở đi.
 
@@ -138,8 +142,8 @@ Các transaction rời theo từng route, không transaction nào bắc cầu qu
    `OutsourcingReceiptsModule` import `IqcModule`; chiều ngược lại không tồn tại, `IqcService` đọc
    bảng `outsourcing_receipts` thẳng qua `tx`, không cần DI ngược nên **không** phát sinh vòng lặp
    module như cặp `IqcModule`/`SupplierReturnsModule`).
-3. `confirmIqc` — `iqc_inspections` + `SupplierReturnsService.createFromIqcDisposition` (đã có từ
-   trước, không đổi cơ chế).
+3. `confirmIqc` — `quality_inspections` + `SupplierReturnsService.createFromIqcDisposition` (đã có
+   từ trước, không đổi cơ chế).
 4. `postSupplierReturn` — `supplier_returns` + `InventoryPostingService` +
    `completeIqcAfterSupplierReturn` (plain function, như luồng gốc).
 

@@ -1,6 +1,6 @@
 import { Exclude, Expose } from 'class-transformer';
 
-import { OperationType } from '../../../database/schemas';
+import { ItemType, OperationType } from '../../../database/schemas';
 import {
   ClassField,
   DateField,
@@ -89,6 +89,13 @@ export class ProductionJobBomItemResDto {
   @Expose()
   @StringField({ description: 'Tên chi tiết (snapshot BOM của Job)' })
   name!: string;
+
+  @Expose()
+  @EnumField(() => ItemType, {
+    description:
+      'FG = node Cấp 0 (lắp ráp/đóng gói thành phẩm, luôn đứng cuối); WIP/RM = node cây BOM',
+  })
+  itemType!: ItemType;
 
   @Expose()
   @ClassField(() => ProductionJobBomOperationResDto, { each: true })

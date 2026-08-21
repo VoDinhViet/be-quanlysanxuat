@@ -1,7 +1,7 @@
 import { InventoryReceiptType } from '../../../database/schemas';
 import {
   BooleanFieldOptional,
-  ClassFieldOptional,
+  ClassField,
   DateFieldOptional,
   EnumFieldOptional,
   StringFieldOptional,
@@ -43,6 +43,6 @@ export class UpdateInventoryReceiptReqDto {
   @StringFieldOptional({ maxLength: 1000, nullable: true })
   readonly note?: string | null;
 
-  @ClassFieldOptional(() => InventoryReceiptItemReqDto, { each: true })
-  readonly items?: InventoryReceiptItemReqDto[];
+  @ClassField(() => InventoryReceiptItemReqDto, { each: true, minItems: 1 })
+  readonly items!: InventoryReceiptItemReqDto[];
 }

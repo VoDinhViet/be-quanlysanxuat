@@ -3,8 +3,9 @@ import { and, eq, inArray, ne, sql } from 'drizzle-orm';
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
   inventoryReceipts,
-  iqcInspections,
   IqcStatus,
+  QcKind,
+  qualityInspections,
 } from '../../database/schemas';
 
 /** `true` nếu còn ≥1 phiếu IQC chưa `COMPLETED` (chưa kiểm/FAIL chưa xử lý/đang chờ trả NCC) của
@@ -23,16 +24,17 @@ export async function hasPendingIqcForItems(
 
   const [row] = await db
     .select({ one: sql`1` })
-    .from(iqcInspections)
+    .from(qualityInspections)
     .innerJoin(
       inventoryReceipts,
-      eq(inventoryReceipts.id, iqcInspections.inventoryReceiptId),
+      eq(inventoryReceipts.id, qualityInspections.inventoryReceiptId),
     )
     .where(
       and(
-        inArray(iqcInspections.itemId, params.itemIds),
+        eq(qualityInspections.kind, QcKind.INCOMING),
+        inArray(qualityInspections.itemId, params.itemIds),
         eq(inventoryReceipts.warehouseId, params.warehouseId),
-        ne(iqcInspections.status, IqcStatus.COMPLETED),
+        ne(qualityInspections.status, IqcStatus.COMPLETED),
       ),
     )
     .limit(1);

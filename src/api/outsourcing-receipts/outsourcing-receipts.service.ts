@@ -26,7 +26,6 @@ import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
-  iqcInspections,
   items,
   outsourcingOrderItems,
   outsourcingOrders,
@@ -35,6 +34,8 @@ import {
   outsourcingReceipts,
   OutsourcingReceiptStatus,
   productionJobs,
+  QcKind,
+  qualityInspections,
   suppliers,
   units,
 } from '../../database/schemas';
@@ -57,6 +58,11 @@ type ResolvedReceiptItem = {
   weight: number | null;
   area: number | null;
   note: string | null;
+  // Denormalize từ dòng OS-OUT nguồn — neo sang đúng công đoạn `OUTSOURCE` sinh ra dòng này, dùng
+  // để gắn `qualityInspections.productionJobOperationId` khi `requiresIqc` (xem
+  // `createOutsourcingReceipt`, `docs/domains/quality.md`).
+  productionJobId: string | null;
+  productionJobOperationId: string | null;
 };
 
 @Injectable()
@@ -297,25 +303,38 @@ export class OutsourcingReceiptsService {
       const lineItems = await tx
         .insert(outsourcingReceiptItems)
         .values(
-          resolvedItems.map((item, index) => ({
-            ...item,
-            outsourcingReceiptId: receipt.id,
-            sortOrder: index,
-          })),
+          resolvedItems.map((item, index) => {
+            const {
+              productionJobId: _jobId,
+              productionJobOperationId: _opId,
+              ...columns
+            } = item;
+            return {
+              ...columns,
+              outsourcingReceiptId: receipt.id,
+              sortOrder: index,
+            };
+          }),
         )
         .returning();
 
       // Hàng đã về nhà máy vật lý (không phải ghi tồn — kho không quản tồn WIP) ngay khi lập phiếu,
       // nên sinh IQC ở đây không gate việc `create`, khác nhánh IQC của phiếu nhập mua (`confirm`
-      // mới là nơi gate, `.claude/rules/service.md`).
+      // mới là nơi gate, `.claude/rules/service.md`). `lineItems`/`resolvedItems` cùng thứ tự —
+      // cùng xây từ một `.map()` trên `resolvedItems`, Postgres giữ nguyên thứ tự RETURNING cho
+      // INSERT nhiều dòng một câu lệnh — zip theo index để lấy neo công đoạn của từng dòng.
       if (receipt.requiresIqc && lineItems.length) {
         await this.iqcService.createInspectionsFromOutsourcingReceipt(tx, {
           outsourcingReceiptId: receipt.id,
           supplierId: receipt.supplierId,
           inspectionDate: new Date(),
-          lines: lineItems.map((item) => ({
+          lines: lineItems.map((item, index) => ({
+            outsourcingReceiptItemId: item.id,
             itemId: item.itemId,
             quantity: item.quantity,
+            productionJobId: resolvedItems[index].productionJobId,
+            productionJobOperationId:
+              resolvedItems[index].productionJobOperationId,
           })),
           userId,
         });
@@ -391,6 +410,8 @@ export class OutsourcingReceiptsService {
         weight: item.weight ?? orderItem.weight,
         area: item.area ?? orderItem.area,
         note: item.note ?? null,
+        productionJobId: orderItem.productionJobId,
+        productionJobOperationId: orderItem.productionJobOperationId,
       };
     });
   }
@@ -440,16 +461,19 @@ export class OutsourcingReceiptsService {
     }
   }
 
-  /** Huỷ OS-IN đã `POSTED` bị chặn (`E173`) nếu đã sinh `iqc_inspections` trỏ vào — cùng lý do
-   * `supplier_returns` chưa có `cancel`: cần đường "un-complete" IQC. Chặn bất kể trạng thái IQC,
-   * kể cả đã `COMPLETED`. */
+  /** Huỷ OS-IN đã `POSTED` bị chặn (`E173`) nếu đã sinh `quality_inspections` (`kind = INCOMING`)
+   * trỏ vào — cùng lý do `supplier_returns` chưa có `cancel`: cần đường "un-complete" IQC. Chặn bất
+   * kể trạng thái IQC, kể cả đã `COMPLETED`. */
   private async hasLinkedIqc(
     tx: DbTransaction,
     outsourcingReceiptId: string,
   ): Promise<boolean> {
-    const existing = await tx.query.iqcInspections.findFirst({
+    const existing = await tx.query.qualityInspections.findFirst({
       columns: { id: true },
-      where: eq(iqcInspections.outsourcingReceiptId, outsourcingReceiptId),
+      where: and(
+        eq(qualityInspections.kind, QcKind.INCOMING),
+        eq(qualityInspections.outsourcingReceiptId, outsourcingReceiptId),
+      ),
     });
 
     return !!existing;

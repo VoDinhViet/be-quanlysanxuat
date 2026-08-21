@@ -58,14 +58,13 @@ export class InventoryReceiptsController {
   @Post()
   @Permissions('inventory:create')
   @ApiAuth({
-    type: InventoryReceiptResDto,
     summary: 'Create an inventory receipt — always DRAFT, does not touch stock',
-    statusCode: HttpStatus.CREATED,
+    statusCode: HttpStatus.NO_CONTENT,
   })
   createInventoryReceipt(
     @Body() reqDto: CreateInventoryReceiptReqDto,
     @CurrentUser() payload: JwtPayloadType,
-  ): Promise<InventoryReceiptResDto> {
+  ): Promise<void> {
     return this.inventoryReceiptsService.createInventoryReceipt(
       reqDto,
       payload.userId,

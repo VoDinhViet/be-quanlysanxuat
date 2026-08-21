@@ -18,6 +18,8 @@ import {
 } from '../../../decorators/field.decorators';
 import { InventoryReceiptRefResDto } from '../../inventory-receipts/dto/inventory-receipt-ref.res.dto';
 import { ItemUnitRefResDto } from '../../items/dto/item-unit-ref.res.dto';
+import { ProductionJobOperationRefResDto } from '../../production-jobs/dto/production-job-operation-ref.res.dto';
+import { ProductionJobRefResDto } from '../../production-jobs/dto/production-job-ref.res.dto';
 import { PurchaseOrderRefResDto } from '../../purchase-orders/dto/purchase-order-ref.res.dto';
 import { SupplierRefResDto } from '../../suppliers/dto/supplier-ref.res.dto';
 import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
@@ -39,6 +41,22 @@ export class PageIqcResDto {
   @Expose()
   @ClassFieldOptional(() => PurchaseOrderRefResDto, { nullable: true })
   purchaseOrder!: PurchaseOrderRefResDto | null;
+
+  @Expose()
+  @ClassFieldOptional(() => ProductionJobRefResDto, {
+    nullable: true,
+    description:
+      'LSX liên quan — chỉ có khi phiếu sinh từ OS-IN của một công đoạn gia công ngoài',
+  })
+  productionJob!: ProductionJobRefResDto | null;
+
+  @Expose()
+  @ClassFieldOptional(() => ProductionJobOperationRefResDto, {
+    nullable: true,
+    description:
+      'Công đoạn gia công ngoài liên quan — cùng điều kiện productionJob',
+  })
+  productionJobOperation!: ProductionJobOperationRefResDto | null;
 
   @Expose()
   @ClassField(() => SupplierRefResDto)
