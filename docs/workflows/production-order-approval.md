@@ -57,9 +57,11 @@ lượng **không** hỏi lại tồn kho.
      `code`/`name` denormalize), rồi copy routing as-used của từng node sang
      `production_job_operations` (`code`/`name`/`type` công đoạn denormalize) — đóng băng, không
      route sửa. Không có khái niệm Cấp 0 riêng ở tầng Job.
-   - Copy BOM (gộp theo vật tư) sang `production_job_materials`, nhân định mức với SL Job
-     (`requiredQty = unitQty × quantity`), denormalize luôn `materialCode`/`materialName`/
-     `unitCode`/`unitName` — sửa được sau đó qua `docs/workflows/production-job-execution.md`.
+   - Copy BOM (gộp theo vật tư) sang `production_job_issues`, nhân định mức với SL Job
+     (`requiredQty = unitQty × quantity`). Mã/tên vật tư + mã/tên ĐVT không denormalize thẳng lên
+     dòng này — get-or-create trước (theo bộ ba nội dung, dùng chung mọi Job/LSX) hai bảng chiều
+     `production_job_items`/`production_job_units`, rồi chỉ ghi FK — xem
+     `docs/domains/production.md`.
    - 1 dòng log `APPROVED` ghi kèm số Job đã sinh.
 
 ## State changes
@@ -71,7 +73,9 @@ lượng **không** hỏi lại tồn kho.
 | `production_jobs` | *(chưa có)* | `PENDING` |
 | `production_job_bom_items` | *(chưa có)* | N dòng/Job (nhân bản cây BOM) |
 | `production_job_operations` | *(chưa có)* | N dòng/Job (as-used từng node BOM) |
-| `production_job_materials` | *(chưa có)* | N dòng/Job (copy BOM × SL Job) |
+| `production_job_items` | *(có thể chưa có)* | 0 dòng mới nếu vật tư đã có snapshot cùng bộ ba nội dung, ngược lại +1 dòng/vật tư mới |
+| `production_job_units` | *(có thể chưa có)* | Cùng cơ chế, theo ĐVT |
+| `production_job_issues` | *(chưa có)* | N dòng/Job (copy BOM × SL Job) |
 
 ## Side effects
 
@@ -87,10 +91,13 @@ duyệt. Hai điểm này ngoài phạm vi có chủ đích — xem `docs/domain
 
 ## Transaction boundary
 
-Cả hai flow mở transaction sau phần đọc. Transaction duyệt bao **sáu bảng ở hai domain**
+Cả hai flow mở transaction sau phần đọc. Transaction duyệt bao **tám bảng ở hai domain**
 (`production_orders`, `orders`, `production_jobs`, `production_job_bom_items`,
-`production_job_operations`, `production_job_materials`) — đây là transaction rộng nhất hệ thống,
-và là lý do `createJobs` bắt buộc nhận `tx`.
+`production_job_operations`, `production_job_items`, `production_job_units`,
+`production_job_issues`) — đây là transaction rộng nhất hệ thống, và là lý do `createJobs` bắt buộc
+nhận `tx`. Hệ quả mới: `production_job_items`/`production_job_units` dùng chung nhiều LSX, nên duyệt
+hai LSX song song cùng đụng một vật tư/ĐVT sẽ tranh chấp khoá insert của nhau trong lúc get-or-create
+— trước đây transaction duyệt chỉ đụng dữ liệu riêng của chính LSX đó, không tranh chấp gì.
 
 Sinh mã nằm **trong** transaction nhưng vẫn là đếm-rồi-cộng-1: hai lượt duyệt song song có thể ra
 cùng mã, unique constraint là chốt chặn thật (biểu hiện: 500 thô, không phải mã lỗi sạch).

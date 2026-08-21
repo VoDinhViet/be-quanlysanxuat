@@ -2,6 +2,7 @@ import { Exclude, Expose } from 'class-transformer';
 
 import { OperationType } from '../../../database/schemas';
 import {
+  ClassField,
   DateField,
   DateFieldOptional,
   EnumField,
@@ -13,7 +14,7 @@ import {
 } from '../../../decorators/field.decorators';
 
 @Exclude()
-export class ProductionJobOperationResDto {
+export class ProductionJobBomOperationResDto {
   @Expose()
   @UUIDField()
   id!: string;
@@ -50,6 +51,14 @@ export class ProductionJobOperationResDto {
 
   @Expose()
   @NumberField({
+    description:
+      'SL kế hoạch của node BOM chứa công đoạn — định mức nhân luỹ kế theo cây × SL Job; cũng là ' +
+      'trần của completedQuantity (E088)',
+  })
+  plannedQuantity!: number;
+
+  @Expose()
+  @NumberField({
     description: 'SL đã hoàn thành ở công đoạn này — tự nhập, ghi đè',
   })
   completedQuantity!: number;
@@ -65,4 +74,23 @@ export class ProductionJobOperationResDto {
   @Expose()
   @DateField()
   createdAt!: Date;
+}
+
+@Exclude()
+export class ProductionJobBomItemResDto {
+  @Expose()
+  @UUIDField()
+  id!: string;
+
+  @Expose()
+  @StringField({ description: 'Mã part (snapshot BOM của Job)' })
+  code!: string;
+
+  @Expose()
+  @StringField({ description: 'Tên chi tiết (snapshot BOM của Job)' })
+  name!: string;
+
+  @Expose()
+  @ClassField(() => ProductionJobBomOperationResDto, { each: true })
+  operations!: ProductionJobBomOperationResDto[];
 }

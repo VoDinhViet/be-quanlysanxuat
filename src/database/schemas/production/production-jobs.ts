@@ -13,7 +13,7 @@ import {
 
 import { items } from '../items/items';
 import { productionJobBomItems } from './production-job-bom-items';
-import { productionJobMaterials } from './production-job-materials';
+import { productionJobIssues } from './production-job-issues';
 import { productionJobNotes } from './production-job-notes';
 import { productionOrders } from './production-orders';
 import { users } from '../identity-access/users';
@@ -48,7 +48,7 @@ export const productionJobStatusEnum = pgEnum('production_job_status', [
  *
  * Rules:
  * - `status` thêm 2026-07-30 — vòng đời ở mức Job, vẫn chưa chia tiến độ theo công đoạn dù
- *   `createJobs` đã snapshot công đoạn (`productionJobOperations`) + vật tư (`productionJobMaterials`),
+ *   `createJobs` đã snapshot công đoạn (`productionJobOperations`) + vật tư (`productionJobIssues`),
  *   xem `docs/domains/production.md`.
  * - `producedQty`/`rejectedQty` (báo sản lượng cộng dồn) và `completedBy`/`completedAt`/
  *   `cancelledBy`/`cancelledAt`/`cancelReason` đều đã xoá — Job hiện không còn cách nào qua API để
@@ -118,7 +118,7 @@ export const productionJobsRelations = relations(
       references: [users.id],
     }),
     bomItems: many(productionJobBomItems),
-    materials: many(productionJobMaterials),
+    issues: many(productionJobIssues),
     notes: many(productionJobNotes),
   }),
 );

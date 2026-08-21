@@ -127,14 +127,15 @@ trình; độ sâu ≤ 50; item gốc của BOM/routing không phải RM.
 - **Production** đọc **một nguồn duy nhất**, đúng **một lần**, lúc duyệt LSX: toàn bộ cây `bom_items`
   (cả node WIP lẫn lá RM) + `bom_operations` as-used của từng node WIP, nhân bản sang
   `production_job_bom_items`/`production_job_operations` (id mới, độc lập). Vật tư của Job
-  (`production_job_materials`) là bản gộp riêng: `SUM(quantity) GROUP BY itemId` trên mọi lá RM
+  (`production_job_issues`) là bản gộp riêng: `SUM(quantity) GROUP BY itemId` trên mọi lá RM
   thuộc cây, nhân với SL Job — xem `docs/domains/production.md`. Routing Cấp 0 của FG/WIP
   (`routings`/`routing_operations`) **không** được đọc/snapshot ở bước này. Ngoài thời điểm đó,
   không module sản xuất nào tham chiếu `boms`/`bom_items`/`bom_operations`/`routings`/
   `routing_operations` nữa; Job không chia nhỏ tiến độ theo công đoạn.
 - Phép gộp vật tư (`SUM(quantity) GROUP BY itemId` trên mọi lá RM thuộc cây một item) — **không
   nhân qua số lượng của các node cha**, nên nó *không* phải BOM explosion.
-  `production_job_materials.unitQty` thừa hưởng nguyên giới hạn này.
+  `production_job_issues.unitQty`/`requiredQty` thừa hưởng nguyên giới hạn này —
+  `GET /production-jobs/:jobId/bom` trả thẳng `requiredQty`, không tính lại.
 - **Inventory** `GET /inventory` chỉ thấy item ACTIVE, mọi `type` (FG/WIP/RM) khi bỏ trống filter
   `itemType` — một route chung, không còn tách theo loại như trước.
 - **Orders** tham chiếu `items.id` trên từng dòng (chỉ FG hợp lệ, service-enforced không phải DB

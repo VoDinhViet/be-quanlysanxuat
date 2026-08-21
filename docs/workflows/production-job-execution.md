@@ -1,11 +1,12 @@
 # Thực thi Job
 
-Chặng cuối của luồng sản xuất: xưởng bắt đầu làm, đọc công đoạn/vật tư đã snapshot lúc duyệt, và báo
-tiến độ hoàn thành theo từng công đoạn. Vòng đời hai trạng thái và lý do không có điểm kết thúc ở
-`docs/domains/production.md`.
+Chặng cuối của luồng sản xuất: xưởng bắt đầu làm, đọc bảng vật tư gộp từ cây BOM snapshot lúc duyệt,
+và báo tiến độ hoàn thành theo từng công đoạn. Vòng đời hai trạng thái và lý do không có điểm kết
+thúc ở `docs/domains/production.md`.
 
 `report`/`hold`/`resume` **ở mức Job** (báo sản lượng tổng, tạm dừng/làm tiếp) và route sửa vật tư
-của Job vẫn chưa có — tạm hoãn để mở rộng sau này. Tiến độ **ở mức từng công đoạn** thì đã có, qua
+của Job vẫn chưa có — `production_job_issues` chỉ đọc qua `/bom`, không có route ghi nào khác (xem
+`docs/domains/production.md`). Tiến độ **ở mức từng công đoạn** thì đã có, qua
 `PATCH .../operations/:operationId` (xem dưới) — đừng nhầm hai mức này.
 
 ## Trigger
@@ -13,16 +14,16 @@ của Job vẫn chưa có — tạm hoãn để mở rộng sau này. Tiến đ�
 | Route | Ý nghĩa | Đổi trạng thái? |
 | --- | --- | --- |
 | `POST /production-jobs/:jobId/start` | Bắt đầu làm | Có (`production_jobs.status`); có thể kèm sinh đề xuất mua hàng |
-| `GET /production-jobs/:jobId/bom` | Đọc cây BOM + công đoạn as-used đã snapshot, kèm `plannedQuantity`/`completedQuantity`/`completedDate` | Không |
+| `GET /production-jobs/:jobId/bom` | Đọc nhu cầu vật tư của Job — `production_job_issues` join hai bảng chiều `production_job_items`/`production_job_units` (phân trang, `q` theo mã/tên vật tư). Không phải cây BOM | Không |
+| `GET /production-jobs/:jobId/operations` | Đọc công đoạn as-used, nhóm theo part chứa nó, mỗi công đoạn kèm `plannedQuantity` — nguồn lấy `operationId` cho route dưới | Không |
 | `PATCH /production-jobs/:jobId/operations/:operationId` | Nhập SL hoàn thành cho một công đoạn | Có (`production_job_operations`) |
-| `GET /production-jobs/:jobId/materials` | Đọc danh sách vật tư | Không |
 | `GET /production-jobs/:jobId/notes` | Đọc ghi chú | Không |
 | `POST /production-jobs/:jobId/notes` | Đăng một ghi chú | Không |
 
 ## Actor
 
-`start`/`PATCH operations`/`POST notes` dùng `production:update`; bốn route đọc dùng
-`production:read`.
+`start`/`PATCH operations`/`POST notes` dùng `production:update`; ba route đọc còn lại
+(`bom`/`operations`/`notes`) dùng `production:read`.
 
 ⚠️ Không role seed nào có `production:update`/`production:read` (xem
 `docs/domains/identity-access.md`).
@@ -35,7 +36,7 @@ của Job vẫn chưa có — tạm hoãn để mở rộng sau này. Tiến đ�
 - `PATCH operations`: trạng thái hiện tại phải là `IN_PROGRESS`, nếu không: `E087` — chưa `start` thì
   chưa có gì để báo tiến độ. `operationId` phải tồn tại **và** thuộc đúng `jobId`, nếu không: `E091`.
   `completedQuantity` gửi lên không được vượt `plannedQuantity` của node BOM cha, nếu không: `E088`.
-- Các route còn lại (`bom`/`materials`/`notes`): không kiểm trạng thái — đọc/đăng được ở mọi trạng
+- Các route còn lại (`bom`/`operations`/`notes`): không kiểm trạng thái — đọc/đăng được ở mọi trạng
   thái Job.
 
 ```
@@ -44,7 +45,7 @@ PENDING ──start──> IN_PROGRESS
 
 ## Flow
 
-`start`: đọc Job → kiểm trạng thái → đọc `production_job_materials` của Job, gọi
+`start`: đọc Job → kiểm trạng thái → đọc `production_job_issues` của Job, gọi
 `InventoryService.getMaterialStockLevels` (gộp mọi kho) để so `requiredQty` với `onHand`, giữ lại
 phần thiếu (`> 0`) của từng vật tư — **đọc, chạy ngoài transaction** → **transaction**: `UPDATE`
 (`status`, `startedBy`, `startedAt`); nếu có ít nhất một vật tư thiếu, gọi
@@ -52,16 +53,18 @@ phần thiếu (`> 0`) của từng vật tư — **đọc, chạy ngoài transa
 mặc định `DRAFT`) + các dòng `purchase_request_items` cho đúng phần thiếu. Không thiếu gì thì
 không tạo phiếu. Trả `204`, không có nội dung — không đọc lại chi tiết Job.
 
-`bom`: đọc `production_job_bom_items` (kèm `operations`) đã copy sẵn từ Product Structure lúc duyệt
-LSX — không đọc `bom_operations`/`bom_items` sống. Tính `plannedQuantity` cho từng node ngay trong
-service (`ProductionJobsService.resolvePlannedQuantities`) bằng cách nhân luỹ kế `quantity` (định
-mức trên 1 đơn vị cha) từ gốc xuống, nhân với SL Job — không lưu cột, không đọc lại `bom_items`.
+`bom`: đọc `production_job_issues` join `production_job_items`/`production_job_units` (hai FK
+`NOT NULL`) — `q` lọc trên `production_job_items.code`/`.name` qua `unaccentILike`, `LIMIT`/`OFFSET`
+bình thường ở SQL. Không đụng cây BOM (`production_job_bom_items`), không tính toán gì thêm — trả
+nguyên `requiredQty` đã tính sẵn lúc duyệt LSX.
 
-`materials`: đọc lại dữ liệu đã copy sẵn, không tính toán lại.
+`operations`: đọc `production_job_bom_items` kèm quan hệ `operations` (`with`, 1 lượt query — cột
+`planned_quantity` đã có sẵn trên mỗi node, tính từ lúc duyệt LSX) → gắn `plannedQuantity` của node
+xuống từng công đoạn của nó → lọc bỏ node không có công đoạn. Mảng thường, không phân trang.
 
-`PATCH operations`: đọc Job (lấy SL Job + trạng thái) → kiểm trạng thái → tìm `operationId` đúng
-phạm vi `jobId` (`E091` nếu không có) → tải toàn bộ node BOM của Job, tính lại `plannedQuantity` của
-đúng node cha (`productionJobBomItemId`) → so `completedQuantity` gửi lên với số đó (`E088` nếu vượt)
+`PATCH operations`: đọc Job (kiểm trạng thái) → tìm `operationId` đúng phạm vi `jobId` (`E091` nếu
+không có), kèm luôn `plannedQuantity` của node BOM cha (`productionJobBomItemId`) trong cùng lượt
+query (`with: { bomItem }`) → so `completedQuantity` gửi lên với số đó (`E088` nếu vượt)
 → một lệnh `UPDATE` ghi đè `completedQuantity`, và tự set `completedDate = now()` nếu
 `completedQuantity >= plannedQuantity`, ngược lại tự đưa `completedDate` về `null` → đọc lại đúng
 công đoạn đó trả về. Không có input nhận `completedDate` từ client.
@@ -95,7 +98,7 @@ vẫn chuyển `IN_PROGRESS` dù có sinh phiếu hay không; đây không phả
 hệ quả kèm theo. `start` vẫn **không** tiêu hao vật tư thật, không sinh phiếu xuất/nhập kho — sinh
 đề xuất mua không đụng `inventory_balances`/`inventory_transactions`.
 
-Mọi route còn lại (`bom`/`materials`/`notes`/`PATCH operations`): không có side effect nào ngoài
+Mọi route còn lại (`bom`/`operations`/`notes`/`PATCH operations`): không có side effect nào ngoài
 chính bảng chúng ghi.
 
 - Không ghi log — Job cố ý không có action log tự động (`docs/domains/production.md`). `POST notes`
@@ -133,10 +136,10 @@ mức từng công đoạn.
 
 - Vì sao Job chỉ còn 2 trạng thái và không có cách nào biết "đã xong" ở mức tổng qua API →
   `docs/domains/production.md`.
-- Cách tính `plannedQuantity` (nhân luỹ kế theo cây, không phải SUM thô) và vì sao an toàn tính lại
-  lúc đọc → cùng file, mục Core concepts (bảng so sánh cây BOM/công đoạn/vật tư).
-- Vì sao `unitQty`/`requiredQty` (vật tư) không phải BOM explosion, khác `plannedQuantity` (công
-  đoạn) → `docs/domains/product-structure.md`.
+- Cách tính `plannedQuantity` của `operations` (nhân luỹ kế theo cây, không phải SUM thô) → cùng
+  file, mục Core concepts (bảng so sánh cây BOM/công đoạn/vật tư).
+- Vì sao `unitQty`/`requiredQty` (vật tư, `GET .../bom`) không phải BOM explosion →
+  `docs/domains/product-structure.md`.
 
 ## Related domains
 
@@ -149,6 +152,6 @@ chỉ đọc `inventory_balances`, không ghi) và **ghi** `purchase-requests`
 Bước trước: `docs/workflows/production-order-approval.md`.
 
 Code: `ProductionJobsService.startJob`/`collectMaterialShortages`/`resolveRequesterDepartment`/
-`getProductionJobBom`/`updateProductionJobOperation`/`resolvePlannedQuantities`/
-`getProductionJobMaterials`/`getProductionJobNotes`/`createProductionJobNote`;
+`getProductionJobBom`/`getProductionJobOperations`/`updateProductionJobOperation`/
+`getProductionJobNotes`/`createProductionJobNote`;
 `PurchaseRequestsService.createShortageRequest`; `InventoryService.getMaterialStockLevels`.

@@ -1,4 +1,4 @@
-import { and, eq, inArray, ne, sql } from 'drizzle-orm';
+import { and, eq, ne, sql } from 'drizzle-orm';
 
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
@@ -8,12 +8,7 @@ import {
   OutsourcingReceiptStatus,
   outsourcingReceiptItems,
   outsourcingReceipts,
-  productionJobBomItems,
 } from '../../database/schemas';
-import {
-  type PlannedQuantityNode,
-  resolvePlannedQuantities,
-} from '../production-jobs/production-job-planned-quantity';
 
 /** Σ SL đã gửi theo từng công đoạn Job — dùng cho popup "chọn part cần gia công"
  * (`getOutsourceableOperations`), LEFT JOIN thẳng vào SELECT hiển thị thay vì round-trip `Map`
@@ -88,45 +83,6 @@ export function receivedQuantityByOrderIdSubquery(db: Database) {
     )
     .groupBy(outsourcingOrderItems.outsourcingOrderId)
     .as('received_quantity_by_order');
-}
-
-/** Gom theo Job vì `resolvePlannedQuantities` nhân theo SL của đúng Job đó — 1 lượt query cho mọi
- * Job, không phải mỗi Job một lượt. */
-export async function getPlannedQuantitiesByJob(
-  db: Database | DbTransaction,
-  jobQuantityByJobId: Map<string, number>,
-): Promise<Map<string, Map<string, number>>> {
-  const jobIds = [...jobQuantityByJobId.keys()];
-  if (!jobIds.length) {
-    return new Map();
-  }
-
-  const nodes = await db.query.productionJobBomItems.findMany({
-    where: inArray(productionJobBomItems.productionJobId, jobIds),
-    columns: {
-      id: true,
-      parentId: true,
-      quantity: true,
-      productionJobId: true,
-    },
-  });
-
-  const nodesByJobId = new Map<string, PlannedQuantityNode[]>();
-  for (const node of nodes) {
-    const group = nodesByJobId.get(node.productionJobId);
-    if (group) {
-      group.push(node);
-    } else {
-      nodesByJobId.set(node.productionJobId, [node]);
-    }
-  }
-
-  return new Map(
-    [...jobQuantityByJobId].map(([jobId, jobQuantity]) => [
-      jobId,
-      resolvePlannedQuantities(nodesByJobId.get(jobId) ?? [], jobQuantity),
-    ]),
-  );
 }
 
 /** Huỷ OS-OUT đã `POSTED` bị chặn (`E169`) nếu còn dòng OS-IN nào chưa `CANCELLED` trỏ tới bất kỳ

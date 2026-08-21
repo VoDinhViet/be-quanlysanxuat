@@ -92,10 +92,11 @@ thái cuối, không có đường quay lại `DRAFT`/`REJECTED`.
   thống, không riêng phiếu họ tạo — đó là quyết định phân quyền riêng, chưa làm.
 - `purchase-requests:delete` (xoá cả phiếu) tách riêng khỏi `:update`, khuôn `inventory:delete`/
   `purchasing:delete`. Hiện cũng chỉ `PURCHASING` được cấp, cùng lý do với `:create`.
-- `code` sinh theo mã lớn nhất đang có (`MAX`), không phải `COUNT(*)` — vì có `DELETE`, đếm số dòng
-  còn lại sẽ tụt sau mỗi lần xoá và cấp lại một mã đã tồn tại, khuôn `ItemsService.generateItemCode`.
+- `code` cấp qua bảng đếm dùng chung `document_sequences` (`docs/architecture.md`, mục "Bất biến
+  xuyên module"), không đếm trên chính bảng — vì có `DELETE`, đếm số dòng còn lại sẽ tụt sau mỗi lần
+  xoá và cấp lại một mã đã tồn tại.
 - Dòng chi tiết (`GET /purchase-requests/:id`) mang thêm 4 số tính lúc đọc, không lưu cột nào:
-  `onHand` (tồn gộp mọi kho), `bomDemand` (Σ `production_job_materials.requiredQty` của Job/LSX
+  `onHand` (tồn gộp mọi kho), `bomDemand` (Σ `production_job_issues.requiredQty` của Job/LSX
   gắn với đề xuất), `available = onHand − bomDemand` (có thể âm), `fromStock = min(onHand, bomDemand)`.
   Công thức dùng chung với `InventoryReceiptsService`, sống ở
   `src/api/inventory/item-stock.query.ts` (`docs/domains/inventory.md`, khối "Bốn số khác").
@@ -130,7 +131,7 @@ thái cuối, không có đường quay lại `DRAFT`/`REJECTED`.
    thiếu (`requiredQty − onHand` **tại thời điểm đó**), còn `onHand` đọc **lúc gọi API**. Tồn có thể
    đã đổi (nhập/xuất kho khác diễn ra sau) — hai số không cộng/trừ được cho nhau.
 5. **So `bomDemand` của dòng chi tiết với `quantity` của chính dòng đó.** `bomDemand` là nhu cầu vật
-   tư của **cả Job/LSX liên quan** (mọi dòng `production_job_materials` của nó), còn `quantity` là
+   tư của **cả Job/LSX liên quan** (mọi dòng `production_job_issues` của nó), còn `quantity` là
    phần thiếu của riêng dòng này chốt lúc `startJob` — hai số đo hai thứ khác nhau, không phải cùng
    một đại lượng ở hai thời điểm như mục 3.
 

@@ -11,6 +11,7 @@ import {
   varchar,
 } from 'drizzle-orm/pg-core';
 
+import { files } from '../files';
 import { itemTypeEnum, items } from '../items/items';
 import { productionJobOperations } from './production-job-operations';
 import { productionJobs } from './production-jobs';
@@ -29,6 +30,12 @@ import { productionJobs } from './production-jobs';
  * - `level` là snapshot copy nguyên từ `bom_items.level` lúc duyệt LSX, cùng quy ước 1-based — cây
  *   Job nhỏ, dựng trong bộ nhớ lúc đọc qua `parentId` (`ProductionJobsService`, mirror
  *   `BomsService`), không cần cột path riêng.
+ * - `plannedQuantity` là giá trị **dẫn xuất** (nhân luỹ kế `quantity` theo cây × SL Job), tính một
+ *   lần cùng lúc `copyBomTree` và đóng băng — không có CHECK `> 0` vì định mức lẻ nhiều cấp có thể
+ *   tròn về 0 ở scale 3.
+ * - `imageFileId` copy thẳng ảnh item lúc duyệt, cùng lý lẽ `productionJobIssues.imageFileId` —
+ *   `files` là registry ghi-một-lần nên giữ dạng liên kết sống (`set null` khi bị xoá) là an toàn,
+ *   khác `itemId`/`code`/`name` vốn phải đóng băng.
  */
 export const productionJobBomItems = pgTable(
   'production_job_bom_items',
@@ -49,9 +56,17 @@ export const productionJobBomItems = pgTable(
       scale: 3,
       mode: 'number',
     }).notNull(),
+    plannedQuantity: numeric('planned_quantity', {
+      precision: 18,
+      scale: 3,
+      mode: 'number',
+    }).notNull(),
     sortOrder: integer('sort_order').notNull().default(0),
     level: integer('level').notNull().default(1),
     itemId: uuid('item_id').references(() => items.id, {
+      onDelete: 'set null',
+    }),
+    imageFileId: uuid('image_file_id').references(() => files.id, {
       onDelete: 'set null',
     }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -62,6 +77,7 @@ export const productionJobBomItems = pgTable(
     ),
     index('idx_production_job_bom_items_parent_id').on(table.parentId),
     index('idx_production_job_bom_items_item_id').on(table.itemId),
+    index('idx_production_job_bom_items_image_file_id').on(table.imageFileId),
     check(
       'chk_production_job_bom_items_item_type_leaf',
       sql`item_type IN ('WIP', 'RM')`,

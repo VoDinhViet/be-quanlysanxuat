@@ -16,12 +16,12 @@ import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
 import { CreateProductionJobNoteReqDto } from './dto/create-production-job-note.req.dto';
-import { GetProductionJobMaterialsReqDto } from './dto/get-production-job-materials.req.dto';
+import { GetProductionJobBomReqDto } from './dto/get-production-job-bom.req.dto';
 import { GetProductionJobNotesReqDto } from './dto/get-production-job-notes.req.dto';
 import { GetProductionJobsReqDto } from './dto/get-production-jobs.req.dto';
-import { ProductionJobBomItemResDto } from './dto/production-job-bom-item.res.dto';
+import { ProductionJobBomItemResDto } from './dto/production-job-bom-operation.res.dto';
 import { ProductionJobDetailResDto } from './dto/production-job-detail.res.dto';
-import { ProductionJobMaterialResDto } from './dto/production-job-material.res.dto';
+import { ProductionJobIssueResDto } from './dto/production-job-issue.res.dto';
 import { ProductionJobNoteResDto } from './dto/production-job-note.res.dto';
 import { ProductionJobOperationResDto } from './dto/production-job-operation.res.dto';
 import { ProductionJobResDto } from './dto/production-job.res.dto';
@@ -62,29 +62,30 @@ export class ProductionJobsController {
   @Get(':jobId/bom')
   @Permissions('production:read')
   @ApiAuth({
-    type: ProductionJobBomItemResDto,
-    isArray: true,
-    summary:
-      'Cây BOM của Job đã đóng băng lúc duyệt LSX — danh sách phẳng cha-con (FE tự dựng cây), mỗi node kèm công đoạn as-used của nó',
+    type: ProductionJobIssueResDto,
+    summary: 'Nhu cầu vật tư của Job',
+    isPaginated: true,
   })
   getProductionJobBom(
     @UUIDParam('jobId') jobId: string,
-  ): Promise<ProductionJobBomItemResDto[]> {
-    return this.productionJobsService.getProductionJobBom(jobId);
+    @Query() reqDto: GetProductionJobBomReqDto,
+  ): Promise<OffsetPaginatedDto<ProductionJobIssueResDto>> {
+    return this.productionJobsService.getProductionJobBom(jobId, reqDto);
   }
 
-  @Get(':jobId/materials')
+  @Get(':jobId/operations')
   @Permissions('production:read')
   @ApiAuth({
-    type: ProductionJobMaterialResDto,
-    summary: 'Danh sách vật tư của Job — khởi tạo từ BOM, có thể đã được sửa',
-    isPaginated: true,
+    type: ProductionJobBomItemResDto,
+    isArray: true,
+    summary:
+      'Công đoạn as-used của Job (INHOUSE + OUTSOURCE), nhóm theo BOM item — dùng để lấy ' +
+      'operationId cho PATCH .../operations/:operationId',
   })
-  getProductionJobMaterials(
+  getProductionJobOperations(
     @UUIDParam('jobId') jobId: string,
-    @Query() reqDto: GetProductionJobMaterialsReqDto,
-  ): Promise<OffsetPaginatedDto<ProductionJobMaterialResDto>> {
-    return this.productionJobsService.getProductionJobMaterials(jobId, reqDto);
+  ): Promise<ProductionJobBomItemResDto[]> {
+    return this.productionJobsService.getProductionJobOperations(jobId);
   }
 
   @Get(':jobId/notes')

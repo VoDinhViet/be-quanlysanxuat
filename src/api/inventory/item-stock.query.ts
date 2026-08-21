@@ -3,7 +3,7 @@ import { eq, sql, type SQL } from 'drizzle-orm';
 import type { Database } from '../../database/database.type';
 import {
   inventoryBalances,
-  productionJobMaterials,
+  productionJobIssues,
   productionJobs,
 } from '../../database/schemas';
 
@@ -25,7 +25,7 @@ export function onHandQuantityByItemSubquery(db: Database) {
 /** Nhu cầu vật tư của đúng Job liên quan, hoặc mọi Job của LSX nếu không có Job cụ thể — dùng
  * `sql\`false\`` thay vì join có điều kiện để câu lệnh luôn chỉ một hình dạng. Không có cả hai
  * scope → subquery rỗng, nơi gọi `coalesce` về 0. */
-export function jobMaterialDemandSubquery(
+export function jobIssueDemandSubquery(
   db: Database,
   scope: {
     productionJobId?: string | null;
@@ -41,19 +41,19 @@ export function jobMaterialDemandSubquery(
 
   return db
     .select({
-      itemId: productionJobMaterials.itemId,
-      bomDemand: sql<number>`sum(${productionJobMaterials.requiredQty})`
+      itemId: productionJobIssues.itemId,
+      bomDemand: sql<number>`sum(${productionJobIssues.requiredQty})`
         .mapWith(Number)
         .as('bom_demand'),
     })
-    .from(productionJobMaterials)
+    .from(productionJobIssues)
     .innerJoin(
       productionJobs,
-      eq(productionJobs.id, productionJobMaterials.productionJobId),
+      eq(productionJobs.id, productionJobIssues.productionJobId),
     )
     .where(where)
-    .groupBy(productionJobMaterials.itemId)
-    .as('job_material_demand');
+    .groupBy(productionJobIssues.itemId)
+    .as('job_issue_demand');
 }
 
 /** 4 cột số spread vào `.select()` — `available` cố ý có thể âm (nhu cầu vượt tồn thực tế);
@@ -62,7 +62,7 @@ export function jobMaterialDemandSubquery(
  * (`inventory.service.ts`, `onHand − reserved − bomDemand`), đừng nhầm hai field cùng tên. */
 export function itemStockColumns(
   balance: ReturnType<typeof onHandQuantityByItemSubquery>,
-  demand: ReturnType<typeof jobMaterialDemandSubquery>,
+  demand: ReturnType<typeof jobIssueDemandSubquery>,
 ) {
   const onHandSql = sql<number>`coalesce(${balance.onHand}, 0)`;
   const bomDemandSql = sql<number>`coalesce(${demand.bomDemand}, 0)`;

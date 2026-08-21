@@ -30,32 +30,40 @@ import {
   ItemType,
   orders,
   productionJobBomItems,
-  productionJobMaterials,
+  productionJobIssues,
+  productionJobItems,
   productionJobNotes,
   productionJobOperations,
   productionJobs,
   ProductionJobStatus,
+  productionJobUnits,
   productionOrders,
   units,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { InventoryService } from '../inventory/inventory.service';
-import { getOqcSummaryByJobOperationIds } from '../oqc/oqc.query';
 import { PurchaseRequestsService } from '../purchase-requests/purchase-requests.service';
 import { PurchaseRequestShortageItem } from '../purchase-requests/types/shortage-request.type';
 import { UsersService } from '../users/users.service';
 import { CreateProductionJobNoteReqDto } from './dto/create-production-job-note.req.dto';
-import { GetProductionJobMaterialsReqDto } from './dto/get-production-job-materials.req.dto';
+import { GetProductionJobBomReqDto } from './dto/get-production-job-bom.req.dto';
 import { GetProductionJobNotesReqDto } from './dto/get-production-job-notes.req.dto';
 import { GetProductionJobsReqDto } from './dto/get-production-jobs.req.dto';
-import { ProductionJobBomItemResDto } from './dto/production-job-bom-item.res.dto';
+import { ProductionJobBomItemResDto } from './dto/production-job-bom-operation.res.dto';
 import { ProductionJobDetailResDto } from './dto/production-job-detail.res.dto';
-import { ProductionJobMaterialResDto } from './dto/production-job-material.res.dto';
+import { ProductionJobIssueResDto } from './dto/production-job-issue.res.dto';
 import { ProductionJobNoteResDto } from './dto/production-job-note.res.dto';
 import { ProductionJobOperationResDto } from './dto/production-job-operation.res.dto';
 import { ProductionJobResDto } from './dto/production-job.res.dto';
 import { UpdateProductionJobOperationReqDto } from './dto/update-production-job-operation.req.dto';
-import { resolvePlannedQuantities } from './production-job-planned-quantity';
+
+/** Khoá nội dung của một dòng snapshot (`copyBomIssues`/`resolveJobItemSnapshots`/
+ * `resolveJobUnitSnapshots`) — `JSON.stringify` một tuple, tránh hẳn việc tự bịa dấu phân
+ * cách: `code`/`name` là text tự do (có thể chứa bất kỳ ký tự nào), một delimiter tự chọn luôn
+ * có rủi ro trùng lặp giả. */
+function snapshotKey(id: string, code: string, name: string): string {
+  return JSON.stringify([id, code, name]);
+}
 
 /** Job sản xuất — 1 sản phẩm (FG) = 1 Job trong một LSX. Chỉ tạo được qua `createJobs`, gọi từ
  * transaction duyệt LSX (`ProductionOrdersService.approveProductionOrder`) — không có route tạo
@@ -176,19 +184,85 @@ export class ProductionJobsService {
     });
   }
 
-  /** `GET /production-jobs/:jobId/bom` — cây BOM của Job đã đóng băng lúc duyệt LSX: danh sách
-   * phẳng cha-con (FE tự dựng cây qua `parentId`), mỗi node kèm công đoạn as-used của nó và
-   * `plannedQuantity` (tính lúc đọc, xem `resolvePlannedQuantities`). Mỗi công đoạn kèm tóm tắt OQC
-   * (đọc qua plain function `getOqcSummaryByJobOperationIds`, một chiều — module này không import
-   * `OqcModule`). Không gồm sản phẩm FG gốc — chỉ node BOM thật (`production_job_bom_items`);
-   * `parentId = null` là node top-level, con trực tiếp của FG. */
+  /** `GET /production-jobs/:jobId/bom` — nhu cầu vật tư của Job. Đọc `production_job_issues`
+   * (1 dòng/vật tư, `requiredQty` = định mức BOM × SL Job, ghi 1 lần lúc duyệt LSX) join hai bảng
+   * chiều `productionJobItems`/`productionJobUnits`, trả nguyên cả hai qua `getTableColumns` lồng
+   * dưới `item`/`unit` — `code`/`name` trùng tên giữa hai bảng nên không spread phẳng được, và
+   * DTO (`@Expose()` trên `ProductionJobItemResDto`/`ProductionJobUnitResDto`) tự lọc chỉ còn
+   * `code`/`name`. `.select()` thủ công vì `q` lẫn `orderBy` chạm bảng join — relational query API
+   * không biểu diễn được. Hai `innerJoin` an toàn vì cả hai FK đều `NOT NULL` (quan hệ 1-1, không
+   * rơi dòng nào, `count()` khớp đúng trang). Job chưa có dòng nào trả mảng rỗng. */
   async getProductionJobBom(
     jobId: string,
-  ): Promise<ProductionJobBomItemResDto[]> {
-    const job = await this.ensureJobExists(jobId);
+    reqDto: GetProductionJobBomReqDto,
+  ): Promise<OffsetPaginatedDto<ProductionJobIssueResDto>> {
+    await this.ensureJobExists(jobId);
 
-    const nodes = await this.db.query.productionJobBomItems.findMany({
+    const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
+    const where = and(
+      eq(productionJobIssues.productionJobId, jobId),
+      keyword
+        ? or(
+            unaccentILike(productionJobItems.code, keyword),
+            unaccentILike(productionJobItems.name, keyword),
+          )
+        : undefined,
+    );
+
+    const [rows, [{ total }]] = await Promise.all([
+      this.db
+        .select({
+          item: getTableColumns(productionJobItems),
+          unit: getTableColumns(productionJobUnits),
+          requiredQty: productionJobIssues.requiredQty,
+        })
+        .from(productionJobIssues)
+        .innerJoin(
+          productionJobItems,
+          eq(productionJobItems.id, productionJobIssues.productionJobItemId),
+        )
+        .innerJoin(
+          productionJobUnits,
+          eq(productionJobUnits.id, productionJobIssues.productionJobUnitId),
+        )
+        .where(where)
+        .orderBy(asc(productionJobItems.code), asc(productionJobIssues.id))
+        .limit(reqDto.limit)
+        .offset(reqDto.offset),
+      this.db
+        .select({ total: count() })
+        .from(productionJobIssues)
+        .innerJoin(
+          productionJobItems,
+          eq(productionJobItems.id, productionJobIssues.productionJobItemId),
+        )
+        .where(where),
+    ]);
+
+    return new OffsetPaginatedDto(
+      plainToInstance(ProductionJobIssueResDto, rows, {
+        excludeExtraneousValues: true,
+      }),
+      new OffsetPaginationDto(total ?? 0, reqDto),
+    );
+  }
+
+  /** `GET /production-jobs/:jobId/operations` — công đoạn as-used của Job (cả `INHOUSE` lẫn
+   * `OUTSOURCE`), nhóm theo BOM item chứa nó; nguồn duy nhất để lấy `operationId` cho
+   * `PATCH .../operations/:operationId`. `plannedQuantity` đọc thẳng cột đã đóng băng lúc duyệt LSX
+   * (`copyBomTree`), gắn xuống từng công đoạn của node. Mảng thường, không phân trang — số BOM item
+   * của một Job luôn nhỏ. */
+  async getProductionJobOperations(
+    jobId: string,
+  ): Promise<ProductionJobBomItemResDto[]> {
+    await this.ensureJobExists(jobId);
+
+    const bomItems = await this.db.query.productionJobBomItems.findMany({
       where: eq(productionJobBomItems.productionJobId, jobId),
+      orderBy: [
+        asc(productionJobBomItems.sortOrder),
+        asc(productionJobBomItems.id),
+      ],
       with: {
         operations: {
           orderBy: [
@@ -197,48 +271,27 @@ export class ProductionJobsService {
           ],
         },
       },
-      orderBy: [
-        asc(productionJobBomItems.level),
-        asc(productionJobBomItems.sortOrder),
-        asc(productionJobBomItems.createdAt),
-      ],
     });
 
-    const plannedById = resolvePlannedQuantities(nodes, job.quantity);
-    const operationIds = nodes.flatMap((node) =>
-      node.operations.map((operation) => operation.id),
-    );
-    const oqcByOperationId = await getOqcSummaryByJobOperationIds(
-      this.db,
-      operationIds,
-    );
-
-    const rows = nodes.map((node) => ({
-      ...node,
-      plannedQuantity: plannedById.get(node.id)!,
-      operations: node.operations.map((operation) => {
-        const oqc = oqcByOperationId.get(operation.id);
-        const inspectedQuantity = oqc?.inspectedQuantity ?? 0;
-        return {
+    const groups = bomItems
+      .filter((bomItem) => bomItem.operations.length > 0)
+      .map((bomItem) => ({
+        ...bomItem,
+        operations: bomItem.operations.map((operation) => ({
           ...operation,
-          oqc: {
-            inspectedQuantity,
-            remainingQuantity: operation.completedQuantity - inspectedQuantity,
-            openCount: oqc?.openCount ?? 0,
-          },
-        };
-      }),
-    }));
+          plannedQuantity: bomItem.plannedQuantity,
+        })),
+      }));
 
-    return plainToInstance(ProductionJobBomItemResDto, rows, {
+    return plainToInstance(ProductionJobBomItemResDto, groups, {
       excludeExtraneousValues: true,
     });
   }
 
   /** `PATCH /production-jobs/:jobId/operations/:operationId` — ghi đè SL hoàn thành của một công
-   * đoạn (không cộng dồn). SL kế hoạch đối chiếu = SL kế hoạch node BOM cha
-   * (`resolvePlannedQuantities`), vượt số đó bị chặn (`E088`). `completedDate` server tự set khi
-   * chạm đủ, tự xoá khi sửa xuống dưới. */
+   * đoạn (không cộng dồn). SL kế hoạch đối chiếu = `plannedQuantity` của node BOM cha (cột đã đóng
+   * băng lúc duyệt LSX), vượt số đó bị chặn (`E088`). `completedDate` server tự set khi chạm đủ, tự
+   * xoá khi sửa xuống dưới. */
   async updateProductionJobOperation(
     jobId: string,
     operationId: string,
@@ -252,20 +305,17 @@ export class ProductionJobsService {
         eq(productionJobOperations.id, operationId),
         eq(productionJobOperations.productionJobId, jobId),
       ),
-      columns: { id: true, productionJobBomItemId: true },
+      columns: { id: true },
+      with: {
+        bomItem: true,
+      },
     });
 
     if (!operation) {
       throw new AppException(ErrorCode.E091, HttpStatus.NOT_FOUND);
     }
 
-    const nodes = await this.db.query.productionJobBomItems.findMany({
-      where: eq(productionJobBomItems.productionJobId, jobId),
-      columns: { id: true, parentId: true, quantity: true },
-    });
-    const planned = resolvePlannedQuantities(nodes, job.quantity).get(
-      operation.productionJobBomItemId,
-    )!;
+    const planned = operation.bomItem.plannedQuantity;
 
     if (reqDto.completedQuantity > planned) {
       throw new AppException(ErrorCode.E088, HttpStatus.BAD_REQUEST);
@@ -286,53 +336,6 @@ export class ProductionJobsService {
     return plainToInstance(ProductionJobOperationResDto, updated, {
       excludeExtraneousValues: true,
     });
-  }
-
-  /** Read-only, danh sách vật tư khởi tạo từ BOM lúc duyệt. Đọc thẳng cột snapshot trên
-   * `production_job_materials` (`materialCode`/`materialName`, độc lập `items` sống) — `q` lọc
-   * ngay trên chúng, không còn join `items`. Chỉ còn join `files` để lấy metadata ảnh: `files`
-   * là registry ghi-một-lần, an toàn giữ dạng liên kết sống. */
-  async getProductionJobMaterials(
-    jobId: string,
-    reqDto: GetProductionJobMaterialsReqDto,
-  ): Promise<OffsetPaginatedDto<ProductionJobMaterialResDto>> {
-    await this.ensureJobExists(jobId);
-
-    const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
-    const where = and(
-      eq(productionJobMaterials.productionJobId, jobId),
-      keyword
-        ? or(
-            unaccentILike(productionJobMaterials.materialCode, keyword),
-            unaccentILike(productionJobMaterials.materialName, keyword),
-          )
-        : undefined,
-    );
-
-    const [rows, countRows] = await Promise.all([
-      this.db
-        .select({
-          ...getTableColumns(productionJobMaterials),
-          image: getTableColumns(files),
-        })
-        .from(productionJobMaterials)
-        .leftJoin(files, eq(productionJobMaterials.imageFileId, files.id))
-        .where(where)
-        .orderBy(asc(productionJobMaterials.materialCode))
-        .limit(reqDto.limit)
-        .offset(reqDto.offset),
-      this.db
-        .select({ total: count() })
-        .from(productionJobMaterials)
-        .where(where),
-    ]);
-
-    return new OffsetPaginatedDto(
-      plainToInstance(ProductionJobMaterialResDto, rows, {
-        excludeExtraneousValues: true,
-      }),
-      new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
-    );
   }
 
   async createProductionJobNote(
@@ -408,8 +411,8 @@ export class ProductionJobsService {
       });
 
     const jobIdByItemId = new Map(jobRows.map((job) => [job.itemId, job.id]));
-    await this.copyBomTree(tx, itemIds, jobIdByItemId);
-    await this.copyBomMaterials(tx, itemIds, jobIdByItemId, quantityByItem);
+    await this.copyBomTree(tx, itemIds, jobIdByItemId, quantityByItem);
+    await this.copyBomIssues(tx, itemIds, jobIdByItemId, quantityByItem);
   }
 
   /**
@@ -419,12 +422,15 @@ export class ProductionJobsService {
    * `production_job_operations`, remap `bomItemId` qua id snapshot mới và denormalize luôn
    * `code`/`name`/`type` của công đoạn. Cùng kỹ thuật remap của `ItemsService.copyBomTree`. Yêu
    * cầu `sourceBomItems` sắp cha-trước-con (`orderBy level`) để id cha luôn có sẵn trong map khi xử
-   * lý tới con.
+   * lý tới con — cùng tính chất đó cũng cho phép tính `plannedQuantity` (nhân luỹ kế `quantity` ×
+   * SL Job từ gốc xuống) ngay trong cùng vòng lặp, không cần đệ quy riêng. Đây là nguồn ghi duy nhất
+   * của cột `plannedQuantity` — mọi route đọc chỉ đọc lại, không tính nữa.
    */
   private async copyBomTree(
     tx: DbTransaction,
     itemIds: string[],
     jobIdByItemId: Map<string, string>,
+    quantityByItem: Map<string, number>,
   ): Promise<void> {
     const bomRefs = await tx.query.boms.findMany({
       where: inArray(boms.itemId, itemIds),
@@ -450,29 +456,38 @@ export class ProductionJobsService {
 
     const newIdByOldId = new Map<string, string>();
     const jobIdByNewItemId = new Map<string, string>();
+    const plannedByNewId = new Map<string, number>();
 
     const newItems = sourceBomItems.map((node) => {
       const newId = crypto.randomUUID();
       newIdByOldId.set(node.id, newId);
 
-      const productionJobId = jobIdByItemId.get(
-        itemIdByBomId.get(node.bomId)!,
-      )!;
+      const rootItemId = itemIdByBomId.get(node.bomId)!;
+      const productionJobId = jobIdByItemId.get(rootItemId)!;
       jobIdByNewItemId.set(newId, productionJobId);
+
+      const newParentId = node.parentId
+        ? (newIdByOldId.get(node.parentId) ?? null)
+        : null;
+      const parentPlanned = newParentId
+        ? plannedByNewId.get(newParentId)!
+        : quantityByItem.get(rootItemId)!;
+      const plannedQuantity = parentPlanned * node.quantity;
+      plannedByNewId.set(newId, plannedQuantity);
 
       return {
         id: newId,
         productionJobId,
-        parentId: node.parentId
-          ? (newIdByOldId.get(node.parentId) ?? null)
-          : null,
+        parentId: newParentId,
         itemType: node.item.type,
         code: node.item.code,
         name: node.item.name,
         quantity: node.quantity,
+        plannedQuantity,
         sortOrder: node.sortOrder,
         level: node.level,
         itemId: node.itemId,
+        imageFileId: node.item.imageFileId,
       };
     });
 
@@ -512,12 +527,14 @@ export class ProductionJobsService {
    * Gộp mọi node lá RM thuộc cây `bom_items` của từng item theo vật tư (vị trí chỉ ảnh hưởng
    * hiển thị/sửa ở Product Structure, không ảnh hưởng phép gộp; KHÔNG nổ theo cấp qua node WIP
    * cha, xem `docs/domains/product-structure.md`) — rồi nhân với SL Job thành `requiredQty`, ghi
-   * vào `production_job_materials`. `unitQty` giữ nguyên định mức gốc — chưa có route sửa nào
-   * dùng tới, để sẵn cho lúc mở rộng CRUD sau này. `materialCode`/`materialName`/`unitCode`/
-   * `unitName`/`imageFileId` snapshot lúc duyệt — độc lập `items`/`units` sống, xem doc comment
-   * `productionJobMaterials`.
+   * vào `production_job_issues`. `unitQty` giữ nguyên định mức gốc — chưa có route sửa nào
+   * dùng tới, để sẵn cho lúc mở rộng CRUD sau này.
+   *
+   * Mã/tên vật tư và mã/tên ĐVT không ghi thẳng lên dòng issue — get-or-create trước hai dòng
+   * chiều `productionJobItems`/`productionJobUnits` (khoá theo bộ ba nội dung, xem doc comment hai
+   * bảng đó) rồi chỉ ghi id. `units.id` được lấy thêm so với trước (cần đủ bộ ba để định danh ĐVT).
    */
-  private async copyBomMaterials(
+  private async copyBomIssues(
     tx: DbTransaction,
     itemIds: string[],
     jobIdByItemId: Map<string, string>,
@@ -528,8 +545,9 @@ export class ProductionJobsService {
         rootItemId: boms.itemId,
         materialItemId: bomItems.itemId,
         unitQty: sql<number>`sum(${bomItems.quantity})`.mapWith(Number),
-        materialCode: items.code,
-        materialName: items.name,
+        issueCode: items.code,
+        issueName: items.name,
+        unitId: units.id,
         unitCode: units.code,
         unitName: units.name,
         imageFileId: items.imageFileId,
@@ -544,6 +562,7 @@ export class ProductionJobsService {
         bomItems.itemId,
         items.code,
         items.name,
+        units.id,
         units.code,
         units.name,
         items.imageFileId,
@@ -553,18 +572,139 @@ export class ProductionJobsService {
       return;
     }
 
-    await tx.insert(productionJobMaterials).values(
+    const jobItemIdByKey = await this.resolveJobItemSnapshots(tx, rows);
+    const jobUnitIdByKey = await this.resolveJobUnitSnapshots(tx, rows);
+
+    await tx.insert(productionJobIssues).values(
       rows.map((row) => ({
         productionJobId: jobIdByItemId.get(row.rootItemId)!,
         itemId: row.materialItemId,
-        materialCode: row.materialCode,
-        materialName: row.materialName,
-        unitCode: row.unitCode,
-        unitName: row.unitName,
+        productionJobItemId: jobItemIdByKey.get(
+          snapshotKey(row.materialItemId, row.issueCode, row.issueName),
+        )!,
+        productionJobUnitId: jobUnitIdByKey.get(
+          snapshotKey(row.unitId, row.unitCode, row.unitName),
+        )!,
         imageFileId: row.imageFileId,
         unitQty: row.unitQty,
         requiredQty: row.unitQty * quantityByItem.get(row.rootItemId)!,
       })),
+    );
+  }
+
+  /**
+   * Get-or-create dòng `production_job_items` cho mọi vật tư của đợt duyệt này, trả map
+   * `snapshotKey(itemId, code, name) → id`.
+   *
+   * `ON CONFLICT DO NOTHING` không `RETURNING` dòng đã tồn tại, nên không dựng được map từ riêng
+   * kết quả insert — luôn `SELECT` lại sau khi insert, lọc theo `itemId` (cột dẫn đầu của
+   * `uq_production_job_items_item_code_name`, nên đi index) rồi ghép đúng bộ ba trong bộ nhớ. Map
+   * trả về có thể chứa cả phiên bản tên cũ của cùng một item — vô hại, mọi lượt tra đều bằng đúng
+   * bộ ba.
+   *
+   * `SELECT` lại đúng đắn **phụ thuộc READ COMMITTED** (mặc định Postgres, `.claude/rules/
+   * transactions.md` cấm đổi isolation) — nó lấy snapshot mới nên thấy cả dòng vừa được một
+   * transaction duyệt LSX song song commit, đúng trường hợp `DO NOTHING` bỏ qua.
+   */
+  private async resolveJobItemSnapshots(
+    tx: DbTransaction,
+    rows: { materialItemId: string; issueCode: string; issueName: string }[],
+  ): Promise<Map<string, string>> {
+    const wanted = new Map(
+      rows.map((row) => [
+        snapshotKey(row.materialItemId, row.issueCode, row.issueName),
+        {
+          itemId: row.materialItemId,
+          code: row.issueCode,
+          name: row.issueName,
+        },
+      ]),
+    );
+
+    await tx
+      .insert(productionJobItems)
+      .values(
+        [...wanted.entries()]
+          .sort(([left], [right]) => (left < right ? -1 : 1))
+          .map(([, value]) => value),
+      )
+      .onConflictDoNothing({
+        target: [
+          productionJobItems.itemId,
+          productionJobItems.code,
+          productionJobItems.name,
+        ],
+      });
+
+    const snapshots = await tx
+      .select({
+        id: productionJobItems.id,
+        itemId: productionJobItems.itemId,
+        code: productionJobItems.code,
+        name: productionJobItems.name,
+      })
+      .from(productionJobItems)
+      .where(
+        inArray(productionJobItems.itemId, [
+          ...new Set(rows.map((row) => row.materialItemId)),
+        ]),
+      );
+
+    return new Map(
+      snapshots.map((snapshot) => [
+        snapshotKey(snapshot.itemId, snapshot.code, snapshot.name),
+        snapshot.id,
+      ]),
+    );
+  }
+
+  /** Song sinh của `resolveJobItemSnapshots` cho `production_job_units` — cùng lý lẽ `DO NOTHING`
+   * + đọc lại, cùng ràng buộc READ COMMITTED. */
+  private async resolveJobUnitSnapshots(
+    tx: DbTransaction,
+    rows: { unitId: string; unitCode: string; unitName: string }[],
+  ): Promise<Map<string, string>> {
+    const wanted = new Map(
+      rows.map((row) => [
+        snapshotKey(row.unitId, row.unitCode, row.unitName),
+        { unitId: row.unitId, code: row.unitCode, name: row.unitName },
+      ]),
+    );
+
+    await tx
+      .insert(productionJobUnits)
+      .values(
+        [...wanted.entries()]
+          .sort(([left], [right]) => (left < right ? -1 : 1))
+          .map(([, value]) => value),
+      )
+      .onConflictDoNothing({
+        target: [
+          productionJobUnits.unitId,
+          productionJobUnits.code,
+          productionJobUnits.name,
+        ],
+      });
+
+    const snapshots = await tx
+      .select({
+        id: productionJobUnits.id,
+        unitId: productionJobUnits.unitId,
+        code: productionJobUnits.code,
+        name: productionJobUnits.name,
+      })
+      .from(productionJobUnits)
+      .where(
+        inArray(productionJobUnits.unitId, [
+          ...new Set(rows.map((row) => row.unitId)),
+        ]),
+      );
+
+    return new Map(
+      snapshots.map((snapshot) => [
+        snapshotKey(snapshot.unitId, snapshot.code, snapshot.name),
+        snapshot.id,
+      ]),
     );
   }
 
@@ -609,12 +749,12 @@ export class ProductionJobsService {
   private async collectMaterialShortages(
     jobId: string,
   ): Promise<PurchaseRequestShortageItem[]> {
-    const jobMaterials = await this.db.query.productionJobMaterials.findMany({
-      where: eq(productionJobMaterials.productionJobId, jobId),
+    const jobIssues = await this.db.query.productionJobIssues.findMany({
+      where: eq(productionJobIssues.productionJobId, jobId),
       columns: { itemId: true, requiredQty: true },
     });
 
-    const itemIds = jobMaterials
+    const itemIds = jobIssues
       .map((row) => row.itemId)
       .filter((id): id is string => id !== null);
 
@@ -625,7 +765,7 @@ export class ProductionJobsService {
     const onHandByItem =
       await this.inventoryService.getMaterialStockLevels(itemIds);
 
-    return jobMaterials.flatMap((row) => {
+    return jobIssues.flatMap((row) => {
       if (!row.itemId) {
         return [];
       }
