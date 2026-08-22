@@ -46,7 +46,8 @@ không có gì chặn việc giao cho khách qua `outbound-orders`.
   bỏ qua dòng `null`) chưa qua hết QC — `getJobQcCoverage`, tái dùng nguyên gate `E196`
   (`docs/decisions/oqc-per-operation.md`, `docs/decisions/qc-single-table.md`). Từ khi IQC/OQC gộp
   bảng, `getJobQcCoverage` phủ cả OQC (công đoạn `INHOUSE`) lẫn IQC sinh từ OS-IN (công đoạn
-  `OUTSOURCE`) — D2 không đổi ngữ nghĩa, chỉ đổi nguồn đọc.
+  `OUTSOURCE`) — D2 không đổi ngữ nghĩa, chỉ đổi nguồn đọc. Dòng OQC `disposition = SCRAP` không
+  được `getJobQcCoverage` tính là "đã QC xong" dù đã `COMPLETED` — hàng loại bỏ không được lọt gate.
 
 **Đường gỡ đi kèm gate D1:** thêm `DELETE /iqc/:iqcId` (chỉ khi còn `NOT_INSPECTED`, `E206`) — IQC
 trước đó không có route xoá nào; một khi có gate chặn cứng luồng xuất kho theo IQC, cần một cách gỡ

@@ -11,70 +11,69 @@ import { productionJobs } from '../production/production-jobs';
 import { purchaseOrders } from '../purchasing/purchase-orders';
 import { suppliers } from '../suppliers/suppliers';
 import { users } from '../identity-access/users';
-import { qcAttachments } from './qc-attachments';
-import { qualityInspections } from './quality-inspections';
+import { qcInspections } from './qc-inspections';
+import { qcRequests } from './qc-requests';
 
 /**
- * Tách khỏi `quality-inspections.ts` chỉ vì `supplier_returns` (composite FK `(iqc_id, qc_kind)`)
- * cần `qualityInspections` NGAY LÚC module-load, không phải qua thunk lazy như FK thường —
- * import `supplierReturns` thẳng trong `quality-inspections.ts` tạo vòng lặp module thật. Xem
- * comment ở `quality-inspections.ts` (chỗ từng đặt khối này).
+ * Tách khỏi `qc-requests.ts` chỉ vì `supplier_returns` (composite FK `(iqc_id, qc_kind)`) cần
+ * `qcRequests` NGAY LÚC module-load, không phải qua thunk lazy như FK thường — import
+ * `supplierReturns` thẳng trong `qc-requests.ts` tạo vòng lặp module thật. Xem comment ở
+ * `qc-requests.ts` (chỗ từng đặt khối này).
  */
-export const qualityInspectionsRelations = relations(
-  qualityInspections,
-  ({ one, many }) => ({
-    inventoryReceipt: one(inventoryReceipts, {
-      fields: [qualityInspections.inventoryReceiptId],
-      references: [inventoryReceipts.id],
-    }),
-    outsourcingReceipt: one(outsourcingReceipts, {
-      fields: [qualityInspections.outsourcingReceiptId],
-      references: [outsourcingReceipts.id],
-    }),
-    outsourcingReceiptItem: one(outsourcingReceiptItems, {
-      fields: [qualityInspections.outsourcingReceiptItemId],
-      references: [outsourcingReceiptItems.id],
-    }),
-    purchaseOrder: one(purchaseOrders, {
-      fields: [qualityInspections.purchaseOrderId],
-      references: [purchaseOrders.id],
-    }),
-    supplier: one(suppliers, {
-      fields: [qualityInspections.supplierId],
-      references: [suppliers.id],
-    }),
-    productionJob: one(productionJobs, {
-      fields: [qualityInspections.productionJobId],
-      references: [productionJobs.id],
-    }),
-    productionJobOperation: one(productionJobOperations, {
-      fields: [qualityInspections.productionJobOperationId],
-      references: [productionJobOperations.id],
-    }),
-    item: one(items, {
-      fields: [qualityInspections.itemId],
-      references: [items.id],
-    }),
-    qcDepartment: one(departments, {
-      fields: [qualityInspections.qcDepartmentId],
-      references: [departments.id],
-    }),
-    creatorBy: one(users, {
-      fields: [qualityInspections.createdBy],
-      references: [users.id],
-    }),
-    confirmerBy: one(users, {
-      fields: [qualityInspections.confirmedBy],
-      references: [users.id],
-    }),
-    resolverBy: one(users, {
-      fields: [qualityInspections.resolvedBy],
-      references: [users.id],
-    }),
-    attachments: many(qcAttachments),
-    // Thực tế tối đa 1 dòng (1 IQC chỉ tự sinh 1 phiếu trả NCC, đúng lúc `confirm` chuyển
-    // `WAITING_RETURN`) nhưng khai `many` vì `supplier_returns.iqc_id` không có UNIQUE constraint
-    // — xem `SupplierReturnsService.createFromIqcDisposition`.
-    supplierReturns: many(supplierReturns),
+export const qcRequestsRelations = relations(qcRequests, ({ one, many }) => ({
+  inventoryReceipt: one(inventoryReceipts, {
+    fields: [qcRequests.inventoryReceiptId],
+    references: [inventoryReceipts.id],
   }),
-);
+  outsourcingReceipt: one(outsourcingReceipts, {
+    fields: [qcRequests.outsourcingReceiptId],
+    references: [outsourcingReceipts.id],
+  }),
+  outsourcingReceiptItem: one(outsourcingReceiptItems, {
+    fields: [qcRequests.outsourcingReceiptItemId],
+    references: [outsourcingReceiptItems.id],
+  }),
+  purchaseOrder: one(purchaseOrders, {
+    fields: [qcRequests.purchaseOrderId],
+    references: [purchaseOrders.id],
+  }),
+  supplier: one(suppliers, {
+    fields: [qcRequests.supplierId],
+    references: [suppliers.id],
+  }),
+  productionJob: one(productionJobs, {
+    fields: [qcRequests.productionJobId],
+    references: [productionJobs.id],
+  }),
+  productionJobOperation: one(productionJobOperations, {
+    fields: [qcRequests.productionJobOperationId],
+    references: [productionJobOperations.id],
+  }),
+  item: one(items, {
+    fields: [qcRequests.itemId],
+    references: [items.id],
+  }),
+  qcDepartment: one(departments, {
+    fields: [qcRequests.qcDepartmentId],
+    references: [departments.id],
+  }),
+  creatorBy: one(users, {
+    fields: [qcRequests.createdBy],
+    references: [users.id],
+  }),
+  confirmerBy: one(users, {
+    fields: [qcRequests.confirmedBy],
+    references: [users.id],
+  }),
+  resolverBy: one(users, {
+    fields: [qcRequests.resolvedBy],
+    references: [users.id],
+  }),
+  // Sắp theo `attemptNo` ở nơi gọi (`db.query.qcRequests.findFirst({ with: { inspections: { orderBy
+  // } } })`) — `relations()` không nhận `orderBy` mặc định cho quan hệ.
+  inspections: many(qcInspections),
+  // Thực tế tối đa 1 dòng (1 IQC chỉ tự sinh 1 phiếu trả NCC, đúng lúc `confirm` chuyển
+  // `WAITING_RETURN`) nhưng khai `many` vì `supplier_returns.iqc_id` không có UNIQUE constraint —
+  // xem `SupplierReturnsService.createFromIqcDisposition`.
+  supplierReturns: many(supplierReturns),
+}));

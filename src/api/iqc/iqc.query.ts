@@ -5,7 +5,7 @@ import {
   inventoryReceipts,
   IqcStatus,
   QcKind,
-  qualityInspections,
+  qcRequests,
 } from '../../database/schemas';
 
 /** `true` nếu còn ≥1 phiếu IQC chưa `COMPLETED` (chưa kiểm/FAIL chưa xử lý/đang chờ trả NCC) của
@@ -24,17 +24,17 @@ export async function hasPendingIqcForItems(
 
   const [row] = await db
     .select({ one: sql`1` })
-    .from(qualityInspections)
+    .from(qcRequests)
     .innerJoin(
       inventoryReceipts,
-      eq(inventoryReceipts.id, qualityInspections.inventoryReceiptId),
+      eq(inventoryReceipts.id, qcRequests.inventoryReceiptId),
     )
     .where(
       and(
-        eq(qualityInspections.kind, QcKind.INCOMING),
-        inArray(qualityInspections.itemId, params.itemIds),
+        eq(qcRequests.kind, QcKind.INCOMING),
+        inArray(qcRequests.itemId, params.itemIds),
         eq(inventoryReceipts.warehouseId, params.warehouseId),
-        ne(qualityInspections.status, IqcStatus.COMPLETED),
+        ne(qcRequests.status, IqcStatus.COMPLETED),
       ),
     )
     .limit(1);

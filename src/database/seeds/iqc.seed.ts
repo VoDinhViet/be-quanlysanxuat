@@ -9,22 +9,19 @@ import postgres from 'postgres';
 import * as schema from '../schemas';
 import { credentials } from '../schemas/identity-access/credentials';
 import { ItemType, items } from '../schemas/items/items';
+import { qcInspections } from '../schemas/quality/qc-inspections';
 import {
   IqcDisposition,
   IqcResult,
   IqcStatus,
   QcKind,
-  qualityInspections,
-} from '../schemas/quality/quality-inspections';
+  qcRequests,
+} from '../schemas/quality/qc-requests';
 
 type SeedDatabase = ReturnType<typeof drizzle<typeof schema>>;
 
-// Ngoài `POST /iqc/:iqcId/confirm` (chỉ chuyển được NOT_INSPECTED → COMPLETED/PENDING), không có
-// route nào khác đổi `disposition`/`status` sau khi tạo — seed này là cách duy nhất thấy đủ mọi tổ
-// hợp cột cùng lúc (chưa kiểm + PASS/FAIL × mọi disposition × mọi status, xem
-// `IqcService.resolveIqcStatus`). Chỉ 2 dòng đầu gắn `inventoryReceiptId`/`purchaseOrderId` thật
-// (dev DB hiện chỉ có vài phiếu nhập/PO) — phần còn lại để `reason` text, đúng khuôn "PO / Lý do"
-// của mockup khi không có PO.
+// Phủ đủ mọi tổ hợp `result`/`disposition`/`status` cùng lúc (xem `IqcService.resolveIqcStatus`);
+// chỉ 2 dòng đầu gắn `inventoryReceiptId`/`purchaseOrderId` thật vì dev DB chỉ có vài phiếu nhập/PO.
 const IQC_COUNT = 20;
 
 const PATTERNS: {
@@ -123,10 +120,10 @@ async function seedIqcInspections(db: SeedDatabase): Promise<void> {
   for (let index = 0; index < IQC_COUNT; index++) {
     const code = `IQC-${year}-${String(index + 1).padStart(5, '0')}`;
 
-    const existing = await db.query.qualityInspections.findFirst({
+    const existing = await db.query.qcRequests.findFirst({
       where: and(
-        eq(qualityInspections.kind, QcKind.INCOMING),
-        eq(qualityInspections.code, code),
+        eq(qcRequests.kind, QcKind.INCOMING),
+        eq(qcRequests.code, code),
       ),
       columns: { id: true },
     });
@@ -136,7 +133,7 @@ async function seedIqcInspections(db: SeedDatabase): Promise<void> {
       continue;
     }
 
-    const pattern = PATTERNS[index % PATTERNS.length];
+    const { result, disposition, status } = PATTERNS[index % PATTERNS.length];
     const supplierId = supplierRows[index % supplierRows.length].id;
     const itemId = materialRows[index % materialRows.length].id;
     const inspectionDate = new Date();
@@ -144,21 +141,42 @@ async function seedIqcInspections(db: SeedDatabase): Promise<void> {
 
     const inventoryReceiptId = index === 0 ? (receipt?.id ?? null) : null;
     const purchaseOrderId = index === 1 ? (purchaseOrder?.id ?? null) : null;
+    const quantity = 10 + index * 5;
 
-    await db.insert(qualityInspections).values({
-      code,
-      kind: QcKind.INCOMING,
-      inventoryReceiptId,
-      purchaseOrderId,
-      supplierId,
-      itemId,
-      quantity: 10 + index * 5,
-      inspectionDate,
-      result: pattern.result,
-      disposition: pattern.disposition,
-      status: pattern.status,
-      reason: purchaseOrderId ? null : 'Kiểm tra định kỳ theo lô',
-      createdBy,
+    await db.transaction(async (tx) => {
+      const [request] = await tx
+        .insert(qcRequests)
+        .values({
+          code,
+          kind: QcKind.INCOMING,
+          inventoryReceiptId,
+          purchaseOrderId,
+          supplierId,
+          itemId,
+          quantity,
+          inspectionDate,
+          result,
+          disposition,
+          status,
+          reason: purchaseOrderId ? null : 'Kiểm tra định kỳ theo lô',
+          attemptCount: result ? 1 : 0,
+          createdBy,
+        })
+        .returning({ id: qcRequests.id });
+
+      if (result) {
+        await tx.insert(qcInspections).values({
+          qcRequestId: request.id,
+          kind: QcKind.INCOMING,
+          quantity,
+          attemptNo: 1,
+          inspectionDate,
+          result,
+          disposition,
+          resultingStatus: status,
+          confirmedBy: createdBy,
+        });
+      }
     });
 
     console.log(`IQC inspection "${code}" created.`);

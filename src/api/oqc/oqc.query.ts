@@ -1,4 +1,4 @@
-import { and, eq, ne, or, isNull as sqlIsNull, sql } from 'drizzle-orm';
+import { and, eq, isNull, ne, or, sql } from 'drizzle-orm';
 
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
@@ -6,16 +6,18 @@ import {
   productionJobBomItems,
   productionJobOperations,
   QcKind,
-  qualityInspections,
+  qcRequests,
 } from '../../database/schemas';
 
 /** Dòng `disposition = SCRAP` không tính vào SL đã xin QC của một công đoạn — hàng đã loại bỏ hẳn,
  * giải phóng lại quota lô để xưởng làm bù (`docs/domains/quality.md`). `disposition` chỉ khác
- * `null` khi `result = FAIL` (`chk_quality_inspections_disposition_requires_fail`), nên chỉ cần lọc trên
- * `disposition` — không cần đụng tới `result`. */
+ * `null` khi `result = FAIL` (`chk_qc_requests_disposition_requires_fail`), nên chỉ cần lọc trên
+ * `disposition` — không cần đụng tới `result`. `qc_requests.disposition` mirror đúng attempt mới
+ * nhất (`docs/decisions/qc-request-attempt-split.md`), nên lọc trên request cho cùng kết quả như
+ * lọc trên attempt mới nhất mà không cần join thêm. */
 const notScrapped = or(
-  sqlIsNull(qualityInspections.disposition),
-  ne(qualityInspections.disposition, OqcDisposition.SCRAP),
+  isNull(qcRequests.disposition),
+  ne(qcRequests.disposition, OqcDisposition.SCRAP),
 );
 
 /** Σ `quantity` mọi OQC (trừ `disposition = SCRAP`) của riêng một công đoạn — dùng để validate
@@ -26,19 +28,15 @@ export async function getInspectedQuantityByOperationId(
 ): Promise<number> {
   const [row] = await db
     .select({
-      total:
-        sql<number>`coalesce(sum(${qualityInspections.quantity}), 0)`.mapWith(
-          Number,
-        ),
+      total: sql<number>`coalesce(sum(${qcRequests.quantity}), 0)`.mapWith(
+        Number,
+      ),
     })
-    .from(qualityInspections)
+    .from(qcRequests)
     .where(
       and(
-        eq(qualityInspections.kind, QcKind.OUTGOING),
-        eq(
-          qualityInspections.productionJobOperationId,
-          productionJobOperationId,
-        ),
+        eq(qcRequests.kind, QcKind.OUTGOING),
+        eq(qcRequests.productionJobOperationId, productionJobOperationId),
         notScrapped,
       ),
     );
@@ -56,22 +54,18 @@ export async function getInspectedQuantityByBomItemId(
 ): Promise<number> {
   const [row] = await db
     .select({
-      total:
-        sql<number>`coalesce(sum(${qualityInspections.quantity}), 0)`.mapWith(
-          Number,
-        ),
+      total: sql<number>`coalesce(sum(${qcRequests.quantity}), 0)`.mapWith(
+        Number,
+      ),
     })
-    .from(qualityInspections)
+    .from(qcRequests)
     .innerJoin(
       productionJobOperations,
-      eq(
-        productionJobOperations.id,
-        qualityInspections.productionJobOperationId,
-      ),
+      eq(productionJobOperations.id, qcRequests.productionJobOperationId),
     )
     .where(
       and(
-        eq(qualityInspections.kind, QcKind.OUTGOING),
+        eq(qcRequests.kind, QcKind.OUTGOING),
         eq(
           productionJobOperations.productionJobBomItemId,
           productionJobBomItemId,
@@ -98,7 +92,14 @@ export async function getInspectedQuantityByBomItemId(
  * ngoài — `docs/decisions/oqc-per-operation.md`, nên không cần mã lỗi riêng cho ca này nữa, khác
  * `E212` cũ). `finalCompleted`/`hasFinalAssembly` — riêng cho `E209`: đếm dòng `COMPLETED` gắn với
  * công đoạn thuộc node Cấp 0 (`itemType = 'FG'`, bước Lắp ráp, `copyFinalAssemblyRouting`); `E205`
- * không dùng hai field này. */
+ * không dùng hai field này.
+ *
+ * `total`/`finalCompleted` loại trừ dòng `disposition = SCRAP` (cùng điều kiện `notScrapped` ở
+ * trên, viết lại dạng `filter` vì cần gộp với điều kiện khác) — một lô đã loại bỏ tuy khoá cứng ở
+ * `status = COMPLETED` nhưng không chứng minh được gì về hàng còn lại của Job, không được tính là
+ * "đã QC xong" (`docs/domains/quality.md`, mục OQC). `open` **không** loại trừ SCRAP — nó là điểm
+ * dừng thật, không phải "còn dở dang", nếu tính vào `open` thì Job sẽ vĩnh viễn không qua được gate
+ * dù đã làm bù xong. */
 export async function getJobQcCoverage(
   db: Database | DbTransaction,
   productionJobId: string,
@@ -110,12 +111,15 @@ export async function getJobQcCoverage(
 }> {
   const [row] = await db
     .select({
-      total: sql<number>`count(${qualityInspections.id})`.mapWith(Number),
-      open: sql<number>`count(${qualityInspections.id}) filter (where ${qualityInspections.status} <> 'COMPLETED')`.mapWith(
+      total:
+        sql<number>`count(${qcRequests.id}) filter (where ${qcRequests.disposition} is distinct from ${OqcDisposition.SCRAP})`.mapWith(
+          Number,
+        ),
+      open: sql<number>`count(${qcRequests.id}) filter (where ${qcRequests.status} <> 'COMPLETED')`.mapWith(
         Number,
       ),
       finalCompleted:
-        sql<number>`count(${qualityInspections.id}) filter (where ${productionJobBomItems.itemType} = 'FG' and ${qualityInspections.status} = 'COMPLETED')`.mapWith(
+        sql<number>`count(${qcRequests.id}) filter (where ${productionJobBomItems.itemType} = 'FG' and ${qcRequests.status} = 'COMPLETED' and ${qcRequests.disposition} is distinct from ${OqcDisposition.SCRAP})`.mapWith(
           Number,
         ),
       hasFinalAssembly: sql<boolean>`bool_or(${productionJobBomItems.itemType} = 'FG')`,
@@ -129,11 +133,8 @@ export async function getJobQcCoverage(
       ),
     )
     .leftJoin(
-      qualityInspections,
-      eq(
-        qualityInspections.productionJobOperationId,
-        productionJobOperations.id,
-      ),
+      qcRequests,
+      eq(qcRequests.productionJobOperationId, productionJobOperations.id),
     )
     .where(eq(productionJobOperations.productionJobId, productionJobId));
 

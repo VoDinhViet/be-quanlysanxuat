@@ -2,7 +2,7 @@
 
 Chặng nối `quality` → `inventory`: từ lúc QC chọn phương án xử lý một dòng IQC FAIL, tới lúc kho
 xác nhận đã thật sự xuất hàng trả nhà cung cấp, và IQC gốc được hoàn tất. Mô hình QC (bảng gộp
-`quality_inspections`, `kind = INCOMING` cho IQC, `docs/decisions/qc-single-table.md`) ở
+`qc_requests`, `kind = INCOMING` cho IQC, `docs/decisions/qc-single-table.md`) ở
 `docs/domains/quality.md`, mô hình `supplier_returns`/bù trừ tồn ở `docs/domains/inventory.md`; đây
 là trình tự đầy đủ nối hai domain đó.
 
@@ -41,11 +41,12 @@ là bên xác nhận vật lý, khác vai trò với QC.
      gì (dòng IQC tạo tay không gắn phiếu/PO nào rơi vào ca này).
    - `quantity` — `RETURN` lấy cả `inspection.quantity`; `SORT` lấy `reqDto.sortNgQty` (đã đảm bảo
      hợp lệ ở `validateDecision`, cộng đúng `quantity` cùng `sortOkQty`).
-2. Trong transaction, sau khi `UPDATE` dòng IQC (khoá `WAITING_RETURN`) và replace-all 2 bộ file
-   đính kèm, gọi `SupplierReturnsService.createFromIqcDisposition(tx, {...})`: sinh mã
-   `PTNCC-{năm}-{đếm trong năm + 1, pad 5}` (đọc trong `tx`, vẫn đếm-rồi-cộng trên chính bảng — xem
-   "Transaction boundary"), insert một dòng `status = DRAFT`,
-   `iqcId` = dòng IQC vừa khoá.
+2. Trong transaction, sau khi khoá `qc_requests` (`FOR UPDATE`), insert 1 dòng `qc_inspections`
+   (attempt — khoá `WAITING_RETURN` trên mirror `qc_requests`) và insert (không phải replace) 2 bộ
+   file đính kèm cho attempt đó, gọi `SupplierReturnsService.createFromIqcDisposition(tx, {...})`:
+   sinh mã `PTNCC-{năm}-{đếm trong năm + 1, pad 5}` (đọc trong `tx`, vẫn đếm-rồi-cộng trên chính
+   bảng — xem "Transaction boundary"), insert một dòng `status = DRAFT`, `iqcId` = request vừa khoá,
+   `qcInspectionId` = attempt vừa insert (`docs/decisions/qc-request-attempt-split.md`).
 3. Vì `WAITING_RETURN` khoá mọi lần `confirm` sau đó (`E159`), đây là lần **duy nhất** dòng IQC này
    chuyển sang trạng thái đó — không cần guard chống tạo phiếu trả trùng.
 
@@ -71,11 +72,11 @@ là bên xác nhận vật lý, khác vai trò với QC.
 
 | Entity | Trigger | Trước | Sau |
 | --- | --- | --- | --- |
-| `quality_inspections.status` (`kind = INCOMING`) | `confirm` (disposition SORT/RETURN) | `PENDING`/`NOT_INSPECTED` | `WAITING_RETURN` |
+| `qc_requests.status` (`kind = INCOMING`) | `confirm` (disposition SORT/RETURN) | `PENDING`/`NOT_INSPECTED` | `WAITING_RETURN` |
 | `supplier_returns` | `confirm` (disposition SORT/RETURN) | *(chưa có)* | 1 dòng `DRAFT` |
 | `supplier_returns.status` | `post` | `DRAFT` | `POSTED` |
 | `inventory_balances`/`inventory_transactions` | `post` (nếu `shouldPostStock`) | — | cập nhật (xem `docs/workflows/stock-movement.md`) |
-| `quality_inspections.status` (`kind = INCOMING`) | `post` (qua `completeIqcAfterSupplierReturn`) | `WAITING_RETURN` | `COMPLETED` |
+| `qc_requests.status` (`kind = INCOMING`) | `post` (qua `completeIqcAfterSupplierReturn`) | `WAITING_RETURN` | `COMPLETED` |
 
 ## Side effects
 
@@ -88,8 +89,8 @@ là bên xác nhận vật lý, khác vai trò với QC.
 
 ## Transaction boundary
 
-`confirm` mở transaction bao **hai module**: `quality_inspections` (khoá + đổi `status`,
-replace-all 2 bộ file đính kèm) và `supplier_returns` (insert) — lý do
+`confirm` mở transaction bao **hai module**: `quality` (khoá `qc_requests`, insert attempt
+`qc_inspections` + 2 bộ file đính kèm, đổi `status` trên mirror) và `supplier_returns` (insert) — lý do
 `SupplierReturnsService.createFromIqcDisposition` bắt buộc nhận `tx`, không tự mở transaction
 (`.claude/rules/transactions.md`), cùng khuôn `IqcService.createInspectionsFromReceipt` ở
 `docs/workflows/receipt-confirmation.md`. Chiều ngược lại (`post` → hoàn tất IQC) **không** đi qua

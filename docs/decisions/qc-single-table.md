@@ -1,4 +1,4 @@
-# IQC + OQC gộp một bảng `quality_inspections`
+# IQC + OQC gộp một bảng `qc_requests`
 
 **Trạng thái:** còn hiệu lực
 
@@ -29,12 +29,12 @@ type; Odoo dùng một model `quality.check`.
 
 ## Quyết định
 
-**Gộp về một bảng `quality_inspections` + cột discriminator `kind` (`INCOMING`/`OUTGOING`), không
+**Gộp về một bảng `qc_requests` + cột discriminator `kind` (`INCOMING`/`OUTGOING`), không
 tách cha–con.**
 
 Đã cân nhắc class-table inheritance (bảng cha giữ cột chung + hai bảng con giữ cột riêng từng
 nhánh) và **loại** — lý do kỹ thuật cụ thể, không phải sở thích: hai CHECK đang có
-(`chk_quality_inspections_disposition_requires_fail` so `disposition` với `result`; `chk_quality_inspections_sort_qty_total` so
+(`chk_qc_requests_disposition_requires_fail` so `disposition` với `result`; `chk_qc_requests_sort_qty_total` so
 `sortOkQty + sortNgQty` với `quantity`) so sánh cột thuộc **hai nhánh khác nhau về mặt khái niệm**
 nhưng **phải nằm cùng một bảng vật lý** để Postgres viết được — cha–con thì hai vế nằm hai bảng,
 mất khả năng viết CHECK cross-table, phải đẩy cả hai bất biến này xuống tầng service (mất một lớp
@@ -51,7 +51,7 @@ phòng thủ DB đang có), mà vẫn phải join mỗi lần đọc. Một bả
   `outsourcingReceiptItemId`, `purchaseOrderId`, `reason`, `inspectionStandard`/`inspectorName`/
   `measuringTools`, `qcDepartmentId`, `sortOkQty`/`sortNgQty`.
 - **Cột neo sản xuất, dùng chung cả hai nhánh**: `productionJobId`/`productionJobOperationId`.
-  `OUTGOING` bắt buộc có (`chk_quality_inspections_outgoing_job`); `INCOMING` có khi phiếu sinh từ OS-IN (server suy
+  `OUTGOING` bắt buộc có (`chk_qc_requests_outgoing_job`); `INCOMING` có khi phiếu sinh từ OS-IN (server suy
   từ `outsourcingReceiptItem → outsourcingOrderItem`), `NULL` khi là hàng mua thường. **Đây là cột
   làm việc gộp có giá trị thật**: một công đoạn `INHOUSE` chỉ có thể có dòng `OUTGOING` (OQC) trỏ
   vào, một công đoạn `OUTSOURCE` chỉ có thể có dòng `INCOMING` (IQC từ OS-IN) trỏ vào — hai tập
@@ -61,7 +61,7 @@ phòng thủ DB đang có), mà vẫn phải join mỗi lần đọc. Một bả
 
 **3 `NOT NULL` đổi thành CHECK theo `kind`** — mất mát thật của việc gộp so với cha–con, chấp nhận
 có chủ ý: `supplierId`/`productionJobId`/`productionJobOperationId` không còn `NOT NULL` ở tầng cột,
-thay bằng `chk_quality_inspections_incoming_supplier`/`chk_quality_inspections_outgoing_no_supplier`/`chk_quality_inspections_outgoing_job` — tương
+thay bằng `chk_qc_requests_incoming_supplier`/`chk_qc_requests_outgoing_no_supplier`/`chk_qc_requests_outgoing_job` — tương
 đương về mặt đảm bảo (CHECK cũng chặn ở DB, chỉ khác thông báo lỗi), khác là code đọc cột này (hiếm,
 chỉ 2-3 chỗ) phải tự biết `kind` đã lọc đúng trước khi coi giá trị là non-null (xem
 `IqcService`/`OqcService`, các chỗ `.$type<>()`/non-null assertion kèm comment trỏ CHECK tương
@@ -70,8 +70,8 @@ chỉ 2-3 chỗ) phải tự biết `kind` đã lọc đúng trước khi coi gi
 **`supplier_returns.iqc_id`** — trước gộp, FK đơn giản đảm bảo cột này chỉ trỏ được vào
 `iqc_inspections`. Bảng gộp làm mất khả năng đó (giờ trỏ được vào bất kỳ dòng nào, kể cả `OUTGOING`).
 Lấy lại bằng composite FK không cần trigger: thêm cột `qc_kind` (luôn `'INCOMING'`, CHECK khoá lại),
-FK `(iqc_id, qc_kind) → quality_inspections(id, kind)` (cần `UNIQUE (id, kind)` phụ trên
-`quality_inspections`, xem `uq_quality_inspections_id_kind`).
+FK `(iqc_id, qc_kind) → qc_requests(id, kind)` (cần `UNIQUE (id, kind)` phụ trên
+`qc_requests`, xem `uq_qc_requests_id_kind`).
 
 **Enum Postgres hợp nhất, enum TS giữ nguyên tách** — cột vật lý dùng `qc_status`/`qc_disposition`
 (union giá trị của cả hai nhánh), nhưng TS vẫn export `IqcStatus`/`OqcStatus`/`IqcDisposition`/
@@ -84,7 +84,7 @@ một cột, thay vì suy ra một union kiểu string thô từ mảng giá tr�
 
 ## Hai module `iqc`/`oqc` không tách/không gộp
 
-Route, `ErrorCode`, phần lớn DTO **giữ nguyên** — chỉ đổi bảng đích (`qualityInspections` thay
+Route, `ErrorCode`, phần lớn DTO **giữ nguyên** — chỉ đổi bảng đích (`qcRequests` thay
 `iqcInspections`/`oqcInspections`) và thêm `eq(kind, ...)` vào **mọi** `where`/`insert`. Rủi ro
 chính của việc gộp là quên một mệnh đề `kind` khiến module này thấy phiếu của module kia — không có
 cơ chế nào ở tầng TypeScript tự bắt lỗi này (không có kiểu con `IncomingRow`/`OutgoingRow` tách
@@ -92,19 +92,19 @@ biệt), nên đọc lại call site khi sửa `IqcService`/`OqcService` sau nà
 
 ## Vấn đề circular-import khi implement
 
-`quality-inspections.ts` (bảng) và `supplier-returns.ts` (composite FK) tạo một vòng lặp module
+`qc-requests.ts` (bảng) và `supplier-returns.ts` (composite FK) tạo một vòng lặp module
 **thật** — khác vòng lặp vô hại vẫn có sẵn ở nhiều cặp bảng khác trong repo (FK/`relations()` dùng
 thunk `() => x.id`, chỉ gọi sau khi mọi module đã load xong). Composite FK (`foreignKey({...})`,
 API công khai của drizzle-orm) nhận **object trực tiếp**, không nhận thunk — buộc
-`supplier-returns.ts` dereference `qualityInspections.id`/`.kind` NGAY lúc module-load. Nếu
-`quality-inspections.ts` import `supplierReturns` (cho quan hệ `many()`) ở cùng file, hai chiều
+`supplier-returns.ts` dereference `qcRequests.id`/`.kind` NGAY lúc module-load. Nếu
+`qc-requests.ts` import `supplierReturns` (cho quan hệ `many()`) ở cùng file, hai chiều
 import tạo vòng lặp `ReferenceError: Cannot access '...' before initialization`. Giải: tách
-`qualityInspectionsRelations` ra file riêng (`quality-inspections-relations.ts`) — file bảng chính
+`qcRequestsRelations` ra file riêng (`qc-requests-relations.ts`) — file bảng chính
 không còn cạnh nào quay lại `supplier-returns.ts`.
 
 ## Migration dữ liệu
 
-Copy `id` nguyên vẹn từ `iqc_inspections`/`oqc_inspections` sang `quality_inspections` — `code` hai
+Copy `id` nguyên vẹn từ `iqc_inspections`/`oqc_inspections` sang `qc_requests` — `code` hai
 bảng khác prefix nên không đụng UNIQUE mới, `supplier_returns.iqc_id`/`qc_attachments.inspection_id`
 không phải remap. Backfill `outsourcing_receipt_item_id`/`production_job_id`/
 `production_job_operation_id` cho IQC sinh từ OS-IN: match theo `(outsourcing_receipt_id, item_id)`
@@ -125,12 +125,25 @@ xong". Giữ số `E212`, không tái sử dụng.
 ## Đừng hoàn lại
 
 Thêm một loại QC mới (nếu tương lai có, vd kiểm hàng trả về từ khách) là thêm một giá trị `kind` +
-cột neo/CHECK tương ứng trên `quality_inspections` — **không** phải tạo bảng mới. Nếu thấy một gate
+cột neo/CHECK tương ứng trên `qc_requests` — **không** phải tạo bảng mới. Nếu thấy một gate
 phải tự viết hàm join riêng cho một loại QC cụ thể (như `getJobOutsourcingIqcClearance` đã từng),
 đó là dấu hiệu neo công đoạn/kind đang thiếu, không phải lý do tách bảng lại.
+
+## Trục request/attempt (`qc_inspections`) là một quyết định khác, không đảo quyết định này
+
+`qc_requests` sau đó tách thêm một bảng con `qc_inspections` — mỗi lần bấm "Lưu" (confirm) sinh 1
+dòng attempt append-only, thay vì `UPDATE` đè lên chính request (`docs/decisions/qc-request-attempt-
+split.md`). Đây là trục cha–con **khác trục** mà quyết định này loại bỏ ở trên: quyết định này chỉ
+xét trục `INCOMING` vs `OUTGOING` (IQC vs OQC) — 2 khái niệm khác nhau nhưng ăn chung phần lớn cột;
+trục request/attempt xét **1 request có N lần kiểm theo thời gian** — cùng một khái niệm, khác thời
+điểm. Composite FK 3 cột `(qcRequestId, kind, quantity)` từ `qc_inspections` về `qc_requests` giữ
+nguyên 2 CHECK cross-nhánh (`chk_qc_requests_disposition_requires_fail`/`chk_qc_requests_sort_qty_
+total`, nhân bản xuống `qc_inspections`) trên cùng một bảng vật lý mỗi tầng — đúng lý do kỹ thuật mà
+quyết định này dùng để loại bỏ cha–con IQC/OQC, không bị vi phạm.
 
 ## Related docs
 
 `docs/decisions/oqc-per-operation.md` (mô hình node Cấp 0 + gate theo công đoạn — vẫn đúng, chỉ đổi
-nguồn đọc sang bảng gộp). `docs/decisions/qc-gates-on-stock-moves.md` (gate hợp nhất). Chương "OQC"
+nguồn đọc sang bảng gộp). `docs/decisions/qc-gates-on-stock-moves.md` (gate hợp nhất).
+`docs/decisions/qc-request-attempt-split.md` (trục request/attempt, khác trục). Chương "OQC"
 `docs/domains/quality.md`.

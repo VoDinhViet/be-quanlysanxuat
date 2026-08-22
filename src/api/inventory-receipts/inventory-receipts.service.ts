@@ -793,7 +793,7 @@ export class InventoryReceiptsService {
   }
 
   /** NCC của phiếu IQC sinh ra khi `confirm` — ưu tiên `receipt.supplierId`, rơi về NCC của PO gắn
-   * với phiếu. Không suy được cả hai → `E152` (`chk_quality_inspections_incoming_supplier` đòi `supplier_id` khác
+   * với phiếu. Không suy được cả hai → `E152` (`chk_qc_requests_incoming_supplier` đòi `supplier_id` khác
    * null cho dòng `kind = INCOMING`). */
   private async resolveIqcSupplierId(
     tx: DbTransaction,

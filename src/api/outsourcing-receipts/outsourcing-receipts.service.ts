@@ -35,7 +35,7 @@ import {
   OutsourcingReceiptStatus,
   productionJobs,
   QcKind,
-  qualityInspections,
+  qcRequests,
   suppliers,
   units,
 } from '../../database/schemas';
@@ -59,7 +59,7 @@ type ResolvedReceiptItem = {
   area: number | null;
   note: string | null;
   // Denormalize từ dòng OS-OUT nguồn — neo sang đúng công đoạn `OUTSOURCE` sinh ra dòng này, dùng
-  // để gắn `qualityInspections.productionJobOperationId` khi `requiresIqc` (xem
+  // để gắn `qcRequests.productionJobOperationId` khi `requiresIqc` (xem
   // `createOutsourcingReceipt`, `docs/domains/quality.md`).
   productionJobId: string | null;
   productionJobOperationId: string | null;
@@ -461,18 +461,18 @@ export class OutsourcingReceiptsService {
     }
   }
 
-  /** Huỷ OS-IN đã `POSTED` bị chặn (`E173`) nếu đã sinh `quality_inspections` (`kind = INCOMING`)
+  /** Huỷ OS-IN đã `POSTED` bị chặn (`E173`) nếu đã sinh `qc_requests` (`kind = INCOMING`)
    * trỏ vào — cùng lý do `supplier_returns` chưa có `cancel`: cần đường "un-complete" IQC. Chặn bất
    * kể trạng thái IQC, kể cả đã `COMPLETED`. */
   private async hasLinkedIqc(
     tx: DbTransaction,
     outsourcingReceiptId: string,
   ): Promise<boolean> {
-    const existing = await tx.query.qualityInspections.findFirst({
+    const existing = await tx.query.qcRequests.findFirst({
       columns: { id: true },
       where: and(
-        eq(qualityInspections.kind, QcKind.INCOMING),
-        eq(qualityInspections.outsourcingReceiptId, outsourcingReceiptId),
+        eq(qcRequests.kind, QcKind.INCOMING),
+        eq(qcRequests.outsourcingReceiptId, outsourcingReceiptId),
       ),
     });
 

@@ -23,6 +23,7 @@ import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
+  IqcAttachmentKind,
   IqcResult,
   items,
   ItemType,
@@ -35,16 +36,20 @@ import {
   productionJobs,
   productionOrders,
   ProductionJobStatus,
+  qcInspections,
   QcKind,
-  qualityInspections,
+  qcRequests,
   units,
   users,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
-import { resolveAqlPlan, resolveAqlResult } from '../iqc/iqc-aql.constant';
-import { AqlPlanResDto } from './dto/aql-plan.res.dto';
+import { FilesService } from '../files/files.service';
+import { AqlPlanResDto } from '../iqc/dto/aql-plan.res.dto';
+import { GetAqlPlanReqDto } from '../iqc/dto/get-aql-plan.req.dto';
+import { resolveAqlResult } from '../iqc/iqc-aql.constant';
+import { resolveAqlPlan } from '../iqc/iqc-aql.query';
+import { linkAttachments } from '../iqc/iqc.write';
 import { ConfirmOqcReqDto } from './dto/confirm-oqc.req.dto';
-import { GetAqlPlanReqDto } from './dto/get-aql-plan.req.dto';
 import { GetOqcsReqDto } from './dto/get-oqcs.req.dto';
 import { OqcResDto } from './dto/oqc.res.dto';
 import { PageOqcResDto } from './dto/page-oqc.res.dto';
@@ -55,7 +60,10 @@ import {
 
 @Injectable()
 export class OqcService {
-  constructor(@Inject(DRIZZLE) private readonly db: Database) {}
+  constructor(
+    @Inject(DRIZZLE) private readonly db: Database,
+    private readonly filesService: FilesService,
+  ) {}
 
   async getOqcs(
     reqDto: GetOqcsReqDto,
@@ -63,29 +71,29 @@ export class OqcService {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
 
     const where = and(
-      eq(qualityInspections.kind, QcKind.OUTGOING),
-      keyword ? unaccentILike(qualityInspections.code, keyword) : undefined,
+      eq(qcRequests.kind, QcKind.OUTGOING),
+      keyword ? unaccentILike(qcRequests.code, keyword) : undefined,
       reqDto.productionJobId
-        ? eq(qualityInspections.productionJobId, reqDto.productionJobId)
+        ? eq(qcRequests.productionJobId, reqDto.productionJobId)
         : undefined,
       reqDto.productionJobOperationId
         ? eq(
-            qualityInspections.productionJobOperationId,
+            qcRequests.productionJobOperationId,
             reqDto.productionJobOperationId,
           )
         : undefined,
-      reqDto.itemId ? eq(qualityInspections.itemId, reqDto.itemId) : undefined,
-      reqDto.result ? eq(qualityInspections.result, reqDto.result) : undefined,
-      reqDto.status ? eq(qualityInspections.status, reqDto.status) : undefined,
+      reqDto.itemId ? eq(qcRequests.itemId, reqDto.itemId) : undefined,
+      reqDto.result ? eq(qcRequests.result, reqDto.result) : undefined,
+      reqDto.status ? eq(qcRequests.status, reqDto.status) : undefined,
       reqDto.disposition
-        ? eq(qualityInspections.disposition, reqDto.disposition)
+        ? eq(qcRequests.disposition, reqDto.disposition)
         : undefined,
       reqDto.fromDate
-        ? gte(qualityInspections.inspectionDate, reqDto.fromDate)
+        ? gte(qcRequests.inspectionDate, reqDto.fromDate)
         : undefined,
       reqDto.toDate
         ? lt(
-            qualityInspections.inspectionDate,
+            qcRequests.inspectionDate,
             new Date(reqDto.toDate.getTime() + 24 * 60 * 60 * 1000),
           )
         : undefined,
@@ -93,37 +101,32 @@ export class OqcService {
 
     // Một `.select()` phẳng — join tường minh thay vì `db.query` quan hệ + hydrate riêng
     // (`docs/decisions/qc-single-table.md`). `productionJobOperations`/`productionJobBomItems`/
-    // `items` dùng `innerJoin` — `chk_quality_inspections_outgoing_job` đảm bảo mọi dòng
-    // `kind = OUTGOING` (đã lọc ở `where`) luôn có cả hai, nên Drizzle tự suy kiểu non-null, không
-    // cần assertion. `items` join qua `qualityInspections.itemId` (snapshot riêng, `NOT NULL`) —
-    // KHÔNG PHẢI `productionJobBomItems.itemId` (cột đó nullable, `bomItem` chỉ cho `code`/`name`).
-    // `item`/`unit` ngang hàng (không lồng `item.unit`) — cùng khuôn `OutboundOrderItemResDto`,
-    // khớp thẳng shape select nên không cần map lại.
+    // `items` dùng `innerJoin` — `chk_qc_requests_outgoing_job` đảm bảo mọi dòng `kind = OUTGOING`
+    // (đã lọc ở `where`) luôn có cả hai, nên Drizzle tự suy kiểu non-null, không cần assertion.
+    // `items` chỉ join để lấy `unitId` (cột `unit` bên dưới) — không select nguyên `item`, danh
+    // sách không có cột nào cần nó (`getOqc` mới trả `item` đầy đủ). Join qua `qcRequests.itemId`
+    // (snapshot riêng, `NOT NULL`) — KHÔNG PHẢI `productionJobBomItems.itemId` (cột đó nullable,
+    // `bomItem` chỉ cho `code`/`name`).
     const [rows, countRows] = await Promise.all([
       this.db
         .select({
-          id: qualityInspections.id,
-          code: qualityInspections.code,
-          quantity: qualityInspections.quantity,
-          inspectionDate: qualityInspections.inspectionDate,
-          result: qualityInspections.result,
-          status: qualityInspections.status,
-          disposition: qualityInspections.disposition,
-          note: qualityInspections.note,
-          createdAt: qualityInspections.createdAt,
-          updatedAt: qualityInspections.updatedAt,
+          id: qcRequests.id,
+          code: qcRequests.code,
+          quantity: qcRequests.quantity,
+          inspectionDate: qcRequests.inspectionDate,
+          result: qcRequests.result,
+          status: qcRequests.status,
+          disposition: qcRequests.disposition,
           productionJob: getTableColumns(productionJobs),
           orderCode: orders.code,
           operation: getTableColumns(productionJobOperations),
           bomItem: getTableColumns(productionJobBomItems),
-          item: getTableColumns(items),
           unit: getTableColumns(units),
-          creatorBy: getTableColumns(users),
         })
-        .from(qualityInspections)
+        .from(qcRequests)
         .innerJoin(
           productionJobs,
-          eq(productionJobs.id, qualityInspections.productionJobId),
+          eq(productionJobs.id, qcRequests.productionJobId),
         )
         .leftJoin(
           productionOrders,
@@ -132,10 +135,7 @@ export class OqcService {
         .leftJoin(orders, eq(orders.id, productionOrders.orderId))
         .innerJoin(
           productionJobOperations,
-          eq(
-            productionJobOperations.id,
-            qualityInspections.productionJobOperationId,
-          ),
+          eq(productionJobOperations.id, qcRequests.productionJobOperationId),
         )
         .innerJoin(
           productionJobBomItems,
@@ -144,14 +144,13 @@ export class OqcService {
             productionJobOperations.productionJobBomItemId,
           ),
         )
-        .innerJoin(items, eq(items.id, qualityInspections.itemId))
+        .innerJoin(items, eq(items.id, qcRequests.itemId))
         .innerJoin(units, eq(units.id, items.unitId))
-        .leftJoin(users, eq(users.id, qualityInspections.createdBy))
         .where(where)
-        .orderBy(desc(qualityInspections.createdAt))
+        .orderBy(desc(qcRequests.createdAt))
         .limit(reqDto.limit)
         .offset(reqDto.offset),
-      this.db.select({ total: count() }).from(qualityInspections).where(where),
+      this.db.select({ total: count() }).from(qcRequests).where(where),
     ]);
 
     return new OffsetPaginatedDto(
@@ -165,33 +164,33 @@ export class OqcService {
   async getOqc(oqcId: string): Promise<OqcResDto> {
     // Cùng khuôn `getOqcs` — `.select()` phẳng + join tường minh, không qua `db.query` quan hệ.
     // `productionJobOperations`/`productionJobBomItems`/`items` dùng `innerJoin`
-    // (`chk_quality_inspections_outgoing_job` đảm bảo non-null cho `kind = OUTGOING`), 3 alias
-    // `users` riêng cho `creatorBy`/`confirmerBy`/`resolverBy` (ba FK độc lập, cùng bảng đích).
+    // (`chk_qc_requests_outgoing_job` đảm bảo non-null cho `kind = OUTGOING`), 3 alias `users` riêng
+    // cho `creatorBy`/`confirmerBy`/`resolverBy` (ba FK độc lập, cùng bảng đích).
     const creatorUsers = alias(users, 'oqc_creator');
     const confirmerUsers = alias(users, 'oqc_confirmer');
     const resolverUsers = alias(users, 'oqc_resolver');
 
     const [row] = await this.db
       .select({
-        id: qualityInspections.id,
-        code: qualityInspections.code,
-        quantity: qualityInspections.quantity,
-        inspectionDate: qualityInspections.inspectionDate,
-        inspectionLevel: qualityInspections.inspectionLevel,
-        aqlLevel: qualityInspections.aqlLevel,
-        sampleSize: qualityInspections.sampleSize,
-        defectQty: qualityInspections.defectQty,
-        resultAuto: qualityInspections.resultAuto,
-        result: qualityInspections.result,
-        status: qualityInspections.status,
-        resultNote: qualityInspections.resultNote,
-        disposition: qualityInspections.disposition,
-        dispositionNote: qualityInspections.dispositionNote,
-        note: qualityInspections.note,
-        confirmedAt: qualityInspections.confirmedAt,
-        resolvedAt: qualityInspections.resolvedAt,
-        createdAt: qualityInspections.createdAt,
-        updatedAt: qualityInspections.updatedAt,
+        id: qcRequests.id,
+        code: qcRequests.code,
+        quantity: qcRequests.quantity,
+        inspectionDate: qcRequests.inspectionDate,
+        inspectionLevel: qcRequests.inspectionLevel,
+        aqlLevel: qcRequests.aqlLevel,
+        sampleSize: qcRequests.sampleSize,
+        defectQty: qcRequests.defectQty,
+        resultAuto: qcRequests.resultAuto,
+        result: qcRequests.result,
+        status: qcRequests.status,
+        resultNote: qcRequests.resultNote,
+        disposition: qcRequests.disposition,
+        dispositionNote: qcRequests.dispositionNote,
+        note: qcRequests.note,
+        confirmedAt: qcRequests.confirmedAt,
+        resolvedAt: qcRequests.resolvedAt,
+        createdAt: qcRequests.createdAt,
+        updatedAt: qcRequests.updatedAt,
         productionJob: getTableColumns(productionJobs),
         orderCode: orders.code,
         operation: getTableColumns(productionJobOperations),
@@ -202,10 +201,10 @@ export class OqcService {
         confirmerBy: getTableColumns(confirmerUsers),
         resolverBy: getTableColumns(resolverUsers),
       })
-      .from(qualityInspections)
+      .from(qcRequests)
       .innerJoin(
         productionJobs,
-        eq(productionJobs.id, qualityInspections.productionJobId),
+        eq(productionJobs.id, qcRequests.productionJobId),
       )
       .leftJoin(
         productionOrders,
@@ -214,10 +213,7 @@ export class OqcService {
       .leftJoin(orders, eq(orders.id, productionOrders.orderId))
       .innerJoin(
         productionJobOperations,
-        eq(
-          productionJobOperations.id,
-          qualityInspections.productionJobOperationId,
-        ),
+        eq(productionJobOperations.id, qcRequests.productionJobOperationId),
       )
       .innerJoin(
         productionJobBomItems,
@@ -226,22 +222,13 @@ export class OqcService {
           productionJobOperations.productionJobBomItemId,
         ),
       )
-      .innerJoin(items, eq(items.id, qualityInspections.itemId))
+      .innerJoin(items, eq(items.id, qcRequests.itemId))
       .innerJoin(units, eq(units.id, items.unitId))
-      .leftJoin(creatorUsers, eq(creatorUsers.id, qualityInspections.createdBy))
-      .leftJoin(
-        confirmerUsers,
-        eq(confirmerUsers.id, qualityInspections.confirmedBy),
-      )
-      .leftJoin(
-        resolverUsers,
-        eq(resolverUsers.id, qualityInspections.resolvedBy),
-      )
+      .leftJoin(creatorUsers, eq(creatorUsers.id, qcRequests.createdBy))
+      .leftJoin(confirmerUsers, eq(confirmerUsers.id, qcRequests.confirmedBy))
+      .leftJoin(resolverUsers, eq(resolverUsers.id, qcRequests.resolvedBy))
       .where(
-        and(
-          eq(qualityInspections.kind, QcKind.OUTGOING),
-          eq(qualityInspections.id, oqcId),
-        ),
+        and(eq(qcRequests.kind, QcKind.OUTGOING), eq(qcRequests.id, oqcId)),
       )
       .limit(1);
 
@@ -249,22 +236,55 @@ export class OqcService {
       throw new AppException(ErrorCode.E174, HttpStatus.NOT_FOUND);
     }
 
-    const plan =
+    const [plan, latestAttempt] = await Promise.all([
       row.inspectionLevel && row.aqlLevel
-        ? resolveAqlPlan(row.quantity, row.inspectionLevel, row.aqlLevel)
-        : undefined;
+        ? resolveAqlPlan(
+            this.db,
+            row.quantity,
+            row.inspectionLevel,
+            row.aqlLevel,
+          )
+        : undefined,
+      this.getLatestAttempt(oqcId),
+    ]);
+
+    const attachments = latestAttempt?.attachments ?? [];
 
     return plainToInstance(
       OqcResDto,
       {
         ...row,
-        codeLetter: plan?.codeLetter ?? null,
+        codeLetter: latestAttempt?.codeLetter ?? null,
         suggestedSampleSize: plan?.sampleSize ?? null,
-        ac: plan?.ac ?? null,
-        re: plan?.re ?? null,
+        ac: latestAttempt?.acceptanceNumber ?? null,
+        re: latestAttempt?.rejectionNumber ?? null,
+        qcEvidence: attachments.filter(
+          (attachment) => attachment.kind === IqcAttachmentKind.QC_EVIDENCE,
+        ),
+        dispositionEvidence: attachments.filter(
+          (attachment) =>
+            attachment.kind === IqcAttachmentKind.DISPOSITION_EVIDENCE,
+        ),
       },
       { excludeExtraneousValues: true },
     );
+  }
+
+  /** Ac/Re/codeLetter đã dùng ở lần kiểm mới nhất — snapshot thật trên `qc_inspections`, không tính
+   * lại từ `qc_aql_rules` hiện hành (`docs/decisions/qc-aql-master-data.md`). Khác
+   * `suggestedSampleSize` trên `getOqc` — cái đó vẫn tra sống theo `inspectionLevel`/`aqlLevel`
+   * hiện tại của request, không phải giá trị lịch sử. */
+  private async getLatestAttempt(qcRequestId: string) {
+    return this.db.query.qcInspections.findFirst({
+      where: eq(qcInspections.qcRequestId, qcRequestId),
+      columns: {
+        codeLetter: true,
+        acceptanceNumber: true,
+        rejectionNumber: true,
+      },
+      with: { attachments: { with: { file: true } } },
+      orderBy: desc(qcInspections.attemptNo),
+    });
   }
 
   /** "Yêu cầu QC" cấp Job — 1 cú bấm, không cần nhập gì. Một câu `SELECT` gộp mọi điều kiện: Job
@@ -359,7 +379,7 @@ export class OqcService {
       const inspectionDate = new Date();
       const code = await this.generateOqcCode(tx, inspectionDate);
 
-      await tx.insert(qualityInspections).values({
+      await tx.insert(qcRequests).values({
         quantity,
         inspectionDate,
         note: null,
@@ -373,8 +393,9 @@ export class OqcService {
     });
   }
 
-  getAqlPlan(reqDto: GetAqlPlanReqDto): AqlPlanResDto {
-    const plan = resolveAqlPlan(
+  async getAqlPlan(reqDto: GetAqlPlanReqDto): Promise<AqlPlanResDto> {
+    const plan = await resolveAqlPlan(
+      this.db,
       reqDto.quantity,
       reqDto.inspectionLevel,
       reqDto.aqlLevel,
@@ -390,95 +411,160 @@ export class OqcService {
   }
 
   /** `resultAuto` tự suy từ Ac/Re (`resolveAqlResult`) — `result` client gửi thắng nếu có, vắng thì
-   * lấy `resultAuto` (cả hai đều vắng → `E200`); lệch `resultAuto` mà thiếu `resultNote` → `E201`.
+   * lấy `resultAuto` (cả hai đều vắng → `E200`); QC toàn quyền ghi đè `resultAuto`, không cần lý do.
    * `status` suy theo bảng: PASS → `COMPLETED`; FAIL+null → `PENDING`; FAIL+`REWORK` → `REWORK`
-   * (phiếu vẫn mở, QC kiểm lại trên chính phiếu); FAIL+`ACCEPT`/`SCRAP` → `COMPLETED`. Không ghi
-   * ngược `production_job_operations` ở bất kỳ nhánh nào — tránh race với thao tác tay của xưởng
-   * (`PATCH .../operations/:operationId`), `docs/domains/production.md`. */
+   * (phiếu vẫn mở, QC kiểm lại trên chính phiếu); FAIL+`ACCEPT`/`SCRAP` → `COMPLETED`. Mỗi lần gọi
+   * sinh 1 dòng `qc_inspections` mới (attempt) thay vì ghi đè — giữ nguyên lịch sử các vòng REWORK
+   * (`docs/decisions/qc-request-attempt-split.md`). Không ghi ngược `production_job_operations` ở
+   * bất kỳ nhánh nào — tránh race với thao tác tay của xưởng (`PATCH .../operations/:operationId`),
+   * `docs/domains/production.md`. */
   async confirmOqc(
     oqcId: string,
     reqDto: ConfirmOqcReqDto,
     userId: string,
   ): Promise<void> {
-    const inspection = await this.ensureOqcConfirmable(oqcId);
+    const request = await this.ensureOqcConfirmable(oqcId);
 
-    const plan = resolveAqlPlan(
-      inspection.quantity,
+    const plan = await resolveAqlPlan(
+      this.db,
+      request.quantity,
       reqDto.inspectionLevel,
       reqDto.aqlLevel,
     );
-    const resultAuto = plan
-      ? resolveAqlResult(plan, reqDto.defectQty)
-      : undefined;
+    const resultAuto = plan ? resolveAqlResult(plan, reqDto.defectQty) : null;
+    const result = reqDto.result ?? resultAuto;
 
-    if (!reqDto.result && !resultAuto) {
+    if (!result) {
       throw new AppException(ErrorCode.E200, HttpStatus.BAD_REQUEST);
     }
-    const result = reqDto.result ?? resultAuto!;
 
-    if (resultAuto && result !== resultAuto && !reqDto.resultNote) {
-      throw new AppException(ErrorCode.E201, HttpStatus.BAD_REQUEST);
-    }
-    if (result === IqcResult.PASS && reqDto.disposition) {
-      throw new AppException(ErrorCode.E202, HttpStatus.BAD_REQUEST);
-    }
+    await this.filesService.linkFiles([
+      ...(reqDto.qcEvidenceFileIds ?? []),
+      ...(reqDto.dispositionEvidenceFileIds ?? []),
+    ]);
 
     const isPass = result === IqcResult.PASS;
     const status = this.resolveOqcStatus(result, reqDto.disposition);
-    const isFirstConfirm = inspection.confirmedAt === null;
-    const isFirstResolve =
-      !isPass && !!reqDto.disposition && !inspection.resolvedAt;
+    const disposition = isPass ? null : (reqDto.disposition ?? null);
 
-    await this.db
-      .update(qualityInspections)
-      .set({
-        inspectionLevel: reqDto.inspectionLevel,
-        aqlLevel: reqDto.aqlLevel,
-        sampleSize: reqDto.sampleSize ?? plan?.sampleSize ?? null,
-        defectQty: reqDto.defectQty,
-        result,
-        resultAuto: resultAuto ?? null,
-        resultNote: reqDto.resultNote ?? null,
-        disposition: isPass ? null : (reqDto.disposition ?? null),
-        dispositionNote: isPass ? null : (reqDto.dispositionNote ?? null),
-        status,
-        confirmedBy: isFirstConfirm ? userId : undefined,
-        confirmedAt: isFirstConfirm ? new Date() : undefined,
-        resolvedBy:
-          isPass || !reqDto.disposition
-            ? null
-            : isFirstResolve
-              ? userId
-              : undefined,
-        resolvedAt:
-          isPass || !reqDto.disposition
-            ? null
-            : isFirstResolve
-              ? new Date()
-              : undefined,
-      })
-      .where(eq(qualityInspections.id, oqcId));
+    // Phần quyết định QC của lần confirm này — ghi y hệt vào cả dòng attempt mới lẫn mirror trên
+    // `qc_requests`, viết một lần để hai bên không lệch nhau.
+    const decision = {
+      inspectionLevel: reqDto.inspectionLevel,
+      aqlLevel: reqDto.aqlLevel,
+      sampleSize: reqDto.sampleSize ?? plan?.sampleSize ?? null,
+      defectQty: reqDto.defectQty,
+      resultAuto,
+      result,
+      resultNote: reqDto.resultNote ?? null,
+      disposition,
+      dispositionNote: isPass ? null : (reqDto.dispositionNote ?? null),
+    };
+
+    await this.db.transaction(async (tx) => {
+      // Khoá request để cấp `attemptNo` tuần tự — không có lock, hai lần confirm song song có thể
+      // tính trùng `attemptNo` hoặc cùng nghĩ mình là lần confirm đầu tiên.
+      const [locked] = await tx
+        .select({
+          confirmedAt: qcRequests.confirmedAt,
+          resolvedAt: qcRequests.resolvedAt,
+          status: qcRequests.status,
+          attemptCount: qcRequests.attemptCount,
+        })
+        .from(qcRequests)
+        .where(eq(qcRequests.id, oqcId))
+        .for('update');
+
+      if (!locked || locked.status === OqcStatus.COMPLETED) {
+        throw new AppException(ErrorCode.E177, HttpStatus.CONFLICT);
+      }
+
+      const attemptNo = locked.attemptCount + 1;
+
+      // Bỏ trống (`undefined`) = Drizzle giữ nguyên cột: người/lúc confirm chỉ ghi ở lần confirm
+      // đầu tiên, người/lúc chốt phương án chỉ ghi ở lần chốt đầu tiên — nhưng bị xoá hẳn nếu lần
+      // confirm này không còn phương án nào.
+      const audit: {
+        confirmedBy?: string;
+        confirmedAt?: Date;
+        resolvedBy?: string | null;
+        resolvedAt?: Date | null;
+      } = {};
+
+      if (locked.confirmedAt === null) {
+        audit.confirmedBy = userId;
+        audit.confirmedAt = new Date();
+      }
+
+      if (!disposition) {
+        audit.resolvedBy = null;
+        audit.resolvedAt = null;
+      } else if (locked.resolvedAt === null) {
+        audit.resolvedBy = userId;
+        audit.resolvedAt = new Date();
+      }
+
+      const [attempt] = await tx
+        .insert(qcInspections)
+        .values({
+          ...decision,
+          qcRequestId: oqcId,
+          kind: QcKind.OUTGOING,
+          quantity: request.quantity,
+          attemptNo,
+          inspectionDate: request.inspectionDate,
+          aqlPlanId: plan?.planId ?? null,
+          aqlRuleId: plan?.ruleId ?? null,
+          codeLetter: plan?.codeLetter ?? null,
+          acceptanceNumber: plan?.ac ?? null,
+          rejectionNumber: plan?.re ?? null,
+          resultingStatus: status,
+          confirmedBy: userId,
+        })
+        .returning({ id: qcInspections.id });
+
+      await tx
+        .update(qcRequests)
+        .set({
+          ...decision,
+          status,
+          attemptCount: attemptNo,
+          ...audit,
+        })
+        .where(eq(qcRequests.id, oqcId));
+
+      await linkAttachments(
+        tx,
+        attempt.id,
+        IqcAttachmentKind.QC_EVIDENCE,
+        reqDto.qcEvidenceFileIds ?? [],
+      );
+      await linkAttachments(
+        tx,
+        attempt.id,
+        IqcAttachmentKind.DISPOSITION_EVIDENCE,
+        isPass ? [] : (reqDto.dispositionEvidenceFileIds ?? []),
+      );
+    });
   }
 
   async deleteOqc(oqcId: string): Promise<void> {
-    const inspection = await this.db.query.qualityInspections.findFirst({
+    const request = await this.db.query.qcRequests.findFirst({
       columns: { status: true },
       where: and(
-        eq(qualityInspections.kind, QcKind.OUTGOING),
-        eq(qualityInspections.id, oqcId),
+        eq(qcRequests.kind, QcKind.OUTGOING),
+        eq(qcRequests.id, oqcId),
       ),
     });
 
-    if (!inspection) {
+    if (!request) {
       throw new AppException(ErrorCode.E174, HttpStatus.NOT_FOUND);
     }
-    if (inspection.status !== OqcStatus.NOT_INSPECTED) {
+    if (request.status !== OqcStatus.NOT_INSPECTED) {
       throw new AppException(ErrorCode.E178, HttpStatus.CONFLICT);
     }
 
-    await this.db
-      .delete(qualityInspections)
-      .where(eq(qualityInspections.id, oqcId));
+    await this.db.delete(qcRequests).where(eq(qcRequests.id, oqcId));
   }
 
   private resolveOqcStatus(
@@ -496,32 +582,25 @@ export class OqcService {
       : OqcStatus.COMPLETED;
   }
 
-  private async ensureOqcConfirmable(oqcId: string): Promise<{
-    quantity: number;
-    confirmedAt: Date | null;
-    resolvedAt: Date | null;
-  }> {
-    const inspection = await this.db.query.qualityInspections.findFirst({
-      columns: {
-        quantity: true,
-        confirmedAt: true,
-        resolvedAt: true,
-        status: true,
-      },
+  private async ensureOqcConfirmable(
+    oqcId: string,
+  ): Promise<{ quantity: number; inspectionDate: Date }> {
+    const request = await this.db.query.qcRequests.findFirst({
+      columns: { quantity: true, inspectionDate: true, status: true },
       where: and(
-        eq(qualityInspections.kind, QcKind.OUTGOING),
-        eq(qualityInspections.id, oqcId),
+        eq(qcRequests.kind, QcKind.OUTGOING),
+        eq(qcRequests.id, oqcId),
       ),
     });
 
-    if (!inspection) {
+    if (!request) {
       throw new AppException(ErrorCode.E174, HttpStatus.NOT_FOUND);
     }
-    if (inspection.status === OqcStatus.COMPLETED) {
+    if (request.status === OqcStatus.COMPLETED) {
       throw new AppException(ErrorCode.E177, HttpStatus.CONFLICT);
     }
 
-    return inspection;
+    return request;
   }
 
   private async generateOqcCode(

@@ -7,7 +7,6 @@ import {
 } from '../../../database/schemas';
 import {
   ClassField,
-  ClassFieldOptional,
   DateField,
   EnumField,
   EnumFieldOptional,
@@ -16,11 +15,9 @@ import {
   StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
-import { ItemRefResDto } from '../../items/dto/item-ref.res.dto';
 import { ProductionJobOperationRefResDto } from '../../production-jobs/dto/production-job-operation-ref.res.dto';
 import { ProductionJobRefResDto } from '../../production-jobs/dto/production-job-ref.res.dto';
 import { UnitResDto } from '../../units/dto/unit.res.dto';
-import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
 import { OqcBomItemResDto } from './oqc.res.dto';
 
 @Exclude()
@@ -50,10 +47,6 @@ export class PageOqcResDto {
   bomItem!: OqcBomItemResDto;
 
   @Expose()
-  @ClassField(() => ItemRefResDto)
-  item!: ItemRefResDto;
-
-  @Expose()
   @ClassField(() => UnitResDto)
   unit!: UnitResDto;
 
@@ -79,20 +72,4 @@ export class PageOqcResDto {
     description: 'Cách xử lý khi FAIL',
   })
   disposition!: OqcDisposition | null;
-
-  @Expose()
-  @StringFieldOptional({ nullable: true, description: 'Ghi chú' })
-  note!: string | null;
-
-  @Expose()
-  @ClassFieldOptional(() => UserRefResDto, { nullable: true })
-  creatorBy!: UserRefResDto | null;
-
-  @Expose()
-  @DateField()
-  createdAt!: Date;
-
-  @Expose()
-  @DateField()
-  updatedAt!: Date;
 }

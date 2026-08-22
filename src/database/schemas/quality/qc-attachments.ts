@@ -1,15 +1,24 @@
 import { relations } from 'drizzle-orm';
-import { index, pgEnum, pgTable, timestamp, uuid } from 'drizzle-orm/pg-core';
+import {
+  index,
+  pgEnum,
+  pgTable,
+  timestamp,
+  unique,
+  uuid,
+} from 'drizzle-orm/pg-core';
 
 import { files } from '../files';
-import { qualityInspections } from './quality-inspections';
+import { qcInspections } from './qc-inspections';
 
 /**
  * Ảnh mẫu "Chi tiết IQC" có 2 bộ file riêng: bằng chứng kiểm tra và bằng chứng quyết định xử lý.
- * 1 bảng, discriminator `kind`, dùng chung cho cả `INCOMING` lẫn `OUTGOING`
- * (`qualityInspections.kind`) — trước gộp OQC không có chỗ đính kèm, nay có miễn phí
- * (`docs/decisions/qc-single-table.md`). Replace-all theo `(inspectionId, kind)` — 2 bộ độc lập
- * nhau, `IqcService.confirmIqc` xoá sạch bộ `DISPOSITION_EVIDENCE` khi lưu lại với `result = PASS`.
+ * 1 bảng, discriminator `kind`, dùng chung cho cả `INCOMING` lẫn `OUTGOING` — trước gộp OQC không có
+ * chỗ đính kèm, nay có miễn phí (`docs/decisions/qc-single-table.md`). Treo dưới `qc_inspections`
+ * (lần kiểm cụ thể, không phải request) từ khi tách request/attempt
+ * (`docs/decisions/qc-request-attempt-split.md`) — mỗi bộ file gắn đúng lần kiểm sinh ra nó, replace-
+ * all không còn ý nghĩa (attempt append-only): `IqcService.confirmIqc`/`OqcService.confirmOqc` chỉ
+ * insert bộ file cho attempt vừa tạo.
  */
 export enum IqcAttachmentKind {
   QC_EVIDENCE = 'QC_EVIDENCE',
@@ -27,7 +36,7 @@ export const qcAttachments = pgTable(
     id: uuid('id').defaultRandom().primaryKey(),
     inspectionId: uuid('inspection_id')
       .notNull()
-      .references(() => qualityInspections.id, { onDelete: 'cascade' }),
+      .references(() => qcInspections.id, { onDelete: 'cascade' }),
     fileId: uuid('file_id')
       .notNull()
       .references(() => files.id, { onDelete: 'cascade' }),
@@ -41,13 +50,19 @@ export const qcAttachments = pgTable(
       table.inspectionId,
       table.kind,
     ),
+    // Chặn gắn trùng cùng một file vào cùng một lần kiểm/cùng bộ (kind).
+    unique('uq_qc_attachments_inspection_file_kind').on(
+      table.inspectionId,
+      table.fileId,
+      table.kind,
+    ),
   ],
 );
 
 export const qcAttachmentsRelations = relations(qcAttachments, ({ one }) => ({
-  inspection: one(qualityInspections, {
+  inspection: one(qcInspections, {
     fields: [qcAttachments.inspectionId],
-    references: [qualityInspections.id],
+    references: [qcInspections.id],
   }),
   file: one(files, {
     fields: [qcAttachments.fileId],

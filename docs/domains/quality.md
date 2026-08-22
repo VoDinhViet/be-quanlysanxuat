@@ -5,10 +5,20 @@
 Ghi nhận kết quả kiểm tra chất lượng: **IQC** (Incoming Quality Control — hàng nhập từ NCC đạt hay
 không đạt, xử lý thế nào nếu không đạt) và **OQC** (Outgoing/Final QC — công đoạn sản xuất bên
 trong một Job đạt hay không đạt). Hai module `iqc`/`oqc` tách biệt ở tầng API (route/DTO/ErrorCode
-riêng), nhưng từ `docs/decisions/qc-single-table.md` cùng đọc/ghi **một bảng**
-`quality_inspections`, phân biệt bằng cột `kind` (`INCOMING`/`OUTGOING`) — đọc quyết định đó trước
+riêng), nhưng từ `docs/decisions/qc-single-table.md` cùng đọc/ghi **một bảng request**
+`qc_requests`, phân biệt bằng cột `kind` (`INCOMING`/`OUTGOING`) — đọc quyết định đó trước
 khi sửa bất kỳ gate hay query nào ở domain này, nó giải thích vì sao một số cột (`supplierId`,
 `productionJobOperationId`, ...) chỉ có ý nghĩa với một `kind`.
+
+**Mỗi request có 0..N lần kiểm (attempt), lưu ở bảng con `qc_inspections`.** Mỗi lần bấm nút "Lưu"
+(`POST /iqc/:iqcId/confirm`/`POST /oqc/:oqcId/confirm`) **luôn insert một dòng attempt mới**, không
+`UPDATE` đè lên attempt trước — giữ lại toàn bộ lịch sử các vòng REWORK/sửa kết quả, thay vì chỉ còn
+`updatedAt` như thiết kế cũ (`docs/decisions/qc-request-attempt-split.md`). `qc_requests` vẫn là nơi
+mọi gate/list/detail khác đọc — các cột `status`/`result`/`disposition`/... trên đó là **mirror của
+attempt mới nhất**, ghi lại ngay sau khi insert attempt, cùng transaction. `qc_requests.attemptCount`
+đếm số attempt đã có; `GET /iqc/:iqcId`/`GET /oqc/:oqcId` đọc thẳng attempt mới nhất cho các cột chỉ
+tồn tại ở tầng attempt (`ac`/`re`/`codeLetter` — snapshot AQL lúc kiểm, xem `docs/decisions/
+qc-aql-master-data.md`).
 
 IQC: phase 1 chỉ có `GET` list + `GET stats` + `POST` tạo; phase 2 thêm `GET :iqcId` (chi tiết) +
 `POST :iqcId/confirm` (xác nhận PASS/FAIL); phase 3 thêm `POST :iqcId/resolve` (chọn xử lý cho FAIL)
@@ -19,7 +29,7 @@ vào `supplier_returns.post`; **phase 6** thêm `DELETE :iqcId` (chỉ khi còn 
 gate mới ở `inventory-issues`.
 
 **Đường tạo IQC thứ hai, tự động:** `POST /inventory-receipts/:id/confirm` với `requiresIqc = true`
-sinh một dòng `quality_inspections` (`kind = INCOMING`, `NOT_INSPECTED`) cho mỗi dòng phiếu nhập,
+sinh một dòng `qc_requests` (`kind = INCOMING`, `NOT_INSPECTED`) cho mỗi dòng phiếu nhập,
 qua `IqcService.createInspectionsFromReceipt(tx, ...)` — chạy trong transaction của
 `InventoryReceiptsService.confirmInventoryReceipt`, không phải một call riêng ngoài transaction như
 `POST /iqc` tay. Các dòng sinh ra vẫn đi qua đúng vòng đời bên dưới — `confirm`/`PATCH` không phân
@@ -68,7 +78,9 @@ status       NOT_INSPECTED | PENDING | WAITING_RETURN | COMPLETED
 - Tạo mới không gửi `result` → `status = NOT_INSPECTED` ("Chưa kiểm") — dòng tồn tại nhưng chưa có
   kết quả. Đây là `status` duy nhất còn đổi lại được nhiều lần sau đó, qua `POST /iqc/:iqcId/confirm`
   (xem mục "Lưu kết quả QC" bên dưới) — **trừ** khi đã `WAITING_RETURN` (đã chốt đường trả NCC).
-- `result = PASS` → `status = COMPLETED` ngay, `disposition` phải để trống (`E139` nếu gửi kèm).
+- `result = PASS` → `status = COMPLETED` ngay, `disposition` bỏ trống. `POST /iqc` (tạo tay) chặn
+  gửi kèm cả hai (`E139`); `POST /iqc/:iqcId/confirm` không chặn — server tự bỏ qua `disposition`
+  khi PASS, xem mục "Lưu kết quả QC" bên dưới.
 - `result = FAIL`, chưa gửi `disposition` → `status = PENDING` ("Chờ xử lý").
 - `result = FAIL`, `disposition = CONCESSION` (chấp nhận đặc biệt — không cần trả hàng) →
   `status = COMPLETED` ngay.
@@ -77,36 +89,44 @@ status       NOT_INSPECTED | PENDING | WAITING_RETURN | COMPLETED
   tự sinh một dòng `supplier_returns` (DRAFT) cho phần hàng NG (xem "Cross-domain dependencies").
 
 `IqcService.resolveIqcStatus` là nơi duy nhất áp quy tắc này — dùng chung cho cả `POST /iqc` (khi
-gửi `result` ngay lúc tạo) lẫn `POST /iqc/:iqcId/confirm`; `chk_quality_inspections_disposition_requires_fail` ở DB
+gửi `result` ngay lúc tạo) lẫn `POST /iqc/:iqcId/confirm`; `chk_qc_requests_disposition_requires_fail` ở DB
 là chốt chặn cuối, không phải nơi tính `status`.
 
 ## Lưu kết quả QC IQC (`POST /iqc/:iqcId/confirm`)
 
-Nút "Lưu" **duy nhất** của trang chi tiết IQC — ghi đè toàn bộ quyết định QC mỗi lần gọi (field
-vắng mặt trong payload nghĩa là xoá, không phải giữ nguyên), gọi lại được **nhiều lần** trừ khi
+Nút "Lưu" **duy nhất** của trang chi tiết IQC — mỗi lần gọi **insert 1 dòng `qc_inspections` mới**
+(attempt, field vắng mặt trong payload nghĩa là attempt đó không có giá trị, không phải "giữ
+nguyên" của attempt trước) rồi cập nhật `qc_requests` làm mirror, gọi lại được **nhiều lần** trừ khi
 dòng đã `WAITING_RETURN` (`E159` — đường trả NCC đã chốt, không cho đổi kết quả nữa). Route
 `POST /iqc/:iqcId/resolve` cũ đã gộp hẳn vào đây — 1 nút Lưu không thể trung thực điều khiển 2
-endpoint dùng-1-lần riêng biệt.
+endpoint dùng-1-lần riêng biệt. Xem `docs/decisions/qc-request-attempt-split.md` cho lý do đổi từ
+`UPDATE` đè sang insert attempt.
 
 1. **QC tự chọn `result` (PASS/FAIL) — server không suy từ AQL nữa.** `inspectionLevel`/`aqlLevel`
-   vẫn gửi lên và `IqcService.getIqc` vẫn tính `ac`/`re` tham khảo qua `resolveAqlPlan()`
-   (`src/api/iqc/iqc-aql.constant.ts`) để FE hiện khối "gợi ý", nhưng tra hụt (bảng `SAMPLING_PLAN`
-   còn thiếu nhiều tổ hợp) **không còn chặn được `confirm`** — khác thiết kế phase 2 cũ.
-2. `disposition` chỉ hợp lệ khi `result = FAIL` (`E139`, khớp `chk_quality_inspections_disposition_requires_fail`).
-   Khi `disposition = SORT`, bắt buộc gửi kèm `sortOkQty`/`sortNgQty` (`E162` nếu thiếu) và phải
-   cộng đúng `quantity` của dòng IQC (`E160`, so bằng số nguyên đã scale — cả 3 đều `numeric`); gửi
-   2 field này khi `disposition` khác `SORT` là `E161`.
+   vẫn gửi lên và server snapshot `ac`/`re`/`codeLetter` thật vào attempt vừa tạo qua
+   `resolveAqlPlan()` (`src/api/iqc/iqc-aql.query.ts`, tra bảng `qc_aql_plans`/`qc_aql_rules`, xem
+   `docs/decisions/qc-aql-master-data.md`) để FE hiện khối "gợi ý", nhưng tra hụt (chưa có rule khớp
+   lot size/level/AQL) **không còn chặn được `confirm`** — khác thiết kế phase 2 cũ.
+2. `disposition` chỉ có ý nghĩa khi `result = FAIL` — gửi kèm `PASS` **không còn báo lỗi**, server
+   tự bỏ qua (`disposition`/`sortOkQty`/`sortNgQty`/`dispositionNote` ép `NULL` trước khi ghi), QC
+   toàn quyền quyết định `result`/`disposition`, không có check chéo giữa hai field
+   (`chk_qc_requests_disposition_requires_fail`/`chk_qc_inspections_disposition_requires_fail` vẫn
+   còn ở DB làm chốt chặn cuối, phòng ghi trực tiếp qua SQL). Riêng khi `disposition = SORT`, vẫn
+   bắt buộc gửi kèm `sortOkQty`/`sortNgQty` (`E162` nếu thiếu) và phải cộng đúng `quantity` của dòng
+   IQC (`E160`, so bằng số nguyên đã scale — cả 3 đều `numeric`); gửi 2 field này khi `disposition`
+   khác `SORT` là `E161` — đây là toàn vẹn số liệu, không phải quyết định QC, nên vẫn giữ.
 3. Ghi thêm: `resultNote`/`dispositionNote` (ghi chú, 2 mốc khác nhau — có thể ghi ở 2 lần lưu khác
    nhau), `qcDepartmentId` (bộ phận QC đã kiểm — FK `departments`, không phải text tự do), và 2 bộ
    file đính kèm độc lập `qcEvidenceFileIds`/`dispositionEvidenceFileIds` (bằng chứng kiểm tra vs.
    bằng chứng quyết định xử lý — xem "Bằng chứng đính kèm" bên dưới).
-4. `confirmedBy`/`confirmedAt` chỉ ghi ở lần lưu **đầu tiên** (mốc nghiệp vụ "đã có kết quả") — sửa
-   lại kết quả ở lần lưu sau không ghi đè, `updatedAt` đã ghi lại việc sửa. Tương tự,
-   `resolvedBy`/`resolvedAt` chỉ ghi khi `disposition` **mới xuất hiện** lần đầu.
-5. **Lật `result` từ FAIL về PASS trong cùng 1 lần lưu** ép null toàn bộ nhóm
-   `disposition`/`sortOkQty`/`sortNgQty`/`dispositionNote` và xoá sạch bộ `DISPOSITION_EVIDENCE` —
-   một `UPDATE` duy nhất nên CHECK chỉ đánh giá ở cuối câu lệnh, không bao giờ ở trạng thái vi phạm
-   tạm thời.
+4. `confirmedBy`/`confirmedAt` trên `qc_requests` chỉ ghi ở lần lưu **đầu tiên** (mốc nghiệp vụ "đã
+   có kết quả") — sửa lại kết quả ở lần lưu sau không ghi đè mốc này (`updatedAt` + attempt mới đã
+   ghi lại việc sửa). Tương tự, `resolvedBy`/`resolvedAt` chỉ ghi khi `disposition` **mới xuất hiện**
+   lần đầu.
+5. **Lật `result` từ FAIL về PASS** — attempt mới đơn giản mang `disposition`/`sortOkQty`/
+   `sortNgQty`/`dispositionNote` đều `NULL` (PASS không có quyết định xử lý), không xoá gì ở các
+   attempt FAIL trước — bộ `DISPOSITION_EVIDENCE` của những lần FAIL đó vẫn còn nguyên, gắn đúng
+   attempt sinh ra nó, không còn bị dọn theo lần lưu PASS như thiết kế cũ.
 6. 4 field ngữ cảnh cũ vẫn còn nguyên: `inspectionStandard`/`inspectorName`/`measuringTools`/
    `inspectionDate` — `inspectorName` là text tự do, **tách biệt** với `confirmedBy` (tài khoản
    bấm nút "Lưu"): người kiểm thật ngoài xưởng có thể không có tài khoản trong hệ thống.
@@ -115,20 +135,33 @@ endpoint dùng-1-lần riêng biệt.
    dependencies". Vì `WAITING_RETURN` khoá mọi lần confirm sau đó, đây là lần **duy nhất** một dòng
    IQC chuyển sang trạng thái này, nên không cần guard chống tạo phiếu trả trùng.
 
-⚠️ Bảng `SAMPLING_PLAN` (Ac/Re theo từng code letter × AQL) hiện chỉ điền một phần dữ liệu mẫu —
-giờ chỉ ảnh hưởng độ chính xác của khối gợi ý hiển thị, không còn ảnh hưởng khả năng lưu kết quả.
+⚠️ `qc_aql_rules` (Ac/Re theo từng code letter × AQL) hiện chỉ có dữ liệu seed một lần từ bảng giấy
+mẫu — QC/kỹ thuật sửa qua `PATCH /qc-aql/plans/:planId` khi đối chiếu xong bản chính thức, không cần
+deploy code (`docs/decisions/qc-aql-master-data.md`). Tra hụt chỉ ảnh hưởng độ chính xác của khối
+gợi ý hiển thị, không còn ảnh hưởng khả năng lưu kết quả.
+
+### AQL auto-suggest (`GET /iqc/aql-plan`)
+
+Route mirror `GET /oqc/aql-plan` (xem mục OQC bên dưới) — cùng `resolveAqlPlan()`, cùng shape
+`{codeLetter, sampleSize, ac, re}`, tra hụt trả `E219` (không dùng chung `E200` — mã đó namespace
+`oqc_inspection.error.*`). Thuần lookup hiển thị, **không** ảnh hưởng `confirm` — IQC không auto-suy
+`result` như OQC, khối AQL chỉ để FE gợi ý trước khi QC tự nhập.
 
 ## Bằng chứng đính kèm
 
 `qc_attachments` — 1 bảng, discriminator `kind` (`QC_EVIDENCE`/`DISPOSITION_EVIDENCE` — enum
-`IqcAttachmentKind`, khác `quality_inspections.kind` là enum riêng, đừng nhầm hai `kind` này), dùng
-chung cho cả IQC lẫn OQC (`inspectionId` trỏ thẳng `quality_inspections.id`, không phân biệt
-`INCOMING`/`OUTGOING`) — trước gộp bảng, OQC không có chỗ đính kèm; nay có miễn phí, dù hiện tại
-chưa có route upload cho OQC (chỉ `IqcService.confirmIqc` dùng). Mỗi bộ replace-all độc lập theo
-`(inspectionId, kind)` — `IqcService.replaceAttachments`. `UploadType.IQC_EVIDENCE`/
-`IQC_DISPOSITION_EVIDENCE` đều map sang `FileKind.EVIDENCE` (ảnh ∪ tài liệu, cap theo
-`upload.maxDocumentSize`) — bằng chứng QC vừa có ảnh chụp thực tế vừa có tài liệu đo lường (PDF),
-không thuộc gọn một trong hai kind cũ.
+`IqcAttachmentKind`, khác `qc_requests.kind`/`qc_inspections.kind` là enum riêng, đừng nhầm hai
+`kind` này), dùng chung cho cả IQC lẫn OQC — cả hai `confirmIqc`/`confirmOqc` đều insert vào bảng
+này. `inspectionId` trỏ **attempt** (`qc_inspections.id`), không phải request — mỗi bộ file gắn đúng
+lần kiểm sinh ra nó. Attempt append-only nên đây luôn là **insert-only** vào một `inspectionId` chưa
+từng có dòng nào (`linkAttachments`, `src/api/iqc/iqc.write.ts` — plain function dùng chung cả 2
+module, không phải method riêng của `IqcService`), không còn ý nghĩa "replace-all theo
+`(inspectionId, kind)`" như thiết kế trước khi tách request/attempt
+(`docs/decisions/qc-request-attempt-split.md`). `UploadType.IQC_EVIDENCE`/`IQC_DISPOSITION_EVIDENCE`
+(màn IQC) và `OQC_EVIDENCE`/`OQC_DISPOSITION_EVIDENCE` (màn OQC) đều map sang `FileKind.EVIDENCE`
+(ảnh ∪ tài liệu, cap theo `upload.maxDocumentSize`) — bằng chứng QC vừa có ảnh chụp thực tế vừa có
+tài liệu đo lường (PDF), không thuộc gọn một trong hai kind cũ. `UploadType` tách riêng theo module
+(không dùng chung `IQC_*` cho cả OQC) để file trong registry `files` mang đúng nguồn gốc khi audit.
 
 ## Sửa thông tin ngữ cảnh sau confirm (`PATCH /iqc/:iqcId`)
 
@@ -156,18 +189,20 @@ gọi bởi `SupplierReturnsService.postSupplierReturn` khi kho xác nhận đã
 
 ## Business rules (IQC)
 
-- `code` bất biến, unique **toàn bảng** `quality_inspections` (không riêng theo `kind`) — tự sinh
+- `code` bất biến, unique **toàn bảng** `qc_requests` (không riêng theo `kind`) — tự sinh
   `IQC-{năm}-{số thứ tự trong năm, pad 5}` nếu không gửi, cùng khuôn `PNK`/`PXK`/`OQC-*`
   (`docs/domains/inventory.md`), cấp qua `document_sequences`. Không đụng OQC (`OQC-*` khác prefix).
-- `disposition` chỉ hợp lệ khi `result = FAIL` — validate ở service (`E139`) trước, DB CHECK
-  (`chk_quality_inspections_disposition_requires_fail`) là lớp phòng thủ thứ hai.
-- `sortOkQty`/`sortNgQty` luôn cùng NULL hay cùng có giá trị (`chk_quality_inspections_sort_qty_pair`), chỉ hợp lệ
-  khi `disposition = SORT` (`chk_quality_inspections_sort_qty_requires_sort`), và cộng lại đúng `quantity`
-  (`chk_quality_inspections_sort_qty_total`, so `numeric` chính xác tuyệt đối).
+- `disposition` chỉ có ý nghĩa khi `result = FAIL` — `POST /iqc` (tạo tay) validate ở service
+  (`E139`); `confirm` không validate nữa (QC toàn quyền quyết định), server tự bỏ `disposition` về
+  `NULL` khi PASS trước khi ghi. DB CHECK (`chk_qc_requests_disposition_requires_fail`) là lớp
+  phòng thủ cuối cho cả hai đường ghi.
+- `sortOkQty`/`sortNgQty` luôn cùng NULL hay cùng có giá trị (`chk_qc_requests_sort_qty_pair`), chỉ hợp lệ
+  khi `disposition = SORT` (`chk_qc_requests_sort_qty_requires_sort`), và cộng lại đúng `quantity`
+  (`chk_qc_requests_sort_qty_total`, so `numeric` chính xác tuyệt đối).
 - `inventoryReceiptId`/`purchaseOrderId`/`outsourcingReceiptId` không bắt buộc — hàng kiểm ngoài
   luồng PO (ví dụ NCC giao tay) vẫn tạo được IQC, dùng `reason` (text tự do) thay cho PO trên màn
   hiển thị "PO / Lý do". Tối đa **một trong hai** cặp (mua/gia công ngoài) khác `null` cùng lúc —
-  `chk_quality_inspections_source_exclusive` (không thể vừa mua vừa gia công ngoài). Nếu `disposition` ra
+  `chk_qc_requests_source_exclusive` (không thể vừa mua vừa gia công ngoài). Nếu `disposition` ra
   `SORT`/`RETURN` mà không suy được kho trả (kiểm lần lượt `inventoryReceipt.warehouseId` →
   `purchaseOrder.receiptWarehouseId`; dòng sinh từ OS-IN — `outsourcingReceiptId` khác `null` —
   **luôn** trả `null` hợp lệ, không phải lỗi, vì `outsourcing_receipts` không có cột kho và
@@ -188,11 +223,13 @@ gọi bởi `SupplierReturnsService.postSupplierReturn` khi kho xác nhận đã
   tới mức dòng — `outsourcing_receipt_items` có `id` ổn định, khác `purchase_order_items`.
 - `itemId` không bị ràng buộc `type = RM` ở DB/service (giống mọi chỗ khác dùng `items` — xem
   `docs/domains/product-structure.md`), dù nghiệp vụ thực tế IQC luôn là vật tư nhập.
-- CHECK `sample_size > 0` / `defect_qty >= 0` / `aql_level` giới hạn trong tập giá trị chuẩn
-  (0.65/1.0/1.5/2.5/4.0/6.5) khi các cột này có giá trị — chốt chặn cuối, không phải nơi tính plan
-  AQL (đó là `resolveAqlPlan()`, giờ chỉ mang tính tham khảo, không quyết định `result`).
+- CHECK `sample_size > 0` / `defect_qty >= 0` / `aql_level > 0` khi các cột này có giá trị — chốt
+  chặn cuối, không phải nơi tính plan AQL (đó là `resolveAqlPlan()`, giờ chỉ mang tính tham khảo,
+  không quyết định `result`). `aql_level` **không** khoá cứng vào 6 mức chuẩn ANSI/ASQ Z1.4 — thêm
+  mức mới vào `qc_aql_plans` (Phase B, `docs/decisions/qc-aql-master-data.md`) không bị CHECK ở đây
+  chặn INSERT.
 - `supplierId`/`productionJobId`/`productionJobOperationId` **nullable ở tầng cột** (dùng chung với
-  nhánh OUTGOING) — `chk_quality_inspections_incoming_supplier` đảm bảo `supplierId` non-null cho mọi dòng
+  nhánh OUTGOING) — `chk_qc_requests_incoming_supplier` đảm bảo `supplierId` non-null cho mọi dòng
   `kind = INCOMING` thật; code đọc các cột này qua query đã lọc `kind = INCOMING` coi chúng là
   non-null (`.claude/rules/service.md`, cast/assert có comment trỏ đúng CHECK). Xem
   `docs/decisions/qc-single-table.md`.
@@ -200,7 +237,7 @@ gọi bởi `SupplierReturnsService.postSupplierReturn` khi kho xác nhận đã
 ## Cross-domain dependencies (IQC)
 
 - **← Inventory**: `POST /inventory-receipts/:id/confirm` (`requiresIqc = true`) là nơi duy nhất
-  ngoài `POST /iqc` ghi vào `quality_inspections` (`kind = INCOMING`) — xem "Đường tạo thứ hai" ở
+  ngoài `POST /iqc` ghi vào `qc_requests` (`kind = INCOMING`) — xem "Đường tạo thứ hai" ở
   Purpose.
 - **→ Inventory**: `POST /inventory-receipts/:id/post` chặn (`E153`) khi phiếu đang `PENDING_IQC`
   mà còn phiếu IQC nào của nó chưa `COMPLETED` (kể cả khi chưa có phiếu IQC nào) — cổng chất lượng
@@ -237,9 +274,13 @@ gọi bởi `SupplierReturnsService.postSupplierReturn` khi kho xác nhận đã
    khoá cứng, chỉ `completeIqcAfterSupplierReturn` đổi tiếp được (đúng một lần).
 2. **Tưởng có route `POST /iqc/:iqcId/resolve` riêng để chọn `disposition`.** Đã xoá — gộp vào
    `confirm` từ phase 5.
-3. **Đi tìm bảng con `iqc_items`.** Không có — bảng phẳng, 1 dòng = 1 lần kiểm 1 vật tư.
+3. **Đi tìm bảng con `iqc_items` (nhiều vật tư/1 phiếu).** Không có — `qc_requests` vẫn phẳng, 1
+   dòng = 1 lô kiểm 1 vật tư. Có bảng con thật là `qc_inspections`, nhưng nó là **lần kiểm** (mỗi
+   `confirm` = 1 dòng, append-only), không phải danh sách vật tư — xem `docs/decisions/
+   qc-request-attempt-split.md`.
 4. **Tưởng `POST /iqc/:iqcId/confirm` tự tính `result` từ Ac/Re, không nhận từ client.** Sai từ
-   phase 5 — QC tự chọn `result`; bảng AQL chỉ còn tính `ac`/`re` tham khảo ở `getIqc`.
+   phase 5 — QC tự chọn `result`; bảng AQL chỉ còn tính `ac`/`re` tham khảo, snapshot vào attempt vừa
+   tạo, `getIqc` đọc lại từ attempt mới nhất chứ không tính lại lúc đọc.
 5. **Tưởng có route `POST /iqc` khác để tạo hàng loạt.** Không — hàng loạt chỉ sinh từ
    `IqcService.createInspectionsFromReceipt`/`createInspectionsFromOutsourcingReceipt` (nội bộ,
    gọi từ `inventory-receipts`/`outsourcing-receipts`), dùng `generateIqcCodes` (số nhiều, một câu
@@ -255,9 +296,16 @@ gọi bởi `SupplierReturnsService.postSupplierReturn` khi kho xác nhận đã
    `NOT_INSPECTED` (`E206`) — đường gỡ đi kèm gate IQC mới ở `inventory-issues` (xem "Cross-domain
    dependencies"), không phải một route CRUD đầy đủ.
 9. **Tưởng `iqc_inspections`/`oqc_inspections` vẫn là hai bảng riêng.** Đã gộp thành
-   `quality_inspections` + cột `kind` từ `docs/decisions/qc-single-table.md` — `IqcService`/
+   `qc_requests` + cột `kind` từ `docs/decisions/qc-single-table.md` — `IqcService`/
    `OqcService` đọc/ghi cùng một bảng, phân biệt bằng `eq(kind, ...)` ở mọi query. `IqcService`/
    `OqcService`/route/DTO không đổi hình dạng, chỉ đổi bảng đích.
+10. **Tưởng `confirm` lại (sửa `result`, thêm vòng REWORK) ghi đè mất lần kiểm trước.** Không còn từ
+    `docs/decisions/qc-request-attempt-split.md` — mỗi `confirm` insert 1 dòng `qc_inspections` mới,
+    lần kiểm trước vẫn còn nguyên, chỉ không còn là "hiện hành" trên `qc_requests` (mirror) nữa.
+11. **Tưởng `GET /iqc/:iqcId`/`GET /oqc/:oqcId` trả danh sách các lần kiểm.** Không — trả đúng
+    request hiện hành (mirror), cộng `ac`/`re`/`codeLetter` đọc từ attempt mới nhất; chưa có DTO
+    nào trả mảng lịch sử attempt (phạm vi Phase A không làm, xem `docs/decisions/qc-request-attempt-
+    split.md`).
 
 ## OQC (Outgoing/Final QC — `kind = OUTGOING`)
 
@@ -274,7 +322,7 @@ Gắn theo từng công đoạn (`production_job_operations`), không phải c�
 
 **Một dòng = một lô kiểm của một công đoạn `INHOUSE`.** `productionJobOperationId`/`productionJobId`
 liên kết tới `production_job_operations`/`production_jobs`, **cả hai bắt buộc khi
-`kind = OUTGOING`** (`chk_quality_inspections_outgoing_job` — cột vật lý nullable vì dùng chung với nhánh `INCOMING`,
+`kind = OUTGOING`** (`chk_qc_requests_outgoing_job` — cột vật lý nullable vì dùng chung với nhánh `INCOMING`,
 xem `docs/decisions/qc-single-table.md`) — một khi LSX đã `APPROVED`, không có đường nào xoá được
 cây `production_job_operations`/`production_job_bom_items`/`production_jobs` của nó nữa
 (`ensureItemsNotLockedByProduction` chặn `E080` khi LSX còn thao tác được, tức là còn `PENDING`, lúc
@@ -311,9 +359,9 @@ status       NOT_INSPECTED | PENDING | REWORK | COMPLETED
 - Tạo mới luôn `status = NOT_INSPECTED` — `POST /oqc` **không** nhận `result` vì luồng OQC luôn
   tách 2 bước: production "Yêu cầu QC" trước, QC "xác nhận" sau (xem "Trigger từ production" bên
   dưới).
-- `resultAuto` server tự suy từ `defectQty` so `ac` của plan AQL (`resolveAqlResult()`) — `result`
-  QC gửi lên **thắng** nếu có, vắng thì lấy `resultAuto`; lệch `resultAuto` mà không kèm `resultNote`
-  bị chặn (`E201`) — ghi đè auto-suggest phải có lý do, có vết.
+- `resultAuto` server tự suy từ `defectQty` so `ac` của plan AQL (`resolveAqlResult()`) — thuần gợi ý
+  hiển thị. `result` QC gửi lên **thắng** nếu có, vắng thì lấy `resultAuto`; QC toàn quyền ghi đè
+  `resultAuto`, không cần `resultNote` giải trình (`E201` đã nghỉ hưu).
 - `result = PASS` → `status = COMPLETED` — **khoá cứng**, không `confirm` lại được nữa (`E177`).
   Đây là điểm khác biệt lớn nhất với IQC (`COMPLETED` của IQC vẫn confirm lại được) — `COMPLETED`
   của OQC là mốc dùng để tính "Job đã QC xong hết" (xem Cross-domain dependencies), khoá lại để QC
@@ -324,12 +372,20 @@ status       NOT_INSPECTED | PENDING | REWORK | COMPLETED
 - `result = FAIL`, `disposition = REWORK` (trả xưởng sửa lại) → `status = REWORK` — phiếu **vẫn
   mở**, QC kiểm lại trên chính phiếu đó tới khi PASS, khác `PENDING` chỉ ở tên gọi/ý nghĩa hiển thị,
   cùng cho `confirm` lại (chỉ `COMPLETED` mới khoá).
-- `PASS` mà vẫn gửi `disposition` bị chặn (`E202`, khớp `chk_quality_inspections_disposition_requires_fail`).
+- `PASS` mà vẫn gửi `disposition` **không còn bị chặn** (`E202` đã nghỉ hưu) — server tự bỏ
+  `disposition`/`dispositionNote` về `NULL` trước khi ghi, khớp `chk_qc_requests_disposition_requires_fail`
+  vẫn còn ở DB làm chốt chặn cuối.
 
 `OqcService.resolveOqcStatus` là nơi duy nhất áp quy tắc suy `status`. Không nhánh nào ghi ngược
 `production_job_operations.completedQuantity` — kể cả `SCRAP` (giải phóng lại quota bằng cách không
 tính vào Σ đã xin QC, không phải bằng cách trừ `completedQuantity`) — tránh race với thao tác tay
 của xưởng, xem `docs/domains/production.md`.
+
+Một dòng `disposition = SCRAP` mang **hai vai trò tách biệt**: với `createOqcForJob` (Σ đã xin QC),
+nó bị loại ra — coi như chưa từng xin; với `getJobQcCoverage` (gate nhập kho/giao hàng, xem
+Cross-domain dependencies bên dưới), nó **cũng** bị loại ra khỏi `total`/`finalCompleted` — dù
+`status = COMPLETED`, một Job chỉ toàn dòng SCRAP không được tính là "đã QC xong". Hai chỗ dùng cùng
+điều kiện loại trừ nhưng khác lý do: một để mở lại quota, một để không cho hàng đã loại bỏ lọt gate.
 
 ### Trigger từ production — "Yêu cầu QC" (`POST /production-jobs/:jobId/qc`)
 
@@ -372,26 +428,30 @@ function, không qua DI.
 
 ### AQL auto-suggest (`GET /oqc/aql-plan`)
 
-Route mới, trả `{codeLetter, sampleSize, ac, re}` tra từ `resolveAqlPlan()` theo `quantity`
-(lot size)/`inspectionLevel`/`aqlLevel` — tra hụt (bảng `SAMPLING_PLAN` chưa phủ hết mọi tổ hợp)
-trả `E200`. FE gọi route này để gợi ý `sampleSize` trước khi QC nhập `defectQty`.
+Route mới, trả `{codeLetter, sampleSize, ac, re}` tra từ `resolveAqlPlan()` (`src/api/iqc/
+iqc-aql.query.ts`) theo `quantity` (lot size)/`inspectionLevel`/`aqlLevel` — tra hụt (không có rule
+`qc_aql_rules` nào khớp) trả `E200`. FE gọi route này để gợi ý `sampleSize` trước khi QC nhập
+`defectQty`.
 
-⚠️ Bảng `SAMPLING_PLAN` (`src/api/iqc/iqc-aql.constant.ts`) do Claude tự điền lại từ kiến thức
-chuẩn ANSI/ASQ Z1.4 (không tra trực tiếp bản giấy gốc) — **bắt buộc QC/kỹ thuật đối chiếu từng ô**
-với bảng chính thức và ký duyệt trước khi coi là số liệu go-live. Dùng chung với IQC (không nhân
-đôi bảng), nhưng chỉ OQC dùng để **auto-suy `result`** — IQC vẫn giữ hành vi cũ (QC tự chọn `result`
-hoàn toàn, bảng AQL chỉ tính `ac`/`re` tham khảo). Hai module cố tình lệch nhau ở điểm này, đừng
-"đồng bộ hoá" nhầm sau này.
+⚠️ Dữ liệu `qc_aql_plans`/`qc_aql_rules` được seed một lần từ bảng giấy mẫu tự điền lại theo kiến
+thức chuẩn ANSI/ASQ Z1.4 (không tra trực tiếp bản gốc) — **bắt buộc QC/kỹ thuật đối chiếu từng rule**
+với bảng chính thức qua `PATCH /qc-aql/plans/:planId` trước khi coi là số liệu go-live
+(`docs/decisions/qc-aql-master-data.md`). Dùng chung với IQC (không nhân đôi bảng), nhưng chỉ OQC
+dùng để **auto-suy `result`** — IQC vẫn giữ hành vi cũ (QC tự chọn `result` hoàn toàn, bảng AQL chỉ
+tính `ac`/`re` tham khảo). Hai module cố tình lệch nhau ở điểm này, đừng "đồng bộ hoá" nhầm sau này.
 
 ### Lưu kết quả OQC (`POST /oqc/:oqcId/confirm`)
 
 1. Chặn nếu đã `COMPLETED` (`E177`) — mọi status khác (`NOT_INSPECTED`/`PENDING`/`REWORK`) confirm
-   lại được nhiều lần, ghi đè toàn bộ mỗi lần gọi (field vắng mặt = xoá).
+   lại được nhiều lần; mỗi lần gọi insert 1 dòng `qc_inspections` mới (attempt), giữ lại lịch sử mỗi
+   vòng REWORK thay vì ghi đè (`docs/decisions/qc-request-attempt-split.md`).
 2. Nhận `inspectionLevel!`/`aqlLevel!`/`defectQty!` bắt buộc; `sampleSize?`/`result?` giờ **tuỳ
    chọn** — vắng thì server tự điền (`sampleSize` từ plan AQL, `result` từ `resultAuto`); cả
    `result` lẫn `resultAuto` đều vắng (không tra được plan, QC cũng không tự chọn) → `E200`.
-3. `disposition?`/`dispositionNote?` — chỉ hợp lệ khi `result` cuối cùng = FAIL (`E202` nếu PASS mà
-   vẫn gửi).
+3. `disposition?`/`dispositionNote?` — chỉ có ý nghĩa khi `result` cuối cùng = FAIL; gửi kèm PASS
+   **không còn báo lỗi** (`E202` nghỉ hưu), server tự bỏ về `NULL` trước khi ghi. `disposition ∈
+   {ACCEPT, SCRAP}` không còn bắt buộc `dispositionNote` (`E215` nghỉ hưu) — QC toàn quyền quyết
+   định, AQL/Ac-Re chỉ là gợi ý hiển thị.
 4. `confirmedBy`/`confirmedAt` chỉ ghi ở lần lưu đầu tiên. `resolvedBy`/`resolvedAt` chỉ ghi khi
    `disposition` **mới xuất hiện** lần đầu — cùng khuôn IQC.
 
@@ -403,11 +463,22 @@ lại `E178`. Hard delete. `REWORK` **không** xoá được (đã từng confir
 
 ### Business rules (OQC)
 
-- `code` bất biến, unique **toàn bảng** `quality_inspections`, tự sinh `OQC-{năm}-{số thứ tự trong
+- **QC toàn quyền quyết định `result`/`disposition` — AQL/Ac-Re/`resultAuto` chỉ là gợi ý hiển thị.**
+  `confirmIqc`/`confirmOqc` không còn validate chéo giữa các lựa chọn của QC (`E139`/`E201`/`E202`/
+  `E215` đều đã nghỉ hưu, xem `error-code.constant.ts`) — chỉ còn giữ tối thiểu: phải có `result` nào
+  đó dùng được (`E200`, OQC), và SL OK/NG khi SORT phải cộng đúng lô (`E160`-`E162`, IQC — đây là
+  toàn vẹn số liệu, không phải quyết định QC, nên vẫn giữ). DB CHECK
+  (`chk_qc_requests_disposition_requires_fail`/`chk_qc_inspections_disposition_requires_fail`) vẫn
+  còn nguyên làm chốt chặn cuối cho ca ghi trực tiếp qua SQL — server tự ép `disposition`/
+  `dispositionNote`/`sortOkQty`/`sortNgQty` về `NULL` khi PASS trước khi ghi (không phải "check", chỉ
+  chuẩn hoá) nên đường ghi bình thường không bao giờ chạm CHECK đó.
+- `code` bất biến, unique **toàn bảng** `qc_requests`, tự sinh `OQC-{năm}-{số thứ tự trong
   năm, pad 5}` nếu không gửi — cùng khuôn `IQC-*`/`PNK-*`/`PXK-*`, cấp qua `document_sequences`.
   Cho phép client gửi `code` ghi đè.
-- Chưa có file đính kèm bằng chứng cho OQC đợt này — bảng `qc_attachments` đã dùng chung được (xem
-  "Bằng chứng đính kèm"), chỉ chưa có route upload phía OQC.
+- File đính kèm bằng chứng — mirror IQC, xem "Bằng chứng đính kèm": `confirmOqc` nhận
+  `qcEvidenceFileIds`/`dispositionEvidenceFileIds`, `getOqc` trả `qcEvidence`/`dispositionEvidence`
+  (attempt mới nhất). `dispositionEvidenceFileIds` bị bỏ qua khi `result = PASS`, cùng nhịp
+  `disposition`/`dispositionNote`.
 - "PO" hiển thị trên màn OQC = `orders.code` — tính lúc đọc bằng join
   `production_jobs → production_orders → orders`, **không lưu cột**.
 
@@ -441,17 +512,25 @@ lại `E178`. Hard delete. `REWORK` **không** xoá được (đã từng confir
    oqc-per-operation.md` mục "QC cho Cấp 0" — node `production_job_bom_items.itemType = 'FG'`,
    không phải bảng mới.
 3. **Tưởng `oqc_inspections` vẫn là bảng riêng của module `oqc`.** Đã gộp vào
-   `quality_inspections` (`kind = OUTGOING`) — xem mục IQC, Common mistake #9.
+   `qc_requests` (`kind = OUTGOING`) — xem mục IQC, Common mistake #9.
 4. **Tưởng `getJobOqcClearance` vẫn tồn tại.** Đổi tên/hợp nhất thành `getJobQcCoverage`
    (`docs/decisions/qc-single-table.md`), cùng vị trí file (`src/api/oqc/oqc.query.ts`).
 5. **Tưởng `POST /oqc` hay popup `GET /oqc/inspectable-operations` vẫn tồn tại.** Đã bỏ — tạo OQC
    nay chỉ qua `POST /production-jobs/:jobId/qc` (cấp Job, không nhận body). Job không khai báo
    routing Cấp 0 → `E213`; Job còn công đoạn nào chưa `completedDate` → `E214`.
+6. **Tưởng `confirmOqc` vẫn chặn `result = PASS` kèm `disposition`, hoặc bắt buộc `resultNote`/
+   `dispositionNote`.** Không còn — `E201`/`E202`/`E215` đã nghỉ hưu, QC toàn quyền quyết định (xem
+   "Business rules (OQC)"). Cùng lý do, `confirmIqc` cũng không còn chặn (`E139` chỉ còn ở
+   `POST /iqc` tạo tay).
 
 ## Related docs
 
 - `docs/decisions/qc-single-table.md` — vì sao IQC/OQC gộp một bảng, hình dạng cột theo `kind`,
   `getJobQcCoverage` hợp nhất gate.
+- `docs/decisions/qc-request-attempt-split.md` — vì sao `qc_requests`/`qc_inspections` tách request/
+  lần kiểm, mirror hoạt động thế nào.
+- `docs/decisions/qc-aql-master-data.md` — AQL chuyển sang master data, `qc_inspections` là nơi
+  snapshot Ac/Re/codeLetter thật.
 - `docs/domains/inventory.md` — `supplier_returns`, nơi IQC `WAITING_RETURN` nối vào; gate xuất kho
   sản xuất theo IQC; gate nhập kho TP + gate giao hàng theo QC hợp nhất.
 - `docs/domains/production.md` — `production_jobs`/`production_job_operations`/node Cấp 0, nơi OQC

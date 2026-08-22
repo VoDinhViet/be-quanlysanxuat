@@ -1,6 +1,6 @@
 import { IqcInspectionLevel } from '../../../database/schemas';
 import { EnumField, NumberField } from '../../../decorators/field.decorators';
-import { AQL_LEVELS } from '../../iqc/iqc-aql.constant';
+import { AQL_LEVELS } from '../iqc-aql.constant';
 
 export class GetAqlPlanReqDto {
   @NumberField({

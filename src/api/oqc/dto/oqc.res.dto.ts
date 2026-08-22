@@ -20,6 +20,7 @@ import {
   UUIDField,
 } from '../../../decorators/field.decorators';
 import { ItemRefResDto } from '../../items/dto/item-ref.res.dto';
+import { IqcAttachmentResDto } from '../../iqc/dto/iqc-attachment.res.dto';
 import { ProductionJobOperationRefResDto } from '../../production-jobs/dto/production-job-operation-ref.res.dto';
 import { ProductionJobRefResDto } from '../../production-jobs/dto/production-job-ref.res.dto';
 import { UnitResDto } from '../../units/dto/unit.res.dto';
@@ -161,6 +162,10 @@ export class OqcResDto {
   resultNote!: string | null;
 
   @Expose()
+  @ClassField(() => IqcAttachmentResDto, { each: true })
+  qcEvidence!: IqcAttachmentResDto[];
+
+  @Expose()
   @EnumFieldOptional(() => OqcDisposition, {
     nullable: true,
     description: 'Cách xử lý khi FAIL',
@@ -170,6 +175,10 @@ export class OqcResDto {
   @Expose()
   @StringFieldOptional({ nullable: true, description: 'Ghi chú xử lý' })
   dispositionNote!: string | null;
+
+  @Expose()
+  @ClassField(() => IqcAttachmentResDto, { each: true })
+  dispositionEvidence!: IqcAttachmentResDto[];
 
   @Expose()
   @StringFieldOptional({ nullable: true, description: 'Ghi chú' })

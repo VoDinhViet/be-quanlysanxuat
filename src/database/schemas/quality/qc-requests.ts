@@ -26,7 +26,7 @@ import { users } from '../identity-access/users';
 /**
  * `INCOMING` — kiểm hàng nhập từ NCC (IQC cũ). `OUTGOING` — kiểm công đoạn sản xuất, kể cả công
  * đoạn gia công ngoài (OQC cũ, gộp `type = OUTSOURCE` vào từ `docs/decisions/qc-single-table.md`).
- * Discriminator quyết định cột nào bắt buộc (`chk_quality_inspections_incoming_supplier`/`chk_quality_inspections_outgoing_job`...) —
+ * Discriminator quyết định cột nào bắt buộc (`chk_qc_requests_incoming_supplier`/`chk_qc_requests_outgoing_job`...) —
  * xem doc đó cho lý do gộp một bảng thay vì cha–con.
  */
 export enum QcKind {
@@ -59,9 +59,10 @@ export const qcInspectionLevelEnum = pgEnum('qc_inspection_level', [
 ]);
 
 /**
- * Chỉ có ý nghĩa khi `result = FAIL` (`chk_quality_inspections_disposition_requires_fail`). Giá trị hợp lệ khác
- * nhau theo `kind` (`chk_quality_inspections_disposition_by_kind`) — `INCOMING` dùng `IqcDisposition`, `OUTGOING`
- * dùng `OqcDisposition`; cột vật lý dùng chung `qc_disposition` (union Postgres enum của cả hai).
+ * Chỉ có ý nghĩa khi `result = FAIL` (`chk_qc_requests_disposition_requires_fail`, nhân bản trên
+ * `qc_inspections` — xem file đó). Giá trị hợp lệ khác nhau theo `kind` — `INCOMING` dùng
+ * `IqcDisposition`, `OUTGOING` dùng `OqcDisposition`; cột vật lý dùng chung `qc_disposition` (union
+ * Postgres enum của cả hai).
  */
 export enum IqcDisposition {
   CONCESSION = 'CONCESSION',
@@ -88,7 +89,7 @@ export const qcDispositionEnum = pgEnum('qc_disposition', [
  * `NOT_INSPECTED` → chưa gửi `result`. `PENDING` → FAIL chưa có `disposition`. `WAITING_RETURN`
  * (chỉ `INCOMING`) → FAIL, `disposition` SORT/RETURN, khoá cứng (`E159`) tới khi phiếu trả NCC tự
  * sinh được `post`. `REWORK` (chỉ `OUTGOING`) → FAIL, `disposition = REWORK`, phiếu vẫn mở. Giá trị
- * hợp lệ theo `kind`: `chk_quality_inspections_status_by_kind`. `COMPLETED` → PASS, hoặc FAIL với disposition không
+ * hợp lệ theo `kind`: `chk_qc_requests_status_by_kind`. `COMPLETED` → PASS, hoặc FAIL với disposition không
  * cần xử lý thêm (`CONCESSION`/`ACCEPT`/`SCRAP`) — `INCOMING.COMPLETED` vẫn `confirm` lại được,
  * `OUTGOING.COMPLETED` khoá cứng (`E177`, mốc gate nhập kho/giao hàng) — khác biệt cố ý giữa hai
  * `kind`, xem `docs/domains/quality.md`.
@@ -116,27 +117,36 @@ export const qcStatusEnum = pgEnum('qc_status', [
 ]);
 
 /**
- * QC hợp nhất — `kind = INCOMING` (kiểm hàng nhập từ NCC, IQC cũ) hoặc `OUTGOING` (kiểm công đoạn
- * sản xuất, OQC cũ). Bảng phẳng + discriminator, không cha–con — lý do đầy đủ:
- * `docs/decisions/qc-single-table.md`. `IqcService`/`OqcService` (2 module riêng, không đổi route)
- * đều đọc/ghi bảng này, luôn kèm `eq(kind, ...)`.
+ * "Lô kiểm QC" hợp nhất — `kind = INCOMING` (hàng nhập từ NCC, IQC cũ) hoặc `OUTGOING` (công đoạn
+ * sản xuất, OQC cũ). Bảng phẳng + discriminator, không cha–con giữa `INCOMING`/`OUTGOING` — lý do
+ * đầy đủ: `docs/decisions/qc-single-table.md`. `IqcService`/`OqcService` (2 module riêng, không đổi
+ * route) đều đọc/ghi bảng này, luôn kèm `eq(kind, ...)`.
+ *
+ * Đây là bảng **cha** của `qc_inspections` — mỗi request có 0..N lần kiểm (attempt), append-only,
+ * xem `docs/decisions/qc-request-attempt-split.md`. `status`/`result`/`disposition`/`sortOkQty`/
+ * `sortNgQty`/`resultAuto`/`resultNote`/`dispositionNote`/`confirmedBy`/`confirmedAt`/`resolvedBy`/
+ * `resolvedAt` trên bảng này là **mirror của attempt mới nhất** — nguồn duy nhất ghi vào các cột
+ * này là `IqcService`/`OqcService` sau khi insert 1 dòng `qc_inspections` mới, không có đường ghi
+ * nào khác. `attemptCount` là số attempt đã có, dùng để cấp `attemptNo` — không có cột trỏ ngược
+ * attempt mới nhất (`lastInspectionId`) vì sẽ tạo vòng lặp import thật với `qc-inspections.ts`
+ * (composite FK 3 cột bên đó dereference bảng này ngay lúc module-load, xem file đó).
  *
  * Cột riêng `INCOMING`: `supplierId`/`inventoryReceiptId`/`outsourcingReceiptId`/
  * `outsourcingReceiptItemId`/`purchaseOrderId` (chứng từ nguồn, tối đa một cặp mua/gia công ngoài
- * khác `null` — `chk_quality_inspections_source_exclusive`), `reason`, `inspectionStandard`/`inspectorName`/
+ * khác `null` — `chk_qc_requests_source_exclusive`), `reason`, `inspectionStandard`/`inspectorName`/
  * `measuringTools`, `qcDepartmentId`, `sortOkQty`/`sortNgQty`.
  *
  * Cột neo sản xuất `productionJobId`/`productionJobOperationId` dùng chung cả hai `kind`:
- * `OUTGOING` bắt buộc có (`chk_quality_inspections_outgoing_job`); `INCOMING` có khi phiếu sinh từ OS-IN (server suy
- * qua `outsourcingReceiptItem → outsourcingOrderItem`), `NULL` khi là hàng mua thường.
+ * `OUTGOING` bắt buộc có (`chk_qc_requests_outgoing_job`); `INCOMING` có khi phiếu sinh từ OS-IN
+ * (server suy qua `outsourcingReceiptItem → outsourcingOrderItem`), `NULL` khi là hàng mua thường.
  */
-export const qualityInspections = pgTable(
-  'quality_inspections',
+export const qcRequests = pgTable(
+  'qc_requests',
   {
     id: uuid('id').defaultRandom().primaryKey(),
     code: varchar('code', { length: 50 }).notNull().unique(),
     kind: qcKindEnum('kind').notNull(),
-    // INCOMING — chứng từ nguồn, tối đa một cặp khác null (chk_quality_inspections_source_exclusive).
+    // INCOMING — chứng từ nguồn, tối đa một cặp khác null (chk_qc_requests_source_exclusive).
     inventoryReceiptId: uuid('inventory_receipt_id').references(
       () => inventoryReceipts.id,
       { onDelete: 'set null' },
@@ -156,7 +166,7 @@ export const qualityInspections = pgTable(
     supplierId: uuid('supplier_id').references(() => suppliers.id, {
       onDelete: 'restrict',
     }),
-    // Neo sản xuất — bắt buộc khi OUTGOING (chk_quality_inspections_outgoing_job), tuỳ chọn khi INCOMING (có giá
+    // Neo sản xuất — bắt buộc khi OUTGOING (chk_qc_requests_outgoing_job), tuỳ chọn khi INCOMING (có giá
     // trị nếu phiếu sinh từ OS-IN, server tự suy qua outsourcingReceiptItem).
     productionJobId: uuid('production_job_id').references(
       () => productionJobs.id,
@@ -169,6 +179,8 @@ export const qualityInspections = pgTable(
     itemId: uuid('item_id')
       .notNull()
       .references(() => items.id, { onDelete: 'restrict' }),
+    // Lot size — cố định lúc tạo request, không đổi qua các attempt (composite FK 3 cột của
+    // `qc_inspections` cascade giá trị này xuống mọi attempt, xem file đó).
     quantity: numeric('quantity', {
       precision: 18,
       scale: 3,
@@ -219,7 +231,7 @@ export const qualityInspections = pgTable(
       onDelete: 'set null',
     }),
     // INCOMING — tách OK/NG khi disposition = SORT, luôn cùng NULL hay cùng có giá trị
-    // (chk_quality_inspections_sort_qty_pair), cộng lại đúng quantity (chk_quality_inspections_sort_qty_total).
+    // (chk_qc_requests_sort_qty_pair), cộng lại đúng quantity (chk_qc_requests_sort_qty_total).
     sortOkQty: numeric('sort_ok_qty', {
       precision: 18,
       scale: 3,
@@ -230,6 +242,8 @@ export const qualityInspections = pgTable(
       scale: 3,
       mode: 'number',
     }),
+    // Số attempt (`qc_inspections`) đã có — cấp `attemptNo` kế tiếp, xem doc-comment class.
+    attemptCount: integer('attempt_count').notNull().default(0),
     createdBy: uuid('created_by').references(() => users.id, {
       onDelete: 'set null',
     }),
@@ -240,108 +254,136 @@ export const qualityInspections = pgTable(
       .$onUpdate(() => new Date()),
   },
   (table) => [
-    index('idx_quality_inspections_inventory_receipt_id').on(
-      table.inventoryReceiptId,
-    ),
-    index('idx_quality_inspections_outsourcing_receipt_id').on(
+    index('idx_qc_requests_inventory_receipt_id').on(table.inventoryReceiptId),
+    index('idx_qc_requests_outsourcing_receipt_id').on(
       table.outsourcingReceiptId,
     ),
-    index('idx_quality_inspections_outsourcing_receipt_item_id').on(
+    index('idx_qc_requests_outsourcing_receipt_item_id').on(
       table.outsourcingReceiptItemId,
     ),
-    index('idx_quality_inspections_purchase_order_id').on(
-      table.purchaseOrderId,
-    ),
-    index('idx_quality_inspections_supplier_id').on(table.supplierId),
-    index('idx_quality_inspections_production_job_id').on(
-      table.productionJobId,
-    ),
-    index('idx_quality_inspections_production_job_operation_id').on(
+    index('idx_qc_requests_purchase_order_id').on(table.purchaseOrderId),
+    index('idx_qc_requests_supplier_id').on(table.supplierId),
+    index('idx_qc_requests_production_job_id').on(table.productionJobId),
+    index('idx_qc_requests_production_job_operation_id').on(
       table.productionJobOperationId,
     ),
-    index('idx_quality_inspections_item_id').on(table.itemId),
-    index('idx_quality_inspections_kind').on(table.kind),
-    index('idx_quality_inspections_status').on(table.status),
-    index('idx_quality_inspections_result').on(table.result),
-    index('idx_quality_inspections_disposition').on(table.disposition),
-    index('idx_quality_inspections_inspection_date').on(table.inspectionDate),
-    index('idx_quality_inspections_created_by').on(table.createdBy),
-    index('idx_quality_inspections_qc_department_id').on(table.qcDepartmentId),
+    index('idx_qc_requests_item_id').on(table.itemId),
+    index('idx_qc_requests_kind').on(table.kind),
+    index('idx_qc_requests_status').on(table.status),
+    index('idx_qc_requests_result').on(table.result),
+    index('idx_qc_requests_disposition').on(table.disposition),
+    index('idx_qc_requests_inspection_date').on(table.inspectionDate),
+    index('idx_qc_requests_created_by').on(table.createdBy),
+    index('idx_qc_requests_qc_department_id').on(table.qcDepartmentId),
+    index('idx_qc_requests_confirmed_by').on(table.confirmedBy),
+    index('idx_qc_requests_resolved_by').on(table.resolvedBy),
     // (id, kind) — composite FK từ supplier_returns.iqcId, xem chk_supplier_returns_qc_kind.
-    uniqueIndex('uq_quality_inspections_id_kind').on(table.id, table.kind),
-    check('chk_quality_inspections_quantity_positive', sql`quantity > 0`),
+    uniqueIndex('uq_qc_requests_id_kind').on(table.id, table.kind),
+    // (id, kind, quantity) — composite FK 3 cột từ qc_inspections, giữ cho 2 CHECK cross-nhánh
+    // (disposition_requires_fail/sort_qty_total) viết được trên bảng attempt, xem file đó.
+    uniqueIndex('uq_qc_requests_id_kind_quantity').on(
+      table.id,
+      table.kind,
+      table.quantity,
+    ),
+    check('chk_qc_requests_quantity_positive', sql`quantity > 0`),
     check(
-      'chk_quality_inspections_sample_size_positive',
+      'chk_qc_requests_sample_size_positive',
       sql`sample_size IS NULL OR sample_size > 0`,
     ),
     check(
-      'chk_quality_inspections_defect_qty_non_negative',
+      'chk_qc_requests_defect_qty_non_negative',
       sql`defect_qty IS NULL OR defect_qty >= 0`,
     ),
+    // Không khoá cứng vào 6 mức chuẩn ANSI/ASQ Z1.4 — `qc_aql_plans.aqlLevel` (Phase B) chỉ đòi
+    // dương, sửa được qua API mà không cần deploy (`docs/decisions/qc-aql-master-data.md`); giữ
+    // CHECK cứng ở đây sẽ chặn INSERT ngay khi thêm một mức AQL mới vào master data.
     check(
-      'chk_quality_inspections_aql_level_valid',
-      sql`aql_level IS NULL OR aql_level = ANY(ARRAY[0.65,1.0,1.5,2.5,4.0,6.5])`,
+      'chk_qc_requests_aql_level_positive',
+      sql`aql_level IS NULL OR aql_level > 0`,
     ),
-    // Bất biến nghiệp vụ: chỉ hàng FAIL mới có quyết định xử lý. Service còn kiểm lại (E139/E202)
-    // trước khi ghi — CHECK này là chốt chặn cuối, phòng ai ghi thẳng qua SQL.
+    // Bất biến nghiệp vụ: chỉ hàng FAIL mới có quyết định xử lý. Service tự ép `disposition = NULL`
+    // khi PASS trước khi ghi (không còn validate chéo, QC toàn quyền quyết định) — CHECK này là
+    // chốt chặn cuối, phòng ai ghi thẳng qua SQL.
     check(
-      'chk_quality_inspections_disposition_requires_fail',
+      'chk_qc_requests_disposition_requires_fail',
       sql`disposition IS NULL OR result = 'FAIL'`,
     ),
     check(
-      'chk_quality_inspections_sort_qty_pair',
+      'chk_qc_requests_sort_qty_pair',
       sql`(sort_ok_qty IS NULL AND sort_ng_qty IS NULL) OR (sort_ok_qty IS NOT NULL AND sort_ng_qty IS NOT NULL AND sort_ok_qty >= 0 AND sort_ng_qty >= 0)`,
     ),
     check(
-      'chk_quality_inspections_sort_qty_requires_sort',
+      'chk_qc_requests_sort_qty_requires_sort',
       sql`(sort_ok_qty IS NULL AND sort_ng_qty IS NULL) OR disposition = 'SORT'`,
     ),
     // So bằng — cả 3 cột đều numeric, không phải float, nên phép cộng này chính xác tuyệt đối.
     check(
-      'chk_quality_inspections_sort_qty_total',
+      'chk_qc_requests_sort_qty_total',
       sql`sort_ok_qty IS NULL OR sort_ok_qty + sort_ng_qty = quantity`,
     ),
     // Không thể vừa mua vừa gia công ngoài trên cùng một dòng QC.
     check(
-      'chk_quality_inspections_source_exclusive',
+      'chk_qc_requests_source_exclusive',
       sql`NOT (inventory_receipt_id IS NOT NULL AND outsourcing_receipt_id IS NOT NULL)`,
     ),
     check(
-      'chk_quality_inspections_outsourcing_item',
+      'chk_qc_requests_outsourcing_item',
       sql`outsourcing_receipt_item_id IS NULL OR outsourcing_receipt_id IS NOT NULL`,
     ),
     check(
-      'chk_quality_inspections_incoming_supplier',
+      'chk_qc_requests_incoming_supplier',
       sql`kind <> 'INCOMING' OR supplier_id IS NOT NULL`,
     ),
     check(
-      'chk_quality_inspections_outgoing_no_supplier',
+      'chk_qc_requests_outgoing_no_supplier',
       sql`kind <> 'OUTGOING' OR supplier_id IS NULL`,
     ),
+    // 7 cột chỉ có ý nghĩa với INCOMING (xem comment từng cột) — trước đây chỉ `supplierId` được
+    // ép NULL ở OUTGOING bằng CHECK riêng, 7 cột này chỉ được service chặn.
     check(
-      'chk_quality_inspections_outgoing_job',
+      'chk_qc_requests_outgoing_no_incoming_fields',
+      sql`kind <> 'OUTGOING' OR (
+        reason IS NULL AND inspection_standard IS NULL AND inspector_name IS NULL
+        AND measuring_tools IS NULL AND qc_department_id IS NULL
+        AND sort_ok_qty IS NULL AND sort_ng_qty IS NULL
+      )`,
+    ),
+    // Ngược chiều — `resultAuto` chỉ OUTGOING dùng (server tự suy từ Ac/Re), luôn NULL ở INCOMING
+    // (comment trên cột `resultAuto`), trước đây chỉ được service chặn.
+    check(
+      'chk_qc_requests_incoming_no_result_auto',
+      sql`kind <> 'INCOMING' OR result_auto IS NULL`,
+    ),
+    check(
+      'chk_qc_requests_outgoing_job',
       sql`kind <> 'OUTGOING' OR (production_job_id IS NOT NULL AND production_job_operation_id IS NOT NULL)`,
     ),
     check(
-      'chk_quality_inspections_status_by_kind',
+      'chk_qc_requests_status_by_kind',
       sql`(kind = 'INCOMING' AND status IN ('NOT_INSPECTED','PENDING','WAITING_RETURN','COMPLETED'))
           OR (kind = 'OUTGOING' AND status IN ('NOT_INSPECTED','PENDING','REWORK','COMPLETED'))`,
     ),
     check(
-      'chk_quality_inspections_disposition_by_kind',
+      'chk_qc_requests_disposition_by_kind',
       sql`disposition IS NULL
           OR (kind = 'INCOMING' AND disposition IN ('CONCESSION','SORT','RETURN'))
           OR (kind = 'OUTGOING' AND disposition IN ('ACCEPT','REWORK','SCRAP'))`,
     ),
+    check(
+      'chk_qc_requests_attempt_count_non_negative',
+      sql`attempt_count >= 0`,
+    ),
   ],
 );
 
-// `qualityInspectionsRelations` sống ở `quality-inspections-relations.ts`, không phải file này —
-// nó cần `supplierReturns` (`../inventory/supplier-returns`), mà `supplier_returns` lại cần
-// `qualityInspections` NGAY LÚC module-load (composite FK `(iqc_id, qc_kind)`, không phải thunk
-// lazy như `.references(() => ...)`) — import `supplierReturns` thẳng ở đây tạo vòng lặp module
-// thật (`ReferenceError: Cannot access 'qcKindEnum' before initialization`), không phải kiểu vòng
-// lặp vô hại qua `relations()` callback như các bảng khác. Tách ra một file riêng để
-// `quality-inspections.ts` không có cạnh nào quay lại `supplier-returns.ts`.
+// `qcRequestsRelations` sống ở `qc-requests-relations.ts`, không phải file này — nó cần
+// `supplierReturns` (`../inventory/supplier-returns`), mà `supplier_returns` lại cần `qcRequests`
+// NGAY LÚC module-load (composite FK `(iqc_id, qc_kind)`, không phải thunk lazy như
+// `.references(() => ...)`) — import `supplierReturns` thẳng ở đây tạo vòng lặp module thật
+// (`ReferenceError: Cannot access 'qcKindEnum' before initialization`), không phải kiểu vòng lặp vô
+// hại qua `relations()` callback như các bảng khác. Tách ra một file riêng để `qc-requests.ts`
+// không có cạnh nào quay lại `supplier-returns.ts`. `qc-inspections.ts` (bảng attempt) áp dụng
+// đúng lý do tương tự để không quay lại import file này (composite FK 3 cột).
 
-export type QualityInspectionSelect = typeof qualityInspections.$inferSelect;
+export type QcRequestSelect = typeof qcRequests.$inferSelect;

@@ -88,7 +88,7 @@ export class ConfirmIqcReqDto {
 
   @EnumFieldOptional(() => IqcDisposition, {
     description:
-      'Phương án xử lý — chỉ gửi khi result = FAIL, không được kèm khi PASS (E139)',
+      'Phương án xử lý — chỉ có ý nghĩa khi result = FAIL; gửi kèm PASS sẽ bị bỏ qua, không báo lỗi',
   })
   readonly disposition?: IqcDisposition;
 

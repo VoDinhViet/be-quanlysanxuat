@@ -212,7 +212,7 @@ Không phải invariant dù dễ tưởng:
   gating nào ngược lại: tạo/hủy chứng từ gia công ngoài không tự đổi
   `completedQuantity`/`completedDate` hay chặn công đoạn kế tiếp. Xem `docs/domains/inventory.md`.
 - **↔ Quality (IQC/OQC hợp nhất)**: `production_job_operations` (không phải `production_jobs`) là
-  **anchor** cho cả hai nhánh QC (`quality_inspections.kind`, `docs/decisions/qc-single-table.md`)
+  **anchor** cho cả hai nhánh QC (`qc_requests.kind`, `docs/decisions/qc-single-table.md`)
   — công đoạn `INHOUSE` (kể cả node Cấp 0) nhận dòng `OUTGOING` (OQC), công đoạn `OUTSOURCE` nhận
   dòng `INCOMING` (IQC sinh từ OS-IN). Quality đọc `operation.productionJob.status` (phải
   `IN_PROGRESS`), `operation.completedQuantity` (trần chặn lot size) và node BOM chứa nó
@@ -284,7 +284,7 @@ Không phải invariant dù dễ tưởng:
 17. **Tưởng `PATCH .../operations/:operationId` trên bước Lắp ráp chỉ kiểm `E088` như mọi công
     đoạn khác.** Còn kiểm thêm `E210` trước đó — chặn nếu còn công đoạn nào khác của Job chưa báo
     `completedDate`, vì bước Lắp ráp là bước cuối, cần mọi part đã xong.
-18. **Tưởng `oqc_inspections` là bảng riêng của module `oqc`.** Đã gộp vào `quality_inspections`
+18. **Tưởng `oqc_inspections` là bảng riêng của module `oqc`.** Đã gộp vào `qc_requests`
     (cột `kind`) cùng với IQC, xem `docs/decisions/qc-single-table.md` và `docs/domains/quality.md`.
 15. **Tưởng `GET /production-jobs/:jobId/bom` trả về cây BOM.** Không — tên route giữ nguyên nhưng
     nội dung là **bảng vật tư phẳng đã gộp**, phân trang. Cây snapshot của Job

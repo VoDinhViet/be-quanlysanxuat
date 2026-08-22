@@ -32,6 +32,8 @@
     "db:seed:supplier-returns": "ts-node src/database/seeds/supplier-returns.seed.ts",
     "db:seed:iqc": "ts-node src/database/seeds/iqc.seed.ts",
     "db:seed:material-stock": "ts-node src/database/seeds/material-stock.seed.ts",
+    "db:seed:qc-aql": "ts-node src/database/seeds/qc-aql.seed.ts",
+    "db:seed:document-sequences-bootstrap": "ts-node src/database/seeds/document-sequences-bootstrap.seed.ts",
     "db:migrate": "drizzle-kit migrate",
     "db:check-drift": "ts-node src/database/check-migration-drift.ts",
     "db:studio": "drizzle-kit studio"

@@ -15,9 +15,9 @@ import { ApiAuth } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
-import { AqlPlanResDto } from './dto/aql-plan.res.dto';
+import { AqlPlanResDto } from '../iqc/dto/aql-plan.res.dto';
+import { GetAqlPlanReqDto } from '../iqc/dto/get-aql-plan.req.dto';
 import { ConfirmOqcReqDto } from './dto/confirm-oqc.req.dto';
-import { GetAqlPlanReqDto } from './dto/get-aql-plan.req.dto';
 import { GetOqcsReqDto } from './dto/get-oqcs.req.dto';
 import { OqcResDto } from './dto/oqc.res.dto';
 import { PageOqcResDto } from './dto/page-oqc.res.dto';
@@ -47,7 +47,7 @@ export class OqcController {
     type: AqlPlanResDto,
     summary: 'Tra cỡ mẫu (n) + Ac/Re từ bảng AQL — auto-suggest lúc confirm',
   })
-  getAqlPlan(@Query() reqDto: GetAqlPlanReqDto): AqlPlanResDto {
+  getAqlPlan(@Query() reqDto: GetAqlPlanReqDto): Promise<AqlPlanResDto> {
     return this.oqcService.getAqlPlan(reqDto);
   }
 
