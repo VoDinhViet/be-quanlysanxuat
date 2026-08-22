@@ -1,9 +1,8 @@
-import { HttpStatus, Inject, Injectable, StreamableFile } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { plainToInstance } from 'class-transformer';
 import { createHash, randomUUID } from 'crypto';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
-import type { Response } from 'express';
 
 import { AllConfigType } from '../../config/config.type';
 import { ErrorCode } from '../../constants/error-code.constant';
@@ -15,10 +14,8 @@ import { AppException } from '../../exceptions/app.exception';
 import { STORAGE_PROVIDER } from '../../storage/storage.constants';
 import type { StorageProvider } from '../../storage/storage-provider.interface';
 import { PermissionsService } from '../auth/permissions.service';
-import { DownloadFileReqDto } from './dto/download-file.req.dto';
 import { FileResDto } from './dto/file.res.dto';
 import { UPLOAD_POLICIES } from './upload-policy';
-import { secondsUntil } from './util/file-url.util';
 import { detectFileType } from './util/file-type.util';
 
 type UploadOptions = {
@@ -136,32 +133,6 @@ export class FilesService {
     return this.toResDto(file);
   }
 
-  /** Stream thay vì buffer toàn bộ: một tài liệu 10MB nhân N lượt tải đồng thời sẽ nằm hết trong
-   * RAM cùng lúc nếu buffer. Request đã qua `FileSignatureGuard` xác minh chữ ký. */
-  async streamFile(
-    fileId: string,
-    reqDto: DownloadFileReqDto,
-    res: Response,
-  ): Promise<StreamableFile> {
-    const file = await this.ensureFileExists(fileId);
-
-    res.set({
-      'Content-Type': file.mimetype,
-      'Content-Length': String(file.size),
-      'Content-Disposition': this.buildContentDisposition(
-        file.kind,
-        file.originalName,
-      ),
-      // Giới hạn theo đúng vòng đời chữ ký — cache quá `exp` chỉ cache một URL đã hết hạn.
-      // `private` vì URL là một capability, không phải nội dung công khai.
-      'Cache-Control': `private, max-age=${secondsUntil(reqDto.exp)}`,
-    });
-
-    return new StreamableFile(
-      this.storageProvider.createReadStream(file.storageKey),
-    );
-  }
-
   /** Chỉ người tải lên hoặc người có `system:manage` được xoá — nếu không, bất kỳ user đăng nhập
    * nào cũng xoá được mọi file trong registry, không có đường lùi. `uploadedBy` so `users.id`
    * (`actorUserId`); quyền `system:manage` vẫn kiểm qua `credentials.roleId` nên cần thêm
@@ -232,21 +203,6 @@ export class FilesService {
     }
 
     return file;
-  }
-
-  /** Ảnh `inline` để `<img src>` dùng được; tài liệu `attachment` để tải xuống. Tên file phát hai
-   * lần cố ý: `filename=` là fallback ASCII cho client cũ, RFC 5987 `filename*=` mang giá trị thật
-   * — tên gốc ở đây là tiếng Việt, `filename=` thường sẽ làm hỏng mọi dấu. */
-  private buildContentDisposition(
-    kind: FileKind,
-    originalName: string,
-  ): string {
-    const disposition = kind === FileKind.IMAGE ? 'inline' : 'attachment';
-    const asciiFallback = originalName
-      .replace(/[^\x20-\x7E]/g, '_')
-      .replace(/["\\]/g, '_');
-
-    return `${disposition}; filename="${asciiFallback}"; filename*=UTF-8''${encodeURIComponent(originalName)}`;
   }
 
   private buildStorageKey(ext: string): string {

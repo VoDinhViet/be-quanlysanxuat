@@ -1,9 +1,11 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ServeStaticModule } from '@nestjs/serve-static';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { AllConfigType } from './config/config.type';
 import { BomOperationsModule } from './api/bom-operations/bom-operations.module';
 import { BomsModule } from './api/boms/boms.module';
 import { JwtAuthGuard } from './api/auth/guards/jwt-auth.guard';
@@ -56,6 +58,20 @@ import { WarehousesModule } from './api/warehouses/warehouses.module';
     ConfigModule.forRoot({
       load: [appConfig, authConfig, databaseConfig, redisConfig, uploadConfig],
       isGlobal: true,
+    }),
+
+    // File bytes served straight off disk at the domain root (storage key IS the path, e.g.
+    // `/2026/07/20/<uuid>.png`) — no auth, no signing, permanent public link
+    // (`docs/decisions/files-registry.md`). Never collides with a controller route: storage keys
+    // are always `<year>/<month>/<day>/<uuid>.<ext>`, nothing under `api`/`health`/`/` looks like
+    // that.
+    ServeStaticModule.forRootAsync({
+      useFactory: (configService: ConfigService<AllConfigType>) => [
+        {
+          rootPath: configService.getOrThrow('upload.dir', { infer: true }),
+        },
+      ],
+      inject: [ConfigService],
     }),
 
     // Drives FilesCleanupService. In-memory timers, so this only ticks when the app runs as a

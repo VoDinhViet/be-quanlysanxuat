@@ -1,6 +1,7 @@
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
+  check,
   index,
   integer,
   pgEnum,
@@ -47,9 +48,11 @@ export enum UploadType {
   SUPPLIER_DOCUMENT = 'SUPPLIER_DOCUMENT',
   BOM_ITEM_DRAWING = 'BOM_ITEM_DRAWING',
   ORDER_DOCUMENT = 'ORDER_DOCUMENT',
-  // Trang chi tiết IQC — 2 bộ bằng chứng riêng, xem `qc_attachments.kind`.
+  // Trang chi tiết IQC/OQC — 2 bộ bằng chứng riêng mỗi trang, xem `qc_attachments.kind`.
   IQC_EVIDENCE = 'IQC_EVIDENCE',
   IQC_DISPOSITION_EVIDENCE = 'IQC_DISPOSITION_EVIDENCE',
+  OQC_EVIDENCE = 'OQC_EVIDENCE',
+  OQC_DISPOSITION_EVIDENCE = 'OQC_DISPOSITION_EVIDENCE',
 }
 
 export const uploadTypeEnum = pgEnum('upload_type', [
@@ -64,6 +67,8 @@ export const uploadTypeEnum = pgEnum('upload_type', [
   UploadType.ORDER_DOCUMENT,
   UploadType.IQC_EVIDENCE,
   UploadType.IQC_DISPOSITION_EVIDENCE,
+  UploadType.OQC_EVIDENCE,
+  UploadType.OQC_DISPOSITION_EVIDENCE,
 ]);
 
 /**
@@ -71,9 +76,9 @@ export const uploadTypeEnum = pgEnum('upload_type', [
  *
  * Rules:
  * - `storageKey` is the relative key the bound `StorageProvider` (`src/storage/`) uses to
- *   save/read/delete the bytes; it is never a URL. The URL is minted per read as a short-lived
- *   signed link (see `FileResDto`/`resolveFileUrl`), so it stays correct across a storage driver
- *   change and cannot be stored anywhere as a permanent handle.
+ *   save/delete the bytes. `FileResDto.url` is derived from it at read time (`/<storageKey>`,
+ *   served statically by `ServeStaticModule` — `docs/decisions/files-registry.md`), a permanent
+ *   public link, safe to cache/store on the client indefinitely.
  * - `storageDriver` records which driver wrote the file, in case drivers are ever mixed during a
  *   migration to a new one (e.g. S3).
  * - Other entities (`users`, `materials`, ...) reference a row here by `id` instead of
@@ -101,8 +106,15 @@ export const files = pgTable(
      * `FilesCleanupService` once older than `upload.orphanTtl`. Set by `FilesService.linkFiles`. */
     linkedAt: timestamp('linked_at'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at')
+      .defaultNow()
+      .notNull()
+      .$onUpdate(() => new Date()),
   },
-  (table) => [index('idx_files_uploaded_by').on(table.uploadedBy)],
+  (table) => [
+    index('idx_files_uploaded_by').on(table.uploadedBy),
+    check('chk_files_size_non_negative', sql`size >= 0`),
+  ],
 );
 
 export const filesRelations = relations(files, ({ one }) => ({

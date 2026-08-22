@@ -5,25 +5,19 @@ import {
   HttpStatus,
   Post,
   Query,
-  Res,
-  StreamableFile,
   UploadedFile,
-  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBody, ApiConsumes, ApiTags } from '@nestjs/swagger';
-import type { Response } from 'express';
 
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
 import { CurrentUser } from '../../decorators/current-user.decorator';
-import { ApiAuth, ApiPublic } from '../../decorators/http.decorators';
+import { ApiAuth } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
 import { multerOptions } from './config/multer.config';
-import { DownloadFileReqDto } from './dto/download-file.req.dto';
 import { FileResDto } from './dto/file.res.dto';
 import { UploadFileReqDto } from './dto/upload-file.req.dto';
-import { FileSignatureGuard } from './guards/file-signature.guard';
 import { FilesService } from './files.service';
 
 @ApiTags('Files')
@@ -66,19 +60,6 @@ export class FilesController {
   })
   getFile(@UUIDParam('fileId') fileId: string): Promise<FileResDto> {
     return this.filesService.getFileById(fileId);
-  }
-
-  @Get(':fileId/download')
-  @UseGuards(FileSignatureGuard)
-  @ApiPublic({
-    summary: 'Download file bytes — requires a signed URL, not a bearer token',
-  })
-  downloadFile(
-    @UUIDParam('fileId') fileId: string,
-    @Query() reqDto: DownloadFileReqDto,
-    @Res({ passthrough: true }) res: Response,
-  ): Promise<StreamableFile> {
-    return this.filesService.streamFile(fileId, reqDto, res);
   }
 
   @Delete(':fileId')

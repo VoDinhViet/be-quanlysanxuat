@@ -33,4 +33,6 @@ export const UPLOAD_POLICIES: Record<UploadType, UploadPolicy> = {
   [UploadType.ORDER_DOCUMENT]: { kind: FileKind.DOCUMENT },
   [UploadType.IQC_EVIDENCE]: { kind: FileKind.EVIDENCE },
   [UploadType.IQC_DISPOSITION_EVIDENCE]: { kind: FileKind.EVIDENCE },
+  [UploadType.OQC_EVIDENCE]: { kind: FileKind.EVIDENCE },
+  [UploadType.OQC_DISPOSITION_EVIDENCE]: { kind: FileKind.EVIDENCE },
 };

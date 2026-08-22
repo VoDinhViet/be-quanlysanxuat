@@ -16,5 +16,5 @@ Gom về một chỗ vì rải rác là cách những rule này bị bỏ sót. 
 ## Data exposure
 
 - MUST NOT expose password hashes, tokens, refresh secrets, or any other secret on a response DTO.
-- MUST NOT serve uploaded file bytes outside `GET /files/:id/download`. MUST NOT register `useStaticAssets` for the upload directory — static middleware sits on the raw Express adapter, so the global guards never see those requests (`docs/decisions/files-registry.md`).
+- Uploaded file bytes are served statically at the domain root, keyed by storage path (`ServeStaticModule`, `app.module.ts`, e.g. `/2026/07/20/<uuid>.png`) — deliberately public, permanent, unauthenticated (`docs/decisions/files-registry.md`). Never route business data through this path; only the `files` registry's own bytes live here.
 - MUST review staged content for secrets before committing or pushing.
