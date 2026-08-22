@@ -1,0 +1,1 @@
+ALTER TABLE "outsourcing_order_items" DROP CONSTRAINT "uq_outsourcing_order_items_order_operation";
