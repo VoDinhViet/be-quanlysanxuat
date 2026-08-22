@@ -65,6 +65,9 @@ export const purchaseQuotations = pgTable(
   (table) => [
     index('idx_purchase_quotations_status').on(table.status),
     index('idx_purchase_quotations_created_by').on(table.createdBy),
+    index('idx_purchase_quotations_sent_by').on(table.sentBy),
+    index('idx_purchase_quotations_approved_by').on(table.approvedBy),
+    index('idx_purchase_quotations_cancelled_by').on(table.cancelledBy),
   ],
 );
 
@@ -90,3 +93,5 @@ export const purchaseQuotationsRelations = relations(
     items: many(purchaseQuotationItems),
   }),
 );
+
+export type PurchaseQuotationSelect = typeof purchaseQuotations.$inferSelect;

@@ -11,3 +11,5 @@ export const departments = pgTable('departments', {
     .notNull()
     .$onUpdate(() => new Date()),
 });
+
+export type DepartmentSelect = typeof departments.$inferSelect;

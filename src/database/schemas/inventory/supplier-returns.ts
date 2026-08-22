@@ -20,11 +20,8 @@ import { outsourcingReceipts } from './outsourcing-receipts';
 import { warehouses } from './warehouses';
 import { items } from '../items/items';
 import { purchaseOrders } from '../purchasing/purchase-orders';
-import {
-  qcKindEnum,
-  QcKind,
-  qualityInspections,
-} from '../quality/quality-inspections';
+import { qcInspections } from '../quality/qc-inspections';
+import { qcKindEnum, QcKind, qcRequests } from '../quality/qc-requests';
 import { suppliers } from '../suppliers/suppliers';
 import { users } from '../identity-access/users';
 
@@ -68,15 +65,23 @@ export const supplierReturns = pgTable(
       () => outsourcingReceipts.id,
       { onDelete: 'set null' },
     ),
+    // Trỏ `qc_requests` (lô kiểm), không phải `qc_inspections` (lần kiểm) — dòng mà
+    // `completeIqcAfterSupplierReturn` `UPDATE status = COMPLETED` là request, attempt append-only
+    // không update được.
     iqcId: uuid('iqc_id'),
     // Luôn 'INCOMING' khi `iqcId` có giá trị — phiếu trả NCC chỉ sinh từ nhánh IQC
     // (`IqcService.confirmIqc` → `createFromIqcDisposition`), không bao giờ từ nhánh OUTGOING. Cột
     // + CHECK + composite FK bên dưới là cách duy nhất giữ lại ràng buộc "chỉ trỏ được vào phiếu
     // IQC" sau khi IQC/OQC gộp một bảng (`docs/decisions/qc-single-table.md`) — không có cột này,
-    // `iqcId` trỏ được vào bất kỳ dòng `quality_inspections` nào, kể cả OQC. Nullable (không
-    // `NOT NULL`) dù luôn được set ở INSERT (default) — composite FK `ON DELETE SET NULL` set cả
-    // hai cột về NULL cùng lúc khi dòng QC bị xoá, `NOT NULL` sẽ vi phạm ngay lúc đó.
+    // `iqcId` trỏ được vào bất kỳ dòng `qc_requests` nào, kể cả OQC. Nullable (không `NOT NULL`) dù
+    // luôn được set ở INSERT (default) — composite FK `ON DELETE SET NULL` set cả hai cột về NULL
+    // cùng lúc khi dòng QC bị xoá, `NOT NULL` sẽ vi phạm ngay lúc đó.
     qcKind: qcKindEnum('qc_kind').default(QcKind.INCOMING),
+    // Trỏ đúng lần kiểm (`qc_inspections`) đã ra quyết định SORT/RETURN sinh ra phiếu này — trả lời
+    // được "phiếu trả NCC này sinh từ lần kiểm thứ mấy" khi 1 request có nhiều attempt. Nullable
+    // cùng lý do `iqcId`; không có CHECK riêng vì composite FK bên dưới đã ràng buộc `kind` qua cột
+    // `qcKind` dùng chung.
+    qcInspectionId: uuid('qc_inspection_id'),
     returnDate: date('return_date', { mode: 'date' }).notNull(),
     status: inventoryDocumentStatusEnum('status')
       .notNull()
@@ -107,6 +112,7 @@ export const supplierReturns = pgTable(
       table.outsourcingReceiptId,
     ),
     index('idx_supplier_returns_iqc_id').on(table.iqcId),
+    index('idx_supplier_returns_qc_inspection_id').on(table.qcInspectionId),
     index('idx_supplier_returns_status').on(table.status),
     index('idx_supplier_returns_return_date').on(table.returnDate),
     index('idx_supplier_returns_created_by').on(table.createdBy),
@@ -121,8 +127,13 @@ export const supplierReturns = pgTable(
     ),
     foreignKey({
       columns: [table.iqcId, table.qcKind],
-      foreignColumns: [qualityInspections.id, qualityInspections.kind],
+      foreignColumns: [qcRequests.id, qcRequests.kind],
       name: 'fk_supplier_returns_iqc_id_qc_kind',
+    }).onDelete('set null'),
+    foreignKey({
+      columns: [table.qcInspectionId, table.qcKind],
+      foreignColumns: [qcInspections.id, qcInspections.kind],
+      name: 'fk_supplier_returns_qc_inspection_id_qc_kind',
     }).onDelete('set null'),
   ],
 );
@@ -154,9 +165,13 @@ export const supplierReturnsRelations = relations(
       fields: [supplierReturns.outsourcingReceiptId],
       references: [outsourcingReceipts.id],
     }),
-    iqc: one(qualityInspections, {
+    iqc: one(qcRequests, {
       fields: [supplierReturns.iqcId],
-      references: [qualityInspections.id],
+      references: [qcRequests.id],
+    }),
+    qcInspection: one(qcInspections, {
+      fields: [supplierReturns.qcInspectionId],
+      references: [qcInspections.id],
     }),
     creatorBy: one(users, {
       fields: [supplierReturns.createdBy],

@@ -37,8 +37,8 @@ export const warehouseStatusEnum = pgEnum('warehouse_status', [
   WarehouseStatus.INACTIVE,
 ]);
 
-/** Danh mục kho — không soft delete: một kho ngừng dùng chuyển `status = INACTIVE`, cùng khuôn
- * `items` (`docs/domains/inventory.md`). */
+/** Danh mục kho — không soft delete: một kho ngừng dùng chuyển `status = INACTIVE`, không có
+ * `deletedAt` (`docs/domains/inventory.md`). */
 export const warehouses = pgTable(
   'warehouses',
   {

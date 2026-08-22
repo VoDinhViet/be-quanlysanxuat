@@ -18,6 +18,10 @@ import {
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
+import {
+  DocumentType,
+  generateDocumentSequences,
+} from '../../common/utils/document-sequence.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
@@ -951,19 +955,19 @@ export class ProductionJobsService {
     }
   }
 
-  /** Khuôn `ProductionOrdersService.generateProductionOrderCode` — cùng giới hạn TOCTOU, unique
-   * constraint trên `code` là chốt chặn thật. */
   private async generateJobCodes(
     tx: DbTransaction,
     howMany: number,
   ): Promise<string[]> {
-    const [totalRows] = await tx
-      .select({ total: count() })
-      .from(productionJobs);
-    const start = (totalRows?.total ?? 0) + 1;
-    return Array.from(
-      { length: howMany },
-      (_, index) => `JOB${String(start + index).padStart(4, '0')}`,
+    const sequences = await generateDocumentSequences(
+      tx,
+      DocumentType.PRODUCTION_JOB,
+      0,
+      howMany,
+    );
+
+    return sequences.map(
+      (sequence) => `JOB${String(sequence).padStart(4, '0')}`,
     );
   }
 }

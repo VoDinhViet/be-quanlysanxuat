@@ -17,6 +17,10 @@ import {
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
+import {
+  DocumentType,
+  generateDocumentSequence,
+} from '../../common/utils/document-sequence.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import {
   type PermissionCode,
@@ -65,6 +69,7 @@ export class UsersService {
     // credential, không suy từ role, nên đổi role của tài khoản không tự ý làm nó hiện/ẩn lại.
     // `isNull` bắt buộc vì `LEFT JOIN credentials` để NULL khi user chưa có credential nào.
     const baseFilter = and(
+      isNull(users.deletedAt),
       keyword
         ? or(ilike(users.fullName, keyword), ilike(users.code, keyword))
         : undefined,
@@ -202,9 +207,8 @@ export class UsersService {
       ]);
     }
 
-    const code = await this.generateUserCode();
-
     await this.db.transaction(async (tx) => {
+      const code = await this.generateUserCode(tx);
       const [user] = await tx
         .insert(users)
         .values({
@@ -637,8 +641,9 @@ export class UsersService {
     }
   }
 
-  private async generateUserCode(): Promise<string> {
-    const [totalRows] = await this.db.select({ total: count() }).from(users);
-    return `NV${String((totalRows?.total ?? 0) + 1).padStart(4, '0')}`;
+  private async generateUserCode(tx: DbTransaction): Promise<string> {
+    const sequence = await generateDocumentSequence(tx, DocumentType.USER);
+
+    return `NV${String(sequence).padStart(4, '0')}`;
   }
 }

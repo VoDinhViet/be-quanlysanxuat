@@ -14,10 +14,14 @@ import {
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
+import {
+  DocumentType,
+  generateDocumentSequence,
+} from '../../common/utils/document-sequence.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
-import type { Database } from '../../database/database.type';
+import type { Database, DbTransaction } from '../../database/database.type';
 import {
   clientContacts,
   clientGroups,
@@ -158,13 +162,6 @@ export class ClientsService {
     reqDto: CreateClientReqDto,
     userId: string,
   ): Promise<void> {
-    let code = reqDto.code;
-    if (code) {
-      await this.validateCodeUniqueness(code);
-    } else {
-      code = await this.generateClientCode();
-    }
-
     if (reqDto.taxCode) {
       await this.validateTaxCodeUniqueness(reqDto.taxCode);
     }
@@ -174,15 +171,20 @@ export class ClientsService {
     // the DTO spreads straight onto the row.
     const { contacts, ...clientFields } = reqDto;
 
-    const [client] = await this.db
-      .insert(clients)
-      .values({
-        ...clientFields,
-        code,
-        status: reqDto.status ?? ClientStatus.ACTIVE,
-        createdBy: userId,
-      })
-      .returning();
+    const client = await this.db.transaction(async (tx) => {
+      const code = await this.generateClientCode(tx);
+      const [row] = await tx
+        .insert(clients)
+        .values({
+          ...clientFields,
+          code,
+          status: reqDto.status ?? ClientStatus.ACTIVE,
+          createdBy: userId,
+        })
+        .returning();
+
+      return row;
+    });
 
     if (contacts?.length) {
       await this.replaceContacts(client.id, contacts);
@@ -309,8 +311,9 @@ export class ClientsService {
     }
   }
 
-  private async generateClientCode(): Promise<string> {
-    const [totalRows] = await this.db.select({ total: count() }).from(clients);
-    return `KH${String((totalRows?.total ?? 0) + 1).padStart(4, '0')}`;
+  private async generateClientCode(tx: DbTransaction): Promise<string> {
+    const sequence = await generateDocumentSequence(tx, DocumentType.CLIENT);
+
+    return `KH${String(sequence).padStart(4, '0')}`;
   }
 }

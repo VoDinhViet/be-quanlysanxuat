@@ -1,6 +1,7 @@
 import { relations, sql } from 'drizzle-orm';
 import {
   check,
+  index,
   numeric,
   pgTable,
   timestamp,
@@ -54,7 +55,15 @@ export const inventoryBalances = pgTable(
       table.warehouseId,
       table.itemId,
     ),
+    // Đứng riêng ngoài composite unique — `inventory.service.ts`/`item-stock.query.ts` đều
+    // `GROUP BY itemId` không kèm `warehouseId`, cột dẫn đầu của composite index không phủ được
+    // truy vấn đó.
+    index('idx_inventory_balances_item_id').on(table.itemId),
     check('chk_inventory_balances_quantity_non_negative', sql`quantity >= 0`),
+    check(
+      'chk_inventory_balances_reserved_quantity_non_negative',
+      sql`reserved_quantity >= 0`,
+    ),
   ],
 );
 
@@ -71,3 +80,5 @@ export const inventoryBalancesRelations = relations(
     }),
   }),
 );
+
+export type InventoryBalanceSelect = typeof inventoryBalances.$inferSelect;

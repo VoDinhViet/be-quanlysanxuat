@@ -78,3 +78,6 @@ export const inventoryReceiptItemsRelations = relations(
     }),
   }),
 );
+
+export type InventoryReceiptItemSelect =
+  typeof inventoryReceiptItems.$inferSelect;

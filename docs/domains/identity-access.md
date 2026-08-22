@@ -31,13 +31,16 @@ chọn: một user chưa có credential vẫn hợp lệ (nhưng không gán rol
 
 ## Lifecycle
 
-`credentials` **không có** cột trạng thái — cố ý. Trạng thái duy nhất của domain là `users.status`:
+Trạng thái nhân sự chính của domain là `users.status`:
 
 ```
 WORKING (mặc định) ──> RESIGNED
 ```
 
-Cổng chặn: chỉ khi user liên kết ở `RESIGNED` thì login/refresh mới bị từ chối (`E018`). Không có trạng thái `INACTIVE`.
+Cổng chặn login/refresh có **hai lớp độc lập, không liên thông nhau**: (1) user liên kết ở
+`RESIGNED` (`E018`), và (2) `credentials.credentialEnabled = false` (`auth.service.ts` — cùng
+`E018`, kiểm tra riêng, không suy ra từ `users.status`). Không có trạng thái `INACTIVE` trên
+`users`.
 
 **Thu hồi quyền là lười, không tức thời.** Đặt `status = RESIGNED` **không** giết token đang sống — access token vẫn dùng được tới khi hết hạn (mặc định 7 ngày). Chặn chỉ xảy ra ở lần login/refresh kế tiếp.
 
@@ -91,7 +94,11 @@ Hai điều **không** phải invariant dù trông có vẻ:
 2. **Tưởng `@Permissions` trên route `@ApiPublic` có tác dụng.** Không — cả hai guard `return true` trước khi đọc metadata quyền. Khoảng 8 route (`clients`, `suppliers`, `operations`) đang xếp chồng như vậy và **hoàn toàn không xác thực**. Muốn siết thì phải bỏ `@ApiPublic()`, và đó là breaking change với client đang gọi. (`items`/`boms` từng nằm trong nhóm này — đã chuyển hết sang `@ApiAuth()` khi `products`/`materials` gộp thành `items`, vì gộp bảng kéo theo field vật tư như `supplierId`/`minStock` vốn trước đó phải đăng nhập mới xem được, xem `docs/decisions/items-merge.md`.)
 3. **Thêm permission mới mà chỉ sửa một chỗ.** Cần đủ ba: thêm vào `PERMISSION_CODES`, gắn `@Permissions()` lên route, và cấp cho role trong `credentials.seed.ts`. Tệ hơn: **chạy lại seed không cập nhật role đã tồn tại** — hàm seed thoát sớm nếu thấy mã role đã có, nên môi trường cũ phải `UPDATE` tay.
 4. **Quên invalidate cache khi đổi phân quyền.** Quyền được cache Redis hai tầng, TTL 5 phút. `invalidateRole()` hiện **không được gọi ở đâu** (an toàn vì chưa có đường sửa role) — nếu sau này thêm chức năng sửa role mà quên gọi, quyền cũ còn hiệu lực tới 5 phút.
-5. **Tưởng `users` có lọc xoá mềm.** Cột `users.deletedAt` tồn tại nhưng **không nơi nào đọc** — user đã "xoá" vẫn hiện trong `GET /users` và vẫn gán được. (`roles.deletedAt` thì có lọc thật.)
+5. **`users.deletedAt` từng lọc không nhất quán, đã sửa.** `GET /users` (danh sách) thiếu
+   `isNull(users.deletedAt)` trong `baseFilter` — chỉ `UsersService.getUserDepartmentId`/
+   `InventoryIssuesService` lọc đúng, danh sách thì không, vi phạm `.claude/rules/database.md`
+   (MUST filter mọi read). Đã thêm vào `baseFilter` — nay lọc đủ và nhất quán ở mọi read-site, cùng
+   khuôn `roles.deletedAt`.
 6. **Tưởng `GET /users` cần quyền đọc.** Nó gác bằng `users:update` — không hề có mã `users:read` hay `users:delete`.
 7. **Tưởng dữ liệu cơ cấu tổ chức được bảo vệ.** `GET /departments` và `GET /positions` là public hoàn toàn.
 8. **Tưởng `users` có cột `email` riêng.** Không còn — `users` từng có `email` (hồ sơ nhân sự) song

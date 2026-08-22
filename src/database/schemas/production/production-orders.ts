@@ -1,6 +1,7 @@
 import { relations, sql } from 'drizzle-orm';
 import {
   check,
+  index,
   pgEnum,
   pgTable,
   timestamp,
@@ -71,7 +72,9 @@ export const productionOrders = pgTable(
       .notNull()
       .$onUpdate(() => new Date()),
   },
-  () => [
+  (table) => [
+    index('idx_production_orders_approved_by').on(table.approvedBy),
+    index('idx_production_orders_created_by').on(table.createdBy),
     check(
       'chk_production_orders_status_fields',
       sql`(status = 'PENDING' AND code IS NULL AND approved_at IS NULL)
@@ -100,3 +103,5 @@ export const productionOrdersRelations = relations(
     logs: many(productionOrderLogs),
   }),
 );
+
+export type ProductionOrderSelect = typeof productionOrders.$inferSelect;

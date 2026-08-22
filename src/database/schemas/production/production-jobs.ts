@@ -47,9 +47,9 @@ export const productionJobStatusEnum = pgEnum('production_job_status', [
  * (chốt LSX sang `APPROVED`) thay vì phát hành — xem `docs/domains/production.md`.
  *
  * Rules:
- * - `status` thêm 2026-07-30 — vòng đời ở mức Job, vẫn chưa chia tiến độ theo công đoạn dù
- *   `createJobs` đã snapshot công đoạn (`productionJobOperations`) + vật tư (`productionJobIssues`),
- *   xem `docs/domains/production.md`.
+ * - `status` thêm 2026-07-30 — vòng đời ở mức Job; tiến độ **theo từng công đoạn** đọc riêng qua
+ *   `productionJobOperations.completedQuantity`/`completedDate` (`docs/domains/production.md`),
+ *   `createJobs` đã snapshot công đoạn (`productionJobOperations`) + vật tư (`productionJobIssues`).
  * - `producedQty`/`rejectedQty` (báo sản lượng cộng dồn) và `completedBy`/`completedAt`/
  *   `cancelledBy`/`cancelledAt`/`cancelReason` đều đã xoá — Job hiện không còn cách nào qua API để
  *   ghi nhận sản lượng đạt/phế, chỉ còn `start` chuyển `PENDING → IN_PROGRESS`. Tạm hoãn, xem
@@ -94,10 +94,12 @@ export const productionJobs = pgTable(
     ),
     index('idx_production_jobs_item_id').on(table.itemId),
     index('idx_production_jobs_status').on(table.status),
+    index('idx_production_jobs_started_by').on(table.startedBy),
     check('chk_production_jobs_quantity', sql`quantity > 0`),
     check(
       'chk_production_jobs_status_fields',
-      sql`status <> 'PENDING' OR started_at IS NULL`,
+      sql`(status = 'PENDING' AND started_at IS NULL)
+          OR (status = 'IN_PROGRESS' AND started_at IS NOT NULL)`,
     ),
   ],
 );

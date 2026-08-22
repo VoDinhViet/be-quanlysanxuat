@@ -12,8 +12,8 @@ import { users } from './identity-access/users';
 
 /** Which lane a công đoạn (operation) runs in: `INHOUSE` is performed on the factory floor,
  * `OUTSOURCE` is sent to a supplier (gia công ngoài) — the master flag the "Gia công ngoài"
- * screen filters on (`GET /operations?type=OUTSOURCE`). A routing step defaults to this value
- * but may override it per step. */
+ * screen filters on (`GET /operations?type=OUTSOURCE`). No routing/BOM step overrides this value —
+ * `routing_operations`/`bom_operations` don't carry their own `type` column. */
 export enum OperationType {
   INHOUSE = 'INHOUSE',
   OUTSOURCE = 'OUTSOURCE',
@@ -35,9 +35,10 @@ export const operationStatusEnum = pgEnum('operation_status', [
 ]);
 
 /** Master data for công đoạn (production operations/steps), e.g. Cắt laser, Hàn, Sơn tĩnh điện.
- * Referenced by routing (`routing_steps`, keyed by a root product OR a specific BOM node) to
- * sequence the steps a product/node goes through. Soft-deleted, not hard-deleted, because routing
- * holds a foreign key to a row here. */
+ * Referenced by `routing_operations` (Cấp 0, keyed by the root item) and `bom_operations` (keyed
+ * by a specific WIP BOM node) to sequence the steps an item/node goes through. Soft-deleted, not
+ * hard-deleted — both referencing tables use `onDelete: 'restrict'`, and there is no delete route
+ * for this table anyway (`.claude/rules/database.md`). */
 export const operations = pgTable(
   'operations',
   {
@@ -59,7 +60,11 @@ export const operations = pgTable(
       .$onUpdate(() => new Date()),
     deletedAt: timestamp('deleted_at'),
   },
-  (table) => [index('idx_operations_created_by').on(table.createdBy)],
+  (table) => [
+    index('idx_operations_created_by').on(table.createdBy),
+    index('idx_operations_type').on(table.type),
+    index('idx_operations_status').on(table.status),
+  ],
 );
 
 export const operationsRelations = relations(operations, ({ one }) => ({

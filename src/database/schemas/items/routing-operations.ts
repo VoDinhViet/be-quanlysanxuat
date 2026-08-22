@@ -69,3 +69,5 @@ export const routingOperationsRelations = relations(
     }),
   }),
 );
+
+export type RoutingOperationSelect = typeof routingOperations.$inferSelect;

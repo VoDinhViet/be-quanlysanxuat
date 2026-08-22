@@ -32,12 +32,6 @@ export class CreateSupplierReqDto {
   @StringField({ description: 'Address', maxLength: 500 })
   address!: string;
 
-  @StringFieldOptional({
-    description: 'Supplier code; auto-generated if omitted',
-    maxLength: 50,
-  })
-  code?: string;
-
   @EmailFieldOptional({ description: 'Email', nullable: true })
   email?: string | null;
 

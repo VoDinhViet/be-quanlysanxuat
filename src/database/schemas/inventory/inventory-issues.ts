@@ -35,8 +35,8 @@ export const inventoryIssueTypeEnum = pgEnum('inventory_issue_type', [
 ]);
 
 /**
- * Phiếu xuất kho — header, cùng vòng đời với `inventory_receipts`
- * (`docs/domains/inventory.md`).
+ * Phiếu xuất kho — header, cùng khuôn `inventory_receipts` (status/postedBy/postedAt/createdBy)
+ * nhưng vòng đời ngắn hơn — chỉ 3 trạng thái, không có nhánh IQC (`docs/domains/inventory.md`).
  */
 export const inventoryIssues = pgTable(
   'inventory_issues',
@@ -92,6 +92,8 @@ export const inventoryIssues = pgTable(
     index('idx_inventory_issues_production_job_id').on(table.productionJobId),
     index('idx_inventory_issues_department_id').on(table.departmentId),
     index('idx_inventory_issues_created_by').on(table.createdBy),
+    index('idx_inventory_issues_requested_by').on(table.requestedBy),
+    index('idx_inventory_issues_posted_by').on(table.postedBy),
   ],
 );
 
@@ -129,3 +131,5 @@ export const inventoryIssuesRelations = relations(
     items: many(inventoryIssueItems),
   }),
 );
+
+export type InventoryIssueSelect = typeof inventoryIssues.$inferSelect;

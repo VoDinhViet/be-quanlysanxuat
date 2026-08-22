@@ -6,7 +6,6 @@ import {
   numeric,
   pgTable,
   timestamp,
-  unique,
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core';
@@ -23,6 +22,12 @@ import { productionJobs } from '../production/production-jobs';
  * `operationCode`/`operationName`/...) lấy từ popup `GET .../outsourceable-operations`, server
  * không resolve/validate lại — chỉ FK + `.notNull()` ràng buộc
  * (`docs/decisions/outsourcing-no-draft.md`). Xem `docs/workflows/outsourcing-round-trip.md`.
+ *
+ * Không unique trên `(outsourcingOrderId, productionJobOperationId)` (từng có, đã bỏ) — gửi cùng
+ * một công đoạn ở nhiều phiếu OS-OUT khác nhau qua nhiều đợt là luồng thật (`sentQuantity` cộng
+ * dồn qua mọi phiếu, so với `plannedQuantity`, xem popup `outsourceable-operations`); ép unique
+ * trong cùng một phiếu không có ErrorCode/doc nào đòi hỏi, và tự mất hiệu lực khi `production_job_operations`
+ * bị hard-delete (`productionJobOperationId` về NULL, Postgres coi NULL là distinct).
  */
 export const outsourcingOrderItems = pgTable(
   'outsourcing_order_items',
@@ -80,10 +85,6 @@ export const outsourcingOrderItems = pgTable(
       table.productionJobOperationId,
     ),
     index('idx_outsourcing_order_items_operation_id').on(table.operationId),
-    unique('uq_outsourcing_order_items_order_operation').on(
-      table.outsourcingOrderId,
-      table.productionJobOperationId,
-    ),
     check('chk_outsourcing_order_items_quantity_positive', sql`quantity > 0`),
     check(
       'chk_outsourcing_order_items_weight',

@@ -43,6 +43,9 @@ import { productionJobs } from './production-jobs';
  * - `imageFileId` copy thẳng ảnh item lúc duyệt, cùng lý lẽ `productionJobIssues.imageFileId` —
  *   `files` là registry ghi-một-lần nên giữ dạng liên kết sống (`set null` khi bị xoá) là an toàn,
  *   khác `itemId`/`code`/`name` vốn phải đóng băng.
+ * - Không `updatedAt` — append-only lúc `copyBomTree` sinh cây, chưa có route ghi nào khác (kể cả
+ *   `completedQuantity`/`completedDate` sửa được đều nằm trên `production_job_operations`, không
+ *   phải bảng này).
  */
 export const productionJobBomItems = pgTable(
   'production_job_bom_items',

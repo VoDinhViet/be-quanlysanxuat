@@ -1,9 +1,13 @@
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
-import { and, count, desc, eq, exists, gte, lt, or, sql } from 'drizzle-orm';
+import { and, count, desc, eq, exists, or, sql } from 'drizzle-orm';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
+import {
+  DocumentType,
+  generateDocumentSequence,
+} from '../../common/utils/document-sequence.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
@@ -16,7 +20,7 @@ import {
   items,
   purchaseOrders,
   QcKind,
-  qualityInspections,
+  qcRequests,
   supplierReturns,
   type SupplierReturnSelect,
 } from '../../database/schemas';
@@ -54,12 +58,12 @@ export class SupplierReturnsService {
         ? exists(
             this.db
               .select({ one: sql`1` })
-              .from(qualityInspections)
+              .from(qcRequests)
               .where(
                 and(
-                  eq(qualityInspections.kind, QcKind.INCOMING),
-                  eq(qualityInspections.id, supplierReturns.iqcId),
-                  unaccentILike(qualityInspections.code, `%${reqDto.iqcCode}%`),
+                  eq(qcRequests.kind, QcKind.INCOMING),
+                  eq(qcRequests.id, supplierReturns.iqcId),
+                  unaccentILike(qcRequests.code, `%${reqDto.iqcCode}%`),
                 ),
               ),
           )
@@ -170,6 +174,7 @@ export class SupplierReturnsService {
     tx: DbTransaction,
     params: {
       iqcId: string;
+      qcInspectionId: string;
       warehouseId: string | null;
       supplierId: string;
       itemId: string;
@@ -193,6 +198,7 @@ export class SupplierReturnsService {
       inventoryReceiptId: params.inventoryReceiptId,
       outsourcingReceiptId: params.outsourcingReceiptId,
       iqcId: params.iqcId,
+      qcInspectionId: params.qcInspectionId,
       returnDate: params.returnDate,
       status: InventoryDocumentStatus.DRAFT,
       createdBy: params.userId,
@@ -308,17 +314,12 @@ export class SupplierReturnsService {
     returnDate: Date,
   ): Promise<string> {
     const year = returnDate.getFullYear();
-    const yearStart = new Date(year, 0, 1);
-    const yearEnd = new Date(year + 1, 0, 1);
-    const [totalRows] = await tx
-      .select({ total: count() })
-      .from(supplierReturns)
-      .where(
-        and(
-          gte(supplierReturns.returnDate, yearStart),
-          lt(supplierReturns.returnDate, yearEnd),
-        ),
-      );
-    return `PTNCC-${year}-${String((totalRows?.total ?? 0) + 1).padStart(5, '0')}`;
+    const sequence = await generateDocumentSequence(
+      tx,
+      DocumentType.SUPPLIER_RETURN,
+      year,
+    );
+
+    return `PTNCC-${year}-${String(sequence).padStart(5, '0')}`;
   }
 }

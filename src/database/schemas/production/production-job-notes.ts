@@ -29,6 +29,7 @@ export const productionJobNotes = pgTable(
     index('idx_production_job_notes_production_job_id').on(
       table.productionJobId,
     ),
+    index('idx_production_job_notes_created_by').on(table.createdBy),
   ],
 );
 
@@ -45,3 +46,5 @@ export const productionJobNotesRelations = relations(
     }),
   }),
 );
+
+export type ProductionJobNoteSelect = typeof productionJobNotes.$inferSelect;

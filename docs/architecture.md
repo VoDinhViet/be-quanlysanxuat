@@ -288,18 +288,27 @@ Những sự thật này không nằm trọn trong một `docs/domains/<x>.md` n
   ...) trỏ `users.id`, không phải `credentials.id` (đảo lại 2026-08-01 — `orders.assignedUserId`
   từng là ngoại lệ duy nhất, giờ mọi cột audit dùng chung một quy ước). Xem
   `docs/domains/identity-access.md`.
-- **Mã chứng từ tự sinh của 11 loại chứng từ** (`items` VT/SP, `purchase_requests` PR-, OQC- và IQC-
-  (hai `documentType` khác nhau, cùng ghi vào một bảng vật lý `quality_inspections` —
+- **Mã chứng từ tự sinh của toàn bộ 20 loại chứng từ** (`items` VT/SP, `purchase_requests` PR-, OQC-
+  và IQC- (hai `documentType` khác nhau, cùng ghi vào một bảng vật lý `qc_requests` —
   `docs/decisions/qc-single-table.md`), `inventory_receipts` PNK-, `inventory_issues` PXK-,
   `purchase_quotations` RFQ-, `purchase_orders` PO-, `warehouses` WH, `outsourcing_orders` OS-OUT-,
-  `outsourcing_receipts` OS-IN-) đọc số qua bảng đếm dùng chung `document_sequences` —
+  `outsourcing_receipts` OS-IN-, `orders` SO, `production_orders` LSX, `production_jobs` JOB,
+  `outbound_orders` DO-, `supplier_returns` PTNCC-, `payment_requests` YCTT-, `clients` KH,
+  `suppliers` NCC, `users` NV) đọc số qua bảng đếm dùng chung `document_sequences` —
   `generateDocumentSequence(s)` (`src/common/utils/document-sequence.util.ts`), 1 câu
   `INSERT ... ON CONFLICT DO UPDATE ... RETURNING` atomic theo `(documentType, year)`, không tự
   `MAX`/`COUNT` riêng từng bảng nữa. Bắt buộc gọi trong transaction của chính lượt tạo chứng từ.
-  Số còn lại **chưa** chuyển, vẫn đếm-rồi-cộng trên chính bảng (mã có thể trùng khi chạy song song,
-  unique constraint là chốt chặn thật): `orders` SO, `production_orders` LSX, `production_jobs` JOB,
-  `outbound_orders` DO-, `supplier_returns` PTNCC-, `payment_requests` YCTT-, `clients` KH,
-  `suppliers` NCC, `users` NV.
+  `outbound_orders` mượn cột `year` làm khoá reset-theo-ngày, encode nguyên YYMMDD thay vì năm thật
+  (tên cột không đổi vì dùng chung schema). `clients`/`orders`/`suppliers` không còn nhận `code` tay
+  từ client (đã bỏ field khỏi DTO, trước đây tuỳ chọn) — cả 9 bảng vừa chuyển atomic giờ luôn
+  auto-generate, không còn ngoại lệ nào; `warehouses`/`items` (đã atomic từ trước, ngoài phạm vi đợt
+  này) vẫn là hai bảng duy nhất trong 20 loại còn nhận `code` tay nếu gửi kèm.
+  Một môi trường **đã có dữ liệu** tạo bằng cơ chế đếm-rồi-cộng cũ (như dev sau nhiều tháng dùng)
+  phải chạy `pnpm db:seed:document-sequences-bootstrap` trước khi 9 bảng này bắt đầu sinh mã atomic
+  — nếu không, lần sinh đầu tiên sẽ lặp lại số đã dùng và vỡ unique constraint trên `code`. Seed này
+  kéo `currentValue` lên bằng mã lớn nhất hiện có (tính bằng `MAX`/`GROUP BY` trên chính cột `code`),
+  idempotent (`GREATEST`, không lùi số) nên an toàn chạy nhiều lần hoặc chạy trên môi trường đã
+  bootstrap rồi — xem `src/database/seeds/document-sequences-bootstrap.seed.ts`.
 
 ## Xem thêm
 

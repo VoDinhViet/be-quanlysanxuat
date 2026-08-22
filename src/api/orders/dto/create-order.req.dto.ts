@@ -15,12 +15,6 @@ import {
 import { OrderItemReqDto } from './order-item.req.dto';
 
 export class CreateOrderReqDto {
-  @StringFieldOptional({
-    maxLength: 50,
-    description: 'Order code; auto-generated (SOxxxx) if omitted',
-  })
-  readonly code?: string;
-
   @UUIDFieldOptional({
     nullable: true,
     description: 'Client (khách hàng) id — optional temporarily',

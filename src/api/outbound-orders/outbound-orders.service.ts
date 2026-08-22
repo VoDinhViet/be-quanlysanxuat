@@ -7,14 +7,16 @@ import {
   desc,
   eq,
   getTableColumns,
-  gte,
   inArray,
   isNull,
-  lt,
 } from 'drizzle-orm';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
+import {
+  DocumentType,
+  generateDocumentSequence,
+} from '../../common/utils/document-sequence.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
@@ -296,29 +298,23 @@ export class OutboundOrdersService {
   /** `DO-{yyMMdd}-{seq trong ngày}` — ngày lấy từ **lúc tạo phiếu** (`outboundOrders.createdAt`,
    * khớp mẫu mockup "DO-250608-001" đi cùng "Ngày tạo" 08/06), không phải `fulfillmentDate` (ngày
    * giao có thể ở tương lai) — khác `generateReceiptCode` dùng `receiptDate` vì đó là ngày nghiệp
-   * vụ của phiếu nhập, còn DO không có trường ngày nào đóng vai trò đó. */
+   * vụ của phiếu nhập, còn DO không có trường ngày nào đóng vai trò đó. `document_sequences.year`
+   * bị mượn làm khoá reset-theo-ngày ở đây — encode nguyên YYMMDD (không phải năm thật) để mỗi
+   * ngày có một dãy số atomic riêng, tên cột không đổi vì dùng chung schema với mọi loại chứng từ
+   * khác. */
   private async generateOutboundOrderCode(tx: DbTransaction): Promise<string> {
     const now = new Date();
-    const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const nextDayStart = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      now.getDate() + 1,
-    );
     const yy = String(now.getFullYear() % 100).padStart(2, '0');
     const mm = String(now.getMonth() + 1).padStart(2, '0');
     const dd = String(now.getDate()).padStart(2, '0');
+    const dayKey = Number(`${yy}${mm}${dd}`);
 
-    const [totalRows] = await tx
-      .select({ total: count() })
-      .from(outboundOrders)
-      .where(
-        and(
-          gte(outboundOrders.createdAt, dayStart),
-          lt(outboundOrders.createdAt, nextDayStart),
-        ),
-      );
+    const sequence = await generateDocumentSequence(
+      tx,
+      DocumentType.OUTBOUND_ORDER,
+      dayKey,
+    );
 
-    return `DO-${yy}${mm}${dd}-${String((totalRows?.total ?? 0) + 1).padStart(3, '0')}`;
+    return `DO-${yy}${mm}${dd}-${String(sequence).padStart(3, '0')}`;
   }
 }

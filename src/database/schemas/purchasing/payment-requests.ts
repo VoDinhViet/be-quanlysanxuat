@@ -1,5 +1,6 @@
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 import {
+  check,
   date,
   index,
   numeric,
@@ -73,6 +74,12 @@ export const paymentRequests = pgTable(
   (table) => [
     index('idx_payment_requests_status').on(table.status),
     index('idx_payment_requests_created_by').on(table.createdBy),
+    index('idx_payment_requests_paid_by').on(table.paidBy),
+    index('idx_payment_requests_cancelled_by').on(table.cancelledBy),
+    check(
+      'chk_payment_requests_request_value_non_negative',
+      sql`request_value >= 0`,
+    ),
   ],
 );
 

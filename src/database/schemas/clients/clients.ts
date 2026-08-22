@@ -67,3 +67,5 @@ export const clientsRelations = relations(clients, ({ one, many }) => ({
   }),
   contacts: many(clientContacts),
 }));
+
+export type ClientSelect = typeof clients.$inferSelect;

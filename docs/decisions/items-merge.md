@@ -12,7 +12,8 @@
   `inventory_transactions`, `inventory_receipt_items`, `inventory_issue_items`,
   `production_job_bom_items`) co lại còn một `itemId` — 4 bảng kho drop hẳn cột `itemType`, chỉ
   `production_job_bom_items` (snapshot đóng băng) giữ `itemType` vì nó thật sự cần phân biệt
-  WIP/RM ở dữ liệu đã đóng băng.
+  loại node ở dữ liệu đã đóng băng — **cả 3 giá trị `FG`/`WIP`/`RM`**, không chỉ WIP/RM: mỗi Job có
+  thêm đúng một node `itemType = 'FG'` cho bước lắp ráp Cấp 0 (`docs/decisions/oqc-per-operation.md`).
 - **`product_operations` (routing Cấp 0) đổi thành cặp header/detail `routings` +
   `routing_operations`**, cùng khuôn `boms`/`bom_items` — trước đó là bảng phẳng, không có header.
   Route API không đổi (`/items/:itemId/operations`), chỉ tầng lưu trữ đổi.

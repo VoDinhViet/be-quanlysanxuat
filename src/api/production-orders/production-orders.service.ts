@@ -16,6 +16,10 @@ import {
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
+import {
+  DocumentType,
+  generateDocumentSequence,
+} from '../../common/utils/document-sequence.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
@@ -337,11 +341,12 @@ export class ProductionOrdersService {
   private async generateProductionOrderCode(
     tx: DbTransaction,
   ): Promise<string> {
-    const [totalRows] = await tx
-      .select({ total: count() })
-      .from(productionOrders)
-      .where(eq(productionOrders.status, ProductionOrderStatus.APPROVED));
-    return `LSX${String((totalRows?.total ?? 0) + 1).padStart(4, '0')}`;
+    const sequence = await generateDocumentSequence(
+      tx,
+      DocumentType.PRODUCTION_ORDER,
+    );
+
+    return `LSX${String(sequence).padStart(4, '0')}`;
   }
 
   /** Đề xuất SX ban đầu cho mọi dòng NORMAL của một PO, tại thời điểm duyệt — công thức ở

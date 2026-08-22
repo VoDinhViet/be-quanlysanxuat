@@ -20,15 +20,15 @@ không qua RFQ (đợt sau), nhưng đã có `confirm`/`cancel` chuyển trạng
 giá chưa `CANCELLED`, một lần/vật tư — không nhân theo số NCC được hỏi, xem "quantity sống ở tầng
 vật tư" bên dưới) và `orderedQuantity` (Σ `quantity` mọi đơn mua đã `ORDERED`, không đếm `DRAFT`) —
 từ khi có `POST /purchase-orders/:id/confirm`, `orderedQuantity` lên số thật sau khi PO được xác
-nhận đặt hàng. `status` hiện tại là
-**bản rút gọn 4 giá trị** của riêng API này (`WAITING_TO_PURCHASE`/`QUOTING`/`ORDERED`/`COMPLETED`,
-xem `PurchaseLedgerService`) — **khác** bộ 7 giá trị đầy đủ mô tả ở "Bảy trạng thái" dưới đây, vẫn là
-**thiết kế đích** cho khi RFQ/PO đủ route (không dùng cho response hiện tại). `COMPLETED` cần
-`receivedQuantity` (nối qua `inventory_receipt_items.purchaseOrderItemId`, phiếu `POSTED`) —
-`inventory-receipts` đã có route ghi cột này khi tạo/sửa phiếu (`purchaseOrderId`/
-`purchaseOrderItemId`, validate PO phải `ORDERED`), nên `COMPLETED` xuất hiện thật khi đã nhập đủ.
-Không trả tồn kho (`onHand`/`bomDemand`/`available`/`fromStock`) hay
-`remainingQuantity`/`pendingPurchaseSince`.
+nhận đặt hàng. `status` là **đúng 4 giá trị đã ship** (`WAITING_TO_PURCHASE`/`QUOTING`/`ORDERED`/
+`COMPLETED`, xem "Bốn trạng thái" dưới đây, tính trong `PurchaseLedgerService`) — bản thiết kế đầu
+có thêm `CANCELLED`/`RECEIVING`/`PURCHASED`/`PENDING_PURCHASE`/`QUOTED`/`NOT_QUOTED` (7 giá trị) kèm
+route `cancel`/`restore`, nhưng chưa từng được triển khai và không có kế hoạch nào đang chủ động xây
+tiếp — coi 7 giá trị đó là lịch sử, không phải trạng thái đang chờ. `COMPLETED` cần `receivedQuantity`
+(nối qua `inventory_receipt_items.purchaseOrderItemId`, phiếu `POSTED`) — `inventory-receipts` đã có
+route ghi cột này khi tạo/sửa phiếu (`purchaseOrderId`/`purchaseOrderItemId`, validate PO phải
+`ORDERED`), nên `COMPLETED` xuất hiện thật khi đã nhập đủ. Không trả tồn kho (`onHand`/`bomDemand`/
+`available`/`fromStock`) hay `remainingQuantity`/`pendingPurchaseSince`.
 
 **Cảnh báo (vd "Chưa tạo PO"/"Cần xử lý gấp") không do BE tính** — cùng nguyên tắc với highlight
 vàng/đỏ ở thiết kế đích: BE chỉ trả số thô (`orderedQuantity`, `neededDate`), FE tự so ngày lúc
@@ -98,37 +98,38 @@ sinh ra PO đó — chỉ có giá trị cho PO tự sinh từ `approve`, `null`
 cùng nguồn tính, số thô không kèm `remainingQuantity` — FE tự trừ (cùng nguyên tắc "BE trả số thô"
 ở dưới).
 
-**Bảy trạng thái của một dòng sổ cái là derived, tính trong `GET /purchase-ledger`, không lưu cột
-nào.** Đánh giá theo đúng thứ tự, dừng ở nhánh khớp đầu tiên:
+**Bốn trạng thái của một dòng sổ cái là derived, tính trong `GET /purchase-ledger`
+(`PurchaseLedgerService.buildLedgerStatus`/`buildStatusCondition`), không lưu cột nào — thiết kế ban
+đầu có 7 trạng thái kèm route `cancel`/`restore` (`CANCELLED`, `RECEIVING`, `PURCHASED`,
+`PENDING_PURCHASE`, `QUOTED`, `NOT_QUOTED`), nhưng đó chưa từng được triển khai; bản đã ship chỉ có
+4 trạng thái, không có `CANCELLED`, không có route ghi nào ở domain này (`purchase-ledger.controller.ts`
+chỉ có `@Get()`).** Đánh giá theo đúng thứ tự, dừng ở nhánh khớp đầu tiên:
 
-| # | Giá trị | Nhãn FE | Điều kiện |
-| --- | --- | --- | --- |
-| 1 | `CANCELLED` | Hủy | dòng bị hủy tay (`purchase_request_items.cancelledAt`), hoặc mọi đơn mua chứa nó đều `CANCELLED` |
-| 2 | `COMPLETED` | Hoàn tất | `orderedQuantity > 0` và `receivedQuantity >= orderedQuantity` |
-| 3 | `RECEIVING` | Đang nhận | `0 < receivedQuantity < orderedQuantity` |
-| 4 | `PURCHASED` | Đã mua | `orderedQuantity > 0`, `receivedQuantity = 0` |
-| 5 | `PENDING_PURCHASE` | Chờ mua | có dòng NCC thắng thầu (`purchase_quotation_item_suppliers.selectedAt` không null, báo giá header chưa `CANCELLED`), chưa có đơn mua sống |
-| 6 | `QUOTED` | Đã báo giá | có dòng NCC đã có `unitPrice` (`purchase_quotation_item_suppliers`, báo giá header chưa `CANCELLED`), chưa chốt |
-| 7 | `NOT_QUOTED` | Chưa báo giá | còn lại — kể cả khi báo giá đang `DRAFT`/`PENDING_APPROVAL` nhưng chưa NCC nào được nhập giá |
+| # | Giá trị (`PurchaseLedgerStatus`) | Điều kiện |
+| --- | --- | --- |
+| 1 | `COMPLETED` | `orderedQuantity > 0` và `receivedQuantity >= orderedQuantity` |
+| 2 | `ORDERED` | `orderedQuantity > 0` (còn lại, tức `receivedQuantity < orderedQuantity`) |
+| 3 | `QUOTING` | `orderedQuantity = 0` và `quotedQuantity > 0` |
+| 4 | `WAITING_TO_PURCHASE` | còn lại (`orderedQuantity = 0` và `quotedQuantity = 0`) |
 
-"Đã báo giá" (#6) nghĩa là **đã có NCC được nhập giá** (`unitPrice` có giá trị ở ít nhất một dòng
-NCC của vật tư đó), không phải "đã tạo RFQ" — RFQ mới tạo, chưa điền giá nào vẫn cho dòng ở
-`NOT_QUOTED`.
+`quotedQuantity` = Σ `quantity` mọi `purchase_quotation_item_allocations` của dòng đề xuất đó, thuộc
+báo giá header **chưa `CANCELLED`** — kể cả các dòng chưa được NCC nào nhập giá (`unitPrice`), khác
+"đã báo giá" theo nghĩa hẹp. `orderedQuantity` chỉ đếm `purchase_order_items` của PO **đã `ORDERED`**
+(PO `DRAFT` tự sinh từ duyệt RFQ chưa tính) — phần lớn dòng dừng ở `WAITING_TO_PURCHASE`/`QUOTING`
+cho tới khi PO được `confirm`.
 
-`pendingPurchaseSince` (chỉ có giá trị ở trạng thái #5) là `selectedAt` của dòng NCC đã thắng thầu —
-nguồn duy nhất của highlight vàng (< 24h)/đỏ (≥ 24h) trên FE. BE không tính/trả màu.
-
-**Bốn số lượng của một dòng sổ cái:**
+**Ba số lượng response DTO thật sự trả** (`PurchaseLedgerItemResDto`):
 
 ```
-quantity          = purchase_request_items.quantity                          (SL đề xuất, cố định)
-orderedQuantity   = Σ purchase_order_items.quantity của đơn KHÔNG CANCELLED
-receivedQuantity  = Σ inventory_receipt_items.quantity nối qua purchaseOrderItemId,
-                     CHỈ phiếu nhập POSTED
-remainingQuantity = orderedQuantity − receivedQuantity                        (không phải quantity − orderedQuantity)
+quantity        = purchase_request_items.quantity                    (SL đề xuất, cố định)
+quotedQuantity  = Σ purchase_quotation_item_allocations.quantity, báo giá header chưa CANCELLED
+orderedQuantity = Σ purchase_order_items.quantity, đơn mua ĐÃ ORDERED (không tính DRAFT/CANCELLED)
 ```
 
-Không chặn `orderedQuantity > quantity` — mua dư là hợp lệ, sổ cái không ẩn dữ liệu.
+`receivedQuantity` (Σ `inventory_receipt_items.quantity` nối qua `purchaseOrderItemId`, chỉ phiếu
+nhập `POSTED`) chỉ dùng **nội bộ** để tính `status` — không nằm trong response DTO, FE không đọc
+được số này qua route này. Không chặn `orderedQuantity > quantity` — mua dư là hợp lệ, sổ cái không
+ẩn dữ liệu.
 
 **Tồn khả dụng/tồn thực tế trên sổ cái dùng công thức chung với `inventory`/`purchase-requests`**
 (`item-stock.query.ts`, xem `docs/domains/inventory.md` khối "Bốn số khác"), nhưng qua hai subquery
@@ -188,9 +189,13 @@ từ cả `DRAFT` lẫn `ORDERED`, lý do bắt buộc, chặn nếu đã có ph
 Duyệt ĐXMH (`purchase-requests:approve`) vẫn không sinh chứng từ nào ở domain này — cả `DRAFT` báo
 giá lẫn từng bước tiếp theo đều do người mua hàng thao tác tay qua route của chính domain này.
 
-**Một dòng đề xuất** (`purchase_request_items`) hủy tay được khi **chưa có đơn mua sống** — hủy đơn
-mua chứa nó, hoặc `POST /purchase-ledger/:id/cancel`, đều lật dòng sổ cái sang `CANCELLED`; `restore`
-gỡ hủy tay (không gỡ được hủy-do-đơn-mua, phải lập đơn mua khác).
+**Một dòng đề xuất** (`purchase_request_items`) hủy/sửa/xoá tay được qua
+`PATCH`/`DELETE /purchase-requests/.../items/:purchaseRequestItemId`, chỉ khi phiếu đề xuất còn
+`DRAFT`/`REJECTED` (`docs/domains/purchase-requests.md`) — ba cột `cancelledAt`/`cancelledBy`/
+`cancellationReason` trên `purchase_request_items` **chưa có nơi nào ghi** (không route nào set
+chúng); `PurchaseQuotationsService` (kiểm tra dòng còn hợp lệ trước khi tạo báo giá) có đọc
+`isNull(cancelledAt)` nhưng luôn nhận `true`. `purchase-ledger` không có route ghi nào (chỉ `GET`)
+— không có `cancel`/`restore` ở domain này.
 
 ### Yêu cầu thanh toán
 
@@ -250,8 +255,6 @@ một phần, **không** phải công nợ/thanh toán/kế toán thật.
 - `PATCH` với `assignedUserId`/`receiptWarehouseId` kiểm tồn tại trước khi ghi — `E136` (người phụ
   trách không tồn tại), `E092`/`E094` (kho không tồn tại/không `ACTIVE`, tái dùng từ domain
   `warehouses`).
-- `POST /purchase-ledger/:id/cancel` chặn nếu dòng đã có đơn mua sống (`E126`) — muốn hủy phải hủy
-  đơn mua trước.
 - `mark-paid`/`cancel` một yêu cầu thanh toán chặn nếu không còn `PENDING` (`E158`) — cả hai chuyển
   trạng thái đều cuối, không đổi lại được.
 - Mã (`purchase_quotations.code` tiền tố `RFQ`, `purchase_orders.code` tiền tố `PO`) bất biến, unique

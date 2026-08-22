@@ -114,6 +114,7 @@ export const inventoryTransactions = pgTable(
       table.warehouseId,
       table.itemId,
     ),
+    index('idx_inventory_transactions_created_by').on(table.createdBy),
     check(
       'chk_inventory_transactions_quantity_sign',
       sql`(type IN ('RECEIPT', 'TRANSFER_IN', 'PRODUCTION_IN', 'ADJUSTMENT_IN') AND quantity > 0)
@@ -143,3 +144,6 @@ export const inventoryTransactionsRelations = relations(
     }),
   }),
 );
+
+export type InventoryTransactionSelect =
+  typeof inventoryTransactions.$inferSelect;

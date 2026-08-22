@@ -100,9 +100,11 @@ thái cuối, không có đường quay lại `DRAFT`/`REJECTED`.
   gắn với đề xuất), `available = onHand − bomDemand` (có thể âm), `fromStock = min(onHand, bomDemand)`.
   Công thức dùng chung với `InventoryReceiptsService`, sống ở
   `src/api/inventory/item-stock.query.ts` (`docs/domains/inventory.md`, khối "Bốn số khác").
-- Đề xuất lập tay (`POST /purchase-requests`): `items` tối thiểu 1 dòng (`E146`, không có route xoá
-  cả phiếu nên phiếu 0 dòng sống vĩnh viễn), không trùng `itemId` trong cùng payload (`E147`, tránh
-  nhân đôi nhu cầu trên sổ cái mua hàng), mọi dòng bắt buộc `type = RM` (`E148`).
+- Đề xuất lập tay (`POST /purchase-requests`): `items` tối thiểu 1 dòng (`E146` — `create` chặn
+  ngay từ đầu, nhưng xoá dòng lẻ **sau đó** vẫn có thể để phiếu về 0 dòng, xem `E115` ở trên; phiếu
+  0 dòng không tự mất, chỉ dọn được bằng `DELETE /purchase-requests/:purchaseRequestId` như mọi
+  phiếu `DRAFT`/`REJECTED` khác), không trùng `itemId` trong cùng payload (`E147`, tránh nhân đôi
+  nhu cầu trên sổ cái mua hàng), mọi dòng bắt buộc `type = RM` (`E148`).
 
 ## Cross-domain dependencies
 

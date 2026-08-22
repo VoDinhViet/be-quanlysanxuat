@@ -96,3 +96,6 @@ export const productionOrderItemsRelations = relations(
     }),
   }),
 );
+
+export type ProductionOrderItemSelect =
+  typeof productionOrderItems.$inferSelect;

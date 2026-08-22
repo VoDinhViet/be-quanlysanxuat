@@ -17,12 +17,6 @@ export class CreateClientReqDto {
   clientGroupId!: string;
 
   @StringFieldOptional({
-    description: 'Client code; auto-generated if omitted',
-    maxLength: 50,
-  })
-  code?: string;
-
-  @StringFieldOptional({
     description: 'Tax code (Mã số thuế)',
     nullable: true,
     maxLength: 50,

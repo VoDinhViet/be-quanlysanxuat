@@ -109,7 +109,9 @@ Soft delete): `deletedAt` vẫn là cột lọc read, chỉ không còn đườn
 
 **DB đảm bảo** (không thể lách kể cả bằng SQL tay): một BOM và một routing cho mỗi item;
 `bom_items.itemId` NOT NULL; `quantity > 0` trên `bom_items`; `production_job_bom_items.itemType`
-chỉ nhận `WIP`/`RM` (CHECK).
+chỉ nhận `FG`/`WIP`/`RM` (CHECK, cùng miền giá trị `ItemType`) — **kể cả `FG`**, vì mỗi Job có đúng
+một node Cấp 0 `itemType = 'FG'` snapshot cả bước lắp ráp cuối (`docs/decisions/oqc-per-operation.md`,
+mục "QC cho Cấp 0"), không riêng WIP/RM như cây BOM sống.
 
 **Chỉ service đảm bảo** (SQL tay lách được): node được thêm không phải FG; node RM không nhận con;
 node RM không gắn được `bom_operations`; SL nguyên nếu node là WIP; cha cùng BOM; không có chu

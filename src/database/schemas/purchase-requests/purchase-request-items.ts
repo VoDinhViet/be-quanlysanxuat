@@ -48,6 +48,7 @@ export const purchaseRequestItems = pgTable(
       table.purchaseRequestId,
     ),
     index('idx_purchase_request_items_item_id').on(table.itemId),
+    index('idx_purchase_request_items_cancelled_by').on(table.cancelledBy),
     check('chk_purchase_request_items_quantity_positive', sql`quantity > 0`),
   ],
 );
@@ -71,3 +72,6 @@ export const purchaseRequestItemsRelations = relations(
     orderItems: many(purchaseOrderItems),
   }),
 );
+
+export type PurchaseRequestItemSelect =
+  typeof purchaseRequestItems.$inferSelect;

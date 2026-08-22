@@ -39,7 +39,10 @@ import { productionJobUnits } from './production-job-units';
  *   là registry ghi-một-lần nên an toàn giữ dạng liên kết sống.
  * - Unique `(productionJobId, itemId)` giữ theo item **sống**, không theo `productionJobItemId` —
  *   hai dòng chiều khác nhau của cùng một item (hai phiên bản tên) sẽ lọt qua khoá kia, không lọt
- *   qua khoá này. "Một vật tư đúng một dòng cho mỗi Job".
+ *   qua khoá này. "Một vật tư đúng một dòng cho mỗi Job". `itemId` nullable (`set null`) về lý
+ *   thuyết làm unique mất hiệu lực nếu có ≥ 2 dòng cùng item bị NULL hoá (Postgres coi NULL là
+ *   distinct) — chấp nhận được vì `items` **không có route hard-delete** (chỉ soft-delete qua
+ *   `deletedAt`), nên nhánh `set null` trên thực tế không bao giờ chạy.
  * - Không `updatedAt` — append-only lúc sinh, chưa có route ghi nào khác.
  */
 export const productionJobIssues = pgTable(

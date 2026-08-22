@@ -11,3 +11,5 @@ export const supplierGroups = pgTable('supplier_groups', {
     .notNull()
     .$onUpdate(() => new Date()),
 });
+
+export type SupplierGroupSelect = typeof supplierGroups.$inferSelect;

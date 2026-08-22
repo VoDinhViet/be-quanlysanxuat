@@ -13,6 +13,10 @@ import {
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
+import {
+  DocumentType,
+  generateDocumentSequence,
+} from '../../common/utils/document-sequence.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
@@ -147,13 +151,6 @@ export class SuppliersService {
     reqDto: CreateSupplierReqDto,
     userId: string,
   ): Promise<SupplierResDto> {
-    let code = reqDto.code;
-    if (code) {
-      await this.validateCodeUniqueness(code);
-    } else {
-      code = await this.generateSupplierCode();
-    }
-
     await this.validateTaxCodeUniqueness(reqDto.taxCode);
     await this.ensureSupplierGroupExists(reqDto.supplierGroupId);
     if (reqDto.countryId) {
@@ -167,6 +164,7 @@ export class SuppliersService {
       reqDto;
 
     const supplierId = await this.db.transaction(async (tx) => {
+      const code = await this.generateSupplierCode(tx);
       const [supplier] = await tx
         .insert(suppliers)
         .values({
@@ -381,10 +379,9 @@ export class SuppliersService {
     }
   }
 
-  private async generateSupplierCode(): Promise<string> {
-    const [totalRows] = await this.db
-      .select({ total: drizzleCount() })
-      .from(suppliers);
-    return `NCC${String((totalRows?.total ?? 0) + 1).padStart(4, '0')}`;
+  private async generateSupplierCode(tx: DbTransaction): Promise<string> {
+    const sequence = await generateDocumentSequence(tx, DocumentType.SUPPLIER);
+
+    return `NCC${String(sequence).padStart(4, '0')}`;
   }
 }

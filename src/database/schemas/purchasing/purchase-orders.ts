@@ -88,6 +88,8 @@ export const purchaseOrders = pgTable(
     index('idx_purchase_orders_receipt_warehouse_id').on(
       table.receiptWarehouseId,
     ),
+    index('idx_purchase_orders_ordered_by').on(table.orderedBy),
+    index('idx_purchase_orders_cancelled_by').on(table.cancelledBy),
   ],
 );
 

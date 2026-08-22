@@ -17,6 +17,10 @@ import { alias } from 'drizzle-orm/pg-core';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
+import {
+  DocumentType,
+  generateDocumentSequence,
+} from '../../common/utils/document-sequence.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
@@ -325,13 +329,6 @@ export class OrdersService {
   }
 
   async createOrder(reqDto: CreateOrderReqDto, userId: string): Promise<void> {
-    let code = reqDto.code;
-    if (code) {
-      await this.validateCodeUniqueness(code);
-    } else {
-      code = await this.generateOrderCode();
-    }
-
     if (reqDto.clientId) {
       await this.ensureClientExists(reqDto.clientId);
     }
@@ -351,6 +348,7 @@ export class OrdersService {
     // Order, dòng, đính kèm và total dẫn xuất từ dòng phải vào cùng lúc — nếu không, insert dòng
     // lỗi sẽ để lại một order đã commit với `total = 0` không bao giờ được tính lại.
     await this.db.transaction(async (tx) => {
+      const code = await this.generateOrderCode(tx);
       const [order] = await tx
         .insert(orders)
         .values({
@@ -597,20 +595,10 @@ export class OrdersService {
     }
   }
 
-  private async generateOrderCode(): Promise<string> {
-    const [totalRows] = await this.db.select({ total: count() }).from(orders);
-    return `SO${String((totalRows?.total ?? 0) + 1).padStart(4, '0')}`;
-  }
+  private async generateOrderCode(tx: DbTransaction): Promise<string> {
+    const sequence = await generateDocumentSequence(tx, DocumentType.ORDER);
 
-  private async validateCodeUniqueness(code: string): Promise<void> {
-    const existing = await this.db.query.orders.findFirst({
-      columns: { id: true },
-      where: eq(orders.code, code),
-    });
-
-    if (existing) {
-      throw new AppException(ErrorCode.E058, HttpStatus.CONFLICT);
-    }
+    return `SO${String(sequence).padStart(4, '0')}`;
   }
 
   private async ensureClientExists(clientId: string): Promise<void> {

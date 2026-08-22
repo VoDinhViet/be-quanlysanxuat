@@ -66,3 +66,5 @@ export const inventoryIssueItemsRelations = relations(
     }),
   }),
 );
+
+export type InventoryIssueItemSelect = typeof inventoryIssueItems.$inferSelect;

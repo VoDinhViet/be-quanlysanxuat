@@ -50,6 +50,9 @@ export const purchaseQuotationItemSuppliers = pgTable(
     index('idx_purchase_quotation_item_suppliers_supplier_id').on(
       table.supplierId,
     ),
+    index('idx_purchase_quotation_item_suppliers_selected_by').on(
+      table.selectedBy,
+    ),
     unique('uq_purchase_quotation_item_suppliers_item_supplier').on(
       table.quotationItemId,
       table.supplierId,

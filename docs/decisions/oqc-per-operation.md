@@ -25,16 +25,17 @@ Hai phương án tầng để gắn OQC được cân nhắc:
 **Chọn phương án 1 — `oqc_inspections` gắn theo `production_job_operations`, không tạo bảng mới cho
 tầng Cấp 0.**
 
-- Thêm cột `productionJobOperationId`, **bắt buộc** (`NOT NULL`, `onDelete: 'restrict'`) — LSX một
-  khi `APPROVED` không có đường nào xoá được cây `production_job_operations`/`production_job_bom_items`
-  của nó nữa (`ensureItemsNotLockedByProduction` chặn cứng `E080` khi còn thao tác trên LSX đã
-  duyệt), nên FK không cần phòng hờ mồ côi. Ban đầu cột này nullable (`SET NULL`) để dữ liệu OQC cũ
-  (gắn thẳng Job, trước đợt đổi model) sống sót — không còn dữ liệu đó nữa nên siết lại `NOT NULL`
-  cùng lúc bỏ 4 cột snapshot bên dưới. Chi tiết: `docs/domains/quality.md`.
-- Giữ `productionJobId`, cũng đổi sang bắt buộc cùng lý do trên — denormalize từ
-  `operation.productionJobId`, dùng để lọc/join theo Job không phải qua `production_job_operations`,
-  và là neo cho 2 gate cross-domain (gate nhập kho TP, gate giao hàng — cả hai đều hỏi "Job này đã QC
-  xong hết chưa", không hỏi "công đoạn này đã QC xong chưa").
+- Thêm cột `productionJobOperationId` — **nullable**, ép bắt buộc theo `kind` bằng CHECK
+  (`chk_qc_requests_outgoing_job`, `docs/decisions/qc-single-table.md`) thay vì `NOT NULL` cứng trên
+  cột, vì `qc_requests` giờ dùng chung cho cả IQC lẫn OQC (một bảng vật lý, `kind` phân nhánh) —
+  `onDelete: 'restrict'`; LSX một khi `APPROVED` không có đường nào xoá được cây
+  `production_job_operations`/`production_job_bom_items` của nó nữa (`ensureItemsNotLockedByProduction`
+  chặn cứng `E080` khi còn thao tác trên LSX đã duyệt), nên FK không cần phòng hờ mồ côi. Chi tiết:
+  `docs/domains/quality.md`.
+- Giữ `productionJobId`, cùng lý do trên (nullable + CHECK theo `kind`, không `NOT NULL` cứng) —
+  denormalize từ `operation.productionJobId`, dùng để lọc/join theo Job không phải qua
+  `production_job_operations`, và là neo cho 2 gate cross-domain (gate nhập kho TP, gate giao hàng —
+  cả hai đều hỏi "Job này đã QC xong hết chưa", không hỏi "công đoạn này đã QC xong chưa").
 - `operationCode`/`operationName`/`bomItem.code`/`bomItem.name` **không còn là cột lưu** — đọc thẳng
   qua relation `productionJobOperation`/`productionJobOperation.bomItem` lúc `GET`, response DTO vẫn
   trả nested `operation`/`bomItem` (xem `docs/domains/quality.md`).
@@ -73,7 +74,8 @@ khác.
 ## `result` tự suy từ Ac/Re — chỉ áp cho OQC
 
 Cùng đợt đổi model, thêm `resultAuto` (server tự suy từ `defectQty` so `ac` của plan AQL) và cho QC
-ghi đè có vết (`E201` nếu lệch mà không kèm lý do). **Chỉ áp cho OQC** — IQC giữ nguyên hành vi cũ
+toàn quyền ghi đè, không cần lý do (`E201` từng bắt buộc kèm lý do khi lệch, đã nghỉ hưu — AQL chỉ
+còn là gợi ý hiển thị, `docs/domains/quality.md`). **Chỉ áp cho OQC** — IQC giữ nguyên hành vi cũ
 (QC tự chọn `result` hoàn toàn, bảng AQL chỉ tính `ac`/`re` tham khảo, không ảnh hưởng khả năng lưu
 kết quả). Hai module cố tình lệch nhau ở điểm này.
 

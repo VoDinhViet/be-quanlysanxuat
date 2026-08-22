@@ -64,9 +64,8 @@ export enum ErrorCode {
   // The unit exists but isn't assignable to this kind of entity (e.g. `Mét` on an FG) —
   // deliberately distinct from E011 so the client can tell a bad id from a wrong-scope unit.
   E043 = 'unit.error.scope_mismatch',
-  // Download-URL signature failures. Kept distinct on purpose: E045 means "ask the API for the
-  // entity again to get a fresh link" (routine, the URL simply aged out), while E044 means the
-  // link was tampered with or minted elsewhere — worth surfacing differently, and worth logging.
+  // Nghỉ hưu — download URL không còn ký/hết hạn (public link vĩnh viễn), không còn throw site
+  // nào. Giữ comment, không tái sử dụng số.
   E044 = 'file.error.invalid_signature',
   E045 = 'file.error.url_expired',
   E046 = 'operation.error.not_found',
@@ -96,6 +95,8 @@ export enum ErrorCode {
   E055 = 'bom_item.error.quantity_not_integer',
   E056 = 'routing_operation.error.not_found',
   E057 = 'order.error.not_found',
+  // Nghỉ hưu — `orders.code` không còn nhận giá trị tay từ client, luôn sinh atomic qua
+  // `document_sequences` (`docs/architecture.md`). Giữ comment, không tái sử dụng số.
   E058 = 'order.error.code_exists',
   // Client/staff/item refs on an order. Retired when the module was pared down to a header-only
   // table on 2026-07-27, restored with their original meanings the same day when the module was
@@ -236,6 +237,9 @@ export enum ErrorCode {
   E123 = 'purchase_order_item.error.not_found',
   E124 = 'purchase_order.error.has_posted_receipts',
   E125 = 'purchase_ledger.error.line_not_purchasable',
+  // Nghỉ hưu — dành cho `POST /purchase-ledger/:id/cancel` thuộc thiết kế 7-trạng-thái ban đầu,
+  // chưa từng triển khai (`purchase-ledger` chỉ có `GET`, `docs/domains/purchasing.md`). Giữ
+  // comment, không tái sử dụng số.
   E126 = 'purchase_ledger.error.line_already_ordered',
   E127 = 'purchase_order.error.receipt_item_mismatch',
   // Hai dòng cùng `purchaseRequestItemId` trong một payload tạo báo giá/đơn mua.
@@ -258,8 +262,9 @@ export enum ErrorCode {
   E136 = 'purchase_order.error.assigned_user_not_found',
   E137 = 'supplier_return.error.not_found',
   E138 = 'iqc_inspection.error.not_found',
-  // `result = PASS` không được kèm `disposition` (chỉ FAIL mới có quyết định xử lý) — DB còn giữ
-  // `chk_quality_inspections_disposition_requires_fail` làm chốt chặn cuối.
+  // `result = PASS` không được kèm `disposition` trên `POST /iqc` (tạo tay) — DB còn giữ
+  // `chk_qc_requests_disposition_requires_fail` làm chốt chặn cuối. `confirmIqc` không còn ném mã
+  // này — QC toàn quyền quyết định ở luồng "Lưu" (`docs/domains/quality.md`).
   E139 = 'iqc_inspection.error.disposition_not_allowed_for_pass',
   // Nghỉ hưu — cùng lý do `E097`: `code` không còn cho client tự truyền trên `create`.
   E140 = 'iqc_inspection.error.code_exists',
@@ -292,7 +297,7 @@ export enum ErrorCode {
   // bước confirm, không phải lúc tạo.
   E151 = 'inventory_document.error.no_items',
   // Phiếu nhập yêu cầu IQC nhưng không suy ra được NCC (cả `supplierId` lẫn NCC của PO đều trống) —
-  // `chk_quality_inspections_incoming_supplier` đòi `supplier_id` khác null cho dòng `kind = INCOMING`.
+  // `chk_qc_requests_incoming_supplier` đòi `supplier_id` khác null cho dòng `kind = INCOMING`.
   E152 = 'inventory_receipt.error.missing_supplier_for_iqc',
   // `post` phiếu đang `PENDING_IQC` khi còn phiếu IQC chưa `COMPLETED`.
   E153 = 'inventory_receipt.error.iqc_not_completed',
@@ -341,15 +346,16 @@ export enum ErrorCode {
   // SL nhận (cộng dồn mọi dòng OS-IN cùng `outsourcingOrderItemId`) vượt SL gửi của dòng OS-OUT đó
   // — khác `E154` (vượt SL đặt của dòng PO).
   E172 = 'outsourcing_receipt.error.quantity_exceeded',
-  // Huỷ OS-IN đã `POSTED` khi đã sinh `quality_inspections` (`kind = INCOMING`) trỏ vào — cùng lý
+  // Huỷ OS-IN đã `POSTED` khi đã sinh `qc_requests` (`kind = INCOMING`) trỏ vào — cùng lý
   // do `supplier_returns` chưa có `cancel`.
   E173 = 'outsourcing_receipt.error.locked_by_iqc',
   E174 = 'oqc_inspection.error.not_found',
   // Tạo OQC cho một Job chưa/không còn `IN_PROGRESS` — khác `E167` (ném từ `outsourcing_orders`,
   // cùng khái niệm khác domain).
   E175 = 'oqc_inspection.error.job_not_in_progress',
-  // Tổng lot size (mọi OQC chưa xoá của Job, cộng lô mới) vượt `production_jobs.quantity` (SL kế
-  // hoạch).
+  // Σ SL đã xin QC của cả node BOM (mọi công đoạn as-used, trừ dòng SCRAP), cộng lô mới, vượt
+  // `production_job_bom_items.plannedQuantity` (đã đóng băng lúc duyệt LSX) — không phải
+  // `production_jobs.quantity`, dù cùng giá trị ở node Cấp 0.
   E176 = 'oqc_inspection.error.lot_size_exceeded',
   // Lưu lại kết quả (`confirm`) khi đã `COMPLETED` — khoá cứng, khác IQC (chỉ `WAITING_RETURN`
   // khoá).
@@ -400,30 +406,31 @@ export enum ErrorCode {
   // kiểu ATP đã gỡ khỏi `create`, chờ thiết kế lại "giữ trước".
   E194 = 'outbound_order.error.quantity_exceeds_deliverable',
   E195 = 'outbound_order.error.not_found',
-  // Nhập kho thành phẩm (`receiptType = PRODUCTION`) khi Job chưa có phiếu OQC nào, hoặc còn phiếu
-  // OQC nào chưa `COMPLETED` (`NOT_INSPECTED`/`PENDING`/`REWORK`) — thay `E180` cũ (so SL, giờ đổi
-  // sang so trạng thái vì đơn vị OQC không còn khớp đơn vị FG).
+  // Nhập kho thành phẩm (`receiptType = PRODUCTION`) khi Job chưa có phiếu OQC nào (dòng
+  // `disposition = SCRAP` không tính), hoặc còn phiếu OQC nào chưa `COMPLETED`
+  // (`NOT_INSPECTED`/`PENDING`/`REWORK`) — thay `E180` cũ (so SL, giờ đổi sang so trạng thái vì đơn
+  // vị OQC không còn khớp đơn vị FG).
   E196 = 'inventory_receipt.error.oqc_not_completed',
   // SL các dòng phiếu nhập `PRODUCTION` (cộng dồn mọi phiếu khác đã `confirm` cùng Job, trừ chính
   // phiếu này) vượt `production_jobs.quantity` (SL kế hoạch) — khác `E154` (vượt SL đặt dòng PO) và
   // `E172` (vượt SL gửi OS-OUT).
   E197 = 'inventory_receipt.error.job_planned_quantity_exceeded',
-  // Σ `quantity` mọi OQC (trừ dòng `disposition = SCRAP`) của một công đoạn, cộng lô mới, vượt
-  // `completedQuantity` hiện tại của chính công đoạn đó — QC không được xin kiểm nhiều hơn phần
-  // xưởng đã báo hoàn thành.
+  // Công đoạn Cấp 0 đã có dòng OQC khác (chưa `SCRAP`) — lô kiểm luôn lấy trọn `completedQuantity`
+  // (không phải một phần), nên xin QC lần hai cho cùng công đoạn chắc chắn là trùng.
   E198 = 'oqc_inspection.error.operation_completed_quantity_insufficient',
   // Node BOM chứa công đoạn đã mất `itemId` (item gốc bị xoá, `set null`) — không có gì để
-  // snapshot vào `quality_inspections.itemId` (NOT NULL) khi tạo OQC.
+  // snapshot vào `qc_requests.itemId` (NOT NULL) khi tạo OQC.
   E199 = 'oqc_inspection.error.item_not_resolvable',
   // `GET /oqc/aql-plan` không tra được plan (lot size/inspection level/AQL rơi vào ô bảng chuẩn
   // chưa điền — xem `iqc-aql.constant.ts`); hoặc `confirmOqc` không có cả `result` gửi lên lẫn
   // `resultAuto` tự suy để dùng làm mặc định.
   E200 = 'oqc_inspection.error.aql_plan_not_found',
-  // `result` gửi lên khác `resultAuto` (Ac/Re tự suy từ `defectQty`) mà thiếu `resultNote` — ghi đè
-  // auto-suggest phải có lý do, có vết.
+  // Nghỉ hưu — `confirmOqc` không còn bắt buộc `resultNote` khi `result` lệch `resultAuto`; AQL chỉ
+  // là gợi ý hiển thị, QC toàn quyền quyết định `result`. Giữ comment, không tái sử dụng số.
   E201 = 'oqc_inspection.error.result_override_reason_required',
-  // `result` cuối cùng = PASS mà vẫn gửi `disposition` — disposition chỉ có ý nghĩa khi FAIL
-  // (`chk_quality_inspections_disposition_requires_fail`).
+  // Nghỉ hưu — `confirmOqc` không còn chặn `result = PASS` kèm `disposition`; server tự bỏ qua
+  // `disposition` khi PASS trước khi ghi, DB CHECK (`chk_qc_requests_disposition_requires_fail`)
+  // vẫn là chốt chặn cuối. Giữ comment, không tái sử dụng số.
   E202 = 'oqc_inspection.error.disposition_not_allowed_for_pass',
   // `postInventoryIssue` (`issueType = PRODUCTION`) khi còn ≥1 phiếu IQC chưa `COMPLETED` của cùng
   // (item, kho) — vật tư chưa qua IQC (hoặc IQC còn FAIL chưa xử lý) không được xuất cho sản xuất.
@@ -436,7 +443,8 @@ export enum ErrorCode {
   // `POST /outbound-orders/:id/confirm` khi phiếu không còn `DRAFT`.
   E204 = 'outbound_order.error.not_confirmable',
   // Còn ≥1 Job (suy từ `outbound_order_items.productionJobId`, bỏ qua dòng `null`) chưa qua hết
-  // QC (`getJobQcCoverage`, tái dùng `E196`) — hàng lỗi/chưa kiểm chưa được giao cho khách.
+  // QC (`getJobQcCoverage`, tái dùng `E196`, cùng loại trừ dòng `disposition = SCRAP`) — hàng
+  // lỗi/chưa kiểm/đã loại bỏ chưa được giao cho khách.
   E205 = 'outbound_order.error.oqc_not_completed',
   // `PATCH /users/:userId` gửi `credential` cho user chưa có tài khoản đăng nhập nhưng thiếu
   // `password` — tạo credential mới thì mật khẩu là bắt buộc (sửa credential sẵn có thì không).
@@ -445,9 +453,9 @@ export enum ErrorCode {
   // `chk_order_payments_amount_nonzero` là chốt chặn thật, mã này chỉ để trả lỗi rõ ràng.
   E208 = 'order_payment.error.amount_zero',
   // `POST /inventory-receipts/:receiptId/confirm` (`receiptType = PRODUCTION`) khi Job có node
-  // Cấp 0 (`copyFinalAssemblyRouting`) mà chưa có phiếu OQC nào `COMPLETED` gắn với công đoạn của
-  // node đó — tách riêng khỏi `E196` (còn phiếu OQC dở dang) vì đây là lý do khác: chưa từng QC
-  // thành phẩm. `docs/decisions/oqc-per-operation.md` mục "Đừng hoàn lại".
+  // Cấp 0 (`copyFinalAssemblyRouting`) mà chưa có phiếu OQC nào `COMPLETED` (trừ `disposition =
+  // SCRAP`) gắn với công đoạn của node đó — tách riêng khỏi `E196` (còn phiếu OQC dở dang) vì đây là
+  // lý do khác: chưa từng QC thành phẩm. `docs/decisions/oqc-per-operation.md` mục "Đừng hoàn lại".
   E209 = 'inventory_receipt.error.final_oqc_missing',
   // `PATCH /production-jobs/:jobId/operations/:operationId` khi công đoạn thuộc node Cấp 0
   // (`itemType = 'FG'`, bước Lắp ráp) mà còn công đoạn của node khác trong cùng Job chưa
@@ -471,5 +479,16 @@ export enum ErrorCode {
   // `POST /production-jobs/:jobId/qc` khi còn công đoạn nào của Job chưa `completedDate` (kể cả
   // chính công đoạn Cấp 0) — phải xong toàn bộ mới được yêu cầu QC thành phẩm cho cả Job.
   E214 = 'production_job.error.operations_not_completed',
+  // Nghỉ hưu — `confirmOqc` không còn bắt buộc `dispositionNote` khi `disposition ∈ {ACCEPT, SCRAP}`;
+  // QC toàn quyền quyết định phương án xử lý. Giữ comment, không tái sử dụng số.
+  E215 = 'oqc_inspection.error.disposition_reason_required',
+  E216 = 'qc_aql_plan.error.not_found',
+  E217 = 'qc_aql_plan.error.code_exists',
+  // Hai rule của cùng plan có dải `[lotSizeMin, lotSizeMax]` giao nhau — DB không chặn được overlap
+  // (cần `EXCLUDE USING gist`, drizzle-orm chưa có builder), service là chốt chặn duy nhất.
+  E218 = 'qc_aql_rule.error.lot_size_overlap',
+  // `GET /iqc/aql-plan` không tra được plan (lot size/inspection level/AQL rơi vào ô bảng chưa có
+  // rule) — mint riêng, không dùng `E200` vì mã đó namespace `oqc_inspection.error.*`.
+  E219 = 'iqc_inspection.error.aql_plan_not_found',
   V003 = 'common.error.too_many_requests',
 }

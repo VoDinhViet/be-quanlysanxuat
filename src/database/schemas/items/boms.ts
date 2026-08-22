@@ -37,3 +37,5 @@ export const bomsRelations = relations(boms, ({ one, many }) => ({
   }),
   bomItems: many(bomItems),
 }));
+
+export type BomSelect = typeof boms.$inferSelect;

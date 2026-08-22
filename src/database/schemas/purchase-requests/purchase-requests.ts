@@ -87,6 +87,9 @@ export const purchaseRequests = pgTable(
     index('idx_purchase_requests_created_by').on(table.createdBy),
     index('idx_purchase_requests_status').on(table.status),
     index('idx_purchase_requests_needed_date').on(table.neededDate),
+    index('idx_purchase_requests_sent_by').on(table.sentBy),
+    index('idx_purchase_requests_approved_by').on(table.approvedBy),
+    index('idx_purchase_requests_rejected_by').on(table.rejectedBy),
   ],
 );
 
@@ -124,3 +127,5 @@ export const purchaseRequestsRelations = relations(
     items: many(purchaseRequestItems),
   }),
 );
+
+export type PurchaseRequestSelect = typeof purchaseRequests.$inferSelect;

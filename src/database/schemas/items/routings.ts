@@ -42,3 +42,5 @@ export const routingsRelations = relations(routings, ({ one, many }) => ({
   }),
   operations: many(routingOperations),
 }));
+
+export type RoutingSelect = typeof routings.$inferSelect;

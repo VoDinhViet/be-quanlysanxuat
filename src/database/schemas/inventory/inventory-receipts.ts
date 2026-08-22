@@ -108,6 +108,10 @@ export const inventoryReceipts = pgTable(
     index('idx_inventory_receipts_production_job_id').on(table.productionJobId),
     index('idx_inventory_receipts_purchase_order_id').on(table.purchaseOrderId),
     index('idx_inventory_receipts_created_by').on(table.createdBy),
+    index('idx_inventory_receipts_purchase_request_id').on(
+      table.purchaseRequestId,
+    ),
+    index('idx_inventory_receipts_posted_by').on(table.postedBy),
   ],
 );
 
@@ -149,3 +153,5 @@ export const inventoryReceiptsRelations = relations(
     items: many(inventoryReceiptItems),
   }),
 );
+
+export type InventoryReceiptSelect = typeof inventoryReceipts.$inferSelect;

@@ -62,6 +62,7 @@ export const productionOrderLogs = pgTable(
     index('idx_production_order_logs_production_order_id').on(
       table.productionOrderId,
     ),
+    index('idx_production_order_logs_performed_by').on(table.performedBy),
   ],
 );
 
@@ -78,3 +79,5 @@ export const productionOrderLogsRelations = relations(
     }),
   }),
 );
+
+export type ProductionOrderLogSelect = typeof productionOrderLogs.$inferSelect;

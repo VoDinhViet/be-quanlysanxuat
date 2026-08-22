@@ -11,3 +11,5 @@ export const countries = pgTable('countries', {
     .notNull()
     .$onUpdate(() => new Date()),
 });
+
+export type CountrySelect = typeof countries.$inferSelect;

@@ -1,14 +1,15 @@
 import { relations } from 'drizzle-orm';
-import { index, pgTable, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { index, pgTable, timestamp, unique, uuid } from 'drizzle-orm/pg-core';
 
 import { files } from '../files';
 import { suppliers } from './suppliers';
 
 /**
- * Join table onto the `files` registry, same shape as `material_attachments`. It deliberately
- * stores nothing but the link: url/filename/mimetype/size live on `files`, so attachments get
- * magic-byte validation, signed URLs and orphan sweeping for free instead of being a second,
- * weaker file registry.
+ * Join table onto the `files` registry, same shape as `order_attachments`/`qc_attachments`. It
+ * deliberately stores nothing but the link: url/filename/mimetype/size live on `files`, so
+ * attachments get magic-byte validation and orphan sweeping for free instead of being a second,
+ * weaker file registry. No `updatedAt` — a link row is only ever inserted or deleted, never
+ * mutated.
  */
 export const supplierAttachments = pgTable(
   'supplier_attachments',
@@ -25,6 +26,10 @@ export const supplierAttachments = pgTable(
   (table) => [
     index('idx_supplier_attachments_supplier_id').on(table.supplierId),
     index('idx_supplier_attachments_file_id').on(table.fileId),
+    unique('uq_supplier_attachments_supplier_file').on(
+      table.supplierId,
+      table.fileId,
+    ),
   ],
 );
 
@@ -41,3 +46,5 @@ export const supplierAttachmentsRelations = relations(
     }),
   }),
 );
+
+export type SupplierAttachmentSelect = typeof supplierAttachments.$inferSelect;
