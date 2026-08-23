@@ -4,9 +4,9 @@ import { and, eq } from 'drizzle-orm';
 import { ErrorCode } from '../../constants/error-code.constant';
 import type { DbTransaction } from '../../database/database.type';
 import {
-  IqcAttachmentKind,
   IqcStatus,
-  qcAttachments,
+  QcFileKind,
+  qcFiles,
   QcKind,
   qcRequests,
 } from '../../database/schemas';
@@ -49,10 +49,10 @@ export async function completeIqcAfterSupplierReturn(
  *  buộc `tx` để tránh ghi ra ngoài transaction. Dùng chung `IqcService.confirmIqc`/
  *  `OqcService.confirmOqc` — plain function, không qua DI, cùng lý do `completeIqcAfterSupplierReturn`
  *  ở trên. */
-export async function linkAttachments(
+export async function linkQcFiles(
   tx: DbTransaction,
   inspectionId: string,
-  kind: IqcAttachmentKind,
+  kind: QcFileKind,
   fileIds: string[],
 ): Promise<void> {
   if (!fileIds.length) {
@@ -60,6 +60,6 @@ export async function linkAttachments(
   }
 
   await tx
-    .insert(qcAttachments)
+    .insert(qcFiles)
     .values(fileIds.map((fileId) => ({ inspectionId, fileId, kind })));
 }

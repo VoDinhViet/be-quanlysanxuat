@@ -105,7 +105,7 @@ không còn cạnh nào quay lại `supplier-returns.ts`.
 ## Migration dữ liệu
 
 Copy `id` nguyên vẹn từ `iqc_inspections`/`oqc_inspections` sang `qc_requests` — `code` hai
-bảng khác prefix nên không đụng UNIQUE mới, `supplier_returns.iqc_id`/`qc_attachments.inspection_id`
+bảng khác prefix nên không đụng UNIQUE mới, `supplier_returns.iqc_id`/`qc_files.inspection_id`
 không phải remap. Backfill `outsourcing_receipt_item_id`/`production_job_id`/
 `production_job_operation_id` cho IQC sinh từ OS-IN: match theo `(outsourcing_receipt_id, item_id)`
 **chỉ khi đúng 1 dòng OS-IN khớp** — mơ hồ thì để `NULL`, không đoán (chính là lỗ hổng của join mờ

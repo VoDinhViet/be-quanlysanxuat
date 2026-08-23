@@ -6,10 +6,10 @@ import { orders } from './orders';
 
 /**
  * 1-many with orders: the "tài liệu đính kèm" panel. Each row is a link to a `files` registry
- * row, never a bare URL. Replace-all on update — same shape as `supplier_attachments`.
+ * row, never a bare URL. Replace-all on update — same shape as `supplier_files`.
  */
-export const orderAttachments = pgTable(
-  'order_attachments',
+export const orderFiles = pgTable(
+  'order_files',
   {
     id: uuid('id').defaultRandom().primaryKey(),
     orderId: uuid('order_id')
@@ -21,21 +21,18 @@ export const orderAttachments = pgTable(
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => [
-    index('idx_order_attachments_order_id').on(table.orderId),
-    index('idx_order_attachments_file_id').on(table.fileId),
+    index('idx_order_files_order_id').on(table.orderId),
+    index('idx_order_files_file_id').on(table.fileId),
   ],
 );
 
-export const orderAttachmentsRelations = relations(
-  orderAttachments,
-  ({ one }) => ({
-    order: one(orders, {
-      fields: [orderAttachments.orderId],
-      references: [orders.id],
-    }),
-    file: one(files, {
-      fields: [orderAttachments.fileId],
-      references: [files.id],
-    }),
+export const orderFilesRelations = relations(orderFiles, ({ one }) => ({
+  order: one(orders, {
+    fields: [orderFiles.orderId],
+    references: [orders.id],
   }),
-);
+  file: one(files, {
+    fields: [orderFiles.fileId],
+    references: [files.id],
+  }),
+}));

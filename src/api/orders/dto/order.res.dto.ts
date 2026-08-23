@@ -8,7 +8,7 @@ import {
   NumberField,
 } from '../../../decorators/field.decorators';
 import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
-import { OrderAttachmentResDto } from './order-attachment.res.dto';
+import { OrderFileResDto } from './order-file.res.dto';
 import { OrderBaseResDto } from './order-base.res.dto';
 
 @Exclude()
@@ -44,8 +44,8 @@ export class OrderResDto extends OrderBaseResDto {
   expired!: boolean;
 
   @Expose()
-  @ClassFieldOptional(() => OrderAttachmentResDto, { each: true })
-  attachments!: OrderAttachmentResDto[];
+  @ClassFieldOptional(() => OrderFileResDto, { each: true })
+  files!: OrderFileResDto[];
 
   @Expose()
   @NumberField({ description: 'Tổng đã trả — SUM(order_payments.amount)' })

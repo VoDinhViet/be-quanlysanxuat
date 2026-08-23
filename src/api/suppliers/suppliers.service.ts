@@ -23,7 +23,7 @@ import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
   countries,
-  supplierAttachments,
+  supplierFiles,
   supplierGroups,
   supplierPaymentInfo,
   supplierRepresentatives,
@@ -83,7 +83,7 @@ export class SuppliersService {
         with: {
           group: true,
           creatorBy: true,
-          attachments: { with: { file: true } },
+          files: { with: { file: true } },
           logoFile: true,
           representatives: true,
           country: true,
@@ -130,7 +130,7 @@ export class SuppliersService {
       with: {
         group: true,
         creatorBy: true,
-        attachments: { with: { file: true } },
+        files: { with: { file: true } },
         logoFile: true,
         representatives: true,
         country: true,
@@ -158,10 +158,9 @@ export class SuppliersService {
     }
     await this.linkSuppliedFiles(reqDto);
 
-    // `payment` / `representatives` / `attachmentFileIds` live in their own tables — peel them off
+    // `payment` / `representatives` / `fileIds` live in their own tables — peel them off
     // so the rest of the DTO spreads straight onto the `suppliers` row.
-    const { payment, representatives, attachmentFileIds, ...supplierFields } =
-      reqDto;
+    const { payment, representatives, fileIds, ...supplierFields } = reqDto;
 
     const supplierId = await this.db.transaction(async (tx) => {
       const code = await this.generateSupplierCode(tx);
@@ -180,8 +179,8 @@ export class SuppliersService {
         .insert(supplierPaymentInfo)
         .values({ supplierId: supplier.id, ...payment });
 
-      if (attachmentFileIds?.length) {
-        await this.replaceAttachments(tx, supplier.id, attachmentFileIds);
+      if (fileIds?.length) {
+        await this.replaceFiles(tx, supplier.id, fileIds);
       }
 
       if (representatives?.length) {
@@ -214,8 +213,7 @@ export class SuppliersService {
     }
     await this.linkSuppliedFiles(reqDto);
 
-    const { payment, representatives, attachmentFileIds, ...supplierFields } =
-      reqDto;
+    const { payment, representatives, fileIds, ...supplierFields } = reqDto;
 
     await this.db.transaction(async (tx) => {
       // `updated_at` is bumped by the column's own `$onUpdate`.
@@ -233,8 +231,8 @@ export class SuppliersService {
           .where(eq(supplierPaymentInfo.supplierId, supplierId));
       }
 
-      if (attachmentFileIds) {
-        await this.replaceAttachments(tx, supplierId, attachmentFileIds);
+      if (fileIds) {
+        await this.replaceFiles(tx, supplierId, fileIds);
       }
 
       if (representatives) {
@@ -261,28 +259,27 @@ export class SuppliersService {
   private async linkSuppliedFiles(
     reqDto: CreateSupplierReqDto | UpdateSupplierReqDto,
   ): Promise<void> {
-    const fileIds = [
-      reqDto.logoFileId,
-      ...(reqDto.attachmentFileIds ?? []),
-    ].filter((id): id is string => Boolean(id));
+    const fileIds = [reqDto.logoFileId, ...(reqDto.fileIds ?? [])].filter(
+      (id): id is string => Boolean(id),
+    );
 
     await this.filesService.linkFiles(fileIds);
   }
 
   /** Replace-all. `tx` is required so a caller cannot accidentally write outside the transaction. */
-  private async replaceAttachments(
+  private async replaceFiles(
     tx: DbTransaction,
     supplierId: string,
-    attachmentFileIds: string[],
+    fileIds: string[],
   ): Promise<void> {
     await tx
-      .delete(supplierAttachments)
-      .where(eq(supplierAttachments.supplierId, supplierId));
+      .delete(supplierFiles)
+      .where(eq(supplierFiles.supplierId, supplierId));
 
-    if (attachmentFileIds.length) {
+    if (fileIds.length) {
       await tx
-        .insert(supplierAttachments)
-        .values(attachmentFileIds.map((fileId) => ({ supplierId, fileId })));
+        .insert(supplierFiles)
+        .values(fileIds.map((fileId) => ({ supplierId, fileId })));
     }
   }
 

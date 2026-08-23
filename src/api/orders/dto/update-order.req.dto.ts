@@ -78,7 +78,7 @@ export class UpdateOrderReqDto {
   @UUIDFieldOptional({
     each: true,
     description:
-      'Attachment file ids (from POST /files, type=ORDER_DOCUMENT); replaces the full set',
+      'File ids (from POST /files, type=ORDER_DOCUMENT); replaces the full set',
   })
-  readonly attachmentFileIds?: string[];
+  readonly fileIds?: string[];
 }

@@ -71,10 +71,9 @@ export class UpdateSupplierReqDto {
 
   @UUIDFieldOptional({
     each: true,
-    description:
-      'Attachment file ids (from POST /files?type=SUPPLIER_DOCUMENT)',
+    description: 'File ids (from POST /files?type=SUPPLIER_DOCUMENT)',
   })
-  attachmentFileIds?: string[];
+  fileIds?: string[];
 
   @ClassFieldOptional(() => SupplierRepresentativeReqDto, { each: true })
   representatives?: SupplierRepresentativeReqDto[];

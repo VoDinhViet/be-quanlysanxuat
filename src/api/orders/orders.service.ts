@@ -29,7 +29,7 @@ import {
   clients,
   Currency,
   files,
-  orderAttachments,
+  orderFiles,
   orderItems,
   orderPayments,
   orders,
@@ -88,8 +88,8 @@ export class OrdersService {
       reqDto.assignedUserId
         ? eq(orders.assignedUserId, reqDto.assignedUserId)
         : undefined,
-      reqDto.fromDate ? gte(orders.dueDate, reqDto.fromDate) : undefined,
-      reqDto.toDate ? lte(orders.dueDate, reqDto.toDate) : undefined,
+      reqDto.startDate ? gte(orders.dueDate, reqDto.startDate) : undefined,
+      reqDto.endDate ? lte(orders.dueDate, reqDto.endDate) : undefined,
     );
     const orderBy = desc(orders.createdAt);
 
@@ -199,7 +199,7 @@ export class OrdersService {
     const rejecterAlias = alias(users, 'rejecter');
     const paidByOrder = paidAmountByOrderIdSubquery(this.db);
 
-    const [[order], attachments] = await Promise.all([
+    const [[order], orderFileRows] = await Promise.all([
       this.db
         .select({
           ...getTableColumns(orders),
@@ -226,12 +226,12 @@ export class OrdersService {
         .where(and(eq(orders.id, orderId), isNull(orders.deletedAt))),
       this.db
         .select({
-          ...getTableColumns(orderAttachments),
+          ...getTableColumns(orderFiles),
           file: getTableColumns(files),
         })
-        .from(orderAttachments)
-        .innerJoin(files, eq(files.id, orderAttachments.fileId))
-        .where(eq(orderAttachments.orderId, orderId)),
+        .from(orderFiles)
+        .innerJoin(files, eq(files.id, orderFiles.fileId))
+        .where(eq(orderFiles.orderId, orderId)),
     ]);
 
     if (!order) {
@@ -242,7 +242,7 @@ export class OrdersService {
       OrderResDto,
       {
         ...order,
-        attachments,
+        files: orderFileRows,
         paymentStatus: this.resolvePaymentStatus(order.paidAmount, order.total),
       },
       { excludeExtraneousValues: true },
@@ -340,9 +340,9 @@ export class OrdersService {
     }
     this.ensureStatusSettable(reqDto.status);
 
-    await this.filesService.linkFiles(reqDto.attachmentFileIds ?? []);
+    await this.filesService.linkFiles(reqDto.fileIds ?? []);
 
-    const { items, attachmentFileIds, ...orderFields } = reqDto;
+    const { items, fileIds, ...orderFields } = reqDto;
     const currency = orderFields.currency ?? Currency.VND;
 
     // Order, dòng, đính kèm và total dẫn xuất từ dòng phải vào cùng lúc — nếu không, insert dòng
@@ -369,12 +369,10 @@ export class OrdersService {
           .insert(orderItems)
           .values(items.map((item) => ({ ...item, orderId: order.id })));
       }
-      if (attachmentFileIds?.length) {
+      if (fileIds?.length) {
         await tx
-          .insert(orderAttachments)
-          .values(
-            attachmentFileIds.map((fileId) => ({ orderId: order.id, fileId })),
-          );
+          .insert(orderFiles)
+          .values(fileIds.map((fileId) => ({ orderId: order.id, fileId })));
       }
 
       await this.recalculateTotals(tx, order.id);
@@ -399,9 +397,9 @@ export class OrdersService {
       await this.ensureItemsNotLockedByProduction(orderId);
     }
 
-    await this.filesService.linkFiles(reqDto.attachmentFileIds ?? []);
+    await this.filesService.linkFiles(reqDto.fileIds ?? []);
 
-    const { items, attachmentFileIds, ...orderFields } = reqDto;
+    const { items, fileIds, ...orderFields } = reqDto;
     // So với currency hiện tại của dòng khi request không đụng tới `currency`.
     const currency = orderFields.currency ?? existing.currency;
     // Sửa một đơn đang REJECTED = làm lại từ đầu → tự về DRAFT, giữ nguyên rejectedBy/rejectedAt/
@@ -425,15 +423,15 @@ export class OrdersService {
       if (items !== undefined) {
         // `ensureItemsNotLockedByProduction` ở trên đã đảm bảo LSX (nếu có) đang PENDING, chưa
         // duyệt — xoá header `production_orders` cascade dọn luôn `production_order_items`, để
-        // FK `order_item_id` (restrict) không chặn lệnh xoá của `replaceItems` bên dưới (xem
+        // FK `order_item_id` (restrict) không chặn lệnh xoá của `replaceOrderItems` bên dưới (xem
         // comment schema trên `productionOrderItems`).
         await tx
           .delete(productionOrders)
           .where(eq(productionOrders.orderId, orderId));
-        await this.replaceItems(tx, orderId, items);
+        await this.replaceOrderItems(tx, orderId, items);
       }
-      if (attachmentFileIds !== undefined) {
-        await this.replaceAttachments(tx, orderId, attachmentFileIds);
+      if (fileIds !== undefined) {
+        await this.replaceFiles(tx, orderId, fileIds);
       }
 
       // Luôn tính lại kể cả khi không gửi `items`: riêng discountType/discountValue/vatPercent/
@@ -563,7 +561,7 @@ export class OrdersService {
   }
 
   /** Replace-all. Bắt buộc truyền `tx` để tránh ghi ra ngoài transaction. */
-  private async replaceItems(
+  private async replaceOrderItems(
     tx: DbTransaction,
     orderId: string,
     items: OrderItemReqDto[],
@@ -579,18 +577,16 @@ export class OrdersService {
   }
 
   /** Replace-all. Bắt buộc truyền `tx` để tránh ghi ra ngoài transaction. */
-  private async replaceAttachments(
+  private async replaceFiles(
     tx: DbTransaction,
     orderId: string,
     fileIds: string[],
   ): Promise<void> {
-    await tx
-      .delete(orderAttachments)
-      .where(eq(orderAttachments.orderId, orderId));
+    await tx.delete(orderFiles).where(eq(orderFiles.orderId, orderId));
 
     if (fileIds.length) {
       await tx
-        .insert(orderAttachments)
+        .insert(orderFiles)
         .values(fileIds.map((fileId) => ({ orderId, fileId })));
     }
   }

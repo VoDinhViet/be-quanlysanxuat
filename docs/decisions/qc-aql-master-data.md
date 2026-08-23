@@ -33,9 +33,12 @@ tính `ac`/`re` **lúc đọc** (`resolveAqlPlan` mỗi lần `GET`) vì bảng 
 luôn `ac`/`re` hiển thị của mọi lần kiểm cũ đã tra theo rule đó, kể cả lần đã `COMPLETED`. Đóng lại
 ngay trong đợt tách `qc_requests`/`qc_inspections` (`docs/decisions/qc-request-attempt-split.md`):
 mỗi dòng `qc_inspections` (một lần kiểm/attempt) lưu thật `aqlPlanId`/`aqlRuleId`/`codeLetter`/
-`acceptanceNumber`/`rejectionNumber` lúc tạo, không tính lại lúc đọc — `IqcService.getIqc`/
-`OqcService.getOqc` nay đọc `ac`/`re`/`codeLetter` từ attempt mới nhất, sửa rule chỉ ảnh hưởng lần
-kiểm tạo **sau** thời điểm sửa.
+`acceptanceNumber`/`rejectionNumber` lúc tạo, không tính lại lúc đọc — `IqcService.getIqc` nay đọc
+`ac`/`re`/`codeLetter` từ attempt mới nhất để trả trong response. `OqcService.getOqc` ghi snapshot
+y hệt lúc `confirmOqc`, nhưng không còn expose `ac`/`re`/`codeLetter` ở `OqcResDto` — FE tra sống
+qua `GET /oqc/aql-plan` thay vì đọc số đã đóng băng trên response chi tiết. Dù vậy, sửa rule vẫn
+chỉ ảnh hưởng lần kiểm tạo **sau** thời điểm sửa cho cả hai module, vì snapshot nằm nguyên trên
+`qc_inspections`.
 
 ## Known gap: không chặn overlap lot size bằng DB
 

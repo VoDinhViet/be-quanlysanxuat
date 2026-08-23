@@ -87,7 +87,7 @@ không phải composite, vẫn cần object thật để `.references()`), tạo
 attempt mới nhất khi cần (`getIqc`/`getOqc`) qua `ORDER BY attemptNo DESC LIMIT 1`, không qua cột trỏ
 ngược.
 
-### `qc_attachments` chuyển sang treo dưới attempt, không còn replace-all
+### `qc_files` chuyển sang treo dưới attempt, không còn replace-all
 
 `inspectionId` đổi trỏ sang `qc_inspections.id` (trước là request). Attempt append-only nên
 `IqcService.confirmIqc` chỉ **insert** bộ file cho attempt vừa tạo — không còn ca "attempt PASS lật

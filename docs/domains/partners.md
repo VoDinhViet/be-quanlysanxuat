@@ -25,10 +25,10 @@ seed rồi chạy lại.
 | Entity | Vai trò | Ai tham chiếu |
 | --- | --- | --- |
 | `clients` (+ `client_contacts`) | Khách hàng và danh bạ liên hệ | `orders.clientId`; snapshot liên hệ trên `orders` |
-| `suppliers` (+ payment info, representatives, attachments) | Nhà cung cấp | `items.supplierId` (NCC chính, chỉ RM) |
+| `suppliers` (+ payment info, representatives, files) | Nhà cung cấp | `items.supplierId` (NCC chính, chỉ RM) |
 | 6 catalogue nhỏ | Phân loại + cơ cấu tổ chức | `clients`/`suppliers`/`items`/`users`/`routing` |
 
-`supplier_payment_info` là **1-1** và merge từng phần khi update; `supplier_representatives` và các bảng attachment là **replace-all**.
+`supplier_payment_info` là **1-1** và merge từng phần khi update; `supplier_representatives` và `supplier_files` là **replace-all**.
 
 ## Lifecycle
 

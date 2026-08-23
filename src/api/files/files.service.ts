@@ -9,7 +9,7 @@ import { ErrorCode } from '../../constants/error-code.constant';
 import { SUPER_PERMISSION } from '../../constants/permission.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database } from '../../database/database.type';
-import { files, FileKind, UploadType } from '../../database/schemas';
+import { files, FileKind, qcFiles, UploadType } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { STORAGE_PROVIDER } from '../../storage/storage.constants';
 import type { StorageProvider } from '../../storage/storage-provider.interface';
@@ -153,6 +153,8 @@ export class FilesService {
       }
     }
 
+    await this.ensureFileNotLinkedToQcEvidence(fileId);
+
     await this.storageProvider.delete(file.storageKey);
     await this.db.delete(files).where(eq(files.id, fileId));
   }
@@ -162,6 +164,8 @@ export class FilesService {
    * `DELETE /files/:id` trực tiếp, nơi caller tự quyết định xoá nên bắt buộc phải check. */
   async deleteFileById(fileId: string): Promise<void> {
     const file = await this.ensureFileExists(fileId);
+
+    await this.ensureFileNotLinkedToQcEvidence(fileId);
 
     await this.storageProvider.delete(file.storageKey);
     await this.db.delete(files).where(eq(files.id, fileId));
@@ -203,6 +207,19 @@ export class FilesService {
     }
 
     return file;
+  }
+
+  /** `qc_files.fileId` là `restrict`, không `cascade` — xoá file đã gắn bằng chứng QC sẽ vỡ
+   * FK thô (23503) nếu không chặn sớm ở đây. */
+  private async ensureFileNotLinkedToQcEvidence(fileId: string): Promise<void> {
+    const linked = await this.db.query.qcFiles.findFirst({
+      columns: { id: true },
+      where: eq(qcFiles.fileId, fileId),
+    });
+
+    if (linked) {
+      throw new AppException(ErrorCode.E220, HttpStatus.CONFLICT);
+    }
   }
 
   private buildStorageKey(ext: string): string {

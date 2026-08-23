@@ -20,38 +20,38 @@ import { qcInspections } from './qc-inspections';
  * all không còn ý nghĩa (attempt append-only): `IqcService.confirmIqc`/`OqcService.confirmOqc` chỉ
  * insert bộ file cho attempt vừa tạo.
  */
-export enum IqcAttachmentKind {
+export enum QcFileKind {
   QC_EVIDENCE = 'QC_EVIDENCE',
   DISPOSITION_EVIDENCE = 'DISPOSITION_EVIDENCE',
 }
 
-export const iqcAttachmentKindEnum = pgEnum('iqc_attachment_kind', [
-  IqcAttachmentKind.QC_EVIDENCE,
-  IqcAttachmentKind.DISPOSITION_EVIDENCE,
+export const qcFileKindEnum = pgEnum('qc_file_kind', [
+  QcFileKind.QC_EVIDENCE,
+  QcFileKind.DISPOSITION_EVIDENCE,
 ]);
 
-export const qcAttachments = pgTable(
-  'qc_attachments',
+export const qcFiles = pgTable(
+  'qc_files',
   {
     id: uuid('id').defaultRandom().primaryKey(),
     inspectionId: uuid('inspection_id')
       .notNull()
       .references(() => qcInspections.id, { onDelete: 'cascade' }),
+    // `restrict`, không `cascade` — khác `inspectionId` (con thật của attempt append-only), file là
+    // bằng chứng QC đã confirm; xoá `files` không được kéo theo mất dấu vết, kể cả khi lần kiểm đã
+    // `COMPLETED`. `FilesService.deleteFile`/`deleteFileById` phải tự kiểm trước khi xoá cứng.
     fileId: uuid('file_id')
       .notNull()
-      .references(() => files.id, { onDelete: 'cascade' }),
-    kind: iqcAttachmentKindEnum('kind').notNull(),
+      .references(() => files.id, { onDelete: 'restrict' }),
+    kind: qcFileKindEnum('kind').notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => [
-    index('idx_qc_attachments_file_id').on(table.fileId),
+    index('idx_qc_files_file_id').on(table.fileId),
     // Composite phủ luôn truy vấn chỉ lọc `inspectionId` (leftmost prefix) — không cần index đơn.
-    index('idx_qc_attachments_inspection_id_kind').on(
-      table.inspectionId,
-      table.kind,
-    ),
+    index('idx_qc_files_inspection_id_kind').on(table.inspectionId, table.kind),
     // Chặn gắn trùng cùng một file vào cùng một lần kiểm/cùng bộ (kind).
-    unique('uq_qc_attachments_inspection_file_kind').on(
+    unique('uq_qc_files_inspection_file_kind').on(
       table.inspectionId,
       table.fileId,
       table.kind,
@@ -59,15 +59,15 @@ export const qcAttachments = pgTable(
   ],
 );
 
-export const qcAttachmentsRelations = relations(qcAttachments, ({ one }) => ({
+export const qcFilesRelations = relations(qcFiles, ({ one }) => ({
   inspection: one(qcInspections, {
-    fields: [qcAttachments.inspectionId],
+    fields: [qcFiles.inspectionId],
     references: [qcInspections.id],
   }),
   file: one(files, {
-    fields: [qcAttachments.fileId],
+    fields: [qcFiles.fileId],
     references: [files.id],
   }),
 }));
 
-export type QcAttachmentSelect = typeof qcAttachments.$inferSelect;
+export type QcFileSelect = typeof qcFiles.$inferSelect;

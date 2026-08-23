@@ -124,7 +124,7 @@ export const qcStatusEnum = pgEnum('qc_status', [
  *
  * Đây là bảng **cha** của `qc_inspections` — mỗi request có 0..N lần kiểm (attempt), append-only,
  * xem `docs/decisions/qc-request-attempt-split.md`. `status`/`result`/`disposition`/`sortOkQty`/
- * `sortNgQty`/`resultAuto`/`resultNote`/`dispositionNote`/`confirmedBy`/`confirmedAt`/`resolvedBy`/
+ * `sortNgQty`/`resultNote`/`dispositionNote`/`confirmedBy`/`confirmedAt`/`resolvedBy`/
  * `resolvedAt` trên bảng này là **mirror của attempt mới nhất** — nguồn duy nhất ghi vào các cột
  * này là `IqcService`/`OqcService` sau khi insert 1 dòng `qc_inspections` mới, không có đường ghi
  * nào khác. `attemptCount` là số attempt đã có, dùng để cấp `attemptNo` — không có cột trỏ ngược
@@ -194,8 +194,6 @@ export const qcRequests = pgTable(
     sampleSize: integer('sample_size'),
     defectQty: integer('defect_qty'),
     result: qcResultEnum('result'),
-    // Chỉ OUTGOING dùng — server tự suy từ Ac/Re (resolveAqlResult), luôn NULL ở INCOMING.
-    resultAuto: qcResultEnum('result_auto'),
     // `.$type<>()` — `IqcDisposition`/`OqcDisposition` là 2 enum TS riêng (giá trị Postgres không
     // giao nhau) nên giá trị suy mặc định từ mảng `qcDispositionEnum` (trộn cả hai) chỉ còn là
     // union kiểu string thô; ép lại thành union 2 enum TS để `IqcService`/`OqcService` so sánh
@@ -348,12 +346,6 @@ export const qcRequests = pgTable(
         AND measuring_tools IS NULL AND qc_department_id IS NULL
         AND sort_ok_qty IS NULL AND sort_ng_qty IS NULL
       )`,
-    ),
-    // Ngược chiều — `resultAuto` chỉ OUTGOING dùng (server tự suy từ Ac/Re), luôn NULL ở INCOMING
-    // (comment trên cột `resultAuto`), trước đây chỉ được service chặn.
-    check(
-      'chk_qc_requests_incoming_no_result_auto',
-      sql`kind <> 'INCOMING' OR result_auto IS NULL`,
     ),
     check(
       'chk_qc_requests_outgoing_job',

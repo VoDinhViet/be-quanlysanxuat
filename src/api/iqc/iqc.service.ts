@@ -15,13 +15,13 @@ import type { Database, DbTransaction } from '../../database/database.type';
 import {
   departments,
   inventoryReceipts,
-  IqcAttachmentKind,
   IqcDisposition,
   IqcResult,
   IqcStatus,
   items,
   purchaseOrders,
   qcInspections,
+  QcFileKind,
   QcKind,
   qcRequests,
   type QcRequestSelect,
@@ -40,7 +40,7 @@ import { IqcStatsResDto } from './dto/iqc-stats.res.dto';
 import { PageIqcResDto } from './dto/page-iqc.res.dto';
 import { UpdateIqcReqDto } from './dto/update-iqc.req.dto';
 import { resolveAqlPlan } from './iqc-aql.query';
-import { linkAttachments } from './iqc.write';
+import { linkQcFiles } from './iqc.write';
 
 // `supplierId` ghi đè non-null — cột vật lý nullable (dùng chung với OUTGOING) nhưng
 // `chk_qc_requests_incoming_supplier` đảm bảo luôn có giá trị ở dòng `kind = INCOMING`, tập query này luôn
@@ -402,7 +402,7 @@ export class IqcService {
       throw new AppException(ErrorCode.E138, HttpStatus.NOT_FOUND);
     }
 
-    const attachments = latestAttempt?.attachments ?? [];
+    const qcFiles = latestAttempt?.files ?? [];
 
     return plainToInstance(
       IqcResDto,
@@ -410,12 +410,11 @@ export class IqcService {
         ...row,
         ac: latestAttempt?.acceptanceNumber ?? null,
         re: latestAttempt?.rejectionNumber ?? null,
-        qcEvidence: attachments.filter(
-          (attachment) => attachment.kind === IqcAttachmentKind.QC_EVIDENCE,
+        qcEvidence: qcFiles.filter(
+          (qcFile) => qcFile.kind === QcFileKind.QC_EVIDENCE,
         ),
-        dispositionEvidence: attachments.filter(
-          (attachment) =>
-            attachment.kind === IqcAttachmentKind.DISPOSITION_EVIDENCE,
+        dispositionEvidence: qcFiles.filter(
+          (qcFile) => qcFile.kind === QcFileKind.DISPOSITION_EVIDENCE,
         ),
         supplierReturn: row.supplierReturns[0] ?? null,
       },
@@ -430,7 +429,7 @@ export class IqcService {
     return this.db.query.qcInspections.findFirst({
       where: eq(qcInspections.qcRequestId, qcRequestId),
       orderBy: desc(qcInspections.attemptNo),
-      with: { attachments: { with: { file: true } } },
+      with: { files: { with: { file: true } } },
     });
   }
 
@@ -596,16 +595,16 @@ export class IqcService {
         })
         .where(eq(qcRequests.id, iqcId));
 
-      await linkAttachments(
+      await linkQcFiles(
         tx,
         attempt.id,
-        IqcAttachmentKind.QC_EVIDENCE,
+        QcFileKind.QC_EVIDENCE,
         reqDto.qcEvidenceFileIds ?? [],
       );
-      await linkAttachments(
+      await linkQcFiles(
         tx,
         attempt.id,
-        IqcAttachmentKind.DISPOSITION_EVIDENCE,
+        QcFileKind.DISPOSITION_EVIDENCE,
         isPass ? [] : (reqDto.dispositionEvidenceFileIds ?? []),
       );
 

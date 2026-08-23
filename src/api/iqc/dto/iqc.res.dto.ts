@@ -29,7 +29,7 @@ import { PurchaseOrderRefResDto } from '../../purchase-orders/dto/purchase-order
 import { SupplierReturnRefResDto } from '../../supplier-returns/dto/supplier-return-ref.res.dto';
 import { SupplierRefResDto } from '../../suppliers/dto/supplier-ref.res.dto';
 import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
-import { IqcAttachmentResDto } from './iqc-attachment.res.dto';
+import { QcFileResDto } from './qc-file.res.dto';
 
 @Exclude()
 export class IqcResDto {
@@ -129,12 +129,12 @@ export class IqcResDto {
   qcDepartment!: DepartmentResDto | null;
 
   @Expose()
-  @ClassField(() => IqcAttachmentResDto, { each: true })
-  qcEvidence!: IqcAttachmentResDto[];
+  @ClassField(() => QcFileResDto, { each: true })
+  qcEvidence!: QcFileResDto[];
 
   @Expose()
-  @ClassField(() => IqcAttachmentResDto, { each: true })
-  dispositionEvidence!: IqcAttachmentResDto[];
+  @ClassField(() => QcFileResDto, { each: true })
+  dispositionEvidence!: QcFileResDto[];
 
   @Expose()
   @ClassFieldOptional(() => SupplierReturnRefResDto, {

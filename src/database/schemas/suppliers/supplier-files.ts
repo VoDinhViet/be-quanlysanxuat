@@ -5,14 +5,14 @@ import { files } from '../files';
 import { suppliers } from './suppliers';
 
 /**
- * Join table onto the `files` registry, same shape as `order_attachments`/`qc_attachments`. It
+ * Join table onto the `files` registry, same shape as `order_files`/`qc_files`. It
  * deliberately stores nothing but the link: url/filename/mimetype/size live on `files`, so
  * attachments get magic-byte validation and orphan sweeping for free instead of being a second,
  * weaker file registry. No `updatedAt` — a link row is only ever inserted or deleted, never
  * mutated.
  */
-export const supplierAttachments = pgTable(
-  'supplier_attachments',
+export const supplierFiles = pgTable(
+  'supplier_files',
   {
     id: uuid('id').defaultRandom().primaryKey(),
     supplierId: uuid('supplier_id')
@@ -24,27 +24,24 @@ export const supplierAttachments = pgTable(
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => [
-    index('idx_supplier_attachments_supplier_id').on(table.supplierId),
-    index('idx_supplier_attachments_file_id').on(table.fileId),
-    unique('uq_supplier_attachments_supplier_file').on(
+    index('idx_supplier_files_supplier_id').on(table.supplierId),
+    index('idx_supplier_files_file_id').on(table.fileId),
+    unique('uq_supplier_files_supplier_file').on(
       table.supplierId,
       table.fileId,
     ),
   ],
 );
 
-export const supplierAttachmentsRelations = relations(
-  supplierAttachments,
-  ({ one }) => ({
-    supplier: one(suppliers, {
-      fields: [supplierAttachments.supplierId],
-      references: [suppliers.id],
-    }),
-    file: one(files, {
-      fields: [supplierAttachments.fileId],
-      references: [files.id],
-    }),
+export const supplierFilesRelations = relations(supplierFiles, ({ one }) => ({
+  supplier: one(suppliers, {
+    fields: [supplierFiles.supplierId],
+    references: [suppliers.id],
   }),
-);
+  file: one(files, {
+    fields: [supplierFiles.fileId],
+    references: [files.id],
+  }),
+}));
 
-export type SupplierAttachmentSelect = typeof supplierAttachments.$inferSelect;
+export type SupplierFileSelect = typeof supplierFiles.$inferSelect;

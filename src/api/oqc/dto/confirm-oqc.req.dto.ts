@@ -13,28 +13,19 @@ import {
 } from '../../../decorators/field.decorators';
 import { AQL_LEVELS } from '../../iqc/iqc-aql.constant';
 
-/**
- * Nút "Lưu" duy nhất của trang chi tiết OQC — ghi đè toàn bộ quyết định QC mỗi lần gọi (field vắng
- * mặt nghĩa là xoá, không phải giữ nguyên). Gọi lại được nhiều lần trừ khi đã `COMPLETED` (`E177`
- * — khoá cứng, khác IQC). `sampleSize`/`result` vắng thì server tự suy từ bảng AQL
- * (`resolveAqlPlan`/`resolveAqlResult`) — cả hai đều không suy được thì `E200`. Xem
- * `docs/domains/quality.md`.
- */
 export class ConfirmOqcReqDto {
   @EnumField(() => IqcInspectionLevel, {
     description: 'Mức kiểm tra (Inspection Level)',
   })
   readonly inspectionLevel!: IqcInspectionLevel;
 
-  @NumberField({
-    description: `Mức AQL (%) — một trong ${AQL_LEVELS.join('/')}`,
-  })
+  @NumberField({ isIn: AQL_LEVELS, description: 'Mức AQL (%)' })
   readonly aqlLevel!: number;
 
   @NumberFieldOptional({
     int: true,
     isPositive: true,
-    description: 'Cỡ mẫu — auto tính từ bảng AQL nếu vắng, cho ghi đè tay',
+    description: 'Cỡ mẫu — QC nhập tay',
   })
   readonly sampleSize?: number;
 

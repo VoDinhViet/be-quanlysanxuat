@@ -10,7 +10,7 @@ Reference: `SuppliersService.createSupplier` (simplest), `OrdersService` (fulles
   ```ts
   const supplierId = await this.db.transaction(async (tx) => {
     const [supplier] = await tx.insert(suppliers).values({...}).returning();
-    if (attachmentFileIds?.length) await this.replaceAttachments(tx, supplier.id, attachmentFileIds);
+    if (fileIds?.length) await this.replaceFiles(tx, supplier.id, fileIds);
     return supplier.id;
   });
   return this.getSupplier(supplierId);

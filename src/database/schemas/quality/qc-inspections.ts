@@ -16,7 +16,7 @@ import { departments } from '../departments';
 import { users } from '../identity-access/users';
 import { qcAqlPlans } from './qc-aql-plans';
 import { qcAqlRules } from './qc-aql-rules';
-import { qcAttachments } from './qc-attachments';
+import { qcFiles } from './qc-files';
 import {
   IqcDisposition,
   IqcStatus,
@@ -81,7 +81,6 @@ export const qcInspections = pgTable(
     rejectionNumber: integer('rejection_number'),
     defectQty: integer('defect_qty'),
 
-    resultAuto: qcResultEnum('result_auto'),
     // NOT NULL — không có đường ghi nào tạo attempt thiếu result (confirmIqc/confirmOqc đều chốt
     // được result hoặc ném E200 trước khi ghi).
     result: qcResultEnum('result').notNull(),
@@ -224,7 +223,7 @@ export const qcInspectionsRelations = relations(
       fields: [qcInspections.confirmedBy],
       references: [users.id],
     }),
-    attachments: many(qcAttachments),
+    files: many(qcFiles),
   }),
 );
 

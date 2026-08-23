@@ -16,9 +16,11 @@ khi sửa bất kỳ gate hay query nào ở domain này, nó giải thích vì 
 `updatedAt` như thiết kế cũ (`docs/decisions/qc-request-attempt-split.md`). `qc_requests` vẫn là nơi
 mọi gate/list/detail khác đọc — các cột `status`/`result`/`disposition`/... trên đó là **mirror của
 attempt mới nhất**, ghi lại ngay sau khi insert attempt, cùng transaction. `qc_requests.attemptCount`
-đếm số attempt đã có; `GET /iqc/:iqcId`/`GET /oqc/:oqcId` đọc thẳng attempt mới nhất cho các cột chỉ
-tồn tại ở tầng attempt (`ac`/`re`/`codeLetter` — snapshot AQL lúc kiểm, xem `docs/decisions/
-qc-aql-master-data.md`).
+đếm số attempt đã có; `GET /iqc/:iqcId` đọc thẳng attempt mới nhất cho các cột chỉ tồn tại ở tầng
+attempt (`ac`/`re`/`codeLetter` — snapshot AQL lúc kiểm, xem `docs/decisions/
+qc-aql-master-data.md`). `GET /oqc/:oqcId` cũng đọc attempt mới nhất, nhưng chỉ để lấy
+`qcEvidence`/`dispositionEvidence` — `OqcResDto` không còn expose `ac`/`re`/`codeLetter`, FE tra
+sống các số đó qua `GET /oqc/aql-plan` thay vì đọc một bản đóng băng trên response chi tiết.
 
 IQC: phase 1 chỉ có `GET` list + `GET stats` + `POST` tạo; phase 2 thêm `GET :iqcId` (chi tiết) +
 `POST :iqcId/confirm` (xác nhận PASS/FAIL); phase 3 thêm `POST :iqcId/resolve` (chọn xử lý cho FAIL)
@@ -149,12 +151,12 @@ Route mirror `GET /oqc/aql-plan` (xem mục OQC bên dưới) — cùng `resolve
 
 ## Bằng chứng đính kèm
 
-`qc_attachments` — 1 bảng, discriminator `kind` (`QC_EVIDENCE`/`DISPOSITION_EVIDENCE` — enum
-`IqcAttachmentKind`, khác `qc_requests.kind`/`qc_inspections.kind` là enum riêng, đừng nhầm hai
+`qc_files` — 1 bảng, discriminator `kind` (`QC_EVIDENCE`/`DISPOSITION_EVIDENCE` — enum
+`QcFileKind`, khác `qc_requests.kind`/`qc_inspections.kind` là enum riêng, đừng nhầm hai
 `kind` này), dùng chung cho cả IQC lẫn OQC — cả hai `confirmIqc`/`confirmOqc` đều insert vào bảng
 này. `inspectionId` trỏ **attempt** (`qc_inspections.id`), không phải request — mỗi bộ file gắn đúng
 lần kiểm sinh ra nó. Attempt append-only nên đây luôn là **insert-only** vào một `inspectionId` chưa
-từng có dòng nào (`linkAttachments`, `src/api/iqc/iqc.write.ts` — plain function dùng chung cả 2
+từng có dòng nào (`linkQcFiles`, `src/api/iqc/iqc.write.ts` — plain function dùng chung cả 2
 module, không phải method riêng của `IqcService`), không còn ý nghĩa "replace-all theo
 `(inspectionId, kind)`" như thiết kế trước khi tách request/attempt
 (`docs/decisions/qc-request-attempt-split.md`). `UploadType.IQC_EVIDENCE`/`IQC_DISPOSITION_EVIDENCE`
@@ -265,7 +267,7 @@ gọi bởi `SupplierReturnsService.postSupplierReturn` khi kho xác nhận đã
 - **→ Partners**: `supplierId` bắt buộc tới `suppliers` (khi `kind = INCOMING`).
 - **→ Product Structure**: `itemId` bắt buộc tới `items`.
 - **→ Identity/Access**: `qcDepartmentId` liên kết tuỳ chọn tới `departments`.
-- **→ Files**: `qc_attachments.fileId` tới `files` — xem "Bằng chứng đính kèm" ở trên.
+- **→ Files**: `qc_files.fileId` tới `files` — xem "Bằng chứng đính kèm" ở trên.
 
 ## Common mistakes (IQC)
 
@@ -303,9 +305,10 @@ gọi bởi `SupplierReturnsService.postSupplierReturn` khi kho xác nhận đã
     `docs/decisions/qc-request-attempt-split.md` — mỗi `confirm` insert 1 dòng `qc_inspections` mới,
     lần kiểm trước vẫn còn nguyên, chỉ không còn là "hiện hành" trên `qc_requests` (mirror) nữa.
 11. **Tưởng `GET /iqc/:iqcId`/`GET /oqc/:oqcId` trả danh sách các lần kiểm.** Không — trả đúng
-    request hiện hành (mirror), cộng `ac`/`re`/`codeLetter` đọc từ attempt mới nhất; chưa có DTO
-    nào trả mảng lịch sử attempt (phạm vi Phase A không làm, xem `docs/decisions/qc-request-attempt-
-    split.md`).
+    request hiện hành (mirror). `IqcResDto` cộng thêm `ac`/`re`/`codeLetter` đọc từ attempt mới
+    nhất; `OqcResDto` đọc attempt mới nhất chỉ để lấy evidence (AQL tra sống qua
+    `GET /oqc/aql-plan`). Chưa có DTO nào trả mảng lịch sử attempt (phạm vi Phase A không làm,
+    xem `docs/decisions/qc-request-attempt-split.md`).
 
 ## OQC (Outgoing/Final QC — `kind = OUTGOING`)
 

@@ -33,7 +33,7 @@ export const productionOrderLogActionEnum = pgEnum(
 /**
  * Lịch sử thao tác trên một LSX — thời gian (`createdAt`), người thực hiện (`performedBy`), nội
  * dung (`content`, mô tả sẵn bằng tiếng Việt, sinh tại nơi ghi chứ không tính lại lúc đọc). Append
- * -only, không có `updatedAt` — cùng khuôn `order_attachments`/`client_contacts`, một dòng log
+ * -only, không có `updatedAt` — cùng khuôn `order_files`/`client_contacts`, một dòng log
  * không bao giờ bị `UPDATE`.
  *
  * Rules:

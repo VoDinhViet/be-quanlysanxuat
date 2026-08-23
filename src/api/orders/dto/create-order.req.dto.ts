@@ -96,7 +96,7 @@ export class CreateOrderReqDto {
 
   @UUIDFieldOptional({
     each: true,
-    description: 'Attachment file ids (from POST /files, type=ORDER_DOCUMENT)',
+    description: 'File ids (from POST /files, type=ORDER_DOCUMENT)',
   })
-  readonly attachmentFileIds?: string[];
+  readonly fileIds?: string[];
 }

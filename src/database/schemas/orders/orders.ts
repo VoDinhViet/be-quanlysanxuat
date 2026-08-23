@@ -11,7 +11,7 @@ import {
 } from 'drizzle-orm/pg-core';
 
 import { clients } from '../clients/clients';
-import { orderAttachments } from './order-attachments';
+import { orderFiles } from './order-files';
 import { orderItems } from './order-items';
 import { orderPayments } from './order-payments';
 import {
@@ -223,7 +223,7 @@ export const ordersRelations = relations(orders, ({ one, many }) => ({
     references: [users.id],
   }),
   items: many(orderItems),
-  attachments: many(orderAttachments),
+  files: many(orderFiles),
   payments: many(orderPayments),
 }));
 

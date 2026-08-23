@@ -23,7 +23,7 @@ import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
-  IqcAttachmentKind,
+  IqcInspectionLevel,
   IqcResult,
   items,
   ItemType,
@@ -37,6 +37,7 @@ import {
   productionOrders,
   ProductionJobStatus,
   qcInspections,
+  QcFileKind,
   QcKind,
   qcRequests,
   units,
@@ -46,9 +47,10 @@ import { AppException } from '../../exceptions/app.exception';
 import { FilesService } from '../files/files.service';
 import { AqlPlanResDto } from '../iqc/dto/aql-plan.res.dto';
 import { GetAqlPlanReqDto } from '../iqc/dto/get-aql-plan.req.dto';
+import type { AqlPlan } from '../iqc/iqc-aql.constant';
 import { resolveAqlResult } from '../iqc/iqc-aql.constant';
 import { resolveAqlPlan } from '../iqc/iqc-aql.query';
-import { linkAttachments } from '../iqc/iqc.write';
+import { linkQcFiles } from '../iqc/iqc.write';
 import { ConfirmOqcReqDto } from './dto/confirm-oqc.req.dto';
 import { GetOqcsReqDto } from './dto/get-oqcs.req.dto';
 import { OqcResDto } from './dto/oqc.res.dto';
@@ -88,13 +90,13 @@ export class OqcService {
       reqDto.disposition
         ? eq(qcRequests.disposition, reqDto.disposition)
         : undefined,
-      reqDto.fromDate
-        ? gte(qcRequests.inspectionDate, reqDto.fromDate)
+      reqDto.startDate
+        ? gte(qcRequests.inspectionDate, reqDto.startDate)
         : undefined,
-      reqDto.toDate
+      reqDto.endDate
         ? lt(
             qcRequests.inspectionDate,
-            new Date(reqDto.toDate.getTime() + 24 * 60 * 60 * 1000),
+            new Date(reqDto.endDate.getTime() + 24 * 60 * 60 * 1000),
           )
         : undefined,
     );
@@ -170,7 +172,7 @@ export class OqcService {
     const confirmerUsers = alias(users, 'oqc_confirmer');
     const resolverUsers = alias(users, 'oqc_resolver');
 
-    const [row] = await this.db
+    const [oqcRequest] = await this.db
       .select({
         id: qcRequests.id,
         code: qcRequests.code,
@@ -180,17 +182,14 @@ export class OqcService {
         aqlLevel: qcRequests.aqlLevel,
         sampleSize: qcRequests.sampleSize,
         defectQty: qcRequests.defectQty,
-        resultAuto: qcRequests.resultAuto,
         result: qcRequests.result,
         status: qcRequests.status,
         resultNote: qcRequests.resultNote,
         disposition: qcRequests.disposition,
         dispositionNote: qcRequests.dispositionNote,
-        note: qcRequests.note,
         confirmedAt: qcRequests.confirmedAt,
         resolvedAt: qcRequests.resolvedAt,
         createdAt: qcRequests.createdAt,
-        updatedAt: qcRequests.updatedAt,
         productionJob: getTableColumns(productionJobs),
         orderCode: orders.code,
         operation: getTableColumns(productionJobOperations),
@@ -232,57 +231,27 @@ export class OqcService {
       )
       .limit(1);
 
-    if (!row) {
+    if (!oqcRequest) {
       throw new AppException(ErrorCode.E174, HttpStatus.NOT_FOUND);
     }
 
-    const [plan, latestAttempt] = await Promise.all([
-      row.inspectionLevel && row.aqlLevel
-        ? resolveAqlPlan(
-            this.db,
-            row.quantity,
-            row.inspectionLevel,
-            row.aqlLevel,
-          )
-        : undefined,
-      this.getLatestAttempt(oqcId),
-    ]);
-
-    const attachments = latestAttempt?.attachments ?? [];
+    const latestAttempt = await this.getLatestAttempt(oqcId);
 
     return plainToInstance(
       OqcResDto,
       {
-        ...row,
-        codeLetter: latestAttempt?.codeLetter ?? null,
-        suggestedSampleSize: plan?.sampleSize ?? null,
-        ac: latestAttempt?.acceptanceNumber ?? null,
-        re: latestAttempt?.rejectionNumber ?? null,
-        qcEvidence: attachments.filter(
-          (attachment) => attachment.kind === IqcAttachmentKind.QC_EVIDENCE,
-        ),
-        dispositionEvidence: attachments.filter(
-          (attachment) =>
-            attachment.kind === IqcAttachmentKind.DISPOSITION_EVIDENCE,
-        ),
+        ...oqcRequest,
+        files: latestAttempt?.files ?? [],
       },
       { excludeExtraneousValues: true },
     );
   }
 
-  /** Ac/Re/codeLetter đã dùng ở lần kiểm mới nhất — snapshot thật trên `qc_inspections`, không tính
-   * lại từ `qc_aql_rules` hiện hành (`docs/decisions/qc-aql-master-data.md`). Khác
-   * `suggestedSampleSize` trên `getOqc` — cái đó vẫn tra sống theo `inspectionLevel`/`aqlLevel`
-   * hiện tại của request, không phải giá trị lịch sử. */
   private async getLatestAttempt(qcRequestId: string) {
     return this.db.query.qcInspections.findFirst({
       where: eq(qcInspections.qcRequestId, qcRequestId),
-      columns: {
-        codeLetter: true,
-        acceptanceNumber: true,
-        rejectionNumber: true,
-      },
-      with: { attachments: { with: { file: true } } },
+      columns: {},
+      with: { files: { with: { file: true } } },
       orderBy: desc(qcInspections.attemptNo),
     });
   }
@@ -298,7 +267,7 @@ export class OqcService {
    * dòng, không phải 0. `quantity` lấy thẳng `completedQuantity` của công đoạn Cấp 0 — lô kiểm
    * luôn là toàn bộ SL đã hoàn thành, không phải một phần. */
   async createOqcForJob(jobId: string, userId: string): Promise<void> {
-    const [row] = await this.db
+    const [finalOperation] = await this.db
       .select({
         jobStatus: productionJobs.status,
         operationId: productionJobOperations.id,
@@ -330,41 +299,41 @@ export class OqcService {
       .orderBy(desc(productionJobOperations.sortOrder))
       .limit(1);
 
-    if (!row) {
+    if (!finalOperation) {
       throw new AppException(ErrorCode.E082, HttpStatus.NOT_FOUND);
     }
 
-    if (row.jobStatus !== ProductionJobStatus.IN_PROGRESS) {
+    if (finalOperation.jobStatus !== ProductionJobStatus.IN_PROGRESS) {
       throw new AppException(ErrorCode.E175, HttpStatus.CONFLICT);
     }
 
-    if (!row.operationId) {
+    if (!finalOperation.operationId) {
       throw new AppException(ErrorCode.E213, HttpStatus.BAD_REQUEST);
     }
 
-    if (!row.completedDate) {
+    if (!finalOperation.completedDate) {
       throw new AppException(ErrorCode.E214, HttpStatus.BAD_REQUEST);
     }
 
-    if (!row.itemId) {
+    if (!finalOperation.itemId) {
       throw new AppException(ErrorCode.E199, HttpStatus.CONFLICT);
     }
 
     // LEFT JOIN khiến các cột trên khiến kiểu nullable, nhưng đã qua đủ 4 kiểm phía trên nghĩa là
     // đúng có 1 công đoạn khớp — bomItemId/itemId/completedQuantity/plannedQuantity (đều NOT NULL)
     // chắc chắn có giá trị.
-    const operationId = row.operationId;
-    const itemId = row.itemId;
-    const quantity = row.completedQuantity!;
+    const operationId = finalOperation.operationId;
+    const itemId = finalOperation.itemId;
+    const quantity = finalOperation.completedQuantity!;
 
     const [inspectedByBomItem, inspectedByOperation] = await Promise.all([
-      getInspectedQuantityByBomItemId(this.db, row.bomItemId!),
+      getInspectedQuantityByBomItemId(this.db, finalOperation.bomItemId!),
       getInspectedQuantityByOperationId(this.db, operationId),
     ]);
 
     // Σ SL đã xin QC của mọi công đoạn as-used cùng node BOM (1 node có thể nhiều bước, cùng 1 part
     // vật lý) + lô mới không vượt `plannedQuantity` đã đóng băng của node.
-    if (inspectedByBomItem + quantity > row.plannedQuantity!) {
+    if (inspectedByBomItem + quantity > finalOperation.plannedQuantity!) {
       throw new AppException(ErrorCode.E176, HttpStatus.BAD_REQUEST);
     }
 
@@ -410,99 +379,40 @@ export class OqcService {
     });
   }
 
-  /** `resultAuto` tự suy từ Ac/Re (`resolveAqlResult`) — `result` client gửi thắng nếu có, vắng thì
-   * lấy `resultAuto` (cả hai đều vắng → `E200`); QC toàn quyền ghi đè `resultAuto`, không cần lý do.
-   * `status` suy theo bảng: PASS → `COMPLETED`; FAIL+null → `PENDING`; FAIL+`REWORK` → `REWORK`
-   * (phiếu vẫn mở, QC kiểm lại trên chính phiếu); FAIL+`ACCEPT`/`SCRAP` → `COMPLETED`. Mỗi lần gọi
-   * sinh 1 dòng `qc_inspections` mới (attempt) thay vì ghi đè — giữ nguyên lịch sử các vòng REWORK
-   * (`docs/decisions/qc-request-attempt-split.md`). Không ghi ngược `production_job_operations` ở
-   * bất kỳ nhánh nào — tránh race với thao tác tay của xưởng (`PATCH .../operations/:operationId`),
-   * `docs/domains/production.md`. */
+  /** Nút "Lưu" duy nhất của trang chi tiết OQC — mỗi lần gọi ghi 3 nơi trong 1 transaction: 1 dòng
+   * attempt mới (`qc_inspections`), mirror trên `qc_requests`, và đính kèm. `linkFiles` chạy trước
+   * khi mở transaction (`.claude/rules/transactions.md`) nên `dispositionEvidenceFileIds` vẫn bị
+   * validate/stamp `linkedAt` kể cả khi PASS — chỉ dòng `qc_files` bị bỏ qua. Xem
+   * `docs/workflows/final-qc.md`. */
   async confirmOqc(
     oqcId: string,
     reqDto: ConfirmOqcReqDto,
     userId: string,
   ): Promise<void> {
-    const request = await this.ensureOqcConfirmable(oqcId);
+    const oqcRequest = await this.ensureOqcConfirmable(oqcId);
 
     const plan = await resolveAqlPlan(
       this.db,
-      request.quantity,
+      oqcRequest.quantity,
       reqDto.inspectionLevel,
       reqDto.aqlLevel,
     );
-    const resultAuto = plan ? resolveAqlResult(plan, reqDto.defectQty) : null;
-    const result = reqDto.result ?? resultAuto;
-
-    if (!result) {
-      throw new AppException(ErrorCode.E200, HttpStatus.BAD_REQUEST);
-    }
+    const decision = this.buildOqcDecision(reqDto, plan);
+    const status = this.resolveOqcStatus(decision.result, reqDto.disposition);
 
     await this.filesService.linkFiles([
       ...(reqDto.qcEvidenceFileIds ?? []),
       ...(reqDto.dispositionEvidenceFileIds ?? []),
     ]);
 
-    const isPass = result === IqcResult.PASS;
-    const status = this.resolveOqcStatus(result, reqDto.disposition);
-    const disposition = isPass ? null : (reqDto.disposition ?? null);
-
-    // Phần quyết định QC của lần confirm này — ghi y hệt vào cả dòng attempt mới lẫn mirror trên
-    // `qc_requests`, viết một lần để hai bên không lệch nhau.
-    const decision = {
-      inspectionLevel: reqDto.inspectionLevel,
-      aqlLevel: reqDto.aqlLevel,
-      sampleSize: reqDto.sampleSize ?? plan?.sampleSize ?? null,
-      defectQty: reqDto.defectQty,
-      resultAuto,
-      result,
-      resultNote: reqDto.resultNote ?? null,
-      disposition,
-      dispositionNote: isPass ? null : (reqDto.dispositionNote ?? null),
-    };
-
     await this.db.transaction(async (tx) => {
-      // Khoá request để cấp `attemptNo` tuần tự — không có lock, hai lần confirm song song có thể
-      // tính trùng `attemptNo` hoặc cùng nghĩ mình là lần confirm đầu tiên.
-      const [locked] = await tx
-        .select({
-          confirmedAt: qcRequests.confirmedAt,
-          resolvedAt: qcRequests.resolvedAt,
-          status: qcRequests.status,
-          attemptCount: qcRequests.attemptCount,
-        })
-        .from(qcRequests)
-        .where(eq(qcRequests.id, oqcId))
-        .for('update');
-
-      if (!locked || locked.status === OqcStatus.COMPLETED) {
-        throw new AppException(ErrorCode.E177, HttpStatus.CONFLICT);
-      }
-
-      const attemptNo = locked.attemptCount + 1;
-
-      // Bỏ trống (`undefined`) = Drizzle giữ nguyên cột: người/lúc confirm chỉ ghi ở lần confirm
-      // đầu tiên, người/lúc chốt phương án chỉ ghi ở lần chốt đầu tiên — nhưng bị xoá hẳn nếu lần
-      // confirm này không còn phương án nào.
-      const audit: {
-        confirmedBy?: string;
-        confirmedAt?: Date;
-        resolvedBy?: string | null;
-        resolvedAt?: Date | null;
-      } = {};
-
-      if (locked.confirmedAt === null) {
-        audit.confirmedBy = userId;
-        audit.confirmedAt = new Date();
-      }
-
-      if (!disposition) {
-        audit.resolvedBy = null;
-        audit.resolvedAt = null;
-      } else if (locked.resolvedAt === null) {
-        audit.resolvedBy = userId;
-        audit.resolvedAt = new Date();
-      }
+      const lockedOqcRequest = await this.getOqcRequestForUpdate(tx, oqcId);
+      const attemptNo = lockedOqcRequest.attemptCount + 1;
+      const audit = this.buildConfirmAudit(
+        lockedOqcRequest,
+        decision.disposition,
+        userId,
+      );
 
       const [attempt] = await tx
         .insert(qcInspections)
@@ -510,14 +420,9 @@ export class OqcService {
           ...decision,
           qcRequestId: oqcId,
           kind: QcKind.OUTGOING,
-          quantity: request.quantity,
+          quantity: oqcRequest.quantity,
           attemptNo,
-          inspectionDate: request.inspectionDate,
-          aqlPlanId: plan?.planId ?? null,
-          aqlRuleId: plan?.ruleId ?? null,
-          codeLetter: plan?.codeLetter ?? null,
-          acceptanceNumber: plan?.ac ?? null,
-          rejectionNumber: plan?.re ?? null,
+          inspectionDate: oqcRequest.inspectionDate,
           resultingStatus: status,
           confirmedBy: userId,
         })
@@ -533,23 +438,138 @@ export class OqcService {
         })
         .where(eq(qcRequests.id, oqcId));
 
-      await linkAttachments(
-        tx,
-        attempt.id,
-        IqcAttachmentKind.QC_EVIDENCE,
-        reqDto.qcEvidenceFileIds ?? [],
-      );
-      await linkAttachments(
-        tx,
-        attempt.id,
-        IqcAttachmentKind.DISPOSITION_EVIDENCE,
-        isPass ? [] : (reqDto.dispositionEvidenceFileIds ?? []),
-      );
+      await this.linkOqcEvidence(tx, attempt.id, reqDto, decision.result);
     });
   }
 
+  /** `result` vắng thì lấy `resultAuto` (suy từ Ac/Re) — cả hai đều vắng thì `E200`, ném ngay ở
+   * đây trước khi có bất kỳ ghi nào. `resultAuto` chỉ dùng cục bộ để suy `result`, không lưu
+   * xuống DB — không có route/query nào đọc lại nó (khác `ac`/`re` mà IQC vẫn đọc lại cho dòng
+   * `INCOMING` của nó, xem `IqcService.getIqc`), nên không có snapshot nào để giữ. */
+  private buildOqcDecision(
+    reqDto: ConfirmOqcReqDto,
+    plan: AqlPlan | undefined,
+  ): {
+    inspectionLevel: IqcInspectionLevel;
+    aqlLevel: number;
+    sampleSize: number | null;
+    defectQty: number;
+    result: IqcResult;
+    resultNote: string | null;
+    disposition: OqcDisposition | null;
+    dispositionNote: string | null;
+  } {
+    const resultAuto = plan ? resolveAqlResult(plan, reqDto.defectQty) : null;
+    const result = reqDto.result ?? resultAuto;
+
+    if (!result) {
+      throw new AppException(ErrorCode.E200, HttpStatus.BAD_REQUEST);
+    }
+
+    const isPass = result === IqcResult.PASS;
+
+    return {
+      inspectionLevel: reqDto.inspectionLevel,
+      aqlLevel: reqDto.aqlLevel,
+      sampleSize: reqDto.sampleSize ?? null,
+      defectQty: reqDto.defectQty,
+      result,
+      resultNote: reqDto.resultNote ?? null,
+      disposition: isPass ? null : (reqDto.disposition ?? null),
+      dispositionNote: isPass ? null : (reqDto.dispositionNote ?? null),
+    };
+  }
+
+  /** Khoá dòng để cấp `attemptNo` tuần tự — không có lock, hai lần confirm song song có thể tính
+   * trùng `attemptNo` hoặc cùng nghĩ mình là lần đầu. Đây là chốt chặn thật cho `E177`
+   * (`COMPLETED`) — `ensureOqcConfirmable` chỉ fail-fast trước transaction, không thay được lock
+   * này. */
+  private async getOqcRequestForUpdate(
+    tx: DbTransaction,
+    oqcId: string,
+  ): Promise<{
+    confirmedAt: Date | null;
+    resolvedAt: Date | null;
+    attemptCount: number;
+  }> {
+    const [oqcRequest] = await tx
+      .select({
+        confirmedAt: qcRequests.confirmedAt,
+        resolvedAt: qcRequests.resolvedAt,
+        status: qcRequests.status,
+        attemptCount: qcRequests.attemptCount,
+      })
+      .from(qcRequests)
+      .where(eq(qcRequests.id, oqcId))
+      .for('update');
+
+    if (!oqcRequest || oqcRequest.status === OqcStatus.COMPLETED) {
+      throw new AppException(ErrorCode.E177, HttpStatus.CONFLICT);
+    }
+
+    return oqcRequest;
+  }
+
+  /** Bỏ trống (`undefined`) = Drizzle giữ nguyên cột: người/lúc confirm chỉ ghi ở lần confirm đầu
+   * tiên, người/lúc chốt phương án chỉ ghi ở lần chốt đầu tiên — nhưng bị xoá hẳn nếu lần confirm
+   * này không còn phương án nào. */
+  private buildConfirmAudit(
+    lockedOqcRequest: { confirmedAt: Date | null; resolvedAt: Date | null },
+    disposition: OqcDisposition | null,
+    userId: string,
+  ): {
+    confirmedBy?: string;
+    confirmedAt?: Date;
+    resolvedBy?: string | null;
+    resolvedAt?: Date | null;
+  } {
+    const audit: {
+      confirmedBy?: string;
+      confirmedAt?: Date;
+      resolvedBy?: string | null;
+      resolvedAt?: Date | null;
+    } = {};
+
+    if (lockedOqcRequest.confirmedAt === null) {
+      audit.confirmedBy = userId;
+      audit.confirmedAt = new Date();
+    }
+
+    if (!disposition) {
+      audit.resolvedBy = null;
+      audit.resolvedAt = null;
+    } else if (lockedOqcRequest.resolvedAt === null) {
+      audit.resolvedBy = userId;
+      audit.resolvedAt = new Date();
+    }
+
+    return audit;
+  }
+
+  private async linkOqcEvidence(
+    tx: DbTransaction,
+    inspectionId: string,
+    reqDto: ConfirmOqcReqDto,
+    result: IqcResult,
+  ): Promise<void> {
+    await linkQcFiles(
+      tx,
+      inspectionId,
+      QcFileKind.QC_EVIDENCE,
+      reqDto.qcEvidenceFileIds ?? [],
+    );
+    await linkQcFiles(
+      tx,
+      inspectionId,
+      QcFileKind.DISPOSITION_EVIDENCE,
+      result === IqcResult.PASS
+        ? []
+        : (reqDto.dispositionEvidenceFileIds ?? []),
+    );
+  }
+
   async deleteOqc(oqcId: string): Promise<void> {
-    const request = await this.db.query.qcRequests.findFirst({
+    const oqcRequest = await this.db.query.qcRequests.findFirst({
       columns: { status: true },
       where: and(
         eq(qcRequests.kind, QcKind.OUTGOING),
@@ -557,10 +577,10 @@ export class OqcService {
       ),
     });
 
-    if (!request) {
+    if (!oqcRequest) {
       throw new AppException(ErrorCode.E174, HttpStatus.NOT_FOUND);
     }
-    if (request.status !== OqcStatus.NOT_INSPECTED) {
+    if (oqcRequest.status !== OqcStatus.NOT_INSPECTED) {
       throw new AppException(ErrorCode.E178, HttpStatus.CONFLICT);
     }
 
@@ -585,7 +605,7 @@ export class OqcService {
   private async ensureOqcConfirmable(
     oqcId: string,
   ): Promise<{ quantity: number; inspectionDate: Date }> {
-    const request = await this.db.query.qcRequests.findFirst({
+    const oqcRequest = await this.db.query.qcRequests.findFirst({
       columns: { quantity: true, inspectionDate: true, status: true },
       where: and(
         eq(qcRequests.kind, QcKind.OUTGOING),
@@ -593,14 +613,14 @@ export class OqcService {
       ),
     });
 
-    if (!request) {
+    if (!oqcRequest) {
       throw new AppException(ErrorCode.E174, HttpStatus.NOT_FOUND);
     }
-    if (request.status === OqcStatus.COMPLETED) {
+    if (oqcRequest.status === OqcStatus.COMPLETED) {
       throw new AppException(ErrorCode.E177, HttpStatus.CONFLICT);
     }
 
-    return request;
+    return oqcRequest;
   }
 
   private async generateOqcCode(
