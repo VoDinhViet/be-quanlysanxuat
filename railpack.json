@@ -6,6 +6,7 @@
   },
   "steps": {
     "install": {
+      "inputs": [{ "local": true, "exclude": ["node_modules", "dist"] }],
       "commands": ["pnpm install --frozen-lockfile"]
     },
     "build": {
