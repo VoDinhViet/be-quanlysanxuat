@@ -5,19 +5,20 @@ thức số: `docs/domains/inventory.md`, mục "Phiếu lãnh vật tư".
 
 ## Trigger & actor
 
-| Bước | Route | Actor (role seed) |
-| --- | --- | --- |
-| Lập phiếu | `POST /inventory-requisitions` | PRODUCTION |
-| Sửa/xoá dòng, gửi duyệt | `PATCH`/`DELETE`, `POST .../send` | PRODUCTION |
-| Duyệt/từ chối | `POST .../approve`, `POST .../reject` | DIRECTOR |
-| Xuất kho | `POST .../issue` | WAREHOUSE |
-| Huỷ | `POST .../cancel` | PRODUCTION/WAREHOUSE (mọi trạng thái trừ `ISSUED`) |
+| Bước                    | Route                                 | Actor (role seed)                                  |
+| ----------------------- | ------------------------------------- | -------------------------------------------------- |
+| Lập phiếu               | `POST /inventory-requisitions`        | PRODUCTION                                         |
+| Sửa/xoá dòng, gửi duyệt | `PATCH`/`DELETE`, `POST .../send`     | PRODUCTION                                         |
+| Duyệt/từ chối           | `POST .../approve`, `POST .../reject` | DIRECTOR                                           |
+| Xuất kho                | `POST .../issue`                      | WAREHOUSE                                          |
+| Huỷ                     | `POST .../cancel`                     | PRODUCTION/WAREHOUSE (mọi trạng thái trừ `ISSUED`) |
 
 ## Precondition
 
-- `type = PRODUCTION` bắt buộc `productionJobId` (`E233`) — dòng lấy từ popup "+ Lãnh từ LSX"
-  (`GET /inventory-requisitions/job-bom-lines`). `type = OTHER` không bắt buộc, dùng cột `reason`
-  thay cho liên kết Job (popup "+ Lãnh khác", `GET /inventory-requisitions/issuable-items`).
+- `type = PRODUCTION` bắt buộc `productionJobId` (`E233`) — dòng lấy từ popup chọn vật tư dùng
+  chung (`GET /inventory-requisitions/lines`, kèm `productionJobId` để khoanh vùng theo định mức
+  BOM của Job). `type = OTHER` không bắt buộc, dùng cột `reason` thay cho liên kết Job (cùng popup,
+  gọi không kèm `productionJobId`).
 - Mọi `itemId` trong dòng phải là `type = RM`, chưa xoá mềm (`E229`).
 - `type = PRODUCTION`: mọi `itemId` phải có mặt trong `production_job_issues` của đúng Job đó
   (`E230`) — không lãnh được vật tư ngoài định mức BOM.
@@ -75,22 +76,22 @@ chạm ≥ 2 module (ghi `inventory_issues`/`inventory_issue_items`, gọi
 
 ## Nhánh lỗi
 
-| Code | Khi nào |
-| --- | --- |
-| `E223` | Phiếu không tồn tại |
-| `E224` | Sửa/xoá khi không còn `DRAFT`/`REJECTED` |
-| `E225` | `approve`/`reject` khi không còn `PENDING_APPROVAL` |
-| `E226` | `issue` khi không còn `APPROVED` |
-| `E227` | `issue` khi phiếu 0 dòng |
-| `E228` | Trùng `itemId` trong cùng payload |
-| `E229` | Có dòng không phải RM |
-| `E230` | `type = PRODUCTION`: có dòng ngoài định mức BOM của Job |
-| `E231` | SL lãnh > Có thể lãnh (Tồn − Đã giữ) |
-| `E232` | `type = PRODUCTION`: SL lãnh > SL BOM còn lại (requiredQty − Đã lãnh) |
-| `E233` | `type = PRODUCTION` thiếu `productionJobId` |
-| `E203` | `issue`: còn IQC `INCOMING` chưa `COMPLETED` cùng `(item, kho)` |
+| Code   | Khi nào                                                                                               |
+| ------ | ----------------------------------------------------------------------------------------------------- |
+| `E223` | Phiếu không tồn tại                                                                                   |
+| `E224` | Sửa/xoá khi không còn `DRAFT`/`REJECTED`                                                              |
+| `E225` | `approve`/`reject` khi không còn `PENDING_APPROVAL`                                                   |
+| `E226` | `issue` khi không còn `APPROVED`                                                                      |
+| `E227` | `issue` khi phiếu 0 dòng                                                                              |
+| `E228` | Trùng `itemId` trong cùng payload                                                                     |
+| `E229` | Có dòng không phải RM                                                                                 |
+| `E230` | `type = PRODUCTION`: có dòng ngoài định mức BOM của Job                                               |
+| `E231` | SL lãnh > Có thể lãnh (Tồn − Đã giữ)                                                                  |
+| `E232` | `type = PRODUCTION`: SL lãnh > SL BOM còn lại (requiredQty − Đã lãnh)                                 |
+| `E233` | `type = PRODUCTION` thiếu `productionJobId`                                                           |
+| `E203` | `issue`: còn IQC `INCOMING` chưa `COMPLETED` cùng `(item, kho)`                                       |
 | `E234` | `POST`/`PATCH /inventory-issues` với `issueType = PRODUCTION` — đường cũ bị chặn, phải qua module này |
-| `E235` | `cancel` một `inventory_issues` do phiếu lãnh sinh ra |
+| `E235` | `cancel` một `inventory_issues` do phiếu lãnh sinh ra                                                 |
 
 ## Related docs
 

@@ -17,9 +17,11 @@ export function reservedQuantitySubquery(db: Database) {
     .select({
       warehouseId: inventoryRequisitions.warehouseId,
       itemId: inventoryRequisitionItems.itemId,
+      // Alias SQL cố ý khác tên cột JS `reservedQuantity` — `inventory_balances` cũng có cột thật
+      // `reserved_quantity`, trùng tên gây "ambiguous column" khi cả hai cùng LEFT JOIN một query.
       reservedQuantity: sql<number>`sum(${inventoryRequisitionItems.quantity})`
         .mapWith(Number)
-        .as('reserved_quantity'),
+        .as('requisition_held_quantity'),
     })
     .from(inventoryRequisitionItems)
     .innerJoin(

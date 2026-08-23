@@ -18,8 +18,7 @@ import { Permissions } from '../../decorators/permissions.decorator';
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
 import { CreateInventoryRequisitionReqDto } from './dto/create-inventory-requisition.req.dto';
 import { GetInventoryRequisitionsReqDto } from './dto/get-inventory-requisitions.req.dto';
-import { GetIssuableItemsReqDto } from './dto/get-issuable-items.req.dto';
-import { GetJobBomLinesReqDto } from './dto/get-job-bom-lines.req.dto';
+import { GetRequisitionLinesReqDto } from './dto/get-requisition-lines.req.dto';
 import { InventoryRequisitionResDto } from './dto/inventory-requisition.res.dto';
 import { PageInventoryRequisitionResDto } from './dto/page-inventory-requisition.res.dto';
 import { RejectInventoryRequisitionReqDto } from './dto/reject-inventory-requisition.req.dto';
@@ -49,32 +48,21 @@ export class InventoryRequisitionsController {
     return this.inventoryRequisitionsService.getInventoryRequisitions(reqDto);
   }
 
-  @Get('job-bom-lines')
+  @Get('lines')
   @Permissions('inventory-requisitions:read')
   @ApiAuth({
     type: RequisitionLineResDto,
     summary:
-      'Popup "+ Lãnh từ LSX" — mọi vật tư trong định mức BOM của Job, kèm SL BOM/Đã lãnh/Tồn/Đã giữ/Có thể lãnh/Khả dụng/SL lãnh gợi ý',
+      'Popup chọn vật tư — dùng chung "+ Lãnh từ LSX"/"+ Lãnh thủ công", kèm SL BOM/Đã lãnh/Tồn/' +
+      'Đã giữ/Có thể lãnh/Khả dụng/SL lãnh gợi ý. `productionJobId` optional: có thì khoanh vùng ' +
+      'theo định mức BOM của Job (SL BOM/Đã lãnh/SL lãnh gợi ý mới khác null), không có thì mọi ' +
+      'RM tại kho',
     isPaginated: true,
   })
-  getJobBomLines(
-    @Query() reqDto: GetJobBomLinesReqDto,
+  getRequisitionLines(
+    @Query() reqDto: GetRequisitionLinesReqDto,
   ): Promise<OffsetPaginatedDto<RequisitionLineResDto>> {
-    return this.requisitionLinesService.getJobBomLines(reqDto);
-  }
-
-  @Get('issuable-items')
-  @Permissions('inventory-requisitions:read')
-  @ApiAuth({
-    type: RequisitionLineResDto,
-    summary:
-      'Popup "+ Lãnh khác" — mọi vật tư RM tại kho đang chọn, không gắn Job (SL BOM/Đã lãnh/SL lãnh gợi ý = null)',
-    isPaginated: true,
-  })
-  getIssuableItems(
-    @Query() reqDto: GetIssuableItemsReqDto,
-  ): Promise<OffsetPaginatedDto<RequisitionLineResDto>> {
-    return this.requisitionLinesService.getIssuableItems(reqDto);
+    return this.requisitionLinesService.getRequisitionPickerLines(reqDto);
   }
 
   @Get(':requisitionId')
