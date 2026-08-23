@@ -143,7 +143,7 @@ export class SupplierReturnsService {
   async getSupplierReturn(
     supplierReturnId: string,
   ): Promise<SupplierReturnResDto> {
-    const row = await this.db.query.supplierReturns.findFirst({
+    const supplierReturn = await this.db.query.supplierReturns.findFirst({
       where: eq(supplierReturns.id, supplierReturnId),
       with: {
         item: { with: { unit: true } },
@@ -158,11 +158,11 @@ export class SupplierReturnsService {
       },
     });
 
-    if (!row) {
+    if (!supplierReturn) {
       throw new AppException(ErrorCode.E137, HttpStatus.NOT_FOUND);
     }
 
-    return plainToInstance(SupplierReturnResDto, row, {
+    return plainToInstance(SupplierReturnResDto, supplierReturn, {
       excludeExtraneousValues: true,
     });
   }
@@ -214,27 +214,30 @@ export class SupplierReturnsService {
     userId: string,
   ): Promise<void> {
     await this.db.transaction(async (tx) => {
-      const row = await this.lockSupplierReturn(tx, supplierReturnId);
+      const supplierReturn = await this.getSupplierReturnForUpdate(
+        tx,
+        supplierReturnId,
+      );
 
-      if (row.status !== InventoryDocumentStatus.DRAFT) {
+      if (supplierReturn.status !== InventoryDocumentStatus.DRAFT) {
         throw new AppException(ErrorCode.E098, HttpStatus.CONFLICT);
       }
 
-      if (await this.shouldPostStock(tx, row)) {
+      if (await this.shouldPostStock(tx, supplierReturn)) {
         await this.inventoryPostingService.postDocument(tx, {
           // `shouldPostStock` trả `false` khi `outsourcingReceiptId` có giá trị — tới được đây
           // nghĩa là không, nên CHECK `chk_supplier_returns_warehouse_required` đảm bảo
           // `warehouseId` khác null.
-          warehouseId: row.warehouseId!,
+          warehouseId: supplierReturn.warehouseId!,
           referenceType: InventoryReferenceType.SUPPLIER_RETURN,
-          referenceId: row.id,
-          transactionDate: row.returnDate,
+          referenceId: supplierReturn.id,
+          transactionDate: supplierReturn.returnDate,
           createdBy: userId,
           lines: [
             {
-              itemId: row.itemId,
+              itemId: supplierReturn.itemId,
               // Xuất trả luôn trừ tồn — dấu âm.
-              signedQuantity: -row.quantity,
+              signedQuantity: -supplierReturn.quantity,
               type: InventoryTransactionType.ISSUE,
             },
           ],
@@ -250,8 +253,8 @@ export class SupplierReturnsService {
         })
         .where(eq(supplierReturns.id, supplierReturnId));
 
-      if (row.iqcId) {
-        await completeIqcAfterSupplierReturn(tx, row.iqcId);
+      if (supplierReturn.iqcId) {
+        await completeIqcAfterSupplierReturn(tx, supplierReturn.iqcId);
       }
     });
   }
@@ -269,44 +272,45 @@ export class SupplierReturnsService {
    *  Không có phiếu nhập/OS-IN liên quan (IQC tạo tay) → luôn trừ tồn bình thường. */
   private async shouldPostStock(
     tx: DbTransaction,
-    row: Pick<
+    supplierReturn: Pick<
       SupplierReturnSelect,
       'inventoryReceiptId' | 'outsourcingReceiptId'
     >,
   ): Promise<boolean> {
-    if (row.outsourcingReceiptId) {
+    if (supplierReturn.outsourcingReceiptId) {
       return false;
     }
 
-    if (!row.inventoryReceiptId) {
+    if (!supplierReturn.inventoryReceiptId) {
       return true;
     }
 
-    const receipt = await tx.query.inventoryReceipts.findFirst({
+    const inventoryReceipt = await tx.query.inventoryReceipts.findFirst({
       columns: { status: true },
-      where: eq(inventoryReceipts.id, row.inventoryReceiptId),
+      where: eq(inventoryReceipts.id, supplierReturn.inventoryReceiptId),
     });
 
-    return receipt?.status === InventoryDocumentStatus.POSTED;
+    return inventoryReceipt?.status === InventoryDocumentStatus.POSTED;
   }
 
   /** Khoá dòng phiếu (`FOR UPDATE`) rồi trả về — chỉ gọi bên trong transaction, cùng lý do
-   *  `InventoryIssuesService.lockIssue`: chặn `post` trùng lên cùng phiếu trừ tồn hai lần. */
-  private async lockSupplierReturn(
+   *  `InventoryIssuesService.getInventoryIssueForUpdate`: chặn `post` trùng lên cùng phiếu trừ tồn
+   *  hai lần. */
+  private async getSupplierReturnForUpdate(
     tx: DbTransaction,
     supplierReturnId: string,
   ) {
-    const [row] = await tx
+    const [supplierReturn] = await tx
       .select()
       .from(supplierReturns)
       .where(eq(supplierReturns.id, supplierReturnId))
       .for('update');
 
-    if (!row) {
+    if (!supplierReturn) {
       throw new AppException(ErrorCode.E137, HttpStatus.NOT_FOUND);
     }
 
-    return row;
+    return supplierReturn;
   }
 
   private async generateReturnCode(

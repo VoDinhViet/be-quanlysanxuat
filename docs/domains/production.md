@@ -40,12 +40,16 @@ route sửa — một dòng có thể đang được nhiều Job dùng chung, `U
 `GET /production-jobs/:jobId/bom` trả về **nhu cầu vật tư của Job** (phân trang, `q` lọc mã/tên vật
 tư) — đọc `production_job_issues` join hai bảng chiều trên, không đụng cây BOM. Mỗi dòng là một vật
 tư đã gộp sẵn: `item` (`{code, name}`, từ `production_job_items`), `unit` (`{code, name}`, từ
-`production_job_units`) và `requiredQty` (định mức BOM × SL Job, tính sẵn lúc duyệt LSX, không nổ
-theo cấp — kế thừa nguyên giới hạn của phép gộp vật tư, xem `docs/domains/product-structure.md`).
-`item`/`unit` lồng chứ không phẳng — `code`/`name` trùng tên giữa hai bảng chiều. Vật tư nào chưa có
-dòng ở đây (Job tạo trước khi bảng này tồn tại) thì **không xuất hiện** trong danh sách, không phải
-lỗi. Bản đơn giản hoá có chủ đích — chưa trả
-"Dùng cho Part" hay số đã nổ theo cấp, để mở rộng sau nếu cần.
+`production_job_units`), `requiredQty` (định mức BOM × SL Job, tính sẵn lúc duyệt LSX, không nổ
+theo cấp — kế thừa nguyên giới hạn của phép gộp vật tư, xem `docs/domains/product-structure.md`), và
+**"Theo dõi đã lãnh"**: `issuedQuantity` (Σ SL lãnh mọi phiếu lãnh vật tư `ISSUED` cùng
+`(productionJobId, itemId)`) + `remainingQuantity = max(requiredQty − issuedQuantity, 0)` — đọc
+qua hàm thuần từ `src/api/inventory-requisitions/inventory-requisitions.query.ts` (Inventory sở hữu
+số liệu, Production chỉ import hàm đọc, đúng tiền lệ `inventory-issues` import `iqc.query.ts`), xem
+`docs/domains/inventory.md`, `docs/workflows/inventory-requisition.md`. `item`/`unit` lồng chứ không
+phẳng — `code`/`name` trùng tên giữa hai bảng chiều. Vật tư nào chưa có dòng ở đây (Job tạo trước
+khi bảng này tồn tại) thì **không xuất hiện** trong danh sách, không phải lỗi. Bản đơn giản hoá có
+chủ đích — chưa trả "Dùng cho Part" hay số đã nổ theo cấp, để mở rộng sau nếu cần.
 
 Cây cha-con của Job (`parentId`, `level`, `quantity` từng node) **không được trả ra qua `/bom`** —
 snapshot vẫn nằm nguyên trong DB, chỉ là không có API đọc trực tiếp cây đó.
@@ -204,6 +208,12 @@ Không phải invariant dù dễ tưởng:
 - **← Inventory**: chỉ đọc, qua `getStockLevels` (LSX, tham số `excludeOrderId`) và
   `getMaterialStockLevels` (`ProductionJobsService.startJob`, tính phần vật tư thiếu). Domain này
   **không ghi** gì vào sổ kho.
+- **→ Inventory (Phiếu lãnh vật tư)**: `inventory_requisitions` (`type = PRODUCTION`) đọc
+  `production_job_issues.requiredQty` để chặn vượt định mức BOM — một chiều, Production không biết
+  module đó tồn tại. Chiều đọc ngược: `GET /production-jobs/:jobId/bom` đọc lại dòng phiếu lãnh
+  `ISSUED` để hiển thị "Theo dõi đã lãnh" (`issuedQuantity`/`remainingQuantity`, xem Core concepts)
+  — vẫn là Production đọc, không phải Inventory ghi vào bảng nào của Production. Xem
+  `docs/domains/inventory.md`, `docs/workflows/inventory-requisition.md`.
 - **→ Inventory (Gia công ngoài)**: `production_job_operations.type` (snapshot `OUTSOURCE`) +
   `production_jobs.status` là **anchor đọc-một-chiều** cho mỗi dòng `outsourcing_order_items` —
   Inventory đọc, Production không ghi/biết gì về OS-OUT/OS-IN. `outsourcing-orders` còn đọc thẳng

@@ -62,6 +62,12 @@ erDiagram
     INVENTORY_ISSUE_ITEMS }o--o| ORDER_ITEMS : "delivery tracking (tuỳ chọn)"
     INVENTORY_RECEIPTS }o--o| PURCHASE_REQUESTS : "phát sinh từ đề xuất (tuỳ chọn)"
 
+    WAREHOUSES ||--o{ INVENTORY_REQUISITIONS : "kho lãnh"
+    PRODUCTION_JOBS }o--o| INVENTORY_REQUISITIONS : "Job liên quan (bắt buộc nếu type=PRODUCTION)"
+    INVENTORY_REQUISITIONS ||--o{ INVENTORY_REQUISITION_ITEMS : gồm
+    INVENTORY_REQUISITION_ITEMS }o--|| ITEMS : "vật tư lãnh (RM)"
+    INVENTORY_REQUISITIONS ||--o| INVENTORY_ISSUES : "tự sinh lúc issue (POSTED ngay)"
+
     PURCHASE_QUOTATIONS ||--o{ PURCHASE_QUOTATION_ITEMS : "gồm (1 dòng/vật tư)"
     PURCHASE_QUOTATION_ITEMS }o--|| PURCHASE_REQUEST_ITEMS : "hỏi giá cho dòng đề xuất"
     PURCHASE_QUOTATION_ITEMS ||--o{ PURCHASE_QUOTATION_ITEM_SUPPLIERS : "giá của từng NCC"
@@ -86,8 +92,8 @@ erDiagram
     QUALITY_INSPECTIONS }o--o| PURCHASE_ORDERS : "trace mức phiếu (tuỳ chọn, INCOMING)"
     QUALITY_INSPECTIONS }o--o| DEPARTMENTS : "bộ phận QC (tuỳ chọn, INCOMING)"
     QUALITY_INSPECTIONS }o--o| PRODUCTION_JOB_OPERATIONS : "anchor (OUTGOING bắt buộc, INCOMING khi từ OS-IN)"
-    QUALITY_INSPECTIONS ||--o{ QC_ATTACHMENTS : "bằng chứng QC + quyết định xử lý"
-    QC_ATTACHMENTS }o--|| FILES : "file đính kèm"
+    QUALITY_INSPECTIONS ||--o{ QC_FILES : "bằng chứng QC + quyết định xử lý"
+    QC_FILES }o--|| FILES : "file đính kèm"
     QUALITY_INSPECTIONS ||--o{ SUPPLIER_RETURNS : "tự sinh khi disposition SORT/RETURN (INCOMING only)"
 
     WAREHOUSES ||--o{ OUTSOURCING_ORDERS : "kho gửi"
@@ -152,6 +158,16 @@ update `status` phiếu. Phiếu nhập gắn `purchaseOrderId` thì gọi thêm
 cầu thanh toán nếu PO vừa đạt đủ hàng (`docs/domains/purchasing.md`). `cancel` từ `POSTED` gọi
 `InventoryPostingService.reverseDocument` cùng khuôn, ghi bút toán đảo dấu thay vì xoá. Chi tiết:
 `docs/workflows/stock-movement.md`.
+
+**Duyệt/Xuất phiếu lãnh vật tư** (`InventoryRequisitionsService.approveInventoryRequisition`/
+`issueInventoryRequisition`, `docs/workflows/inventory-requisition.md`): `approve` chỉ đọc/ghi
+`inventory_requisitions`/`inventory_requisition_items` + `inventory_balances` (khoá `FOR UPDATE`,
+không ghi) trong 1 transaction — không đụng module khác. `issue` mới bắc cầu: trong 1 transaction,
+sinh mã `PXK-{năm}-{5}` → `INSERT inventory_issues` (`POSTED` ngay, không qua `DRAFT`) +
+`inventory_issue_items` copy từ dòng phiếu lãnh → `InventoryPostingService.postDocument` (trừ
+`inventory_balances`, ghi `inventory_transactions`) → `UPDATE inventory_requisitions.status =
+ISSUED, inventoryIssueId`. Cùng khuôn ranh giới transaction với
+`InventoryIssuesService.postInventoryIssue`, khác ở chỗ tự sinh phiếu xuất thay vì đọc phiếu có sẵn.
 
 **Tạo OS-OUT/OS-IN** (`OutsourcingOrdersService.createOutsourcingOrder`/`OutsourcingReceiptsService.
 createOutsourcingReceipt`): không có bước nháp — `create` gộp luôn phần việc trước đây thuộc `post`
@@ -241,6 +257,15 @@ xuyên module không cần DI. Xem `docs/workflows/supplier-return.md`.
 `BomsModule`/`RoutingsModule` đọc `operations` ở dưới), vì phase 1 chỉ đọc, chưa gọi
 `InventoryPostingService`.
 
+`InventoryRequisitionsModule` import `InventoryModule`/`IqcModule` (cho `issue` gọi
+`InventoryPostingService`/`hasPendingIqcForItems`) — cùng cặp import `InventoryIssuesModule` đã có,
+không import ngược `ProductionJobsModule` (đọc thẳng `production_job_issues`/`production_jobs` qua
+`DRIZZLE`, cùng lối `BomsModule`/`RoutingsModule` đọc `operations`). Chiều ngược lại:
+`ProductionJobsModule` không import `InventoryRequisitionsModule` — `GET
+/production-jobs/:jobId/bom` gọi thẳng hàm thuần `issuedQuantityByJobItemSubquery`
+(`src/api/inventory-requisitions/inventory-requisitions.query.ts`), không qua DI, đúng tiền lệ
+`hasPendingIqcForItems`/`getJobQcCoverage`.
+
 `OutsourcingOrdersModule` chỉ import `WarehousesModule`; `OutsourcingReceiptsModule` chỉ import
 `IqcModule` (cho `createInspectionsFromOutsourcingReceipt`) — không import `WarehousesModule` (OS-IN
 không gắn kho, `docs/decisions/wip-not-stocked.md`). Cả hai **không** import `InventoryModule`, vì
@@ -281,20 +306,21 @@ Những sự thật này không nằm trọn trong một `docs/domains/<x>.md` n
 - **File đính kèm luôn qua registry `files`**, không bao giờ là URL trần — ngoại lệ duy nhất là
   `countries.logoUrl` (danh mục nhỏ, không cần registry). Bốn bảng khác (`orders`, `suppliers`,
   `boms` — `drawingFileId` trên `bom_items`, `users` — `avatarFileId`) dùng
-  `*_attachment_file_ids`/`*FileId` trỏ `files.id`; `items` chỉ còn `imageFileId` — không có bảng
+  `fileIds`/`*FileId` trỏ `files.id`; `items` chỉ còn `imageFileId` — không có bảng
   đính kèm riêng, kể cả cho RM (`docs/domains/product-structure.md`). Chi tiết:
   `docs/decisions/files-registry.md`.
 - **Mọi FK "ai đã làm việc này"** (`createdBy`, `approvedBy`, `startedBy`, `orders.assignedUserId`,
   ...) trỏ `users.id`, không phải `credentials.id` (đảo lại 2026-08-01 — `orders.assignedUserId`
   từng là ngoại lệ duy nhất, giờ mọi cột audit dùng chung một quy ước). Xem
   `docs/domains/identity-access.md`.
-- **Mã chứng từ tự sinh của toàn bộ 20 loại chứng từ** (`items` VT/SP, `purchase_requests` PR-, OQC-
+- **Mã chứng từ tự sinh của toàn bộ 21 loại chứng từ** (`items` VT/SP, `purchase_requests` PR-, OQC-
   và IQC- (hai `documentType` khác nhau, cùng ghi vào một bảng vật lý `qc_requests` —
   `docs/decisions/qc-single-table.md`), `inventory_receipts` PNK-, `inventory_issues` PXK-,
-  `purchase_quotations` RFQ-, `purchase_orders` PO-, `warehouses` WH, `outsourcing_orders` OS-OUT-,
-  `outsourcing_receipts` OS-IN-, `orders` SO, `production_orders` LSX, `production_jobs` JOB,
-  `outbound_orders` DO-, `supplier_returns` PTNCC-, `payment_requests` YCTT-, `clients` KH,
-  `suppliers` NCC, `users` NV) đọc số qua bảng đếm dùng chung `document_sequences` —
+  `inventory_requisitions` MR-, `purchase_quotations` RFQ-, `purchase_orders` PO-, `warehouses`
+  WH, `outsourcing_orders` OS-OUT-, `outsourcing_receipts` OS-IN-, `orders` SO, `production_orders`
+  LSX, `production_jobs` JOB, `outbound_orders` DO-, `supplier_returns` PTNCC-, `payment_requests`
+  YCTT-, `clients` KH, `suppliers` NCC, `users` NV) đọc số qua bảng đếm dùng chung
+  `document_sequences` —
   `generateDocumentSequence(s)` (`src/common/utils/document-sequence.util.ts`), 1 câu
   `INSERT ... ON CONFLICT DO UPDATE ... RETURNING` atomic theo `(documentType, year)`, không tự
   `MAX`/`COUNT` riêng từng bảng nữa. Bắt buộc gọi trong transaction của chính lượt tạo chứng từ.

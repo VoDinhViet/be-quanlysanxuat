@@ -28,7 +28,9 @@ import type { Database, DbTransaction } from '../../database/database.type';
 import {
   InventoryDocumentStatus,
   inventoryReceiptItems,
+  type InventoryReceiptItemSelect,
   inventoryReceipts,
+  type InventoryReceiptSelect,
   InventoryReceiptType,
   InventoryReferenceType,
   InventoryTransactionType,
@@ -113,14 +115,14 @@ export class InventoryReceiptsService {
       reqDto.purchaseOrderId
         ? eq(inventoryReceipts.purchaseOrderId, reqDto.purchaseOrderId)
         : undefined,
-      reqDto.fromDate
-        ? gte(inventoryReceipts.receiptDate, reqDto.fromDate)
+      reqDto.startDate
+        ? gte(inventoryReceipts.receiptDate, reqDto.startDate)
         : undefined,
-      // Exclusive next-day boundary — `toDate` parses to midnight UTC, `lte` would drop same-day rows.
-      reqDto.toDate
+      // Exclusive next-day boundary — `endDate` parses to midnight UTC, `lte` would drop same-day rows.
+      reqDto.endDate
         ? lt(
             inventoryReceipts.receiptDate,
-            new Date(reqDto.toDate.getTime() + 24 * 60 * 60 * 1000),
+            new Date(reqDto.endDate.getTime() + 24 * 60 * 60 * 1000),
           )
         : undefined,
     );
@@ -160,7 +162,7 @@ export class InventoryReceiptsService {
   async getInventoryReceipt(
     receiptId: string,
   ): Promise<InventoryReceiptResDto> {
-    const receipt = await this.db.query.inventoryReceipts.findFirst({
+    const inventoryReceipt = await this.db.query.inventoryReceipts.findFirst({
       where: eq(inventoryReceipts.id, receiptId),
       with: {
         warehouse: true,
@@ -174,25 +176,25 @@ export class InventoryReceiptsService {
       },
     });
 
-    if (!receipt) {
+    if (!inventoryReceipt) {
       throw new AppException(ErrorCode.E096, HttpStatus.NOT_FOUND);
     }
 
-    const purchaseRequest = receipt.purchaseRequestId
+    const purchaseRequest = inventoryReceipt.purchaseRequestId
       ? await this.db.query.purchaseRequests.findFirst({
-          where: eq(purchaseRequests.id, receipt.purchaseRequestId),
+          where: eq(purchaseRequests.id, inventoryReceipt.purchaseRequestId),
           columns: { productionJobId: true },
         })
       : undefined;
 
     const lines = await this.getReceiptLines(receiptId, {
       productionJobId: purchaseRequest?.productionJobId,
-      productionOrderId: receipt.productionOrderId,
+      productionOrderId: inventoryReceipt.productionOrderId,
     });
 
     return plainToInstance(
       InventoryReceiptResDto,
-      { ...receipt, items: lines },
+      { ...inventoryReceipt, items: lines },
       { excludeExtraneousValues: true },
     );
   }
@@ -249,17 +251,17 @@ export class InventoryReceiptsService {
     );
     await this.ensureReceiptQuantitiesWithinOrdered(this.db, reqDto.items);
 
-    const { items, ...receiptFields } = reqDto;
+    const { items: itemsToCreate, ...receiptFields } = reqDto;
 
     await this.db.transaction(async (tx) => {
       const code = await this.generateReceiptCode(tx, reqDto.receiptDate);
 
-      const [receipt] = await tx
+      const [inventoryReceipt] = await tx
         .insert(inventoryReceipts)
         .values({ ...receiptFields, code, createdBy: userId })
         .returning();
 
-      await this.createItems(tx, receipt.id, items);
+      await this.createReceiptItems(tx, inventoryReceipt.id, itemsToCreate);
     });
   }
 
@@ -267,22 +269,22 @@ export class InventoryReceiptsService {
     receiptId: string,
     reqDto: UpdateInventoryReceiptReqDto,
   ): Promise<void> {
-    const receipt = await this.ensureReceiptDraft(receiptId);
+    const inventoryReceipt = await this.ensureReceiptDraft(receiptId);
 
     await this.ensureItemsValid(reqDto.items);
     await this.ensureReferencesValid(reqDto);
     this.ensureProductionJobRequired(
-      reqDto.receiptType ?? receipt.receiptType,
-      reqDto.productionJobId ?? receipt.productionJobId,
+      reqDto.receiptType ?? inventoryReceipt.receiptType,
+      reqDto.productionJobId ?? inventoryReceipt.productionJobId,
     );
     await this.ensurePurchaseOrderOrdered(reqDto.purchaseOrderId);
     await this.ensurePurchaseOrderItemsValid(
-      reqDto.purchaseOrderId ?? receipt.purchaseOrderId,
+      reqDto.purchaseOrderId ?? inventoryReceipt.purchaseOrderId,
       reqDto.items,
     );
     await this.ensureReceiptQuantitiesWithinOrdered(this.db, reqDto.items);
 
-    const { items, ...receiptFields } = reqDto;
+    const { items: itemsToReplace, ...receiptFields } = reqDto;
 
     await this.db.transaction(async (tx) => {
       await tx
@@ -290,7 +292,7 @@ export class InventoryReceiptsService {
         .set(receiptFields)
         .where(eq(inventoryReceipts.id, receiptId));
 
-      await this.replaceItems(tx, receiptId, items);
+      await this.replaceReceiptItems(tx, receiptId, itemsToReplace);
     });
   }
 
@@ -310,37 +312,47 @@ export class InventoryReceiptsService {
     userId: string,
   ): Promise<void> {
     await this.db.transaction(async (tx) => {
-      const receipt = await this.lockReceipt(tx, receiptId);
+      const inventoryReceipt = await this.getInventoryReceiptForUpdate(
+        tx,
+        receiptId,
+      );
 
-      if (receipt.status !== InventoryDocumentStatus.DRAFT) {
+      if (inventoryReceipt.status !== InventoryDocumentStatus.DRAFT) {
         throw new AppException(ErrorCode.E098, HttpStatus.CONFLICT);
       }
 
-      const lineItems = await tx.query.inventoryReceiptItems.findMany({
+      const itemsToConfirm = await tx.query.inventoryReceiptItems.findMany({
         where: eq(inventoryReceiptItems.receiptId, receiptId),
       });
 
-      if (!lineItems.length) {
+      if (!itemsToConfirm.length) {
         throw new AppException(ErrorCode.E151, HttpStatus.BAD_REQUEST);
       }
 
-      await this.ensureReceiptQuantitiesWithinOrdered(tx, lineItems);
+      await this.ensureReceiptQuantitiesWithinOrdered(tx, itemsToConfirm);
 
-      if (receipt.receiptType === InventoryReceiptType.PRODUCTION) {
-        await this.ensureProductionReceiptOqcCleared(tx, receipt, lineItems);
+      if (inventoryReceipt.receiptType === InventoryReceiptType.PRODUCTION) {
+        await this.ensureProductionReceiptOqcCleared(
+          tx,
+          inventoryReceipt,
+          itemsToConfirm,
+        );
       }
 
       let status = InventoryDocumentStatus.PENDING_RECEIPT;
 
-      if (receipt.requiresIqc) {
-        const supplierId = await this.resolveIqcSupplierId(tx, receipt);
+      if (inventoryReceipt.requiresIqc) {
+        const supplierId = await this.resolveIqcSupplierId(
+          tx,
+          inventoryReceipt,
+        );
 
         await this.iqcService.createInspectionsFromReceipt(tx, {
           inventoryReceiptId: receiptId,
-          purchaseOrderId: receipt.purchaseOrderId,
+          purchaseOrderId: inventoryReceipt.purchaseOrderId,
           supplierId,
           inspectionDate: new Date(),
-          lines: lineItems.map((item) => ({
+          lines: itemsToConfirm.map((item) => ({
             itemId: item.itemId,
             quantity: item.quantity,
           })),
@@ -359,33 +371,43 @@ export class InventoryReceiptsService {
 
   /** `PENDING_RECEIPT`/`PENDING_IQC → POSTED` — sinh bút toán + cập nhật tồn qua
    * `InventoryPostingService`, sau đó phiếu bất biến. `PENDING_IQC` chặn (`E153`) nếu còn phiếu
-   * IQC nào chưa `COMPLETED`. Đọc trạng thái nằm trong cùng transaction, sau `lockReceipt`. Trước
-   * khi ghi bút toán, `buildReceiptPostingLines` bù trừ SL đã trả NCC (`POSTED`) khỏi từng dòng —
-   * hàng NG chưa bao giờ thật sự vào tồn thì không được cộng vào (`docs/workflows/
-   * supplier-return.md`). Nếu phiếu gắn PO, gọi `PaymentRequestsService.createIfOrderCompleted`
+   * IQC nào chưa `COMPLETED`. Đọc trạng thái nằm trong cùng transaction, sau
+   * `getInventoryReceiptForUpdate`. Trước khi ghi bút toán, `buildReceiptPostingLines` bù trừ SL đã
+   * trả NCC (`POSTED`) khỏi từng dòng — hàng NG chưa bao giờ thật sự vào tồn thì không được cộng
+   * vào (`docs/workflows/supplier-return.md`). Nếu phiếu gắn PO, gọi
+   * `PaymentRequestsService.createIfOrderCompleted`
    * cùng transaction — tự sinh yêu cầu thanh toán khi PO vừa đạt COMPLETED. Xem
    * `docs/workflows/receipt-confirmation.md`. */
   async postInventoryReceipt(receiptId: string, userId: string): Promise<void> {
     await this.db.transaction(async (tx) => {
-      const receipt = await this.lockReceipt(tx, receiptId);
+      const inventoryReceipt = await this.getInventoryReceiptForUpdate(
+        tx,
+        receiptId,
+      );
 
-      if (receipt.status === InventoryDocumentStatus.PENDING_IQC) {
+      if (inventoryReceipt.status === InventoryDocumentStatus.PENDING_IQC) {
         await this.ensureReceiptIqcCompleted(tx, receiptId);
-      } else if (receipt.status !== InventoryDocumentStatus.PENDING_RECEIPT) {
+      } else if (
+        inventoryReceipt.status !== InventoryDocumentStatus.PENDING_RECEIPT
+      ) {
         throw new AppException(ErrorCode.E098, HttpStatus.CONFLICT);
       }
 
-      const items = await tx.query.inventoryReceiptItems.findMany({
+      const itemsToPost = await tx.query.inventoryReceiptItems.findMany({
         where: eq(inventoryReceiptItems.receiptId, receiptId),
       });
 
       await this.inventoryPostingService.postDocument(tx, {
-        warehouseId: receipt.warehouseId,
+        warehouseId: inventoryReceipt.warehouseId,
         referenceType: InventoryReferenceType.INVENTORY_RECEIPT,
         referenceId: receiptId,
-        transactionDate: receipt.receiptDate,
+        transactionDate: inventoryReceipt.receiptDate,
         createdBy: userId,
-        lines: await this.buildReceiptPostingLines(tx, receipt, items),
+        lines: await this.buildReceiptPostingLines(
+          tx,
+          inventoryReceipt,
+          itemsToPost,
+        ),
       });
 
       await tx
@@ -397,10 +419,10 @@ export class InventoryReceiptsService {
         })
         .where(eq(inventoryReceipts.id, receiptId));
 
-      if (receipt.purchaseOrderId) {
+      if (inventoryReceipt.purchaseOrderId) {
         await this.paymentRequestsService.createIfOrderCompleted(
           tx,
-          receipt.purchaseOrderId,
+          inventoryReceipt.purchaseOrderId,
         );
       }
     });
@@ -413,17 +435,17 @@ export class InventoryReceiptsService {
    * `docs/workflows/supplier-return.md`. */
   private async buildReceiptPostingLines(
     tx: DbTransaction,
-    receipt: { id: string; receiptType: InventoryReceiptType },
-    lineItems: { itemId: string; quantity: number }[],
+    inventoryReceipt: Pick<InventoryReceiptSelect, 'id' | 'receiptType'>,
+    itemsToPost: Pick<InventoryReceiptItemSelect, 'itemId' | 'quantity'>[],
   ): Promise<InventoryPostingLine[]> {
     const remainingReturnedByItemId = await getReturnedQuantityByReceiptItemId(
       tx,
-      receipt.id,
+      inventoryReceipt.id,
     );
 
     const lines: InventoryPostingLine[] = [];
 
-    for (const item of lineItems) {
+    for (const item of itemsToPost) {
       const remaining = remainingReturnedByItemId.get(item.itemId) ?? 0;
       const netQuantity = Math.max(item.quantity - remaining, 0);
       remainingReturnedByItemId.set(
@@ -438,7 +460,7 @@ export class InventoryReceiptsService {
       lines.push({
         itemId: item.itemId,
         signedQuantity: netQuantity,
-        type: receiptTypeTransactionType[receipt.receiptType],
+        type: receiptTypeTransactionType[inventoryReceipt.receiptType],
       });
     }
 
@@ -452,13 +474,16 @@ export class InventoryReceiptsService {
     userId: string,
   ): Promise<void> {
     await this.db.transaction(async (tx) => {
-      const receipt = await this.lockReceipt(tx, receiptId);
+      const inventoryReceipt = await this.getInventoryReceiptForUpdate(
+        tx,
+        receiptId,
+      );
 
-      if (receipt.status === InventoryDocumentStatus.CANCELLED) {
+      if (inventoryReceipt.status === InventoryDocumentStatus.CANCELLED) {
         throw new AppException(ErrorCode.E098, HttpStatus.CONFLICT);
       }
 
-      if (receipt.status === InventoryDocumentStatus.POSTED) {
+      if (inventoryReceipt.status === InventoryDocumentStatus.POSTED) {
         await this.inventoryPostingService.reverseDocument(tx, {
           referenceType: InventoryReferenceType.INVENTORY_RECEIPT,
           referenceId: receiptId,
@@ -474,7 +499,7 @@ export class InventoryReceiptsService {
     });
   }
 
-  private async createItems(
+  private async createReceiptItems(
     tx: DbTransaction,
     receiptId: string,
     items: InventoryReceiptItemReqDto[],
@@ -484,7 +509,7 @@ export class InventoryReceiptsService {
       .values(items.map((item) => ({ ...item, receiptId })));
   }
 
-  private async replaceItems(
+  private async replaceReceiptItems(
     tx: DbTransaction,
     receiptId: string,
     items: InventoryReceiptItemReqDto[],
@@ -493,7 +518,7 @@ export class InventoryReceiptsService {
       .delete(inventoryReceiptItems)
       .where(eq(inventoryReceiptItems.receiptId, receiptId));
 
-    await this.createItems(tx, receiptId, items);
+    await this.createReceiptItems(tx, receiptId, items);
   }
 
   private async generateReceiptCode(
@@ -513,9 +538,9 @@ export class InventoryReceiptsService {
   /** Mặt hàng của mỗi dòng phải tồn tại (`E100`). Không kiểm loại kho ↔ loại hàng — cố ý, xem
    * `docs/domains/inventory.md`. */
   private async ensureItemsValid(
-    lineItems: InventoryReceiptItemReqDto[],
+    itemsToValidate: InventoryReceiptItemReqDto[],
   ): Promise<void> {
-    const itemIds = [...new Set(lineItems.map((item) => item.itemId))];
+    const itemIds = [...new Set(itemsToValidate.map((item) => item.itemId))];
 
     const found = await this.db.query.items.findMany({
       columns: { id: true },
@@ -523,7 +548,7 @@ export class InventoryReceiptsService {
     });
     const foundIds = new Set(found.map((item) => item.id));
 
-    for (const item of lineItems) {
+    for (const item of itemsToValidate) {
       if (!foundIds.has(item.itemId)) {
         throw new AppException(ErrorCode.E100, HttpStatus.NOT_FOUND);
       }
@@ -610,11 +635,11 @@ export class InventoryReceiptsService {
    * lệch PO đều là `E127`. */
   private async ensurePurchaseOrderItemsValid(
     purchaseOrderId: string | null | undefined,
-    lineItems: InventoryReceiptItemReqDto[],
+    itemsToValidate: InventoryReceiptItemReqDto[],
   ): Promise<void> {
     const purchaseOrderItemIds = [
       ...new Set(
-        lineItems
+        itemsToValidate
           .map((item) => item.purchaseOrderItemId)
           .filter((id): id is string => id !== undefined),
       ),
@@ -652,10 +677,13 @@ export class InventoryReceiptsService {
    * `IqcService.generateIqcCodes`. */
   private async ensureReceiptQuantitiesWithinOrdered(
     db: Database | DbTransaction,
-    lineItems: { purchaseOrderItemId?: string | null; quantity: number }[],
+    itemsToValidate: {
+      purchaseOrderItemId?: string | null;
+      quantity: number;
+    }[],
   ): Promise<void> {
     const payloadByPoItemId = new Map<string, number>();
-    for (const item of lineItems) {
+    for (const item of itemsToValidate) {
       if (!item.purchaseOrderItemId) {
         continue;
       }
@@ -713,16 +741,16 @@ export class InventoryReceiptsService {
    * theo `production_jobs.quantity` (`E197`). */
   private async ensureProductionReceiptOqcCleared(
     tx: DbTransaction,
-    receipt: { id: string; productionJobId: string | null },
-    lineItems: { itemId: string; quantity: number }[],
+    inventoryReceipt: Pick<InventoryReceiptSelect, 'id' | 'productionJobId'>,
+    itemsToValidate: Pick<InventoryReceiptItemSelect, 'itemId' | 'quantity'>[],
   ): Promise<void> {
-    if (!receipt.productionJobId) {
+    if (!inventoryReceipt.productionJobId) {
       throw new AppException(ErrorCode.E179, HttpStatus.BAD_REQUEST);
     }
 
     const job = await tx.query.productionJobs.findFirst({
       columns: { itemId: true, quantity: true },
-      where: eq(productionJobs.id, receipt.productionJobId),
+      where: eq(productionJobs.id, inventoryReceipt.productionJobId),
     });
 
     if (!job) {
@@ -730,7 +758,7 @@ export class InventoryReceiptsService {
     }
 
     let thisReceiptQuantity = 0;
-    for (const item of lineItems) {
+    for (const item of itemsToValidate) {
       if (item.itemId !== job.itemId) {
         throw new AppException(ErrorCode.E107, HttpStatus.BAD_REQUEST);
       }
@@ -738,11 +766,11 @@ export class InventoryReceiptsService {
     }
 
     const [coverage, receivedSoFar] = await Promise.all([
-      getJobQcCoverage(tx, receipt.productionJobId),
+      getJobQcCoverage(tx, inventoryReceipt.productionJobId),
       this.getConfirmedProductionQuantityByJobId(
         tx,
-        receipt.productionJobId,
-        receipt.id,
+        inventoryReceipt.productionJobId,
+        inventoryReceipt.id,
       ),
     ]);
 
@@ -792,21 +820,24 @@ export class InventoryReceiptsService {
     return row?.total ?? 0;
   }
 
-  /** NCC của phiếu IQC sinh ra khi `confirm` — ưu tiên `receipt.supplierId`, rơi về NCC của PO gắn
+  /** NCC của phiếu IQC sinh ra khi `confirm` — ưu tiên `inventoryReceipt.supplierId`, rơi về NCC của PO gắn
    * với phiếu. Không suy được cả hai → `E152` (`chk_qc_requests_incoming_supplier` đòi `supplier_id` khác
    * null cho dòng `kind = INCOMING`). */
   private async resolveIqcSupplierId(
     tx: DbTransaction,
-    receipt: { supplierId: string | null; purchaseOrderId: string | null },
+    inventoryReceipt: Pick<
+      InventoryReceiptSelect,
+      'supplierId' | 'purchaseOrderId'
+    >,
   ): Promise<string> {
-    if (receipt.supplierId) {
-      return receipt.supplierId;
+    if (inventoryReceipt.supplierId) {
+      return inventoryReceipt.supplierId;
     }
 
-    if (receipt.purchaseOrderId) {
+    if (inventoryReceipt.purchaseOrderId) {
       const purchaseOrder = await tx.query.purchaseOrders.findFirst({
         columns: { supplierId: true },
-        where: eq(purchaseOrders.id, receipt.purchaseOrderId),
+        where: eq(purchaseOrders.id, inventoryReceipt.purchaseOrderId),
       });
       if (purchaseOrder?.supplierId) {
         return purchaseOrder.supplierId;
@@ -835,18 +866,21 @@ export class InventoryReceiptsService {
   /** Khoá dòng phiếu (`FOR UPDATE`) rồi trả về — chỉ gọi bên trong transaction, bằng chính `tx`,
    * vì khoá nhả ngay khi transaction kết thúc. Nhờ đó hai lệnh `post`/`cancel` gọi trùng lên cùng
    * phiếu không cùng lọt qua kiểm trạng thái và cộng tồn hai lần. */
-  private async lockReceipt(tx: DbTransaction, receiptId: string) {
-    const [receipt] = await tx
+  private async getInventoryReceiptForUpdate(
+    tx: DbTransaction,
+    receiptId: string,
+  ) {
+    const [inventoryReceipt] = await tx
       .select()
       .from(inventoryReceipts)
       .where(eq(inventoryReceipts.id, receiptId))
       .for('update');
 
-    if (!receipt) {
+    if (!inventoryReceipt) {
       throw new AppException(ErrorCode.E096, HttpStatus.NOT_FOUND);
     }
 
-    return receipt;
+    return inventoryReceipt;
   }
 
   private async ensureReceiptExists(receiptId: string) {
@@ -862,12 +896,12 @@ export class InventoryReceiptsService {
   }
 
   private async ensureReceiptDraft(receiptId: string) {
-    const receipt = await this.ensureReceiptExists(receiptId);
+    const inventoryReceipt = await this.ensureReceiptExists(receiptId);
 
-    if (receipt.status !== InventoryDocumentStatus.DRAFT) {
+    if (inventoryReceipt.status !== InventoryDocumentStatus.DRAFT) {
       throw new AppException(ErrorCode.E098, HttpStatus.CONFLICT);
     }
 
-    return receipt;
+    return inventoryReceipt;
   }
 }

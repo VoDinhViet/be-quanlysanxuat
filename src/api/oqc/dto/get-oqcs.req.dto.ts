@@ -29,9 +29,9 @@ export class GetOqcsReqDto extends PageOptionsDto {
   @EnumFieldOptional(() => OqcDisposition)
   readonly disposition?: OqcDisposition;
 
-  @DateFieldOptional({ description: 'Ngày kiểm từ' })
-  readonly fromDate?: Date;
+  @DateFieldOptional({ description: 'Filter: inspectionDate >= startDate' })
+  readonly startDate?: Date;
 
-  @DateFieldOptional({ description: 'Ngày kiểm đến' })
-  readonly toDate?: Date;
+  @DateFieldOptional({ description: 'Filter: inspectionDate <= endDate' })
+  readonly endDate?: Date;
 }

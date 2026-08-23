@@ -31,6 +31,7 @@ import { HealthModule } from './api/health/health.module';
 import { InventoryModule } from './api/inventory/inventory.module';
 import { InventoryIssuesModule } from './api/inventory-issues/inventory-issues.module';
 import { InventoryReceiptsModule } from './api/inventory-receipts/inventory-receipts.module';
+import { InventoryRequisitionsModule } from './api/inventory-requisitions/inventory-requisitions.module';
 import { IqcModule } from './api/iqc/iqc.module';
 import { ItemsModule } from './api/items/items.module';
 import { OperationsModule } from './api/operations/operations.module';
@@ -104,6 +105,7 @@ import { WarehousesModule } from './api/warehouses/warehouses.module';
     InventoryModule,
     InventoryReceiptsModule,
     InventoryIssuesModule,
+    InventoryRequisitionsModule,
     SupplierReturnsModule,
     OutsourcingOrdersModule,
     OutsourcingReceiptsModule,

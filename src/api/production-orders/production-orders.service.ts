@@ -85,8 +85,8 @@ export class ProductionOrdersService {
           )
         : undefined,
       reqDto.clientId ? eq(orders.clientId, reqDto.clientId) : undefined,
-      reqDto.fromDate ? gte(orders.dueDate, reqDto.fromDate) : undefined,
-      reqDto.toDate ? lte(orders.dueDate, reqDto.toDate) : undefined,
+      reqDto.startDate ? gte(orders.dueDate, reqDto.startDate) : undefined,
+      reqDto.endDate ? lte(orders.dueDate, reqDto.endDate) : undefined,
       reqDto.status ? eq(productionOrders.status, reqDto.status) : undefined,
     );
 

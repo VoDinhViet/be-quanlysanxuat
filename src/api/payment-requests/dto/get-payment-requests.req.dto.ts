@@ -17,9 +17,9 @@ export class GetPaymentRequestsReqDto extends PageOptionsDto {
   @EnumFieldOptional(() => PaymentRequestStatus)
   readonly status?: PaymentRequestStatus;
 
-  @DateFieldOptional({ description: 'Filter: ngày tạo >= fromDate' })
-  readonly fromDate?: Date;
+  @DateFieldOptional({ description: 'Filter: ngày tạo >= startDate' })
+  readonly startDate?: Date;
 
-  @DateFieldOptional({ description: 'Filter: ngày tạo <= toDate' })
-  readonly toDate?: Date;
+  @DateFieldOptional({ description: 'Filter: ngày tạo <= endDate' })
+  readonly endDate?: Date;
 }

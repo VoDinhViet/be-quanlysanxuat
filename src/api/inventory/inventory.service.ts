@@ -204,14 +204,14 @@ export class InventoryService {
       reqDto.referenceType
         ? eq(inventoryTransactions.referenceType, reqDto.referenceType)
         : undefined,
-      reqDto.fromDate
-        ? gte(inventoryTransactions.transactionDate, reqDto.fromDate)
+      reqDto.startDate
+        ? gte(inventoryTransactions.transactionDate, reqDto.startDate)
         : undefined,
-      // Exclusive next-day boundary — `toDate` parses to midnight UTC, `lte` would drop same-day rows.
-      reqDto.toDate
+      // Exclusive next-day boundary — `endDate` parses to midnight UTC, `lte` would drop same-day rows.
+      reqDto.endDate
         ? lt(
             inventoryTransactions.transactionDate,
-            new Date(reqDto.toDate.getTime() + 24 * 60 * 60 * 1000),
+            new Date(reqDto.endDate.getTime() + 24 * 60 * 60 * 1000),
           )
         : undefined,
     );

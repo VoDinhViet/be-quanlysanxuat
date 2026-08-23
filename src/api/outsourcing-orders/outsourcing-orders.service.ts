@@ -123,7 +123,7 @@ export class OutsourcingOrdersService {
     const creatorUsers = alias(users, 'creator_users');
     const posterUsers = alias(users, 'poster_users');
 
-    const [order] = await this.db
+    const [outsourcingOrder] = await this.db
       .select({
         ...getTableColumns(outsourcingOrders),
         supplier: getTableColumns(suppliers),
@@ -137,11 +137,11 @@ export class OutsourcingOrdersService {
       .where(eq(outsourcingOrders.id, outsourcingOrderId))
       .limit(1);
 
-    if (!order) {
+    if (!outsourcingOrder) {
       throw new AppException(ErrorCode.E165, HttpStatus.NOT_FOUND);
     }
 
-    return plainToInstance(OutsourcingOrderResDto, order, {
+    return plainToInstance(OutsourcingOrderResDto, outsourcingOrder, {
       excludeExtraneousValues: true,
     });
   }
@@ -321,7 +321,7 @@ export class OutsourcingOrdersService {
 
     await this.db.transaction(async (tx) => {
       const code = await this.generateOutsourcingOrderCode(tx);
-      const [order] = await tx
+      const [outsourcingOrder] = await tx
         .insert(outsourcingOrders)
         .values({
           ...orderFields,
@@ -336,7 +336,7 @@ export class OutsourcingOrdersService {
       await tx.insert(outsourcingOrderItems).values(
         reqItems.map((item, index) => ({
           ...item,
-          outsourcingOrderId: order.id,
+          outsourcingOrderId: outsourcingOrder.id,
           sortOrder: index,
         })),
       );
@@ -345,13 +345,16 @@ export class OutsourcingOrdersService {
 
   async cancelOutsourcingOrder(outsourcingOrderId: string): Promise<void> {
     await this.db.transaction(async (tx) => {
-      const row = await this.lockOutsourcingOrder(tx, outsourcingOrderId);
+      const outsourcingOrder = await this.getOutsourcingOrderForUpdate(
+        tx,
+        outsourcingOrderId,
+      );
 
-      if (row.status === OutsourcingOrderStatus.CANCELLED) {
+      if (outsourcingOrder.status === OutsourcingOrderStatus.CANCELLED) {
         throw new AppException(ErrorCode.E098, HttpStatus.CONFLICT);
       }
 
-      if (row.status === OutsourcingOrderStatus.POSTED) {
+      if (outsourcingOrder.status === OutsourcingOrderStatus.POSTED) {
         const hasActiveReceipts = await hasActiveReceiptsForOrder(
           tx,
           outsourcingOrderId,
@@ -404,22 +407,23 @@ export class OutsourcingOrdersService {
   }
 
   /** Khoá dòng phiếu (`FOR UPDATE`) rồi trả về — chỉ gọi bên trong transaction, cùng lý do
-   * `InventoryIssuesService.lockIssue`: chặn `cancel` gọi trùng lên cùng phiếu hai lần. */
-  private async lockOutsourcingOrder(
+   * `InventoryIssuesService.getInventoryIssueForUpdate`: chặn `cancel` gọi trùng lên cùng phiếu hai
+   * lần. */
+  private async getOutsourcingOrderForUpdate(
     tx: DbTransaction,
     outsourcingOrderId: string,
   ) {
-    const [row] = await tx
+    const [outsourcingOrder] = await tx
       .select()
       .from(outsourcingOrders)
       .where(eq(outsourcingOrders.id, outsourcingOrderId))
       .for('update');
 
-    if (!row) {
+    if (!outsourcingOrder) {
       throw new AppException(ErrorCode.E165, HttpStatus.NOT_FOUND);
     }
 
-    return row;
+    return outsourcingOrder;
   }
 
   private async generateOutsourcingOrderCode(

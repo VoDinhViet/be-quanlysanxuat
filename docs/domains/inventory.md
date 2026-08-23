@@ -115,6 +115,25 @@ fromStock = min(onHand, bomDemand)                                     (phần t
 `reserved`/`available` của FG ở trên: `bomDemand` là nhu cầu của **một LSX/Job cụ thể**, không gộp
 mọi LSX đang mở.
 
+**Phiếu lãnh vật tư (`inventory_requisitions`)** là chứng từ **duy nhất** đưa RM ra khỏi kho cho
+sản xuất — `POST /inventory-issues` với `issueType = PRODUCTION` bị chặn (`E234`), phải đi qua đây.
+Ba số cốt lõi, khác hẳn "Bốn field"/"Bốn số khác" ở trên (những công thức đó không chặn thao tác gì,
+đây là công thức **duy nhất trong toàn hệ thống** dùng để chặn tạo/duyệt phiếu):
+
+```
+Đã giữ      = Σ SL lãnh mọi phiếu khác đang APPROVED, cùng (warehouseId, itemId)
+Có thể lãnh = Tồn thực tế − Đã giữ                                    (chặn: SL lãnh ≤ giá trị này)
+Đã lãnh     = Σ SL lãnh mọi phiếu ISSUED, cùng (productionJobId, itemId)
+Khả dụng    = Tồn thực tế − Σ max(requiredQty − Đã lãnh, 0) mọi Job    (chỉ tham khảo, có thể âm)
+```
+
+`Đã giữ` **tính lúc đọc**, không ghi vào `inventory_balances.reservedQuantity` — cột đó vẫn chết
+đúng như mô tả ở "Bốn field" trên, quyết định không đổi ở đây. `Khả dụng` trừ **nhu cầu BOM còn
+lại** (`requiredQty − Đã lãnh`, không âm), khác `bomDemand` ở "Bốn số khác" (trừ nguyên `requiredQty`,
+không trừ phần đã lãnh) — lý do: Job không có trạng thái kết thúc (`docs/domains/production.md`), trừ
+nguyên `requiredQty` mãi mãi sẽ làm số càng lúc càng âm sai lệch dù Job đã lãnh xong. Xem
+`docs/workflows/inventory-requisition.md`.
+
 ## Entities
 
 | Entity | Vai trò |
@@ -126,6 +145,8 @@ mọi LSX đang mở.
 | `inventory_issue_items` | Dòng phiếu xuất — cùng khuôn dòng nhập, thêm `orderItemId` tuỳ chọn |
 | `inventory_transactions` | Sổ cái — append-only, nguồn sự thật, `quantity` có dấu |
 | `inventory_balances` | Tồn hiện tại — một dòng/(kho × mặt hàng), dựng lại được từ sổ cái |
+| `inventory_requisitions` | Phiếu lãnh vật tư — header, vòng đời riêng 6 trạng thái (`DRAFT`/`PENDING_APPROVAL`/`APPROVED`/`ISSUED`/`REJECTED`/`CANCELLED`, xem Lifecycle); `type` (`PRODUCTION` bắt buộc `productionJobId`, `E233`; `OTHER` dùng `reason`); `inventoryIssueId` trỏ phiếu xuất tự sinh lúc `issue` |
+| `inventory_requisition_items` | Dòng phiếu lãnh — `itemId` (luôn RM) + `quantity`; unique `(requisitionId, itemId)` — bắt buộc để 3 công thức số ở Core concepts đúng khi phiếu có nhiều dòng |
 | `supplier_returns` | Phiếu trả NCC — bảng phẳng (1 phiếu = 1 dòng vật tư), tái dùng `status` của phiếu nhập/xuất (chỉ `DRAFT`/`POSTED`/`CANCELLED` — 2 giá trị `PENDING_*` không bao giờ xuất hiện ở bảng này); **tự sinh** (`DRAFT`) từ `IqcService.confirmIqc` khi QC chọn `disposition = SORT`/`RETURN` (`docs/domains/quality.md`), `iqcId` trỏ ngược lại lần IQC đó; `post` (kho xác nhận xuất trả) trừ tồn + hoàn tất luôn IQC liên kết — **chưa có `cancel`** (huỷ một phiếu đã `POSTED` cần đường "un-complete" IQC, để đợt sau) |
 | `outsourcing_orders` | Phiếu gửi gia công ngoài (OS-OUT) — header + nhiều dòng (`outsourcing_order_items`), `status` là enum riêng `outsourcing_order_status` (chỉ `POSTED`/`CANCELLED`, tách khỏi `inventory_document_status` — không còn nháp nên không cần 5 giá trị, `docs/decisions/outsourcing-no-draft.md`), **không đụng `inventory_balances`** (`docs/decisions/wip-not-stocked.md`); mỗi dòng gắn `productionJobOperationId` — đây là chỗ nối vào luồng sản xuất, xem "Gia công ngoài" bên dưới |
 | `outsourcing_order_items` | Dòng OS-OUT — `itemId`/`quantity` + snapshot công đoạn (`operationCode`/`operationName`, NOT NULL), client gửi thẳng từ popup, server không resolve/validate lại (`docs/decisions/outsourcing-no-draft.md`) + `weight`(kg)/`area`(m²) tuỳ chọn, **không** tham gia tính tồn |
@@ -285,12 +306,42 @@ Lý do gốc từng cho rằng gate này thừa ("hàng NG chưa từng vào t�
 `docs/decisions/qc-gates-on-stock-moves.md`. Xem `docs/domains/quality.md`,
 `docs/workflows/final-qc.md`, `docs/workflows/stock-movement.md`.
 
+**`inventory_requisitions` (phiếu lãnh vật tư) có vòng đời riêng, tách khỏi
+`inventory_document_status`** — enum này chia cho `inventory_receipts`/`inventory_issues`/
+`supplier_returns`, nhét thêm 3 giá trị duyệt (`PENDING_APPROVAL`/`APPROVED`/`ISSUED`) sẽ làm ba
+bảng kia nhận giá trị chúng không bao giờ dùng:
+
+```
+DRAFT ──send──> PENDING_APPROVAL ──approve──> APPROVED ──issue──> ISSUED  (điểm cuối)
+  │                   │      │                    │
+  │                   │      └──reject──> REJECTED ──send──> PENDING_APPROVAL
+  └──cancel───────────┴─────────────────────┴──> CANCELLED
+```
+
+- `APPROVED` chỉ **giữ hàng** (đổi số "Đã giữ" tính lúc đọc, xem Core concepts) — **không đụng
+  `inventory_balances`/`inventory_transactions`**. Duyệt xong tồn vẫn nguyên.
+- `issue` (`APPROVED → ISSUED`, **điểm cuối**, không có `cancel` từ đây) mới thật sự trừ tồn — cùng
+  transaction: sinh 1 `inventory_issues` (`issueType = PRODUCTION`, `POSTED` ngay, không qua `DRAFT`)
+  + dòng, rồi gọi `InventoryPostingService.postDocument` y hệt `InventoryIssuesService.
+  postInventoryIssue`. `type = OTHER` cũng map sang `issueType = PRODUCTION` — cả hai loại đều là
+  tiêu hao vật tư nội bộ, đều qua gate IQC dưới đây; `ADJUSTMENT_OUT` để dành riêng cho điều chỉnh
+  kiểm kê thật.
+- `issue` chạy gate IQC giống hệt `postInventoryIssue` (`E203`, xem "Gate xuất kho sản xuất" trên) —
+  cùng lý do: hàng chưa qua IQC không được rời kho, bất kể rời kho qua đường nào.
+- **`POST`/`PATCH /inventory-issues` với `issueType = PRODUCTION` bị chặn** (`E234`) — phiếu xuất
+  sinh cho sản xuất chỉ còn một nguồn: `issue` một phiếu lãnh đã `APPROVED`. `cancel` một
+  `inventory_issues` do phiếu lãnh sinh ra cũng bị chặn (`E235`) — huỷ nó mà không đụng phiếu lãnh
+  sẽ để phiếu lãnh kẹt ở `ISSUED` với tồn đã hoàn.
+
+Chi tiết từng bước, nhánh lỗi đầy đủ: `docs/workflows/inventory-requisition.md`.
+
 ## Business rules
 
 - `code` bất biến, unique toàn bảng, sinh theo năm: `PNK-{năm}-{số thứ tự trong năm, pad 5}` (nhập),
-  `PXK-{năm}-{...}` (xuất), `PTNCC-{năm}-{...}` (trả NCC). `PNK`/`PXK` cấp qua bảng đếm dùng chung
-  `document_sequences` (`docs/architecture.md`, mục "Bất biến xuyên module"); `PTNCC` là ngoại lệ
-  còn lại, vẫn đếm-rồi-cộng trên chính bảng.
+  `PXK-{năm}-{...}` (xuất), `MR-{năm}-{...}` (lãnh vật tư — tiếng Anh, khác quy ước Việt hoá
+  `PNK`/`PXK`/`PTNCC`, cố ý), `PTNCC-{năm}-{...}` (trả NCC). `PNK`/`PXK`/`MR` cấp qua bảng đếm dùng
+  chung `document_sequences` (`docs/architecture.md`, mục "Bất biến xuyên module"); `PTNCC` là ngoại
+  lệ còn lại, vẫn đếm-rồi-cộng trên chính bảng.
 - **`shouldPostStock` bỏ qua trừ tồn ở 2 ca, còn lại luôn trừ** (`postSupplierReturn`):
   1. **Bù trừ SL đã trả trước khi ghi bút toán `RECEIPT`**: một IQC `FAIL` chạy **trước** khi phiếu
      nhập gốc `post` (cổng IQC nằm ở `confirm`, xem Lifecycle), nên tại thời điểm `disposition` ra
@@ -367,6 +418,8 @@ Lý do gốc từng cho rằng gate này thừa ("hàng NG chưa từng vào t�
   một mặt hàng xuống dưới 0.
 - Phiếu `POSTED` không sửa/xoá được qua API.
 - Mọi dòng `quantity` trên dòng phiếu đều dương (DB CHECK); dấu chỉ nằm ở bút toán.
+- `inventory_requisitions.status = ISSUED` không sửa/xoá/huỷ được qua API — điểm cuối, giống phiếu
+  `POSTED` của nhánh nhập/xuất, dù không dùng chung enum trạng thái với hai bảng đó.
 
 Không phải invariant dù dễ tưởng:
 
@@ -390,11 +443,19 @@ Không phải invariant dù dễ tưởng:
   đọc thẳng bảng, không qua `InventoryModule`/DI, cùng tiền lệ
   `hasPendingIqcForItems`/`getJobQcCoverage`.
 - **← Production**: chỉ đọc, qua `getStockLevels(excludeOrderId)`/`getMaterialStockLevels`.
-  Production hiện **không** tự động lập phiếu kho — auto-post là feature ngoài phạm vi đợt này
+  Production hiện **không** tự động lập phiếu **nhập** kho — auto-post nhập vẫn ngoài phạm vi
   (`docs/decisions/stored-inventory-balances.md`). Phiếu vẫn có cột liên kết
   `productionOrderId`/`productionJobId` cho người dùng gắn thủ công — `productionJobId` trên
   `inventory_receipts` **bắt buộc** khi `receiptType = PRODUCTION` (khác `productionOrderId`, vẫn
-  tuỳ chọn; khác `inventory_issues.productionJobId`, vẫn tuỳ chọn cho mọi `issueType`).
+  tuỳ chọn; khác `inventory_issues.productionJobId`, vẫn tuỳ chọn cho mọi `issueType`). **Phiếu
+  xuất cho sản xuất thì khác** — `inventory_requisitions.issue` tự sinh `inventory_issues` (xem
+  "Phiếu lãnh vật tư" ở Lifecycle), đây là auto-post **duy nhất** đang tồn tại, giới hạn đúng một
+  nguồn (`issueType = PRODUCTION` qua `inventory-issues` trực tiếp bị chặn, `E234`).
+- **↔ Production (Phiếu lãnh vật tư)**: `inventory_requisitions` đọc `production_job_issues`
+  (`requiredQty`) để chặn vượt định mức BOM (`E230`/`E232`) và tính "Đã lãnh"/"Khả dụng" — một
+  chiều, không ghi ngược `production_job_issues`/`production_jobs`. `GET
+  /production-jobs/:jobId/bom` đọc ngược lại `inventory_requisitions` (dòng `ISSUED`) để hiển thị
+  "Đã lãnh"/"Còn phải lãnh" — xem `docs/domains/production.md`.
 - **← Production (Gia công ngoài)**: mỗi dòng `outsourcing_order_items` mang snapshot
   `productionJobId`/`itemId`/`operationCode`/`operationName` do client gửi từ popup `GET
   .../outsourceable-operations` (đọc `production_job_operations`/
@@ -474,8 +535,9 @@ Không phải invariant dù dễ tưởng:
 7. **Tưởng `reserved` trên `GET /inventory` luôn là 0 như bản RM cũ.** Không còn — giờ tính thật
    cho mọi loại item (chỉ tự nhiên ra 0 với WIP/RM vì đơn hàng chỉ trỏ FG). Vẫn đúng cho `bomDemand`:
    **chỗ cắm sẵn**, giá trị 0 là do phạm vi hiện tại (chưa nổ BOM), không phải bug.
-8. **Tưởng sản xuất tự động lập phiếu.** Chưa — `startJob`/hoàn thành Job không sinh phiếu kho nào
-   ở đợt này, dù cột liên kết đã có sẵn trên phiếu.
+8. **Tưởng sản xuất tự động lập phiếu nhập.** Chưa — `startJob`/hoàn thành Job không sinh phiếu
+   nhập nào. **Phiếu xuất thì có** — `inventory_requisitions.issue` tự sinh `inventory_issues`, xem
+   #27.
 9. **Tưởng phiếu nhập `DRAFT` `post` thẳng được như trước.** Không còn — phải qua `confirm` trước
    (`DRAFT → PENDING_RECEIPT`/`PENDING_IQC`), `post` một phiếu nhập còn `DRAFT` ném `E098`. Phiếu
    xuất không đổi, vẫn `post` thẳng từ `DRAFT`.
@@ -542,11 +604,19 @@ Không phải invariant dù dễ tưởng:
     tới dòng PO đã huỷ/đơn sai khách hàng — client hoàn toàn chịu trách nhiệm dữ liệu gửi lên. Đây
     là giới hạn có chủ ý của phase này (đổi lấy bỏ round-trip DB, dữ liệu client đã có sẵn từ đúng
     popup), không phải bug.
+27. **Tưởng lập tay `POST /inventory-issues` với `issueType = PRODUCTION` vẫn xuất được cho sản
+    xuất.** Không còn — bị chặn (`E234`). Đường duy nhất là `inventory_requisitions.issue`
+    (`docs/workflows/inventory-requisition.md`). `issueType` khác (`SALES`/`RETURN`/`ADJUSTMENT`)
+    không đổi, vẫn lập/`post` tay bình thường.
+28. **Tưởng `inventory_balances.reservedQuantity` được hồi sinh cho phiếu lãnh vật tư.** Không —
+    "Đã giữ" của phiếu lãnh **tính lúc đọc** từ các dòng `APPROVED`, không ghi cột nào; cột
+    `reservedQuantity` vẫn chết đúng như trước (xem #7 và Core concepts).
 
 ## Related docs
 
 - `docs/decisions/stored-inventory-balances.md` — vì sao tồn kho đổi từ tính-lại sang lưu trữ.
 - `docs/workflows/stock-movement.md` — trình tự lập/post/cancel phiếu.
+- `docs/workflows/inventory-requisition.md` — trình tự lập/duyệt/xuất phiếu lãnh vật tư.
 - `docs/workflows/supplier-return.md` — luồng đầy đủ từ IQC FAIL tới hoàn tất phiếu trả NCC.
 - `docs/workflows/outsourcing-round-trip.md` — luồng OS-OUT → OS-IN → QC tuỳ chọn.
 - `docs/workflows/final-qc.md` — luồng OQC → 2 gate nhập kho thành phẩm/giao hàng.

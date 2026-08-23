@@ -28,9 +28,9 @@ export class GetInventoryIssuesReqDto extends PageOptionsDto {
   @UUIDFieldOptional()
   readonly departmentId?: string;
 
-  @DateFieldOptional({ description: 'Filter: issueDate >= fromDate' })
-  readonly fromDate?: Date;
+  @DateFieldOptional({ description: 'Filter: issueDate >= startDate' })
+  readonly startDate?: Date;
 
-  @DateFieldOptional({ description: 'Filter: issueDate <= toDate' })
-  readonly toDate?: Date;
+  @DateFieldOptional({ description: 'Filter: issueDate <= endDate' })
+  readonly endDate?: Date;
 }

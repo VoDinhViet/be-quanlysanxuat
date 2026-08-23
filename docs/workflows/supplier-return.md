@@ -53,7 +53,7 @@ là bên xác nhận vật lý, khác vai trò với QC.
 ### `post` (trong transaction riêng của `SupplierReturnsService.postSupplierReturn`)
 
 1. Khoá dòng phiếu trả (`SELECT … FOR UPDATE`, cùng lý do chống double-submit như
-   `InventoryReceiptsService.lockReceipt`), kiểm `status = DRAFT` (`E098`).
+   `InventoryReceiptsService.getInventoryReceiptForUpdate`), kiểm `status = DRAFT` (`E098`).
 2. **`shouldPostStock`** — hai ca bỏ qua trừ tồn, còn lại luôn trừ:
    - Phiếu trả sinh từ IQC của OS-IN (`outsourcingReceiptId` có giá trị) — hàng gia công ngoài chưa
      từng vào `inventory_balances` (`docs/decisions/wip-not-stocked.md`), kiểm ca này **trước**.

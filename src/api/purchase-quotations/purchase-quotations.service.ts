@@ -136,13 +136,13 @@ export class PurchaseQuotationsService {
               ),
           )
         : undefined,
-      reqDto.fromDate
-        ? gte(purchaseQuotations.createdAt, reqDto.fromDate)
+      reqDto.startDate
+        ? gte(purchaseQuotations.createdAt, reqDto.startDate)
         : undefined,
-      reqDto.toDate
+      reqDto.endDate
         ? lt(
             purchaseQuotations.createdAt,
-            new Date(reqDto.toDate.getTime() + 24 * 60 * 60 * 1000),
+            new Date(reqDto.endDate.getTime() + 24 * 60 * 60 * 1000),
           )
         : undefined,
     );

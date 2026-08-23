@@ -73,14 +73,14 @@ export class PaymentRequestsService {
         ? eq(purchaseOrders.supplierId, reqDto.supplierId)
         : undefined,
       reqDto.status ? eq(paymentRequests.status, reqDto.status) : undefined,
-      reqDto.fromDate
-        ? gte(paymentRequests.createdAt, reqDto.fromDate)
+      reqDto.startDate
+        ? gte(paymentRequests.createdAt, reqDto.startDate)
         : undefined,
-      // Biên trên loại trừ — `toDate` parse ra nửa đêm UTC, `lte` sẽ bỏ sót cùng ngày.
-      reqDto.toDate
+      // Biên trên loại trừ — `endDate` parse ra nửa đêm UTC, `lte` sẽ bỏ sót cùng ngày.
+      reqDto.endDate
         ? lt(
             paymentRequests.createdAt,
-            new Date(reqDto.toDate.getTime() + 24 * 60 * 60 * 1000),
+            new Date(reqDto.endDate.getTime() + 24 * 60 * 60 * 1000),
           )
         : undefined,
     );

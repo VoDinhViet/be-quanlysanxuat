@@ -49,6 +49,7 @@ import {
   units,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
+import { issuedQuantityByJobItemSubquery } from '../inventory-requisitions/inventory-requisitions.query';
 import { InventoryService } from '../inventory/inventory.service';
 import { OqcService } from '../oqc/oqc.service';
 import { PurchaseRequestsService } from '../purchase-requests/purchase-requests.service';
@@ -99,8 +100,8 @@ export class ProductionJobsService {
       reqDto.itemId ? eq(productionJobs.itemId, reqDto.itemId) : undefined,
       reqDto.status ? eq(productionJobs.status, reqDto.status) : undefined,
       reqDto.clientId ? eq(orders.clientId, reqDto.clientId) : undefined,
-      reqDto.fromDate ? gte(orders.dueDate, reqDto.fromDate) : undefined,
-      reqDto.toDate ? lte(orders.dueDate, reqDto.toDate) : undefined,
+      reqDto.startDate ? gte(orders.dueDate, reqDto.startDate) : undefined,
+      reqDto.endDate ? lte(orders.dueDate, reqDto.endDate) : undefined,
       keyword
         ? or(
             unaccentILike(productionJobs.code, keyword),
@@ -219,12 +220,18 @@ export class ProductionJobsService {
         : undefined,
     );
 
+    // "Theo dõi đã lãnh" — Đã lãnh đọc qua hàm thuần của module `inventory-requisitions`
+    // (`docs/domains/inventory.md`), không qua DI, cùng tiền lệ `hasPendingIqcForItems`.
+    const issued = issuedQuantityByJobItemSubquery(this.db);
+
     const [rows, [{ total }]] = await Promise.all([
       this.db
         .select({
           item: getTableColumns(productionJobItems),
           unit: getTableColumns(productionJobUnits),
           requiredQty: productionJobIssues.requiredQty,
+          issuedQuantity:
+            sql<number>`coalesce(${issued.issuedQuantity}, 0)`.mapWith(Number),
         })
         .from(productionJobIssues)
         .innerJoin(
@@ -234,6 +241,13 @@ export class ProductionJobsService {
         .innerJoin(
           productionJobUnits,
           eq(productionJobUnits.id, productionJobIssues.productionJobUnitId),
+        )
+        .leftJoin(
+          issued,
+          and(
+            eq(issued.productionJobId, jobId),
+            eq(issued.itemId, productionJobIssues.itemId),
+          ),
         )
         .where(where)
         .orderBy(asc(productionJobItems.code), asc(productionJobIssues.id))
@@ -249,8 +263,13 @@ export class ProductionJobsService {
         .where(where),
     ]);
 
+    const lines = rows.map((row) => ({
+      ...row,
+      remainingQuantity: Math.max(row.requiredQty - row.issuedQuantity, 0),
+    }));
+
     return new OffsetPaginatedDto(
-      plainToInstance(ProductionJobIssueResDto, rows, {
+      plainToInstance(ProductionJobIssueResDto, lines, {
         excludeExtraneousValues: true,
       }),
       new OffsetPaginationDto(total ?? 0, reqDto),

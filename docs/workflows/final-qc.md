@@ -107,10 +107,10 @@ bảng — xem `docs/decisions/qc-single-table.md`. Trigger tạo OQC ở **cấ
 ### Nhập kho thành phẩm (`InventoryReceiptsService.confirmInventoryReceipt`, nhánh `PRODUCTION`)
 
 1. Sau `ensureReceiptQuantitiesWithinOrdered` (nhánh PO, không áp dụng ở đây vì phiếu PRODUCTION
-   không gắn PO), kiểm `receipt.receiptType = PRODUCTION`:
-   - `productionJobId` không có → `E179`. Mọi `lineItems[].itemId` phải bằng `job.itemId` — lệch
+   không gắn PO), kiểm `inventoryReceipt.receiptType = PRODUCTION`:
+   - `productionJobId` không có → `E179`. Mọi dòng phiếu phải có `itemId` bằng `job.itemId` — lệch
      thì `E107`.
-   - `coverage = getJobQcCoverage(tx, receipt.productionJobId)` (đọc bảng gộp `qc_requests`,
+   - `coverage = getJobQcCoverage(tx, inventoryReceipt.productionJobId)` (đọc bảng gộp `qc_requests`,
      phủ cả OQC công đoạn `INHOUSE` lẫn IQC công đoạn `OUTSOURCE`, `docs/decisions/
      qc-single-table.md`) — Job có ≥1 dòng QC **chưa `SCRAP`** và không còn dòng nào chưa `COMPLETED`
      — thiếu → `E196`. Có node Cấp 0 mà chưa có dòng OQC `COMPLETED` **chưa `SCRAP`** nào → `E209`.
@@ -126,7 +126,7 @@ bảng — xem `docs/decisions/qc-single-table.md`. Trigger tạo OQC ở **cấ
 
 ### Xác nhận giao hàng (`OutboundOrdersService.confirmOutboundOrder`)
 
-1. `lockOutboundOrder` (`FOR UPDATE`) — `status ≠ DRAFT` → `E204`.
+1. `getOutboundOrderForUpdate` (`FOR UPDATE`) — `status ≠ DRAFT` → `E204`.
 2. Gom `productionJobId` distinct từ các dòng DO (bỏ qua dòng `null`) — mỗi Job gọi
    `getJobQcCoverage` (tái dùng nguyên hàm ở gate nhập kho TP, cùng cách loại `SCRAP` khỏi `total`) —
    Job nào chưa qua hết QC → `E205`.
@@ -164,7 +164,7 @@ attempt (`qc_inspections`), rồi cập nhật mirror trên `qc_requests`, tất
 (`docs/decisions/qc-request-attempt-split.md`).
 `confirmInventoryReceipt` đã tự mở transaction sẵn (khuôn `docs/workflows/receipt-confirmation.md`)
 — gate QC chỉ thêm kiểm tra bên trong, không thêm transaction mới. `confirmOutboundOrder` tự mở
-transaction (`lockOutboundOrder` + gate + `UPDATE`). `getJobQcCoverage` lẫn các hàm đọc SL khác ở
+transaction (`getOutboundOrderForUpdate` + gate + `UPDATE`). `getJobQcCoverage` lẫn các hàm đọc SL khác ở
 `src/api/oqc/oqc.query.ts` đều là plain function nhận `Database | DbTransaction`, không tự mở
 transaction, không qua DI — `InventoryReceiptsModule`/`OutboundOrdersModule` đều không import
 `OqcModule`/`IqcModule` (chiều đọc). Riêng `ProductionJobsModule` **có** import `OqcModule` — ngoại

@@ -124,13 +124,13 @@ export class PurchaseOrdersService {
               ),
           )
         : undefined,
-      reqDto.fromDate
-        ? gte(purchaseOrders.orderDate, reqDto.fromDate)
+      reqDto.startDate
+        ? gte(purchaseOrders.orderDate, reqDto.startDate)
         : undefined,
-      reqDto.toDate
+      reqDto.endDate
         ? lt(
             purchaseOrders.orderDate,
-            new Date(reqDto.toDate.getTime() + 24 * 60 * 60 * 1000),
+            new Date(reqDto.endDate.getTime() + 24 * 60 * 60 * 1000),
           )
         : undefined,
     );

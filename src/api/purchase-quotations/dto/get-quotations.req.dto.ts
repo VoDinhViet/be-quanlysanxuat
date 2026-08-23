@@ -27,9 +27,9 @@ export class GetQuotationsReqDto extends PageOptionsDto {
   })
   readonly materialKeyword?: string;
 
-  @DateFieldOptional({ description: 'Filter: createdAt >= fromDate' })
-  readonly fromDate?: Date;
+  @DateFieldOptional({ description: 'Filter: createdAt >= startDate' })
+  readonly startDate?: Date;
 
-  @DateFieldOptional({ description: 'Filter: createdAt <= toDate' })
-  readonly toDate?: Date;
+  @DateFieldOptional({ description: 'Filter: createdAt <= endDate' })
+  readonly endDate?: Date;
 }

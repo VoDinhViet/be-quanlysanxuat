@@ -20,9 +20,9 @@ export class GetOutsourcingReceiptsReqDto extends PageOptionsDto {
   @BooleanFieldOptional({ description: 'Filter theo có yêu cầu QC hay không' })
   readonly requiresIqc?: boolean;
 
-  @DateFieldOptional({ description: 'Ngày nhận từ' })
-  readonly fromDate?: Date;
+  @DateFieldOptional({ description: 'Filter: receiptDate >= startDate' })
+  readonly startDate?: Date;
 
-  @DateFieldOptional({ description: 'Ngày nhận đến' })
-  readonly toDate?: Date;
+  @DateFieldOptional({ description: 'Filter: receiptDate <= endDate' })
+  readonly endDate?: Date;
 }

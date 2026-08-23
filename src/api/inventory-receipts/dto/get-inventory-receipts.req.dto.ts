@@ -31,9 +31,9 @@ export class GetInventoryReceiptsReqDto extends PageOptionsDto {
   @UUIDFieldOptional({ description: 'Filter theo đơn mua hàng' })
   readonly purchaseOrderId?: string;
 
-  @DateFieldOptional({ description: 'Filter: receiptDate >= fromDate' })
-  readonly fromDate?: Date;
+  @DateFieldOptional({ description: 'Filter: receiptDate >= startDate' })
+  readonly startDate?: Date;
 
-  @DateFieldOptional({ description: 'Filter: receiptDate <= toDate' })
-  readonly toDate?: Date;
+  @DateFieldOptional({ description: 'Filter: receiptDate <= endDate' })
+  readonly endDate?: Date;
 }

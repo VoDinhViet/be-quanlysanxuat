@@ -490,5 +490,24 @@ export enum ErrorCode {
   // `GET /iqc/aql-plan` không tra được plan (lot size/inspection level/AQL rơi vào ô bảng chưa có
   // rule) — mint riêng, không dùng `E200` vì mã đó namespace `oqc_inspection.error.*`.
   E219 = 'iqc_inspection.error.aql_plan_not_found',
+  E220 = 'file.error.linked_to_qc_evidence',
+  E221 = 'qc_aql_plan.error.level_aql_exists',
+  E222 = 'qc_aql_rule.error.rejection_not_greater_than_acceptance',
+  E223 = 'inventory_requisition.error.not_found',
+  E224 = 'inventory_requisition.error.not_editable',
+  E225 = 'inventory_requisition.error.invalid_approval_state',
+  E226 = 'inventory_requisition.error.not_issuable',
+  E227 = 'inventory_requisition.error.no_items',
+  E228 = 'inventory_requisition_item.error.duplicate_item',
+  E229 = 'inventory_requisition_item.error.item_not_raw_material',
+  E230 = 'inventory_requisition_item.error.not_in_job_bom',
+  E231 = 'inventory_requisition_item.error.quantity_exceeds_issuable',
+  E232 = 'inventory_requisition_item.error.quantity_exceeds_bom_remaining',
+  E233 = 'inventory_requisition.error.production_job_required',
+  // `POST`/`PATCH /inventory-issues` với `issueType = PRODUCTION` — đường lãnh vật tư cho sản xuất
+  // chỉ còn một nguồn: `POST /inventory-requisitions/:id/issue`.
+  E234 = 'inventory_issue.error.production_requires_requisition',
+  // `POST /inventory-issues/:id/cancel` trên một phiếu do `inventory_requisitions.issue` sinh ra.
+  E235 = 'inventory_issue.error.generated_from_requisition',
   V003 = 'common.error.too_many_requests',
 }

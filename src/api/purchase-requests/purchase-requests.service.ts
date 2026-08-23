@@ -102,13 +102,13 @@ export class PurchaseRequestsService {
       reqDto.neededDate
         ? eq(purchaseRequests.neededDate, reqDto.neededDate)
         : undefined,
-      reqDto.createdDateFrom
-        ? gte(purchaseRequests.createdAt, reqDto.createdDateFrom)
+      reqDto.createdStartDate
+        ? gte(purchaseRequests.createdAt, reqDto.createdStartDate)
         : undefined,
-      reqDto.createdDateTo
+      reqDto.createdEndDate
         ? lt(
             purchaseRequests.createdAt,
-            new Date(reqDto.createdDateTo.getTime() + 24 * 60 * 60 * 1000),
+            new Date(reqDto.createdEndDate.getTime() + 24 * 60 * 60 * 1000),
           )
         : undefined,
     );
@@ -446,11 +446,11 @@ export class PurchaseRequestsService {
     reqDto: CreatePurchaseRequestReqDto,
     userId: string,
   ): Promise<void> {
-    const { items: lineItems, ...purchaseRequestFields } = reqDto;
+    const { items: itemsToCreate, ...purchaseRequestFields } = reqDto;
 
     await Promise.all([
       this.ensureDepartmentExists(purchaseRequestFields.departmentId),
-      this.ensureRequestItemsValid(lineItems),
+      this.ensureRequestItemsValid(itemsToCreate),
     ]);
 
     await this.db.transaction(async (tx) => {
@@ -462,7 +462,7 @@ export class PurchaseRequestsService {
         .returning({ id: purchaseRequests.id });
 
       await tx.insert(purchaseRequestItems).values(
-        lineItems.map((item) => ({
+        itemsToCreate.map((item) => ({
           ...item,
           purchaseRequestId: purchaseRequest.id,
         })),
@@ -485,13 +485,13 @@ export class PurchaseRequestsService {
    * trùng `itemId` trong cùng payload (`E147`) và mọi dòng phải là RM (`E148`) — đường tự động lấy
    * dòng từ `production_job_issues` nên vốn đã đúng cả ba. */
   private async ensureRequestItemsValid(
-    lineItems: CreatePurchaseRequestItemReqDto[],
+    itemsToValidate: CreatePurchaseRequestItemReqDto[],
   ): Promise<void> {
-    if (!lineItems.length) {
+    if (!itemsToValidate.length) {
       throw new AppException(ErrorCode.E146, HttpStatus.BAD_REQUEST);
     }
 
-    const itemIds = lineItems.map((item) => item.itemId);
+    const itemIds = itemsToValidate.map((item) => item.itemId);
 
     if (new Set(itemIds).size !== itemIds.length) {
       throw new AppException(ErrorCode.E147, HttpStatus.CONFLICT);

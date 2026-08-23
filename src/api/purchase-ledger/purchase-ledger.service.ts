@@ -79,19 +79,19 @@ export class PurchaseLedgerService {
       reqDto.status
         ? this.buildStatusCondition(refs, reqDto.status)
         : undefined,
-      reqDto.neededDateFrom
-        ? gte(purchaseRequests.neededDate, reqDto.neededDateFrom)
+      reqDto.neededStartDate
+        ? gte(purchaseRequests.neededDate, reqDto.neededStartDate)
         : undefined,
-      reqDto.neededDateTo
-        ? lte(purchaseRequests.neededDate, reqDto.neededDateTo)
+      reqDto.neededEndDate
+        ? lte(purchaseRequests.neededDate, reqDto.neededEndDate)
         : undefined,
-      reqDto.createdDateFrom
-        ? gte(purchaseRequests.createdAt, reqDto.createdDateFrom)
+      reqDto.createdStartDate
+        ? gte(purchaseRequests.createdAt, reqDto.createdStartDate)
         : undefined,
-      reqDto.createdDateTo
+      reqDto.createdEndDate
         ? lt(
             purchaseRequests.createdAt,
-            new Date(reqDto.createdDateTo.getTime() + 24 * 60 * 60 * 1000),
+            new Date(reqDto.createdEndDate.getTime() + 24 * 60 * 60 * 1000),
           )
         : undefined,
     );

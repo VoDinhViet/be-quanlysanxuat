@@ -21,19 +21,19 @@ export class GetPurchaseLedgerReqDto extends PageOptionsDto {
   @EnumFieldOptional(() => PurchaseLedgerStatus)
   readonly status?: PurchaseLedgerStatus;
 
-  @DateFieldOptional({ description: 'Filter: neededDate >= neededDateFrom' })
-  readonly neededDateFrom?: Date;
+  @DateFieldOptional({ description: 'Filter: neededDate >= neededStartDate' })
+  readonly neededStartDate?: Date;
 
-  @DateFieldOptional({ description: 'Filter: neededDate <= neededDateTo' })
-  readonly neededDateTo?: Date;
-
-  @DateFieldOptional({
-    description: 'Filter: ngày tạo phiếu đề xuất >= createdDateFrom',
-  })
-  readonly createdDateFrom?: Date;
+  @DateFieldOptional({ description: 'Filter: neededDate <= neededEndDate' })
+  readonly neededEndDate?: Date;
 
   @DateFieldOptional({
-    description: 'Filter: ngày tạo phiếu đề xuất <= createdDateTo',
+    description: 'Filter: ngày tạo phiếu đề xuất >= createdStartDate',
   })
-  readonly createdDateTo?: Date;
+  readonly createdStartDate?: Date;
+
+  @DateFieldOptional({
+    description: 'Filter: ngày tạo phiếu đề xuất <= createdEndDate',
+  })
+  readonly createdEndDate?: Date;
 }

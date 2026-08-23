@@ -15,15 +15,18 @@ Nơi mọi business logic sống. Reference: `src/api/users/users.service.ts`.
 ## Writes
 
 - MUST build write payloads by spreading the DTO into `.values()` and `.set()`. MUST NOT list columns by hand, and MUST NOT hand-roll `if (reqDto.x !== undefined) setValues.x = reqDto.x` — Drizzle drops `undefined` and `ValidationPipe` already stripped unknown keys.
-  - MUST peel off child collections that aren't columns (`contacts`, `attachmentFileIds`, ...) before spreading:
+  - MUST peel off child collections that aren't columns (`contacts`, `fileIds`, ...) before spreading:
     ```ts
-    const { attachmentFileIds, ...supplierFields } = reqDto;
+    const { fileIds, ...supplierFields } = reqDto;
     await tx.insert(suppliers).values({ ...supplierFields, code, createdBy: userId });
     ```
   - MUST place transformed/computed/defaulted keys **after** the spread so they win.
   - MUST use an explicit `!== undefined` check only when: `[]` is meaningful ("clear all") vs omitted; a value needs transforming before write; or a business check must run only when the field was sent.
 - MUST NOT write `updatedAt: new Date()` by hand — every table's `updatedAt` has `$onUpdate` (`.claude/rules/database.md`).
 - MUST use a transaction when two or more writes must all land or all roll back; a single write is already atomic. Inside the callback MUST use `tx` for every statement — `this.db` takes a different pooled connection and silently commits outside the transaction. Read `.claude/rules/transactions.md` before writing one.
+- MUST name a helper that reads a row with `SELECT … FOR UPDATE` inside a transaction `getXForUpdate(tx, id)` — returns the locked row, throws 404 when missing. MUST NOT prefix `lockX`. Reference: `InventoryIssuesService.getInventoryIssueForUpdate`.
+- MUST name the variable holding an entity row after the entity, not a placeholder (`row`, `locked`, `entity`) — `getInventoryReceiptForUpdate` returns `inventoryReceipt`, not `row`.
+- MUST name a variable/parameter holding document lines after what the call site does with them (`itemsToCreate`, `itemsToValidate`, `itemsToIssue`, `itemsToPost`, `insertedItems`), and a private child-write helper after the document (`createRequisitionItems`, not `createItems`). MUST NOT use a bare `lineItems`, `row`, or `items` — `items` is the master-data table (vật tư), so the bare word reads as the wrong entity.
 
 ## Responses
 

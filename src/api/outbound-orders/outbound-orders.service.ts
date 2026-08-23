@@ -85,16 +85,16 @@ export class OutboundOrdersService {
   async getOutboundOrder(
     outboundOrderId: string,
   ): Promise<OutboundOrderResDto> {
-    const order = await this.db.query.outboundOrders.findFirst({
+    const outboundOrder = await this.db.query.outboundOrders.findFirst({
       where: eq(outboundOrders.id, outboundOrderId),
       with: { client: true, creatorBy: true },
     });
 
-    if (!order) {
+    if (!outboundOrder) {
       throw new AppException(ErrorCode.E195, HttpStatus.NOT_FOUND);
     }
 
-    return plainToInstance(OutboundOrderResDto, order, {
+    return plainToInstance(OutboundOrderResDto, outboundOrder, {
       excludeExtraneousValues: true,
     });
   }
@@ -222,20 +222,23 @@ export class OutboundOrdersService {
    * hoặc còn dòng chưa `COMPLETED` (`getJobQcCoverage`, tái dùng gate `E196`) thì chặn cả phiếu. */
   async confirmOutboundOrder(outboundOrderId: string): Promise<void> {
     await this.db.transaction(async (tx) => {
-      const order = await this.lockOutboundOrder(tx, outboundOrderId);
+      const outboundOrder = await this.getOutboundOrderForUpdate(
+        tx,
+        outboundOrderId,
+      );
 
-      if (order.status !== OutboundOrderStatus.DRAFT) {
+      if (outboundOrder.status !== OutboundOrderStatus.DRAFT) {
         throw new AppException(ErrorCode.E204, HttpStatus.CONFLICT);
       }
 
-      const lineItems = await tx.query.outboundOrderItems.findMany({
+      const itemsToConfirm = await tx.query.outboundOrderItems.findMany({
         where: eq(outboundOrderItems.outboundOrderId, outboundOrderId),
         columns: { productionJobId: true },
       });
 
       const jobIds = [
         ...new Set(
-          lineItems
+          itemsToConfirm
             .map((item) => item.productionJobId)
             .filter((jobId): jobId is string => jobId !== null),
         ),
@@ -256,19 +259,22 @@ export class OutboundOrdersService {
   }
 
   /** Khoá dòng phiếu (`FOR UPDATE`) rồi trả về — chỉ gọi bên trong transaction, cùng lý do
-   * `InventoryIssuesService.lockIssue`. */
-  private async lockOutboundOrder(tx: DbTransaction, outboundOrderId: string) {
-    const [order] = await tx
+   * `InventoryIssuesService.getInventoryIssueForUpdate`. */
+  private async getOutboundOrderForUpdate(
+    tx: DbTransaction,
+    outboundOrderId: string,
+  ) {
+    const [outboundOrder] = await tx
       .select()
       .from(outboundOrders)
       .where(eq(outboundOrders.id, outboundOrderId))
       .for('update');
 
-    if (!order) {
+    if (!outboundOrder) {
       throw new AppException(ErrorCode.E195, HttpStatus.NOT_FOUND);
     }
 
-    return order;
+    return outboundOrder;
   }
 
   private async ensureOutboundOrderExists(

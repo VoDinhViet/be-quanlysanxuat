@@ -112,13 +112,13 @@ export class OutsourcingReceiptsService {
       reqDto.requiresIqc !== undefined
         ? eq(outsourcingReceipts.requiresIqc, reqDto.requiresIqc)
         : undefined,
-      reqDto.fromDate
-        ? gte(outsourcingReceipts.receiptDate, reqDto.fromDate)
+      reqDto.startDate
+        ? gte(outsourcingReceipts.receiptDate, reqDto.startDate)
         : undefined,
-      reqDto.toDate
+      reqDto.endDate
         ? lt(
             outsourcingReceipts.receiptDate,
-            new Date(reqDto.toDate.getTime() + 24 * 60 * 60 * 1000),
+            new Date(reqDto.endDate.getTime() + 24 * 60 * 60 * 1000),
           )
         : undefined,
     );
@@ -145,16 +145,17 @@ export class OutsourcingReceiptsService {
   async getOutsourcingReceipt(
     outsourcingReceiptId: string,
   ): Promise<OutsourcingReceiptResDto> {
-    const row = await this.db.query.outsourcingReceipts.findFirst({
-      where: eq(outsourcingReceipts.id, outsourcingReceiptId),
-      with: { supplier: true, creatorBy: true, posterBy: true },
-    });
+    const outsourcingReceipt =
+      await this.db.query.outsourcingReceipts.findFirst({
+        where: eq(outsourcingReceipts.id, outsourcingReceiptId),
+        with: { supplier: true, creatorBy: true, posterBy: true },
+      });
 
-    if (!row) {
+    if (!outsourcingReceipt) {
       throw new AppException(ErrorCode.E170, HttpStatus.NOT_FOUND);
     }
 
-    return plainToInstance(OutsourcingReceiptResDto, row, {
+    return plainToInstance(OutsourcingReceiptResDto, outsourcingReceipt, {
       excludeExtraneousValues: true,
     });
   }
@@ -288,7 +289,7 @@ export class OutsourcingReceiptsService {
 
     await this.db.transaction(async (tx) => {
       const code = await this.generateOutsourcingReceiptCode(tx);
-      const [receipt] = await tx
+      const [outsourcingReceipt] = await tx
         .insert(outsourcingReceipts)
         .values({
           ...receiptFields,
@@ -300,7 +301,7 @@ export class OutsourcingReceiptsService {
         })
         .returning();
 
-      const lineItems = await tx
+      const insertedItems = await tx
         .insert(outsourcingReceiptItems)
         .values(
           resolvedItems.map((item, index) => {
@@ -311,7 +312,7 @@ export class OutsourcingReceiptsService {
             } = item;
             return {
               ...columns,
-              outsourcingReceiptId: receipt.id,
+              outsourcingReceiptId: outsourcingReceipt.id,
               sortOrder: index,
             };
           }),
@@ -320,15 +321,15 @@ export class OutsourcingReceiptsService {
 
       // Hàng đã về nhà máy vật lý (không phải ghi tồn — kho không quản tồn WIP) ngay khi lập phiếu,
       // nên sinh IQC ở đây không gate việc `create`, khác nhánh IQC của phiếu nhập mua (`confirm`
-      // mới là nơi gate, `.claude/rules/service.md`). `lineItems`/`resolvedItems` cùng thứ tự —
+      // mới là nơi gate, `.claude/rules/service.md`). `insertedItems`/`resolvedItems` cùng thứ tự —
       // cùng xây từ một `.map()` trên `resolvedItems`, Postgres giữ nguyên thứ tự RETURNING cho
       // INSERT nhiều dòng một câu lệnh — zip theo index để lấy neo công đoạn của từng dòng.
-      if (receipt.requiresIqc && lineItems.length) {
+      if (outsourcingReceipt.requiresIqc && insertedItems.length) {
         await this.iqcService.createInspectionsFromOutsourcingReceipt(tx, {
-          outsourcingReceiptId: receipt.id,
-          supplierId: receipt.supplierId,
+          outsourcingReceiptId: outsourcingReceipt.id,
+          supplierId: outsourcingReceipt.supplierId,
           inspectionDate: new Date(),
-          lines: lineItems.map((item, index) => ({
+          lines: insertedItems.map((item, index) => ({
             outsourcingReceiptItemId: item.id,
             itemId: item.itemId,
             quantity: item.quantity,
@@ -344,13 +345,16 @@ export class OutsourcingReceiptsService {
 
   async cancelOutsourcingReceipt(outsourcingReceiptId: string): Promise<void> {
     await this.db.transaction(async (tx) => {
-      const row = await this.lockOutsourcingReceipt(tx, outsourcingReceiptId);
+      const outsourcingReceipt = await this.getOutsourcingReceiptForUpdate(
+        tx,
+        outsourcingReceiptId,
+      );
 
-      if (row.status === OutsourcingReceiptStatus.CANCELLED) {
+      if (outsourcingReceipt.status === OutsourcingReceiptStatus.CANCELLED) {
         throw new AppException(ErrorCode.E098, HttpStatus.CONFLICT);
       }
 
-      if (row.status === OutsourcingReceiptStatus.POSTED) {
+      if (outsourcingReceipt.status === OutsourcingReceiptStatus.POSTED) {
         const hasLinkedIqc = await this.hasLinkedIqc(tx, outsourcingReceiptId);
         if (hasLinkedIqc) {
           throw new AppException(ErrorCode.E173, HttpStatus.CONFLICT);
@@ -479,21 +483,21 @@ export class OutsourcingReceiptsService {
     return !!existing;
   }
 
-  private async lockOutsourcingReceipt(
+  private async getOutsourcingReceiptForUpdate(
     tx: DbTransaction,
     outsourcingReceiptId: string,
   ) {
-    const [row] = await tx
+    const [outsourcingReceipt] = await tx
       .select()
       .from(outsourcingReceipts)
       .where(eq(outsourcingReceipts.id, outsourcingReceiptId))
       .for('update');
 
-    if (!row) {
+    if (!outsourcingReceipt) {
       throw new AppException(ErrorCode.E170, HttpStatus.NOT_FOUND);
     }
 
-    return row;
+    return outsourcingReceipt;
   }
 
   private async ensureOutsourcingReceiptExists(

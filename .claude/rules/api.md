@@ -21,6 +21,7 @@ Biên HTTP: cái gì vào, cái gì ra, ai được gọi. Reference: `src/api/u
 - Request DTOs: MUST be plain classes with `!`/`?` fields. MUST NOT carry `@Expose()`/`@Exclude()`.
 - Response DTOs: MUST annotate the class `@Exclude()` and **every** exposed property `@Expose()` — a property missing `@Expose()` silently disappears from the API response.
 - List request DTOs MUST `extends PageOptionsDto` and only add extra filter fields, declared `readonly`. MUST NOT reimplement `limit`/`page`/`q`/`order`/`offset`.
+- MUST name a list filter's date range `startDate` / `endDate`. When one list DTO carries two or more ranges, qualify the subject and keep that suffix pair — `neededStartDate`/`neededEndDate`, `createdStartDate`/`createdEndDate` (`GetPurchaseLedgerReqDto`). MUST NOT use `fromDate`/`toDate` or `xDateFrom`/`xDateTo`. A single point-in-time param is not a range and keeps its own name (`asOfDate`, `neededDate`).
 
 ### Response DTO layering
 

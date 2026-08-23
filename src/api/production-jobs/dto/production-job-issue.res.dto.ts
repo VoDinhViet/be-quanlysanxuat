@@ -43,4 +43,17 @@ export class ProductionJobIssueResDto {
     description: 'Nhu cầu vật tư của Job — định mức BOM × SL Job',
   })
   requiredQty!: number;
+
+  @Expose()
+  @NumberField({
+    description:
+      'Đã lãnh — Σ SL lãnh mọi phiếu lãnh vật tư ISSUED cùng (Job, vật tư), xem docs/domains/inventory.md',
+  })
+  issuedQuantity!: number;
+
+  @Expose()
+  @NumberField({
+    description: 'Còn phải lãnh = max(requiredQty − issuedQuantity, 0)',
+  })
+  remainingQuantity!: number;
 }

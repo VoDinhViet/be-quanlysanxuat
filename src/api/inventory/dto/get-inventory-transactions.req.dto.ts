@@ -26,9 +26,9 @@ export class GetInventoryTransactionsReqDto extends PageOptionsDto {
   @EnumFieldOptional(() => InventoryReferenceType)
   readonly referenceType?: InventoryReferenceType;
 
-  @DateFieldOptional({ description: 'Filter: transactionDate >= fromDate' })
-  readonly fromDate?: Date;
+  @DateFieldOptional({ description: 'Filter: transactionDate >= startDate' })
+  readonly startDate?: Date;
 
-  @DateFieldOptional({ description: 'Filter: transactionDate <= toDate' })
-  readonly toDate?: Date;
+  @DateFieldOptional({ description: 'Filter: transactionDate <= endDate' })
+  readonly endDate?: Date;
 }

@@ -43,9 +43,9 @@ export class GetPurchaseOrdersReqDto extends PageOptionsDto {
   })
   readonly materialKeyword?: string;
 
-  @DateFieldOptional({ description: 'Filter: orderDate >= fromDate' })
-  readonly fromDate?: Date;
+  @DateFieldOptional({ description: 'Filter: orderDate >= startDate' })
+  readonly startDate?: Date;
 
-  @DateFieldOptional({ description: 'Filter: orderDate <= toDate' })
-  readonly toDate?: Date;
+  @DateFieldOptional({ description: 'Filter: orderDate <= endDate' })
+  readonly endDate?: Date;
 }
