@@ -1,0 +1,20 @@
+{
+  "$schema": "https://schema.railpack.com",
+  "provider": "node",
+  "packages": {
+    "node": "24"
+  },
+  "steps": {
+    "install": {
+      "commands": ["pnpm install --frozen-lockfile"]
+    },
+    "build": {
+      "inputs": [{ "step": "install" }],
+      "commands": ["pnpm run build"]
+    }
+  },
+  "deploy": {
+    "startCommand": "pnpm run start:prod",
+    "inputs": [{ "step": "build" }]
+  }
+}
