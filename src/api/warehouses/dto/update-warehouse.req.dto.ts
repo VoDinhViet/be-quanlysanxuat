@@ -1,4 +1,4 @@
-import { WarehouseStatus, WarehouseType } from '../../../database/schemas';
+import { WarehouseType } from '../../../database/schemas';
 import {
   EnumFieldOptional,
   StringFieldOptional,
@@ -10,7 +10,4 @@ export class UpdateWarehouseReqDto {
 
   @EnumFieldOptional(() => WarehouseType)
   readonly type?: WarehouseType;
-
-  @EnumFieldOptional(() => WarehouseStatus)
-  readonly status?: WarehouseStatus;
 }

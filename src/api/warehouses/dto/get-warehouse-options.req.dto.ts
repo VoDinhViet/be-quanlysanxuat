@@ -1,8 +1,7 @@
 import { WarehouseType } from '../../../database/schemas';
-import { PageOptionsDto } from '../../../common/dto/offset-pagination/page-options.dto';
 import { EnumFieldOptional } from '../../../decorators/field.decorators';
 
-export class GetWarehousesReqDto extends PageOptionsDto {
+export class GetWarehouseOptionsReqDto {
   @EnumFieldOptional(() => WarehouseType)
   readonly type?: WarehouseType;
 }

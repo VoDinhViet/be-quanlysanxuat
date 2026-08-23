@@ -252,9 +252,8 @@ một phần, **không** phải công nợ/thanh toán/kế toán thật.
 - `confirm` (xác nhận đặt hàng) chặn nếu PO không còn `DRAFT` (`E122`), chưa có `expectedDate`
   (`E134`), chưa chọn `receiptWarehouseId` (`E155`), chưa chọn `paymentTerm` (`E156`), hoặc còn dòng
   thiếu `unitPrice` (`E135`).
-- `PATCH` với `assignedUserId`/`receiptWarehouseId` kiểm tồn tại trước khi ghi — `E136` (người phụ
-  trách không tồn tại), `E092`/`E094` (kho không tồn tại/không `ACTIVE`, tái dùng từ domain
-  `warehouses`).
+- `PATCH` với `assignedUserId` kiểm tồn tại trước khi ghi — `E136` (người phụ trách không tồn tại).
+  `receiptWarehouseId` không kiểm tồn tại lúc ghi (client gửi thẳng id từ picker).
 - `mark-paid`/`cancel` một yêu cầu thanh toán chặn nếu không còn `PENDING` (`E158`) — cả hai chuyển
   trạng thái đều cuối, không đổi lại được.
 - Mã (`purchase_quotations.code` tiền tố `RFQ`, `purchase_orders.code` tiền tố `PO`) bất biến, unique
@@ -285,8 +284,8 @@ một phần, **không** phải công nợ/thanh toán/kế toán thật.
   import ngược `inventory-receipts`).
 - **→ Warehouses**: `purchase_orders.receiptWarehouseId` — tuỳ chọn lúc `DRAFT`, bắt buộc trước khi
   `confirm` (`E155`); kho dự kiến nhập hàng về khi PO hoàn tất, chỉ để tham chiếu/mặc định cho
-  phiếu nhập sau này, chưa có logic đọc lại. `PurchaseOrdersModule` import `WarehousesModule` để
-  validate qua `WarehousesService.ensureWarehouseActive` (`E092`/`E094`).
+  phiếu nhập sau này, chưa có logic đọc lại. `PurchaseOrdersModule` không import `WarehousesModule` —
+  id gửi thẳng từ picker, không resolve/validate lại.
 - **→ Product Structure**: dòng báo giá (`purchase_quotation_items.itemId`) trỏ thẳng `items` bằng FK
   riêng; dòng đơn mua vẫn trỏ gián tiếp qua `purchase_request_items.itemId`, không có FK riêng.
 

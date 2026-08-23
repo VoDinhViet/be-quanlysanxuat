@@ -27,18 +27,8 @@ export const warehouseTypeEnum = pgEnum('warehouse_type', [
   WarehouseType.WIP,
 ]);
 
-export enum WarehouseStatus {
-  ACTIVE = 'ACTIVE',
-  INACTIVE = 'INACTIVE',
-}
-
-export const warehouseStatusEnum = pgEnum('warehouse_status', [
-  WarehouseStatus.ACTIVE,
-  WarehouseStatus.INACTIVE,
-]);
-
-/** Danh mục kho — không soft delete: một kho ngừng dùng chuyển `status = INACTIVE`, không có
- * `deletedAt` (`docs/domains/inventory.md`). */
+/** Danh mục kho — không soft delete, kho vật lý hoạt động 24/7 nên không có khái niệm
+ * đóng/mở (`docs/domains/inventory.md`). */
 export const warehouses = pgTable(
   'warehouses',
   {
@@ -46,19 +36,13 @@ export const warehouses = pgTable(
     code: varchar('code', { length: 50 }).notNull().unique(),
     name: varchar('name', { length: 255 }).notNull(),
     type: warehouseTypeEnum('type').notNull(),
-    status: warehouseStatusEnum('status')
-      .notNull()
-      .default(WarehouseStatus.ACTIVE),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at')
       .defaultNow()
       .notNull()
       .$onUpdate(() => new Date()),
   },
-  (table) => [
-    index('idx_warehouses_type').on(table.type),
-    index('idx_warehouses_status').on(table.status),
-  ],
+  (table) => [index('idx_warehouses_type').on(table.type)],
 );
 
 export const warehousesRelations = relations(warehouses, ({ many }) => ({

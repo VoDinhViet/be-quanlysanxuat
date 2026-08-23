@@ -22,7 +22,7 @@ import {
   inventoryTransactions,
 } from '../schemas/inventory/inventory-transactions';
 import { suppliers } from '../schemas/suppliers/suppliers';
-import { warehouses, WarehouseStatus } from '../schemas/inventory/warehouses';
+import { warehouses } from '../schemas/inventory/warehouses';
 
 type SeedDatabase = ReturnType<typeof drizzle<typeof schema>>;
 
@@ -148,12 +148,6 @@ async function seedMaterialStock(db: SeedDatabase): Promise<void> {
   if (!warehouse) {
     throw new Error(
       'Warehouse "KHO-NVL" not found — run `pnpm db:seed:warehouses` first.',
-    );
-  }
-
-  if (warehouse.status !== WarehouseStatus.ACTIVE) {
-    console.warn(
-      'Warehouse "KHO-NVL" is not ACTIVE — seeded balances will still be written, but the app blocks new receipts against an inactive warehouse (E094).',
     );
   }
 

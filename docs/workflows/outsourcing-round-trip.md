@@ -46,7 +46,6 @@ trở đi.
 
 | Điều kiện                                                                        | OS-OUT `create`                                                            | OS-IN `create`                                               |
 | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| Kho `ACTIVE`                                                                     | — (`warehouseId` vẫn lưu ở header, không còn validate active lúc `create`) | — (OS-IN không gắn kho, `docs/decisions/wip-not-stocked.md`) |
 | NCC tồn tại, chưa xoá mềm                                                        | `E019`                                                                     | — (đã xác định ở header)                                     |
 | `items[]` không rỗng                                                             | `E182`                                                                     | `E185`                                                       |
 | Không trùng dòng trong payload                                                   | `E183` (`productionJobOperationId`)                                        | `E186` (`outsourcingOrderItemId`)                            |

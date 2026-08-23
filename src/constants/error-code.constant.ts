@@ -184,8 +184,8 @@ export enum ErrorCode {
   E091 = 'production_job_operation.error.not_found',
   E092 = 'warehouse.error.not_found',
   E093 = 'warehouse.error.code_exists',
-  // Kho `INACTIVE` không nhận phiếu nhập/xuất mới — lập/`post` phiếu trên kho này bị chặn.
-  E094 = 'warehouse.error.inactive',
+  // E094 (warehouse.error.inactive) stays reserved — warehouses.status (ACTIVE/INACTIVE) bỏ hẳn,
+  // kho hoạt động 24/7 nên không có khái niệm đóng/mở; check nó từng bảo vệ không còn tồn tại.
   // `DELETE /warehouses/:warehouseId` khi kho còn phiếu/bút toán/tồn tham chiếu tới — FK là
   // `restrict`, kiểm trước để trả 409 sạch thay vì 500 thô.
   E095 = 'warehouse.error.in_use',

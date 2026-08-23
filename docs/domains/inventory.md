@@ -138,7 +138,7 @@ nguyên `requiredQty` mãi mãi sẽ làm số càng lúc càng âm sai lệch d
 
 | Entity | Vai trò |
 | --- | --- |
-| `warehouses` | Danh mục kho — `code`/`name`/`type`/`status`, không soft delete |
+| `warehouses` | Danh mục kho — `code`/`name`/`type`, không soft delete |
 | `inventory_receipts` | Phiếu nhập — header, vòng đời 5 trạng thái (`DRAFT`/`PENDING_IQC`/`PENDING_RECEIPT`/`POSTED`/`CANCELLED`, xem Lifecycle); `purchaseOrderId` tuỳ chọn trỏ đơn mua (`docs/domains/purchasing.md`), validate PO phải `ORDERED` lúc tạo/sửa; `requiresIqc` quyết định nhánh `confirm` đi qua `PENDING_IQC` hay `PENDING_RECEIPT`; `productionJobId` **bắt buộc** khi `receiptType = PRODUCTION` (`E179`) — `confirm` chặn nếu Job chưa qua hết OQC (`E196`) hoặc SL các dòng vượt `production_jobs.quantity` (`E197`), xem "Gate nhập kho thành phẩm" bên dưới |
 | `inventory_receipt_items` | Dòng phiếu nhập — `itemId` + `quantity` + `unitPrice` tuỳ chọn; `purchaseOrderItemId` tuỳ chọn, phải thuộc đúng `purchaseOrderId` của header; SL cộng dồn qua các phiếu đã `confirm` không được vượt SL đặt của dòng PO đó (`E154`) |
 | `inventory_issues` | Phiếu xuất — header, cùng vòng đời |

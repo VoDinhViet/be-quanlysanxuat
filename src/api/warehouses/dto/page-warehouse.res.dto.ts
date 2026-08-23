@@ -1,6 +1,6 @@
 import { Exclude, Expose } from 'class-transformer';
 
-import { WarehouseStatus, WarehouseType } from '../../../database/schemas';
+import { WarehouseType } from '../../../database/schemas';
 import {
   DateField,
   EnumField,
@@ -27,10 +27,6 @@ export class PageWarehouseResDto {
     description: 'Nhãn phân loại/lọc — không ràng buộc mặt hàng được nhập/xuất',
   })
   type!: WarehouseType;
-
-  @Expose()
-  @EnumField(() => WarehouseStatus)
-  status!: WarehouseStatus;
 
   @Expose()
   @DateField()

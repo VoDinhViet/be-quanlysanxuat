@@ -21,10 +21,10 @@ import {
   outsourcingOrders,
   supplierReturns,
   warehouses,
-  WarehouseStatus,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { CreateWarehouseReqDto } from './dto/create-warehouse.req.dto';
+import { GetWarehouseOptionsReqDto } from './dto/get-warehouse-options.req.dto';
 import { GetWarehousesReqDto } from './dto/get-warehouses.req.dto';
 import { PageWarehouseResDto } from './dto/page-warehouse.res.dto';
 import { UpdateWarehouseReqDto } from './dto/update-warehouse.req.dto';
@@ -46,7 +46,6 @@ export class WarehousesService {
           )
         : undefined,
       reqDto.type ? eq(warehouses.type, reqDto.type) : undefined,
-      reqDto.status ? eq(warehouses.status, reqDto.status) : undefined,
     );
 
     const [entities, countRows] = await Promise.all([
@@ -67,10 +66,13 @@ export class WarehousesService {
     );
   }
 
-  /** Không phân trang — luôn trả cả danh sách cho dropdown, giới hạn 100, chỉ kho `ACTIVE`. */
-  async getWarehouseOptions(): Promise<WarehouseResDto[]> {
+  /** Không phân trang — luôn trả cả danh sách cho dropdown, giới hạn 100.
+   * `type` optional lọc theo loại kho (vd `inventory-requisitions` chỉ cần kho RM). */
+  async getWarehouseOptions(
+    reqDto: GetWarehouseOptionsReqDto,
+  ): Promise<WarehouseResDto[]> {
     const entities = await this.db.query.warehouses.findMany({
-      where: eq(warehouses.status, WarehouseStatus.ACTIVE),
+      where: reqDto.type ? eq(warehouses.type, reqDto.type) : undefined,
       orderBy: asc(warehouses.name),
       limit: 100,
     });
@@ -154,16 +156,6 @@ export class WarehousesService {
     }
 
     return existing;
-  }
-
-  /** Dùng bởi `InventoryReceiptsService`/`InventoryIssuesService` trước khi lập/post phiếu —
-   * throw `E094` nếu kho không `ACTIVE`, không kiểm ràng buộc loại hàng (`docs/domains/inventory.md`). */
-  async ensureWarehouseActive(warehouseId: string): Promise<void> {
-    const warehouse = await this.ensureWarehouseExists(warehouseId);
-
-    if (warehouse.status !== WarehouseStatus.ACTIVE) {
-      throw new AppException(ErrorCode.E094, HttpStatus.BAD_REQUEST);
-    }
   }
 
   private async generateWarehouseCode(tx: DbTransaction): Promise<string> {

@@ -35,7 +35,7 @@ phê duyệt hai cấp.
 
 Lập/sửa phiếu — chạy **trước** transaction:
 
-1. Kho tồn tại và `ACTIVE` (`E092`/`E094`).
+1. Kho tồn tại (`E092`).
 2. Mọi dòng có `itemId` trỏ tới một item còn sống (`E100`).
 3. Tham chiếu tuỳ chọn (`supplierId`/`purchaseRequestId`/`productionOrderId`/`productionJobId`/
    `departmentId`/`requestedBy`/`orderItemId`) nếu có gửi phải tồn tại (`E107`).
@@ -153,7 +153,6 @@ module") — atomic, hai lượt lập phiếu song song không thể ra cùng m
 | --- | --- | --- |
 | Phiếu không tồn tại | `E096` | 404 |
 | Kho không tồn tại | `E092` | 404 |
-| Kho không `ACTIVE` | `E094` | 400 |
 | Mặt hàng trên dòng không tồn tại | `E100` | 404 |
 | Tham chiếu tuỳ chọn không tồn tại | `E107` | 400 |
 | (Phiếu nhập) `purchaseOrderId` không tồn tại | `E121` | 404 |

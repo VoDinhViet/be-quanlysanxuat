@@ -15,6 +15,7 @@ import { ApiAuth } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
 import { CreateWarehouseReqDto } from './dto/create-warehouse.req.dto';
+import { GetWarehouseOptionsReqDto } from './dto/get-warehouse-options.req.dto';
 import { GetWarehousesReqDto } from './dto/get-warehouses.req.dto';
 import { PageWarehouseResDto } from './dto/page-warehouse.res.dto';
 import { UpdateWarehouseReqDto } from './dto/update-warehouse.req.dto';
@@ -43,11 +44,13 @@ export class WarehousesController {
   @Permissions('inventory:read')
   @ApiAuth({
     type: WarehouseResDto,
-    summary: 'List warehouses for dropdown (max 100, ACTIVE only)',
+    summary: 'List warehouses for dropdown (max 100), optional `type` filter',
     isArray: true,
   })
-  getWarehouseOptions(): Promise<WarehouseResDto[]> {
-    return this.warehousesService.getWarehouseOptions();
+  getWarehouseOptions(
+    @Query() reqDto: GetWarehouseOptionsReqDto,
+  ): Promise<WarehouseResDto[]> {
+    return this.warehousesService.getWarehouseOptions(reqDto);
   }
 
   @Get(':warehouseId')
