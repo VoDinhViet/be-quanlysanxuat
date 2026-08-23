@@ -2,9 +2,11 @@ import { Body, Controller, Get, Patch, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
+import { CurrentUser } from '../../decorators/current-user.decorator';
 import { ApiAuth } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
+import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
 import { CreateQcAqlPlanReqDto } from './dto/create-qc-aql-plan.req.dto';
 import { GetQcAqlPlansReqDto } from './dto/get-qc-aql-plans.req.dto';
 import { PageQcAqlPlanResDto } from './dto/page-qc-aql-plan.res.dto';
@@ -48,8 +50,9 @@ export class QcAqlController {
   })
   createQcAqlPlan(
     @Body() reqDto: CreateQcAqlPlanReqDto,
+    @CurrentUser() payload: JwtPayloadType,
   ): Promise<QcAqlPlanResDto> {
-    return this.qcAqlService.createQcAqlPlan(reqDto);
+    return this.qcAqlService.createQcAqlPlan(reqDto, payload.userId);
   }
 
   @Patch(':planId')

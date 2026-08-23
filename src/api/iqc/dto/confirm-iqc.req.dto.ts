@@ -26,9 +26,7 @@ export class ConfirmIqcReqDto {
   })
   readonly inspectionLevel!: IqcInspectionLevel;
 
-  @NumberField({
-    description: `Mức AQL (%) — một trong ${AQL_LEVELS.join('/')}`,
-  })
+  @NumberField({ isIn: AQL_LEVELS, description: 'Mức AQL (%)' })
   readonly aqlLevel!: number;
 
   @NumberField({

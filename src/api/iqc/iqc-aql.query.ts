@@ -1,4 +1,4 @@
-import { and, eq, gte, isNull, lte, or } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, isNull, lte, or } from 'drizzle-orm';
 
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
@@ -39,6 +39,10 @@ export async function resolveAqlPlan(
         or(isNull(qcAqlRules.lotSizeMax), gte(qcAqlRules.lotSizeMax, lotSize)),
       ),
     )
+    // Tất định nếu 2 rule lỡ chồng dải (lỗ hổng đã biết, service là chốt chặn duy nhất —
+    // `QcAqlService.validateNoOverlap`) — không để `.limit(1)` chọn ngẫu nhiên dòng nào bị đóng
+    // băng vào `qc_inspections`.
+    .orderBy(desc(qcAqlRules.lotSizeMin), asc(qcAqlRules.id))
     .limit(1);
 
   return row;

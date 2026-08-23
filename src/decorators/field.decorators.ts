@@ -9,6 +9,7 @@ import {
   IsDefined,
   IsEmail,
   IsEnum,
+  IsIn,
   IsInt,
   IsJWT,
   IsNumber,
@@ -39,6 +40,7 @@ interface INumberFieldOptions extends IFieldOptions {
   max?: number;
   int?: boolean;
   isPositive?: boolean;
+  isIn?: readonly number[];
 }
 
 interface IStringFieldOptions extends IFieldOptions {
@@ -73,7 +75,12 @@ export function NumberField(
   if (options.swagger !== false) {
     const { required = true, ...restOptions } = options;
     decorators.push(
-      ApiProperty({ type: Number, required: !!required, ...restOptions }),
+      ApiProperty({
+        type: Number,
+        required: !!required,
+        ...restOptions,
+        ...(options.isIn ? { enum: options.isIn } : {}),
+      }),
     );
   }
 
@@ -93,6 +100,10 @@ export function NumberField(
 
   if (options.isPositive) {
     decorators.push(IsPositive({ each: options.each }));
+  }
+
+  if (options.isIn) {
+    decorators.push(IsIn(options.isIn, { each: options.each }));
   }
 
   return applyDecorators(...decorators);

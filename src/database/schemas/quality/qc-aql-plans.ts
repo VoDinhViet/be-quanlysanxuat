@@ -19,8 +19,6 @@ import { qcAqlRules } from './qc-aql-rules';
  * Bộ phương án lấy mẫu AQL — thay hardcode `LOT_SIZE_CODE_LETTER`/`SAMPLING_PLAN` ở
  * `src/api/iqc/iqc-aql.constant.ts`, sửa được không cần deploy code. Một plan = một cặp
  * (inspection level, AQL level) của một tiêu chuẩn; các dải lot size nằm ở `qc_aql_rules`.
- * `approvedBy`/`approvedAt` biến "QC ký duyệt đối chiếu bảng giấy chính thức" (từng chỉ là dòng cảnh
- * báo trong comment TS) thành dữ liệu có vết.
  */
 export const qcAqlPlans = pgTable(
   'qc_aql_plans',
@@ -36,10 +34,6 @@ export const qcAqlPlans = pgTable(
       mode: 'number',
     }).notNull(),
     isActive: boolean('is_active').notNull().default(true),
-    approvedBy: uuid('approved_by').references(() => users.id, {
-      onDelete: 'set null',
-    }),
-    approvedAt: timestamp('approved_at'),
     note: varchar('note', { length: 500 }),
     createdBy: uuid('created_by').references(() => users.id, {
       onDelete: 'set null',

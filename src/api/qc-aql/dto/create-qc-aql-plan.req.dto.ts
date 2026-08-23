@@ -22,9 +22,7 @@ export class CreateQcAqlPlanReqDto {
   @EnumField(() => IqcInspectionLevel, { description: 'Mức kiểm tra' })
   readonly inspectionLevel!: IqcInspectionLevel;
 
-  @NumberField({
-    description: `Mức AQL (%) — một trong ${AQL_LEVELS.join('/')}`,
-  })
+  @NumberField({ isIn: AQL_LEVELS, description: 'Mức AQL (%)' })
   readonly aqlLevel!: number;
 
   @StringFieldOptional({ maxLength: 500, description: 'Ghi chú' })

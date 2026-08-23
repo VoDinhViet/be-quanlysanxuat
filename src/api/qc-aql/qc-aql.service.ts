@@ -1,13 +1,17 @@
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
-import { and, asc, count, eq } from 'drizzle-orm';
+import { and, asc, count, eq, ne } from 'drizzle-orm';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database } from '../../database/database.type';
-import { qcAqlPlans, qcAqlRules } from '../../database/schemas';
+import {
+  IqcInspectionLevel,
+  qcAqlPlans,
+  qcAqlRules,
+} from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { CreateQcAqlPlanReqDto } from './dto/create-qc-aql-plan.req.dto';
 import { GetQcAqlPlansReqDto } from './dto/get-qc-aql-plans.req.dto';
@@ -67,10 +71,16 @@ export class QcAqlService {
 
   async createQcAqlPlan(
     reqDto: CreateQcAqlPlanReqDto,
+    userId: string,
   ): Promise<QcAqlPlanResDto> {
     await this.validateCodeUniqueness(reqDto.code);
+    await this.validateLevelAqlUniqueness(
+      reqDto.inspectionLevel,
+      reqDto.aqlLevel,
+    );
     if (reqDto.rules) {
       this.validateNoOverlap(reqDto.rules);
+      this.validateAcceptanceRejectionOrder(reqDto.rules);
     }
 
     const { rules, ...planFields } = reqDto;
@@ -78,7 +88,7 @@ export class QcAqlService {
     const planId = await this.db.transaction(async (tx) => {
       const [plan] = await tx
         .insert(qcAqlPlans)
-        .values(planFields)
+        .values({ ...planFields, createdBy: userId })
         .returning({ id: qcAqlPlans.id });
 
       if (rules?.length) {
@@ -99,9 +109,17 @@ export class QcAqlService {
     planId: string,
     reqDto: UpdateQcAqlPlanReqDto,
   ): Promise<QcAqlPlanResDto> {
-    await this.ensureQcAqlPlanExists(planId);
+    const existing = await this.ensureQcAqlPlanExists(planId);
+    if (reqDto.isActive === true) {
+      await this.validateLevelAqlUniqueness(
+        existing.inspectionLevel,
+        existing.aqlLevel,
+        planId,
+      );
+    }
     if (reqDto.rules) {
       this.validateNoOverlap(reqDto.rules);
+      this.validateAcceptanceRejectionOrder(reqDto.rules);
     }
 
     const { rules, ...planFields } = reqDto;
@@ -125,15 +143,17 @@ export class QcAqlService {
     return this.getQcAqlPlan(planId);
   }
 
-  private async ensureQcAqlPlanExists(planId: string): Promise<void> {
+  private async ensureQcAqlPlanExists(planId: string) {
     const existing = await this.db.query.qcAqlPlans.findFirst({
-      columns: { id: true },
+      columns: { id: true, inspectionLevel: true, aqlLevel: true },
       where: eq(qcAqlPlans.id, planId),
     });
 
     if (!existing) {
       throw new AppException(ErrorCode.E216, HttpStatus.NOT_FOUND);
     }
+
+    return existing;
   }
 
   private async validateCodeUniqueness(code: string): Promise<void> {
@@ -147,6 +167,26 @@ export class QcAqlService {
     }
   }
 
+  private async validateLevelAqlUniqueness(
+    inspectionLevel: IqcInspectionLevel,
+    aqlLevel: number,
+    excludePlanId?: string,
+  ): Promise<void> {
+    const existing = await this.db.query.qcAqlPlans.findFirst({
+      columns: { id: true },
+      where: and(
+        eq(qcAqlPlans.inspectionLevel, inspectionLevel),
+        eq(qcAqlPlans.aqlLevel, aqlLevel),
+        eq(qcAqlPlans.isActive, true),
+        excludePlanId ? ne(qcAqlPlans.id, excludePlanId) : undefined,
+      ),
+    });
+
+    if (existing) {
+      throw new AppException(ErrorCode.E221, HttpStatus.CONFLICT);
+    }
+  }
+
   /** DB không chặn được 2 rule chồng dải lot size (cần `EXCLUDE USING gist`, drizzle-orm chưa có
    * builder) — đây là chốt chặn duy nhất. So từng cặp liền kề sau khi sắp theo `lotSizeMin`. */
   private validateNoOverlap(rules: QcAqlRuleReqDto[]): void {
@@ -157,6 +197,14 @@ export class QcAqlService {
 
       if (sorted[i].lotSizeMin <= prevMax) {
         throw new AppException(ErrorCode.E218, HttpStatus.BAD_REQUEST);
+      }
+    }
+  }
+
+  private validateAcceptanceRejectionOrder(rules: QcAqlRuleReqDto[]): void {
+    for (const rule of rules) {
+      if (rule.rejectionNumber <= rule.acceptanceNumber) {
+        throw new AppException(ErrorCode.E222, HttpStatus.BAD_REQUEST);
       }
     }
   }
