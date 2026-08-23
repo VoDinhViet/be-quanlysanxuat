@@ -1,0 +1,11 @@
+providers = ['node']
+
+[phases.install]
+cmds = ['pnpm install --frozen-lockfile']
+
+[phases.build]
+cmds = ['pnpm run build']
+dependsOn = ['install']
+
+[start]
+cmd = 'pnpm run start:prod'
