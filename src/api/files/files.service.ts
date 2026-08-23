@@ -9,7 +9,13 @@ import { ErrorCode } from '../../constants/error-code.constant';
 import { SUPER_PERMISSION } from '../../constants/permission.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database } from '../../database/database.type';
-import { files, FileKind, qcFiles, UploadType } from '../../database/schemas';
+import {
+  files,
+  FileKind,
+  FileSelect,
+  qcFiles,
+  UploadType,
+} from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { STORAGE_PROVIDER } from '../../storage/storage.constants';
 import type { StorageProvider } from '../../storage/storage-provider.interface';
@@ -231,7 +237,7 @@ export class FilesService {
     return `${year}/${month}/${day}/${randomUUID()}.${ext}`;
   }
 
-  private toResDto(file: typeof files.$inferSelect): FileResDto {
+  private toResDto(file: FileSelect): FileResDto {
     return plainToInstance(FileResDto, file, { excludeExtraneousValues: true });
   }
 }

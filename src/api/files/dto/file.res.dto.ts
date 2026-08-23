@@ -1,4 +1,4 @@
-import { Exclude, Expose, Transform } from 'class-transformer';
+import { Exclude, Expose } from 'class-transformer';
 
 import { FileKind, UploadType } from '../../../database/schemas';
 import {
@@ -8,6 +8,7 @@ import {
   StringField,
   UUIDField,
 } from '../../../decorators/field.decorators';
+import { FileUrlField } from './file-url.field';
 
 @Exclude()
 export class FileResDto {
@@ -16,20 +17,7 @@ export class FileResDto {
   id!: string;
 
   @Expose()
-  @Transform(
-    ({ obj }: { obj: { storageKey?: string } }) =>
-      obj.storageKey ? `/${obj.storageKey}` : null,
-    // `toClassOnly` bắt buộc: `ClassSerializerInterceptor` serialize DTO thêm một lần, lúc đó
-    // `obj` là instance DTO (không có `storageKey`, cố ý không `@Expose()`) nên transform không
-    // giới hạn sẽ ghi đè `url` đã resolve thành null — cùng lý do `FileField` (`file.field.ts`)
-    // đã ghi `toClassOnly` cho chính lỗi này.
-    { toClassOnly: true },
-  )
-  @StringField({
-    description:
-      'Public, permanent static file URL, e.g. /2026/07/20/<uuid>.png — usable directly as an ' +
-      '<img src>. Served by ServeStaticModule, not the API.',
-  })
+  @FileUrlField()
   url!: string;
 
   @Expose()
