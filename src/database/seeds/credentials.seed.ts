@@ -71,6 +71,7 @@ const ROLES = {
       'oqc:read',
       'qc-aql:read',
       'outbound:read',
+      'reports:read',
     ],
     isSystem: false,
     isProtected: false,
@@ -87,6 +88,7 @@ const ROLES = {
       'outbound:read',
       'outbound:create',
       'outbound:update',
+      'reports:read',
     ],
     isSystem: false,
     isProtected: false,
@@ -109,6 +111,7 @@ const ROLES = {
       'purchasing:update',
       'purchasing:delete',
       'inventory-requisitions:read',
+      'reports:read',
     ],
     isSystem: false,
     isProtected: false,
@@ -135,6 +138,7 @@ const ROLES = {
       'outsourcing:delete',
       'oqc:read',
       'outbound:read',
+      'reports:read',
     ],
     isSystem: false,
     isProtected: false,
@@ -160,6 +164,7 @@ const ROLES = {
       'oqc:read',
       'oqc:create',
       'oqc:delete',
+      'reports:read',
     ],
     isSystem: false,
     isProtected: false,
@@ -179,6 +184,7 @@ const ROLES = {
       'qc-aql:read',
       'qc-aql:create',
       'qc-aql:update',
+      'reports:read',
     ],
     isSystem: false,
     isProtected: false,
@@ -265,11 +271,26 @@ function getSeedPassword(): string {
 async function ensureRole(db: SeedDatabase, role: RoleSeed): Promise<string> {
   const existing = await db.query.roles.findFirst({
     where: eq(roles.code, role.code),
-    columns: { id: true },
+    columns: { id: true, permissions: true },
   });
 
   if (existing) {
-    console.log(`Role "${role.code}" already exists. Skipping.`);
+    const missing = role.permissions.filter(
+      (permission) => !existing.permissions.includes(permission),
+    );
+
+    if (missing.length > 0) {
+      await db
+        .update(roles)
+        .set({ permissions: [...existing.permissions, ...missing] })
+        .where(eq(roles.id, existing.id));
+      console.log(
+        `Role "${role.code}" already exists — added missing permissions: ${missing.join(', ')}.`,
+      );
+    } else {
+      console.log(`Role "${role.code}" already exists. Skipping.`);
+    }
+
     return existing.id;
   }
 

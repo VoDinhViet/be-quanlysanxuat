@@ -1030,6 +1030,13 @@
       "when": 1787481472950,
       "tag": "0146_flawless_kid_colt",
       "breakpoints": true
+    },
+    {
+      "idx": 147,
+      "version": "7",
+      "when": 1787535193618,
+      "tag": "0147_repair_role_permissions",
+      "breakpoints": true
     }
   ]
 }
