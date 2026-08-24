@@ -69,11 +69,9 @@ Phiên đăng nhập: login phát một cặp access + refresh token (hai secret
   **mới**, tách biệt, luôn là `users.id`; xem Common mistakes #1 để tránh nhầm hai field này.
 - Một mã permission không nằm trong `PERMISSION_CODES` **không bao giờ có thể bị _yêu cầu_** — decorator `@Permissions` được type theo hằng số đó.
 - `system:manage` bao hàm mọi quyền khác, ở mọi tầng kiểm tra.
+- **Không thể cấp mã permission rác qua API.** `POST`/`PATCH /roles` chạy `RolesService.validatePermissionCodes` (dùng `isPermissionCode`/`PERMISSION_CODE_SET`), ném `E031` nếu bất kỳ mã nào không nằm trong `PERMISSION_CODES`. Vẫn không phải invariant ở tầng DB: `roles.permissions` là `jsonb`, sửa thẳng DB thì né được kiểm tra này — `RolesService.onModuleInit` quét và `logger.warn` mọi role còn mã lạ lúc khởi động, để bắt được trường hợp đó (không tự sửa, chỉ cảnh báo).
 
-Hai điều **không** phải invariant dù trông có vẻ:
-
-- **Mã permission rác vẫn có thể được _cấp_.** `roles.permissions` là `jsonb`, và không có đường ghi role nào ở runtime để validate. `isPermissionCode`/`PERMISSION_CODE_SET` tồn tại nhưng **không được gọi ở đâu cả**.
-- **Role hiện không sửa được qua API.** `roles` chỉ có `GET /roles`; `roles:create`/`roles:delete` không gắn với route nào. Role sinh ra từ seed. Doc comment trong schema nói admin tự tạo role được ở runtime — đó là **dự định, chưa phải sự thật**.
+`roles` giờ có đủ CRUD (`GET`/`POST`/`PATCH`/`DELETE /roles`, quyền tương ứng `roles:read/create/update/delete`) — không còn chỉ `GET /roles` như trước 2026-08-24. Role `isSystem` (ADMIN) từ chối `PATCH`/`DELETE` (`E030`); xoá một role còn credential trỏ tới bị chặn (`E029 role.error.in_use`); cấp `system:manage` cho một role (tạo mới hoặc sửa) đi qua đúng chống-leo-thang `E034` như gán role cho user (`RolesService.ensureActorMayGrantPermissions`, mirror `UsersService.ensureActorMayAssign`).
 
 ## Cross-domain dependencies
 
@@ -93,7 +91,10 @@ Hai điều **không** phải invariant dù trông có vẻ:
    dù tên field nói khác).
 2. **Tưởng `@Permissions` trên route `@ApiPublic` có tác dụng.** Không — cả hai guard `return true` trước khi đọc metadata quyền. Khoảng 8 route (`clients`, `suppliers`, `operations`) đang xếp chồng như vậy và **hoàn toàn không xác thực**. Muốn siết thì phải bỏ `@ApiPublic()`, và đó là breaking change với client đang gọi. (`items`/`boms` từng nằm trong nhóm này — đã chuyển hết sang `@ApiAuth()` khi `products`/`materials` gộp thành `items`, vì gộp bảng kéo theo field vật tư như `supplierId`/`minStock` vốn trước đó phải đăng nhập mới xem được, xem `docs/decisions/items-merge.md`.)
 3. **Thêm permission mới mà chỉ sửa một chỗ.** Cần đủ ba: thêm vào `PERMISSION_CODES`, gắn `@Permissions()` lên route, và cấp cho role trong `credentials.seed.ts`. Tệ hơn: **chạy lại seed không cập nhật role đã tồn tại** — hàm seed thoát sớm nếu thấy mã role đã có, nên môi trường cũ phải `UPDATE` tay.
-4. **Quên invalidate cache khi đổi phân quyền.** Quyền được cache Redis hai tầng, TTL 5 phút. `invalidateRole()` hiện **không được gọi ở đâu** (an toàn vì chưa có đường sửa role) — nếu sau này thêm chức năng sửa role mà quên gọi, quyền cũ còn hiệu lực tới 5 phút.
+4. **Tưởng quyền vẫn còn cache.** `PermissionsService.getPermissionCodes` từng cache 2 tầng qua
+   Redis (TTL 5 phút — nguồn gốc một lớp bug lịch sử: sau khi vá role, quyền cũ còn hiệu lực tới 5
+   phút vì `invalidateRole()` không được gọi ở đâu). Đã bỏ hẳn (2026-08-24) — giờ là một query join
+   thẳng `credentials` → `roles`, luôn tươi, không còn `invalidateRole`/`invalidateCredential`.
 5. **`users.deletedAt` từng lọc không nhất quán, đã sửa.** `GET /users` (danh sách) thiếu
    `isNull(users.deletedAt)` trong `baseFilter` — chỉ `UsersService.getUserDepartmentId`/
    `InventoryIssuesService` lọc đúng, danh sách thì không, vi phạm `.claude/rules/database.md`
@@ -115,6 +116,10 @@ Hai điều **không** phải invariant dù trông có vẻ:
    giữ mật khẩu cũ). `username`/`email` luôn được kiểm trùng lặp lại (loại trừ chính credential
    đang sửa), `roleId` vẫn đi qua đúng guard `roles:update`/chống leo thang (`E033`/`E034`) như
    `POST /users`.
+10. **Tưởng `GET /users/me` trả `permissions`.** Field đó đã bỏ (2026-08-24) — `CurrentUserResDto`
+    giờ chỉ có hồ sơ (tên, avatar, role). Quyền hiệu lực đọc riêng qua `GET /users/me/permissions`
+    (`CurrentPermissionsResDto`), route tách ra để không phải trả cả join
+    `credentials`/`users`/`files` chỉ để lấy một mảng string.
 
 ## Related docs
 

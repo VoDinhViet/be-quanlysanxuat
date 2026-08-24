@@ -17,6 +17,7 @@ import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
 import { AssignRoleReqDto } from './dto/assign-role.req.dto';
 import { CreateUserReqDto } from './dto/create-user.req.dto';
+import { CurrentPermissionsResDto } from './dto/current-permissions.res.dto';
 import { CurrentUserResDto } from './dto/current-user.res.dto';
 import { GetUserOptionsReqDto } from './dto/get-user-options.req.dto';
 import { GetUsersReqDto } from './dto/get-users.req.dto';
@@ -40,6 +41,19 @@ export class UsersController {
     @CurrentUser() payload: JwtPayloadType,
   ): Promise<CurrentUserResDto> {
     return this.usersService.getCurrentUser(payload.sub);
+  }
+
+  // Split out from `GET /users/me` so a permission-only read (the sidebar, route guards) never
+  // pays for the profile join (users/credentials/files) it doesn't need.
+  @Get('me/permissions')
+  @ApiAuth({
+    type: CurrentPermissionsResDto,
+    summary: 'Get my effective permissions',
+  })
+  getCurrentPermissions(
+    @CurrentUser() payload: JwtPayloadType,
+  ): Promise<CurrentPermissionsResDto> {
+    return this.usersService.getCurrentPermissions(payload.sub);
   }
 
   @Get()

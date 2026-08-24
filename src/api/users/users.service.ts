@@ -43,6 +43,7 @@ import { FilesService } from '../files/files.service';
 import { AssignRoleReqDto } from './dto/assign-role.req.dto';
 import { CreateCredentialReqDto } from './dto/create-credential.req.dto';
 import { CreateUserReqDto } from './dto/create-user.req.dto';
+import { CurrentPermissionsResDto } from './dto/current-permissions.res.dto';
 import { CurrentUserResDto } from './dto/current-user.res.dto';
 import { GetUsersReqDto } from './dto/get-users.req.dto';
 import { PageUserResDto } from './dto/page-user.res.dto';
@@ -160,14 +161,23 @@ export class UsersService {
       throw new AppException(ErrorCode.E002, HttpStatus.NOT_FOUND);
     }
 
-    // Effective permissions come from the cached resolver (the ADMIN role carries
-    // `system:manage`), so the FE can drive permission-based UI.
+    return plainToInstance(CurrentUserResDto, row, {
+      excludeExtraneousValues: true,
+    });
+  }
+
+  /** Split out from `getCurrentUser` — no `credentials`/`users`/`files` join, just the effective
+   * permission set, for callers (the sidebar, route guards) that don't need the rest of the
+   * profile. */
+  async getCurrentPermissions(
+    credentialId: string,
+  ): Promise<CurrentPermissionsResDto> {
     const permissions =
       await this.permissionsService.getPermissionCodes(credentialId);
 
     return plainToInstance(
-      CurrentUserResDto,
-      { ...row, permissions },
+      CurrentPermissionsResDto,
+      { permissions },
       { excludeExtraneousValues: true },
     );
   }
@@ -316,9 +326,6 @@ export class UsersService {
         })
         .where(eq(credentials.id, linkedCredential.id));
 
-      if (credential.roleId) {
-        await this.permissionsService.invalidateCredential(linkedCredential.id);
-      }
       return;
     }
 
@@ -339,7 +346,6 @@ export class UsersService {
    * so the user must have a linked credential (E032).
    *
    * Rules:
-   * - Clears the credential's cached permissions so the change takes effect on the next request.
    * - Privilege escalation guard: assigning a role that grants the god-mode `system:manage` code
    *   (e.g. the seeded ADMIN role) is only allowed if the actor already holds `system:manage` —
    *   otherwise a `roles:update` holder could grant themselves full control (E034).
@@ -425,8 +431,6 @@ export class UsersService {
     return credential;
   }
 
-  /** Writes the role onto the credential and drops its cached role→permissions mapping, so the
-   * change takes effect on that identity's next request instead of after the cache TTL. */
   private async applyRoleToCredential(
     credentialId: string,
     roleId: string,
@@ -435,8 +439,6 @@ export class UsersService {
       .update(credentials)
       .set({ roleId })
       .where(eq(credentials.id, credentialId));
-
-    await this.permissionsService.invalidateCredential(credentialId);
   }
 
   private async ensureActorMayAssign(

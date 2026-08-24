@@ -14,9 +14,9 @@ import type { PermissionCode } from '../../../constants/permission.constant';
  *
  * Rules:
  * - Permissions themselves are a fixed catalogue defined in code (`PERMISSION_CODES`); a role
- *   only *references* those codes via the `permissions` array. The shape supports runtime role
- *   management, but that is intent, not current fact — `roles` only has `GET /roles` today, no
- *   write route (`docs/domains/identity-access.md`).
+ *   only *references* those codes via the `permissions` array. `RolesService` validates every
+ *   write against that catalogue (`E031`); a row edited outside the API can still drift, which
+ *   `RolesService.onModuleInit` logs at boot (`docs/domains/identity-access.md`).
  * - `isSystem` roles (e.g. Super Admin) are seeded and protected from edit/delete.
  * - `isProtected` roles are hidden from `GET /roles`; still assignable directly by known `roleId`.
  */
