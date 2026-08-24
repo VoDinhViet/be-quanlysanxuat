@@ -8,6 +8,7 @@ import {
   ClassField,
   ClassFieldOptional,
   DateField,
+  DateFieldOptional,
   EnumField,
   StringField,
   StringFieldOptional,
@@ -49,6 +50,34 @@ export class OutboundOrderResDto {
   @Expose()
   @ClassFieldOptional(() => UserRefResDto, { nullable: true })
   creatorBy!: UserRefResDto | null;
+
+  @Expose()
+  @ClassFieldOptional(() => UserRefResDto, { nullable: true })
+  senderBy!: UserRefResDto | null;
+
+  @Expose()
+  @DateFieldOptional({ nullable: true })
+  sentAt!: Date | null;
+
+  @Expose()
+  @ClassFieldOptional(() => UserRefResDto, { nullable: true })
+  approverBy!: UserRefResDto | null;
+
+  @Expose()
+  @DateFieldOptional({ nullable: true })
+  approvedAt!: Date | null;
+
+  @Expose()
+  @ClassFieldOptional(() => UserRefResDto, { nullable: true })
+  rejecterBy!: UserRefResDto | null;
+
+  @Expose()
+  @DateFieldOptional({ nullable: true })
+  rejectedAt!: Date | null;
+
+  @Expose()
+  @StringFieldOptional({ nullable: true, description: 'Lý do từ chối' })
+  rejectionReason!: string | null;
 
   @Expose()
   @DateField()

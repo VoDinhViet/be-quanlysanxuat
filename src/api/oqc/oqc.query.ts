@@ -79,7 +79,7 @@ export async function getInspectedQuantityByBomItemId(
 
 /** Điều kiện "Job đã QC xong hết" dùng cho gate nhập kho TP (`E196`/`E209`, xem
  * `InventoryReceiptsService.ensureProductionReceiptOqcCleared`) và gate giao hàng (`E205`,
- * `OutboundOrdersService.confirmOutboundOrder`). Gộp cả hai nhánh QC qua neo chung
+ * `OutboundOrdersService.ensureAllJobsQcCompleted`). Gộp cả hai nhánh QC qua neo chung
  * `productionJobOperationId` — công đoạn `INHOUSE` chỉ có thể có dòng `OUTGOING` (OQC) trỏ vào,
  * công đoạn `OUTSOURCE` chỉ có thể có dòng `INCOMING` (IQC sinh từ OS-IN, xem
  * `IqcService.createInspectionsFromOutsourcingReceipt`) trỏ vào — hai tập không giao nhau, nên

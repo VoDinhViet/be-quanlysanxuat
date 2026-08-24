@@ -13,6 +13,7 @@ import { GetUnfulfilledOrderItemsReqDto } from './dto/get-unfulfilled-order-item
 import { OutboundOrderItemResDto } from './dto/outbound-order-item.res.dto';
 import { OutboundOrderResDto } from './dto/outbound-order.res.dto';
 import { PageOutboundOrderResDto } from './dto/page-outbound-order.res.dto';
+import { RejectOutboundOrderReqDto } from './dto/reject-outbound-order.req.dto';
 import { UnfulfilledOrderItemResDto } from './dto/unfulfilled-order-item.res.dto';
 import { OutboundOrdersService } from './outbound-orders.service';
 
@@ -90,17 +91,55 @@ export class OutboundOrdersController {
     );
   }
 
-  @Post(':outboundOrderId/confirm')
+  @Post(':outboundOrderId/send')
   @Permissions('outbound:update')
   @ApiAuth({
     summary:
-      'Xác nhận phiếu (DRAFT → PENDING_DELIVERY) — chặn nếu còn Job nào chưa qua hết OQC',
+      'Gửi duyệt (DRAFT/REJECTED → PENDING_APPROVAL) — chặn nếu còn Job nào chưa qua hết OQC',
     statusCode: HttpStatus.NO_CONTENT,
   })
-  confirmOutboundOrder(
+  sendOutboundOrder(
     @UUIDParam('outboundOrderId') outboundOrderId: string,
+    @CurrentUser() payload: JwtPayloadType,
   ): Promise<void> {
-    return this.outboundOrdersService.confirmOutboundOrder(outboundOrderId);
+    return this.outboundOrdersService.sendOutboundOrder(
+      outboundOrderId,
+      payload.userId,
+    );
+  }
+
+  @Post(':outboundOrderId/approve')
+  @Permissions('outbound:approve')
+  @ApiAuth({
+    summary: 'Duyệt (PENDING_APPROVAL → PENDING_DELIVERY)',
+    statusCode: HttpStatus.NO_CONTENT,
+  })
+  approveOutboundOrder(
+    @UUIDParam('outboundOrderId') outboundOrderId: string,
+    @CurrentUser() payload: JwtPayloadType,
+  ): Promise<void> {
+    return this.outboundOrdersService.approveOutboundOrder(
+      outboundOrderId,
+      payload.userId,
+    );
+  }
+
+  @Post(':outboundOrderId/reject')
+  @Permissions('outbound:approve')
+  @ApiAuth({
+    summary: 'Từ chối (PENDING_APPROVAL → REJECTED), lý do bắt buộc',
+    statusCode: HttpStatus.NO_CONTENT,
+  })
+  rejectOutboundOrder(
+    @UUIDParam('outboundOrderId') outboundOrderId: string,
+    @Body() reqDto: RejectOutboundOrderReqDto,
+    @CurrentUser() payload: JwtPayloadType,
+  ): Promise<void> {
+    return this.outboundOrdersService.rejectOutboundOrder(
+      outboundOrderId,
+      reqDto,
+      payload.userId,
+    );
   }
 
   @Post(':outboundOrderId/deliver')

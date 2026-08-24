@@ -54,6 +54,7 @@ import { GetUnfulfilledOrderItemsReqDto } from './dto/get-unfulfilled-order-item
 import { OutboundOrderItemResDto } from './dto/outbound-order-item.res.dto';
 import { OutboundOrderResDto } from './dto/outbound-order.res.dto';
 import { PageOutboundOrderResDto } from './dto/page-outbound-order.res.dto';
+import { RejectOutboundOrderReqDto } from './dto/reject-outbound-order.req.dto';
 import { UnfulfilledOrderItemResDto } from './dto/unfulfilled-order-item.res.dto';
 
 @Injectable()
@@ -101,7 +102,13 @@ export class OutboundOrdersService {
   ): Promise<OutboundOrderResDto> {
     const outboundOrder = await this.db.query.outboundOrders.findFirst({
       where: eq(outboundOrders.id, outboundOrderId),
-      with: { client: true, creatorBy: true },
+      with: {
+        client: true,
+        creatorBy: true,
+        senderBy: true,
+        approverBy: true,
+        rejecterBy: true,
+      },
     });
 
     if (!outboundOrder) {
@@ -229,47 +236,117 @@ export class OutboundOrdersService {
     });
   }
 
-  /** `DRAFT → PENDING_DELIVERY` — chưa phải "giao thật" (chưa `DELIVERED`, chưa trừ tồn, chưa sinh
-   * `inventory_issues`), đó là phase giao hàng 2 (`docs/domains/inventory.md`, mục "Giao hàng",
-   * Common mistake #22). Chặn theo Job (`E205`): mỗi `productionJobId` distinct trong các dòng
-   * (bỏ qua dòng `null` — DO không trỏ Job nào không có gì để chặn), Job nào chưa có dòng QC nào
-   * hoặc còn dòng chưa `COMPLETED` (`getJobQcCoverage`, tái dùng gate `E196`) thì chặn cả phiếu. */
-  async confirmOutboundOrder(outboundOrderId: string): Promise<void> {
+  /** `DRAFT`/`REJECTED` → `PENDING_APPROVAL` — chạy gate QC ngay ở bước gửi để người lập biết lỗi
+   * sớm, không đẩy sang người duyệt (`docs/domains/inventory.md`, mục "Giao hàng"). */
+  async sendOutboundOrder(
+    outboundOrderId: string,
+    userId: string,
+  ): Promise<void> {
     await this.db.transaction(async (tx) => {
       const outboundOrder = await this.getOutboundOrderForUpdate(
         tx,
         outboundOrderId,
       );
 
-      if (outboundOrder.status !== OutboundOrderStatus.DRAFT) {
-        throw new AppException(ErrorCode.E204, HttpStatus.CONFLICT);
+      if (
+        outboundOrder.status !== OutboundOrderStatus.DRAFT &&
+        outboundOrder.status !== OutboundOrderStatus.REJECTED
+      ) {
+        throw new AppException(ErrorCode.E239, HttpStatus.CONFLICT);
       }
 
-      const itemsToConfirm = await tx.query.outboundOrderItems.findMany({
-        where: eq(outboundOrderItems.outboundOrderId, outboundOrderId),
-        columns: { productionJobId: true },
-      });
+      await this.ensureAllJobsQcCompleted(tx, outboundOrderId);
 
-      const jobIds = [
-        ...new Set(
-          itemsToConfirm
-            .map((item) => item.productionJobId)
-            .filter((jobId): jobId is string => jobId !== null),
-        ),
-      ];
+      await tx
+        .update(outboundOrders)
+        .set({
+          status: OutboundOrderStatus.PENDING_APPROVAL,
+          sentBy: userId,
+          sentAt: new Date(),
+        })
+        .where(eq(outboundOrders.id, outboundOrderId));
+    });
+  }
 
-      for (const jobId of jobIds) {
-        const coverage = await getJobQcCoverage(tx, jobId);
-        if (coverage.total === 0 || coverage.open > 0) {
-          throw new AppException(ErrorCode.E205, HttpStatus.CONFLICT);
-        }
+  /** `PENDING_APPROVAL → PENDING_DELIVERY` — chưa phải "giao thật" (chưa `DELIVERED`, chưa trừ
+   * tồn, chưa sinh `inventory_issues`), đó là phase giao hàng 2 (Common mistake #22). Gate QC chỉ
+   * chạy 1 lần ở `send` — không kiểm lại ở đây. */
+  async approveOutboundOrder(
+    outboundOrderId: string,
+    userId: string,
+  ): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      const outboundOrder = await this.getOutboundOrderForUpdate(
+        tx,
+        outboundOrderId,
+      );
+
+      if (outboundOrder.status !== OutboundOrderStatus.PENDING_APPROVAL) {
+        throw new AppException(ErrorCode.E240, HttpStatus.CONFLICT);
       }
 
       await tx
         .update(outboundOrders)
-        .set({ status: OutboundOrderStatus.PENDING_DELIVERY })
+        .set({
+          status: OutboundOrderStatus.PENDING_DELIVERY,
+          approvedBy: userId,
+          approvedAt: new Date(),
+        })
         .where(eq(outboundOrders.id, outboundOrderId));
     });
+  }
+
+  /** `PENDING_APPROVAL → REJECTED` — điểm dừng tạm, `send` lại được từ đây (không có route sửa
+   * dòng nào cho DO, khác `purchase-requests`/`inventory-requisitions`). */
+  async rejectOutboundOrder(
+    outboundOrderId: string,
+    reqDto: RejectOutboundOrderReqDto,
+    userId: string,
+  ): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      const outboundOrder = await this.getOutboundOrderForUpdate(
+        tx,
+        outboundOrderId,
+      );
+
+      if (outboundOrder.status !== OutboundOrderStatus.PENDING_APPROVAL) {
+        throw new AppException(ErrorCode.E240, HttpStatus.CONFLICT);
+      }
+
+      await tx
+        .update(outboundOrders)
+        .set({
+          status: OutboundOrderStatus.REJECTED,
+          rejectedBy: userId,
+          rejectedAt: new Date(),
+          rejectionReason: reqDto.reason,
+        })
+        .where(eq(outboundOrders.id, outboundOrderId));
+    });
+  }
+
+  /** Chặn (`E205`) nếu còn Job nào (suy từ `productionJobId` distinct trong các dòng, bỏ qua dòng
+   * `null`) chưa có dòng QC nào hoặc còn dòng chưa `COMPLETED` (`getJobQcCoverage`, tái dùng gate
+   * `E196`). Chỉ gọi ở `sendOutboundOrder` — `approve` không kiểm lại. */
+  private async ensureAllJobsQcCompleted(
+    tx: DbTransaction,
+    outboundOrderId: string,
+  ): Promise<void> {
+    const jobRows = await tx
+      .selectDistinct({ productionJobId: outboundOrderItems.productionJobId })
+      .from(outboundOrderItems)
+      .where(eq(outboundOrderItems.outboundOrderId, outboundOrderId));
+
+    const jobIds = jobRows
+      .map((row) => row.productionJobId)
+      .filter((jobId): jobId is string => jobId !== null);
+
+    for (const jobId of jobIds) {
+      const coverage = await getJobQcCoverage(tx, jobId);
+      if (coverage.total === 0 || coverage.open > 0) {
+        throw new AppException(ErrorCode.E205, HttpStatus.CONFLICT);
+      }
+    }
   }
 
   /** `PENDING_DELIVERY → DELIVERED` (không phải `POSTED` — DO không có trạng thái đó, tên hàm chỉ

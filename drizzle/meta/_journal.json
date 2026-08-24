@@ -1051,6 +1051,13 @@
       "when": 1787550132997,
       "tag": "0149_glossy_vulcan",
       "breakpoints": true
+    },
+    {
+      "idx": 150,
+      "version": "7",
+      "when": 1787561636911,
+      "tag": "0150_modern_sandman",
+      "breakpoints": true
     }
   ]
 }

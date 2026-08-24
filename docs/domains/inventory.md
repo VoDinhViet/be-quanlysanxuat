@@ -152,7 +152,7 @@ nguyên `requiredQty` mãi mãi sẽ làm số càng lúc càng âm sai lệch d
 | `outsourcing_order_items` | Dòng OS-OUT — `itemId`/`quantity` + snapshot công đoạn (`operationCode`/`operationName`, NOT NULL), client gửi thẳng từ popup, server không resolve/validate lại (`docs/decisions/outsourcing-no-draft.md`) + `weight`(kg)/`area`(m²) tuỳ chọn, **không** tham gia tính tồn |
 | `outsourcing_receipts` | Phiếu nhận gia công ngoài (OS-IN) — header + nhiều dòng (`outsourcing_receipt_items`), cũng không còn nháp, cũng không đụng `inventory_balances`; mỗi dòng trỏ đúng 1 `outsourcingOrderItemId`, **cho phép gộp dòng từ nhiều OS-OUT khác nhau miễn cùng một NCC** (`supplierId` ở header, bất biến 1 phiếu = 1 NCC, `E187`); một dòng OS-OUT nhận được nhiều lần (partial); `requiresIqc` tuỳ chọn tự sinh N dòng `qc_requests` (`kind = INCOMING`, 1/dòng phiếu) lúc `create` |
 | `outsourcing_receipt_items` | Dòng OS-IN — `outsourcingOrderItemId` trỏ đúng 1 dòng OS-OUT nguồn, `itemId` denormalize từ dòng đó; `weight`/`area` mặc định copy từ dòng OS-OUT, sửa được |
-| `outbound_orders` | Phiếu giao hàng (DO) — header, `POST` tạo nháp + `GET` list/detail + `POST :id/confirm` (`DRAFT → PENDING_DELIVERY`, chặn `E205` nếu còn Job nào chưa qua hết OQC) + `POST :id/deliver` (`PENDING_DELIVERY → DELIVERED`, tự sinh + post phiếu xuất SALES, trừ tồn thật, đóng đơn hàng nếu giao đủ — xem "Giao hàng" bên dưới); chưa có duyệt riêng (`PENDING_APPROVAL` khai sẵn, chưa route nào gán); `clientId` bắt buộc, bất biến "1 phiếu = 1 khách hàng" |
+| `outbound_orders` | Phiếu giao hàng (DO) — header, `POST` tạo nháp + `GET` list/detail + `POST :id/send` (`DRAFT`/`REJECTED` → `PENDING_APPROVAL`, chặn `E205` nếu còn Job nào chưa qua hết OQC) + `POST :id/approve` (`PENDING_APPROVAL → PENDING_DELIVERY`, không kiểm lại OQC) + `POST :id/reject` (`PENDING_APPROVAL → REJECTED`, lý do bắt buộc) + `POST :id/deliver` (`PENDING_DELIVERY → DELIVERED`, tự sinh + post phiếu xuất SALES, trừ tồn thật, đóng đơn hàng nếu giao đủ — xem "Giao hàng" bên dưới); `clientId` bắt buộc, bất biến "1 phiếu = 1 khách hàng" |
 | `outbound_order_items` | Dòng DO — `orderItemId` trỏ dòng PO nguồn (**không** unique, một dòng PO được chọn ở nhiều phiếu DO khác nhau qua nhiều lần giao), `itemId` denormalize, `productionJobId` snapshot Job hiển thị (tuỳ chọn, `set null`) |
 
 `orderItemId` trên dòng phiếu xuất (và bút toán sinh ra từ nó) là **chỗ nối duy nhất sang Orders** —
@@ -335,6 +335,22 @@ DRAFT ──send──> PENDING_APPROVAL ──approve──> APPROVED ──iss
 
 Chi tiết từng bước, nhánh lỗi đầy đủ: `docs/workflows/inventory-requisition.md`.
 
+**`outbound_orders` (DO) có vòng đời riêng** (`outbound_order_status`, không chia với
+`inventory_document_status`), cùng khuôn send/approve/reject với `inventory_requisitions` trên:
+
+```
+DRAFT ──send──> PENDING_APPROVAL ──approve──> PENDING_DELIVERY ──deliver──> DELIVERED  (điểm cuối)
+  ▲                   │
+  │                   └──reject──> REJECTED ──send──> PENDING_APPROVAL
+  └───────────────────────────────────┘
+```
+
+- `approve` chỉ đổi trạng thái — **không đụng tồn kho thành phẩm**. `deliver`
+  (`PENDING_DELIVERY → DELIVERED`) mới thật sự trừ tồn, xem "Giao hàng" bên dưới.
+- Gate QC (`E205`, còn Job nào chưa qua hết OQC) chỉ chạy **1 lần ở `send`**
+  (`OutboundOrdersService.ensureAllJobsQcCompleted`) — `approve` không kiểm lại.
+- `CANCELLED` khai sẵn trong enum, chưa route nào gán.
+
 ## Business rules
 
 - `code` bất biến, unique toàn bảng, sinh theo năm: `PNK-{năm}-{số thứ tự trong năm, pad 5}` (nhập),
@@ -510,9 +526,9 @@ Không phải invariant dù dễ tưởng:
   0/vượt SL kế hoạch — dòng `disposition = SCRAP` không tính là "đã QC xong" dù `status = COMPLETED`.
   Một chiều — Inventory đọc, không ghi ngược; Quality cũng không biết `inventory_receipts` có tồn
   tại. Xem "Gate nhập kho thành phẩm" ở Lifecycle, `docs/domains/quality.md`.
-- **← Quality (gate giao hàng)**: `OutboundOrdersService.confirmOutboundOrder` cũng đọc
-  `getJobQcCoverage` (tái dùng nguyên hàm trên) để chặn (`E205`) xác nhận DO khi còn Job nào chưa
-  qua hết QC — `outbound-orders` không import `OqcModule`/`IqcModule`. Xem "Giao hàng" bên dưới.
+- **← Quality (gate giao hàng)**: `OutboundOrdersService.ensureAllJobsQcCompleted` cũng đọc
+  `getJobQcCoverage` (tái dùng nguyên hàm trên) để chặn (`E205`) `send` DO khi còn Job nào chưa qua
+  hết QC — `outbound-orders` không import `OqcModule`/`IqcModule`. Xem "Giao hàng" bên dưới.
 - **← Product Structure**: `GET /inventory` chỉ thấy item `ACTIVE` + chưa xoá mềm, mặc định lọc
   FG/RM khi bỏ trống `itemType` (`docs/decisions/wip-not-stocked.md`) — gửi tường minh `itemType=WIP`
   vẫn xem được (luôn `onHand: 0`), dù `minStock`/`supplierId` trên dòng WIP luôn `0`/`null` (chỉ RM
@@ -582,9 +598,9 @@ Không phải invariant dù dễ tưởng:
     gửi thẳng, server không resolve/validate lại (`E166`/`E167`/`E168`/`E184` dự phòng, không route
     nào ném); `E172` bên OS-IN (chặn nhận vượt SL gửi) không đổi, hai module cố tình lệch nhau.
 22. **Tưởng tạo `outbound_orders` (DO) đã trừ tồn kho thành phẩm.** `create` vẫn chỉ tạo nháp
-    (`DRAFT`) và `confirm` (`DRAFT → PENDING_DELIVERY`, gate OQC `E205`) vẫn không đụng tồn — chỉ
-    `POST :id/deliver` (`PENDING_DELIVERY → DELIVERED`, 2026-08-24) mới thật sự trừ tồn: tự sinh 1
-    `inventory_issues` (`issueType = SALES`) rồi `post` ngay trong cùng transaction (tái dùng
+    (`DRAFT`); `send` (gate OQC `E205`) và `approve` vẫn không đụng tồn — chỉ `POST :id/deliver`
+    (`PENDING_DELIVERY → DELIVERED`, 2026-08-24) mới thật sự trừ tồn: tự sinh 1 `inventory_issues`
+    (`issueType = SALES`) rồi `post` ngay trong cùng transaction (tái dùng
     `InventoryPostingService`), xem `docs/decisions/production-lifecycle-closing.md`.
 23. **Tưởng `outsourcing_orders`/`outsourcing_receipts` có bước nháp thật như phiếu nhập/xuất.**
     Không còn — `create` là `POSTED` ngay, không có `PATCH`/`DELETE`/`post` riêng nữa. `status` cột

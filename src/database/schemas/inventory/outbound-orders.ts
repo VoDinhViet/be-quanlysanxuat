@@ -26,8 +26,9 @@ export const fulfillmentTypeEnum = pgEnum('fulfillment_type', [
 ]);
 
 /**
- * Vòng đời xem `docs/domains/inventory.md`, mục "Giao hàng" — phase 1 service chỉ ghi `DRAFT`,
- * 4 giá trị còn lại khai sẵn để phase sau (duyệt, xác nhận giao) không phải `ALTER TYPE`.
+ * Vòng đời xem `docs/domains/inventory.md`, mục "Giao hàng": `DRAFT ─send→ PENDING_APPROVAL
+ * ─approve→ PENDING_DELIVERY ─deliver→ DELIVERED`, có nhánh `PENDING_APPROVAL ─reject→ REJECTED
+ * ─send→ PENDING_APPROVAL`. `CANCELLED` vẫn khai sẵn, chưa route nào ghi.
  */
 export enum OutboundOrderStatus {
   DRAFT = 'DRAFT',
@@ -35,6 +36,7 @@ export enum OutboundOrderStatus {
   PENDING_DELIVERY = 'PENDING_DELIVERY',
   DELIVERED = 'DELIVERED',
   CANCELLED = 'CANCELLED',
+  REJECTED = 'REJECTED',
 }
 
 export const outboundOrderStatusEnum = pgEnum('outbound_order_status', [
@@ -43,6 +45,7 @@ export const outboundOrderStatusEnum = pgEnum('outbound_order_status', [
   OutboundOrderStatus.PENDING_DELIVERY,
   OutboundOrderStatus.DELIVERED,
   OutboundOrderStatus.CANCELLED,
+  OutboundOrderStatus.REJECTED,
 ]);
 
 /**
@@ -67,6 +70,19 @@ export const outboundOrders = pgTable(
     createdBy: uuid('created_by').references(() => users.id, {
       onDelete: 'set null',
     }),
+    sentBy: uuid('sent_by').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    sentAt: timestamp('sent_at'),
+    approvedBy: uuid('approved_by').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    approvedAt: timestamp('approved_at'),
+    rejectedBy: uuid('rejected_by').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    rejectedAt: timestamp('rejected_at'),
+    rejectionReason: varchar('rejection_reason', { length: 1000 }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at')
       .defaultNow()
@@ -78,6 +94,9 @@ export const outboundOrders = pgTable(
     index('idx_outbound_orders_status').on(table.status),
     index('idx_outbound_orders_fulfillment_date').on(table.fulfillmentDate),
     index('idx_outbound_orders_created_by').on(table.createdBy),
+    index('idx_outbound_orders_sent_by').on(table.sentBy),
+    index('idx_outbound_orders_approved_by').on(table.approvedBy),
+    index('idx_outbound_orders_rejected_by').on(table.rejectedBy),
   ],
 );
 
@@ -90,6 +109,18 @@ export const outboundOrdersRelations = relations(
     }),
     creatorBy: one(users, {
       fields: [outboundOrders.createdBy],
+      references: [users.id],
+    }),
+    senderBy: one(users, {
+      fields: [outboundOrders.sentBy],
+      references: [users.id],
+    }),
+    approverBy: one(users, {
+      fields: [outboundOrders.approvedBy],
+      references: [users.id],
+    }),
+    rejecterBy: one(users, {
+      fields: [outboundOrders.rejectedBy],
       references: [users.id],
     }),
     items: many(outboundOrderItems),

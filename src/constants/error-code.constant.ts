@@ -440,7 +440,9 @@ export enum ErrorCode {
   // `DELETE /iqc/:iqcId` khi đã từng `confirm` (`confirmedAt` khác null) — chỉ xoá được phiếu chưa
   // ai đụng vào, khuôn `E178` (OQC) nhưng mint riêng vì hai domain khác nhau.
   E206 = 'iqc_inspection.error.not_deletable',
-  // `POST /outbound-orders/:id/confirm` khi phiếu không còn `DRAFT`.
+  // Nghỉ hưu — từng dùng cho `POST /outbound-orders/:id/confirm` (`DRAFT → PENDING_DELIVERY` thẳng,
+  // không qua duyệt). Route đã bỏ khi thêm luồng gửi duyệt/duyệt (`E239`/`E240`), giữ comment để số
+  // này không bị cấp lại cho lỗi khác.
   E204 = 'outbound_order.error.not_confirmable',
   // Còn ≥1 Job (suy từ `outbound_order_items.productionJobId`, bỏ qua dòng `null`) chưa qua hết
   // QC (`getJobQcCoverage`, tái dùng `E196`, cùng loại trừ dòng `disposition = SCRAP`) — hàng
@@ -519,5 +521,9 @@ export enum ErrorCode {
   // `deliver` cần đúng 1 kho `type = FG` để tự sinh phiếu xuất SALES — 0 hoặc >1 kho đều ném lỗi
   // này thay vì đoán, xem `docs/decisions/production-lifecycle-closing.md`.
   E238 = 'outbound_order.error.fg_warehouse_ambiguous',
+  // `POST /outbound-orders/:id/send` khi phiếu không ở `DRAFT`/`REJECTED`.
+  E239 = 'outbound_order.error.not_sendable',
+  // `POST /outbound-orders/:id/approve` hoặc `.../reject` khi phiếu không ở `PENDING_APPROVAL`.
+  E240 = 'outbound_order.error.invalid_approval_state',
   V003 = 'common.error.too_many_requests',
 }

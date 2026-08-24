@@ -24,8 +24,13 @@ bảng — xem `docs/decisions/qc-single-table.md`. Trigger tạo OQC ở **cấ
 - `DELETE /oqc/:oqcId` — gỡ phiếu tạo nhầm, chỉ khi còn `NOT_INSPECTED`.
 - `POST /inventory-receipts/:receiptId/confirm` với `receiptType = PRODUCTION` — kho xác nhận nhập
   lô thành phẩm, đọc lại trạng thái OQC của Job.
-- `POST /outbound-orders/:outboundOrderId/confirm` — Sales xác nhận DO (`DRAFT → PENDING_DELIVERY`),
-  đọc lại trạng thái OQC của (các) Job liên quan.
+- `POST /outbound-orders/:outboundOrderId/send` — Sales gửi duyệt DO (`DRAFT`/`REJECTED` →
+  `PENDING_APPROVAL`), đọc trạng thái OQC của (các) Job liên quan — gate duy nhất trong cả vòng
+  duyệt.
+- `POST /outbound-orders/:outboundOrderId/approve` — Giám đốc duyệt DO (`PENDING_APPROVAL →
+  PENDING_DELIVERY`), không gate OQC lại.
+- `POST /outbound-orders/:outboundOrderId/reject` — Giám đốc từ chối DO (`PENDING_APPROVAL →
+  REJECTED`), không gate OQC.
 - `POST /outbound-orders/:outboundOrderId/deliver` — Sales/kho xác nhận đã giao thật
   (`PENDING_DELIVERY → DELIVERED`), tự sinh + post phiếu xuất SALES, đóng đơn hàng nếu giao đủ.
 
@@ -35,11 +40,12 @@ bảng — xem `docs/decisions/qc-single-table.md`. Trigger tạo OQC ở **cấ
 "yêu cầu QC" và "gỡ yêu cầu sai"; permission đặt tên theo `oqc` dù route tạo nay mount ở
 `production-jobs`, vì đã seed sẵn cho đúng role production). `oqc:read` cho AQL-plan/list/detail.
 `oqc:update` cho `confirm` (QC — vai trò khác, tách actor tạo/xác nhận). `inventory:update` cho
-`confirm`/`post` phiếu nhập. `outbound:update` cho `confirm` DO (Sales).
+`confirm`/`post` phiếu nhập. `outbound:update` cho `send`/`deliver` DO (Sales/Kho); `outbound:approve`
+cho `approve`/`reject` DO (Giám đốc).
 
 ## Preconditions
 
-| Điều kiện | `POST .../qc` | `confirm` OQC | `confirm` phiếu nhập (PRODUCTION) | `confirm` DO |
+| Điều kiện | `POST .../qc` | `confirm` OQC | `confirm` phiếu nhập (PRODUCTION) | `send` DO |
 | --- | --- | --- | --- | --- |
 | Job tồn tại | `E082` | — | — | — |
 | Job đang `IN_PROGRESS` | `E175` | — | — | — |
@@ -55,7 +61,10 @@ bảng — xem `docs/decisions/qc-single-table.md`. Trigger tạo OQC ở **cấ
 | Job có ≥1 dòng QC chưa `SCRAP`, không còn dòng nào chưa `COMPLETED` | — | — | `E196` | `E205` |
 | Có node Cấp 0 (`itemType = FG`) thì phải có ≥1 dòng OQC `COMPLETED` chưa `SCRAP` | — | — | `E209` | — |
 | Σ SL nhập (cộng dồn) ≤ `production_jobs.quantity` | — | — | `E197` | — |
-| Phiếu DO còn `DRAFT` | — | — | — | `E204` |
+| Phiếu DO còn `DRAFT`/`REJECTED` | — | — | — | `E239` |
+
+`approve`/`reject` không có cột riêng ở trên — điều kiện duy nhất của cả hai là phiếu đang
+`PENDING_APPROVAL` (`E240`), không gate OQC.
 
 ## Flow
 
@@ -136,14 +145,25 @@ bảng — xem `docs/decisions/qc-single-table.md`. Trigger tạo OQC ở **cấ
    `production_order_logs` (`action = COMPLETED`). Xem
    `docs/decisions/production-lifecycle-closing.md`.
 
-### Xác nhận giao hàng (`OutboundOrdersService.confirmOutboundOrder`)
+### Gửi duyệt (`OutboundOrdersService.sendOutboundOrder`)
 
-1. `getOutboundOrderForUpdate` (`FOR UPDATE`) — `status ≠ DRAFT` → `E204`.
-2. Gom `productionJobId` distinct từ các dòng DO (bỏ qua dòng `null`) — mỗi Job gọi
-   `getJobQcCoverage` (tái dùng nguyên hàm ở gate nhập kho TP, cùng cách loại `SCRAP` khỏi `total`) —
-   Job nào chưa qua hết QC → `E205`.
-3. `UPDATE status = PENDING_DELIVERY`. Chưa trừ tồn, chưa sinh `inventory_issues` — bước đó ở
-   `deliver` bên dưới.
+1. `getOutboundOrderForUpdate` (`FOR UPDATE`) — `status ∉ {DRAFT, REJECTED}` → `E239`.
+2. `ensureAllJobsQcCompleted`: gom `productionJobId` distinct từ các dòng DO (bỏ qua dòng `null`) —
+   mỗi Job gọi `getJobQcCoverage` (tái dùng nguyên hàm ở gate nhập kho TP, cùng cách loại `SCRAP`
+   khỏi `total`) — Job nào chưa qua hết QC → `E205`.
+3. `UPDATE status = PENDING_APPROVAL`, ghi `sentBy`/`sentAt`.
+
+### Duyệt (`OutboundOrdersService.approveOutboundOrder`)
+
+1. `getOutboundOrderForUpdate` (`FOR UPDATE`) — `status ≠ PENDING_APPROVAL` → `E240`.
+2. `UPDATE status = PENDING_DELIVERY`, ghi `approvedBy`/`approvedAt`. Không gate OQC lại (đã chặn ở
+   `send`). Chưa trừ tồn, chưa sinh `inventory_issues` — bước đó ở `deliver` bên dưới.
+
+### Từ chối (`OutboundOrdersService.rejectOutboundOrder`)
+
+1. `getOutboundOrderForUpdate` (`FOR UPDATE`) — `status ≠ PENDING_APPROVAL` → `E240`.
+2. `UPDATE status = REJECTED`, ghi `rejectedBy`/`rejectedAt`/`rejectionReason`. Không gate QC — chỉ
+   đổi trạng thái. `send` lại được từ `REJECTED`.
 
 ### Giao thật (`OutboundOrdersService.postOutboundOrder`, 2026-08-24)
 
@@ -172,7 +192,9 @@ bảng — xem `docs/decisions/qc-single-table.md`. Trigger tạo OQC ở **cấ
 | `production_jobs.status` | `confirm` OQC (PASS/ACCEPT/SCRAP, coverage hết `open`) | `WAITING_QC` | `WAITING_DELIVERY` |
 | `production_jobs.status` | `post` phiếu nhập TP (đủ `job.quantity`) | `WAITING_DELIVERY` | `COMPLETED` |
 | `production_orders.status` | `post` phiếu nhập TP (mọi Job cùng LSX `COMPLETED`) | `APPROVED` | `COMPLETED` |
-| `outbound_orders.status` | `confirm` DO (qua gate) | `DRAFT` | `PENDING_DELIVERY` |
+| `outbound_orders.status` | `send` DO (qua gate) | `DRAFT`/`REJECTED` | `PENDING_APPROVAL` |
+| `outbound_orders.status` | `approve` DO (qua gate) | `PENDING_APPROVAL` | `PENDING_DELIVERY` |
+| `outbound_orders.status` | `reject` DO | `PENDING_APPROVAL` | `REJECTED` |
 | `outbound_orders.status` | `deliver` DO | `PENDING_DELIVERY` | `DELIVERED` |
 | `inventory_balances`/`inventory_transactions` | `deliver` DO | — | cập nhật (`ISSUE`, phiếu SALES tự sinh) |
 | `orders.status` | `deliver` DO (mọi dòng `NORMAL` đã giao đủ) | `IN_PROGRESS` | `COMPLETED` |
@@ -184,7 +206,8 @@ bảng — xem `docs/decisions/qc-single-table.md`. Trigger tạo OQC ở **cấ
   ngược vào `production_job_operations` ở bất kỳ nhánh nào (kể cả `SCRAP`).
 - `confirm` phiếu nhập (nhánh PRODUCTION): không sinh/sửa gì trên `qc_requests` — gate chỉ
   **đọc**, một chiều.
-- `confirm` DO: không sinh/sửa gì trên `qc_requests`/tồn kho — chỉ đổi `status` của chính DO.
+- `send`/`approve`/`reject` DO: không sinh/sửa gì trên `qc_requests`/tồn kho — chỉ đổi `status`
+  (+ audit trail) của chính DO.
 
 ## Transaction boundary
 
@@ -193,8 +216,9 @@ nay cũng mở transaction — khoá `qc_requests` (`FOR UPDATE`) để cấp `a
 attempt (`qc_inspections`), rồi cập nhật mirror trên `qc_requests`, tất cả trong 1 transaction
 (`docs/decisions/qc-request-attempt-split.md`).
 `confirmInventoryReceipt` đã tự mở transaction sẵn (khuôn `docs/workflows/receipt-confirmation.md`)
-— gate QC chỉ thêm kiểm tra bên trong, không thêm transaction mới. `confirmOutboundOrder` tự mở
-transaction (`getOutboundOrderForUpdate` + gate + `UPDATE`). `getJobQcCoverage` lẫn các hàm đọc SL khác ở
+— gate QC chỉ thêm kiểm tra bên trong, không thêm transaction mới. `sendOutboundOrder`/
+`approveOutboundOrder`/`rejectOutboundOrder` đều tự mở transaction riêng (`getOutboundOrderForUpdate`
++ gate QC ở hai hàm đầu + `UPDATE`). `getJobQcCoverage` lẫn các hàm đọc SL khác ở
 `src/api/oqc/oqc.query.ts` đều là plain function nhận `Database | DbTransaction`, không tự mở
 transaction, không qua DI — `InventoryReceiptsModule`/`OutboundOrdersModule` đều không import
 `OqcModule`/`IqcModule` (chiều đọc). Riêng `ProductionJobsModule` **có** import `OqcModule` — ngoại
@@ -211,8 +235,10 @@ Cấp 0 hợp lệ), `E214` (công đoạn Cấp 0 chưa `completedDate`), `E199
 đã nghỉ hưu, QC toàn quyền quyết định, `docs/domains/quality.md`), `E178` (xoá phiếu
 OQC không còn `NOT_INSPECTED`), `E179` (phiếu nhập `PRODUCTION`
 thiếu `productionJobId`), `E107` (dòng phiếu nhập không khớp `itemId` của Job), `E196` (Job chưa qua
-hết QC), `E209` (node Cấp 0 chưa qua QC), `E197` (SL nhập vượt kế hoạch Job), `E204` (DO không còn
-`DRAFT`), `E205` (còn Job chưa qua hết QC lúc xác nhận DO). `E211` (từng chặn công đoạn `OUTSOURCE`
+hết QC), `E209` (node Cấp 0 chưa qua QC), `E197` (SL nhập vượt kế hoạch Job), `E239` (DO không còn
+`DRAFT`/`REJECTED` lúc `send`), `E240` (DO không còn `PENDING_APPROVAL` lúc `approve`/`reject`),
+`E205` (còn Job chưa qua hết QC lúc `send` DO — gate duy nhất, `approve` không kiểm lại). `E211`
+(từng chặn công đoạn `OUTSOURCE`
 ở tầng service) nay khai tử — điều kiện đó nằm ngay trong câu `SELECT` của `createOqcForJob` (không
 match join thì rơi vào `E213`), không còn chỗ nào ném ra mã đó nữa. `E212` (Job có công đoạn
 `OUTSOURCE` chưa có IQC) chưa từng phát hành, nay khai tử — tập con của `E196` sau khi
@@ -244,12 +270,12 @@ chủ đích, thay cho route `POST /oqc` cấp-công-đoạn độc lập đã b
 Bước trước: xưởng nhập `completedQuantity` cho công đoạn qua
 `PATCH /production-jobs/:jobId/operations/:operationId`
 (`docs/workflows/production-job-execution.md`). Bước sau: `post` phiếu nhập TP (sinh bút toán
-`PRODUCTION_IN`, `docs/workflows/stock-movement.md`) hoặc DO tiếp tục sang phase giao hàng 2 (chưa
-thiết kế).
+`PRODUCTION_IN`, `docs/workflows/stock-movement.md`) hoặc DO tiếp tục qua `approve` rồi `deliver`
+(trừ tồn thật).
 
 Code: `OqcService` (`createOqcForJob`/`confirmOqc`/`getAqlPlan`/`deleteOqc`),
 `ProductionJobsService.requestJobQc` (`src/api/production-jobs/production-jobs.service.ts`),
 `src/api/oqc/oqc.query.ts` (bao gồm `getJobQcCoverage`), `src/api/iqc/iqc-aql.query.ts#resolveAqlPlan`
 (đọc DB, `docs/decisions/qc-aql-master-data.md`), `src/api/iqc/iqc-aql.constant.ts#resolveAqlResult`
 (thuần), `InventoryReceiptsService.confirmInventoryReceipt` (nhánh `PRODUCTION`),
-`OutboundOrdersService.confirmOutboundOrder`.
+`OutboundOrdersService` (`sendOutboundOrder`/`approveOutboundOrder`/`rejectOutboundOrder`).
