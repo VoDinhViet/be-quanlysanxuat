@@ -13,7 +13,7 @@ import { ApiTags } from '@nestjs/swagger';
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { CurrentUser } from '../../decorators/current-user.decorator';
-import { ApiAuth, ApiPublic } from '../../decorators/http.decorators';
+import { ApiAuth } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
 import { CreateSupplierReqDto } from './dto/create-supplier.req.dto';
@@ -31,7 +31,7 @@ export class SuppliersController {
 
   @Get()
   @Permissions('suppliers:read')
-  @ApiPublic({
+  @ApiAuth({
     type: PageSupplierResDto,
     summary: 'List suppliers',
     isPaginated: true,
@@ -44,7 +44,7 @@ export class SuppliersController {
 
   @Get('stats')
   @Permissions('suppliers:read')
-  @ApiPublic({
+  @ApiAuth({
     type: SupplierStatsResDto,
     summary: 'Get supplier stats (total / active / paused / stopped)',
   })
@@ -54,7 +54,7 @@ export class SuppliersController {
 
   @Get(':supplierId')
   @Permissions('suppliers:read')
-  @ApiPublic({
+  @ApiAuth({
     type: SupplierResDto,
     summary: 'Get supplier detail',
   })

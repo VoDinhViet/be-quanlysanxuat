@@ -1,7 +1,7 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 
-import { ApiPublic } from '../../decorators/http.decorators';
+import { ApiAuth } from '../../decorators/http.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
 import { GetOperationsReqDto } from './dto/get-operations.req.dto';
 import { OperationResDto } from './dto/operation.res.dto';
@@ -14,7 +14,7 @@ export class OperationsController {
 
   @Get()
   @Permissions('operations:read')
-  @ApiPublic({
+  @ApiAuth({
     type: OperationResDto,
     summary: 'List operations (công đoạn)',
     isArray: true,
