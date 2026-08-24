@@ -509,5 +509,15 @@ export enum ErrorCode {
   E234 = 'inventory_issue.error.production_requires_requisition',
   // `POST /inventory-issues/:id/cancel` trên một phiếu do `inventory_requisitions.issue` sinh ra.
   E235 = 'inventory_issue.error.generated_from_requisition',
+  // `PATCH /orders/:orderId` với `status: CANCELLED` trên đơn có LSX (`production_orders`) đã
+  // `APPROVED` — duyệt LSX là chốt kế hoạch một chiều (cùng lý do `E080`), huỷ lúc này sẽ để LSX/Job
+  // mồ côi hoặc đụng ràng buộc OQC restrict nếu cascade-xoá. LSX còn `PENDING` không ném lỗi này —
+  // xem `OrdersService.ensureProductionOrderNotApproved`.
+  E236 = 'order.error.has_approved_production_order',
+  // `POST /outbound-orders/:id/deliver` khi phiếu không ở `PENDING_DELIVERY`.
+  E237 = 'outbound_order.error.not_deliverable',
+  // `deliver` cần đúng 1 kho `type = FG` để tự sinh phiếu xuất SALES — 0 hoặc >1 kho đều ném lỗi
+  // này thay vì đoán, xem `docs/decisions/production-lifecycle-closing.md`.
+  E238 = 'outbound_order.error.fg_warehouse_ambiguous',
   V003 = 'common.error.too_many_requests',
 }

@@ -16,16 +16,19 @@ import { productionOrderLogs } from './production-order-logs';
 import { users } from '../identity-access/users';
 
 /** "Chờ duyệt" (kế hoạch, sửa số lượng tự do qua `updateProductionOrder`) vs "Đã duyệt" (chốt
- * LSX, không sửa được nữa). Chỉ 2 giá trị — chưa có trạng thái huỷ riêng (xem doc trên
- * `productionOrders`). */
+ * LSX, không sửa được nữa) vs "Hoàn thành" (mọi Job đã `COMPLETED`, tự động đóng — không có route
+ * tay, xem `docs/decisions/production-lifecycle-closing.md`). Chưa có trạng thái huỷ riêng (xem
+ * doc trên `productionOrders`). */
 export enum ProductionOrderStatus {
   PENDING = 'PENDING',
   APPROVED = 'APPROVED',
+  COMPLETED = 'COMPLETED',
 }
 
 export const productionOrderStatusEnum = pgEnum('production_order_status', [
   ProductionOrderStatus.PENDING,
   ProductionOrderStatus.APPROVED,
+  ProductionOrderStatus.COMPLETED,
 ]);
 
 /**
@@ -44,6 +47,8 @@ export const productionOrderStatusEnum = pgEnum('production_order_status', [
  * - `orderId` unique — mỗi PO chỉ có đúng một LSX tại một thời điểm; duyệt lại sau khi huỷ (bằng
  *   một PO khác, hoặc `OrdersService.approveOrder` seed lại) ghi đè hoàn toàn header + dòng quyết
  *   định cũ (`seedPlan`, replace-all theo `orderId`).
+ * - `COMPLETED` tự động khi mọi `productionJobs` của LSX đạt `COMPLETED` — không có route tay, xem
+ *   `docs/decisions/production-lifecycle-closing.md`.
  */
 export const productionOrders = pgTable(
   'production_orders',
@@ -78,7 +83,8 @@ export const productionOrders = pgTable(
     check(
       'chk_production_orders_status_fields',
       sql`(status = 'PENDING' AND code IS NULL AND approved_at IS NULL)
-          OR (status = 'APPROVED' AND code IS NOT NULL AND approved_at IS NOT NULL)`,
+          OR (status = 'APPROVED' AND code IS NOT NULL AND approved_at IS NOT NULL)
+          OR (status = 'COMPLETED' AND code IS NOT NULL AND approved_at IS NOT NULL)`,
     ),
   ],
 );

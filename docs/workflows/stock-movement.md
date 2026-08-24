@@ -117,21 +117,29 @@ Không có đường `CANCELLED → *`.
 | `inventory_balances` | `post` | — | tăng/giảm theo dấu bút toán |
 | `inventory_balances` | `cancel` (từ `POSTED`) | — | đảo ngược đúng phần đã `post` |
 
-Không route nào khác đổi trạng thái đơn hàng, LSX hay Job. `confirm` không đụng
-`inventory_transactions`/`inventory_balances` — chỉ `post` mới ghi hai bảng đó.
+`confirm` không đụng `inventory_transactions`/`inventory_balances` — chỉ `post` mới ghi hai bảng đó.
+Ngoại lệ duy nhất (2026-08-24): `post` phiếu nhập `receiptType = PRODUCTION` **có thể** cascade đóng
+`production_jobs`/`production_orders` nếu Job vừa nhận đủ SL kế hoạch — xem
+`docs/workflows/final-qc.md`, `docs/decisions/production-lifecycle-closing.md`. Không route nào
+khác (phiếu nhập loại khác, mọi phiếu xuất qua `InventoryIssuesService`) đổi trạng thái đơn
+hàng/LSX/Job.
 
 ## Side effects
 
 - `post`: N dòng `inventory_transactions` mới (append-only), `inventory_balances` cập nhật.
 - `cancel` từ `POSTED`: thêm N dòng `inventory_transactions` đảo dấu — **không** xoá bút toán cũ.
-- Không log riêng, không thông báo, không đụng đơn hàng/LSX/Job dù có gắn `productionOrderId`/
-  `productionJobId`/`orderItemId` — các cột đó chỉ là liên kết tham khảo.
+- Không log riêng, không thông báo. Không đụng đơn hàng/LSX/Job qua `orderItemId`/`purchaseOrderId`
+  trên phiếu **xuất**, hay qua phiếu **nhập** loại khác `PRODUCTION` — những cột đó chỉ là liên kết
+  tham khảo. Ngoại lệ: `post` phiếu nhập `receiptType = PRODUCTION` (xem State changes ở trên).
 
-Hai điều **không** xảy ra dù trực giác nghiệp vụ mong đợi:
+Một điều **không** xảy ra dù trực giác nghiệp vụ mong đợi:
 
-- Giao đủ hàng cho một đơn **không** tự đẩy đơn sang `COMPLETED` — vẫn phải `PATCH` tay.
 - Nhập mua vật tư có `supplierId`/`purchaseRequestId` nhưng hệ thống **không có** đơn mua hàng thật
   — xem `docs/decisions/no-procurement.md`.
+
+(Trước 2026-08-24, "giao đủ hàng cho một đơn không tự đẩy đơn sang `COMPLETED`" cũng từng đúng ở
+đây — giờ có đường tự động, nhưng nằm ở `OutboundOrdersService.postOutboundOrder`, ngoài phạm vi
+luồng `inventory-receipts`/`inventory-issues` mà file này mô tả. Xem `docs/workflows/final-qc.md`.)
 
 ## Transaction boundary
 

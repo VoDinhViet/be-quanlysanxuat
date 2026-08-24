@@ -26,6 +26,8 @@ bảng — xem `docs/decisions/qc-single-table.md`. Trigger tạo OQC ở **cấ
   lô thành phẩm, đọc lại trạng thái OQC của Job.
 - `POST /outbound-orders/:outboundOrderId/confirm` — Sales xác nhận DO (`DRAFT → PENDING_DELIVERY`),
   đọc lại trạng thái OQC của (các) Job liên quan.
+- `POST /outbound-orders/:outboundOrderId/deliver` — Sales/kho xác nhận đã giao thật
+  (`PENDING_DELIVERY → DELIVERED`), tự sinh + post phiếu xuất SALES, đóng đơn hàng nếu giao đủ.
 
 ## Actor
 
@@ -103,6 +105,10 @@ bảng — xem `docs/decisions/qc-single-table.md`. Trigger tạo OQC ở **cấ
    `disposition` mới xuất hiện lần đầu — lần kiểm trước đó vẫn còn nguyên trên `qc_inspections`.
 6. `PENDING`/`REWORK` → QC sửa mẫu/kết quả rồi gọi lại bước này trên **chính phiếu đó**, lặp tới
    khi `COMPLETED`. Không nhánh nào ghi ngược `production_job_operations.completedQuantity`.
+7. Bước này (2026-08-24): sau khi ghi mirror, nếu `status = COMPLETED` gọi lại `getJobQcCoverage` —
+   `open = 0` thì `productionJobs.status: WAITING_QC → WAITING_DELIVERY` (ghi thẳng, không qua
+   `ProductionJobsService` để tránh vòng import). Xem
+   `docs/decisions/production-lifecycle-closing.md`.
 
 ### Nhập kho thành phẩm (`InventoryReceiptsService.confirmInventoryReceipt`, nhánh `PRODUCTION`)
 
@@ -123,6 +129,12 @@ bảng — xem `docs/decisions/qc-single-table.md`. Trigger tạo OQC ở **cấ
 2. Qua được gate thì tiếp tục như mọi phiếu nhập khác: `DRAFT → PENDING_RECEIPT`/`PENDING_IQC` tuỳ
    `requiresIqc` (`docs/workflows/receipt-confirmation.md`), rồi `post` sinh bút toán `PRODUCTION_IN`
    như thường — `post` **không** kiểm lại gate OQC lần hai.
+3. `post` (2026-08-24): sau bút toán, tính lại tổng đã nhận (`getConfirmedProductionQuantityByJobId`,
+   không loại trừ phiếu nào — phiếu đang post đã tính vào tổng) — `>= job.quantity` thì
+   `productionJobs.status: WAITING_DELIVERY → COMPLETED` (+ `completedBy`/`completedAt`). Mọi Job
+   cùng LSX đều `COMPLETED` → `productionOrders.status → COMPLETED`, ghi 1 dòng
+   `production_order_logs` (`action = COMPLETED`). Xem
+   `docs/decisions/production-lifecycle-closing.md`.
 
 ### Xác nhận giao hàng (`OutboundOrdersService.confirmOutboundOrder`)
 
@@ -130,8 +142,20 @@ bảng — xem `docs/decisions/qc-single-table.md`. Trigger tạo OQC ở **cấ
 2. Gom `productionJobId` distinct từ các dòng DO (bỏ qua dòng `null`) — mỗi Job gọi
    `getJobQcCoverage` (tái dùng nguyên hàm ở gate nhập kho TP, cùng cách loại `SCRAP` khỏi `total`) —
    Job nào chưa qua hết QC → `E205`.
-3. `UPDATE status = PENDING_DELIVERY`. **Không** trừ tồn, **không** sinh `inventory_issues`, **không**
-   `DELIVERED` — đó là phase giao hàng 2, chưa thiết kế.
+3. `UPDATE status = PENDING_DELIVERY`. Chưa trừ tồn, chưa sinh `inventory_issues` — bước đó ở
+   `deliver` bên dưới.
+
+### Giao thật (`OutboundOrdersService.postOutboundOrder`, 2026-08-24)
+
+1. `getOutboundOrderForUpdate` (`FOR UPDATE`) — `status ≠ PENDING_DELIVERY` → `E237`.
+2. Tự tìm kho `type = FG` — khác đúng 1 kho → `E238` (thực tế hiện chỉ có `KHO-TP`).
+3. Trong **một** transaction: sinh mã `PXK-{năm}-{số thứ tự, pad 5}`, `INSERT` 1 `inventory_issues`
+   (`issueType = SALES`, `status = POSTED` thẳng) + `inventory_issue_items` map 1:1 từ dòng DO (gắn
+   đúng `orderItemId`), gọi `InventoryPostingService.postDocument` trừ tồn, `UPDATE outboundOrders
+   SET status = DELIVERED`.
+4. Với mỗi đơn hàng bị đụng (theo `orderItemId` các dòng vừa xử lý): mọi dòng `order_items`
+   `NORMAL` đã `issuedQty ≥ quantity` (tính lại trong cùng transaction) → `orders.status:
+   IN_PROGRESS → COMPLETED`. Xem `docs/decisions/production-lifecycle-closing.md`.
 
 ## State changes
 
@@ -145,7 +169,13 @@ bảng — xem `docs/decisions/qc-single-table.md`. Trigger tạo OQC ở **cấ
 | `qc_inspections` | `confirm` (mọi kết quả) | — | +1 dòng attempt mới, `attemptNo` kế tiếp — không xoá/sửa attempt trước |
 | `inventory_receipts.status` | `confirm` phiếu nhập (qua gate) | `DRAFT` | `PENDING_RECEIPT`/`PENDING_IQC` |
 | `inventory_balances`/`inventory_transactions` | `post` phiếu nhập | — | cập nhật (`PRODUCTION_IN`, xem `docs/workflows/stock-movement.md`) |
+| `production_jobs.status` | `confirm` OQC (PASS/ACCEPT/SCRAP, coverage hết `open`) | `WAITING_QC` | `WAITING_DELIVERY` |
+| `production_jobs.status` | `post` phiếu nhập TP (đủ `job.quantity`) | `WAITING_DELIVERY` | `COMPLETED` |
+| `production_orders.status` | `post` phiếu nhập TP (mọi Job cùng LSX `COMPLETED`) | `APPROVED` | `COMPLETED` |
 | `outbound_orders.status` | `confirm` DO (qua gate) | `DRAFT` | `PENDING_DELIVERY` |
+| `outbound_orders.status` | `deliver` DO | `PENDING_DELIVERY` | `DELIVERED` |
+| `inventory_balances`/`inventory_transactions` | `deliver` DO | — | cập nhật (`ISSUE`, phiếu SALES tự sinh) |
+| `orders.status` | `deliver` DO (mọi dòng `NORMAL` đã giao đủ) | `IN_PROGRESS` | `COMPLETED` |
 
 ## Side effects
 

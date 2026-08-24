@@ -55,9 +55,10 @@ nhập/xuất có vòng đời `DRAFT`/`POSTED`/`CANCELLED`, sổ cái `inventor
 ## Ngoài phạm vi đợt này
 
 - Auto-post kho từ sản xuất (`ProductionJobsService.startJob` xuất vật tư, Job hoàn thành nhập
-  thành phẩm) — chặn kỹ thuật: `ProductionJobStatus` chưa có trạng thái hoàn thành
-  (`docs/domains/production.md`). Phiếu nhập/xuất vẫn có cột liên kết `productionOrderId`/
-  `productionJobId`, chỉ chưa ai tự động lập phiếu.
+  thành phẩm) — vẫn ngoài phạm vi, dù chặn kỹ thuật gốc (`ProductionJobStatus` chưa có trạng thái
+  hoàn thành) đã được gỡ 2026-08-24 (`docs/decisions/production-lifecycle-closing.md`). Job
+  `COMPLETED` giờ suy ra **từ** phiếu nhập TP đã `post` đủ SL — chưa đảo ngược lại thành "Job xong tự
+  lập phiếu". Phiếu nhập/xuất vẫn có cột liên kết `productionOrderId`/`productionJobId`.
 - Chuyển kho (`TRANSFER_IN`/`TRANSFER_OUT` có trong enum nhưng chưa route nào phát ra), quản lý lô/
   vị trí (không `locationId`/`batchId`), `reservedQuantity` thành số thật (cột có, luôn `0` —
   `reserved` của thành phẩm vẫn tính động từ `order_items` như trước).

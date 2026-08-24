@@ -18,6 +18,7 @@ export enum ProductionOrderLogAction {
   QUANTITY_UPDATED = 'QUANTITY_UPDATED',
   APPROVED = 'APPROVED',
   NOTE_UPDATED = 'NOTE_UPDATED',
+  COMPLETED = 'COMPLETED',
 }
 
 export const productionOrderLogActionEnum = pgEnum(
@@ -27,6 +28,7 @@ export const productionOrderLogActionEnum = pgEnum(
     ProductionOrderLogAction.QUANTITY_UPDATED,
     ProductionOrderLogAction.APPROVED,
     ProductionOrderLogAction.NOTE_UPDATED,
+    ProductionOrderLogAction.COMPLETED,
   ],
 );
 
@@ -37,9 +39,12 @@ export const productionOrderLogActionEnum = pgEnum(
  * không bao giờ bị `UPDATE`.
  *
  * Rules:
- * - `ProductionOrdersService.logAction` là nơi ghi duy nhất, luôn gọi trong cùng transaction với
- *   hành động đang log (`seedPlan` → `CREATED`, `updateProductionOrder` → `QUANTITY_UPDATED`,
- *   `approveProductionOrder` → `APPROVED`) — không có route ghi log trực tiếp.
+ * - `ProductionOrdersService.logAction` ghi 4 hành động đầu (`seedPlan` → `CREATED`,
+ *   `updateProductionOrder` → `QUANTITY_UPDATED`, `approveProductionOrder` → `APPROVED`,
+ *   `NOTE_UPDATED`) — luôn trong cùng transaction với hành động đang log. `COMPLETED` là ngoại lệ
+ *   duy nhất: ghi thẳng (không qua `logAction`, hàm đó `private`) từ
+ *   `InventoryReceiptsService.postInventoryReceipt` khi Job cuối của LSX vừa nhận đủ hàng — xem
+ *   `docs/decisions/production-lifecycle-closing.md`. Không có route ghi log trực tiếp.
  * - `onDelete: 'cascade'` từ `productionOrders` — khi header bị xoá để ghi đè (replace-all lúc
  *   `seedPlan`/`OrdersService.updateOrder` xoá LSX `PENDING`), log cũ mất theo, cùng hành vi với
  *   `production_order_items`, không phải rủi ro riêng của bảng này.

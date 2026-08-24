@@ -7,6 +7,7 @@ import {
   eq,
   getTableColumns,
   gte,
+  inArray,
   lt,
   ne,
 } from 'drizzle-orm';
@@ -58,6 +59,7 @@ import { PageOqcResDto } from './dto/page-oqc.res.dto';
 import {
   getInspectedQuantityByBomItemId,
   getInspectedQuantityByOperationId,
+  getJobQcCoverage,
 } from './oqc.query';
 
 @Injectable()
@@ -303,7 +305,14 @@ export class OqcService {
       throw new AppException(ErrorCode.E082, HttpStatus.NOT_FOUND);
     }
 
-    if (finalOperation.jobStatus !== ProductionJobStatus.IN_PROGRESS) {
+    // Job đã tự chuyển `WAITING_QC` ngay khi công đoạn Cấp 0 hoàn thành (cùng transaction sinh ra
+    // `completedDate` ở dưới) — chấp nhận cả hai để không khoá Job cũ (trước bản vá này) còn đứng ở
+    // `IN_PROGRESS`. Xem `docs/decisions/production-lifecycle-closing.md`.
+    const allowedJobStatuses: ProductionJobStatus[] = [
+      ProductionJobStatus.IN_PROGRESS,
+      ProductionJobStatus.WAITING_QC,
+    ];
+    if (!allowedJobStatuses.includes(finalOperation.jobStatus)) {
       throw new AppException(ErrorCode.E175, HttpStatus.CONFLICT);
     }
 
@@ -439,6 +448,33 @@ export class OqcService {
         .where(eq(qcRequests.id, oqcId));
 
       await this.linkOqcEvidence(tx, attempt.id, reqDto, decision.result);
+
+      // Job đứng yên ở `WAITING_QC` cho tới khi QC xử lý xong hết (không chỉ lần confirm này) —
+      // `getJobQcCoverage` đếm lại toàn bộ dòng QC của Job, `open = 0` mới coi là xong hẳn. Ghi
+      // thẳng bằng drizzle, không qua `ProductionJobsService` — tránh vòng import
+      // (`production-jobs` đã import `oqc`). Xem `docs/decisions/production-lifecycle-closing.md`.
+      if (status === OqcStatus.COMPLETED && lockedOqcRequest.productionJobId) {
+        const coverage = await getJobQcCoverage(
+          tx,
+          lockedOqcRequest.productionJobId,
+        );
+        if (coverage.total > 0 && coverage.open === 0) {
+          await tx
+            .update(productionJobs)
+            .set({ status: ProductionJobStatus.WAITING_DELIVERY })
+            .where(
+              and(
+                eq(productionJobs.id, lockedOqcRequest.productionJobId),
+                // Job cũ (trước bản vá `createOqcForJob`) có thể còn đứng ở `IN_PROGRESS` — cùng
+                // lý do chấp nhận cả hai giá trị ở `createOqcForJob` phía trên.
+                inArray(productionJobs.status, [
+                  ProductionJobStatus.IN_PROGRESS,
+                  ProductionJobStatus.WAITING_QC,
+                ]),
+              ),
+            );
+        }
+      }
     });
   }
 
@@ -491,6 +527,7 @@ export class OqcService {
     confirmedAt: Date | null;
     resolvedAt: Date | null;
     attemptCount: number;
+    productionJobId: string | null;
   }> {
     const [oqcRequest] = await tx
       .select({
@@ -498,6 +535,7 @@ export class OqcService {
         resolvedAt: qcRequests.resolvedAt,
         status: qcRequests.status,
         attemptCount: qcRequests.attemptCount,
+        productionJobId: qcRequests.productionJobId,
       })
       .from(qcRequests)
       .where(eq(qcRequests.id, oqcId))

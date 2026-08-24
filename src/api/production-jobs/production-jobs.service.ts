@@ -376,13 +376,35 @@ export class ProductionJobsService {
       throw new AppException(ErrorCode.E088, HttpStatus.BAD_REQUEST);
     }
 
-    await this.db
-      .update(productionJobOperations)
-      .set({
-        completedQuantity: reqDto.completedQuantity,
-        completedDate: reqDto.completedQuantity >= planned ? new Date() : null,
-      })
-      .where(eq(productionJobOperations.id, operationId));
+    const isFinalAssemblyDone =
+      operation.bomItem.itemType === ItemType.FG &&
+      reqDto.completedQuantity >= planned;
+
+    await this.db.transaction(async (tx) => {
+      await tx
+        .update(productionJobOperations)
+        .set({
+          completedQuantity: reqDto.completedQuantity,
+          completedDate:
+            reqDto.completedQuantity >= planned ? new Date() : null,
+        })
+        .where(eq(productionJobOperations.id, operationId));
+
+      // Đến đây `E210` phía trên đã đảm bảo mọi công đoạn khác ngoài Cấp 0 đều xong — hoàn thành
+      // nốt công đoạn Cấp 0 nghĩa là cả Job đã xong sản xuất, chuyển sang chờ QC. Xem
+      // `docs/decisions/production-lifecycle-closing.md`.
+      if (isFinalAssemblyDone) {
+        await tx
+          .update(productionJobs)
+          .set({ status: ProductionJobStatus.WAITING_QC })
+          .where(
+            and(
+              eq(productionJobs.id, jobId),
+              eq(productionJobs.status, ProductionJobStatus.IN_PROGRESS),
+            ),
+          );
+      }
+    });
 
     const updated = await this.db.query.productionJobOperations.findFirst({
       where: eq(productionJobOperations.id, operationId),

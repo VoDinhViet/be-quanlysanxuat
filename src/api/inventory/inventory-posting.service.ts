@@ -21,6 +21,23 @@ export interface InventoryPostingLine {
   orderItemId?: string | null;
 }
 
+/** Ngữ cảnh chứng từ đang ghi bút toán — dùng chung giữa `postDocument`/`applyLine`. */
+export interface InventoryPostingContext {
+  warehouseId: string;
+  referenceType: InventoryReferenceType;
+  referenceId: string;
+  transactionDate: Date;
+  createdBy: string;
+}
+
+export interface PostDocumentInput extends InventoryPostingContext {
+  lines: InventoryPostingLine[];
+}
+
+// `reverseDocument` không cần `warehouseId` — đọc lại từ `inventoryTransactions` gốc theo từng
+// dòng (mỗi dòng có thể ở kho khác nhau), không phải một kho chung cho cả phiếu.
+export type ReverseDocumentInput = Omit<InventoryPostingContext, 'warehouseId'>;
+
 /** Nơi duy nhất ghi `inventory_transactions`/`inventory_balances` — cả phiếu nhập lẫn phiếu xuất
  * đều đi qua đây lúc `post`/`cancel`, tránh chép công thức tồn ra hai chỗ (bug đã có ở thiết kế cũ:
  * `InventoryService.materialStockSubquery` và `StockReceiptsService.ensureSufficientStock` từng
@@ -33,22 +50,15 @@ export class InventoryPostingService {
    * `inventory_balances` bằng `FOR UPDATE` trước khi cộng/trừ, chặn tồn âm bằng `E106`. */
   async postDocument(
     tx: DbTransaction,
-    input: {
-      warehouseId: string;
-      referenceType: InventoryReferenceType;
-      referenceId: string;
-      transactionDate: Date;
-      createdBy: string;
-      lines: InventoryPostingLine[];
-    },
+    document: PostDocumentInput,
   ): Promise<void> {
-    for (const line of input.lines) {
+    for (const line of document.lines) {
       await this.applyLine(tx, {
-        warehouseId: input.warehouseId,
-        referenceType: input.referenceType,
-        referenceId: input.referenceId,
-        transactionDate: input.transactionDate,
-        createdBy: input.createdBy,
+        warehouseId: document.warehouseId,
+        referenceType: document.referenceType,
+        referenceId: document.referenceId,
+        transactionDate: document.transactionDate,
+        createdBy: document.createdBy,
         ...line,
       });
     }
@@ -60,48 +70,37 @@ export class InventoryPostingService {
    * điều chỉnh, không phải một lượt nhập/xuất/sản xuất thật lần hai. */
   async reverseDocument(
     tx: DbTransaction,
-    input: {
-      referenceType: InventoryReferenceType;
-      referenceId: string;
-      transactionDate: Date;
-      createdBy: string;
-    },
+    document: ReverseDocumentInput,
   ): Promise<void> {
-    const original = await tx.query.inventoryTransactions.findMany({
+    const originalTransactions = await tx.query.inventoryTransactions.findMany({
       where: and(
-        eq(inventoryTransactions.referenceType, input.referenceType),
-        eq(inventoryTransactions.referenceId, input.referenceId),
+        eq(inventoryTransactions.referenceType, document.referenceType),
+        eq(inventoryTransactions.referenceId, document.referenceId),
       ),
     });
 
-    for (const line of original) {
-      const signedQuantity = -line.quantity;
+    for (const originalTransaction of originalTransactions) {
+      const signedQuantity = -originalTransaction.quantity;
       await this.applyLine(tx, {
-        warehouseId: line.warehouseId,
-        referenceType: input.referenceType,
-        referenceId: input.referenceId,
-        transactionDate: input.transactionDate,
-        createdBy: input.createdBy,
-        itemId: line.itemId,
+        warehouseId: originalTransaction.warehouseId,
+        referenceType: document.referenceType,
+        referenceId: document.referenceId,
+        transactionDate: document.transactionDate,
+        createdBy: document.createdBy,
+        itemId: originalTransaction.itemId,
         signedQuantity,
         type:
           signedQuantity > 0
             ? InventoryTransactionType.ADJUSTMENT_IN
             : InventoryTransactionType.ADJUSTMENT_OUT,
-        orderItemId: line.orderItemId,
+        orderItemId: originalTransaction.orderItemId,
       });
     }
   }
 
   private async applyLine(
     tx: DbTransaction,
-    line: InventoryPostingLine & {
-      warehouseId: string;
-      referenceType: InventoryReferenceType;
-      referenceId: string;
-      transactionDate: Date;
-      createdBy: string;
-    },
+    line: InventoryPostingLine & InventoryPostingContext,
   ): Promise<void> {
     const balanceWhere = and(
       eq(inventoryBalances.warehouseId, line.warehouseId),

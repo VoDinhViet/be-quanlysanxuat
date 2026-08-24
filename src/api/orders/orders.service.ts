@@ -391,6 +391,9 @@ export class OrdersService {
     if (reqDto.items !== undefined) {
       await this.ensureItemsNotLockedByProduction(orderId);
     }
+    if (reqDto.status === OrderStatus.CANCELLED) {
+      await this.ensureProductionOrderNotApproved(orderId);
+    }
 
     await this.filesService.linkFiles(reqDto.fileIds ?? []);
 
@@ -415,14 +418,18 @@ export class OrdersService {
         })
         .where(eq(orders.id, orderId));
 
-      if (items !== undefined) {
-        // `ensureItemsNotLockedByProduction` ở trên đã đảm bảo LSX (nếu có) đang PENDING, chưa
-        // duyệt — xoá header `production_orders` cascade dọn luôn `production_order_items`, để
-        // FK `order_item_id` (restrict) không chặn lệnh xoá của `replaceOrderItems` bên dưới (xem
-        // comment schema trên `productionOrderItems`).
+      // `ensureItemsNotLockedByProduction`/`ensureProductionOrderNotApproved` ở trên đã đảm bảo LSX
+      // (nếu có) đang PENDING, chưa duyệt — xoá header `production_orders` cascade dọn luôn
+      // `production_order_items`/`production_jobs`. Khi thay `items`, còn để FK `order_item_id`
+      // (restrict) không chặn lệnh xoá của `replaceOrderItems` bên dưới (xem comment schema trên
+      // `productionOrderItems`). Khi huỷ đơn, dọn LSX PENDING để không mồ côi (xem `E236`). `DELETE
+      // WHERE` khớp 0 dòng vốn vô hại nên không cần biết trước có LSX hay không.
+      if (items !== undefined || reqDto.status === OrderStatus.CANCELLED) {
         await tx
           .delete(productionOrders)
           .where(eq(productionOrders.orderId, orderId));
+      }
+      if (items !== undefined) {
         await this.replaceOrderItems(tx, orderId, items);
       }
       if (fileIds !== undefined) {
@@ -645,6 +652,25 @@ export class OrdersService {
 
     if (approved) {
       throw new AppException(ErrorCode.E080, HttpStatus.CONFLICT);
+    }
+  }
+
+  /** Chặn huỷ đơn khi LSX của nó đã `APPROVED` — duyệt LSX là chốt kế hoạch một chiều (cùng lý do
+   * `E080` ở trên), cascade-xoá lúc này có thể đụng ràng buộc `restrict` của OQC. LSX còn `PENDING`
+   * không chặn — `updateOrder` tự xoá nó cùng transaction, xem nhánh xoá LSX của hàm đó. */
+  private async ensureProductionOrderNotApproved(
+    orderId: string,
+  ): Promise<void> {
+    const approved = await this.db.query.productionOrders.findFirst({
+      columns: { id: true },
+      where: and(
+        eq(productionOrders.orderId, orderId),
+        eq(productionOrders.status, ProductionOrderStatus.APPROVED),
+      ),
+    });
+
+    if (approved) {
+      throw new AppException(ErrorCode.E236, HttpStatus.CONFLICT);
     }
   }
 

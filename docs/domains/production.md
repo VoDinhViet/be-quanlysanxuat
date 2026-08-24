@@ -128,19 +128,23 @@ riêng nữa. Bản vẽ kỹ thuật (nếu có) tra ở BOM của sản phẩm
 
 ```
 PENDING (kế hoạch, sửa số lượng tự do) ──approve──> APPROVED (chốt, sinh mã LSX + sinh Job)
+   ──(mọi Job của LSX COMPLETED)──> COMPLETED (tự động, không route tay)
 ```
 
-**Job** — hai trạng thái, một chiều, **không có điểm kết thúc**:
+**Job** — một chiều, không có đường lùi, tự động hết (không route tay nào ngoài `start`):
 
 ```
-PENDING ──start──> IN_PROGRESS
+PENDING ──start──> IN_PROGRESS ──(mọi công đoạn xong)──> WAITING_QC
+   ──(OQC clear, getJobQcCoverage.open = 0)──> WAITING_DELIVERY
+   ──(nhập kho TP đủ job.quantity)──> COMPLETED
 ```
 
-`report`/`hold`/`resume` (báo sản lượng ở mức Job, tạm dừng/làm tiếp) và trạng thái `WAITING` đã bỏ —
-xưởng chưa cần tạm dừng qua API, tạm hoãn để mở rộng sau này. Một Job đã `start` đứng nguyên ở
-`IN_PROGRESS` vĩnh viễn — không có route nào đưa nó đi tiếp hay biết Job "đã xong" **ở mức tổng**
-(`status` chỉ 2 giá trị). Tiến độ **ở mức từng công đoạn** thì đã trackable — xem
-`completedQuantity`/`completedDate` trên `production_job_operations`, mục Core concepts phía trên.
+`report`/`hold`/`resume` (báo sản lượng ở mức Job, tạm dừng/làm tiếp) vẫn chưa có — xưởng chưa cần
+tạm dừng qua API. 3 trạng thái kết thúc (`WAITING_QC`/`WAITING_DELIVERY`/`COMPLETED`, khôi phục
+2026-08-24 sau khi bị rút ở `0068`/`0071`) đều do hệ thống tự chuyển, không có route tay nào set
+thẳng — xem `docs/decisions/production-lifecycle-closing.md`. Tiến độ **ở mức từng công đoạn** vẫn
+trackable riêng — xem `completedQuantity`/`completedDate` trên `production_job_operations`, mục Core
+concepts phía trên.
 
 ## Business rules
 
@@ -253,9 +257,10 @@ Không phải invariant dù dễ tưởng:
 
 ## Common mistakes
 
-1. **Đi tìm cách biết Job "đã xong" qua API — ở mức tổng.** Không tồn tại — `status` chỉ có 2 giá
-   trị và không giá trị nào là điểm cuối, hệ thống không ghi nhận sản lượng đạt/phế ở mức Job. Tiến
-   độ **từng công đoạn** thì có (`completedQuantity`/`completedDate`) — đừng nhầm hai mức này.
+1. **Đi tìm cách biết Job "đã xong" qua API — ở mức tổng.** Từ 2026-08-24 có: `status = COMPLETED`
+   (tự động, xem Lifecycle) — nhưng hệ thống vẫn **không** ghi nhận sản lượng đạt/phế ở mức Job, chỉ
+   biết "xong hay chưa". Tiến độ **từng công đoạn** vẫn đọc riêng (`completedQuantity`/
+   `completedDate`) — đừng nhầm hai mức này.
 2. **Tưởng duyệt LSX sẽ trừ kho.** Không lập phiếu xuất kho nào — tồn chỉ đổi khi có người lập phiếu tay.
 3. **Tưởng "Đề xuất SX" là số liệu sống.** Là snapshot lúc duyệt; mở lại màn chi tiết không tính lại.
 4. **Quên `excludeOrderId` khi tính Khả dụng cho một PO** → trừ nhu cầu của chính nó hai lần.
@@ -281,8 +286,9 @@ Không phải invariant dù dễ tưởng:
 13. **Tưởng OQC (`docs/domains/quality.md`) ghi nhận sản lượng đạt/phế cho Job hay công đoạn.**
     Không — OQC chỉ đọc `operation.productionJob.status`/`operation.completedQuantity` để validate
     lúc tạo, kết quả OQC (kể cả `disposition = SCRAP`) không ghi ngược `completedQuantity`/
-    `completedDate` của bất kỳ công đoạn nào. Cũng không còn route Production nào đọc ngược dữ liệu
-    OQC để hiển thị.
+    `completedDate` của bất kỳ công đoạn nào. Ngoại lệ duy nhất (2026-08-24): `OqcService.confirmOqc`
+    có ghi `productionJobs.status` (`WAITING_QC → WAITING_DELIVERY` khi QC xong hết) — khác hẳn
+    `completedQuantity`/`completedDate`, xem `docs/decisions/production-lifecycle-closing.md`.
 14. **Tưởng OQC vẫn gắn theo cả Job như trước.** Đã đổi — từ khi `docs/decisions/
     oqc-per-operation.md`, một dòng OQC gắn theo **một công đoạn** (`production_job_operations`),
     không phải cả Job; `itemId` của dòng OQC là part đang QC ở đúng công đoạn đó, không phải thành

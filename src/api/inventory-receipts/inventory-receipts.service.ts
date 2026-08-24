@@ -36,7 +36,11 @@ import {
   InventoryTransactionType,
   items,
   productionJobs,
+  ProductionJobStatus,
+  productionOrderLogs,
+  ProductionOrderLogAction,
   productionOrders,
+  ProductionOrderStatus,
   purchaseOrderItems,
   purchaseOrders,
   PurchaseOrderStatus,
@@ -425,6 +429,91 @@ export class InventoryReceiptsService {
           inventoryReceipt.purchaseOrderId,
         );
       }
+
+      if (
+        inventoryReceipt.receiptType === InventoryReceiptType.PRODUCTION &&
+        inventoryReceipt.productionJobId
+      ) {
+        await this.closeJobIfFullyReceived(
+          tx,
+          inventoryReceipt.productionJobId,
+          userId,
+        );
+      }
+    });
+  }
+
+  /** Job đứng ở `WAITING_DELIVERY` cho tới khi nhập kho đủ SL kế hoạch — có thể qua nhiều phiếu nhỏ
+   * lẻ, `confirm` đã chặn (`E197`) không cho tổng vượt `job.quantity` nên chỉ cần so `>=`. Đóng Job
+   * xong mới xét đóng LSX (mọi Job anh em cũng phải `COMPLETED`) — 2 tầng cascade độc lập, một Job
+   * chưa nhập đủ không chặn các Job khác của cùng LSX. Xem
+   * `docs/decisions/production-lifecycle-closing.md`. */
+  private async closeJobIfFullyReceived(
+    tx: DbTransaction,
+    productionJobId: string,
+    userId: string,
+  ): Promise<void> {
+    const [job] = await tx
+      .select({
+        quantity: productionJobs.quantity,
+        status: productionJobs.status,
+        productionOrderId: productionJobs.productionOrderId,
+      })
+      .from(productionJobs)
+      .where(eq(productionJobs.id, productionJobId));
+
+    if (!job || job.status !== ProductionJobStatus.WAITING_DELIVERY) {
+      return;
+    }
+
+    const receivedTotal = await this.getConfirmedProductionQuantityByJobId(
+      tx,
+      productionJobId,
+    );
+
+    if (receivedTotal < job.quantity) {
+      return;
+    }
+
+    await tx
+      .update(productionJobs)
+      .set({
+        status: ProductionJobStatus.COMPLETED,
+        completedBy: userId,
+        completedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(productionJobs.id, productionJobId),
+          eq(productionJobs.status, ProductionJobStatus.WAITING_DELIVERY),
+        ),
+      );
+
+    // Job vừa đóng ở trên đã COMMIT trong cùng transaction — dòng của chính nó đọc lại đây đã thấy
+    // `COMPLETED`, không cần loại trừ riêng.
+    const siblingJobs = await tx
+      .select({ status: productionJobs.status })
+      .from(productionJobs)
+      .where(eq(productionJobs.productionOrderId, job.productionOrderId));
+
+    if (
+      siblingJobs.some(
+        (siblingJob) => siblingJob.status !== ProductionJobStatus.COMPLETED,
+      )
+    ) {
+      return;
+    }
+
+    await tx
+      .update(productionOrders)
+      .set({ status: ProductionOrderStatus.COMPLETED })
+      .where(eq(productionOrders.id, job.productionOrderId));
+
+    await tx.insert(productionOrderLogs).values({
+      productionOrderId: job.productionOrderId,
+      action: ProductionOrderLogAction.COMPLETED,
+      content: 'Tất cả Job đã hoàn thành — tự động đóng LSX.',
+      performedBy: userId,
     });
   }
 
@@ -787,12 +876,15 @@ export class InventoryReceiptsService {
     }
   }
 
-  /** Σ SL các dòng mọi phiếu nhập `PRODUCTION` khác đã `confirm` (`PENDING_IQC`/`PENDING_RECEIPT`/
-   * `POSTED`) cùng Job, loại trừ chính phiếu đang xét — dùng bởi `ensureProductionReceiptOqcCleared`. */
+  /** Σ SL các dòng mọi phiếu nhập `PRODUCTION` đã `confirm` (`PENDING_IQC`/`PENDING_RECEIPT`/
+   * `POSTED`) cùng Job. `excludeReceiptId` dùng ở `ensureProductionReceiptOqcCleared` (gate lúc
+   * confirm, loại chính phiếu đang xét trước khi cộng thêm SL của nó); bỏ trống ở
+   * `postInventoryReceipt` — phiếu đang post đã ở `PENDING_RECEIPT`/`POSTED` (đều nằm trong
+   * `CONFIRMED_STATUSES`) nên tổng không đổi qua bước post, không cần loại trừ. */
   private async getConfirmedProductionQuantityByJobId(
     tx: DbTransaction,
     productionJobId: string,
-    excludeReceiptId: string,
+    excludeReceiptId?: string,
   ): Promise<number> {
     const [row] = await tx
       .select({
@@ -813,7 +905,9 @@ export class InventoryReceiptsService {
             inventoryReceipts.status,
             InventoryReceiptsService.CONFIRMED_STATUSES,
           ),
-          ne(inventoryReceipts.id, excludeReceiptId),
+          excludeReceiptId
+            ? ne(inventoryReceipts.id, excludeReceiptId)
+            : undefined,
         ),
       );
 

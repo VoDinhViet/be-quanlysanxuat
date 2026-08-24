@@ -39,14 +39,25 @@ AWAITING_PRODUCTION                      REJECTED (kèm rejectionReason)
    │   ← thuộc domain Production              │ PATCH field khác, KHÔNG kèm status (sửa lại từ đầu)
    ▼                                        ▼
 IN_PROGRESS → COMPLETED / CANCELLED       DRAFT
-   (qua PATCH)
+   (qua PATCH, hoặc tự động khi           (qua PATCH)
+    giao đủ — xem dưới)
 ```
+
+**`COMPLETED` từ 2026-08-24 còn đạt được tự động**, không chỉ qua `PATCH` tay:
+`OutboundOrdersService.postOutboundOrder` (`docs/domains/inventory.md`, mục "Giao hàng") sau khi
+trừ tồn kiểm lại mọi dòng `order_items` `NORMAL` của đơn — đã `issuedQty >= quantity` hết thì tự
+đóng `COMPLETED`. Hai đường (tay/tự động) cùng tồn tại, không loại trừ nhau. Xem
+`docs/decisions/production-lifecycle-closing.md`.
 
 **Chốt cứng duy nhất của cả vòng đời: `AWAITING_PRODUCTION`/`REJECTED` chỉ đạt được qua `POST /orders/:orderId/approve`/`reject`.** Request tạo/sửa không được set thẳng hai trạng thái đó (`E075`). Nếu không chặn, bất kỳ ai có `orders:update` — không riêng Giám đốc — đều bỏ qua được bước duyệt/từ chối.
 
 **Sửa một đơn đang `REJECTED` mà không gửi `status` sẽ tự động đưa nó về `DRAFT`** — coi như làm lại từ đầu, giữ nguyên `rejectedBy`/`rejectedAt`/`rejectionReason` làm lịch sử (`OrdersService.updateOrder`). Gửi `status` rõ ràng (vd `CANCELLED`) thì tôn trọng giá trị đó, không tự chuyển.
 
-Mọi chuyển trạng thái **khác** đều lỏng: không có state machine đầy đủ, huỷ được từ bất kỳ đâu chưa kết thúc.
+Mọi chuyển trạng thái **khác** đều lỏng: không có state machine đầy đủ, huỷ được từ bất kỳ đâu chưa
+kết thúc — **trừ một ngoại lệ**: `status = CANCELLED` bị chặn (`E236`) nếu LSX của đơn đã `APPROVED`
+(chốt kế hoạch sản xuất một chiều, cùng lý do `E080`). LSX còn `PENDING` thì huỷ vẫn được, và
+`updateOrder` tự xoá luôn header đó (cascade dọn `production_order_items`/`production_jobs`) để
+không để lại LSX mồ côi.
 
 **Rời `AWAITING_PRODUCTION` cũng chỉ có đúng một đường, và nó không nằm trong domain này** — duyệt LSX bên Production.
 
@@ -56,6 +67,10 @@ Mọi chuyển trạng thái **khác** đều lỏng: không có state machine �
 - Duyệt/từ chối chỉ hợp lệ khi đơn đang `PENDING_CONFIRMATION` (`E074`). Từ chối **bắt buộc có lý do**, đưa đơn sang `REJECTED` (không phải `DRAFT`).
 - **Duyệt đơn đồng thời sinh sẵn hồ sơ LSX** (header + các dòng quyết định sản xuất), trong cùng transaction với việc đổi trạng thái.
 - Sửa được ở mọi trạng thái trừ `COMPLETED`/`CANCELLED` (`E065`) và `PENDING_CONFIRMATION` (`E090`, đang chờ duyệt — tránh đổi dữ liệu trong lúc Giám đốc đang xem để duyệt) — với một ngoại lệ: đổi `items` bị chặn (`E080`) nếu LSX của đơn **đã duyệt**. **Không có route xoá đơn** — huỷ đơn dùng `PATCH status = CANCELLED`, xem `docs/decisions/orders-no-delete.md`.
+- **Huỷ đơn (`status = CANCELLED`) cũng chặn (`E236`) nếu LSX đã `APPROVED`** — cùng lý do và cùng
+  guard hình dạng với `E080` ở trên (`OrdersService.ensureProductionOrderNotApproved`), tránh để LSX
+  "đang chạy" mồ côi hoặc cascade-xoá đụng ràng buộc `restrict` của OQC. LSX còn `PENDING` không
+  chặn — huỷ đơn tự xoá header đó trong cùng transaction.
 - `PATCH` một đơn `REJECTED` mà **không gửi `status`** tự động đưa nó về `DRAFT` — coi như sửa lại từ
   đầu, giữ nguyên `rejectedBy`/`rejectedAt`/`rejectionReason` làm lịch sử. Gửi `status` rõ ràng (kể
   cả `PENDING_CONFIRMATION` để gửi duyệt lại ngay, không cần sửa gì) thì tôn trọng giá trị đó, không
@@ -86,7 +101,9 @@ Không phải invariant dù dễ tưởng:
 ## Cross-domain dependencies
 
 - **→ Production**: duyệt đơn seed `production_orders` + `production_order_items`. Đây là ranh giới quan trọng nhất của hệ thống.
-- **← Production**: duyệt LSX đẩy đơn từ `AWAITING_PRODUCTION` sang `IN_PROGRESS`, và khoá việc sửa `items`.
+- **← Production**: duyệt LSX đẩy đơn từ `AWAITING_PRODUCTION` sang `IN_PROGRESS`, và khoá việc sửa
+  `items` lẫn việc huỷ đơn (`E080`/`E236`). Ngược lại, huỷ một đơn mà LSX còn `PENDING` sẽ xoá luôn
+  header đó — cùng cơ chế xoá LSX `updateOrder` đã dùng khi thay `items`.
 - **← Inventory**: đơn đã duyệt (`AWAITING_PRODUCTION`/`IN_PROGRESS`) là thứ tạo ra `reserved` (hàng đã giữ chỗ) trong công thức tồn kho. Đơn chưa duyệt **không** giữ chỗ.
 - **→ Inventory**: `GET /orders/:orderId/items` đọc thẳng `inventory_transactions` (qua
   `issuedQuantityByOrderItemIdSubquery`, `src/api/orders/orders.query.ts`) để tính `issuedQty`/
@@ -103,12 +120,19 @@ Không phải invariant dù dễ tưởng:
 2. **Gửi `total`/`subtotal` từ client rồi thắc mắc sao không có tác dụng.** Bị `whitelist: true` loại bỏ lặng lẽ, không báo lỗi.
 3. **Gửi thiếu dòng khi `PATCH items`.** Là replace-all, không phải partial — gửi thiếu là xoá.
 4. **Tưởng `GET /orders/:id` trả kèm `items`.** Không — detail chỉ có header + `files`; dòng sản phẩm đọc riêng qua `GET /orders/:id/items` (khuôn giống OS-OUT/OS-IN/DO). `POST`/`PATCH` trả 204 rỗng, cũng không có body để đọc.
-5. **Dựa vào `GET /orders/stats` như số liệu chính xác.** Hai field là xấp xỉ: `completedValue` ("Đã giao") dùng `status = COMPLETED` làm proxy vì chưa có bảng giao hàng thật; `expiredTrendCount` so trạng thái *hiện tại* với mốc 7 ngày trước vì không có bảng lịch sử trạng thái.
+5. **Dựa vào `GET /orders/stats` như số liệu chính xác.** `expiredTrendCount` vẫn là xấp xỉ (so
+   trạng thái *hiện tại* với mốc 7 ngày trước vì không có bảng lịch sử trạng thái). `completedValue`
+   ("Đã giao") **hết còn là proxy** từ 2026-08-24 — `status = COMPLETED` giờ phản ánh đúng "đã giao
+   đủ thật" (`docs/decisions/production-lifecycle-closing.md`), không phải ước lượng nữa.
 6. **Tìm route xoá đơn hàng.** Không có, đã bỏ hẳn — huỷ đơn dùng `PATCH status = CANCELLED`. Xem `docs/decisions/orders-no-delete.md`.
 7. **Tưởng sửa được đơn đang chờ duyệt (`PENDING_CONFIRMATION`).** Không — `E090`, khoá cho tới khi Giám đốc duyệt/từ chối xong.
 8. **Tưởng `REJECTED` có route riêng để "mở lại"/"khôi phục".** Không có — `PATCH` bất kỳ field nào
    mà không kèm `status` tự động đưa nó về `DRAFT`, đó chính là cách "mở lại" (khuôn
    `docs/domains/purchase-requests.md`).
+9. **Tưởng huỷ đơn (`status = CANCELLED`) luôn tự do vì "mọi chuyển trạng thái khác đều lỏng".**
+   Không còn đúng từ khi có `E236` — nếu LSX của đơn đã `APPROVED`, `PATCH status = CANCELLED` bị
+   chặn 409, y hệt cách `E080` chặn đổi `items`. Trước đó lỗ hổng này để lọt: đơn huỷ được (204) mà
+   LSX bị bỏ lại mồ côi, không ai xử lý.
 
 ## Related docs
 

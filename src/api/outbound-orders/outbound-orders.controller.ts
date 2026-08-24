@@ -102,4 +102,21 @@ export class OutboundOrdersController {
   ): Promise<void> {
     return this.outboundOrdersService.confirmOutboundOrder(outboundOrderId);
   }
+
+  @Post(':outboundOrderId/deliver')
+  @Permissions('outbound:update')
+  @ApiAuth({
+    summary:
+      'Xác nhận đã giao (PENDING_DELIVERY → DELIVERED) — tự sinh + post phiếu xuất kho SALES, đóng đơn hàng nếu đã giao đủ',
+    statusCode: HttpStatus.NO_CONTENT,
+  })
+  postOutboundOrder(
+    @UUIDParam('outboundOrderId') outboundOrderId: string,
+    @CurrentUser() payload: JwtPayloadType,
+  ): Promise<void> {
+    return this.outboundOrdersService.postOutboundOrder(
+      outboundOrderId,
+      payload.userId,
+    );
+  }
 }

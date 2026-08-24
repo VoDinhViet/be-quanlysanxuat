@@ -22,19 +22,24 @@ import { users } from '../identity-access/users';
  * Vòng đời một Job sau khi được sinh ra (thêm 2026-07-30, xem `docs/domains/production.md`).
  *
  * Rules:
- * - Rút từ 5 xuống 3 giá trị 2026-07-31 (bỏ `COMPLETED`/`CANCELLED`, đổi tên `PAUSED` → `WAITING`),
- *   rồi bỏ hẳn `WAITING` — xưởng hiện chưa cần trạng thái chờ.
- * - Chỉ còn 2 giá trị, một chiều `PENDING → IN_PROGRESS`, không có đường lùi và không có điểm kết
- *   thúc nào khác `IN_PROGRESS` — một Job đã bắt đầu đứng nguyên ở đó vĩnh viễn qua API.
+ * - Rút từ 5 xuống 2 giá trị 2026-07-31 (`0068`/`0071`), rồi khôi phục điểm kết thúc 2026-08-24
+ *   (`docs/decisions/production-lifecycle-closing.md`) — `WAITING_QC`/`WAITING_DELIVERY`/
+ *   `COMPLETED` tự động theo tiến độ QC + nhập kho thành phẩm, không có route tay nào set thẳng.
  */
 export enum ProductionJobStatus {
   PENDING = 'PENDING',
   IN_PROGRESS = 'IN_PROGRESS',
+  WAITING_QC = 'WAITING_QC',
+  WAITING_DELIVERY = 'WAITING_DELIVERY',
+  COMPLETED = 'COMPLETED',
 }
 
 export const productionJobStatusEnum = pgEnum('production_job_status', [
   ProductionJobStatus.PENDING,
   ProductionJobStatus.IN_PROGRESS,
+  ProductionJobStatus.WAITING_QC,
+  ProductionJobStatus.WAITING_DELIVERY,
+  ProductionJobStatus.COMPLETED,
 ]);
 
 /**
@@ -50,13 +55,15 @@ export const productionJobStatusEnum = pgEnum('production_job_status', [
  * - `status` thêm 2026-07-30 — vòng đời ở mức Job; tiến độ **theo từng công đoạn** đọc riêng qua
  *   `productionJobOperations.completedQuantity`/`completedDate` (`docs/domains/production.md`),
  *   `createJobs` đã snapshot công đoạn (`productionJobOperations`) + vật tư (`productionJobIssues`).
- * - `producedQty`/`rejectedQty` (báo sản lượng cộng dồn) và `completedBy`/`completedAt`/
- *   `cancelledBy`/`cancelledAt`/`cancelReason` đều đã xoá — Job hiện không còn cách nào qua API để
- *   ghi nhận sản lượng đạt/phế, chỉ còn `start` chuyển `PENDING → IN_PROGRESS`. Tạm hoãn, xem
- *   `docs/domains/production.md` (mở rộng lại khi xưởng cần theo dõi sản lượng qua hệ thống).
+ * - `producedQty`/`rejectedQty` (báo sản lượng cộng dồn) và `cancelledBy`/`cancelledAt`/
+ *   `cancelReason` vẫn chưa có — Job hiện không còn cách nào qua API để ghi nhận sản lượng đạt/phế
+ *   hay huỷ. Tạm hoãn, xem `docs/domains/production.md` (mở rộng lại khi xưởng cần).
+ * - `completedBy`/`completedAt` khôi phục 2026-08-24 (từng bị xoá cùng đợt rút enum 2026-07-31) —
+ *   ghi khi `status → COMPLETED` (`InventoryReceiptsService.postInventoryReceipt`, không có route
+ *   tay), xem `docs/decisions/production-lifecycle-closing.md`.
  * - Không còn lưu lịch sử thao tác Job từ 2026-07-31 (`production_job_logs` đã xoá hẳn, khác LSX —
- *   `production_order_logs` vẫn còn) — chỉ `startedBy`/`startedAt` (cột thật) còn giữ được cho
- *   `start`.
+ *   `production_order_logs` vẫn còn) — chỉ `startedBy`/`startedAt`/`completedBy`/`completedAt`
+ *   (cột thật) còn giữ được.
  */
 export const productionJobs = pgTable(
   'production_jobs',
@@ -81,6 +88,10 @@ export const productionJobs = pgTable(
       onDelete: 'set null',
     }),
     startedAt: timestamp('started_at'),
+    completedBy: uuid('completed_by').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    completedAt: timestamp('completed_at'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at')
       .defaultNow()
@@ -95,11 +106,15 @@ export const productionJobs = pgTable(
     index('idx_production_jobs_item_id').on(table.itemId),
     index('idx_production_jobs_status').on(table.status),
     index('idx_production_jobs_started_by').on(table.startedBy),
+    index('idx_production_jobs_completed_by').on(table.completedBy),
     check('chk_production_jobs_quantity', sql`quantity > 0`),
     check(
       'chk_production_jobs_status_fields',
-      sql`(status = 'PENDING' AND started_at IS NULL)
-          OR (status = 'IN_PROGRESS' AND started_at IS NOT NULL)`,
+      sql`(status = 'PENDING' AND started_at IS NULL AND completed_at IS NULL)
+          OR (status = 'IN_PROGRESS' AND started_at IS NOT NULL AND completed_at IS NULL)
+          OR (status = 'WAITING_QC' AND started_at IS NOT NULL AND completed_at IS NULL)
+          OR (status = 'WAITING_DELIVERY' AND started_at IS NOT NULL AND completed_at IS NULL)
+          OR (status = 'COMPLETED' AND started_at IS NOT NULL AND completed_at IS NOT NULL)`,
     ),
   ],
 );
@@ -117,6 +132,10 @@ export const productionJobsRelations = relations(
     }),
     starterBy: one(users, {
       fields: [productionJobs.startedBy],
+      references: [users.id],
+    }),
+    completerBy: one(users, {
+      fields: [productionJobs.completedBy],
       references: [users.id],
     }),
     bomItems: many(productionJobBomItems),

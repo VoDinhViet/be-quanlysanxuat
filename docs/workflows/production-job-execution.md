@@ -1,8 +1,9 @@
 # Thực thi Job
 
-Chặng cuối của luồng sản xuất: xưởng bắt đầu làm, đọc bảng vật tư gộp từ cây BOM snapshot lúc duyệt,
-và báo tiến độ hoàn thành theo từng công đoạn. Vòng đời hai trạng thái và lý do không có điểm kết
-thúc ở `docs/domains/production.md`.
+Chặng giữa của luồng sản xuất: xưởng bắt đầu làm, đọc bảng vật tư gộp từ cây BOM snapshot lúc duyệt,
+và báo tiến độ hoàn thành theo từng công đoạn. Job rời `IN_PROGRESS` ngay tại route `PATCH
+operations` của luồng này (khi công đoạn Cấp 0 xong), rồi tiếp tục qua QC/nhập kho ở
+`docs/workflows/final-qc.md` — vòng đời đầy đủ ở `docs/domains/production.md`.
 
 `report`/`hold`/`resume` **ở mức Job** (báo sản lượng tổng, tạm dừng/làm tiếp) và route sửa vật tư
 của Job vẫn chưa có — `production_job_issues` chỉ đọc qua `/bom`, không có route ghi nào khác (xem
@@ -40,8 +41,11 @@ của Job vẫn chưa có — `production_job_issues` chỉ đọc qua `/bom`, k
   thái Job.
 
 ```
-PENDING ──start──> IN_PROGRESS
+PENDING ──start──> IN_PROGRESS ──(PATCH operations, công đoạn Cấp 0 xong)──> WAITING_QC
 ```
+
+(Tiếp theo `WAITING_QC → WAITING_DELIVERY → COMPLETED` nằm ngoài phạm vi luồng này, xem
+`docs/workflows/final-qc.md`.)
 
 ## Flow
 
@@ -64,10 +68,12 @@ xuống từng công đoạn của nó → lọc bỏ node không có công đo�
 
 `PATCH operations`: đọc Job (kiểm trạng thái) → tìm `operationId` đúng phạm vi `jobId` (`E091` nếu
 không có), kèm luôn `plannedQuantity` của node BOM cha (`productionJobBomItemId`) trong cùng lượt
-query (`with: { bomItem }`) → so `completedQuantity` gửi lên với số đó (`E088` nếu vượt)
-→ một lệnh `UPDATE` ghi đè `completedQuantity`, và tự set `completedDate = now()` nếu
-`completedQuantity >= plannedQuantity`, ngược lại tự đưa `completedDate` về `null` → đọc lại đúng
-công đoạn đó trả về. Không có input nhận `completedDate` từ client.
+query (`with: { bomItem }`) → so `completedQuantity` gửi lên với số đó (`E088` nếu vượt) → trong 1
+transaction: `UPDATE` ghi đè `completedQuantity`, tự set `completedDate = now()` nếu
+`completedQuantity >= plannedQuantity` (ngược lại về `null`) — **nếu** đây là công đoạn Cấp 0
+(`itemType = FG`) **và** `completedDate` vừa được set, ghi thêm `productionJobs.status: IN_PROGRESS
+→ WAITING_QC` (2026-08-24, `docs/decisions/production-lifecycle-closing.md`) → đọc lại đúng công
+đoạn đó trả về. Không có input nhận `completedDate` từ client.
 
 `POST notes`: kiểm Job tồn tại → một lệnh `INSERT` (`content`, `createdBy`) → `204`, không trả nội
 dung. `GET notes` đọc qua relational query API (`with: { creator: true }` — `createdBy` trỏ thẳng
@@ -83,11 +89,14 @@ thái Job, và duy nhất ghi thêm dữ liệu vòng đời (`startedBy`/`start
 `purchase_requests`/`purchase_request_items`: `start` **có thể** thêm một phiếu mới (`status =
 DRAFT`) nếu Job thiếu vật tư — xem Side effects. Không phải đổi trạng thái, là tạo mới.
 
-`production_job_operations.completedQuantity`/`completedDate` (`PATCH operations`) — **không** phải
-đổi trạng thái Job, chỉ là dữ liệu tiến độ trên một dòng công đoạn; `production_jobs.status` đứng
-yên.
+`production_job_operations.completedQuantity`/`completedDate` (`PATCH operations`) — chủ yếu là dữ
+liệu tiến độ trên một dòng công đoạn, `production_jobs.status` đứng yên **trừ** đúng một trường hợp:
+công đoạn Cấp 0 (`itemType = FG`) đạt `completedDate` thì cùng lệnh này đẩy luôn
+`production_jobs.status: IN_PROGRESS → WAITING_QC` (2026-08-24) — `E210` đã đảm bảo mọi công đoạn
+khác xong trước đó, xem `docs/decisions/production-lifecycle-closing.md`.
 
-Không có route nào khác đổi trạng thái Job — `IN_PROGRESS` là điểm dừng vĩnh viễn qua API.
+`PATCH operations` là route duy nhất trong luồng NÀY đổi trạng thái Job xa hơn `IN_PROGRESS`; các
+bước tiếp theo (`WAITING_QC → WAITING_DELIVERY → COMPLETED`) thuộc `docs/workflows/final-qc.md`.
 
 ## Side effects
 
@@ -103,13 +112,17 @@ chính bảng chúng ghi.
 
 - Không ghi log — Job cố ý không có action log tự động (`docs/domains/production.md`). `POST notes`
   chỉ thêm một dòng `production_job_notes`; `PATCH operations` chỉ sửa đúng dòng
-  `production_job_operations` đó, không suy ra hay ghi thêm gì khác.
-- Không đẩy trạng thái LSX, đơn hàng (`PATCH operations` không chạm `production_jobs`).
+  `production_job_operations` đó, cộng thêm đúng một side effect có điều kiện: đẩy
+  `production_jobs.status` khi công đoạn Cấp 0 xong (xem State changes).
+- Không đẩy trạng thái LSX/đơn hàng trực tiếp từ luồng này — LSX chỉ đóng sau, ở bước nhập kho thành
+  phẩm (`docs/workflows/final-qc.md`).
 
 ## Transaction boundary
 
-`PATCH operations` vẫn là một `UPDATE` đơn, `POST notes` vẫn một `INSERT` đơn — không transaction,
-Postgres đã đảm bảo nguyên tử. Các route đọc chỉ `SELECT`.
+`POST notes` vẫn một `INSERT` đơn — không transaction, Postgres đã đảm bảo nguyên tử. Các route đọc
+chỉ `SELECT`. `PATCH operations` từ 2026-08-24 **có transaction** (`db.transaction`) — `UPDATE
+production_job_operations` + `UPDATE production_jobs` (điều kiện, chỉ khi công đoạn Cấp 0 vừa xong)
+phải cùng đậu hoặc cùng rớt.
 
 `start` giờ **có transaction**: đọc tồn kho (`getMaterialStockLevels`) chạy **trước, ngoài**
 transaction — chỉ là input để tính phần thiếu, không phải điều kiện chặn nên không cần khoá gì.
@@ -129,13 +142,13 @@ cả.
 | `completedQuantity` vượt `plannedQuantity` của node BOM cha | `E088` | 400 |
 | `start`: row `users` của người gọi không còn (token còn hạn nhưng user đã bị xoá mềm) | `E012` | 404 |
 
-Không có mã lỗi nào cho "Job đã xong" **ở mức tổng** — khái niệm đó không tồn tại; tiến độ chỉ có ở
-mức từng công đoạn.
+Không có mã lỗi riêng cho việc Job chuyển `WAITING_QC` — đây là side effect tự động, không có điều
+kiện nào có thể fail độc lập với chính `PATCH operations` (đã qua hết `E088`/`E091`/`E210` trước đó).
 
 ## Business rules
 
-- Vì sao Job chỉ còn 2 trạng thái và không có cách nào biết "đã xong" ở mức tổng qua API →
-  `docs/domains/production.md`.
+- Vòng đời đầy đủ của Job (5 trạng thái từ 2026-08-24) và vì sao 3 trạng thái kết thúc tự động,
+  không route tay → `docs/domains/production.md`, `docs/decisions/production-lifecycle-closing.md`.
 - Cách tính `plannedQuantity` của `operations` (nhân luỹ kế theo cây, không phải SUM thô) → cùng
   file, mục Core concepts (bảng so sánh cây BOM/công đoạn/vật tư).
 - Vì sao `unitQty`/`requiredQty` (vật tư, `GET .../bom`) không phải BOM explosion →
@@ -149,7 +162,8 @@ snapshot của chính Job. Ngoại lệ là `start`: đọc `inventory` (`Invent
 chỉ đọc `inventory_balances`, không ghi) và **ghi** `purchase-requests`
 (`PurchaseRequestsService.createShortageRequest`) — điểm ghi-ngang-domain duy nhất trong luồng này.
 
-Bước trước: `docs/workflows/production-order-approval.md`.
+Bước trước: `docs/workflows/production-order-approval.md`. Bước sau (Job rời `WAITING_QC`):
+`docs/workflows/final-qc.md`.
 
 Code: `ProductionJobsService.startJob`/`collectMaterialShortages`/`resolveRequesterDepartment`/
 `getProductionJobBom`/`getProductionJobOperations`/`updateProductionJobOperation`/

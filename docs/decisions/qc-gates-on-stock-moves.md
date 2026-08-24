@@ -66,9 +66,10 @@ tracking, có thể chặn nhầm tồn tốt cùng item/kho nhưng khác lô v�
 
 ## Phạm vi cố ý hẹp của gate D2
 
-`POST /outbound-orders/:id/confirm` chỉ dừng ở `PENDING_DELIVERY` — chưa làm `DELIVERED`, chưa trừ
-tồn, chưa sinh `inventory_issues` (SALES). Đó là phase giao hàng 2, chưa thiết kế
-(`docs/domains/inventory.md`, mục "Giao hàng", Common mistake #22).
+`POST /outbound-orders/:id/confirm` chỉ dừng ở `PENDING_DELIVERY` — không trừ tồn, không sinh
+`inventory_issues`. Việc đó (từng là "phase giao hàng 2, chưa thiết kế") nay là route riêng `POST
+/outbound-orders/:id/deliver` (`OutboundOrdersService.postOutboundOrder`, 2026-08-24) — xem
+`docs/decisions/production-lifecycle-closing.md`, `docs/domains/inventory.md` mục "Giao hàng".
 
 ## Giữ nguyên, không đổi
 
@@ -79,5 +80,6 @@ tồn, chưa sinh `inventory_issues` (SALES). Đó là phase giao hàng 2, chưa
 ## Related docs
 
 `docs/decisions/oqc-per-operation.md` (gốc gate theo công đoạn). `docs/decisions/qc-single-table.md`
-(`getJobQcCoverage` dùng chung ở gate D2, sau khi IQC/OQC gộp bảng). `docs/domains/quality.md`,
+(`getJobQcCoverage` dùng chung ở gate D2, sau khi IQC/OQC gộp bảng). `docs/decisions/
+production-lifecycle-closing.md` (route `deliver` kế tiếp sau D2). `docs/domains/quality.md`,
 `docs/domains/inventory.md`, `docs/workflows/stock-movement.md`.
