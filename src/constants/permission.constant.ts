@@ -77,6 +77,7 @@ export const PERMISSION_CODES = [
   'outbound:read',
   'outbound:create',
   'outbound:update',
+  'reports:read',
 ] as const;
 
 export type PermissionCode = (typeof PERMISSION_CODES)[number];

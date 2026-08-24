@@ -21,6 +21,7 @@ import {
   DocumentType,
   generateDocumentSequence,
 } from '../../common/utils/document-sequence.util';
+import { mapNullableNumber } from '../../common/utils/number.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
@@ -59,12 +60,6 @@ import {
   issuedQuantityByOrderItemIdSubquery,
   paidAmountByOrderIdSubquery,
 } from './orders.query';
-
-/** `.mapWith(Number)` biến SQL `null` thành `0` (`Number(null) === 0`) — sai cho % trend nghĩa là
- * "chưa có kỳ trước để so sánh". Dùng `.mapWith` này ở mọi biểu thức có thể thật sự trả `null`. */
-function mapNullableNumber(value: unknown): number | null {
-  return value === null ? null : Number(value);
-}
 
 /** Đơn hàng: `DRAFT` → ... → `AWAITING_PRODUCTION` (duyệt Giám đốc) → `IN_PROGRESS`. Vòng đời +
  * business rule đầy đủ: `docs/domains/orders.md`, `docs/workflows/order-approval.md`. */
