@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpStatus,
   Patch,
@@ -105,6 +106,16 @@ export class ItemsController {
     @Query() reqDto: GetItemMaterialsReqDto,
   ): Promise<OffsetPaginatedDto<ItemMaterialResDto>> {
     return this.itemsService.getItemMaterials(itemId, reqDto);
+  }
+
+  @Delete(':itemId')
+  @Permissions('items:delete')
+  @ApiAuth({
+    summary: 'Delete item (soft delete)',
+    statusCode: HttpStatus.NO_CONTENT,
+  })
+  deleteItem(@UUIDParam('itemId') itemId: string): Promise<void> {
+    return this.itemsService.deleteItem(itemId);
   }
 
   @Post(':itemId/copy')

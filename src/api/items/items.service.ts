@@ -33,6 +33,9 @@ import {
   items,
   ItemStatus,
   ItemType,
+  orderItems,
+  productionJobs,
+  productionOrderItems,
   suppliers,
   units,
   UnitScope,
@@ -210,6 +213,40 @@ export class ItemsService {
 
     // `updated_at` is bumped by the column's own `$onUpdate`.
     await this.db.update(items).set(reqDto).where(eq(items.id, itemId));
+  }
+
+  async deleteItem(itemId: string): Promise<void> {
+    await this.ensureItemExists(itemId);
+    await this.ensureItemNotInUse(itemId);
+
+    await this.db
+      .update(items)
+      .set({ deletedAt: new Date() })
+      .where(eq(items.id, itemId));
+  }
+
+  /** Chặn xoá khi item đã gắn Đơn hàng hoặc Lệnh sản xuất — không chặn theo BOM (component của
+   * item khác vẫn xoá được, xoá mềm không phá cấu trúc BOM đã có). */
+  private async ensureItemNotInUse(itemId: string): Promise<void> {
+    const referencingTables = [
+      orderItems,
+      productionOrderItems,
+      productionJobs,
+    ];
+
+    const references = await Promise.all(
+      referencingTables.map((table) =>
+        this.db
+          .select({ id: table.id })
+          .from(table)
+          .where(eq(table.itemId, itemId))
+          .limit(1),
+      ),
+    );
+
+    if (references.some((rows) => rows.length > 0)) {
+      throw new AppException(ErrorCode.E255, HttpStatus.CONFLICT);
+    }
   }
 
   async getItemMaterials(

@@ -24,6 +24,7 @@ export const PERMISSION_CODES = [
   'items:read',
   'items:create',
   'items:update',
+  'items:delete',
   'items:copy',
   'items:bom-manage',
   'operations:read',

@@ -553,6 +553,9 @@ export enum ErrorCode {
   // RETURN gắn khách hàng (không có `supplierId`) — không có phiếu trả-lại-khách để tự sinh, QC
   // chỉ được chọn `CONCESSION` (BUG-065).
   E254 = 'iqc_inspection.error.disposition_requires_supplier',
+  // `DELETE /items/:itemId` khi item còn gắn `order_items`, `production_order_items`, hoặc
+  // `production_jobs` (BUG-039).
+  E255 = 'item.error.in_use',
   V003 = 'common.error.too_many_requests',
   // `GlobalExceptionFilter` bắt chuỗi "No values to set" của drizzle-orm — mọi `PATCH` khi
   // `ValidationPipe` whitelist đã loại sạch field lạ, còn lại payload rỗng cho `.set()`. Trước đây
