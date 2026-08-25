@@ -210,6 +210,11 @@ gọi bởi `SupplierReturnsService.postSupplierReturn` khi kho xác nhận đã
   **luôn** trả `null` hợp lệ, không phải lỗi, vì `outsourcing_receipts` không có cột kho và
   `SupplierReturnsService.shouldPostStock` không bao giờ trừ tồn cho phiếu trả gốc OS-IN) →
   không nguồn nào có → `E163`, chặn `confirm`.
+- **Dòng IQC không có `supplierId` (sinh từ phiếu `RETURN` gắn `clientId`) không chọn được
+  `disposition = SORT`/`RETURN`** — `E254`, chặn trước khi mở transaction `confirm`. Lý do:
+  `SupplierReturnsService.createFromIqcDisposition` đòi `supplierId` khác null để tự sinh phiếu trả
+  NCC, và chưa có bảng/luồng tương đương cho khách hàng (BUG-065, `docs/domains/inventory.md` mục
+  "Nhập từ khách hàng"). Hàng khách trả bị FAIL chỉ xử lý được bằng `CONCESSION`.
 - `inspectionLevel`/`aqlLevel`/`sampleSize`/`defectQty`/`inspectionStandard`/`inspectorName`/
   `measuringTools`/`confirmedBy`/`confirmedAt` đều nullable — chỉ có giá trị sau khi
   `POST /iqc/:iqcId/confirm` lưu lần đầu; trước đó (`NOT_INSPECTED`) là `NULL`.
@@ -230,11 +235,14 @@ gọi bởi `SupplierReturnsService.postSupplierReturn` khi kho xác nhận đã
   không quyết định `result`). `aql_level` **không** khoá cứng vào 6 mức chuẩn ANSI/ASQ Z1.4 — thêm
   mức mới vào `qc_aql_plans` (Phase B, `docs/decisions/qc-aql-master-data.md`) không bị CHECK ở đây
   chặn INSERT.
-- `supplierId`/`productionJobId`/`productionJobOperationId` **nullable ở tầng cột** (dùng chung với
-  nhánh OUTGOING) — `chk_qc_requests_incoming_supplier` đảm bảo `supplierId` non-null cho mọi dòng
-  `kind = INCOMING` thật; code đọc các cột này qua query đã lọc `kind = INCOMING` coi chúng là
-  non-null (`.claude/rules/service.md`, cast/assert có comment trỏ đúng CHECK). Xem
-  `docs/decisions/qc-single-table.md`.
+- `supplierId`/`clientId`/`productionJobId`/`productionJobOperationId` **nullable ở tầng cột** (dùng
+  chung với nhánh OUTGOING) — `chk_qc_requests_incoming_supplier` chỉ đảm bảo **một trong hai**
+  `supplierId`/`clientId` non-null cho mọi dòng `kind = INCOMING` thật (từ BUG-038/065; trước đó chỉ
+  `supplierId` được đảm bảo non-null — `clientId` sinh từ phiếu nhập `RETURN` gắn khách hàng, loại
+  trừ lẫn nhau với `supplierId` — `chk_qc_requests_supplier_client_exclusive`). Code cũ từng cast
+  `supplierId` non-null sau khi lọc `kind = INCOMING` — không còn đúng, đã bỏ (`IqcService
+  .ensureIqcSavable`); nơi nào thật sự cần `supplierId` khác null (tự sinh phiếu trả NCC) phải tự
+  chặn riêng (`E254`, xem Business rules). Xem `docs/decisions/qc-single-table.md`.
 
 ## Cross-domain dependencies (IQC)
 
@@ -264,7 +272,8 @@ gọi bởi `SupplierReturnsService.postSupplierReturn` khi kho xác nhận đã
   IQC sinh ra neo thẳng vào công đoạn `OUTSOURCE` nguồn — dùng bởi `getJobQcCoverage` (xem mục OQC,
   Cross-domain dependencies).
 - **→ Purchasing**: `purchaseOrderId` liên kết tuỳ chọn tới PO — thuần để trace, không đọc ngược.
-- **→ Partners**: `supplierId` bắt buộc tới `suppliers` (khi `kind = INCOMING`).
+- **→ Partners**: `supplierId` hoặc `clientId` (một trong hai) bắt buộc tới `suppliers`/`clients`
+  (khi `kind = INCOMING`) — `clientId` từ BUG-038/065.
 - **→ Product Structure**: `itemId` bắt buộc tới `items`.
 - **→ Identity/Access**: `qcDepartmentId` liên kết tuỳ chọn tới `departments`.
 - **→ Files**: `qc_files.fileId` tới `files` — xem "Bằng chứng đính kèm" ở trên.

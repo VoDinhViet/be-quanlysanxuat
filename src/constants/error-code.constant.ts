@@ -546,6 +546,13 @@ export enum ErrorCode {
   // `completedQuantity + rejectedQuantity` (đạt + NG) vượt `plannedQuantity` của node BOM cha —
   // thay `E088` (nghỉ hưu, chỉ so riêng `completedQuantity`).
   E252 = 'production_job_operation.error.completed_plus_rejected_exceeds_planned',
+  // `POST`/`PATCH inventory-receipts` khi cả `supplierId` lẫn `clientId` cùng có giá trị — hai
+  // nguồn loại trừ lẫn nhau (BUG-038).
+  E253 = 'inventory_receipt.error.supplier_client_exclusive',
+  // `POST .../confirm` (IQC) chọn `disposition = SORT`/`RETURN` cho dòng IQC sinh từ phiếu nhập
+  // RETURN gắn khách hàng (không có `supplierId`) — không có phiếu trả-lại-khách để tự sinh, QC
+  // chỉ được chọn `CONCESSION` (BUG-065).
+  E254 = 'iqc_inspection.error.disposition_requires_supplier',
   V003 = 'common.error.too_many_requests',
   // `GlobalExceptionFilter` bắt chuỗi "No values to set" của drizzle-orm — mọi `PATCH` khi
   // `ValidationPipe` whitelist đã loại sạch field lạ, còn lại payload rỗng cho `.set()`. Trước đây

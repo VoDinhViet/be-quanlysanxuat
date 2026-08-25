@@ -153,7 +153,7 @@ nguyên `requiredQty` mãi mãi sẽ làm số càng lúc càng âm sai lệch d
 | Entity | Vai trò |
 | --- | --- |
 | `warehouses` | Danh mục kho — `code`/`name`/`type`, không soft delete |
-| `inventory_receipts` | Phiếu nhập — header, vòng đời 5 trạng thái (`DRAFT`/`PENDING_IQC`/`PENDING_RECEIPT`/`POSTED`/`CANCELLED`, xem Lifecycle); `purchaseOrderId` tuỳ chọn trỏ đơn mua (`docs/domains/purchasing.md`), validate PO phải `ORDERED` lúc tạo/sửa; `requiresIqc` quyết định nhánh `confirm` đi qua `PENDING_IQC` hay `PENDING_RECEIPT`; `productionJobId` **bắt buộc** khi `receiptType = PRODUCTION` (`E179`) — `confirm` chặn nếu Job chưa qua hết OQC (`E196`) hoặc SL các dòng vượt `production_jobs.quantity` (`E197`), xem "Gate nhập kho thành phẩm" bên dưới |
+| `inventory_receipts` | Phiếu nhập — header, vòng đời 5 trạng thái (`DRAFT`/`PENDING_IQC`/`PENDING_RECEIPT`/`POSTED`/`CANCELLED`, xem Lifecycle); `purchaseOrderId` tuỳ chọn trỏ đơn mua (`docs/domains/purchasing.md`), validate PO phải `ORDERED` lúc tạo/sửa; `requiresIqc` quyết định nhánh `confirm` đi qua `PENDING_IQC` hay `PENDING_RECEIPT`; `productionJobId` **bắt buộc** khi `receiptType = PRODUCTION` (`E179`) — `confirm` chặn nếu Job chưa qua hết OQC (`E196`) hoặc SL các dòng vượt `production_jobs.quantity` (`E197`), xem "Gate nhập kho thành phẩm" bên dưới; `supplierId`/`clientId` loại trừ lẫn nhau (`E253`) — `clientId` dùng cho `receiptType = RETURN` gắn khách hàng (BUG-038/065, xem "Nhập từ khách hàng" ở Business rules) |
 | `inventory_receipt_items` | Dòng phiếu nhập — `itemId` + `quantity` + `unitPrice` tuỳ chọn; `purchaseOrderItemId` tuỳ chọn, phải thuộc đúng `purchaseOrderId` của header; SL cộng dồn qua các phiếu đã `confirm` không được vượt SL đặt của dòng PO đó (`E154`) |
 | `inventory_issues` | Phiếu xuất — header, cùng vòng đời |
 | `inventory_issue_items` | Dòng phiếu xuất — cùng khuôn dòng nhập, thêm `orderItemId` tuỳ chọn |
@@ -214,8 +214,10 @@ DRAFT ──confirm (requiresIqc=true)───> PENDING_IQC ──post (mọi I
   `requiresIqc = true`, cùng transaction sinh một dòng `qc_requests` (`kind = INCOMING`,
   `NOT_INSPECTED`) cho mỗi dòng phiếu — đường ghi tự động duy nhất vào bảng đó, xem
   `docs/domains/quality.md`.
-  `supplierId` của các dòng IQC đó suy từ `receipt.supplierId ?? purchaseOrder.supplierId`; không
-  suy ra được thì chặn (`E152`). Không đụng tồn kho, không sinh bút toán ở bước này. Nếu
+  Nguồn (NCC/khách hàng) của các dòng IQC đó suy từ `receipt.supplierId ?? receipt.clientId ??
+  purchaseOrder.supplierId` (`clientId` — phiếu `RETURN` gắn khách hàng, `E253`/BUG-038/065, xem
+  "Nhập từ khách hàng" bên dưới); không suy ra được thì chặn (`E152`). Không đụng tồn kho, không
+  sinh bút toán ở bước này. Nếu
   `receiptType = PRODUCTION`, cùng bước `confirm` còn chạy gate OQC (`E107`/`E196`/`E197`, xem "Gate
   nhập kho thành phẩm" bên dưới) — chốt ở đây, không phải ở `post`.
 - `post`: sinh bút toán + cập nhật `inventory_balances` trong cùng transaction, sau đó phiếu
@@ -378,6 +380,15 @@ DRAFT ──send──> PENDING_APPROVAL ──approve──> PENDING_DELIVERY �
   `PNK`/`PXK`/`PTNCC`, cố ý), `PTNCC-{năm}-{...}` (trả NCC). `PNK`/`PXK`/`MR` cấp qua bảng đếm dùng
   chung `document_sequences` (`docs/architecture.md`, mục "Bất biến xuyên module"); `PTNCC` là ngoại
   lệ còn lại, vẫn đếm-rồi-cộng trên chính bảng.
+- **Nhập từ khách hàng** (`receiptType = RETURN` gắn `clientId`, BUG-038/065) — luồng **tách hẳn**
+  khỏi luồng mua hàng, không ràng buộc NCC: `inventory_receipts.supplierId`/`clientId` loại trừ lẫn
+  nhau ở tầng DB (`chk_inventory_receipts_supplier_client_exclusive`) lẫn service (`E253`). `confirm`
+  với `requiresIqc = true` sinh dòng `qc_requests` mang `clientId` thay `supplierId` (cũng loại trừ
+  lẫn nhau — `chk_qc_requests_supplier_client_exclusive`/`qc-requests.ts`). Chưa có phương án
+  trả-lại-khách (không có bảng tương đương `supplier_returns` cho khách hàng) — nếu QC chọn
+  `disposition = SORT`/`RETURN` cho một dòng IQC không có `supplierId`, `IqcService.confirmIqc` chặn
+  thẳng (`E254`); QC chỉ còn chọn được `CONCESSION` (chấp nhận có điều kiện) cho hàng khách trả bị
+  FAIL. Xem `docs/domains/quality.md`.
 - **`shouldPostStock` bỏ qua trừ tồn ở 2 ca, còn lại luôn trừ** (`postSupplierReturn`):
   1. **Bù trừ SL đã trả trước khi ghi bút toán `RECEIPT`**: một IQC `FAIL` chạy **trước** khi phiếu
      nhập gốc `post` (cổng IQC nằm ở `confirm`, xem Lifecycle), nên tại thời điểm `disposition` ra

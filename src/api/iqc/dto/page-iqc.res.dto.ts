@@ -16,6 +16,7 @@ import {
   StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
+import { ClientRefResDto } from '../../clients/dto/client-ref.res.dto';
 import { InventoryReceiptRefResDto } from '../../inventory-receipts/dto/inventory-receipt-ref.res.dto';
 import { ItemUnitRefResDto } from '../../items/dto/item-unit-ref.res.dto';
 import { ProductionJobOperationRefResDto } from '../../production-jobs/dto/production-job-operation-ref.res.dto';
@@ -59,8 +60,19 @@ export class PageIqcResDto {
   productionJobOperation!: ProductionJobOperationRefResDto | null;
 
   @Expose()
-  @ClassField(() => SupplierRefResDto)
-  supplier!: SupplierRefResDto;
+  @ClassFieldOptional(() => SupplierRefResDto, {
+    nullable: true,
+    description:
+      'null khi dòng sinh từ phiếu nhập RETURN gắn khách hàng — xem client',
+  })
+  supplier!: SupplierRefResDto | null;
+
+  @Expose()
+  @ClassFieldOptional(() => ClientRefResDto, {
+    nullable: true,
+    description: 'Khách hàng gửi trả — loại trừ lẫn nhau với supplier',
+  })
+  client!: ClientRefResDto | null;
 
   @Expose()
   @ClassField(() => ItemUnitRefResDto)

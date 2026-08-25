@@ -42,9 +42,10 @@ import { UpdateIqcReqDto } from './dto/update-iqc.req.dto';
 import { resolveAqlPlan } from './iqc-aql.query';
 import { linkQcFiles } from './iqc.write';
 
-// `supplierId` ghi đè non-null — cột vật lý nullable (dùng chung với OUTGOING) nhưng
-// `chk_qc_requests_incoming_supplier` đảm bảo luôn có giá trị ở dòng `kind = INCOMING`, tập query này luôn
-// lọc (`.claude/rules/service.md`, mẫu `XSelect` + field ghi đè).
+// `supplierId` có thể null từ BUG-065 (dòng INCOMING sinh từ phiếu RETURN gắn khách hàng dùng
+// `clientId` thay thế, loại trừ lẫn nhau — `chk_qc_requests_supplier_client_exclusive`). `confirmIqc`
+// tự chặn (`E254`) disposition SORT/RETURN khi không có `supplierId`, nên `supplierReturnsService
+// .createFromIqcDisposition` chỉ bao giờ được gọi với `supplierId` đã biết chắc khác null.
 type IqcSavableRequest = Pick<
   QcRequestSelect,
   | 'quantity'
@@ -53,8 +54,9 @@ type IqcSavableRequest = Pick<
   | 'inventoryReceiptId'
   | 'outsourcingReceiptId'
   | 'purchaseOrderId'
+  | 'supplierId'
   | 'itemId'
-> & { supplierId: string };
+>;
 
 @Injectable()
 export class IqcService {
@@ -80,6 +82,7 @@ export class IqcService {
       reqDto.supplierId
         ? eq(qcRequests.supplierId, reqDto.supplierId)
         : undefined,
+      reqDto.clientId ? eq(qcRequests.clientId, reqDto.clientId) : undefined,
       reqDto.result ? eq(qcRequests.result, reqDto.result) : undefined,
       reqDto.disposition
         ? eq(qcRequests.disposition, reqDto.disposition)
@@ -138,6 +141,7 @@ export class IqcService {
         with: {
           item: { with: { unit: true } },
           supplier: true,
+          client: true,
           inventoryReceipt: true,
           purchaseOrder: true,
           productionJob: true,
@@ -265,7 +269,8 @@ export class IqcService {
     params: {
       inventoryReceiptId: string;
       purchaseOrderId: string | null;
-      supplierId: string;
+      supplierId: string | null;
+      clientId: string | null;
       inspectionDate: Date;
       lines: { itemId: string; quantity: number }[];
       userId: string;
@@ -288,6 +293,7 @@ export class IqcService {
         inventoryReceiptId: params.inventoryReceiptId,
         purchaseOrderId: params.purchaseOrderId,
         supplierId: params.supplierId,
+        clientId: params.clientId,
         itemId: line.itemId,
         quantity: line.quantity,
         inspectionDate: params.inspectionDate,
@@ -383,6 +389,7 @@ export class IqcService {
         with: {
           item: { with: { unit: true } },
           supplier: true,
+          client: true,
           inventoryReceipt: true,
           outsourcingReceipt: true,
           purchaseOrder: true,
@@ -477,6 +484,14 @@ export class IqcService {
     ]);
 
     const status = this.resolveIqcStatus(reqDto.result, reqDto.disposition);
+
+    // Disposition SORT/RETURN tự sinh phiếu trả NCC (`supplierReturnsService
+    // .createFromIqcDisposition`, đòi `supplierId` khác null) — dòng sinh từ phiếu RETURN gắn
+    // khách hàng không có NCC nào để trả, chưa có phương án trả-lại-khách (BUG-065).
+    if (status === IqcStatus.WAITING_RETURN && !request.supplierId) {
+      throw new AppException(ErrorCode.E254, HttpStatus.BAD_REQUEST);
+    }
+
     const isPass = reqDto.result === IqcResult.PASS;
     const inspectionDate = reqDto.inspectionDate ?? request.inspectionDate;
     const disposition = isPass ? null : (reqDto.disposition ?? null);
@@ -609,13 +624,14 @@ export class IqcService {
       );
 
       // Đây là nơi DUY NHẤT một request IQC chuyển sang WAITING_RETURN — khoá lại mọi lần confirm
-      // sau đó (E159), nên không cần guard chống tạo phiếu trả trùng.
+      // sau đó (E159), nên không cần guard chống tạo phiếu trả trùng. `returnTarget` khác null chỉ
+      // khi `status = WAITING_RETURN`, guard E254 ở trên đã đảm bảo `supplierId` khác null lúc đó.
       if (returnTarget) {
         await this.supplierReturnsService.createFromIqcDisposition(tx, {
           iqcId,
           qcInspectionId: attempt.id,
           warehouseId: returnTarget.warehouseId,
-          supplierId: request.supplierId,
+          supplierId: request.supplierId!,
           itemId: request.itemId,
           quantity: returnTarget.quantity,
           purchaseOrderId: request.purchaseOrderId,
@@ -733,8 +749,7 @@ export class IqcService {
       throw new AppException(ErrorCode.E159, HttpStatus.CONFLICT);
     }
 
-    // `chk_qc_requests_incoming_supplier` đảm bảo non-null cho dòng `kind = INCOMING` vừa lọc ở trên.
-    return { ...request, supplierId: request.supplierId! };
+    return request;
   }
 
   private async ensureDepartmentExists(departmentId: string): Promise<void> {

@@ -33,7 +33,8 @@ nhau, hai quyền độc lập.
 | Đúng trạng thái nguồn | `E098` (phải `DRAFT`) | `E098` (phải `PENDING_RECEIPT`) | `E098` (phải `PENDING_IQC`) |
 | Có ≥ 1 dòng | `E151` | — (đã chặn từ `confirm`) | — |
 | SL cộng dồn không vượt SL đặt của dòng PO | `E154` | — (đã chặn từ `confirm`) | — |
-| `requiresIqc=true` phải suy được `supplierId` | `E152` | — | — |
+| `requiresIqc=true` phải suy được `supplierId`/`clientId` | `E152` | — | — |
+| `supplierId`/`clientId` không cùng có giá trị | `E253` | — | — |
 | Mọi phiếu IQC gắn với phiếu đã `COMPLETED` | — | — | `E153` |
 
 ## Flow
@@ -49,8 +50,10 @@ nhau, hai quyền độc lập.
    và lúc `confirm`.
 4. Rẽ nhánh theo `requiresIqc`:
    - `false`: `status = PENDING_RECEIPT`.
-   - `true`: suy `supplierId = receipt.supplierId ?? purchaseOrder.supplierId` (đọc PO nếu có) —
-     không suy được → `E152`. Gọi `IqcService.createInspectionsFromReceipt(tx, {...})`: một
+   - `true`: suy nguồn `{ supplierId, clientId } = receipt.supplierId ?? receipt.clientId ??
+     purchaseOrder.supplierId` (đọc PO nếu có, `resolveIqcSourceIds` — `clientId` chỉ khi phiếu
+     `RETURN` gắn khách hàng, BUG-038/065) — không suy được → `E152`. Gọi
+     `IqcService.createInspectionsFromReceipt(tx, {...})`: một
      `INSERT` duy nhất sinh N dòng `qc_requests` (`kind = INCOMING`, N = số dòng phiếu), mỗi
      dòng
      `status = NOT_INSPECTED`, `result`/`disposition` `NULL`, mã cấp theo lô qua
@@ -71,7 +74,9 @@ Muốn một dòng IQC đạt `COMPLETED` phải đi qua `POST /iqc/:iqcId/confi
 FAIL` + `disposition = SORT`/`RETURN` — dừng ở `WAITING_RETURN` trước, chỉ `COMPLETED` sau khi
 phiếu trả NCC tự sinh cho dòng đó được kho `post` (`docs/workflows/supplier-return.md`). Tức là
 hàng phải trả/phân loại vẫn chặn `post` phiếu nhập này **cho tới khi** kho xác nhận xuất trả xong —
-không tự động. Xem `docs/domains/quality.md`.
+không tự động. Dòng IQC sinh từ phiếu `RETURN` gắn khách hàng (`clientId`, không `supplierId`) không
+chọn được `disposition = SORT`/`RETURN` — `E254`, chưa có phương án trả-lại-khách, xem
+`docs/domains/inventory.md` mục "Nhập từ khách hàng". Xem `docs/domains/quality.md`.
 
 ## State changes
 
@@ -108,8 +113,9 @@ hai lượt `confirm` song song không thể ra cùng mã.
 
 Xem bảng đầy đủ ở `docs/workflows/stock-movement.md` — file đó gộp chung cả nhập lẫn xuất. Tóm tắt
 các mã riêng của luồng này: `E151` (confirm phiếu rỗng dòng), `E152` (confirm yêu cầu IQC nhưng
-thiếu NCC), `E153` (post khi IQC chưa xong), `E154` (SL cộng dồn vượt SL đặt PO, kiểm ở cả
-`create`/`update`/`confirm`).
+thiếu cả NCC lẫn khách hàng), `E153` (post khi IQC chưa xong), `E154` (SL cộng dồn vượt SL đặt PO,
+kiểm ở cả `create`/`update`/`confirm`), `E253` (`create`/`update` gửi cả `supplierId` lẫn `clientId`),
+`E254` (`POST /iqc/:id/confirm` chọn SORT/RETURN cho dòng IQC không có `supplierId`).
 
 ## Business rules
 

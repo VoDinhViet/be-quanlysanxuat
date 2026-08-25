@@ -15,6 +15,7 @@ import {
   StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
+import { ClientRefResDto } from '../../clients/dto/client-ref.res.dto';
 import { ProductionJobRefResDto } from '../../production-jobs/dto/production-job-ref.res.dto';
 import { ProductionOrderRefResDto } from '../../production-orders/dto/production-order-ref.res.dto';
 import { PurchaseOrderRefResDto } from '../../purchase-orders/dto/purchase-order-ref.res.dto';
@@ -57,6 +58,14 @@ export class PageInventoryReceiptResDto {
   @Expose()
   @ClassFieldOptional(() => SupplierRefResDto, { nullable: true })
   supplier!: SupplierRefResDto | null;
+
+  @Expose()
+  @ClassFieldOptional(() => ClientRefResDto, {
+    nullable: true,
+    description:
+      'Khách hàng gửi trả — chỉ có khi receiptType=RETURN gắn khách hàng',
+  })
+  client!: ClientRefResDto | null;
 
   @Expose()
   @ClassFieldOptional(() => PurchaseRequestRefResDto, { nullable: true })

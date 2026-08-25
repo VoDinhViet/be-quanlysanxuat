@@ -21,9 +21,16 @@ export class CreateInventoryReceiptReqDto {
   readonly receiptDate!: Date;
 
   @UUIDFieldOptional({
-    description: 'Nhà cung cấp đã giao (receiptType=PURCHASE)',
+    description:
+      'Nhà cung cấp đã giao (receiptType=PURCHASE) — loại trừ lẫn nhau với clientId',
   })
   readonly supplierId?: string;
+
+  @UUIDFieldOptional({
+    description:
+      'Khách hàng gửi trả (receiptType=RETURN) — loại trừ lẫn nhau với supplierId (E253)',
+  })
+  readonly clientId?: string;
 
   @UUIDFieldOptional({
     description: 'Đề xuất mua hàng đã sinh ra nhu cầu nhập',

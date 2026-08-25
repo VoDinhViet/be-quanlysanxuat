@@ -1,5 +1,6 @@
 import { relations } from 'drizzle-orm';
 
+import { clients } from '../clients/clients';
 import { departments } from '../departments';
 import { inventoryReceipts } from '../inventory/inventory-receipts';
 import { outsourcingReceiptItems } from '../inventory/outsourcing-receipt-items';
@@ -40,6 +41,10 @@ export const qcRequestsRelations = relations(qcRequests, ({ one, many }) => ({
   supplier: one(suppliers, {
     fields: [qcRequests.supplierId],
     references: [suppliers.id],
+  }),
+  client: one(clients, {
+    fields: [qcRequests.clientId],
+    references: [clients.id],
   }),
   productionJob: one(productionJobs, {
     fields: [qcRequests.productionJobId],

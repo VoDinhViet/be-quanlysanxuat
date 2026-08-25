@@ -17,8 +17,11 @@ export class UpdateInventoryReceiptReqDto {
   @DateFieldOptional()
   readonly receiptDate?: Date;
 
-  @UUIDFieldOptional()
+  @UUIDFieldOptional({ description: 'Loại trừ lẫn nhau với clientId (E253)' })
   readonly supplierId?: string;
+
+  @UUIDFieldOptional({ description: 'Loại trừ lẫn nhau với supplierId (E253)' })
+  readonly clientId?: string;
 
   @UUIDFieldOptional()
   readonly purchaseRequestId?: string;

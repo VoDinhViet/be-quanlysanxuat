@@ -23,6 +23,9 @@ export class GetInventoryReceiptsReqDto extends PageOptionsDto {
   readonly supplierId?: string;
 
   @UUIDFieldOptional()
+  readonly clientId?: string;
+
+  @UUIDFieldOptional()
   readonly productionOrderId?: string;
 
   @UUIDFieldOptional()

@@ -26,6 +26,7 @@ import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
+  clients,
   InventoryDocumentStatus,
   inventoryReceiptItems,
   type InventoryReceiptItemSelect,
@@ -110,6 +111,9 @@ export class InventoryReceiptsService {
       reqDto.supplierId
         ? eq(inventoryReceipts.supplierId, reqDto.supplierId)
         : undefined,
+      reqDto.clientId
+        ? eq(inventoryReceipts.clientId, reqDto.clientId)
+        : undefined,
       reqDto.productionOrderId
         ? eq(inventoryReceipts.productionOrderId, reqDto.productionOrderId)
         : undefined,
@@ -143,6 +147,7 @@ export class InventoryReceiptsService {
         with: {
           warehouse: true,
           supplier: true,
+          client: true,
           purchaseRequest: true,
           productionOrder: true,
           productionJob: true,
@@ -171,6 +176,7 @@ export class InventoryReceiptsService {
       with: {
         warehouse: true,
         supplier: true,
+        client: true,
         purchaseRequest: true,
         productionOrder: true,
         productionJob: true,
@@ -244,6 +250,7 @@ export class InventoryReceiptsService {
   ): Promise<void> {
     await this.ensureItemsValid(reqDto.items);
     await this.ensureReferencesValid(reqDto);
+    this.ensureSupplierClientExclusive(reqDto);
     this.ensureProductionJobRequired(
       reqDto.receiptType,
       reqDto.productionJobId,
@@ -277,6 +284,10 @@ export class InventoryReceiptsService {
 
     await this.ensureItemsValid(reqDto.items);
     await this.ensureReferencesValid(reqDto);
+    this.ensureSupplierClientExclusive({
+      supplierId: reqDto.supplierId ?? inventoryReceipt.supplierId,
+      clientId: reqDto.clientId ?? inventoryReceipt.clientId,
+    });
     this.ensureProductionJobRequired(
       reqDto.receiptType ?? inventoryReceipt.receiptType,
       reqDto.productionJobId ?? inventoryReceipt.productionJobId,
@@ -346,7 +357,7 @@ export class InventoryReceiptsService {
       let status = InventoryDocumentStatus.PENDING_RECEIPT;
 
       if (inventoryReceipt.requiresIqc) {
-        const supplierId = await this.resolveIqcSupplierId(
+        const { supplierId, clientId } = await this.resolveIqcSourceIds(
           tx,
           inventoryReceipt,
         );
@@ -355,6 +366,7 @@ export class InventoryReceiptsService {
           inventoryReceiptId: receiptId,
           purchaseOrderId: inventoryReceipt.purchaseOrderId,
           supplierId,
+          clientId,
           inspectionDate: new Date(),
           lines: itemsToConfirm.map((item) => ({
             itemId: item.itemId,
@@ -646,11 +658,12 @@ export class InventoryReceiptsService {
 
   private async ensureReferencesValid(reqDto: {
     supplierId?: string;
+    clientId?: string;
     purchaseRequestId?: string;
     productionOrderId?: string;
     productionJobId?: string;
   }): Promise<void> {
-    const [supplier, purchaseRequest, productionOrder, productionJob] =
+    const [supplier, client, purchaseRequest, productionOrder, productionJob] =
       await Promise.all([
         reqDto.supplierId
           ? this.db.query.suppliers.findFirst({
@@ -658,6 +671,15 @@ export class InventoryReceiptsService {
               where: and(
                 eq(suppliers.id, reqDto.supplierId),
                 isNull(suppliers.deletedAt),
+              ),
+            })
+          : Promise.resolve(true),
+        reqDto.clientId
+          ? this.db.query.clients.findFirst({
+              columns: { id: true },
+              where: and(
+                eq(clients.id, reqDto.clientId),
+                isNull(clients.deletedAt),
               ),
             })
           : Promise.resolve(true),
@@ -681,8 +703,23 @@ export class InventoryReceiptsService {
           : Promise.resolve(true),
       ]);
 
-    if (!supplier || !purchaseRequest || !productionOrder || !productionJob) {
+    if (
+      !supplier ||
+      !client ||
+      !purchaseRequest ||
+      !productionOrder ||
+      !productionJob
+    ) {
       throw new AppException(ErrorCode.E107, HttpStatus.BAD_REQUEST);
+    }
+  }
+
+  private ensureSupplierClientExclusive(reqDto: {
+    supplierId?: string | null;
+    clientId?: string | null;
+  }): void {
+    if (reqDto.supplierId && reqDto.clientId) {
+      throw new AppException(ErrorCode.E253, HttpStatus.BAD_REQUEST);
     }
   }
 
@@ -914,18 +951,23 @@ export class InventoryReceiptsService {
     return row?.total ?? 0;
   }
 
-  /** NCC của phiếu IQC sinh ra khi `confirm` — ưu tiên `inventoryReceipt.supplierId`, rơi về NCC của PO gắn
-   * với phiếu. Không suy được cả hai → `E152` (`chk_qc_requests_incoming_supplier` đòi `supplier_id` khác
-   * null cho dòng `kind = INCOMING`). */
-  private async resolveIqcSupplierId(
+  /** Nguồn (NCC/khách hàng) của phiếu IQC sinh ra khi `confirm` — ưu tiên `inventoryReceipt.supplierId`,
+   * rồi `inventoryReceipt.clientId` (RETURN gắn khách hàng, BUG-038/065), rồi rơi về NCC của PO gắn
+   * với phiếu. Không suy được nguồn nào → `E152` (`chk_qc_requests_incoming_supplier` đòi một trong
+   * hai `supplier_id`/`client_id` khác null cho dòng `kind = INCOMING`). */
+  private async resolveIqcSourceIds(
     tx: DbTransaction,
     inventoryReceipt: Pick<
       InventoryReceiptSelect,
-      'supplierId' | 'purchaseOrderId'
+      'supplierId' | 'clientId' | 'purchaseOrderId'
     >,
-  ): Promise<string> {
+  ): Promise<{ supplierId: string | null; clientId: string | null }> {
     if (inventoryReceipt.supplierId) {
-      return inventoryReceipt.supplierId;
+      return { supplierId: inventoryReceipt.supplierId, clientId: null };
+    }
+
+    if (inventoryReceipt.clientId) {
+      return { supplierId: null, clientId: inventoryReceipt.clientId };
     }
 
     if (inventoryReceipt.purchaseOrderId) {
@@ -934,7 +976,7 @@ export class InventoryReceiptsService {
         where: eq(purchaseOrders.id, inventoryReceipt.purchaseOrderId),
       });
       if (purchaseOrder?.supplierId) {
-        return purchaseOrder.supplierId;
+        return { supplierId: purchaseOrder.supplierId, clientId: null };
       }
     }
 

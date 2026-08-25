@@ -12,6 +12,7 @@ import {
   varchar,
 } from 'drizzle-orm/pg-core';
 
+import { clients } from '../clients/clients';
 import { departments } from '../departments';
 import { inventoryReceipts } from '../inventory/inventory-receipts';
 import { outsourcingReceiptItems } from '../inventory/outsourcing-receipt-items';
@@ -131,7 +132,10 @@ export const qcStatusEnum = pgEnum('qc_status', [
  * attempt mới nhất (`lastInspectionId`) vì sẽ tạo vòng lặp import thật với `qc-inspections.ts`
  * (composite FK 3 cột bên đó dereference bảng này ngay lúc module-load, xem file đó).
  *
- * Cột riêng `INCOMING`: `supplierId`/`inventoryReceiptId`/`outsourcingReceiptId`/
+ * Cột riêng `INCOMING`: `supplierId`/`clientId` (loại trừ lẫn nhau —
+ * `chk_qc_requests_supplier_client_exclusive`, `clientId` chỉ có khi sinh từ phiếu nhập RETURN gắn
+ * khách hàng, không có phương án trả-lại-khách nên FAIL dạng SORT/RETURN bị chặn ở service —
+ * `docs/domains/quality.md`)/`inventoryReceiptId`/`outsourcingReceiptId`/
  * `outsourcingReceiptItemId`/`purchaseOrderId` (chứng từ nguồn, tối đa một cặp mua/gia công ngoài
  * khác `null` — `chk_qc_requests_source_exclusive`), `reason`, `inspectionStandard`/`inspectorName`/
  * `measuringTools`, `qcDepartmentId`, `sortOkQty`/`sortNgQty`.
@@ -164,6 +168,11 @@ export const qcRequests = pgTable(
       { onDelete: 'set null' },
     ),
     supplierId: uuid('supplier_id').references(() => suppliers.id, {
+      onDelete: 'restrict',
+    }),
+    // Thay thế supplierId khi INCOMING sinh từ phiếu nhập RETURN gắn khách hàng — loại trừ lẫn
+    // nhau với supplierId (chk_qc_requests_supplier_client_exclusive).
+    clientId: uuid('client_id').references(() => clients.id, {
       onDelete: 'restrict',
     }),
     // Neo sản xuất — bắt buộc khi OUTGOING (chk_qc_requests_outgoing_job), tuỳ chọn khi INCOMING (có giá
@@ -261,6 +270,7 @@ export const qcRequests = pgTable(
     ),
     index('idx_qc_requests_purchase_order_id').on(table.purchaseOrderId),
     index('idx_qc_requests_supplier_id').on(table.supplierId),
+    index('idx_qc_requests_client_id').on(table.clientId),
     index('idx_qc_requests_production_job_id').on(table.productionJobId),
     index('idx_qc_requests_production_job_operation_id').on(
       table.productionJobOperationId,
@@ -331,11 +341,19 @@ export const qcRequests = pgTable(
     ),
     check(
       'chk_qc_requests_incoming_supplier',
-      sql`kind <> 'INCOMING' OR supplier_id IS NOT NULL`,
+      sql`kind <> 'INCOMING' OR supplier_id IS NOT NULL OR client_id IS NOT NULL`,
     ),
     check(
       'chk_qc_requests_outgoing_no_supplier',
       sql`kind <> 'OUTGOING' OR supplier_id IS NULL`,
+    ),
+    check(
+      'chk_qc_requests_outgoing_no_client',
+      sql`kind <> 'OUTGOING' OR client_id IS NULL`,
+    ),
+    check(
+      'chk_qc_requests_supplier_client_exclusive',
+      sql`NOT (supplier_id IS NOT NULL AND client_id IS NOT NULL)`,
     ),
     // 7 cột chỉ có ý nghĩa với INCOMING (xem comment từng cột) — trước đây chỉ `supplierId` được
     // ép NULL ở OUTGOING bằng CHECK riêng, 7 cột này chỉ được service chặn.

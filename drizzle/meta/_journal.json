@@ -1072,6 +1072,13 @@
       "when": 1787650622587,
       "tag": "0152_heavy_goblin_queen",
       "breakpoints": true
+    },
+    {
+      "idx": 153,
+      "version": "7",
+      "when": 1787652388267,
+      "tag": "0153_short_kree",
+      "breakpoints": true
     }
   ]
 }

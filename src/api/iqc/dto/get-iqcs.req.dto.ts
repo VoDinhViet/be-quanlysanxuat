@@ -17,6 +17,9 @@ export class GetIqcsReqDto extends PageOptionsDto {
   @UUIDFieldOptional({ description: 'Filter theo NCC' })
   readonly supplierId?: string;
 
+  @UUIDFieldOptional({ description: 'Filter theo khách hàng gửi trả' })
+  readonly clientId?: string;
+
   @StringFieldOptional({ description: 'Tìm theo mã PO' })
   readonly poCode?: string;
 

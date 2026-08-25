@@ -1,6 +1,8 @@
 import { relations } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import {
   boolean,
+  check,
   date,
   index,
   pgEnum,
@@ -16,6 +18,7 @@ import {
 } from './inventory-documents';
 import { inventoryReceiptItems } from './inventory-receipt-items';
 import { warehouses } from './warehouses';
+import { clients } from '../clients/clients';
 import { productionJobs } from '../production/production-jobs';
 import { productionOrders } from '../production/production-orders';
 import { purchaseOrders } from '../purchasing/purchase-orders';
@@ -40,7 +43,8 @@ export const inventoryReceiptTypeEnum = pgEnum('inventory_receipt_type', [
 /**
  * Phiếu nhập kho — header. `DRAFT` sửa/xoá tự do, không đụng tồn; `post` (`DRAFT → POSTED`) mới
  * sinh `inventory_transactions`/cập nhật `inventory_balances`, sau đó phiếu bất biến
- * (`docs/domains/inventory.md`).
+ * (`docs/domains/inventory.md`). `supplierId`/`clientId` loại trừ lẫn nhau — nhập từ khách hàng
+ * (`receiptType = RETURN`) dùng `clientId`, còn lại dùng `supplierId`.
  */
 export const inventoryReceipts = pgTable(
   'inventory_receipts',
@@ -57,6 +61,11 @@ export const inventoryReceipts = pgTable(
     requiresIqc: boolean('requires_iqc').notNull().default(false),
     receiptDate: date('receipt_date', { mode: 'date' }).notNull(),
     supplierId: uuid('supplier_id').references(() => suppliers.id, {
+      onDelete: 'set null',
+    }),
+    // Khách hàng gửi trả (receiptType = RETURN) — loại trừ lẫn nhau với supplierId
+    // (chk_inventory_receipts_supplier_client_exclusive), xem docs/domains/inventory.md.
+    clientId: uuid('client_id').references(() => clients.id, {
       onDelete: 'set null',
     }),
     purchaseRequestId: uuid('purchase_request_id').references(
@@ -102,6 +111,7 @@ export const inventoryReceipts = pgTable(
     index('idx_inventory_receipts_receipt_type').on(table.receiptType),
     index('idx_inventory_receipts_receipt_date').on(table.receiptDate),
     index('idx_inventory_receipts_supplier_id').on(table.supplierId),
+    index('idx_inventory_receipts_client_id').on(table.clientId),
     index('idx_inventory_receipts_production_order_id').on(
       table.productionOrderId,
     ),
@@ -112,6 +122,10 @@ export const inventoryReceipts = pgTable(
       table.purchaseRequestId,
     ),
     index('idx_inventory_receipts_posted_by').on(table.postedBy),
+    check(
+      'chk_inventory_receipts_supplier_client_exclusive',
+      sql`NOT (supplier_id IS NOT NULL AND client_id IS NOT NULL)`,
+    ),
   ],
 );
 
@@ -125,6 +139,10 @@ export const inventoryReceiptsRelations = relations(
     supplier: one(suppliers, {
       fields: [inventoryReceipts.supplierId],
       references: [suppliers.id],
+    }),
+    client: one(clients, {
+      fields: [inventoryReceipts.clientId],
+      references: [clients.id],
     }),
     purchaseRequest: one(purchaseRequests, {
       fields: [inventoryReceipts.purchaseRequestId],
