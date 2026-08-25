@@ -172,6 +172,8 @@ export class ProductionJobsService {
         status: productionJobs.status,
         startedBy: productionJobs.startedBy,
         startedAt: productionJobs.startedAt,
+        operationsApprovedBy: productionJobs.operationsApprovedBy,
+        operationsApprovedAt: productionJobs.operationsApprovedAt,
         createdAt: productionJobs.createdAt,
         updatedAt: productionJobs.updatedAt,
         item: getTableColumns(items),
@@ -317,10 +319,11 @@ export class ProductionJobsService {
     });
   }
 
-  /** `PATCH /production-jobs/:jobId/operations/:operationId` — ghi đè SL hoàn thành của một công
-   * đoạn (không cộng dồn). SL kế hoạch đối chiếu = `plannedQuantity` của node BOM cha (cột đã đóng
-   * băng lúc duyệt LSX), vượt số đó bị chặn (`E088`). `completedDate` server tự set khi chạm đủ, tự
-   * xoá khi sửa xuống dưới. */
+  /** `PATCH /production-jobs/:jobId/operations/:operationId` — ghi đè SL hoàn thành (đạt) + SL
+   * không đạt (NG) của một công đoạn (không cộng dồn). SL kế hoạch đối chiếu = `plannedQuantity` của
+   * node BOM cha (cột đã đóng băng lúc duyệt LSX), tổng đạt + NG vượt số đó bị chặn (`E252`).
+   * `completedDate` server tự set khi SL đạt chạm đủ, tự xoá khi sửa xuống dưới. Chỉ chạy khi Job đã
+   * qua `approve-operations` (`E250` nếu chưa). */
   async updateProductionJobOperation(
     jobId: string,
     operationId: string,
@@ -328,6 +331,10 @@ export class ProductionJobsService {
   ): Promise<ProductionJobOperationResDto> {
     const job = await this.ensureJobExists(jobId);
     this.ensureStatus(job.status, [ProductionJobStatus.IN_PROGRESS]);
+
+    if (!job.operationsApprovedAt) {
+      throw new AppException(ErrorCode.E250, HttpStatus.CONFLICT);
+    }
 
     const operation = await this.db.query.productionJobOperations.findFirst({
       where: and(
@@ -372,8 +379,8 @@ export class ProductionJobsService {
 
     const planned = operation.bomItem.plannedQuantity;
 
-    if (reqDto.completedQuantity > planned) {
-      throw new AppException(ErrorCode.E088, HttpStatus.BAD_REQUEST);
+    if (reqDto.completedQuantity + reqDto.rejectedQuantity > planned) {
+      throw new AppException(ErrorCode.E252, HttpStatus.BAD_REQUEST);
     }
 
     const isFinalAssemblyDone =
@@ -385,6 +392,7 @@ export class ProductionJobsService {
         .update(productionJobOperations)
         .set({
           completedQuantity: reqDto.completedQuantity,
+          rejectedQuantity: reqDto.rejectedQuantity,
           completedDate:
             reqDto.completedQuantity >= planned ? new Date() : null,
         })
@@ -895,6 +903,26 @@ export class ProductionJobsService {
     );
   }
 
+  /** Duyệt công đoạn của cả Job một lần — mở khoá `PATCH .../operations/:operationId` (`E250` tới
+   * khi có). Chỉ chạy khi Job `IN_PROGRESS` (`E087`) và chưa duyệt lần nào (`E251`). Không đổi
+   * `production_jobs.status`. Trình tự đầy đủ: `docs/workflows/production-job-execution.md`. */
+  async approveJobOperations(jobId: string, userId: string): Promise<void> {
+    const job = await this.ensureJobExists(jobId);
+    this.ensureStatus(job.status, [ProductionJobStatus.IN_PROGRESS]);
+
+    if (job.operationsApprovedAt) {
+      throw new AppException(ErrorCode.E251, HttpStatus.CONFLICT);
+    }
+
+    await this.db
+      .update(productionJobs)
+      .set({
+        operationsApprovedBy: userId,
+        operationsApprovedAt: new Date(),
+      })
+      .where(eq(productionJobs.id, jobId));
+  }
+
   /** `PENDING` → `IN_PROGRESS` (`E087` nếu không), ghi `startedBy`/`startedAt`. Cùng transaction:
    * vật tư nào của Job thiếu tồn thì sinh một đề xuất mua hàng cho đúng phần thiếu
    * (`PurchaseRequestsService.createShortageRequest`) — không thiếu gì thì không tạo phiếu.
@@ -968,6 +996,7 @@ export class ProductionJobsService {
     quantity: number;
     itemId: string;
     productionOrderId: string;
+    operationsApprovedAt: Date | null;
   }> {
     const job = await this.db.query.productionJobs.findFirst({
       columns: {
@@ -976,6 +1005,7 @@ export class ProductionJobsService {
         quantity: true,
         itemId: true,
         productionOrderId: true,
+        operationsApprovedAt: true,
       },
       where: eq(productionJobs.id, jobId),
     });

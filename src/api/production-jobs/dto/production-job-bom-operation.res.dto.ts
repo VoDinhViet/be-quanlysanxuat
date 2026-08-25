@@ -59,9 +59,15 @@ export class ProductionJobBomOperationResDto {
 
   @Expose()
   @NumberField({
-    description: 'SL đã hoàn thành ở công đoạn này — tự nhập, ghi đè',
+    description: 'SL đã hoàn thành (đạt) ở công đoạn này — tự nhập, ghi đè',
   })
   completedQuantity!: number;
+
+  @Expose()
+  @NumberField({
+    description: 'SL không đạt (NG) ở công đoạn này — tự nhập, ghi đè',
+  })
+  rejectedQuantity!: number;
 
   @Expose()
   @DateFieldOptional({

@@ -164,9 +164,9 @@ export enum ErrorCode {
   // `start` gọi trên một Job đang không ở trạng thái hợp lệ cho hành động đó (xem sơ đồ chuyển
   // trạng thái ở `docs/domains/production.md`, mục Lifecycle).
   E087 = 'production_job.error.invalid_status_transition',
-  // `PATCH /production-jobs/:jobId/operations/:operationId` gửi `completedQuantity` vượt SL kế
-  // hoạch của node BOM cha (tính lúc đọc, không lưu cột) — tái dùng slot đã để dành từ thiết kế
-  // report cũ (job-level, đã gỡ), đổi phạm vi sang từng công đoạn.
+  // Nghỉ hưu 2026-08-25 — thay bằng `E252` (so cả `completedQuantity + rejectedQuantity`, bao luôn
+  // trường hợp cũ vì `rejectedQuantity >= 0`) khi thêm SL NG cho `updateProductionJobOperation`.
+  // Giữ comment, không tái sử dụng số.
   E088 = 'production_job_operation.error.completed_exceeds_planned',
   // E089 (production_job.error.empty_report) vẫn để trống — không còn nơi ném, dự phòng nếu sau
   // này hồi sinh báo sản lượng ở mức Job.
@@ -538,5 +538,17 @@ export enum ErrorCode {
   E248 = 'operation.error.in_use',
   // `POST /purchase-orders` khi cùng một `purchaseRequestItemId` xuất hiện ở ≥ 2 dòng trong payload.
   E249 = 'purchase_order.error.duplicate_request_item',
+  // `PATCH .../operations/:operationId` khi `production_jobs.operationsApprovedAt` còn null —
+  // Job phải qua `POST .../approve-operations` trước khi báo tiến độ từng công đoạn (BUG-036/064).
+  E250 = 'production_job.error.operations_not_approved',
+  // `POST .../approve-operations` gọi lần hai — `operationsApprovedAt` đã có giá trị.
+  E251 = 'production_job.error.operations_already_approved',
+  // `completedQuantity + rejectedQuantity` (đạt + NG) vượt `plannedQuantity` của node BOM cha —
+  // thay `E088` (nghỉ hưu, chỉ so riêng `completedQuantity`).
+  E252 = 'production_job_operation.error.completed_plus_rejected_exceeds_planned',
   V003 = 'common.error.too_many_requests',
+  // `GlobalExceptionFilter` bắt chuỗi "No values to set" của drizzle-orm — mọi `PATCH` khi
+  // `ValidationPipe` whitelist đã loại sạch field lạ, còn lại payload rỗng cho `.set()`. Trước đây
+  // lọt xuống lỗi 500 kèm stack trace (`BUG-076`).
+  V004 = 'common.error.empty_update_payload',
 }

@@ -66,6 +66,18 @@ export class ProductionJobDetailResDto {
   startedAt!: Date | null;
 
   @Expose()
+  @UUIDFieldOptional({ nullable: true, description: 'Ai duyệt công đoạn' })
+  operationsApprovedBy!: string | null;
+
+  @Expose()
+  @DateFieldOptional({
+    nullable: true,
+    description:
+      'Thời điểm duyệt công đoạn — null thì PATCH .../operations/:operationId còn bị chặn (E250)',
+  })
+  operationsApprovedAt!: Date | null;
+
+  @Expose()
   @DateField({ description: 'Thời điểm tạo Job' })
   createdAt!: Date;
 

@@ -29,9 +29,10 @@ import { productionJobs } from './production-jobs';
  *   khi bị xoá).
  * - Không unique `(productionJobBomItemId, operationId)` — một routing được phép lặp lại cùng
  *   công đoạn (`bom_operations` cũng vậy), ép unique sẽ nuốt mất bước khi copy.
- * - `code`/`name`/`type`/`sortOrder`/`note`/`operationId` vẫn đóng băng lúc duyệt. `completedQuantity`/
- *   `completedDate` là 2 cột duy nhất sửa được sau đó, qua
- *   `ProductionJobsService.updateProductionJobOperation` (`PATCH .../operations/:operationId`).
+ * - `code`/`name`/`type`/`sortOrder`/`note`/`operationId` vẫn đóng băng lúc duyệt.
+ *   `completedQuantity`/`rejectedQuantity`/`completedDate` là các cột duy nhất sửa được sau đó, qua
+ *   `ProductionJobsService.updateProductionJobOperation` (`PATCH .../operations/:operationId`) — chỉ
+ *   chạy được khi `production_jobs.operationsApprovedAt` đã có (`E250`).
  */
 export const productionJobOperations = pgTable(
   'production_job_operations',
@@ -58,6 +59,13 @@ export const productionJobOperations = pgTable(
     })
       .notNull()
       .default(0),
+    rejectedQuantity: numeric('rejected_quantity', {
+      precision: 12,
+      scale: 3,
+      mode: 'number',
+    })
+      .notNull()
+      .default(0),
     completedDate: date('completed_date', { mode: 'date' }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at')
@@ -76,6 +84,10 @@ export const productionJobOperations = pgTable(
     check(
       'chk_production_job_operations_completed_quantity_non_negative',
       sql`completed_quantity >= 0`,
+    ),
+    check(
+      'chk_production_job_operations_rejected_quantity_non_negative',
+      sql`rejected_quantity >= 0`,
     ),
   ],
 );

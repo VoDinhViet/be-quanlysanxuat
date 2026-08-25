@@ -61,6 +61,9 @@ export const productionJobStatusEnum = pgEnum('production_job_status', [
  * - `completedBy`/`completedAt` khôi phục 2026-08-24 (từng bị xoá cùng đợt rút enum 2026-07-31) —
  *   ghi khi `status → COMPLETED` (`InventoryReceiptsService.postInventoryReceipt`, không có route
  *   tay), xem `docs/decisions/production-lifecycle-closing.md`.
+ * - `operationsApprovedBy`/`operationsApprovedAt` thêm 2026-08-25 — ghi bởi
+ *   `POST .../approve-operations`, chặn `PATCH .../operations/:operationId` (`E250`) tới khi có.
+ *   Xem `docs/domains/production.md`.
  * - Không còn lưu lịch sử thao tác Job từ 2026-07-31 (`production_job_logs` đã xoá hẳn, khác LSX —
  *   `production_order_logs` vẫn còn) — chỉ `startedBy`/`startedAt`/`completedBy`/`completedAt`
  *   (cột thật) còn giữ được.
@@ -88,6 +91,11 @@ export const productionJobs = pgTable(
       onDelete: 'set null',
     }),
     startedAt: timestamp('started_at'),
+    operationsApprovedBy: uuid('operations_approved_by').references(
+      () => users.id,
+      { onDelete: 'set null' },
+    ),
+    operationsApprovedAt: timestamp('operations_approved_at'),
     completedBy: uuid('completed_by').references(() => users.id, {
       onDelete: 'set null',
     }),
@@ -106,6 +114,9 @@ export const productionJobs = pgTable(
     index('idx_production_jobs_item_id').on(table.itemId),
     index('idx_production_jobs_status').on(table.status),
     index('idx_production_jobs_started_by').on(table.startedBy),
+    index('idx_production_jobs_operations_approved_by').on(
+      table.operationsApprovedBy,
+    ),
     index('idx_production_jobs_completed_by').on(table.completedBy),
     check('chk_production_jobs_quantity', sql`quantity > 0`),
     check(
@@ -132,6 +143,10 @@ export const productionJobsRelations = relations(
     }),
     starterBy: one(users, {
       fields: [productionJobs.startedBy],
+      references: [users.id],
+    }),
+    operationsApproverBy: one(users, {
+      fields: [productionJobs.operationsApprovedBy],
       references: [users.id],
     }),
     completerBy: one(users, {

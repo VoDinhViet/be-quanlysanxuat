@@ -134,6 +134,23 @@ export class ProductionJobsController {
     return this.productionJobsService.startJob(jobId, payload.userId);
   }
 
+  @Post(':jobId/approve-operations')
+  @Permissions('production:approve')
+  @ApiAuth({
+    summary:
+      'Duyệt công đoạn của cả Job — mở khoá PATCH .../operations/:operationId; không đổi trạng thái Job',
+    statusCode: HttpStatus.NO_CONTENT,
+  })
+  approveJobOperations(
+    @UUIDParam('jobId') jobId: string,
+    @CurrentUser() payload: JwtPayloadType,
+  ): Promise<void> {
+    return this.productionJobsService.approveJobOperations(
+      jobId,
+      payload.userId,
+    );
+  }
+
   @Patch(':jobId/operations/:operationId')
   @Permissions('production:update')
   @ApiAuth({

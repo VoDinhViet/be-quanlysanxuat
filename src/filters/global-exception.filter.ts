@@ -60,9 +60,11 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     }
 
     if (this.debug) {
-      error.stack = exception instanceof Error ? exception.stack : undefined;
-      error.trace = exception;
-      this.logger.debug(error);
+      this.logger.debug({
+        ...error,
+        stack: exception instanceof Error ? exception.stack : undefined,
+        trace: exception,
+      });
     }
 
     response.status(error.statusCode).json(error);
@@ -190,7 +192,25 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     return errorRes;
   }
 
+  /** drizzle-orm ném `Error('No values to set')` (nguyên văn, không có `errorCode`/status riêng)
+   * khi `.set({})` nhận payload rỗng — xảy ra khi `ValidationPipe` whitelist đã loại sạch field lạ
+   * của một `PATCH`. Không phải lỗi máy chủ, nên trả 400 thay vì rơi xuống 500 mặc định. */
+  private isEmptyUpdatePayloadError(error: Error): boolean {
+    return error?.message === 'No values to set';
+  }
+
   private handleError(error: Error): ErrorDto {
+    if (this.isEmptyUpdatePayloadError(error)) {
+      const statusCode = HttpStatus.BAD_REQUEST;
+      return {
+        timestamp: new Date().toISOString(),
+        statusCode,
+        error: STATUS_CODES[statusCode] || 'Bad Request',
+        errorCode: ErrorCode.V004,
+        message: 'Không có trường hợp lệ nào để cập nhật.',
+      };
+    }
+
     const statusCode = HttpStatus.INTERNAL_SERVER_ERROR;
     const errorRes: ErrorDto = {
       timestamp: new Date().toISOString(),
