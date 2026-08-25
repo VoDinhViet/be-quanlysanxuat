@@ -27,6 +27,8 @@ import {
   clientGroups,
   clients,
   ClientStatus,
+  orders,
+  outboundOrders,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { ClientContactResDto } from './dto/client-contact.res.dto';
@@ -222,11 +224,34 @@ export class ClientsService {
 
   async deleteClient(clientId: string): Promise<void> {
     await this.ensureClientExists(clientId);
+    await this.ensureClientNotInUse(clientId);
 
     await this.db
       .update(clients)
       .set({ deletedAt: new Date() })
       .where(eq(clients.id, clientId));
+  }
+
+  /** Chặn xoá khi còn `orders`/`outbound_orders` trỏ tới — cả hai FK là `restrict`, xoá mềm không
+   * tự kích hoạt ràng buộc đó nên phải tự kiểm ở tầng service. Cố ý không lọc
+   * `isNull(orders.deletedAt)`: đơn đã xoá mềm vẫn là dòng thật đang giữ FK. */
+  private async ensureClientNotInUse(clientId: string): Promise<void> {
+    const [[order], [outboundOrder]] = await Promise.all([
+      this.db
+        .select({ id: orders.id })
+        .from(orders)
+        .where(eq(orders.clientId, clientId))
+        .limit(1),
+      this.db
+        .select({ id: outboundOrders.id })
+        .from(outboundOrders)
+        .where(eq(outboundOrders.clientId, clientId))
+        .limit(1),
+    ]);
+
+    if (order || outboundOrder) {
+      throw new AppException(ErrorCode.E246, HttpStatus.CONFLICT);
+    }
   }
 
   private async replaceContacts(

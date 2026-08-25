@@ -7,6 +7,7 @@ import {
   numeric,
   pgTable,
   timestamp,
+  uniqueIndex,
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core';
@@ -73,6 +74,15 @@ export const bomItems = pgTable(
     index('idx_bom_items_created_by').on(table.createdBy),
     index('idx_bom_items_drawing_file_id').on(table.drawingFileId),
     check('chk_bom_items_quantity_positive', sql`quantity > 0`),
+    // Lưới an toàn tầng DB cho `BomsService.ensureBomItemNotDuplicate` — cùng `itemId` không được
+    // xuất hiện hai lần dưới cùng node cha. Tách 2 index vì Postgres coi NULL ≠ NULL: một
+    // `unique(bom_id, parent_id, item_id)` gộp sẽ không chặn được trùng ở cấp top-level.
+    uniqueIndex('uq_bom_items_bom_item_no_parent')
+      .on(table.bomId, table.itemId)
+      .where(sql`parent_id IS NULL`),
+    uniqueIndex('uq_bom_items_bom_parent_item')
+      .on(table.bomId, table.parentId, table.itemId)
+      .where(sql`parent_id IS NOT NULL`),
   ],
 );
 

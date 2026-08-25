@@ -69,11 +69,6 @@ export enum ErrorCode {
   E044 = 'file.error.invalid_signature',
   E045 = 'file.error.url_expired',
   E046 = 'operation.error.not_found',
-  // E047 (operation.error.code_exists) stays reserved — its only throw site was
-  // `OperationsService.createOperation`/`updateOperation`, removed when `operations` became a
-  // read-only catalogue (list only, no create/update/delete). E046 stays live:
-  // `RoutingsService`/`BomOperationsService` independently throw it when a routing step
-  // references a missing operation.
   E047 = 'operation.error.code_exists',
   // E048/E049 (product_revision not_found/number_exists) stay reserved — the product-revisions
   // module was removed in favor of whole-item copy/clone (`POST /items/:id/copy`); no current
@@ -525,5 +520,13 @@ export enum ErrorCode {
   E239 = 'outbound_order.error.not_sendable',
   // `POST /outbound-orders/:id/approve` hoặc `.../reject` khi phiếu không ở `PENDING_APPROVAL`.
   E240 = 'outbound_order.error.invalid_approval_state',
+  // `POST /items/:itemId/bom/items` thêm cùng `itemId` hai lần dưới cùng một node cha.
+  E245 = 'bom_item.error.duplicate',
+  // `DELETE /clients/:id` khi còn `orders`/`outbound_orders` trỏ tới.
+  E246 = 'client.error.in_use',
+  // `DELETE /suppliers/:id` khi còn chứng từ mua hàng/gia công trỏ tới.
+  E247 = 'supplier.error.in_use',
+  // `DELETE /operations/:id` khi còn `routing_operations`/`bom_operations` trỏ tới.
+  E248 = 'operation.error.in_use',
   V003 = 'common.error.too_many_requests',
 }

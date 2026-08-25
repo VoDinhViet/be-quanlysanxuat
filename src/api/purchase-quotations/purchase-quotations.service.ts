@@ -20,6 +20,7 @@ import {
   DocumentType,
   generateDocumentSequence,
 } from '../../common/utils/document-sequence.util';
+import { hasFields } from '../../common/utils/object.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
@@ -302,10 +303,12 @@ export class PurchaseQuotationsService {
 
       await this.createQuotationItems(tx, quotationId, quotationItems);
 
-      await tx
-        .update(purchaseQuotations)
-        .set({ ...quotationFields })
-        .where(eq(purchaseQuotations.id, quotationId));
+      if (hasFields(quotationFields)) {
+        await tx
+          .update(purchaseQuotations)
+          .set(quotationFields)
+          .where(eq(purchaseQuotations.id, quotationId));
+      }
     });
   }
 
@@ -326,21 +329,34 @@ export class PurchaseQuotationsService {
       PurchaseQuotationStatus.DRAFT,
     );
 
-    const items = await this.db.query.purchaseQuotationItems.findMany({
-      columns: { id: true },
-      where: eq(purchaseQuotationItems.quotationId, quotationId),
-      with: { suppliers: { columns: { unitPrice: true } } },
-    });
+    // LEFT JOIN để dòng vật tư chưa NCC nào chào giá vẫn còn trong kết quả — INNER JOIN nuốt mất
+    // dòng đó, không còn gì để ném E130. `count(cột)` bỏ qua NULL, nên `pricedSupplierCount` nhỏ
+    // hơn `supplierCount` nghĩa là có NCC chào giá nhưng thiếu đơn giá.
+    const itemQuoteCounts = await this.db
+      .select({
+        supplierCount: count(purchaseQuotationItemSuppliers.id),
+        pricedSupplierCount: count(purchaseQuotationItemSuppliers.unitPrice),
+      })
+      .from(purchaseQuotationItems)
+      .leftJoin(
+        purchaseQuotationItemSuppliers,
+        eq(
+          purchaseQuotationItemSuppliers.quotationItemId,
+          purchaseQuotationItems.id,
+        ),
+      )
+      .where(eq(purchaseQuotationItems.quotationId, quotationId))
+      .groupBy(purchaseQuotationItems.id);
 
-    if (!items.length) {
+    if (!itemQuoteCounts.length) {
       throw new AppException(ErrorCode.E131, HttpStatus.BAD_REQUEST);
     }
 
-    for (const item of items) {
-      if (!item.suppliers.length) {
+    for (const itemQuoteCount of itemQuoteCounts) {
+      if (!itemQuoteCount.supplierCount) {
         throw new AppException(ErrorCode.E130, HttpStatus.BAD_REQUEST);
       }
-      if (item.suppliers.some((supplier) => supplier.unitPrice === null)) {
+      if (itemQuoteCount.pricedSupplierCount < itemQuoteCount.supplierCount) {
         throw new AppException(ErrorCode.E120, HttpStatus.BAD_REQUEST);
       }
     }
@@ -365,32 +381,75 @@ export class PurchaseQuotationsService {
       PurchaseQuotationStatus.PENDING_APPROVAL,
     );
 
-    const items = await this.db.query.purchaseQuotationItems.findMany({
-      columns: { id: true },
-      where: eq(purchaseQuotationItems.quotationId, quotationId),
-      with: {
-        allocations: {
-          columns: {
-            purchaseRequestItemId: true,
-            quantity: true,
-            quantityAdjustmentReason: true,
-          },
+    // Tách 2 join phẳng riêng cho `allocations` và `suppliers` (cả hai 1-nhiều với
+    // purchaseQuotationItems) rồi gộp lại bằng tay — join gộp chung 1 câu sẽ nhân tích Descartes,
+    // ra sai số dòng cho cả hai mảng.
+    const [existingQuotationItems, itemAllocations, itemSuppliers] =
+      await Promise.all([
+        this.db
+          .select({ id: purchaseQuotationItems.id })
+          .from(purchaseQuotationItems)
+          .where(eq(purchaseQuotationItems.quotationId, quotationId)),
+        this.db
+          .select({
+            quotationItemId: purchaseQuotationItemAllocations.quotationItemId,
+            purchaseRequestItemId:
+              purchaseQuotationItemAllocations.purchaseRequestItemId,
+            quantity: purchaseQuotationItemAllocations.quantity,
+            quantityAdjustmentReason:
+              purchaseQuotationItemAllocations.quantityAdjustmentReason,
+          })
+          .from(purchaseQuotationItemAllocations)
+          .innerJoin(
+            purchaseQuotationItems,
+            eq(
+              purchaseQuotationItems.id,
+              purchaseQuotationItemAllocations.quotationItemId,
+            ),
+          )
+          .where(eq(purchaseQuotationItems.quotationId, quotationId)),
+        this.db
+          .select({
+            quotationItemId: purchaseQuotationItemSuppliers.quotationItemId,
+            id: purchaseQuotationItemSuppliers.id,
+            supplierId: purchaseQuotationItemSuppliers.supplierId,
+            unitPrice: purchaseQuotationItemSuppliers.unitPrice,
+            leadTimeDays: purchaseQuotationItemSuppliers.leadTimeDays,
+          })
+          .from(purchaseQuotationItemSuppliers)
+          .innerJoin(
+            purchaseQuotationItems,
+            eq(
+              purchaseQuotationItems.id,
+              purchaseQuotationItemSuppliers.quotationItemId,
+            ),
+          )
+          .where(eq(purchaseQuotationItems.quotationId, quotationId)),
+      ]);
+
+    const itemsById = new Map(
+      existingQuotationItems.map((quotationItem) => [
+        quotationItem.id,
+        {
+          id: quotationItem.id,
+          allocations: [] as typeof itemAllocations,
+          suppliers: [] as typeof itemSuppliers,
         },
-        suppliers: {
-          columns: {
-            id: true,
-            supplierId: true,
-            unitPrice: true,
-            leadTimeDays: true,
-          },
-        },
-      },
-    });
+      ]),
+    );
+    for (const allocation of itemAllocations) {
+      itemsById.get(allocation.quotationItemId)?.allocations.push(allocation);
+    }
+    for (const supplier of itemSuppliers) {
+      itemsById.get(supplier.quotationItemId)?.suppliers.push(supplier);
+    }
+
+    const items = [...itemsById.values()];
 
     this.validateSelectedSuppliers(items, reqDto.selectedSuppliers);
 
     const supplierRowById = new Map(
-      items.flatMap((item) => item.suppliers.map((s) => [s.id, s] as const)),
+      itemSuppliers.map((supplier) => [supplier.id, supplier]),
     );
 
     const linesBySupplierId = new Map<string, PurchaseOrderDraftLine[]>();

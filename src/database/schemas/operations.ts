@@ -37,8 +37,8 @@ export const operationStatusEnum = pgEnum('operation_status', [
 /** Master data for công đoạn (production operations/steps), e.g. Cắt laser, Hàn, Sơn tĩnh điện.
  * Referenced by `routing_operations` (Cấp 0, keyed by the root item) and `bom_operations` (keyed
  * by a specific WIP BOM node) to sequence the steps an item/node goes through. Soft-deleted, not
- * hard-deleted — both referencing tables use `onDelete: 'restrict'`, and there is no delete route
- * for this table anyway (`.claude/rules/database.md`). */
+ * hard-deleted — both referencing tables use `onDelete: 'restrict'`, and since a restrict FK never
+ * fires against a `deletedAt` update, `OperationsService.deleteOperation` checks both itself. */
 export const operations = pgTable(
   'operations',
   {

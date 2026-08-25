@@ -21,6 +21,7 @@ import {
   DocumentType,
   generateDocumentSequence,
 } from '../../common/utils/document-sequence.util';
+import { hasFields } from '../../common/utils/object.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import {
   type PermissionCode,
@@ -300,8 +301,10 @@ export class UsersService {
       ]);
     }
 
-    // `updated_at` is bumped by the column's own `$onUpdate`.
-    await this.db.update(users).set(userFields).where(eq(users.id, userId));
+    // `updated_at` do `$onUpdate` của chính cột bump, không set tay.
+    if (hasFields(userFields)) {
+      await this.db.update(users).set(userFields).where(eq(users.id, userId));
+    }
 
     if (!credential) {
       return;

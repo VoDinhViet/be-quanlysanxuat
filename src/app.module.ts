@@ -67,11 +67,13 @@ import { WarehousesModule } from './api/warehouses/warehouses.module';
     // `/2026/07/20/<uuid>.png`) — no auth, no signing, permanent public link
     // (`docs/decisions/files-registry.md`). Never collides with a controller route: storage keys
     // are always `<year>/<month>/<day>/<uuid>.<ext>`, nothing under `api`/`health`/`/` looks like
-    // that.
+    // that. `index`/`fallthrough` off: express's own miss-handler writes straight to `res` (skips
+    // `GlobalExceptionFilter`) and leaked the absolute disk path in its raw `ENOENT` message.
     ServeStaticModule.forRootAsync({
       useFactory: (configService: ConfigService<AllConfigType>) => [
         {
           rootPath: configService.getOrThrow('upload.dir', { infer: true }),
+          serveStaticOptions: { index: false, fallthrough: false },
         },
       ],
       inject: [ConfigService],

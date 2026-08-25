@@ -20,6 +20,7 @@ import {
   DocumentType,
   generateDocumentSequence,
 } from '../../common/utils/document-sequence.util';
+import { hasFields } from '../../common/utils/object.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
@@ -420,10 +421,12 @@ export class PurchaseOrdersService {
       await this.ensureAssignedUserExists(reqDto.assignedUserId);
     }
 
-    await this.db
-      .update(purchaseOrders)
-      .set({ ...reqDto })
-      .where(eq(purchaseOrders.id, purchaseOrderId));
+    if (hasFields(reqDto)) {
+      await this.db
+        .update(purchaseOrders)
+        .set(reqDto)
+        .where(eq(purchaseOrders.id, purchaseOrderId));
+    }
   }
 
   async updatePurchaseOrderItem(
@@ -445,10 +448,12 @@ export class PurchaseOrdersService {
       throw new AppException(ErrorCode.E123, HttpStatus.NOT_FOUND);
     }
 
-    await this.db
-      .update(purchaseOrderItems)
-      .set({ ...reqDto })
-      .where(eq(purchaseOrderItems.id, purchaseOrderItemId));
+    if (hasFields(reqDto)) {
+      await this.db
+        .update(purchaseOrderItems)
+        .set(reqDto)
+        .where(eq(purchaseOrderItems.id, purchaseOrderItemId));
+    }
   }
 
   /** Xác nhận đặt hàng — `DRAFT → ORDERED`. Chặn nếu chưa có `expectedDate` (`E134`), chưa chọn

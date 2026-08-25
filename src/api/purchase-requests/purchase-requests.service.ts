@@ -22,6 +22,7 @@ import {
   DocumentType,
   generateDocumentSequence,
 } from '../../common/utils/document-sequence.util';
+import { hasFields } from '../../common/utils/object.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
@@ -241,10 +242,12 @@ export class PurchaseRequestsService {
         throw new AppException(ErrorCode.E113, HttpStatus.NOT_FOUND);
       }
 
-      await tx
-        .update(purchaseRequestItems)
-        .set({ ...reqDto })
-        .where(eq(purchaseRequestItems.id, purchaseRequestItemId));
+      if (hasFields(reqDto)) {
+        await tx
+          .update(purchaseRequestItems)
+          .set(reqDto)
+          .where(eq(purchaseRequestItems.id, purchaseRequestItemId));
+      }
     });
   }
 

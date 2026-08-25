@@ -128,12 +128,23 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       timestamp: new Date().toISOString(),
       statusCode,
       error: STATUS_CODES[statusCode] || 'Error',
-      message:
+      message: this.scrubFilePathLeak(
         typeof r === 'string' ? r : (r.message as string) || exception.message,
+      ),
     };
 
     this.logger.debug(exception);
     return errorRes;
+  }
+
+  /** `express.static` (`ServeStaticModule`) ném lỗi kèm nguyên văn đường dẫn đĩa khi thiếu file
+   * (`ENOENT: ... open '/...'`) — lưới an toàn thứ hai, phòng khi thư viện đổi cách ném lỗi. Chặn
+   * chính là `serveStaticOptions` ở `app.module.ts`, buộc lỗi đi qua filter này. */
+  private scrubFilePathLeak(message: string): string {
+    if (/ENOENT|no such file or directory/i.test(message)) {
+      return 'Không tìm thấy tệp.';
+    }
+    return message;
   }
 
   private handlePayloadTooLargeException(
@@ -185,7 +196,9 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       timestamp: new Date().toISOString(),
       statusCode,
       error: STATUS_CODES[statusCode] || 'Internal Server Error',
-      message: error?.message || 'An unexpected error occurred',
+      message: this.scrubFilePathLeak(
+        error?.message || 'An unexpected error occurred',
+      ),
     };
 
     this.logger.error(error);

@@ -23,10 +23,15 @@ import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
   countries,
+  outsourcingOrders,
+  outsourcingReceipts,
+  purchaseOrders,
+  purchaseQuotationItemSuppliers,
   supplierFiles,
   supplierGroups,
   supplierPaymentInfo,
   supplierRepresentatives,
+  supplierReturns,
   suppliers,
   SupplierStatus,
 } from '../../database/schemas';
@@ -245,11 +250,38 @@ export class SuppliersService {
 
   async deleteSupplier(supplierId: string): Promise<void> {
     await this.ensureSupplierExists(supplierId);
+    await this.ensureSupplierNotInUse(supplierId);
 
     await this.db
       .update(suppliers)
       .set({ deletedAt: new Date() })
       .where(eq(suppliers.id, supplierId));
+  }
+
+  /** Chặn xoá khi còn chứng từ mua hàng/gia công trỏ tới — cả 5 bảng dưới đều FK `restrict`, xoá
+   * mềm không tự kích hoạt ràng buộc đó nên phải tự kiểm ở tầng service. */
+  private async ensureSupplierNotInUse(supplierId: string): Promise<void> {
+    const referencingTables = [
+      purchaseOrders,
+      purchaseQuotationItemSuppliers,
+      outsourcingOrders,
+      outsourcingReceipts,
+      supplierReturns,
+    ];
+
+    const references = await Promise.all(
+      referencingTables.map((table) =>
+        this.db
+          .select({ id: table.id })
+          .from(table)
+          .where(eq(table.supplierId, supplierId))
+          .limit(1),
+      ),
+    );
+
+    if (references.some((rows) => rows.length > 0)) {
+      throw new AppException(ErrorCode.E247, HttpStatus.CONFLICT);
+    }
   }
 
   /**

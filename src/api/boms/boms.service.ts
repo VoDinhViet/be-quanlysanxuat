@@ -3,6 +3,7 @@ import { plainToInstance } from 'class-transformer';
 import { asc, eq, and, getTableColumns, inArray, isNull } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 
+import { hasFields } from '../../common/utils/object.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
@@ -114,6 +115,14 @@ export class BomsService {
       await this.ensureBomItemCanHaveChildren(reqDto.parentId);
     }
 
+    if (existingBom) {
+      await this.ensureBomItemNotDuplicate(
+        existingBom.id,
+        reqDto.parentId ?? null,
+        reqDto.itemId,
+      );
+    }
+
     if (childItem.type === ItemType.WIP) {
       await this.checkNoCycle(
         existingBom?.id,
@@ -178,31 +187,24 @@ export class BomsService {
       this.ensureQuantityValid(node.itemType, reqDto.quantity);
     }
 
-    // Peel riêng để bên dưới quyết định theo giá trị *hiệu lực*: link file mới và/hoặc xoá file
-    // cũ — spread thường không diễn đạt được "thay và dọn rác" cùng lúc.
-    const { drawingFileId: requestedDrawingFileId, ...bomItemFields } = reqDto;
-
-    if (requestedDrawingFileId) {
-      await this.filesService.linkFiles([requestedDrawingFileId]);
+    if (reqDto.drawingFileId) {
+      await this.filesService.linkFiles([reqDto.drawingFileId]);
     }
 
-    await this.db
-      .update(bomItems)
-      .set({
-        ...bomItemFields,
-        ...(requestedDrawingFileId !== undefined
-          ? { drawingFileId: requestedDrawingFileId }
-          : {}),
-      })
-      .where(and(eq(bomItems.id, bomItemId), eq(bomItems.bomId, bom.id)));
+    if (hasFields(reqDto)) {
+      await this.db
+        .update(bomItems)
+        .set(reqDto)
+        .where(and(eq(bomItems.id, bomItemId), eq(bomItems.bomId, bom.id)));
+    }
 
     // Chỉ xoá file cũ sau khi con trỏ mới đã commit — xoá trước có thể mất cả hai nếu write sau
     // đó lỗi. Xoá lỗi ở đây chỉ để lại rác (đánh đổi giống `FilesService.linkFiles`), nên không
     // gộp transaction với update ở trên.
     if (
-      requestedDrawingFileId !== undefined &&
+      reqDto.drawingFileId !== undefined &&
       node.drawingFileId &&
-      node.drawingFileId !== requestedDrawingFileId
+      node.drawingFileId !== reqDto.drawingFileId
     ) {
       await this.filesService.deleteFileById(node.drawingFileId);
     }
@@ -309,6 +311,31 @@ export class BomsService {
     const item = node?.item;
     if (item?.type === ItemType.RM) {
       throw new AppException(ErrorCode.E052, HttpStatus.BAD_REQUEST);
+    }
+  }
+
+  /** Chặn thêm cùng `itemId` hai lần dưới cùng node cha — nổ BOM sẽ cộng trùng nhu cầu nếu lọt. */
+  private async ensureBomItemNotDuplicate(
+    bomId: string,
+    parentId: string | null,
+    itemId: string,
+  ): Promise<void> {
+    const [duplicate] = await this.db
+      .select({ id: bomItems.id })
+      .from(bomItems)
+      .where(
+        and(
+          eq(bomItems.bomId, bomId),
+          parentId
+            ? eq(bomItems.parentId, parentId)
+            : isNull(bomItems.parentId),
+          eq(bomItems.itemId, itemId),
+        ),
+      )
+      .limit(1);
+
+    if (duplicate) {
+      throw new AppException(ErrorCode.E245, HttpStatus.CONFLICT);
     }
   }
 

@@ -65,6 +65,7 @@ export class OutsourcingOrdersService {
       reqDto.q
         ? unaccentILike(outsourcingOrders.code, `%${reqDto.q}%`)
         : undefined,
+      reqDto.status ? eq(outsourcingOrders.status, reqDto.status) : undefined,
     );
 
     const sentQuantityByOrder = sentQuantityByOrderIdSubquery(this.db);
