@@ -397,8 +397,9 @@ export enum ErrorCode {
   // E193 (outbound_order.error.quantity_exceeds_ordered) dự phòng — cùng lý do bỏ như E188; trước
   // ném khi SL dòng vượt SL đặt của `order_items` đó (`order_items.quantity`).
   E193 = 'outbound_order.error.quantity_exceeds_ordered',
-  // E194 (outbound_order.error.quantity_exceeds_deliverable) dự phòng — chặn theo tồn kho/giữ chỗ
-  // kiểu ATP đã gỡ khỏi `create`, chờ thiết kế lại "giữ trước".
+  // `POST /outbound-orders/:id/send` (chốt thật) và `.../approve` (kiểm lại) khi Σ SL cùng vật tư
+  // của phiếu vượt `Có thể giao = Tồn kho FG − Đã giữ của DO khác PENDING_APPROVAL/PENDING_DELIVERY`
+  // — cùng khuôn `E231` (phiếu lãnh vật tư). Xem `docs/domains/inventory.md`.
   E194 = 'outbound_order.error.quantity_exceeds_deliverable',
   E195 = 'outbound_order.error.not_found',
   // Nhập kho thành phẩm (`receiptType = PRODUCTION`) khi Job chưa có phiếu OQC nào (dòng
@@ -535,5 +536,7 @@ export enum ErrorCode {
   E247 = 'supplier.error.in_use',
   // `DELETE /operations/:id` khi còn `routing_operations`/`bom_operations` trỏ tới.
   E248 = 'operation.error.in_use',
+  // `POST /purchase-orders` khi cùng một `purchaseRequestItemId` xuất hiện ở ≥ 2 dòng trong payload.
+  E249 = 'purchase_order.error.duplicate_request_item',
   V003 = 'common.error.too_many_requests',
 }

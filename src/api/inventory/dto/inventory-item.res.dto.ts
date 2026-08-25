@@ -53,13 +53,14 @@ export class InventoryItemResDto {
   @Expose()
   @NumberField({
     description:
-      'Đã giữ cho các đơn hàng đã duyệt còn mở, trừ phần đã xuất giao — chỉ khác 0 với FG',
+      'Đã giữ bởi chứng từ: DO PENDING_APPROVAL/PENDING_DELIVERY (FG) hoặc phiếu lãnh APPROVED (RM)',
   })
   reserved!: number;
 
   @Expose()
   @NumberField({
-    description: 'Tổng nhu cầu BOM — luôn 0 ở đợt này, chưa nổ BOM',
+    description:
+      'Nhu cầu chưa có chứng từ giữ: đơn đã duyệt chưa giao (FG) hoặc BOM còn lại (RM), đã trừ phần nằm trong reserved',
   })
   bomDemand!: number;
 

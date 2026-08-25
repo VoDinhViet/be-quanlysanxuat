@@ -5,6 +5,7 @@ import {
   EnumField,
   EnumFieldOptional,
   NumberFieldOptional,
+  PhoneField,
   StringField,
   StringFieldOptional,
   UUIDField,
@@ -26,7 +27,7 @@ export class CreateSupplierReqDto {
   @StringField({ description: 'Tax code (Mã số thuế)', maxLength: 50 })
   taxCode!: string;
 
-  @StringField({ description: 'Phone number', maxLength: 30 })
+  @PhoneField({ description: 'Phone number', maxLength: 30 })
   phoneNumber!: string;
 
   @StringField({ description: 'Address', maxLength: 500 })

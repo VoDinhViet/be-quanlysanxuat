@@ -16,6 +16,7 @@ import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
 import { CancelPurchaseOrderReqDto } from './dto/cancel-purchase-order.req.dto';
+import { CreatePurchaseOrderReqDto } from './dto/create-purchase-order.req.dto';
 import { GetPurchaseOrdersReqDto } from './dto/get-purchase-orders.req.dto';
 import { PagePurchaseOrderResDto } from './dto/page-purchase-order.res.dto';
 import { PurchaseOrderResDto } from './dto/purchase-order.res.dto';
@@ -51,6 +52,22 @@ export class PurchaseOrdersController {
     @UUIDParam('purchaseOrderId') purchaseOrderId: string,
   ): Promise<PurchaseOrderResDto> {
     return this.purchaseOrdersService.getPurchaseOrder(purchaseOrderId);
+  }
+
+  @Post()
+  @Permissions('purchasing:create')
+  @ApiAuth({
+    summary: 'Lập PO tay, không qua RFQ — chọn dòng ĐXMH đã duyệt cho một NCC',
+    statusCode: HttpStatus.NO_CONTENT,
+  })
+  createPurchaseOrder(
+    @Body() reqDto: CreatePurchaseOrderReqDto,
+    @CurrentUser() payload: JwtPayloadType,
+  ): Promise<void> {
+    return this.purchaseOrdersService.createPurchaseOrder(
+      reqDto,
+      payload.userId,
+    );
   }
 
   @Patch(':purchaseOrderId')

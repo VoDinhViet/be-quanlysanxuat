@@ -35,7 +35,8 @@ export class InventoryController {
   @Permissions('inventory:read')
   @ApiAuth({
     type: InventoryBalanceResDto,
-    summary: 'Tồn thô theo (kho × mặt hàng) — đọc thẳng inventory_balances',
+    summary:
+      'Tồn thô theo (kho × mặt hàng) — reservedQuantity tính động lúc đọc, không phải cột lưu sẵn',
     isPaginated: true,
   })
   getInventoryBalances(

@@ -12,7 +12,7 @@ Biên HTTP: cái gì vào, cái gì ra, ai được gọi. Reference: `src/api/u
 
 ## DTOs
 
-- MUST use only the composite field decorators from `src/decorators/field.decorators.ts` (`StringField`, `NumberField`, `EmailField`, `PasswordField`, `UUIDField`, `DateField`, `BooleanField`, `EnumField`, `ClassField`, `TokenField`, `URLField`, each with an `*Optional` variant). MUST NOT hand-wire `class-validator` + `@ApiProperty`.
+- MUST use only the composite field decorators from `src/decorators/field.decorators.ts` (`StringField`, `NumberField`, `EmailField`, `PhoneField`, `PasswordField`, `UUIDField`, `DateField`, `BooleanField`, `EnumField`, `ClassField`, `TokenField`, `URLField`, each with an `*Optional` variant). MUST NOT hand-wire `class-validator` + `@ApiProperty`.
 - MUST pass enums as a thunk: `@EnumField(() => UserStatus)`, never `@EnumField(UserStatus)`.
 - MUST describe a field via the decorator's `description` option. MUST NOT write a `/** */` doc comment on a DTO — neither the class nor a property (`.claude/rules/documentation.md`, Code comments).
 - MUST use `@Expose() @FileField('<relationKey>', '<description>')` (`src/api/files/dto/file.field.ts`) for a `files` relation renamed on the DTO (`imageFile` → `image`). A list-of-files property whose key already matches its relation only needs `@ClassField(() => FileResDto)`.

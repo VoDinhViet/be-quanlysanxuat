@@ -3,6 +3,7 @@ import {
   ClassFieldOptional,
   EmailFieldOptional,
   EnumFieldOptional,
+  PhoneFieldOptional,
   StringFieldOptional,
   UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
@@ -25,7 +26,7 @@ export class UpdateClientReqDto {
   })
   taxCode?: string | null;
 
-  @StringFieldOptional({
+  @PhoneFieldOptional({
     description: 'Phone number',
     nullable: true,
     maxLength: 30,

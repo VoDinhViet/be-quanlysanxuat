@@ -8,6 +8,7 @@ import {
   exists,
   gte,
   inArray,
+  isNull,
   lt,
   or,
   sql,
@@ -34,10 +35,14 @@ import {
   purchaseRequestItems,
   purchaseRequests,
   PurchaseOrderStatus,
+  PurchaseRequestStatus,
+  suppliers,
   users,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { CancelPurchaseOrderReqDto } from './dto/cancel-purchase-order.req.dto';
+import { CreatePurchaseOrderItemReqDto } from './dto/create-purchase-order-item.req.dto';
+import { CreatePurchaseOrderReqDto } from './dto/create-purchase-order.req.dto';
 import { GetPurchaseOrdersReqDto } from './dto/get-purchase-orders.req.dto';
 import { PagePurchaseOrderResDto } from './dto/page-purchase-order.res.dto';
 import { PurchaseOrderResDto } from './dto/purchase-order.res.dto';
@@ -374,6 +379,82 @@ export class PurchaseOrdersService {
       },
       { excludeExtraneousValues: true },
     );
+  }
+
+  /** Lập PO tay, không qua RFQ (`docs/domains/purchasing.md`) — chọn thẳng dòng ĐXMH đã duyệt cho
+   * một NCC duy nhất, `quotationItemSupplierId` bỏ trống vì không có báo giá đứng sau. */
+  async createPurchaseOrder(
+    reqDto: CreatePurchaseOrderReqDto,
+    userId: string,
+  ): Promise<void> {
+    await this.ensureSupplierExists(reqDto.supplierId);
+    await this.validatePurchaseOrderItems(reqDto.items);
+
+    const { items: itemsToCreate, ...purchaseOrderFields } = reqDto;
+
+    await this.db.transaction(async (tx) => {
+      const code = await this.generatePurchaseOrderCode(tx);
+      const [order] = await tx
+        .insert(purchaseOrders)
+        .values({
+          ...purchaseOrderFields,
+          code,
+          orderDate: new Date(),
+          createdBy: userId,
+        })
+        .returning({ id: purchaseOrders.id });
+
+      await tx.insert(purchaseOrderItems).values(
+        itemsToCreate.map((item) => ({
+          ...item,
+          purchaseOrderId: order.id,
+        })),
+      );
+    });
+  }
+
+  /** Không dòng ĐXMH nào lặp trong payload (E249); mọi dòng phải thuộc phiếu APPROVED và chưa hủy
+   * tay (E125) — cùng bất biến với `PurchaseQuotationsService.validateAllocations`. */
+  private async validatePurchaseOrderItems(
+    itemsToValidate: CreatePurchaseOrderItemReqDto[],
+  ): Promise<void> {
+    const requestItemIds = itemsToValidate.map(
+      (item) => item.purchaseRequestItemId,
+    );
+    const uniqueRequestItemIds = [...new Set(requestItemIds)];
+    if (uniqueRequestItemIds.length !== requestItemIds.length) {
+      throw new AppException(ErrorCode.E249, HttpStatus.CONFLICT);
+    }
+
+    const [{ total }] = await this.db
+      .select({ total: count() })
+      .from(purchaseRequestItems)
+      .innerJoin(
+        purchaseRequests,
+        eq(purchaseRequests.id, purchaseRequestItems.purchaseRequestId),
+      )
+      .where(
+        and(
+          inArray(purchaseRequestItems.id, uniqueRequestItemIds),
+          eq(purchaseRequests.status, PurchaseRequestStatus.APPROVED),
+          isNull(purchaseRequestItems.cancelledAt),
+        ),
+      );
+
+    if (total !== uniqueRequestItemIds.length) {
+      throw new AppException(ErrorCode.E125, HttpStatus.CONFLICT);
+    }
+  }
+
+  private async ensureSupplierExists(supplierId: string): Promise<void> {
+    const existing = await this.db.query.suppliers.findFirst({
+      columns: { id: true },
+      where: and(eq(suppliers.id, supplierId), isNull(suppliers.deletedAt)),
+    });
+
+    if (!existing) {
+      throw new AppException(ErrorCode.E019, HttpStatus.NOT_FOUND);
+    }
   }
 
   /** Sinh PO Draft từ NCC thắng thầu của một RFQ — một NCC nhiều vật tư gộp chung một PO. Bắt

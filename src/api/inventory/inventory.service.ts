@@ -36,7 +36,15 @@ import {
   OrderStatus,
   suppliers,
   units,
+  warehouses,
+  WarehouseType,
 } from '../../database/schemas';
+import {
+  remainingBomDemandByItemSubquery,
+  requisitionHeldQuantityByItemSubquery,
+  reservedQuantitySubquery,
+} from '../inventory-requisitions/inventory-requisitions.query';
+import { outboundHeldQuantityByItemSubquery } from '../outbound-orders/outbound-orders.query';
 import { GetInventoryBalancesReqDto } from './dto/get-inventory-balances.req.dto';
 import { GetInventoryReqDto } from './dto/get-inventory.req.dto';
 import { GetInventoryTransactionsReqDto } from './dto/get-inventory-transactions.req.dto';
@@ -46,7 +54,8 @@ import { InventoryTransactionResDto } from './dto/inventory-transaction.res.dto'
 import { StockStatus } from './inventory.constant';
 
 /** Đọc tồn — mọi số tính từ `inventory_balances` (bản chiếu `InventoryPostingService` ghi lúc
- * `post`/`cancel`) và `order_items`, gộp mọi kho trừ khi `warehouseId` được truyền. */
+ * `post`/`cancel`), `order_items`/`outbound_order_items` (FG) và `inventory_requisition_items`/
+ * `production_job_issues` (RM), gộp mọi kho trừ khi `warehouseId` được truyền. */
 @Injectable()
 export class InventoryService {
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
@@ -60,14 +69,38 @@ export class InventoryService {
     reqDto: GetInventoryReqDto,
   ): Promise<OffsetPaginatedDto<InventoryItemResDto>> {
     const stock = this.balanceSubquery(reqDto.asOfDate, reqDto.warehouseId);
-    const reserved = this.reservedSubquery();
+    const openOrderDemand = this.openOrderDemandSubquery();
+    const outboundHeld = outboundHeldQuantityByItemSubquery(this.db);
+    const requisitionHeld = requisitionHeldQuantityByItemSubquery(
+      this.db,
+      reqDto.warehouseId,
+    );
+    const bomRemaining = remainingBomDemandByItemSubquery(this.db);
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
 
     const onHandSql = () => sql<number>`coalesce(${stock.onHand}, 0)`;
-    const reservedSql = () => sql<number>`coalesce(${reserved.reserved}, 0)`;
-    // Literal `0` — đợt nổ BOM đa cấp sau này chỉ cần thay hàm này bằng subquery thật, công thức
-    // `available`/`status` không phải sửa.
-    const bomDemandSql = () => sql<number>`0`;
+
+    // Khối RM — nhu cầu Job trừ phần phiếu lãnh đã giữ.
+    const rmHeldSql = () =>
+      sql<number>`coalesce(${requisitionHeld.heldQuantity}, 0)`;
+    const rmDemandSql = () =>
+      sql<number>`greatest(coalesce(${bomRemaining.remainingDemand}, 0) - (${rmHeldSql()}), 0)`;
+
+    // Khối FG — nhu cầu đơn hàng mở trừ phần DO đã giữ.
+    const fgHeldSql = () =>
+      sql<number>`coalesce(${outboundHeld.heldQuantity}, 0)`;
+    const fgDemandSql = () =>
+      sql<number>`greatest(coalesce(${openOrderDemand.demand}, 0) - (${fgHeldSql()}), 0)`;
+
+    /** `reserved` = tổng "Đã giữ" của RM (phiếu lãnh `APPROVED`) và FG (DO `PENDING_APPROVAL`/
+     * `PENDING_DELIVERY`); `bomDemand` = phần nhu cầu CHƯA có chứng từ nào giữ, trừ theo đúng cặp
+     * RM/FG (không trộn) để không bị trừ hai lần — một phiếu lãnh `APPROVED` vừa nằm trong
+     * `reserved` vừa nằm trong `remainingBomDemand` (chỉ trừ phần `ISSUED`), cộng thẳng sẽ ra
+     * `available` sai. Nguồn RM (`production_job_issues`) chỉ gộp lá BOM một cấp, không nổ qua node
+     * WIP cha — giới hạn cố ý của đợt này, xem `docs/domains/inventory.md`. */
+    const reservedSql = () => sql<number>`(${rmHeldSql()}) + (${fgHeldSql()})`;
+    const bomDemandSql = () =>
+      sql<number>`(${rmDemandSql()}) + (${fgDemandSql()})`;
     const availableSql = () =>
       sql<number>`(${onHandSql()}) - (${reservedSql()}) - (${bomDemandSql()})`;
 
@@ -112,7 +145,10 @@ export class InventoryService {
         .leftJoin(suppliers, eq(suppliers.id, items.supplierId))
         .leftJoin(files, eq(files.id, items.imageFileId))
         .leftJoin(stock, eq(stock.itemId, items.id))
-        .leftJoin(reserved, eq(reserved.itemId, items.id))
+        .leftJoin(openOrderDemand, eq(openOrderDemand.itemId, items.id))
+        .leftJoin(outboundHeld, eq(outboundHeld.itemId, items.id))
+        .leftJoin(requisitionHeld, eq(requisitionHeld.itemId, items.id))
+        .leftJoin(bomRemaining, eq(bomRemaining.itemId, items.id))
         .where(where)
         .orderBy(asc(items.code))
         .limit(reqDto.limit)
@@ -121,7 +157,10 @@ export class InventoryService {
         .select({ total: count() })
         .from(items)
         .leftJoin(stock, eq(stock.itemId, items.id))
-        .leftJoin(reserved, eq(reserved.itemId, items.id))
+        .leftJoin(openOrderDemand, eq(openOrderDemand.itemId, items.id))
+        .leftJoin(outboundHeld, eq(outboundHeld.itemId, items.id))
+        .leftJoin(requisitionHeld, eq(requisitionHeld.itemId, items.id))
+        .leftJoin(bomRemaining, eq(bomRemaining.itemId, items.id))
         .where(where),
     ]);
 
@@ -138,10 +177,17 @@ export class InventoryService {
     );
   }
 
-  /** Tồn thô theo (kho × mặt hàng) — đọc thẳng `inventory_balances`, không tính lại. */
+  /** Tồn thô theo (kho × mặt hàng). `reservedQuantity` KHÔNG đọc cột cùng tên trên
+   * `inventory_balances` (cột đó vẫn luôn 0, chưa route nào ghi) — điền số tính động lúc đọc: phiếu
+   * lãnh `APPROVED` theo đúng kho, cộng DO `PENDING_APPROVAL`/`PENDING_DELIVERY` chỉ trên dòng kho
+   * `type = FG` (DO không có cột kho). Giữ nguyên hợp đồng API cũ, xem
+   * `docs/domains/inventory.md`. */
   async getInventoryBalances(
     reqDto: GetInventoryBalancesReqDto,
   ): Promise<OffsetPaginatedDto<InventoryBalanceResDto>> {
+    const requisitionHeld = reservedQuantitySubquery(this.db);
+    const outboundHeld = outboundHeldQuantityByItemSubquery(this.db);
+
     const where = and(
       reqDto.warehouseId
         ? eq(inventoryBalances.warehouseId, reqDto.warehouseId)
@@ -161,19 +207,48 @@ export class InventoryService {
       ),
     );
 
-    const [entities, countRows] = await Promise.all([
-      this.db.query.inventoryBalances.findMany({
-        where,
-        limit: reqDto.limit,
-        offset: reqDto.offset,
-        orderBy: desc(inventoryBalances.updatedAt),
-        with: { warehouse: true, item: true },
-      }),
+    const rmHeldSql = sql<number>`coalesce(${requisitionHeld.reservedQuantity}, 0)`;
+    const fgHeldSql = sql<number>`coalesce(${outboundHeld.heldQuantity}, 0)`;
+
+    const [rows, countRows] = await Promise.all([
+      this.db
+        .select({
+          ...getTableColumns(inventoryBalances),
+          warehouse: getTableColumns(warehouses),
+          item: getTableColumns(items),
+          // Sau spread để thắng cột thật `reservedQuantity` (`.claude/rules/service.md`).
+          reservedQuantity:
+            sql<number>`(${rmHeldSql}) + (${fgHeldSql})`.mapWith(Number),
+        })
+        .from(inventoryBalances)
+        .innerJoin(warehouses, eq(warehouses.id, inventoryBalances.warehouseId))
+        .innerJoin(items, eq(items.id, inventoryBalances.itemId))
+        .leftJoin(
+          requisitionHeld,
+          and(
+            eq(requisitionHeld.warehouseId, inventoryBalances.warehouseId),
+            eq(requisitionHeld.itemId, inventoryBalances.itemId),
+          ),
+        )
+        // DO không có cột kho — chỉ gán "Đã giữ" FG lên dòng của kho `type = FG`. Ngầm định đúng 1
+        // kho FG, cùng bất biến `OutboundOrdersService.resolveFgWarehouseId` ép cứng (`E238`); nếu
+        // sau này có ≥2 kho FG, nhánh ghi báo lỗi ngay còn nhánh đọc này sẽ cộng nhầm.
+        .leftJoin(
+          outboundHeld,
+          and(
+            eq(outboundHeld.itemId, inventoryBalances.itemId),
+            eq(warehouses.type, WarehouseType.FG),
+          ),
+        )
+        .where(where)
+        .orderBy(desc(inventoryBalances.updatedAt))
+        .limit(reqDto.limit)
+        .offset(reqDto.offset),
       this.db.select({ total: count() }).from(inventoryBalances).where(where),
     ]);
 
     return new OffsetPaginatedDto(
-      plainToInstance(InventoryBalanceResDto, entities, {
+      plainToInstance(InventoryBalanceResDto, rows, {
         excludeExtraneousValues: true,
       }),
       new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
@@ -267,10 +342,11 @@ export class InventoryService {
     return StockStatus.NORMAL;
   }
 
-  /** `excludeOrderId` loại một đơn khỏi `reserved` khi tính Khả dụng cho chính đơn đó — đơn này đã
-   * tự giữ chỗ nên không loại trừ sẽ bị trừ nhu cầu của nó hai lần. Chỉ `ProductionOrdersService`
-   * truyền tham số này — `GET /inventory` gọi `reservedSubquery` trực tiếp trong `getInventory`,
-   * không qua hàm này. Luôn gộp mọi kho. */
+  /** `excludeOrderId` loại một đơn khỏi nhu cầu khi tính Khả dụng cho chính đơn đó — đơn này đã tự
+   * tính vào nhu cầu nên không loại trừ sẽ bị trừ hai lần. Chỉ `ProductionOrdersService` truyền
+   * tham số này — `GET /inventory` gọi `openOrderDemandSubquery` trực tiếp trong `getInventory`,
+   * không qua hàm này. Luôn gộp mọi kho. Field `reserved` trả ra đây là nhu cầu đơn hàng mở — KHÁC
+   * `reserved` của `GET /inventory` (đã có chứng từ giữ), xem `docs/domains/inventory.md`. */
   async getStockLevels(
     itemIds: string[],
     excludeOrderId?: string,
@@ -280,19 +356,19 @@ export class InventoryService {
     }
 
     const balance = this.balanceSubquery();
-    const reserved = this.reservedSubquery(excludeOrderId);
+    const openOrderDemand = this.openOrderDemandSubquery(excludeOrderId);
 
     const rows = await this.db
       .select({
         itemId: items.id,
         onHand: sql<number>`coalesce(${balance.onHand}, 0)`.mapWith(Number),
-        reserved: sql<number>`coalesce(${reserved.reserved}, 0)`.mapWith(
+        reserved: sql<number>`coalesce(${openOrderDemand.demand}, 0)`.mapWith(
           Number,
         ),
       })
       .from(items)
       .leftJoin(balance, eq(balance.itemId, items.id))
-      .leftJoin(reserved, eq(reserved.itemId, items.id))
+      .leftJoin(openOrderDemand, eq(openOrderDemand.itemId, items.id))
       .where(inArray(items.id, itemIds));
 
     return new Map(
@@ -386,17 +462,19 @@ export class InventoryService {
 
   /** Với mỗi item, phần nhu cầu đơn đang mở chưa giao. "Mở" nghĩa là đã qua cổng duyệt
    * (`AWAITING_PRODUCTION`/`IN_PROGRESS`) — đơn `DRAFT`/`PENDING_CONFIRMATION` chưa được Giám đốc
-   * duyệt nên chưa giữ chỗ tồn. `excludeOrderId` xem `getStockLevels`. */
-  private reservedSubquery(excludeOrderId?: string) {
+   * duyệt nên chưa tính vào đây. `excludeOrderId` xem `getStockLevels`. Tên hàm cố ý không dùng chữ
+   * "reserved" — khác khái niệm "đã có chứng từ giữ" ở `getInventory`
+   * (`docs/domains/inventory.md`). */
+  private openOrderDemandSubquery(excludeOrderId?: string) {
     const delivered = this.deliveredSubquery();
 
     return this.db
       .select({
         itemId: orderItems.itemId,
-        reserved:
+        demand:
           sql<number>`sum(greatest(${orderItems.quantity} - coalesce(${delivered.deliveredQty}, 0), 0))`
             .mapWith(Number)
-            .as('reserved'),
+            .as('open_order_demand'),
       })
       .from(orderItems)
       .innerJoin(orders, eq(orders.id, orderItems.orderId))
@@ -413,6 +491,6 @@ export class InventoryService {
         ),
       )
       .groupBy(orderItems.itemId)
-      .as('reserved');
+      .as('open_order_demand');
   }
 }

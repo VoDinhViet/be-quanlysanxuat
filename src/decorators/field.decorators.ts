@@ -18,6 +18,7 @@ import {
   IsString,
   IsUrl,
   IsUUID,
+  Matches,
   Max,
   MaxLength,
   Min,
@@ -48,6 +49,8 @@ interface IStringFieldOptions extends IFieldOptions {
   maxLength?: number;
   toLowerCase?: boolean;
   toUpperCase?: boolean;
+  pattern?: RegExp;
+  patternMessage?: string;
 }
 
 interface IEnumFieldOptions extends IFieldOptions {
@@ -148,6 +151,15 @@ export function StringField(
 
   if (options.maxLength) {
     decorators.push(MaxLength(options.maxLength, { each: options.each }));
+  }
+
+  if (options.pattern) {
+    decorators.push(
+      Matches(options.pattern, {
+        each: options.each,
+        message: options.patternMessage,
+      }),
+    );
   }
 
   if (options.toLowerCase) {
@@ -283,6 +295,32 @@ export function EmailFieldOptional(
   return applyDecorators(
     IsOptional({ each: options.each }),
     EmailField({ required: false, ...options }),
+  );
+}
+
+// Chỉ chặn ký tự rõ ràng không phải số điện thoại (chữ cái, ...) — không giới hạn riêng số VN,
+// nhận cả số quốc tế: `+` đầu (tuỳ chọn) rồi 8-15 chữ số (độ dài tối đa theo chuẩn E.164).
+const PHONE_NUMBER_PATTERN = /^\+?\d{8,15}$/;
+const PHONE_NUMBER_MESSAGE =
+  'Số điện thoại không hợp lệ — chỉ nhận chữ số (có thể có dấu "+" ở đầu), 8-15 chữ số.';
+
+export function PhoneField(
+  options: Omit<ApiPropertyOptions, 'type'> & IStringFieldOptions = {},
+): PropertyDecorator {
+  return StringField({
+    ...options,
+    pattern: PHONE_NUMBER_PATTERN,
+    patternMessage: PHONE_NUMBER_MESSAGE,
+  });
+}
+
+export function PhoneFieldOptional(
+  options: Omit<ApiPropertyOptions, 'type' | 'required'> &
+    IStringFieldOptions = {},
+): PropertyDecorator {
+  return applyDecorators(
+    IsOptional({ each: options.each }),
+    PhoneField({ required: false, ...options }),
   );
 }
 

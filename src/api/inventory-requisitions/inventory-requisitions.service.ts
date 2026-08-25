@@ -1,16 +1,6 @@
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
-import {
-  and,
-  asc,
-  desc,
-  count,
-  eq,
-  gte,
-  inArray,
-  isNull,
-  lt,
-} from 'drizzle-orm';
+import { and, desc, count, eq, gte, inArray, isNull, lt } from 'drizzle-orm';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
@@ -41,6 +31,7 @@ import {
 import { AppException } from '../../exceptions/app.exception';
 import { hasPendingIqcForItems } from '../iqc/iqc.query';
 import { InventoryPostingService } from '../inventory/inventory-posting.service';
+import { getInventoryBalancesForUpdate } from '../inventory/item-stock.query';
 import { CreateInventoryRequisitionItemReqDto } from './dto/create-inventory-requisition-item.req.dto';
 import { CreateInventoryRequisitionReqDto } from './dto/create-inventory-requisition.req.dto';
 import { GetInventoryRequisitionsReqDto } from './dto/get-inventory-requisitions.req.dto';
@@ -292,7 +283,7 @@ export class InventoryRequisitionsService {
         where: eq(inventoryRequisitionItems.requisitionId, requisitionId),
       });
 
-      await this.getInventoryBalancesForUpdate(
+      await getInventoryBalancesForUpdate(
         tx,
         inventoryRequisition.warehouseId,
         itemsToApprove.map((item) => item.itemId),
@@ -608,35 +599,6 @@ export class InventoryRequisitionsService {
     const sequence = await generateDocumentSequence(tx, documentType, year);
 
     return `${prefix}-${year}-${String(sequence).padStart(5, '0')}`;
-  }
-
-  /** Khoá (`FOR UPDATE`) các dòng `inventory_balances` của `(warehouseId, itemIds)`, sort tăng dần
-   * theo `itemId` — thứ tự khoá cố định để hai phiếu duyệt chồng vật tư không deadlock. Vật tư chưa
-   * có dòng `inventory_balances` thì `FOR UPDATE` không khoá được gì — vô hại: `Tồn = 0` nên
-   * `validateRequisitionLines` chặn `E231` ngay với mọi SL dương, không có gì để đọc lệch. */
-  private async getInventoryBalancesForUpdate(
-    tx: DbTransaction,
-    warehouseId: string,
-    itemIds: string[],
-  ): Promise<{ itemId: string; quantity: number }[]> {
-    if (!itemIds.length) {
-      return [];
-    }
-
-    return tx
-      .select({
-        itemId: inventoryBalances.itemId,
-        quantity: inventoryBalances.quantity,
-      })
-      .from(inventoryBalances)
-      .where(
-        and(
-          eq(inventoryBalances.warehouseId, warehouseId),
-          inArray(inventoryBalances.itemId, itemIds),
-        ),
-      )
-      .orderBy(asc(inventoryBalances.itemId))
-      .for('update');
   }
 
   /** Khoá phiếu (`FOR UPDATE`) rồi trả về — chỉ gọi bên trong transaction, cùng khuôn

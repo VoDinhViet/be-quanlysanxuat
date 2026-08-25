@@ -183,7 +183,7 @@ module") — atomic, hai lượt lập phiếu song song không thể ra cùng m
 
 - Vì sao loại kho không ràng buộc loại hàng, vì sao chỉ `POSTED` mới đụng tồn →
   `docs/domains/inventory.md`.
-- Vì sao `reserved`/`bomDemand` của vật tư luôn bằng 0 → cùng file.
+- Công thức `reserved`/`bomDemand` của vật tư (phiếu lãnh giữ + nhu cầu BOM còn lại) → cùng file.
 
 ## Related domains
 

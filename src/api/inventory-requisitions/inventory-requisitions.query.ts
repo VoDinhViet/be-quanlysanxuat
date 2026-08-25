@@ -38,6 +38,37 @@ export function reservedQuantitySubquery(db: Database) {
     .as('reserved_quantity_by_warehouse_item');
 }
 
+/** Bản gộp theo `itemId` (không theo kho) của `reservedQuantitySubquery` — `GET /inventory` gộp mọi
+ * kho (hoặc lọc đúng một kho qua `warehouseId`), không group được theo `(kho, vật tư)`. Field trả
+ * về `heldQuantity`, cố ý khác `reservedQuantity` của hàm gốc để không đọc nhầm 2 hàm là một. */
+export function requisitionHeldQuantityByItemSubquery(
+  db: Database,
+  warehouseId?: string,
+) {
+  return db
+    .select({
+      itemId: inventoryRequisitionItems.itemId,
+      heldQuantity: sql<number>`sum(${inventoryRequisitionItems.quantity})`
+        .mapWith(Number)
+        .as('requisition_held_quantity_by_item'),
+    })
+    .from(inventoryRequisitionItems)
+    .innerJoin(
+      inventoryRequisitions,
+      eq(inventoryRequisitions.id, inventoryRequisitionItems.requisitionId),
+    )
+    .where(
+      and(
+        eq(inventoryRequisitions.status, InventoryRequisitionStatus.APPROVED),
+        warehouseId
+          ? eq(inventoryRequisitions.warehouseId, warehouseId)
+          : undefined,
+      ),
+    )
+    .groupBy(inventoryRequisitionItems.itemId)
+    .as('requisition_held_by_item');
+}
+
 /** Bản `Map` của "Đã giữ" — dùng để validate (`create`/`approve`), không có SELECT hiển thị nào để
  * LEFT JOIN vào. `excludeRequisitionId` loại chính phiếu đang duyệt (nó tự nằm trong "Đã giữ" của
  * chính nó lúc `APPROVED`, không được trừ nhu cầu của mình hai lần — cùng lý do `excludeOrderId` ở

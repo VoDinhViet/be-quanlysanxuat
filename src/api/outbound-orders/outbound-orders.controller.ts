@@ -95,7 +95,7 @@ export class OutboundOrdersController {
   @Permissions('outbound:update')
   @ApiAuth({
     summary:
-      'Gửi duyệt (DRAFT/REJECTED → PENDING_APPROVAL) — chặn nếu còn Job nào chưa qua hết OQC',
+      'Gửi duyệt (DRAFT/REJECTED → PENDING_APPROVAL) — chặn nếu còn Job nào chưa qua hết OQC hoặc có dòng vượt SL có thể giao (tồn FG − đã giữ bởi DO khác)',
     statusCode: HttpStatus.NO_CONTENT,
   })
   sendOutboundOrder(
@@ -111,7 +111,8 @@ export class OutboundOrdersController {
   @Post(':outboundOrderId/approve')
   @Permissions('outbound:approve')
   @ApiAuth({
-    summary: 'Duyệt (PENDING_APPROVAL → PENDING_DELIVERY)',
+    summary:
+      'Duyệt (PENDING_APPROVAL → PENDING_DELIVERY) — kiểm lại SL vượt có thể giao (tồn FG − đã giữ bởi DO khác)',
     statusCode: HttpStatus.NO_CONTENT,
   })
   approveOutboundOrder(

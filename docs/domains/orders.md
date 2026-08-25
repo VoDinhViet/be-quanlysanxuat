@@ -104,7 +104,10 @@ Không phải invariant dù dễ tưởng:
 - **← Production**: duyệt LSX đẩy đơn từ `AWAITING_PRODUCTION` sang `IN_PROGRESS`, và khoá việc sửa
   `items` lẫn việc huỷ đơn (`E080`/`E236`). Ngược lại, huỷ một đơn mà LSX còn `PENDING` sẽ xoá luôn
   header đó — cùng cơ chế xoá LSX `updateOrder` đã dùng khi thay `items`.
-- **← Inventory**: đơn đã duyệt (`AWAITING_PRODUCTION`/`IN_PROGRESS`) là thứ tạo ra `reserved` (hàng đã giữ chỗ) trong công thức tồn kho. Đơn chưa duyệt **không** giữ chỗ.
+- **← Inventory**: đơn đã duyệt (`AWAITING_PRODUCTION`/`IN_PROGRESS`) là nguồn `orderDemand` trong
+  công thức tồn kho — chảy vào `bomDemand` của FG (`GET /inventory`, phần chưa có DO giữ) và vào
+  `reserved` của `getStockLevels` (gợi ý SL sản xuất) — hai đường tiêu thụ khác nhau kể từ đợt sửa
+  BUG-031/032, xem `docs/domains/inventory.md`. Đơn chưa duyệt **không** tạo nhu cầu này.
 - **→ Inventory**: `GET /orders/:orderId/items` đọc thẳng `inventory_transactions` (qua
   `issuedQuantityByOrderItemIdSubquery`, `src/api/orders/orders.query.ts`) để tính `issuedQty`/
   `remainingQty` từng dòng — không qua `InventoryModule`, cùng logic
@@ -138,5 +141,5 @@ Không phải invariant dù dễ tưởng:
 
 - `docs/workflows/order-approval.md` — trình tự chạy của bước duyệt/từ chối.
 - `docs/domains/production.md` — điều xảy ra ngay sau khi duyệt đơn.
-- `docs/domains/inventory.md` — cách đơn đã duyệt tạo ra `reserved`.
+- `docs/domains/inventory.md` — cách đơn đã duyệt tạo ra `orderDemand`.
 - `docs/decisions/orders-no-delete.md` — vì sao không có route xoá đơn hàng.

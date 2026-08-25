@@ -28,7 +28,10 @@ export class InventoryBalanceResDto {
   quantity!: number;
 
   @Expose()
-  @NumberField({ description: 'Số lượng giữ chỗ — luôn 0 ở giai đoạn này' })
+  @NumberField({
+    description:
+      'Số lượng giữ chỗ — tính động lúc đọc (phiếu lãnh APPROVED + DO PENDING_APPROVAL/PENDING_DELIVERY), không phải cột inventory_balances.reserved_quantity (cột đó vẫn luôn 0)',
+  })
   reservedQuantity!: number;
 
   @Expose()

@@ -60,8 +60,11 @@ nhập/xuất có vòng đời `DRAFT`/`POSTED`/`CANCELLED`, sổ cái `inventor
   `COMPLETED` giờ suy ra **từ** phiếu nhập TP đã `post` đủ SL — chưa đảo ngược lại thành "Job xong tự
   lập phiếu". Phiếu nhập/xuất vẫn có cột liên kết `productionOrderId`/`productionJobId`.
 - Chuyển kho (`TRANSFER_IN`/`TRANSFER_OUT` có trong enum nhưng chưa route nào phát ra), quản lý lô/
-  vị trí (không `locationId`/`batchId`), `reservedQuantity` thành số thật (cột có, luôn `0` —
-  `reserved` của thành phẩm vẫn tính động từ `order_items` như trước).
+  vị trí (không `locationId`/`batchId`). `reservedQuantity` thành cột thật vẫn ngoài phạm vi — cột
+  `inventory_balances.reserved_quantity` luôn `0` dưới DB — nhưng **đã đảo một phần** (đợt sửa
+  BUG-031/032/048): `GET /inventory/balances.reservedQuantity` giờ trả số tính động thay vì literal
+  `0`, và `reserved` của thành phẩm trên `GET /inventory` không còn tính thuần từ `order_items` —
+  giờ là chứng từ giữ (DO `PENDING_APPROVAL`/`PENDING_DELIVERY`). Xem `docs/domains/inventory.md`.
 
 ## Không nhầm với
 

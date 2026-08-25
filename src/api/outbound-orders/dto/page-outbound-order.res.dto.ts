@@ -9,6 +9,7 @@ import {
   ClassFieldOptional,
   DateField,
   EnumField,
+  NumberField,
   StringField,
   StringFieldOptional,
   UUIDField,
@@ -41,6 +42,18 @@ export class PageOutboundOrderResDto {
   @Expose()
   @EnumField(() => OutboundOrderStatus)
   status!: OutboundOrderStatus;
+
+  @Expose()
+  @StringField({
+    each: true,
+    description:
+      'Mã đơn hàng nguồn (PO / Lý do) — 1 phiếu giao gộp được nhiều đơn, rỗng khi chưa có dòng nào',
+  })
+  orderCodes!: string[];
+
+  @Expose()
+  @NumberField({ description: 'Tổng SL giao (Σ SL mọi dòng của phiếu)' })
+  totalQuantity!: number;
 
   @Expose()
   @StringFieldOptional({ nullable: true, description: 'Ghi chú' })

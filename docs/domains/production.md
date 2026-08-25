@@ -97,6 +97,12 @@ Lấy từ tồn = max(0, SL đặt − Đề xuất SX)
 
 Chỗ tinh tế: phải **loại trừ chính đơn đang xét** khỏi `reserved`. Đơn đã duyệt nên nó đã tự giữ chỗ rồi — dùng thẳng `available` của màn Kho sẽ trừ nhu cầu của nó hai lần.
 
+`reserved` ở công thức này đến từ `InventoryService.getStockLevels` — nguồn là **nhu cầu đơn hàng
+mở** (`order_items` của đơn đã duyệt, chưa giao), khác `reserved` hiển thị trên màn Kho
+(`GET /inventory`, đã có chứng từ giữ — DO/phiếu lãnh) kể từ đợt sửa BUG-031/032. Hai định nghĩa
+tách biệt cố ý — `getStockLevels` không đổi để không ảnh hưởng công thức Đề xuất SX, xem
+`docs/domains/inventory.md`, mục Common mistakes.
+
 **Đọc lại chi tiết LSX là snapshot, không tính lại.** Số liệu tồn kho trong LSX là ảnh chụp lúc duyệt (hoặc lúc sửa số lượng gần nhất) — có thể đã lệch thực tế. Đây là lựa chọn có chủ đích, không phải thiếu sót.
 
 ## Entities

@@ -18,7 +18,8 @@ import { items } from '../items/items';
  *
  * Rules:
  * - `quantity` không bao giờ âm (DB CHECK) — chốt chặn thật, khác thiết kế cũ chỉ kiểm ở service.
- * - `reservedQuantity` có cột nhưng chưa route nào ghi, luôn 0 — giữ hàng thật là feature riêng.
+ * - `reservedQuantity` có cột nhưng chưa route nào ghi, luôn 0 dưới DB — `GET /inventory/balances`
+ *   trả số tính động ở tầng đọc thay vì đọc cột này, xem `InventoryService.getInventoryBalances`.
  */
 export const inventoryBalances = pgTable(
   'inventory_balances',

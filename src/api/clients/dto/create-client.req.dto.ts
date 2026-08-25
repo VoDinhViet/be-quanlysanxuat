@@ -3,6 +3,7 @@ import {
   ClassFieldOptional,
   EmailFieldOptional,
   EnumFieldOptional,
+  PhoneFieldOptional,
   StringField,
   StringFieldOptional,
   UUIDField,
@@ -23,7 +24,7 @@ export class CreateClientReqDto {
   })
   taxCode?: string | null;
 
-  @StringFieldOptional({
+  @PhoneFieldOptional({
     description: 'Phone number',
     nullable: true,
     maxLength: 30,

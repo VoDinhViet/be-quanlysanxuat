@@ -7,8 +7,11 @@ import {
   desc,
   eq,
   getTableColumns,
+  gte,
   inArray,
   isNull,
+  lte,
+  sql,
 } from 'drizzle-orm';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
@@ -40,12 +43,14 @@ import {
   productionJobs,
   productionOrders,
   units,
+  users,
   warehouses,
   WarehouseType,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import type { InventoryPostingLine } from '../inventory/inventory-posting.service';
 import { InventoryPostingService } from '../inventory/inventory-posting.service';
+import { getInventoryBalancesForUpdate } from '../inventory/item-stock.query';
 import { getJobQcCoverage } from '../oqc/oqc.query';
 import { issuedQuantityByOrderItemIdSubquery } from '../orders/orders.query';
 import { CreateOutboundOrderReqDto } from './dto/create-outbound-order.req.dto';
@@ -56,11 +61,15 @@ import { OutboundOrderResDto } from './dto/outbound-order.res.dto';
 import { PageOutboundOrderResDto } from './dto/page-outbound-order.res.dto';
 import { RejectOutboundOrderReqDto } from './dto/reject-outbound-order.req.dto';
 import { UnfulfilledOrderItemResDto } from './dto/unfulfilled-order-item.res.dto';
+import {
+  getOutboundHeldQuantities,
+  outboundOrderSummarySubquery,
+} from './outbound-orders.query';
 
 @Injectable()
 export class OutboundOrdersService {
   // Order còn "chưa hoàn thành" theo nghĩa DO — đã qua duyệt Giám đốc, chưa xong/chưa huỷ. Cùng tập
-  // trạng thái `InventoryService.reservedSubquery` dùng cho "đơn đã hứa với khách".
+  // trạng thái `InventoryService.openOrderDemandSubquery` dùng cho "đơn đã hứa với khách".
   private static readonly UNFULFILLED_ORDER_STATUSES = [
     OrderStatus.AWAITING_PRODUCTION,
     OrderStatus.IN_PROGRESS,
@@ -74,18 +83,45 @@ export class OutboundOrdersService {
   async getOutboundOrders(
     reqDto: GetOutboundOrdersReqDto,
   ): Promise<OffsetPaginatedDto<PageOutboundOrderResDto>> {
-    const where = reqDto.q
-      ? unaccentILike(outboundOrders.code, `%${reqDto.q}%`)
-      : undefined;
+    const where = and(
+      reqDto.q
+        ? unaccentILike(outboundOrders.code, `%${reqDto.q}%`)
+        : undefined,
+      reqDto.clientId
+        ? eq(outboundOrders.clientId, reqDto.clientId)
+        : undefined,
+      reqDto.status ? eq(outboundOrders.status, reqDto.status) : undefined,
+      reqDto.fulfillmentType
+        ? eq(outboundOrders.fulfillmentType, reqDto.fulfillmentType)
+        : undefined,
+      reqDto.startDate
+        ? gte(outboundOrders.fulfillmentDate, reqDto.startDate)
+        : undefined,
+      reqDto.endDate
+        ? lte(outboundOrders.fulfillmentDate, reqDto.endDate)
+        : undefined,
+    );
+
+    const summary = outboundOrderSummarySubquery(this.db);
 
     const [entities, countRows] = await Promise.all([
-      this.db.query.outboundOrders.findMany({
-        where,
-        limit: reqDto.limit,
-        offset: reqDto.offset,
-        orderBy: desc(outboundOrders.createdAt),
-        with: { client: true, creatorBy: true },
-      }),
+      this.db
+        .select({
+          ...getTableColumns(outboundOrders),
+          client: getTableColumns(clients),
+          creatorBy: getTableColumns(users),
+          orderCodes: sql<string[]>`coalesce(${summary.orderCodes}, '{}')`,
+          totalQuantity:
+            sql<number>`coalesce(${summary.totalQuantity}, 0)`.mapWith(Number),
+        })
+        .from(outboundOrders)
+        .innerJoin(clients, eq(clients.id, outboundOrders.clientId))
+        .leftJoin(users, eq(users.id, outboundOrders.createdBy))
+        .leftJoin(summary, eq(summary.outboundOrderId, outboundOrders.id))
+        .where(where)
+        .orderBy(desc(outboundOrders.createdAt))
+        .limit(reqDto.limit)
+        .offset(reqDto.offset),
       this.db.select({ total: count() }).from(outboundOrders).where(where),
     ]);
 
@@ -236,8 +272,10 @@ export class OutboundOrdersService {
     });
   }
 
-  /** `DRAFT`/`REJECTED` → `PENDING_APPROVAL` — chạy gate QC ngay ở bước gửi để người lập biết lỗi
-   * sớm, không đẩy sang người duyệt (`docs/domains/inventory.md`, mục "Giao hàng"). */
+  /** `DRAFT`/`REJECTED` → `PENDING_APPROVAL` — chạy gate QC, rồi đây là nơi **giữ chỗ FG bắt đầu**:
+   * chốt chặn `E194` (`ensureOutboundLinesIssuable`), `approveOutboundOrder` kiểm lại vì tồn có thể
+   * đổi giữa hai bước. `createOutboundOrder` cố ý không chặn (`docs/domains/inventory.md`, mục
+   * "Giao hàng"). */
   async sendOutboundOrder(
     outboundOrderId: string,
     userId: string,
@@ -256,6 +294,7 @@ export class OutboundOrdersService {
       }
 
       await this.ensureAllJobsQcCompleted(tx, outboundOrderId);
+      await this.ensureOutboundLinesIssuable(tx, outboundOrderId);
 
       await tx
         .update(outboundOrders)
@@ -270,7 +309,8 @@ export class OutboundOrdersService {
 
   /** `PENDING_APPROVAL → PENDING_DELIVERY` — chưa phải "giao thật" (chưa `DELIVERED`, chưa trừ
    * tồn, chưa sinh `inventory_issues`), đó là phase giao hàng 2 (Common mistake #22). Gate QC chỉ
-   * chạy 1 lần ở `send` — không kiểm lại ở đây. */
+   * chạy 1 lần ở `send`. Kiểm lại `E194` (không chỉ ở `send`) vì có đường rò: một `POST
+   * /inventory-issues` thủ công có thể rút tồn FG giữa hai bước mà không đụng DO nào. */
   async approveOutboundOrder(
     outboundOrderId: string,
     userId: string,
@@ -285,6 +325,8 @@ export class OutboundOrdersService {
         throw new AppException(ErrorCode.E240, HttpStatus.CONFLICT);
       }
 
+      await this.ensureOutboundLinesIssuable(tx, outboundOrderId);
+
       await tx
         .update(outboundOrders)
         .set({
@@ -294,6 +336,62 @@ export class OutboundOrdersService {
         })
         .where(eq(outboundOrders.id, outboundOrderId));
     });
+  }
+
+  /** Chốt chặn "Σ SL cùng vật tư ≤ Có thể giao" (`E194`, Có thể giao = Tồn kho FG − Đã giữ của DO
+   * khác đang giữ chỗ) — gọi từ cả `send` (chốt thật) lẫn `approve` (kiểm lại), cùng khuôn
+   * `InventoryRequisitionsService.validateRequisitionLines`. Khoá `inventory_balances` trước khi
+   * đọc, không thì hai DO gửi duyệt đồng thời cùng đọc một số "Đã giữ" và cùng lọt. Cộng dồn theo
+   * `itemId` trước khi so — một DO được phép có nhiều dòng cùng vật tư
+   * (`outbound_order_items.orderItemId` không unique). */
+  private async ensureOutboundLinesIssuable(
+    tx: DbTransaction,
+    outboundOrderId: string,
+  ): Promise<void> {
+    const [warehouseId, itemsToValidate] = await Promise.all([
+      this.resolveFgWarehouseId(tx),
+      tx
+        .select({
+          itemId: outboundOrderItems.itemId,
+          quantity: outboundOrderItems.quantity,
+        })
+        .from(outboundOrderItems)
+        .where(eq(outboundOrderItems.outboundOrderId, outboundOrderId)),
+    ]);
+
+    const lineQuantityByItemId = new Map<string, number>();
+    for (const item of itemsToValidate) {
+      lineQuantityByItemId.set(
+        item.itemId,
+        (lineQuantityByItemId.get(item.itemId) ?? 0) + item.quantity,
+      );
+    }
+
+    const itemIds = [...lineQuantityByItemId.keys()];
+
+    // `getInventoryBalancesForUpdate` đã khoá VÀ trả về đúng các dòng cần — dùng thẳng làm
+    // `onHandRows`, không đọc lại lần hai.
+    const [onHandRows, heldByOtherOrdersByItemId] = await Promise.all([
+      getInventoryBalancesForUpdate(tx, warehouseId, itemIds),
+      getOutboundHeldQuantities(tx, {
+        itemIds,
+        excludeOutboundOrderId: outboundOrderId,
+      }),
+    ]);
+
+    const onHandByItemId = new Map(
+      onHandRows.map((row) => [row.itemId, row.quantity]),
+    );
+
+    for (const [itemId, lineQuantity] of lineQuantityByItemId) {
+      const onHand = onHandByItemId.get(itemId) ?? 0;
+      const heldByOtherOrders = heldByOtherOrdersByItemId.get(itemId) ?? 0;
+      const issuableQuantity = onHand - heldByOtherOrders;
+
+      if (lineQuantity > issuableQuantity) {
+        throw new AppException(ErrorCode.E194, HttpStatus.CONFLICT);
+      }
+    }
   }
 
   /** `PENDING_APPROVAL → REJECTED` — điểm dừng tạm, `send` lại được từ đây (không có route sửa

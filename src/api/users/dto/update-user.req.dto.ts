@@ -3,6 +3,7 @@ import {
   ClassFieldOptional,
   DateFieldOptional,
   EnumFieldOptional,
+  PhoneFieldOptional,
   StringFieldOptional,
   UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
@@ -25,7 +26,7 @@ export class UpdateUserReqDto {
   })
   idNumber?: string | null;
 
-  @StringFieldOptional({ nullable: true, maxLength: 30 })
+  @PhoneFieldOptional({ nullable: true, maxLength: 30 })
   phoneNumber?: string | null;
 
   @StringFieldOptional({

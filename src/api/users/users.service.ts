@@ -212,10 +212,10 @@ export class UsersService {
       await this.resolveRoleForAssignment(credential.roleId, actorCredentialId);
     }
     if (credential) {
-      await Promise.all([
-        this.validateCredentialUsernameUniqueness(credential.username),
-        this.validateCredentialEmailUniqueness(credential.email),
-      ]);
+      // Tuần tự, không Promise.all — trùng cả hai cùng lúc thì thứ tự báo lỗi phải xác định
+      // (username trước), không phụ thuộc query nào chạy xong trước.
+      await this.validateCredentialUsernameUniqueness(credential.username);
+      await this.validateCredentialEmailUniqueness(credential.email);
     }
 
     await this.db.transaction(async (tx) => {
@@ -289,16 +289,15 @@ export class UsersService {
           actorCredentialId,
         );
       }
-      await Promise.all([
-        this.validateCredentialUsernameUniqueness(
-          credential.username,
-          linkedCredential?.id,
-        ),
-        this.validateCredentialEmailUniqueness(
-          credential.email,
-          linkedCredential?.id,
-        ),
-      ]);
+      // Tuần tự, không Promise.all — cùng lý do ở createUser (thứ tự báo lỗi phải xác định).
+      await this.validateCredentialUsernameUniqueness(
+        credential.username,
+        linkedCredential?.id,
+      );
+      await this.validateCredentialEmailUniqueness(
+        credential.email,
+        linkedCredential?.id,
+      );
     }
 
     // `updated_at` do `$onUpdate` của chính cột bump, không set tay.

@@ -5,6 +5,7 @@ import {
   DateFieldOptional,
   EnumField,
   EnumFieldOptional,
+  PhoneFieldOptional,
   StringField,
   StringFieldOptional,
   UUIDField,
@@ -29,7 +30,7 @@ export class CreateUserReqDto {
   })
   idNumber?: string | null;
 
-  @StringFieldOptional({ nullable: true, maxLength: 30 })
+  @PhoneFieldOptional({ nullable: true, maxLength: 30 })
   phoneNumber?: string | null;
 
   @StringFieldOptional({
