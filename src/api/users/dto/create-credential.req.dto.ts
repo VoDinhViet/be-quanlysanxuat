@@ -7,7 +7,11 @@ import {
 } from '../../../decorators/field.decorators';
 
 export class CreateCredentialReqDto {
-  @StringField({ description: 'Login username', maxLength: 100 })
+  @StringField({
+    description: 'Login username',
+    maxLength: 100,
+    toLowerCase: true,
+  })
   username!: string;
 
   @EmailField({ description: 'Login email' })

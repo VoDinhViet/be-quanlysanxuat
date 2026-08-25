@@ -11,7 +11,11 @@ import {
 // service branches on whether the user already has one: no existing credential + no
 // `password` here throws E207 (creating one needs a password; updating one doesn't).
 export class UpdateCredentialReqDto {
-  @StringField({ description: 'Login username', maxLength: 100 })
+  @StringField({
+    description: 'Login username',
+    maxLength: 100,
+    toLowerCase: true,
+  })
   username!: string;
 
   @EmailField({ description: 'Login email' })

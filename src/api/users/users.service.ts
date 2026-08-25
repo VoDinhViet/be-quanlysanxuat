@@ -12,7 +12,7 @@ import {
   isNull,
   ne,
   or,
-  type SQL,
+  sql,
 } from 'drizzle-orm';
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
@@ -608,15 +608,18 @@ export class UsersService {
     username: string,
     ignoredCredentialId?: string,
   ): Promise<void> {
-    let where: SQL | undefined = eq(credentials.username, username);
-    if (ignoredCredentialId) {
-      where = and(where, ne(credentials.id, ignoredCredentialId));
-    }
-
-    const existing = await this.db.query.credentials.findFirst({
-      columns: { id: true },
-      where,
-    });
+    const [existing] = await this.db
+      .select({ id: credentials.id })
+      .from(credentials)
+      .where(
+        ignoredCredentialId
+          ? and(
+              eq(sql`lower(${credentials.username})`, username.toLowerCase()),
+              ne(credentials.id, ignoredCredentialId),
+            )
+          : eq(sql`lower(${credentials.username})`, username.toLowerCase()),
+      )
+      .limit(1);
 
     if (existing) {
       throw new AppException(ErrorCode.E001, HttpStatus.CONFLICT);

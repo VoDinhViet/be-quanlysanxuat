@@ -1,9 +1,10 @@
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 import {
   boolean,
   index,
   pgTable,
   timestamp,
+  uniqueIndex,
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core';
@@ -34,7 +35,9 @@ export const credentials = pgTable(
       .notNull()
       .unique()
       .references(() => users.id, { onDelete: 'restrict' }),
-    username: varchar('username', { length: 100 }).notNull().unique(),
+    // Không `.unique()` trên chính cột — đăng nhập so khớp `lower(username)` (BUG-080), nên chặn
+    // trùng phải cùng quy tắc, xem `uq_credentials_username_lower` bên dưới.
+    username: varchar('username', { length: 100 }).notNull(),
     email: varchar('email', { length: 255 }).notNull().unique(),
     password: varchar('password', { length: 255 }).notNull(),
     roleId: uuid('role_id').references(() => roles.id, {
@@ -48,7 +51,12 @@ export const credentials = pgTable(
       .notNull()
       .$onUpdate(() => new Date()),
   },
-  (table) => [index('idx_credentials_role_id').on(table.roleId)],
+  (table) => [
+    index('idx_credentials_role_id').on(table.roleId),
+    uniqueIndex('uq_credentials_username_lower').on(
+      sql`lower(${table.username})`,
+    ),
+  ],
 );
 
 export const credentialsRelations = relations(credentials, ({ one }) => ({
