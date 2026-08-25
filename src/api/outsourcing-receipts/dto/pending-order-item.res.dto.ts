@@ -11,7 +11,7 @@ import {
 import { ItemRefResDto } from '../../items/dto/item-ref.res.dto';
 import { OutsourcingOrderRefResDto } from '../../outsourcing-orders/dto/outsourcing-order-ref.res.dto';
 import { SupplierRefResDto } from '../../suppliers/dto/supplier-ref.res.dto';
-import { UnitResDto } from '../../units/dto/unit.res.dto';
+import { UnitRefResDto } from '../../units/dto/unit-ref.res.dto';
 
 /** Một dòng popup "Tìm kiếm & chọn hàng cần nhận" — `id` là id thật sự cần gửi lại khi tạo dòng
  * OS-IN (`OutsourcingReceiptItemReqDto.outsourcingOrderItemId`). `weight`/`area` là giá trị mặc
@@ -39,8 +39,8 @@ export class PendingOrderItemResDto {
   item!: ItemRefResDto;
 
   @Expose()
-  @ClassField(() => UnitResDto)
-  unit!: UnitResDto;
+  @ClassField(() => UnitRefResDto)
+  unit!: UnitRefResDto;
 
   @Expose()
   @StringField({ description: 'Mã công đoạn' })

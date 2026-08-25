@@ -8,7 +8,7 @@ import {
   UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
 import { ProductionJobRefResDto } from '../../production-jobs/dto/production-job-ref.res.dto';
-import { UnitResDto } from '../../units/dto/unit.res.dto';
+import { UnitRefResDto } from '../../units/dto/unit-ref.res.dto';
 
 @Exclude()
 export class OutsourceableBomItemResDto {
@@ -68,8 +68,8 @@ export class OutsourceableOperationResDto {
   operation!: OutsourceableOperationSnapshotResDto;
 
   @Expose()
-  @ClassField(() => UnitResDto)
-  unit!: UnitResDto;
+  @ClassField(() => UnitRefResDto)
+  unit!: UnitRefResDto;
 
   @Expose()
   @NumberField({

@@ -11,7 +11,7 @@ import {
 } from '../../../decorators/field.decorators';
 import { FileResDto } from '../../files/dto/file.res.dto';
 import { SupplierRefResDto } from '../../suppliers/dto/supplier-ref.res.dto';
-import { UnitResDto } from '../../units/dto/unit.res.dto';
+import { UnitRefResDto } from '../../units/dto/unit-ref.res.dto';
 import { StockStatus } from '../inventory.constant';
 
 @Exclude()
@@ -33,8 +33,8 @@ export class InventoryItemResDto {
   type!: ItemType;
 
   @Expose()
-  @ClassField(() => UnitResDto)
-  unit!: UnitResDto;
+  @ClassField(() => UnitRefResDto)
+  unit!: UnitRefResDto;
 
   @Expose()
   @ClassFieldOptional(() => SupplierRefResDto, { nullable: true })

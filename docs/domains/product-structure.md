@@ -58,6 +58,16 @@ lá RM trên cây BOM riêng của WIP mà node đó tham chiếu (nếu WIP đ�
 `BomsService.ensureQuantityValid`, theo `type` của item đang thêm — không còn chặn tĩnh ở DTO vì
 một cột `quantity` giờ phục vụ cả hai loại node (`E055`).
 
+**Đơn vị tính (ĐVT) là danh mục dùng chung, không thuộc riêng `items`.** `units` (1) — `unit_scopes`
+(n) nói ĐVT đó gán được cho loại entity nào: `UnitScope.MATERIAL` cho RM, `UnitScope.PRODUCT` cho
+FG/WIP (`ItemsService.ensureUnitExists` map đúng theo `items.type`, `E043` nếu sai scope). Bất
+biến: **một unit không còn scope nào là unit chết** — CRUD `units` luôn ghi/xoá cả hai bảng trong
+một transaction (`UnitsService.createUnit`/`updateUnit`), không có scope rời. `UnitScope` còn giá
+trị thứ ba `SEMI_FINISHED`, nhưng **chưa module nào đọc nó** — coi là dự trữ, không phải bug thiếu
+implement. Xoá một `unit`, hoặc gỡ một scope khỏi nó, đều bị chặn khi còn `items`/
+`production_job_units` tham chiếu (FK `restrict`); service kiểm trước để trả 409 sạch thay vì lỗi
+FK thô.
+
 **Versioning = clone cả item, không phải lịch sử phiên bản.** Từng có `product_revisions`, đã bị
 xoá. Lý do: một biến thể là một item mới hẳn, nên sửa BOM/routing về sau không bao giờ làm thay đổi
 ngược dữ liệu đã nằm trong đơn hàng cũ. `clonedFromItemId` chỉ ghi lại nguồn gốc để hiển thị,
@@ -74,6 +84,8 @@ ngược dữ liệu đã nằm trong đơn hàng cũ. `clonedFromItemId` chỉ 
 | `routings` | Header routing Cấp 0 của chính item gốc — đúng một dòng cho mỗi item (unique `itemId`); chỉ FG/WIP có (`E111` nếu RM) |
 | `routing_operations` | Bước routing Cấp 0; `routingId` NOT NULL |
 | `operations` | Danh mục công đoạn gốc (`INHOUSE`/`OUTSOURCE`), chỉ đọc — xem `docs/domains/partners.md` |
+| `units` | Đơn vị tính (ĐVT), `code`+`name`; CRUD đầy đủ qua `/units` |
+| `unit_scopes` | Composite PK `(unitId, scope)` — loại entity mà một ĐVT dùng được; ghi/xoá theo cặp với `units` |
 
 ## Lifecycle
 

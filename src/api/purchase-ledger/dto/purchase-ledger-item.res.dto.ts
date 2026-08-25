@@ -12,7 +12,7 @@ import {
 import { ItemRefResDto } from '../../items/dto/item-ref.res.dto';
 import { ProductionOrderRefResDto } from '../../production-orders/dto/production-order-ref.res.dto';
 import { PurchaseRequestRefResDto } from '../../purchase-requests/dto/purchase-request-ref.res.dto';
-import { UnitResDto } from '../../units/dto/unit.res.dto';
+import { UnitRefResDto } from '../../units/dto/unit-ref.res.dto';
 import { PurchaseLedgerStatus } from '../purchase-ledger.constant';
 
 @Exclude()
@@ -32,8 +32,8 @@ export class PurchaseLedgerItemResDto {
   item!: ItemRefResDto;
 
   @Expose()
-  @ClassField(() => UnitResDto)
-  unit!: UnitResDto;
+  @ClassField(() => UnitRefResDto)
+  unit!: UnitRefResDto;
 
   @Expose()
   @ClassFieldOptional(() => ProductionOrderRefResDto, { nullable: true })

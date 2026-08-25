@@ -520,6 +520,13 @@ export enum ErrorCode {
   E239 = 'outbound_order.error.not_sendable',
   // `POST /outbound-orders/:id/approve` hoặc `.../reject` khi phiếu không ở `PENDING_APPROVAL`.
   E240 = 'outbound_order.error.invalid_approval_state',
+  E241 = 'unit.error.code_exists',
+  E242 = 'unit.error.in_use',
+  E243 = 'unit.error.scopes_required',
+  // Gỡ một scope khỏi unit trong khi còn `items` loại tương ứng dùng nó — deliberately distinct
+  // from E043 (unit sai scope ngay lúc gán cho item), đây là chặn trước khi unit *trở thành* sai
+  // scope cho những item đang gán nó.
+  E244 = 'unit.error.scope_in_use',
   // `POST /items/:itemId/bom/items` thêm cùng `itemId` hai lần dưới cùng một node cha.
   E245 = 'bom_item.error.duplicate',
   // `DELETE /clients/:id` khi còn `orders`/`outbound_orders` trỏ tới.

@@ -17,7 +17,7 @@ import {
 } from '../../../decorators/field.decorators';
 import { ProductionJobOperationRefResDto } from '../../production-jobs/dto/production-job-operation-ref.res.dto';
 import { ProductionJobRefResDto } from '../../production-jobs/dto/production-job-ref.res.dto';
-import { UnitResDto } from '../../units/dto/unit.res.dto';
+import { UnitRefResDto } from '../../units/dto/unit-ref.res.dto';
 import { OqcBomItemResDto } from './oqc.res.dto';
 
 @Exclude()
@@ -47,8 +47,8 @@ export class PageOqcResDto {
   bomItem!: OqcBomItemResDto;
 
   @Expose()
-  @ClassField(() => UnitResDto)
-  unit!: UnitResDto;
+  @ClassField(() => UnitRefResDto)
+  unit!: UnitRefResDto;
 
   @Expose()
   @NumberField({ description: 'Lot size (SL sản xuất thực tế)' })

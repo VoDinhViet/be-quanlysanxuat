@@ -7,7 +7,7 @@ import {
 } from '../../../decorators/field.decorators';
 import { FileField } from '../../files/dto/file.field';
 import { FileResDto } from '../../files/dto/file.res.dto';
-import { UnitResDto } from '../../units/dto/unit.res.dto';
+import { UnitRefResDto } from '../../units/dto/unit-ref.res.dto';
 
 @Exclude()
 export class OrderItemRefResDto {
@@ -24,8 +24,8 @@ export class OrderItemRefResDto {
   name!: string;
 
   @Expose()
-  @ClassField(() => UnitResDto)
-  unit!: UnitResDto;
+  @ClassField(() => UnitRefResDto)
+  unit!: UnitRefResDto;
 
   @Expose()
   @FileField('imageFile', 'Item image')

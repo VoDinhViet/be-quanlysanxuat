@@ -1,7 +1,7 @@
 import { Exclude, Expose } from 'class-transformer';
 
 import { FileResDto } from '../../files/dto/file.res.dto';
-import { UnitResDto } from '../../units/dto/unit.res.dto';
+import { UnitRefResDto } from '../../units/dto/unit-ref.res.dto';
 import { BomOperationResDto } from '../../bom-operations/dto/bom-operation.res.dto';
 import { ItemType } from '../../../database/schemas';
 import {
@@ -52,8 +52,8 @@ export class BomItemResDto {
   image!: FileResDto | null;
 
   @Expose()
-  @ClassField(() => UnitResDto)
-  unit!: UnitResDto;
+  @ClassField(() => UnitRefResDto)
+  unit!: UnitRefResDto;
 
   @Expose()
   @NumberField({

@@ -11,7 +11,7 @@ import {
 } from '../../../decorators/field.decorators';
 import { ItemRefResDto } from '../../items/dto/item-ref.res.dto';
 import { ProductionJobRefResDto } from '../../production-jobs/dto/production-job-ref.res.dto';
-import { UnitResDto } from '../../units/dto/unit.res.dto';
+import { UnitRefResDto } from '../../units/dto/unit-ref.res.dto';
 
 @Exclude()
 export class OutsourcingOrderItemResDto {
@@ -24,8 +24,8 @@ export class OutsourcingOrderItemResDto {
   item!: ItemRefResDto;
 
   @Expose()
-  @ClassField(() => UnitResDto)
-  unit!: UnitResDto;
+  @ClassField(() => UnitRefResDto)
+  unit!: UnitRefResDto;
 
   @Expose()
   @ClassFieldOptional(() => ProductionJobRefResDto, { nullable: true })
