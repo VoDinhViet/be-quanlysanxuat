@@ -340,8 +340,9 @@ Không phải invariant dù dễ tưởng:
     không phải snapshot của Job — hai thứ khác nhau).
 19. **Tưởng vẫn tạo OQC theo từng công đoạn qua `POST /oqc`.** Đã bỏ — tạo OQC nay chỉ qua
     `POST /production-jobs/:jobId/qc`, **cấp Job, không nhận body**: 1 cú bấm, server tự resolve
-    công đoạn Cấp 0 và tự suy `quantity`/`inspectionDate`. Job không khai báo routing Cấp 0 → `E213`;
-    Job còn công đoạn nào chưa `completedDate` (kể cả chính công đoạn Cấp 0) → `E214`. Xem
+    node Cấp 0 và tự suy `quantity`/`inspectionDate` từ công đoạn `sortOrder` cao nhất của node đó.
+    Job không khai báo routing Cấp 0 → `E213`; node Cấp 0 có thể nhiều công đoạn — còn **bất kỳ**
+    công đoạn nào của nó (không riêng công đoạn cuối) chưa `completedDate` → `E214` (BUG-079). Xem
     `docs/domains/quality.md` mục "Trigger từ production".
 20. **Tưởng "duyệt công đoạn" khoá thêm được gì ngoài việc mở `PATCH .../operations/:operationId`.**
     Không — cấu trúc `production_job_bom_items`/`production_job_operations` vốn đã bất biến từ lúc

@@ -40,9 +40,10 @@ DO:   DRAFT → PENDING_DELIVERY → DELIVERED (OutboundOrdersService.postOutbou
 **Nhánh production** (`ProductionJobStatus` thêm `WAITING_QC`/`WAITING_DELIVERY`/`COMPLETED`,
 `ProductionOrderStatus` thêm `COMPLETED`) — tất cả tự động, không route tay:
 
-- `IN_PROGRESS → WAITING_QC`: `ProductionJobsService.updateProductionJobOperation`, ngay khi công
-  đoạn Cấp 0 (FG) đạt `completedQuantity >= planned` — `E210` đã đảm bảo mọi công đoạn khác xong
-  trước đó rồi.
+- `IN_PROGRESS → WAITING_QC`: `ProductionJobsService.updateProductionJobOperation`, khi node Cấp 0
+  (FG) **không còn công đoạn nào dở** — đếm lại cả node sau mỗi lần ghi, không suy từ một công đoạn
+  vừa báo (node Cấp 0 có thể nhiều bước, BUG-079 sửa 2026-08-25). `E210` đã đảm bảo mọi công đoạn
+  khác (ngoài Cấp 0) xong trước đó rồi.
 - `WAITING_QC → WAITING_DELIVERY`: `OqcService.confirmOqc`, khi `getJobQcCoverage` báo `open = 0`
   sau lần confirm — tái dùng đúng gate đã có (`E196`/`E205`), không dựng cơ chế mới.
 - `WAITING_DELIVERY → COMPLETED`: `InventoryReceiptsService.postInventoryReceipt`

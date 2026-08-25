@@ -383,10 +383,6 @@ export class ProductionJobsService {
       throw new AppException(ErrorCode.E252, HttpStatus.BAD_REQUEST);
     }
 
-    const isFinalAssemblyDone =
-      operation.bomItem.itemType === ItemType.FG &&
-      reqDto.completedQuantity >= planned;
-
     await this.db.transaction(async (tx) => {
       await tx
         .update(productionJobOperations)
@@ -398,19 +394,39 @@ export class ProductionJobsService {
         })
         .where(eq(productionJobOperations.id, operationId));
 
-      // Đến đây `E210` phía trên đã đảm bảo mọi công đoạn khác ngoài Cấp 0 đều xong — hoàn thành
-      // nốt công đoạn Cấp 0 nghĩa là cả Job đã xong sản xuất, chuyển sang chờ QC. Xem
-      // `docs/decisions/production-lifecycle-closing.md`.
-      if (isFinalAssemblyDone) {
-        await tx
-          .update(productionJobs)
-          .set({ status: ProductionJobStatus.WAITING_QC })
+      // Node FG có thể có nhiều công đoạn Cấp 0 (`copyFinalAssemblyRouting`) — chỉ chuyển
+      // WAITING_QC khi KHÔNG CÒN công đoạn FG nào dở, đếm lại trong `tx` sau khi ghi, không suy
+      // từ mỗi request hiện tại (BUG-079, `docs/decisions/production-lifecycle-closing.md`).
+      if (operation.bomItem.itemType === ItemType.FG) {
+        const [{ pendingFinalAssemblyCount }] = await tx
+          .select({ pendingFinalAssemblyCount: count() })
+          .from(productionJobOperations)
+          .innerJoin(
+            productionJobBomItems,
+            eq(
+              productionJobBomItems.id,
+              productionJobOperations.productionJobBomItemId,
+            ),
+          )
           .where(
             and(
-              eq(productionJobs.id, jobId),
-              eq(productionJobs.status, ProductionJobStatus.IN_PROGRESS),
+              eq(productionJobOperations.productionJobId, jobId),
+              eq(productionJobBomItems.itemType, ItemType.FG),
+              isNull(productionJobOperations.completedDate),
             ),
           );
+
+        if (pendingFinalAssemblyCount === 0) {
+          await tx
+            .update(productionJobs)
+            .set({ status: ProductionJobStatus.WAITING_QC })
+            .where(
+              and(
+                eq(productionJobs.id, jobId),
+                eq(productionJobs.status, ProductionJobStatus.IN_PROGRESS),
+              ),
+            );
+        }
       }
     });
 

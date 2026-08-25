@@ -8,6 +8,7 @@ import {
   getTableColumns,
   gte,
   inArray,
+  isNull,
   lt,
   ne,
 } from 'drizzle-orm';
@@ -258,16 +259,17 @@ export class OqcService {
     });
   }
 
-  /** "Yêu cầu QC" cấp Job — 1 cú bấm, không cần nhập gì. Một câu `SELECT` gộp mọi điều kiện: Job
-   * tồn tại + `IN_PROGRESS` (`E082`/`E175`), có node Cấp 0 hợp lệ (`itemType='FG'`, `type ≠
-   * OUTSOURCE` — gia công ngoài chỉ QC qua IQC, không qua OQC, thiếu thì `E213`), công đoạn đó đã
-   * `completedDate` (`E214`), còn `itemId` để snapshot (`E199`) — `uq_production_job_bom_items_
-   * final_assembly` đảm bảo tối đa 1 node Cấp 0/Job, và `E210` đã đảm bảo công đoạn Cấp 0 không thể
-   * `completedDate` trừ khi mọi công đoạn khác của Job xong trước, nên kiểm đúng công đoạn này là
-   * đủ, không cần lặp qua cả Job. Hai `LEFT JOIN` (không phải `INNER`) để phân biệt đúng "Job không
-   * tồn tại" khỏi "Job tồn tại nhưng thiếu node/công đoạn hợp lệ" — cả hai ca sau vẫn phải trả về 1
-   * dòng, không phải 0. `quantity` lấy thẳng `completedQuantity` của công đoạn Cấp 0 — lô kiểm
-   * luôn là toàn bộ SL đã hoàn thành, không phải một phần. */
+  /** "Yêu cầu QC" cấp Job — 1 cú bấm, không cần nhập gì. Một câu `SELECT` gộp phần lớn điều kiện:
+   * Job tồn tại + `IN_PROGRESS` (`E082`/`E175`), có node Cấp 0 hợp lệ (`itemType='FG'`, `type ≠
+   * OUTSOURCE` — gia công ngoài chỉ QC qua IQC, không qua OQC, thiếu thì `E213`), còn `itemId` để
+   * snapshot (`E199`). Node Cấp 0 có thể nhiều công đoạn (BUG-079) nên `completedDate` của riêng
+   * dòng `sortOrder` cao nhất không đại diện được cả node — readiness (`E214`) đếm lại RIÊNG, xem
+   * mọi công đoạn FG (không OUTSOURCE) của Job còn dòng nào chưa `completedDate` không. `uq_
+   * production_job_bom_items_final_assembly` đảm bảo tối đa 1 node Cấp 0/Job. Hai `LEFT JOIN`
+   * (không phải `INNER`) để phân biệt đúng "Job không tồn tại" khỏi "Job tồn tại nhưng thiếu
+   * node/công đoạn hợp lệ" — cả hai ca sau vẫn phải trả về 1 dòng, không phải 0. `quantity` lấy
+   * thẳng `completedQuantity` của công đoạn `sortOrder` cao nhất (bước cuối cùng của node) — lô
+   * kiểm luôn là toàn bộ SL đã hoàn thành, không phải một phần. */
   async createOqcForJob(jobId: string, userId: string): Promise<void> {
     const [finalOperation] = await this.db
       .select({
@@ -320,7 +322,26 @@ export class OqcService {
       throw new AppException(ErrorCode.E213, HttpStatus.BAD_REQUEST);
     }
 
-    if (!finalOperation.completedDate) {
+    const [{ pendingFinalAssemblyCount }] = await this.db
+      .select({ pendingFinalAssemblyCount: count() })
+      .from(productionJobOperations)
+      .innerJoin(
+        productionJobBomItems,
+        eq(
+          productionJobBomItems.id,
+          productionJobOperations.productionJobBomItemId,
+        ),
+      )
+      .where(
+        and(
+          eq(productionJobBomItems.productionJobId, jobId),
+          eq(productionJobBomItems.itemType, ItemType.FG),
+          ne(productionJobOperations.type, OperationType.OUTSOURCE),
+          isNull(productionJobOperations.completedDate),
+        ),
+      );
+
+    if (pendingFinalAssemblyCount > 0) {
       throw new AppException(ErrorCode.E214, HttpStatus.BAD_REQUEST);
     }
 
