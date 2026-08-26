@@ -21,14 +21,17 @@ import {
   purchaseOrders,
   QcKind,
   qcRequests,
+  supplierReturnFiles,
   supplierReturns,
   type SupplierReturnSelect,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
+import { FilesService } from '../files/files.service';
 import { InventoryPostingService } from '../inventory/inventory-posting.service';
 import { completeIqcAfterSupplierReturn } from '../iqc/iqc.write';
 import { GetSupplierReturnsReqDto } from './dto/get-supplier-returns.req.dto';
 import { PageSupplierReturnResDto } from './dto/page-supplier-return.res.dto';
+import { PostSupplierReturnReqDto } from './dto/post-supplier-return.req.dto';
 import { SupplierReturnResDto } from './dto/supplier-return.res.dto';
 
 @Injectable()
@@ -36,6 +39,7 @@ export class SupplierReturnsService {
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly inventoryPostingService: InventoryPostingService,
+    private readonly filesService: FilesService,
   ) {}
 
   async getSupplierReturns(
@@ -155,6 +159,8 @@ export class SupplierReturnsService {
         iqc: true,
         creatorBy: true,
         posterBy: true,
+        qcInspection: true,
+        files: { with: { file: true } },
       },
     });
 
@@ -162,9 +168,15 @@ export class SupplierReturnsService {
       throw new AppException(ErrorCode.E137, HttpStatus.NOT_FOUND);
     }
 
-    return plainToInstance(SupplierReturnResDto, supplierReturn, {
-      excludeExtraneousValues: true,
-    });
+    return plainToInstance(
+      SupplierReturnResDto,
+      {
+        ...supplierReturn,
+        returnReason: supplierReturn.qcInspection?.dispositionNote ?? null,
+        files: supplierReturn.files.map((row) => row.file),
+      },
+      { excludeExtraneousValues: true },
+    );
   }
 
   /** Tự sinh DRAFT — gọi bởi `IqcService.confirmIqc` khi QC chọn disposition SORT/RETURN, ngay
@@ -208,11 +220,17 @@ export class SupplierReturnsService {
   /** `DRAFT → POSTED` — kho xác nhận đã thật sự xuất hàng trả NCC. Trừ tồn qua
    *  `InventoryPostingService` (bỏ qua nếu phiếu nhập gốc chưa `POSTED` hoặc sinh từ OS-IN — xem
    *  `shouldPostStock`), rồi hoàn tất luôn dòng IQC liên kết (`completeIqcAfterSupplierReturn`)
-   *  trong cùng transaction. Xem `docs/workflows/supplier-return.md`. */
+   *  trong cùng transaction. `reqDto.note`/`fileIds` tuỳ chọn — bằng chứng xuất trả, không ảnh
+   *  hưởng transition. Xem `docs/workflows/supplier-return.md`. */
   async postSupplierReturn(
     supplierReturnId: string,
+    reqDto: PostSupplierReturnReqDto,
     userId: string,
   ): Promise<void> {
+    if (reqDto.fileIds?.length) {
+      await this.filesService.linkFiles(reqDto.fileIds);
+    }
+
     await this.db.transaction(async (tx) => {
       const supplierReturn = await this.getSupplierReturnForUpdate(
         tx,
@@ -250,8 +268,18 @@ export class SupplierReturnsService {
           status: InventoryDocumentStatus.POSTED,
           postedBy: userId,
           postedAt: new Date(),
+          postNote: reqDto.note ?? null,
         })
         .where(eq(supplierReturns.id, supplierReturnId));
+
+      if (reqDto.fileIds?.length) {
+        await tx.insert(supplierReturnFiles).values(
+          reqDto.fileIds.map((fileId) => ({
+            supplierReturnId,
+            fileId,
+          })),
+        );
+      }
 
       if (supplierReturn.iqcId) {
         await completeIqcAfterSupplierReturn(tx, supplierReturn.iqcId);

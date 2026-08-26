@@ -11,7 +11,7 @@ là trình tự đầy đủ nối hai domain đó.
 - `POST /iqc/:iqcId/confirm` với `result = FAIL` và `disposition = SORT`/`RETURN` — tự sinh một
   dòng `supplier_returns` (`DRAFT`), **không** có route tạo tay riêng.
 - `POST /supplier-returns/:supplierReturnId/post` — kho xác nhận đã thật sự xuất hàng trả NCC
-  *(một lần)*.
+  *(một lần)*. Nhận `note`/`fileIds` tuỳ chọn (bằng chứng xuất trả) trong body.
 
 ## Actor
 
@@ -52,6 +52,9 @@ là bên xác nhận vật lý, khác vai trò với QC.
 
 ### `post` (trong transaction riêng của `SupplierReturnsService.postSupplierReturn`)
 
+0. Có `fileIds` thì `FilesService.linkFiles` **trước** khi mở transaction (đúng khuôn
+   `ProductionExecutionService.createJobOperationReport`) — kiểm tồn tại (`E042`) + đánh dấu
+   `linkedAt`.
 1. Khoá dòng phiếu trả (`SELECT … FOR UPDATE`, cùng lý do chống double-submit như
    `InventoryReceiptsService.getInventoryReceiptForUpdate`), kiểm `status = DRAFT` (`E098`).
 2. **`shouldPostStock`** — hai ca bỏ qua trừ tồn, còn lại luôn trừ:
@@ -62,7 +65,8 @@ là bên xác nhận vật lý, khác vai trò với QC.
      `type: ISSUE`); còn `DRAFT`/`PENDING_IQC`/`PENDING_RECEIPT` thì **bỏ qua** — hàng chưa từng
      thật sự vào `inventory_balances` (IQC chạy trước `post` phiếu nhập), trừ vào đó sẽ trừ vào tồn
      chưa từng có. Không có phiếu nhập/OS-IN liên quan (IQC tạo tay) → luôn trừ tồn bình thường.
-3. Cập nhật `status = POSTED`, `postedBy`, `postedAt`.
+3. Cập nhật `status = POSTED`, `postedBy`, `postedAt`, `postNote` (`reqDto.note ?? null`); có
+   `fileIds` thì insert thêm từng đó dòng `supplier_return_files`.
 4. Gọi `completeIqcAfterSupplierReturn(tx, row.iqcId)` (nếu có `iqcId`) — **cuối cùng**, sau khi
    trạng thái phiếu trả đã ổn định: kiểm dòng IQC còn `WAITING_RETURN` (`E164` nếu không), rồi
    `UPDATE status = COMPLETED`. Không đi qua `resolveIqcStatus`/`confirmIqc` — đây là transition

@@ -56,6 +56,8 @@ export enum UploadType {
   // Ảnh đính kèm khi báo cáo hoàn thành một công đoạn — màn "Thực hiện sản xuất"
   // (`POST /production-execution/operations/:jobOperationId/reports`).
   PRODUCTION_OPERATION_EVIDENCE = 'PRODUCTION_OPERATION_EVIDENCE',
+  // File đính kèm khi kho xác nhận xuất trả NCC (`POST /supplier-returns/:id/post`).
+  SUPPLIER_RETURN_EVIDENCE = 'SUPPLIER_RETURN_EVIDENCE',
 }
 
 export const uploadTypeEnum = pgEnum('upload_type', [
@@ -73,6 +75,7 @@ export const uploadTypeEnum = pgEnum('upload_type', [
   UploadType.OQC_EVIDENCE,
   UploadType.OQC_DISPOSITION_EVIDENCE,
   UploadType.PRODUCTION_OPERATION_EVIDENCE,
+  UploadType.SUPPLIER_RETURN_EVIDENCE,
 ]);
 
 /**

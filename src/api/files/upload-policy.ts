@@ -38,4 +38,7 @@ export const uploadPolicies: Record<UploadType, UploadPolicy> = {
   // Chỉ nhận ảnh (khác OQC_EVIDENCE nhận cả tài liệu) — form "Thực hiện sản xuất" chỉ có dropzone
   // ảnh, không có ô tài liệu.
   [UploadType.PRODUCTION_OPERATION_EVIDENCE]: { kind: FileKind.IMAGE },
+  // Ảnh + tài liệu — "xuất trả" gần với bàn giao chứng từ vật lý hơn ảnh báo cáo xưởng, cùng lý do
+  // OQC_EVIDENCE/IQC_DISPOSITION_EVIDENCE nhận cả hai.
+  [UploadType.SUPPLIER_RETURN_EVIDENCE]: { kind: FileKind.EVIDENCE },
 };

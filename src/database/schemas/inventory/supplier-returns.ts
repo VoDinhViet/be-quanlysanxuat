@@ -17,6 +17,7 @@ import {
 } from './inventory-documents';
 import { inventoryReceipts } from './inventory-receipts';
 import { outsourcingReceipts } from './outsourcing-receipts';
+import { supplierReturnFiles } from './supplier-return-files';
 import { warehouses } from './warehouses';
 import { items } from '../items/items';
 import { purchaseOrders } from '../purchasing/purchase-orders';
@@ -91,6 +92,10 @@ export const supplierReturns = pgTable(
       onDelete: 'set null',
     }),
     postedAt: timestamp('posted_at'),
+    // Ghi lúc `post` (kho xác nhận xuất trả) — khác `note` (ghi lúc tạo, hiện luôn rỗng vì chưa có
+    // route tạo tay). Tách cột vì 2 mốc thời gian khác nhau, cùng lý do `qc_inspections
+    // .dispositionNote` tách khỏi `resultNote`.
+    postNote: varchar('post_note', { length: 500 }),
     createdBy: uuid('created_by').references(() => users.id, {
       onDelete: 'set null',
     }),
@@ -140,7 +145,7 @@ export const supplierReturns = pgTable(
 
 export const supplierReturnsRelations = relations(
   supplierReturns,
-  ({ one }) => ({
+  ({ one, many }) => ({
     warehouse: one(warehouses, {
       fields: [supplierReturns.warehouseId],
       references: [warehouses.id],
@@ -181,6 +186,7 @@ export const supplierReturnsRelations = relations(
       fields: [supplierReturns.postedBy],
       references: [users.id],
     }),
+    files: many(supplierReturnFiles),
   }),
 );
 

@@ -45,6 +45,7 @@ export * from './quality/qc-requests';
 export * from './quality/qc-inspections';
 export * from './quality/qc-files';
 export * from './inventory/supplier-returns';
+export * from './inventory/supplier-return-files';
 export * from './quality/qc-requests-relations';
 export * from './inventory/outsourcing-orders';
 export * from './inventory/outsourcing-order-items';

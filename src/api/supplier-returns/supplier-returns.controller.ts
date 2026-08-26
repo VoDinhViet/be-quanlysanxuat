@@ -1,4 +1,4 @@
-import { Controller, Get, HttpStatus, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpStatus, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
@@ -9,6 +9,7 @@ import { Permissions } from '../../decorators/permissions.decorator';
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
 import { GetSupplierReturnsReqDto } from './dto/get-supplier-returns.req.dto';
 import { PageSupplierReturnResDto } from './dto/page-supplier-return.res.dto';
+import { PostSupplierReturnReqDto } from './dto/post-supplier-return.req.dto';
 import { SupplierReturnResDto } from './dto/supplier-return.res.dto';
 import { SupplierReturnsService } from './supplier-returns.service';
 
@@ -54,10 +55,12 @@ export class SupplierReturnsController {
   })
   postSupplierReturn(
     @UUIDParam('supplierReturnId') supplierReturnId: string,
+    @Body() reqDto: PostSupplierReturnReqDto,
     @CurrentUser() payload: JwtPayloadType,
   ): Promise<void> {
     return this.supplierReturnsService.postSupplierReturn(
       supplierReturnId,
+      reqDto,
       payload.userId,
     );
   }
