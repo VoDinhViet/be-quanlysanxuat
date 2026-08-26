@@ -40,7 +40,13 @@ export function reservedQuantitySubquery(db: Database) {
 
 /** Bản gộp theo `itemId` (không theo kho) của `reservedQuantitySubquery` — `GET /inventory` gộp mọi
  * kho (hoặc lọc đúng một kho qua `warehouseId`), không group được theo `(kho, vật tư)`. Field trả
- * về `heldQuantity`, cố ý khác `reservedQuantity` của hàm gốc để không đọc nhầm 2 hàm là một. */
+ * về `heldQuantity`, cố ý khác `reservedQuantity` của hàm gốc để không đọc nhầm 2 hàm là một.
+ *
+ * `heldForJobsQuantity` tách riêng phần giữ có gắn `productionJobId` (`type = PRODUCTION`) — chỉ
+ * phần này mới trùng với `remainingBomDemandByItemSubquery` (nguồn `production_job_issues`) nên
+ * mới được trừ chéo ở `InventoryService.getInventory`; phiếu `type = OTHER` không có Job nên không
+ * có nhu cầu BOM đối ứng để trùng, trộn chung vào `heldQuantity` rồi trừ chéo sẽ trừ nhầm phần
+ * chưa từng bị cộng trùng. Xem `docs/domains/inventory.md`. */
 export function requisitionHeldQuantityByItemSubquery(
   db: Database,
   warehouseId?: string,
@@ -51,6 +57,10 @@ export function requisitionHeldQuantityByItemSubquery(
       heldQuantity: sql<number>`sum(${inventoryRequisitionItems.quantity})`
         .mapWith(Number)
         .as('requisition_held_quantity_by_item'),
+      heldForJobsQuantity:
+        sql<number>`sum(${inventoryRequisitionItems.quantity}) filter (where ${inventoryRequisitions.productionJobId} is not null)`
+          .mapWith(Number)
+          .as('requisition_held_for_jobs_quantity_by_item'),
     })
     .from(inventoryRequisitionItems)
     .innerJoin(

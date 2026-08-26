@@ -83,8 +83,10 @@ export class InventoryService {
     // Khối RM — nhu cầu Job trừ phần phiếu lãnh đã giữ.
     const rmHeldSql = () =>
       sql<number>`coalesce(${requisitionHeld.heldQuantity}, 0)`;
+    const rmHeldForJobsSql = () =>
+      sql<number>`coalesce(${requisitionHeld.heldForJobsQuantity}, 0)`;
     const rmDemandSql = () =>
-      sql<number>`greatest(coalesce(${bomRemaining.remainingDemand}, 0) - (${rmHeldSql()}), 0)`;
+      sql<number>`greatest(coalesce(${bomRemaining.remainingDemand}, 0) - (${rmHeldForJobsSql()}), 0)`;
 
     // Khối FG — nhu cầu đơn hàng mở trừ phần DO đã giữ.
     const fgHeldSql = () =>
@@ -92,11 +94,14 @@ export class InventoryService {
     const fgDemandSql = () =>
       sql<number>`greatest(coalesce(${openOrderDemand.demand}, 0) - (${fgHeldSql()}), 0)`;
 
-    /** `reserved` = tổng "Đã giữ" của RM (phiếu lãnh `APPROVED`) và FG (DO `PENDING_APPROVAL`/
-     * `PENDING_DELIVERY`); `bomDemand` = phần nhu cầu CHƯA có chứng từ nào giữ, trừ theo đúng cặp
-     * RM/FG (không trộn) để không bị trừ hai lần — một phiếu lãnh `APPROVED` vừa nằm trong
-     * `reserved` vừa nằm trong `remainingBomDemand` (chỉ trừ phần `ISSUED`), cộng thẳng sẽ ra
-     * `available` sai. Xem `docs/domains/inventory.md`. */
+    /** `reserved` = tổng "Đã giữ" của RM (mọi phiếu lãnh `APPROVED`, cả `PRODUCTION` lẫn `OTHER`)
+     * và FG (DO `PENDING_APPROVAL`/`PENDING_DELIVERY`); `bomDemand` = phần nhu cầu CHƯA có chứng từ
+     * nào giữ. RM trừ chéo bằng `heldForJobsQuantity` (chỉ phiếu `PRODUCTION`, có `productionJobId`)
+     * chứ không phải `heldQuantity` — chỉ phiếu `PRODUCTION` mới trùng với `remainingBomDemand`
+     * (nguồn `production_job_issues`, `APPROVED` chưa bị trừ vì `remainingBomDemand` chỉ trừ phần
+     * `ISSUED`); phiếu `OTHER` không có Job nên không có nhu cầu BOM đối ứng để trùng — trộn chung
+     * rồi trừ chéo sẽ trừ nhầm phần chưa từng bị cộng trùng, khai khống `available`. Xem
+     * `docs/domains/inventory.md`. */
     const reservedSql = () => sql<number>`(${rmHeldSql()}) + (${fgHeldSql()})`;
     const bomDemandSql = () =>
       sql<number>`(${rmDemandSql()}) + (${fgDemandSql()})`;

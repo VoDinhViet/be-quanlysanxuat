@@ -80,25 +80,31 @@ onHand    = SUM(inventory_balances.quantity) gộp mọi kho              (thự
 fgHeld    = Σ SL dòng outbound_order_items của DO PENDING_APPROVAL/PENDING_DELIVERY
 fgDemand  = max(orderDemand − fgHeld, 0)     orderDemand = phần chưa giao của đơn đã duyệt
 
-# Khối RM — nhu cầu BOM còn lại, trừ phần đã có phiếu lãnh giữ
-rmHeld    = Σ SL dòng inventory_requisition_items của phiếu lãnh APPROVED
-rmDemand  = max(remainingBomDemand − rmHeld, 0)   remainingBomDemand = Σ max(requiredQty − Đã lãnh, 0)
+# Khối RM — nhu cầu BOM còn lại, trừ phần đã có phiếu lãnh giữ CÓ GẮN JOB
+rmHeld         = Σ SL dòng inventory_requisition_items của phiếu lãnh APPROVED (mọi type)
+rmHeldForJobs  = rmHeld, chỉ phiếu type=PRODUCTION (có production_job_id)
+rmDemand       = max(remainingBomDemand − rmHeldForJobs, 0)   remainingBomDemand = Σ max(requiredQty − Đã lãnh, 0)
 
 reserved  = fgHeld + rmHeld                        (đã có chứng từ giữ)
 bomDemand = fgDemand + rmDemand                    (chưa có chứng từ nào giữ)
 available = onHand − reserved − bomDemand          (còn dùng được)
 ```
 
-Tách 2 khối vì `remainingBomDemand`/`orderDemand` và `rmHeld`/`fgHeld` **không loại trừ nhau** — một
-phiếu lãnh `APPROVED` (chưa `ISSUED`) vừa nằm trong `rmHeld` vừa nằm trong `remainingBomDemand` (chỉ
-trừ phần `ISSUED`); cộng thẳng `onHand − (rmHeld+fgHeld) − (remainingBomDemand+orderDemand)` sẽ trừ
-hai lần. `orderDemand` chỉ tính đơn **đã được Giám đốc duyệt**
-(`AWAITING_PRODUCTION`/`IN_PROGRESS`), nguồn "đã giao" đọc từ `inventory_transactions` qua
-`orderItemId` (dòng bút toán âm trên phiếu xuất). `order_items`/`outbound_order_items` chỉ trỏ FG,
-`production_job_issues`/`inventory_requisition_items` chỉ chứa RM — 2 khối không giao nhau, không có
-phần tử nào rơi vào cả hai. Nguồn RM (`production_job_issues`, qua `copyBomIssues`) là định mức đã
-**nổ cấp** — nhân luỹ kế qua toàn bộ chuỗi node WIP cha, xem "Chuẩn nổ cấp BOM",
-`docs/domains/product-structure.md`.
+Tách 2 khối vì `remainingBomDemand`/`orderDemand` và `rmHeldForJobs`/`fgHeld` **không loại trừ
+nhau** — một phiếu lãnh `type=PRODUCTION` `APPROVED` (chưa `ISSUED`) vừa nằm trong `rmHeldForJobs`
+vừa nằm trong `remainingBomDemand` (chỉ trừ phần `ISSUED`); cộng thẳng `onHand − (rmHeldForJobs+
+fgHeld) − (remainingBomDemand+orderDemand)` sẽ trừ hai lần. `orderDemand` chỉ tính đơn **đã được
+Giám đốc duyệt** (`AWAITING_PRODUCTION`/`IN_PROGRESS`), nguồn "đã giao" đọc từ
+`inventory_transactions` qua `orderItemId` (dòng bút toán âm trên phiếu xuất). `order_items`/
+`outbound_order_items` chỉ trỏ FG, `production_job_issues`/`inventory_requisition_items` chỉ chứa
+RM — 2 khối không giao nhau, không có phần tử nào rơi vào cả hai. Nguồn RM
+(`production_job_issues`, qua `copyBomIssues`) là định mức đã **nổ cấp** — nhân luỹ kế qua toàn bộ
+chuỗi node WIP cha, xem "Chuẩn nổ cấp BOM", `docs/domains/product-structure.md`.
+
+`rmDemand` trừ đúng `rmHeldForJobs`, **không phải** `rmHeld` — phiếu lãnh `type=OTHER` (không gắn
+`production_job_id`, `E233`) không có nhu cầu BOM đối ứng trong `remainingBomDemand` để trùng, nên
+không được trừ chéo. `reserved` thì vẫn cộng nguyên `rmHeld` (cả `PRODUCTION` lẫn `OTHER`) — số này
+không đụng tới việc chống trùng ở trên.
 
 **`reservedQuantity` trên `inventory_balances` vẫn chưa route nào ghi, luôn `0` dưới DB.**
 `GET /inventory/balances` (khác `GET /inventory` ở trên) trả `reservedQuantity` **tính động lúc
@@ -670,6 +676,12 @@ Không phải invariant dù dễ tưởng:
     "Đã giữ" của cả phiếu lãnh lẫn DO **tính lúc đọc** từ các dòng `APPROVED`/`PENDING_APPROVAL`/
     `PENDING_DELIVERY`, không ghi cột nào; cột `reservedQuantity` vẫn chết dưới DB (`GET
     /inventory/balances` trả số tính động chứ không đọc cột — xem Invariants, Core concepts).
+29. **Tưởng mọi phiếu lãnh `APPROVED` đều trùng với `remainingBomDemand`, nên trừ chéo bằng
+    `rmHeld` gộp cả `type=OTHER`.** Sai — phiếu `type=OTHER` không gắn `production_job_id` (`E233`
+    chỉ ép buộc với `PRODUCTION`), không có mặt trong `production_job_issues` để trùng. `rmDemand`
+    phải trừ `rmHeldForJobs` (chỉ phần `PRODUCTION`), không phải `rmHeld` — trộn chung sẽ trừ nhầm
+    phần chưa từng bị cộng trùng, khai khống `available` đúng bằng SL các phiếu `OTHER` đang
+    `APPROVED`. `reserved` không bị ảnh hưởng, vẫn cộng nguyên `rmHeld`.
 
 ## Related docs
 
