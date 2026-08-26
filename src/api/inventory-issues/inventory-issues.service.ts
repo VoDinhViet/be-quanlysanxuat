@@ -12,6 +12,7 @@ import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
+import { vnToday } from '../../database/vn-date.util';
 import {
   departments,
   InventoryDocumentStatus,
@@ -275,7 +276,7 @@ export class InventoryIssuesService {
         await this.inventoryPostingService.reverseDocument(tx, {
           referenceType: InventoryReferenceType.INVENTORY_ISSUE,
           referenceId: issueId,
-          transactionDate: new Date(),
+          transactionDate: vnToday(),
           createdBy: userId,
         });
       }

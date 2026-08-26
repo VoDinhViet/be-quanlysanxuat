@@ -27,6 +27,7 @@ import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
+import { vnToday } from '../../database/vn-date.util';
 import {
   departments,
   files,
@@ -526,7 +527,7 @@ export class PurchaseRequestsService {
 
     const [purchaseRequest] = await tx
       .insert(purchaseRequests)
-      .values({ ...purchaseRequestFields, code, neededDate: new Date() })
+      .values({ ...purchaseRequestFields, code, neededDate: vnToday() })
       .returning({ id: purchaseRequests.id });
 
     await tx.insert(purchaseRequestItems).values(

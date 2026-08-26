@@ -12,6 +12,7 @@ import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
+import { vnToday } from '../../database/vn-date.util';
 import {
   departments,
   inventoryReceipts,
@@ -637,7 +638,7 @@ export class IqcService {
           purchaseOrderId: request.purchaseOrderId,
           inventoryReceiptId: request.inventoryReceiptId,
           outsourcingReceiptId: request.outsourcingReceiptId,
-          returnDate: new Date(),
+          returnDate: vnToday(),
           userId,
         });
       }

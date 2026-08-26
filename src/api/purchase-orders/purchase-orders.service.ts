@@ -26,6 +26,7 @@ import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
+import { vnToday } from '../../database/vn-date.util';
 import {
   InventoryDocumentStatus,
   inventoryReceipts,
@@ -399,7 +400,7 @@ export class PurchaseOrdersService {
         .values({
           ...purchaseOrderFields,
           code,
-          orderDate: new Date(),
+          orderDate: vnToday(),
           createdBy: userId,
         })
         .returning({ id: purchaseOrders.id });
@@ -466,7 +467,7 @@ export class PurchaseOrdersService {
   ): Promise<void> {
     for (const [supplierId, lines] of input.linesBySupplierId) {
       const code = await this.generatePurchaseOrderCode(tx);
-      const orderDate = new Date();
+      const orderDate = vnToday();
       const [order] = await tx
         .insert(purchaseOrders)
         .values({

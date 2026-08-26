@@ -25,6 +25,7 @@ import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
+import { vnToday } from '../../database/vn-date.util';
 import {
   clients,
   InventoryDocumentStatus,
@@ -588,7 +589,7 @@ export class InventoryReceiptsService {
         await this.inventoryPostingService.reverseDocument(tx, {
           referenceType: InventoryReferenceType.INVENTORY_RECEIPT,
           referenceId: receiptId,
-          transactionDate: new Date(),
+          transactionDate: vnToday(),
           createdBy: userId,
         });
       }
