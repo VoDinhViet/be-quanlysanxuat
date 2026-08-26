@@ -142,9 +142,10 @@ chính PO này). Chi tiết từng bước: `docs/workflows/order-approval.md`.
 `production_order_items`, gộp SL theo `itemId` (chỉ giữ SL > 0) → trong transaction: sinh mã
 `LSXxxxx`, update `production_orders.status` → update `orders.status = IN_PROGRESS` →
 `ProductionJobsService.createJobs` tạo 1 `production_jobs` row/item FG, rồi nhân bản toàn bộ cây
-`bom_items` (WIP + RM) sang `production_job_bom_items`, copy routing as-used của từng node WIP sang
-`production_job_operations`, và gộp riêng mọi lá RM theo `itemId` × SL Job sang
-`production_job_issues` — cùng trong transaction này. Trước khi ghi `production_job_issues`,
+`bom_items` (WIP + RM) sang `production_job_bom_items` (`plannedQuantity` nhân luỹ kế qua chuỗi node
+cha × SL Job — đã nổ cấp), copy routing as-used của từng node WIP sang `production_job_operations`,
+rồi gộp `plannedQuantity` theo `itemId` trên mọi node RM sang `production_job_issues` — cùng trong
+transaction này. Trước khi ghi `production_job_issues`,
 get-or-create theo bộ ba nội dung (mã/tên) hai bảng chiều dùng chung
 `production_job_items`/`production_job_units`, cùng transaction (`docs/domains/production.md`).
 

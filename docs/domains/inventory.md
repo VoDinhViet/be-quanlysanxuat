@@ -96,8 +96,9 @@ hai lần. `orderDemand` chỉ tính đơn **đã được Giám đốc duyệt*
 (`AWAITING_PRODUCTION`/`IN_PROGRESS`), nguồn "đã giao" đọc từ `inventory_transactions` qua
 `orderItemId` (dòng bút toán âm trên phiếu xuất). `order_items`/`outbound_order_items` chỉ trỏ FG,
 `production_job_issues`/`inventory_requisition_items` chỉ chứa RM — 2 khối không giao nhau, không có
-phần tử nào rơi vào cả hai. Nguồn RM (`production_job_issues`, qua `copyBomIssues`) chỉ gộp lá BOM
-**một cấp**, không nổ qua node WIP cha — giới hạn cố ý, chưa nổ BOM đa cấp.
+phần tử nào rơi vào cả hai. Nguồn RM (`production_job_issues`, qua `copyBomIssues`) là định mức đã
+**nổ cấp** — nhân luỹ kế qua toàn bộ chuỗi node WIP cha, xem "Chuẩn nổ cấp BOM",
+`docs/domains/product-structure.md`.
 
 **`reservedQuantity` trên `inventory_balances` vẫn chưa route nào ghi, luôn `0` dưới DB.**
 `GET /inventory/balances` (khác `GET /inventory` ở trên) trả `reservedQuantity` **tính động lúc

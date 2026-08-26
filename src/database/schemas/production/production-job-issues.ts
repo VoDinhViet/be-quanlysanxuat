@@ -16,11 +16,11 @@ import { productionJobs } from './production-jobs';
 import { productionJobUnits } from './production-job-units';
 
 /**
- * Danh sách vật tư của một Job — khởi tạo bằng cách gộp BOM theo vật tư (cùng phép `SUM` của
- * `GET /items/:id/materials`, không nổ theo cấp) nhân với SL Job, trong transaction duyệt LSX.
- * Không expose route ghi nào — chỉ còn là nguồn nội bộ: `startJob` (vật tư thiếu), `bomDemand` của
- * Inventory/Purchase Requests, và `GET /production-jobs/:jobId/bom`. Xem
- * `docs/domains/production.md`.
+ * Danh sách vật tư của một Job — khởi tạo bằng cách gộp `production_job_bom_items.plannedQuantity`
+ * (đã nổ cấp) theo vật tư, trong transaction duyệt LSX, sau `copyBomTree`. Không expose route ghi
+ * nào — chỉ còn là nguồn nội bộ: `startJob` (vật tư thiếu), `bomDemand` của Inventory/Purchase
+ * Requests, và `GET /production-jobs/:jobId/bom`. Xem `docs/domains/production.md`,
+ * "Chuẩn nổ cấp BOM" ở `docs/domains/product-structure.md`.
  *
  * Rules:
  * - `unitQty` là định mức BOM lúc duyệt, **bất biến**. NULL để sẵn chỗ cho lúc có CRUD — dòng

@@ -96,8 +96,7 @@ export class InventoryService {
      * `PENDING_DELIVERY`); `bomDemand` = phần nhu cầu CHƯA có chứng từ nào giữ, trừ theo đúng cặp
      * RM/FG (không trộn) để không bị trừ hai lần — một phiếu lãnh `APPROVED` vừa nằm trong
      * `reserved` vừa nằm trong `remainingBomDemand` (chỉ trừ phần `ISSUED`), cộng thẳng sẽ ra
-     * `available` sai. Nguồn RM (`production_job_issues`) chỉ gộp lá BOM một cấp, không nổ qua node
-     * WIP cha — giới hạn cố ý của đợt này, xem `docs/domains/inventory.md`. */
+     * `available` sai. Xem `docs/domains/inventory.md`. */
     const reservedSql = () => sql<number>`(${rmHeldSql()}) + (${fgHeldSql()})`;
     const bomDemandSql = () =>
       sql<number>`(${rmDemandSql()}) + (${fgDemandSql()})`;

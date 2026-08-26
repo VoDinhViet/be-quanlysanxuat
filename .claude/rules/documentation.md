@@ -33,8 +33,8 @@ Reference done right: `OrdersService.approveOrder`, `ProductionOrdersService.see
 3. **The name lies** — the function does more/less/other than its name suggests (`getStockLevels`
    must exclude the order under evaluation itself; `updateProductionOrder` is partial, not
    replace-all).
-4. **Deliberate limitation** — a choice that looks like a bug but is a decision (raw `SUM`, not BOM
-   explosion; deliberately no `WITH RECURSIVE`).
+4. **Deliberate limitation** — a choice that looks like a bug but is a decision (deliberately no
+   `WITH RECURSIVE`, in-memory tree walk instead).
 
 ### MUST NOT comment — closed list
 

@@ -140,20 +140,44 @@ trình; độ sâu ≤ 50; item gốc của BOM/routing không phải RM.
 
 - **Production** đọc **một nguồn duy nhất**, đúng **một lần**, lúc duyệt LSX: toàn bộ cây `bom_items`
   (cả node WIP lẫn lá RM) + `bom_operations` as-used của từng node WIP, nhân bản sang
-  `production_job_bom_items`/`production_job_operations` (id mới, độc lập). Vật tư của Job
-  (`production_job_issues`) là bản gộp riêng: `SUM(quantity) GROUP BY itemId` trên mọi lá RM
-  thuộc cây, nhân với SL Job — xem `docs/domains/production.md`. Routing Cấp 0 của FG/WIP
-  (`routings`/`routing_operations`) **không** được đọc/snapshot ở bước này. Ngoài thời điểm đó,
-  không module sản xuất nào tham chiếu `boms`/`bom_items`/`bom_operations`/`routings`/
-  `routing_operations` nữa; Job không chia nhỏ tiến độ theo công đoạn.
-- Phép gộp vật tư (`SUM(quantity) GROUP BY itemId` trên mọi lá RM thuộc cây một item) — **không
-  nhân qua số lượng của các node cha**, nên nó *không* phải BOM explosion.
-  `production_job_issues.unitQty`/`requiredQty` thừa hưởng nguyên giới hạn này —
-  `GET /production-jobs/:jobId/bom` trả thẳng `requiredQty`, không tính lại.
+  `production_job_bom_items`/`production_job_operations` (id mới, độc lập, `quantity` giữ nguyên
+  thô — chỉ so với cha trực tiếp). Vật tư của Job (`production_job_issues`) là bản **đã nổ cấp**:
+  nhân luỹ kế `quantity` qua toàn bộ chuỗi node cha (seed = SL Job tại gốc), rồi gộp
+  `SUM(...) GROUP BY itemId` trên mọi lá RM thuộc cây — xem "Chuẩn nổ cấp BOM" bên dưới và
+  `docs/domains/production.md`. Routing Cấp 0 của FG/WIP (`routings`/`routing_operations`)
+  **không** được đọc/snapshot ở bước này. Ngoài thời điểm đó, không module sản xuất nào tham chiếu
+  `boms`/`bom_items`/`bom_operations`/`routings`/`routing_operations` nữa; Job không chia nhỏ tiến
+  độ theo công đoạn.
 - **Inventory** `GET /inventory` chỉ thấy item ACTIVE, mọi `type` (FG/WIP/RM) khi bỏ trống filter
   `itemType` — một route chung, không còn tách theo loại như trước.
 - **Orders** tham chiếu `items.id` trên từng dòng (chỉ FG hợp lệ, service-enforced không phải DB
   CHECK), và cố ý **không snapshot** tên/ảnh — luôn đọc qua quan hệ.
+
+## Chuẩn nổ cấp BOM: SL thô (per-parent) vs SL nổ cấp (exploded)
+
+`bom_items.quantity` (và song sinh `production_job_bom_items.quantity`) **luôn luôn** nghĩa là "SL
+cần cho 1 đơn vị của node **cha trực tiếp**" — bất biến, dữ liệu gốc dùng để CRUD/edit. `GET
+/items/:itemId/bom` (tab "Cấu trúc & Công đoạn") hiển thị thẳng giá trị này, đúng nguyên trạng —
+UI đã có đủ ngữ cảnh (`level`, thụt lề) để người xem tự hiểu "so với cha nào".
+
+Ngược lại, bất kỳ field nào có nhãn ngụ ý **tổng cho 1 đơn vị gốc** ("Định mức / 1 bộ", "Nhu cầu vật
+tư", "SL BOM") **PHẢI** là giá trị đã **nổ cấp**: nhân luỹ kế `quantity` qua toàn bộ chuỗi node cha,
+seed = 1 tại gốc (hoặc = SL Job nếu ngữ cảnh là Job) — dừng đúng ở tầng RM, vì RM luôn là lá
+(`ensureBomItemCanHaveChildren`, `E052`), không có cấp con nào bên dưới. Khi ngữ cảnh cần một con số
+duy nhất cho một vật tư (báo cáo tổng nhu cầu), còn phải gộp `SUM(...) GROUP BY itemId` sau khi nổ
+cấp — cùng một vật tư có thể xuất hiện ở nhiều nhánh khác nhau trong cây. Hai nơi áp dụng chuẩn này:
+`production_job_issues.requiredQty` (seed = SL Job, xem `docs/domains/production.md`) và `GET
+/items/:itemId/issues` (seed = 1, dưới đây).
+
+Trước 2026-08-26, cả hai route trên từng cố ý **không** nổ cấp (`SUM(quantity) GROUP BY itemId` trên
+giá trị thô) — xem `docs/decisions/bom-explosion-in-job-demand.md` vì sao đảo chiều, và đừng hoàn lại.
+
+**`GET /items/:itemId/issues`** (`ItemIssueResDto`, tab "Thành phần vật tư") là báo cáo phái sinh
+chỉ-đọc, tách biệt hoàn toàn với cây `GET /items/:itemId/bom` — 1 dòng/1 vật tư (gộp theo `itemId`,
+không còn 1-1 với một dòng `bom_items`), `requiredQty` trả về là số đã nổ cấp cho 1 đơn vị chính
+item gốc — cùng tên field với `ProductionJobIssueResDto.requiredQty` phía Job, cố ý đồng bộ vì cùng
+khái niệm (khác seed). Vì gộp, dòng này không còn `sortOrder`/`note` (gắn với một vị trí cụ thể
+trong cây) — sắp theo `code`.
 
 ## Common mistakes
 

@@ -43,10 +43,10 @@ import {
 import { AppException } from '../../exceptions/app.exception';
 import { FilesService } from '../files/files.service';
 import { CreateItemReqDto } from './dto/create-item.req.dto';
-import { GetItemMaterialsReqDto } from './dto/get-item-materials.req.dto';
+import { GetItemIssuesReqDto } from './dto/get-item-issues.req.dto';
 import { GetItemOptionsReqDto } from './dto/get-item-options.req.dto';
 import { GetItemsReqDto } from './dto/get-items.req.dto';
-import { ItemMaterialResDto } from './dto/item-material.res.dto';
+import { ItemIssueResDto } from './dto/item-issue.res.dto';
 import { ItemOptionResDto } from './dto/item-option.res.dto';
 import { ItemResDto } from './dto/item.res.dto';
 import { PageItemResDto } from './dto/page-item.res.dto';
@@ -249,59 +249,108 @@ export class ItemsService {
     }
   }
 
-  async getItemMaterials(
+  /** "Thành phần vật tư" — báo cáo phái sinh chỉ-đọc, KHÁC `getBom` (cây thật, `quantity` thô so
+   * cha trực tiếp): ở đây `requiredQty` là định mức đã nổ cấp (nhân luỹ kế qua chuỗi node cha, seed
+   * = 1 tại gốc) và gộp theo `itemId` — cùng tên, cùng khái niệm với
+   * `ProductionJobIssueResDto.requiredQty` (seed = SL Job), xem "Chuẩn nổ cấp BOM" ở
+   * `docs/domains/product-structure.md`. Cây BOM nhỏ nên dựng multiplier + gộp trong bộ nhớ (cùng
+   * tiền lệ `copyBomTree`), phân trang cũng áp trên mảng đã gộp — không còn phân trang bằng SQL
+   * trên `bom_items`. */
+  async getItemIssues(
     itemId: string,
-    reqDto: GetItemMaterialsReqDto,
-  ): Promise<OffsetPaginatedDto<ItemMaterialResDto>> {
+    reqDto: GetItemIssuesReqDto,
+  ): Promise<OffsetPaginatedDto<ItemIssueResDto>> {
     await this.ensureItemExists(itemId);
 
-    const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
-    const where = and(
-      eq(boms.itemId, itemId),
-      eq(items.type, ItemType.RM),
-      keyword
-        ? or(
-            unaccentILike(items.code, keyword),
-            unaccentILike(items.name, keyword),
-          )
-        : undefined,
-    );
+    const bom = await this.db.query.boms.findFirst({
+      columns: { id: true },
+      where: eq(boms.itemId, itemId),
+    });
 
-    const [rows, countRows] = await Promise.all([
-      this.db
-        .select({
-          id: bomItems.id,
-          itemId: items.id,
-          code: items.code,
-          name: items.name,
-          unit: getTableColumns(units),
-          image: getTableColumns(files),
-          quantity: bomItems.quantity,
-          sortOrder: bomItems.sortOrder,
-          note: bomItems.note,
-        })
-        .from(bomItems)
-        .innerJoin(boms, eq(bomItems.bomId, boms.id))
-        .innerJoin(items, eq(bomItems.itemId, items.id))
-        .innerJoin(units, eq(items.unitId, units.id))
-        .leftJoin(files, eq(items.imageFileId, files.id))
-        .where(where)
-        .orderBy(asc(bomItems.sortOrder), asc(bomItems.createdAt))
-        .limit(reqDto.limit)
-        .offset(reqDto.offset),
-      this.db
-        .select({ total: count() })
-        .from(bomItems)
-        .innerJoin(boms, eq(bomItems.bomId, boms.id))
-        .innerJoin(items, eq(bomItems.itemId, items.id))
-        .where(where),
-    ]);
+    if (!bom) {
+      return new OffsetPaginatedDto([], new OffsetPaginationDto(0, reqDto));
+    }
+
+    const tree = await this.db
+      .select({
+        id: bomItems.id,
+        parentId: bomItems.parentId,
+        itemId: bomItems.itemId,
+        quantity: bomItems.quantity,
+        itemType: items.type,
+      })
+      .from(bomItems)
+      .innerJoin(items, eq(bomItems.itemId, items.id))
+      .where(eq(bomItems.bomId, bom.id))
+      .orderBy(asc(bomItems.level), asc(bomItems.sortOrder));
+
+    // multiplier[node] = multiplier[cha] × quantity node, gốc (parentId null) = 1 × quantity —
+    // đi từ gốc xuống đúng N tầng WIP rồi dừng ở RM, không cần xử lý RM có con (bất biến `E052`).
+    // Làm tròn scale 3 ngay mỗi bước nhân (không chỉ lúc gộp cuối) — khác `copyBomTree`/
+    // `copyBomIssues` phía Job, số ở đây không đi qua cột `numeric(18,3)` nào để Postgres tự làm
+    // tròn hộ giữa các cấp, nên tự làm tròn để tránh rác dấu phẩy động lọt ra JSON (cùng idiom
+    // `IqcService.validateDecision`'s `scale`).
+    const multiplierById = new Map<string, number>();
+    const totalByItemId = new Map<string, number>();
+
+    for (const node of tree) {
+      const parentMultiplier = node.parentId
+        ? multiplierById.get(node.parentId)!
+        : 1;
+      const multiplier =
+        Math.round(parentMultiplier * node.quantity * 1000) / 1000;
+      multiplierById.set(node.id, multiplier);
+
+      if (node.itemType === ItemType.RM) {
+        const total =
+          Math.round(
+            ((totalByItemId.get(node.itemId) ?? 0) + multiplier) * 1000,
+          ) / 1000;
+        totalByItemId.set(node.itemId, total);
+      }
+    }
+
+    if (!totalByItemId.size) {
+      return new OffsetPaginatedDto([], new OffsetPaginationDto(0, reqDto));
+    }
+
+    const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
+    const itemRows = await this.db
+      .select({
+        itemId: items.id,
+        code: items.code,
+        name: items.name,
+        unit: getTableColumns(units),
+        image: getTableColumns(files),
+      })
+      .from(items)
+      .innerJoin(units, eq(items.unitId, units.id))
+      .leftJoin(files, eq(items.imageFileId, files.id))
+      .where(
+        and(
+          inArray(items.id, [...totalByItemId.keys()]),
+          keyword
+            ? or(
+                unaccentILike(items.code, keyword),
+                unaccentILike(items.name, keyword),
+              )
+            : undefined,
+        ),
+      )
+      .orderBy(asc(items.code));
+
+    const issues = itemRows.map((row) => ({
+      ...row,
+      requiredQty: totalByItemId.get(row.itemId)!,
+    }));
+
+    const paged = issues.slice(reqDto.offset, reqDto.offset + reqDto.limit);
 
     return new OffsetPaginatedDto(
-      plainToInstance(ItemMaterialResDto, rows, {
+      plainToInstance(ItemIssueResDto, paged, {
         excludeExtraneousValues: true,
       }),
-      new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
+      new OffsetPaginationDto(issues.length, reqDto),
     );
   }
 

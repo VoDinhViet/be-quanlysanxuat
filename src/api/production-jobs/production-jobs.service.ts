@@ -524,7 +524,7 @@ export class ProductionJobsService {
       jobIdByItemId,
       quantityByItem,
     );
-    await this.copyBomIssues(tx, itemIds, jobIdByItemId, quantityByItem);
+    await this.copyBomIssues(tx, jobIdByItemId, quantityByItem);
   }
 
   /**
@@ -735,27 +735,32 @@ export class ProductionJobsService {
   }
 
   /**
-   * Gộp mọi node lá RM thuộc cây `bom_items` của từng item theo vật tư (vị trí chỉ ảnh hưởng
-   * hiển thị/sửa ở Product Structure, không ảnh hưởng phép gộp; KHÔNG nổ theo cấp qua node WIP
-   * cha, xem `docs/domains/product-structure.md`) — rồi nhân với SL Job thành `requiredQty`, ghi
-   * vào `production_job_issues`. `unitQty` giữ nguyên định mức gốc — chưa có route sửa nào
-   * dùng tới, để sẵn cho lúc mở rộng CRUD sau này.
-   *
-   * Mã/tên vật tư và mã/tên ĐVT không ghi thẳng lên dòng issue — get-or-create trước hai dòng
-   * chiều `productionJobItems`/`productionJobUnits` (khoá theo bộ ba nội dung, xem doc comment hai
-   * bảng đó) rồi chỉ ghi id. `units.id` được lấy thêm so với trước (cần đủ bộ ba để định danh ĐVT).
+   * Nhu cầu vật tư Job = Σ `plannedQuantity` các node lá RM của cây snapshot (đã nổ đủ cấp) —
+   * BẮT BUỘC gọi sau `copyBomTree` trong cùng transaction, đọc lại `production_job_bom_items` vừa
+   * insert thay vì tự tính từ `bom_items`. `unitQty = requiredQty / SL Job`. Mã/tên vật tư và ĐVT
+   * không ghi thẳng lên dòng issue — get-or-create hai bảng chiều `productionJobItems`/
+   * `productionJobUnits` (xem doc comment hai bảng đó) rồi chỉ ghi id.
    */
   private async copyBomIssues(
     tx: DbTransaction,
-    itemIds: string[],
     jobIdByItemId: Map<string, string>,
     quantityByItem: Map<string, number>,
   ): Promise<void> {
+    const quantityByJobId = new Map(
+      [...jobIdByItemId].map(([itemId, jobId]) => [
+        jobId,
+        quantityByItem.get(itemId)!,
+      ]),
+    );
+
     const rows = await tx
       .select({
-        rootItemId: boms.itemId,
-        materialItemId: bomItems.itemId,
-        unitQty: sql<number>`sum(${bomItems.quantity})`.mapWith(Number),
+        productionJobId: productionJobBomItems.productionJobId,
+        materialItemId: items.id,
+        requiredQty:
+          sql<number>`sum(${productionJobBomItems.plannedQuantity})`.mapWith(
+            Number,
+          ),
         issueCode: items.code,
         issueName: items.name,
         unitId: units.id,
@@ -763,14 +768,20 @@ export class ProductionJobsService {
         unitName: units.name,
         imageFileId: items.imageFileId,
       })
-      .from(bomItems)
-      .innerJoin(boms, eq(bomItems.bomId, boms.id))
-      .innerJoin(items, eq(bomItems.itemId, items.id))
+      .from(productionJobBomItems)
+      .innerJoin(items, eq(productionJobBomItems.itemId, items.id))
       .innerJoin(units, eq(items.unitId, units.id))
-      .where(and(inArray(boms.itemId, itemIds), eq(items.type, ItemType.RM)))
+      .where(
+        and(
+          inArray(productionJobBomItems.productionJobId, [
+            ...quantityByJobId.keys(),
+          ]),
+          eq(productionJobBomItems.itemType, ItemType.RM),
+        ),
+      )
       .groupBy(
-        boms.itemId,
-        bomItems.itemId,
+        productionJobBomItems.productionJobId,
+        items.id,
         items.code,
         items.name,
         units.id,
@@ -779,16 +790,26 @@ export class ProductionJobsService {
         items.imageFileId,
       );
 
-    if (!rows.length) {
+    // `plannedQuantity` không có CHECK `> 0` (định mức lẻ nhiều cấp có thể tròn về 0 ở scale 3),
+    // trong khi `production_job_issues.required_qty` có — dòng tròn về 0 bị loại trước khi ghi.
+    const issuesToCreate = rows.filter((row) => row.requiredQty > 0);
+
+    if (!issuesToCreate.length) {
       return;
     }
 
-    const jobItemIdByKey = await this.resolveJobItemSnapshots(tx, rows);
-    const jobUnitIdByKey = await this.resolveJobUnitSnapshots(tx, rows);
+    const jobItemIdByKey = await this.resolveJobItemSnapshots(
+      tx,
+      issuesToCreate,
+    );
+    const jobUnitIdByKey = await this.resolveJobUnitSnapshots(
+      tx,
+      issuesToCreate,
+    );
 
     await tx.insert(productionJobIssues).values(
-      rows.map((row) => ({
-        productionJobId: jobIdByItemId.get(row.rootItemId)!,
+      issuesToCreate.map((row) => ({
+        productionJobId: row.productionJobId,
         itemId: row.materialItemId,
         productionJobItemId: jobItemIdByKey.get(
           snapshotKey(row.materialItemId, row.issueCode, row.issueName),
@@ -797,8 +818,8 @@ export class ProductionJobsService {
           snapshotKey(row.unitId, row.unitCode, row.unitName),
         )!,
         imageFileId: row.imageFileId,
-        unitQty: row.unitQty,
-        requiredQty: row.unitQty * quantityByItem.get(row.rootItemId)!,
+        unitQty: row.requiredQty / quantityByJobId.get(row.productionJobId)!,
+        requiredQty: row.requiredQty,
       })),
     );
   }

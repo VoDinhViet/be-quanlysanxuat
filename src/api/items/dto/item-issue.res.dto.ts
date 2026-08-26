@@ -7,18 +7,14 @@ import {
   ClassFieldOptional,
   NumberField,
   StringField,
-  StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
 
-/** Một dòng vật tư (RM) as-used trong cây BOM của một FG/WIP — nguồn là `bom_items` (node lá,
- * `item.type = RM`), không phải bảng riêng. */
+/** Một dòng vật tư (RM) as-used trong cây BOM của một FG/WIP — 1 dòng/vật tư, gộp mọi vị trí xuất
+ * hiện trong cây (cùng vật tư có thể nằm dưới nhiều node cha khác nhau). Nguồn là `bom_items`,
+ * không phải bảng riêng. */
 @Exclude()
-export class ItemMaterialResDto {
-  @Expose()
-  @UUIDField({ description: 'Id dòng bom_items' })
-  id!: string;
-
+export class ItemIssueResDto {
   @Expose()
   @UUIDField({ description: 'Id của vật tư' })
   itemId!: string;
@@ -40,14 +36,12 @@ export class ItemMaterialResDto {
   image!: FileResDto | null;
 
   @Expose()
-  @NumberField({ description: 'Định mức sử dụng' })
-  quantity!: number;
-
-  @Expose()
-  @NumberField({ int: true, description: 'Deterministic sibling ordering' })
-  sortOrder!: number;
-
-  @Expose()
-  @StringFieldOptional({ nullable: true })
-  note!: string | null;
+  @NumberField({
+    description:
+      'Định mức nổ cấp cho 1 đơn vị thành phẩm/bán thành phẩm gốc — nhân luỹ kế qua toàn bộ ' +
+      'chuỗi node cha, gộp mọi vị trí xuất hiện trong cây. Cùng tên với ' +
+      '`ProductionJobIssueResDto.requiredQty` — cùng khái niệm nổ cấp, khác seed (1 đơn vị gốc ' +
+      'so với SL Job)',
+  })
+  requiredQty!: number;
 }

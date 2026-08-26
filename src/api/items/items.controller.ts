@@ -17,10 +17,10 @@ import { ApiAuth } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
 import { CreateItemReqDto } from './dto/create-item.req.dto';
-import { GetItemMaterialsReqDto } from './dto/get-item-materials.req.dto';
+import { GetItemIssuesReqDto } from './dto/get-item-issues.req.dto';
 import { GetItemOptionsReqDto } from './dto/get-item-options.req.dto';
 import { GetItemsReqDto } from './dto/get-items.req.dto';
-import { ItemMaterialResDto } from './dto/item-material.res.dto';
+import { ItemIssueResDto } from './dto/item-issue.res.dto';
 import { ItemOptionResDto } from './dto/item-option.res.dto';
 import { ItemResDto } from './dto/item.res.dto';
 import { PageItemResDto } from './dto/page-item.res.dto';
@@ -94,18 +94,19 @@ export class ItemsController {
     return this.itemsService.updateItem(itemId, reqDto);
   }
 
-  @Get(':itemId/materials')
+  @Get(':itemId/issues')
   @Permissions('items:read')
   @ApiAuth({
-    type: ItemMaterialResDto,
-    summary: "Get an item's BOM materials list (Thành phần vật tư)",
+    type: ItemIssueResDto,
+    summary:
+      "Get an item's exploded material demand per RM, gộp theo cây (Thành phần vật tư)",
     isPaginated: true,
   })
-  getItemMaterials(
+  getItemIssues(
     @UUIDParam('itemId') itemId: string,
-    @Query() reqDto: GetItemMaterialsReqDto,
-  ): Promise<OffsetPaginatedDto<ItemMaterialResDto>> {
-    return this.itemsService.getItemMaterials(itemId, reqDto);
+    @Query() reqDto: GetItemIssuesReqDto,
+  ): Promise<OffsetPaginatedDto<ItemIssueResDto>> {
+    return this.itemsService.getItemIssues(itemId, reqDto);
   }
 
   @Delete(':itemId')

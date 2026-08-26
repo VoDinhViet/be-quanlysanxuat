@@ -21,7 +21,7 @@ Tầng giữa giữ **1-1 với dòng đơn hàng** (vì phiếu xuất kho cầ
 
 | | `production_job_bom_items` (cây BOM) | `production_job_operations` (công đoạn as-used) | `production_job_issues` (vật tư) |
 | --- | --- | --- | --- |
-| Nguồn | `bom_items` (cả node WIP lẫn lá RM), id nhân bản hoàn toàn mới | `bom_operations` as-used của từng node WIP (`bomItemId`), `productionJobBomItemId` remap qua id snapshot mới | Mọi lá RM thuộc cây `bom_items` của item, gộp theo `itemId`, nhân với SL Job |
+| Nguồn | `bom_items` (cả node WIP lẫn lá RM), id nhân bản hoàn toàn mới | `bom_operations` as-used của từng node WIP (`bomItemId`), `productionJobBomItemId` remap qua id snapshot mới | `production_job_bom_items.plannedQuantity` (đã nổ cấp, xem cột đầu), gộp theo `itemId` chỉ trên node `itemType = RM` |
 | Vai trò | **Snapshot thuần, đóng băng vĩnh viễn** | **Snapshot cấu trúc đóng băng, tiến độ sửa được** | **Snapshot nội bộ — không có route đọc/ghi nào** |
 | Độc lập master data | `code`/`name` denormalize, `itemType` (`WIP`/`RM`) copy, `imageFileId` copy tham chiếu từ `items.imageFileId` lúc duyệt — `itemId` chỉ còn liên kết tham khảo (`set null`) | `code`/`name`/`type` (của công đoạn) denormalize — `operationId` chỉ còn liên kết tham khảo (`set null`) | Mã/tên vật tư + mã/tên ĐVT **không** nằm trên dòng này — hai FK `NOT NULL` `restrict` trỏ sang `production_job_items`/`production_job_units`, hai bảng chiều dùng chung theo bộ ba nội dung (xem dưới); `imageFileId` copy tham chiếu, ở lại dòng này; `itemId` chỉ còn liên kết tham khảo (`set null`) |
 | Sửa sau khi sinh | Không có route nào sửa | `completedQuantity`/`rejectedQuantity`/`completedDate` sửa qua `PATCH .../operations/:operationId` (ghi đè, chỉ chạy sau khi Job qua `approve-operations`, xem dưới) — phần còn lại (`code`/`name`/`type`/`sortOrder`/`note`/`operationId`) vẫn đóng băng | Không có route sửa — và cũng không có route **đọc**; chỉ còn là nguồn nội bộ |
@@ -40,16 +40,16 @@ route sửa — một dòng có thể đang được nhiều Job dùng chung, `U
 `GET /production-jobs/:jobId/bom` trả về **nhu cầu vật tư của Job** (phân trang, `q` lọc mã/tên vật
 tư) — đọc `production_job_issues` join hai bảng chiều trên, không đụng cây BOM. Mỗi dòng là một vật
 tư đã gộp sẵn: `item` (`{code, name}`, từ `production_job_items`), `unit` (`{code, name}`, từ
-`production_job_units`), `requiredQty` (định mức BOM × SL Job, tính sẵn lúc duyệt LSX, không nổ
-theo cấp — kế thừa nguyên giới hạn của phép gộp vật tư, xem `docs/domains/product-structure.md`), và
-**"Theo dõi đã lãnh"**: `issuedQuantity` (Σ SL lãnh mọi phiếu lãnh vật tư `ISSUED` cùng
-`(productionJobId, itemId)`) + `remainingQuantity = max(requiredQty − issuedQuantity, 0)` — đọc
-qua hàm thuần từ `src/api/inventory-requisitions/inventory-requisitions.query.ts` (Inventory sở hữu
-số liệu, Production chỉ import hàm đọc, đúng tiền lệ `inventory-issues` import `iqc.query.ts`), xem
-`docs/domains/inventory.md`, `docs/workflows/inventory-requisition.md`. `item`/`unit` lồng chứ không
-phẳng — `code`/`name` trùng tên giữa hai bảng chiều. Vật tư nào chưa có dòng ở đây (Job tạo trước
-khi bảng này tồn tại) thì **không xuất hiện** trong danh sách, không phải lỗi. Bản đơn giản hoá có
-chủ đích — chưa trả "Dùng cho Part" hay số đã nổ theo cấp, để mở rộng sau nếu cần.
+`production_job_units`), `requiredQty` (định mức đã **nổ cấp** × SL Job, tính sẵn lúc duyệt LSX —
+nhân luỹ kế `quantity` qua toàn bộ chuỗi node cha, xem "Chuẩn nổ cấp BOM",
+`docs/domains/product-structure.md`), và **"Theo dõi đã lãnh"**: `issuedQuantity` (Σ SL lãnh mọi
+phiếu lãnh vật tư `ISSUED` cùng `(productionJobId, itemId)`) + `remainingQuantity = max(requiredQty
+− issuedQuantity, 0)` — đọc qua hàm thuần từ `src/api/inventory-requisitions/inventory-requisitions.query.ts`
+(Inventory sở hữu số liệu, Production chỉ import hàm đọc, đúng tiền lệ `inventory-issues` import
+`iqc.query.ts`), xem `docs/domains/inventory.md`, `docs/workflows/inventory-requisition.md`.
+`item`/`unit` lồng chứ không phẳng — `code`/`name` trùng tên giữa hai bảng chiều. Vật tư nào chưa có
+dòng ở đây (Job tạo trước khi bảng này tồn tại) thì **không xuất hiện** trong danh sách, không phải
+lỗi. Vẫn chưa trả "Dùng cho Part" (vị trí trong cây của mỗi vật tư), để mở rộng sau nếu cần.
 
 Cây cha-con của Job (`parentId`, `level`, `quantity` từng node) **không được trả ra qua `/bom`** —
 snapshot vẫn nằm nguyên trong DB, chỉ là không có API đọc trực tiếp cây đó.
@@ -205,8 +205,9 @@ concepts phía trên.
   vật tư: `code`/`name`/ĐVT không nằm trực tiếp trên `production_job_issues` mà qua get-or-create hai
   bảng chiều dùng chung `production_job_items`/`production_job_units` (khoá theo bộ ba nội dung, xem
   Core concepts) — vẫn cùng tinh thần "đóng băng, độc lập master data sống", chỉ khác chỗ lưu. Nhu
-  cầu vật tư khởi tạo = định mức BOM × SL Job, tính **một lần** lúc duyệt — không nổ theo cấp (kế
-  thừa đúng giới hạn của phép gộp vật tư, xem `docs/domains/product-structure.md`).
+  cầu vật tư khởi tạo = định mức **đã nổ cấp** × SL Job, tính **một lần** lúc duyệt, đọc lại từ
+  `production_job_bom_items.plannedQuantity` (đã nhân luỹ kế qua chuỗi node cha ngay trong cùng
+  transaction) — xem "Chuẩn nổ cấp BOM", `docs/domains/product-structure.md`.
 - Danh sách vật tư của Job **không expose route nào**, cả đọc lẫn ghi — chỉ là nguồn nội bộ (xem
   Entities).
 - Nhập `completedQuantity`/`rejectedQuantity` cho một công đoạn
@@ -248,7 +249,9 @@ concepts phía trên.
   rules) — hai cột này không phải "cấu trúc", là tiến độ.
 - `production_job_issues` cũng chỉ có đúng **một** đường ghi (transaction duyệt LSX) tại thời
   điểm viết tài liệu này — chưa có route sửa nào khác, khác `production_job_operations` ở chỗ đây là tạm
-  hoãn có chủ đích (dự kiến mở rộng), không phải giới hạn vĩnh viễn.
+  hoãn có chủ đích (dự kiến mở rộng), không phải giới hạn vĩnh viễn. Đường ghi đó (`copyBomIssues`)
+  **phải chạy sau** `copyBomTree` trong cùng transaction — đọc lại `production_job_bom_items` vừa
+  insert để lấy `plannedQuantity` đã nổ cấp, không tự tính lại từ `bom_items`.
 - `production_job_items`/`production_job_units` **tuyệt đối không có `UPDATE`** ở bất kỳ đường nào —
   không chỉ "chưa có route", mà là bất biến thiết kế: một dòng chiều có thể đang được nhiều Job ở
   nhiều LSX khác nhau dùng chung, sửa nó sẽ viết lại lịch sử của tất cả. Đổi nội dung luôn là chèn
@@ -304,8 +307,9 @@ Không phải invariant dù dễ tưởng:
 - **← Product Structure**: đọc **một nguồn duy nhất** trong transaction duyệt LSX, đúng **một lần**:
   toàn bộ cây `bom_items` (WIP + RM) + `bom_operations` as-used của từng node WIP (`bomItemId`),
   nhân bản sang `production_job_bom_items`/`production_job_operations`; vật tư
-  (`production_job_issues`) là bản gộp riêng theo `itemId` trên mọi lá RM của cây. Ngoài thời
-  điểm đó không đọc lại — sửa routing/BOM/vật tư sau khi đã duyệt không ảnh hưởng Job đã có. Tiến độ
+  (`production_job_issues`) đọc lại `production_job_bom_items.plannedQuantity` (đã nổ cấp) rồi gộp
+  theo `itemId` trên mọi node `itemType = RM`. Ngoài thời điểm đó không đọc lại — sửa
+  routing/BOM/vật tư sau khi đã duyệt không ảnh hưởng Job đã có. Tiến độ
   chia theo **từng công đoạn** (`completedQuantity`/`completedDate`), không chia theo node/Job — xem
   Core concepts.
 
@@ -324,13 +328,9 @@ Không phải invariant dù dễ tưởng:
 7. **Tưởng có thể huỷ duyệt LSX.** `APPROVED` hiện là điểm cuối, chưa có route đưa về `PENDING`.
 8. **Tưởng sửa routing/BOM của sản phẩm sẽ cập nhật công đoạn/vật tư của Job đã duyệt.** Cả hai đều
    là bản copy đóng băng tại thời điểm duyệt, không đọc lại nguồn.
-9. **Tưởng `requiredQty`/`unitQty` là BOM explosion.** Vẫn chỉ là tổng thô theo vật tư (`SUM` trên
-   mọi lá RM thuộc cây `bom_items` của item), không nhân qua số lượng của node WIP cha — kế thừa
-   nguyên giới hạn đã ghi ở `docs/domains/product-structure.md`. `GET /production-jobs/:jobId/bom`
-   trả thẳng `requiredQty` này, không tính lại — kế thừa nguyên giới hạn đó.
-10. **Tìm route sửa/thêm/xoá vật tư của Job.** Chưa có, và cũng không có route **đọc** — chỉ là
-    nguồn nội bộ.
-11. **Đi tìm bảng/route tài liệu đính kèm cho Job.** Không có, và cũng không có đường vòng qua sản
+9. **Tìm route sửa/thêm/xoá vật tư của Job.** Chưa có, và cũng không có route **đọc** — chỉ là
+   nguồn nội bộ.
+10. **Đi tìm bảng/route tài liệu đính kèm cho Job.** Không có, và cũng không có đường vòng qua sản
     phẩm — sản phẩm không còn bảng đính kèm. Bản vẽ kỹ thuật (nếu cần) tra ở BOM của sản phẩm, theo
     từng node.
 12. **Tưởng công đoạn `type = OUTSOURCE` tự chặn tiến độ hay cần "xác nhận gia công xong" mới cho

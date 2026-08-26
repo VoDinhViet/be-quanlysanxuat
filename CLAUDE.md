@@ -123,7 +123,8 @@ Bốn tầng, đọc từ trên xuống khi cần hiểu một vùng nghiệp v�
   có" lại không có: `files-registry`, `testing-paused`, `swagger-owns-api-reference`,
   `no-procurement`, `orders-no-delete`, `items-merge`, `stored-inventory-balances`,
   `outsourcing-no-draft`, `wip-not-stocked`, `oqc-per-operation`, `qc-gates-on-stock-moves`,
-  `qc-single-table`, `qc-request-attempt-split`, `qc-aql-master-data`.
+  `qc-single-table`, `qc-request-attempt-split`, `qc-aql-master-data`,
+  `bom-explosion-in-job-demand`.
 
 **Không có tầng doc theo module** — `docs/features/` đã xoá. Reference mức route/DTO
 đọc ở Swagger `/api-docs`; `ErrorCode` đọc ở `src/constants/error-code.constant.ts` + service ném nó.

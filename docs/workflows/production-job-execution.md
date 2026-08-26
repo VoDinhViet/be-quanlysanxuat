@@ -233,10 +233,8 @@ kiện nào có thể fail độc lập với chính `PATCH operations` (đã qu
 
 - Vòng đời đầy đủ của Job (5 trạng thái từ 2026-08-24) và vì sao 3 trạng thái kết thúc tự động,
   không route tay → `docs/domains/production.md`, `docs/decisions/production-lifecycle-closing.md`.
-- Cách tính `plannedQuantity` của `operations` (nhân luỹ kế theo cây, không phải SUM thô) → cùng
-  file, mục Core concepts (bảng so sánh cây BOM/công đoạn/vật tư).
-- Vì sao `unitQty`/`requiredQty` (vật tư, `GET .../bom`) không phải BOM explosion →
-  `docs/domains/product-structure.md`.
+- Cách tính `plannedQuantity` của `operations` và `unitQty`/`requiredQty` của vật tư (đều nhân luỹ
+  kế theo cây, không phải SUM thô) → "Chuẩn nổ cấp BOM", `docs/domains/product-structure.md`.
 
 ## Related domains
 
