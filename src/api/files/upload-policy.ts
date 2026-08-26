@@ -21,7 +21,7 @@ type UploadPolicy = {
  *   would assume they are protected.
  * - To turn enforcement on: add the field, add a guard reading `?type=`, and use OR semantics.
  */
-export const UPLOAD_POLICIES: Record<UploadType, UploadPolicy> = {
+export const uploadPolicies: Record<UploadType, UploadPolicy> = {
   [UploadType.USER_AVATAR]: { kind: FileKind.IMAGE },
   [UploadType.MATERIAL_IMAGE]: { kind: FileKind.IMAGE },
   [UploadType.MATERIAL_DOCUMENT]: { kind: FileKind.DOCUMENT },
@@ -35,4 +35,7 @@ export const UPLOAD_POLICIES: Record<UploadType, UploadPolicy> = {
   [UploadType.IQC_DISPOSITION_EVIDENCE]: { kind: FileKind.EVIDENCE },
   [UploadType.OQC_EVIDENCE]: { kind: FileKind.EVIDENCE },
   [UploadType.OQC_DISPOSITION_EVIDENCE]: { kind: FileKind.EVIDENCE },
+  // Chỉ nhận ảnh (khác OQC_EVIDENCE nhận cả tài liệu) — form "Thực hiện sản xuất" chỉ có dropzone
+  // ảnh, không có ô tài liệu.
+  [UploadType.PRODUCTION_OPERATION_EVIDENCE]: { kind: FileKind.IMAGE },
 };

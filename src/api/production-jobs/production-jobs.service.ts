@@ -319,11 +319,11 @@ export class ProductionJobsService {
     });
   }
 
-  /** `PATCH /production-jobs/:jobId/operations/:operationId` — ghi đè SL hoàn thành (đạt) + SL
-   * không đạt (NG) của một công đoạn (không cộng dồn). SL kế hoạch đối chiếu = `plannedQuantity` của
-   * node BOM cha (cột đã đóng băng lúc duyệt LSX), tổng đạt + NG vượt số đó bị chặn (`E252`).
-   * `completedDate` server tự set khi SL đạt chạm đủ, tự xoá khi sửa xuống dưới. Chỉ chạy khi Job đã
-   * qua `approve-operations` (`E250` nếu chưa). */
+  /** Đường **điều chỉnh** của quản lý — ghi đè SL đạt + SL NG (không cộng dồn), khác
+   * `ProductionExecutionService.createJobOperationReport` (đường **báo cáo** của xưởng, cộng dồn,
+   * `docs/domains/production.md`). SL kế hoạch đối chiếu = `plannedQuantity` của node BOM cha, tổng
+   * đạt + NG vượt số đó bị chặn (`E252`). `completedDate` tự set khi đạt chạm đủ, tự xoá khi sửa
+   * xuống dưới. Chỉ chạy khi Job đã qua `approve-operations` (`E250` nếu chưa). */
   async updateProductionJobOperation(
     jobId: string,
     operationId: string,

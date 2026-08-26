@@ -56,6 +56,8 @@ export * from './production/production-order-logs';
 export * from './production/production-jobs';
 export * from './production/production-job-bom-items';
 export * from './production/production-job-operations';
+export * from './production/production-job-operation-reports';
+export * from './production/production-job-operation-report-files';
 export * from './production/production-job-items';
 export * from './production/production-job-units';
 export * from './production/production-job-issues';

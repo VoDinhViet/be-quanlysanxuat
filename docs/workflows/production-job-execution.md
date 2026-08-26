@@ -3,13 +3,16 @@
 Chặng giữa của luồng sản xuất: xưởng bắt đầu làm, Giám đốc/Quản lý sản xuất duyệt công đoạn một lần
 (`approve-operations`, thêm 2026-08-25), rồi mới đọc bảng vật tư gộp từ cây BOM snapshot lúc duyệt và
 báo tiến độ hoàn thành/NG theo từng công đoạn. Job rời `IN_PROGRESS` ngay tại route `PATCH
-operations` của luồng này (khi công đoạn Cấp 0 xong), rồi tiếp tục qua QC/nhập kho ở
-`docs/workflows/final-qc.md` — vòng đời đầy đủ ở `docs/domains/production.md`.
+operations`/`POST .../reports` của luồng này (khi công đoạn Cấp 0 xong), rồi tiếp tục qua QC/nhập
+kho ở `docs/workflows/final-qc.md` — vòng đời đầy đủ ở `docs/domains/production.md`.
 
 `report`/`hold`/`resume` **ở mức Job** (báo sản lượng tổng, tạm dừng/làm tiếp) và route sửa vật tư
 của Job vẫn chưa có — `production_job_issues` chỉ đọc qua `/bom`, không có route ghi nào khác (xem
-`docs/domains/production.md`). Tiến độ **ở mức từng công đoạn** thì đã có, qua
-`PATCH .../operations/:operationId` (xem dưới) — đừng nhầm hai mức này.
+`docs/domains/production.md`). Tiến độ **ở mức từng công đoạn** thì đã có, qua hai đường:
+`PATCH .../operations/:operationId` (điều chỉnh, ghi đè — module `production-jobs`) và
+`POST /production-execution/operations/:jobOperationId/reports` (báo cáo, cộng dồn — module
+`production-execution`, xem mục "Route của `production-execution`" dưới) — đừng nhầm hai mức Job vs
+công đoạn, và đừng nhầm hai đường ghi với nhau.
 
 ## Trigger
 
@@ -22,12 +25,23 @@ của Job vẫn chưa có — `production_job_issues` chỉ đọc qua `/bom`, k
 | `PATCH /production-jobs/:jobId/operations/:operationId` | Nhập SL hoàn thành + SL không đạt (NG) cho một công đoạn | Có (`production_job_operations`) |
 | `GET /production-jobs/:jobId/notes` | Đọc ghi chú | Không |
 | `POST /production-jobs/:jobId/notes` | Đăng một ghi chú | Không |
+| `GET /production-execution/operations` | Thẻ chọn công đoạn (màn "Thực hiện sản xuất", bước 1) — một thẻ / công đoạn thật (`operations`), không lọc theo trạng thái Job | Không |
+| `GET /production-execution/jobs` | Danh sách công việc của một công đoạn đang chọn (bước 2) — không lọc trạng thái Job, chỉ lọc theo bộ lọc người dùng chọn | Không |
+| `POST /production-execution/operations/:jobOperationId/reports` | Lưu báo cáo hoàn thành **lần này** cho một Part (bước 3) — cộng dồn, khác `PATCH operations` | Có (`production_job_operations`, cộng dồn) + thêm 1 dòng `production_job_operation_reports` |
+
+Bước 3 của màn "Thực hiện sản xuất" (danh sách Part của Job) đọc lại đúng
+`GET /production-jobs/:jobId/operations` **có sẵn** ở trên (lọc phía FE theo `operationId` đang
+chọn) — không có route riêng, tránh trùng nguồn dữ liệu.
 
 ## Actor
 
 `start`/`PATCH operations`/`POST notes` dùng `production:update`; `approve-operations` dùng
 `production:approve` (Giám đốc hoặc Quản lý sản xuất — cùng quyền duyệt LSX); ba route đọc còn lại
 (`bom`/`operations`/`notes`) dùng `production:read`.
+
+Hai route đọc của `production-execution` dùng `production:read`; `POST .../reports` dùng
+`production:update` — cùng quyền, khác module, phục vụ đúng người dùng của `start`/`PATCH
+operations` (tổ sản xuất), không phải Giám đốc/Quản lý.
 
 ⚠️ Không role seed nào có `production:update`/`production:read` (xem
 `docs/domains/identity-access.md`).
@@ -46,6 +60,16 @@ của Job vẫn chưa có — `production_job_issues` chỉ đọc qua `/bom`, k
   nếu không: `E252`.
 - Các route còn lại (`bom`/`operations`/`notes`): không kiểm trạng thái — đọc/đăng được ở mọi trạng
   thái Job.
+- `GET /production-execution/operations`/`.../jobs`: **không** kiểm trạng thái Job — hiện mọi Job có
+  ít nhất một công đoạn khớp bộ lọc, kể cả Job chưa `start` hay đã `COMPLETED` (tổ trưởng cần đối
+  chiếu số cũ). `status` (nếu gửi) lọc đúng `production_jobs.status` người dùng chọn, không phải một
+  gate cứng.
+- `POST /production-execution/operations/:jobOperationId/reports`: `jobOperationId` phải tồn tại
+  (`E091`), Job chứa nó phải `IN_PROGRESS` (`E087`) và đã qua `approve-operations` (`E250`) — đúng ba
+  điều kiện của `PATCH operations`. Cộng thêm: node Cấp 0 (`itemType = FG`) vẫn chặn `E210` nếu còn
+  part khác chưa `completedDate`; `(đã đạt + đã NG) + (đạt lần này + NG lần này)` không được vượt
+  `plannedQuantity` (`E252`, so **sau khi cộng dồn**, khác `PATCH operations` so trực tiếp số gửi
+  lên). Không chặn báo cáo "rỗng" — `completedQuantityDelta = 0` kèm chỉ ghi chú/ảnh là hợp lệ.
 
 ```
 PENDING ──start──> IN_PROGRESS ──approve-operations──> (PATCH operations mở khoá)
@@ -95,6 +119,38 @@ dung. `GET notes` đọc qua relational query API (`with: { creator: true }` —
 mới sau) — đọc xuôi như một luồng trao đổi, khác `GET /production-orders/:id/logs` (đọc ngược lịch
 sử).
 
+### Route của `production-execution`
+
+`GET operations`: join `operations` (master) ⋈ `production_job_operations` ⋈ `production_jobs` ⋈
+`production_orders` ⋈ `orders` ⋈ `items`, `GROUP BY operations.id` — một thẻ / một dòng
+`operations` thật (không gộp theo `type`; nếu thực tế chỉ có một dòng `OUTSOURCE`, mockup tự nhiên
+hiện đúng một thẻ, không cần logic gộp riêng). `jobCount = COUNT(DISTINCT production_jobs.id)` khớp
+bộ lọc hiện tại (`q`/`status`/`clientId`/`startDate`/`endDate`, không bắt buộc filter nào, không gate
+trạng thái Job). Mảng thường, không phân trang, sắp theo `code`.
+
+`GET jobs`: `.select()` + join Job → LSX → đơn hàng → item (đúng khuôn
+`ProductionJobsService.getProductionJobs`), lọc bắt buộc `operationId` (UUID thật của `operations`,
+so trực tiếp `production_job_operations.operationId`) + cùng bộ lọc `q`/`status`/`clientId`/
+`startDate`/`endDate` của `GET operations`. Mỗi Job gắn `plannedQuantity`/`completedQuantity`/
+`rejectedQuantity` — `SUM` qua mọi dòng `production_job_operations` (join `production_job_bom_items`
+để lấy `plannedQuantity` từng node) khớp `(jobId, operationId)` — và `operationStatus`/
+`operationCompletedDate` suy từ `COUNT`/`MAX` trên cùng tập dòng đó (`DONE` khi mọi dòng đã
+`completedDate`, `IN_PROGRESS` khi tổng `completedQuantity > 0`, còn lại `NOT_STARTED`). Đếm tổng
+bằng `COUNT(DISTINCT production_jobs.id)` cùng `WHERE`, chạy song song `Promise.all` với dòng dữ
+liệu.
+
+`POST operations/:jobOperationId/reports`: đọc operation kèm `bomItem` + `productionJob` (`E091` nếu
+không có) → kiểm `E087`/`E250` → nếu node Cấp 0, đếm công đoạn non-FG chưa `completedDate` (`E210`
+nếu còn) → `FilesService.linkFiles(imageFileIds)` nếu có, **ngoài** transaction → **transaction**:
+khoá operation (`SELECT ... FOR UPDATE`) → so tổng sau khi cộng dồn `completedQuantityDelta`/
+`rejectedQuantityDelta` với `plannedQuantity` (`E252`) → `INSERT production_job_operation_reports` +
+`INSERT production_job_operation_report_files` (0..N ảnh) → `UPDATE production_job_operations`
+(cộng dồn `completedQuantity`/`rejectedQuantity`, `completedDate = reqDto.completedDate` khi tổng
+đạt ≥ `plannedQuantity`, ngược lại `null`) → nếu node Cấp 0 và không còn công đoạn FG nào dở (đếm lại
+**trong `tx`**, đúng bài học BUG-079) thì `UPDATE production_jobs SET status = WAITING_QC`. Trả
+`204`, không đọc lại. Bảng `production_job_operation_reports` là nhật ký nội bộ — chưa có route đọc
+lịch sử, chỉ để truy vết sau này.
+
 ## State changes
 
 `production_jobs.status`: `PENDING → IN_PROGRESS` (`start`) — vẫn là hành động duy nhất đổi trạng
@@ -113,8 +169,16 @@ công đoạn Cấp 0 (`itemType = FG`) đạt `completedDate` thì cùng lệnh
 `production_jobs.status: IN_PROGRESS → WAITING_QC` (2026-08-24) — `E210` đã đảm bảo mọi công đoạn
 khác xong trước đó, xem `docs/decisions/production-lifecycle-closing.md`.
 
-`PATCH operations` là route duy nhất trong luồng NÀY đổi trạng thái Job xa hơn `IN_PROGRESS`; các
-bước tiếp theo (`WAITING_QC → WAITING_DELIVERY → COMPLETED`) thuộc `docs/workflows/final-qc.md`.
+`PATCH operations`/`POST .../reports` là hai route duy nhất trong luồng NÀY đổi trạng thái Job xa
+hơn `IN_PROGRESS`; các bước tiếp theo (`WAITING_QC → WAITING_DELIVERY → COMPLETED`) thuộc
+`docs/workflows/final-qc.md`.
+
+`POST .../reports` (cùng bảng, khác cột nguồn): `production_job_operations.completedQuantity`/
+`rejectedQuantity`/`completedDate` — **cộng dồn**, không ghi đè; cộng thêm một dòng mới
+`production_job_operation_reports` (append-only, không có route sửa/xoá) + 0..N dòng
+`production_job_operation_report_files` (ảnh đính kèm lần báo cáo đó). Cùng side effect đẩy
+`production_jobs.status → WAITING_QC` khi công đoạn Cấp 0 vừa đạt đủ, giống hệt điều kiện của `PATCH
+operations`.
 
 ## Side effects
 

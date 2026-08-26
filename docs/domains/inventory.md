@@ -388,7 +388,9 @@ DRAFT ──send──> PENDING_APPROVAL ──approve──> PENDING_DELIVERY �
   trả-lại-khách (không có bảng tương đương `supplier_returns` cho khách hàng) — nếu QC chọn
   `disposition = SORT`/`RETURN` cho một dòng IQC không có `supplierId`, `IqcService.confirmIqc` chặn
   thẳng (`E254`); QC chỉ còn chọn được `CONCESSION` (chấp nhận có điều kiện) cho hàng khách trả bị
-  FAIL. Xem `docs/domains/quality.md`.
+  FAIL. Xem `docs/domains/quality.md`. `inventory_balances` **chưa** phân biệt hàng khách với hàng
+  công ty mua cùng item/kho — cộng chung một số tồn, giới hạn đã biết, chưa làm
+  (`docs/decisions/stored-inventory-balances.md`).
 - **`shouldPostStock` bỏ qua trừ tồn ở 2 ca, còn lại luôn trừ** (`postSupplierReturn`):
   1. **Bù trừ SL đã trả trước khi ghi bút toán `RECEIPT`**: một IQC `FAIL` chạy **trước** khi phiếu
      nhập gốc `post` (cổng IQC nằm ở `confirm`, xem Lifecycle), nên tại thời điểm `disposition` ra

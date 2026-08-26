@@ -65,6 +65,12 @@ nhập/xuất có vòng đời `DRAFT`/`POSTED`/`CANCELLED`, sổ cái `inventor
   BUG-031/032/048): `GET /inventory/balances.reservedQuantity` giờ trả số tính động thay vì literal
   `0`, và `reserved` của thành phẩm trên `GET /inventory` không còn tính thuần từ `order_items` —
   giờ là chứng từ giữ (DO `PENDING_APPROVAL`/`PENDING_DELIVERY`). Xem `docs/domains/inventory.md`.
+- **Chưa phân biệt chủ sở hữu** — khoá dòng vẫn đúng một cặp `(warehouseId, itemId)`, không có
+  chiều thứ ba. Hàng khách gửi (`inventory_receipts.clientId`, `receiptType = RETURN`) và hàng công
+  ty mua cùng item/kho cộng chung vào một số `quantity` — biết đây là giới hạn thật (BUG-038, xác
+  nhận có dữ liệu dev bị gộp), cân nhắc tách theo `clientId` rồi quyết định **chưa làm** vì đụng
+  toàn bộ luồng ghi/đọc tồn (posting engine, gate IQC, lãnh vật tư, các màn tồn kho). Traceability
+  hiện chỉ ở mức chứng từ, không ở mức số tồn — xem `docs/domains/inventory.md`.
 
 ## Không nhầm với
 

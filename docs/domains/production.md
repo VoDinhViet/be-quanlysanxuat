@@ -99,6 +99,25 @@ xong trong khi công đoạn khác chưa. `rejectedQuantity` (thêm 2026-08-25) 
 Lắp ráp kế tiếp (`completedDate`) — số NG không chuyển tiếp. Xem
 `docs/workflows/production-job-execution.md`.
 
+**Hai đường ghi cùng chạm `production_job_operations` — module `production-execution` (thêm
+2026-08-26).** `PATCH .../operations/:operationId` (trên) là đường **điều chỉnh** của quản lý: ghi
+đè cả hai số, `completedDate` server tự set/xoá theo `new Date()`. `POST
+/production-execution/operations/:jobOperationId/reports` là đường **báo cáo** của xưởng — mỗi lần
+"Lưu báo cáo" (SL đạt cộng thêm, SL NG cộng thêm optional, ngày hoàn thành do người báo chọn, ghi
+chú, 0..N ảnh) thêm một dòng `production_job_operation_reports` (+ dòng `..._report_files` cho ảnh)
+**và cộng dồn** (không ghi đè) vào `completedQuantity`/`rejectedQuantity` cùng công đoạn, trong cùng
+transaction — qua đúng các gate đã liệt kê ở trên (`E087`/`E250`/`E210`/`E252`); không chặn báo cáo
+"rỗng" — gửi `completedQuantityDelta = 0` kèm chỉ ghi chú/ảnh là hợp lệ. Vì có hai đường ghi,
+`SUM(production_job_operation_reports)` của một công đoạn **có thể lệch**
+`production_job_operations.completedQuantity`/`rejectedQuantity` sau khi quản lý dùng `PATCH` điều
+chỉnh — cột trên `production_job_operations` luôn là con số chính thức, bảng report chỉ là nhật ký
+truy vết ai báo gì lúc nào, không phải nguồn tính lại. `GET
+/production-execution/operations`/`.../jobs` phục vụ 2 bước đầu màn "Thực hiện sản xuất" (chọn công
+đoạn → công việc của công đoạn); bước 3 (Part của Job) đọc lại `GET
+/production-jobs/:jobId/operations` có sẵn, lọc phía FE theo `operationId` — không có route riêng.
+`GET operations` không gộp gì theo `type` — mỗi thẻ là một dòng thật của `operations` (master data),
+`operationId` dùng xuyên suốt cả hai route đọc.
+
 Job tạo trước khi các bảng này tồn tại (chưa migrate) trả về rỗng — không phải lỗi, giống
 cách BOM chưa có node trả mảng rỗng.
 
@@ -129,6 +148,8 @@ tách biệt cố ý — `getStockLevels` không đổi để không ảnh hư�
 | `production_jobs` | Đầu việc xưởng; unique `(productionOrderId, itemId)` |
 | `production_job_bom_items` | Snapshot cây BOM của Job (nhân bản `bom_items`, id mới), đóng băng lúc duyệt LSX — không route sửa |
 | `production_job_operations` | Snapshot công đoạn as-used của từng node BOM, đóng băng lúc duyệt LSX — không route sửa |
+| `production_job_operation_reports` | Nhật ký báo cáo hoàn thành **từng lần** của một công đoạn (append-only, kèm ghi chú) — module `production-execution` |
+| `production_job_operation_report_files` | Ảnh đính kèm của một lần báo cáo (0..N/lần) — bảng con của trên |
 | `production_job_issues` | Danh sách vật tư của Job, khởi tạo từ BOM lúc duyệt — không có route đọc/ghi, chỉ dùng nội bộ (`startJob` tính vật tư thiếu, `bomDemand` của Inventory/Purchase Requests, `GET .../bom`) |
 | `production_job_items` | Bảng chiều dùng chung: mã/tên vật tư đóng băng, khoá `(itemId, code, name)` — không thuộc Job nào, không `updatedAt`, không route sửa |
 | `production_job_units` | Bảng chiều dùng chung: mã/tên ĐVT đóng băng, khoá `(unitId, code, name)` — song sinh `production_job_items`, không tham chiếu nó |
@@ -199,6 +220,10 @@ concepts phía trên.
   `IN_PROGRESS` và chưa duyệt (`E251` nếu gọi lại) — ghi `operationsApprovedBy`/`operationsApprovedAt`,
   không đổi `status`. Là điều kiện tiên quyết duy nhất để mở `PATCH .../operations/:operationId`
   (xem Core concepts).
+- `POST /production-execution/operations/:jobOperationId/reports` (`production:update`) qua đúng các gate
+  của `PATCH .../operations/:operationId` (`E087`/`E250`/`E210`/`E252`) nhưng **cộng dồn** thay vì
+  ghi đè, thêm một dòng `production_job_operation_reports` (+ 0..N dòng `..._report_files`) — không
+  chặn báo cáo rỗng, xem Core concepts.
 - Ghi chú Job (`production_job_notes`) là **append-only** — `POST` để đăng, không có route sửa/xoá;
   đăng được ở mọi trạng thái Job, không kiểm `status`.
 - Ghi chú LSX (`production_orders.note`, expose `productionOrderNote` — khác `note`/`order.note` là
@@ -349,6 +374,10 @@ Không phải invariant dù dễ tưởng:
     duyệt LSX (không route sửa nào, xem Invariants) trước cả khi tính năng này tồn tại.
     `approve-operations` chỉ thêm một điều kiện tiên quyết (`E250`), không "khoá" gì mới về mặt kỹ
     thuật — xem Core concepts.
+21. **Tưởng `production_job_operation_reports` là nguồn tính lại `completedQuantity`.** Sai chiều —
+    nó là **kết quả** của việc ghi (`POST .../reports` cộng dồn vào đó), không phải nguồn để `SUM`
+    ra `completedQuantity` mỗi lần đọc. Sau khi quản lý dùng `PATCH .../operations/:operationId` ghi
+    đè, hai con số **được phép lệch nhau** — đây không phải lỗi đồng bộ, xem Core concepts.
 
 ## Related docs
 

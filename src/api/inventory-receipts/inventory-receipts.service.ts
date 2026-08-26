@@ -80,6 +80,11 @@ const receiptTypeTransactionType: Record<
   [InventoryReceiptType.ADJUSTMENT]: InventoryTransactionType.ADJUSTMENT_IN,
 };
 
+type IqcSourceIds = {
+  supplierId: string | null;
+  clientId: string | null;
+};
+
 @Injectable()
 export class InventoryReceiptsService {
   /** Phiếu coi như đã `confirm` — `DRAFT` không tính. */
@@ -667,40 +672,51 @@ export class InventoryReceiptsService {
     const [supplier, client, purchaseRequest, productionOrder, productionJob] =
       await Promise.all([
         reqDto.supplierId
-          ? this.db.query.suppliers.findFirst({
-              columns: { id: true },
-              where: and(
-                eq(suppliers.id, reqDto.supplierId),
-                isNull(suppliers.deletedAt),
-              ),
-            })
+          ? this.db
+              .select({ id: suppliers.id })
+              .from(suppliers)
+              .where(
+                and(
+                  eq(suppliers.id, reqDto.supplierId),
+                  isNull(suppliers.deletedAt),
+                ),
+              )
+              .limit(1)
+              .then((rows) => rows.length > 0)
           : Promise.resolve(true),
         reqDto.clientId
-          ? this.db.query.clients.findFirst({
-              columns: { id: true },
-              where: and(
-                eq(clients.id, reqDto.clientId),
-                isNull(clients.deletedAt),
-              ),
-            })
+          ? this.db
+              .select({ id: clients.id })
+              .from(clients)
+              .where(
+                and(eq(clients.id, reqDto.clientId), isNull(clients.deletedAt)),
+              )
+              .limit(1)
+              .then((rows) => rows.length > 0)
           : Promise.resolve(true),
         reqDto.purchaseRequestId
-          ? this.db.query.purchaseRequests.findFirst({
-              columns: { id: true },
-              where: eq(purchaseRequests.id, reqDto.purchaseRequestId),
-            })
+          ? this.db
+              .select({ id: purchaseRequests.id })
+              .from(purchaseRequests)
+              .where(eq(purchaseRequests.id, reqDto.purchaseRequestId))
+              .limit(1)
+              .then((rows) => rows.length > 0)
           : Promise.resolve(true),
         reqDto.productionOrderId
-          ? this.db.query.productionOrders.findFirst({
-              columns: { id: true },
-              where: eq(productionOrders.id, reqDto.productionOrderId),
-            })
+          ? this.db
+              .select({ id: productionOrders.id })
+              .from(productionOrders)
+              .where(eq(productionOrders.id, reqDto.productionOrderId))
+              .limit(1)
+              .then((rows) => rows.length > 0)
           : Promise.resolve(true),
         reqDto.productionJobId
-          ? this.db.query.productionJobs.findFirst({
-              columns: { id: true },
-              where: eq(productionJobs.id, reqDto.productionJobId),
-            })
+          ? this.db
+              .select({ id: productionJobs.id })
+              .from(productionJobs)
+              .where(eq(productionJobs.id, reqDto.productionJobId))
+              .limit(1)
+              .then((rows) => rows.length > 0)
           : Promise.resolve(true),
       ]);
 
@@ -962,7 +978,7 @@ export class InventoryReceiptsService {
       InventoryReceiptSelect,
       'supplierId' | 'clientId' | 'purchaseOrderId'
     >,
-  ): Promise<{ supplierId: string | null; clientId: string | null }> {
+  ): Promise<IqcSourceIds> {
     if (inventoryReceipt.supplierId) {
       return { supplierId: inventoryReceipt.supplierId, clientId: null };
     }

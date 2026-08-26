@@ -21,7 +21,7 @@ import { STORAGE_PROVIDER } from '../../storage/storage.constants';
 import type { StorageProvider } from '../../storage/storage-provider.interface';
 import { PermissionsService } from '../auth/permissions.service';
 import { FileResDto } from './dto/file.res.dto';
-import { UPLOAD_POLICIES } from './upload-policy';
+import { uploadPolicies } from './upload-policy';
 import { detectFileType } from './util/file-type.util';
 
 type UploadOptions = {
@@ -90,7 +90,7 @@ export class FilesService {
 
     // `kind` đến từ policy, không bao giờ từ client — nếu không, caller có thể xin USER_AVATAR
     // nhưng khai DOCUMENT để lách allowlist ảnh bằng một PDF.
-    const { kind } = UPLOAD_POLICIES[options.type];
+    const { kind } = uploadPolicies[options.type];
     const allowedMimeTypes = FilesService.MIME_TYPES_BY_KIND[kind];
     const maxSize = this.configService.getOrThrow(
       FilesService.MAX_SIZE_CONFIG_KEY[kind],

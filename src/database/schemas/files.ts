@@ -32,7 +32,7 @@ export const fileKindEnum = pgEnum('file_kind', [
  *
  * Rules:
  * - `FileKind` says which bytes are acceptable (the mime family); `UploadType` says which screen
- *   asked for them, and is the key into `UPLOAD_POLICIES` (`src/api/files/upload-policy.ts`) that
+ *   asked for them, and is the key into `uploadPolicies` (`src/api/files/upload-policy.ts`) that
  *   decides the kind — and, later, the permission required.
  * - Stored so the registry stays auditable ("every material document") without joining anything.
  */
@@ -53,6 +53,9 @@ export enum UploadType {
   IQC_DISPOSITION_EVIDENCE = 'IQC_DISPOSITION_EVIDENCE',
   OQC_EVIDENCE = 'OQC_EVIDENCE',
   OQC_DISPOSITION_EVIDENCE = 'OQC_DISPOSITION_EVIDENCE',
+  // Ảnh đính kèm khi báo cáo hoàn thành một công đoạn — màn "Thực hiện sản xuất"
+  // (`POST /production-execution/operations/:jobOperationId/reports`).
+  PRODUCTION_OPERATION_EVIDENCE = 'PRODUCTION_OPERATION_EVIDENCE',
 }
 
 export const uploadTypeEnum = pgEnum('upload_type', [
@@ -69,6 +72,7 @@ export const uploadTypeEnum = pgEnum('upload_type', [
   UploadType.IQC_DISPOSITION_EVIDENCE,
   UploadType.OQC_EVIDENCE,
   UploadType.OQC_DISPOSITION_EVIDENCE,
+  UploadType.PRODUCTION_OPERATION_EVIDENCE,
 ]);
 
 /**

@@ -42,6 +42,7 @@ import { OutsourcingOrdersModule } from './api/outsourcing-orders/outsourcing-or
 import { OutsourcingReceiptsModule } from './api/outsourcing-receipts/outsourcing-receipts.module';
 import { PaymentRequestsModule } from './api/payment-requests/payment-requests.module';
 import { PositionsModule } from './api/positions/positions.module';
+import { ProductionExecutionModule } from './api/production-execution/production-execution.module';
 import { ProductionJobsModule } from './api/production-jobs/production-jobs.module';
 import { ProductionOrdersModule } from './api/production-orders/production-orders.module';
 import { PurchaseLedgerModule } from './api/purchase-ledger/purchase-ledger.module';
@@ -116,6 +117,7 @@ import { WarehousesModule } from './api/warehouses/warehouses.module';
     QcAqlModule,
     IqcModule,
     OqcModule,
+    ProductionExecutionModule,
     ProductionJobsModule,
     ProductionOrdersModule,
     OrdersModule,

@@ -13,6 +13,7 @@ import {
 
 import { operationTypeEnum, operations } from '../operations';
 import { productionJobBomItems } from './production-job-bom-items';
+import { productionJobOperationReports } from './production-job-operation-reports';
 import { productionJobs } from './production-jobs';
 
 /**
@@ -30,9 +31,10 @@ import { productionJobs } from './production-jobs';
  * - Không unique `(productionJobBomItemId, operationId)` — một routing được phép lặp lại cùng
  *   công đoạn (`bom_operations` cũng vậy), ép unique sẽ nuốt mất bước khi copy.
  * - `code`/`name`/`type`/`sortOrder`/`note`/`operationId` vẫn đóng băng lúc duyệt.
- *   `completedQuantity`/`rejectedQuantity`/`completedDate` là các cột duy nhất sửa được sau đó, qua
- *   `ProductionJobsService.updateProductionJobOperation` (`PATCH .../operations/:operationId`) — chỉ
- *   chạy được khi `production_jobs.operationsApprovedAt` đã có (`E250`).
+ *   `completedQuantity`/`rejectedQuantity`/`completedDate` sửa được qua hai đường: `PATCH
+ *   .../operations/:operationId` (ghi đè, `ProductionJobsService`) hoặc `POST
+ *   .../reports` (cộng dồn, `ProductionExecutionService`, ghi thêm một dòng
+ *   `production_job_operation_reports`) — cả hai chỉ chạy khi `operationsApprovedAt` đã có (`E250`).
  */
 export const productionJobOperations = pgTable(
   'production_job_operations',
@@ -94,7 +96,7 @@ export const productionJobOperations = pgTable(
 
 export const productionJobOperationsRelations = relations(
   productionJobOperations,
-  ({ one }) => ({
+  ({ one, many }) => ({
     productionJob: one(productionJobs, {
       fields: [productionJobOperations.productionJobId],
       references: [productionJobs.id],
@@ -103,6 +105,7 @@ export const productionJobOperationsRelations = relations(
       fields: [productionJobOperations.productionJobBomItemId],
       references: [productionJobBomItems.id],
     }),
+    reports: many(productionJobOperationReports),
   }),
 );
 

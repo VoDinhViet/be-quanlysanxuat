@@ -96,6 +96,7 @@ là file dưới `docs/domains/`, `—` nghĩa là hạ tầng thuần, không t
 | `oqc`                  | quality           | Kiểm chất lượng công đoạn (OQC) trước nhập kho/giao hàng — cùng `qc_requests`/`qc_inspections` với IQC (`kind = OUTGOING`), tách biệt ở tầng API, gắn theo `productionJobOperationId` (không còn theo cả Job, `docs/decisions/oqc-per-operation.md`); không còn `POST /oqc` tay lẫn popup `GET .../inspectable-operations` — tạo qua đúng 1 route `POST /production-jobs/:jobId/qc` (không nhận body, xem module `production-jobs`); `GET .../aql-plan` gợi ý cỡ mẫu; `status` 4 giá trị (`NOT_INSPECTED`/`PENDING`/`REWORK`/`COMPLETED`); `result` auto-suy từ Ac/Re (`resultAuto`), cho QC ghi đè có lý do; `disposition` FAIL riêng (`ACCEPT`/`REWORK`/`SCRAP`, khác IQC); `COMPLETED` khoá `confirm` cứng; mỗi `confirm` (kể cả các vòng REWORK) sinh 1 attempt mới, không mất lịch sử; `DELETE` chỉ khi `NOT_INSPECTED`; `inventory-receipts`/`outbound-orders` đọc `getJobQcCoverage` để gate               |
 | `production-orders`    | production        | 1 PO duyệt = 1 LSX                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `production-jobs`      | production        | 1 item FG = 1 Job trong một LSX; `POST :jobId/qc` yêu cầu QC thành phẩm cho cả Job — 1 cú bấm, không body, chỉ chạy được khi mọi công đoạn đã xong (import `OqcModule`, gọi thẳng `OqcService.createOqcForJob`)                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `production-execution` | production        | Màn "Thực hiện sản xuất" (view của tổ sản xuất, đi từ công đoạn xuống) — `GET operations` (thẻ chọn công đoạn, 1 thẻ/dòng `operations` thật, không gộp) → `GET jobs` (công việc của công đoạn, lọc `operationId` thật) → bước 3 (Part của Job) đọc lại `GET /production-jobs/:jobId/operations` có sẵn (không route riêng) → `POST operations/:jobOperationId/reports` (báo cáo hoàn thành từng lần, **cộng dồn**, kèm ghi chú/0..N ảnh, ghi `production_job_operation_reports`+`..._report_files` append-only); khác `PATCH /production-jobs/:jobId/operations/:operationId` là đường **điều chỉnh ghi đè** của quản lý — hai đường cùng chạm `production_job_operations`, có thể lệch nhau |
 | `purchase-requests`    | purchase-requests | Đề xuất mua hàng — `POST` lập tay (luôn `DRAFT`, không gắn LSX/Job, dòng bắt buộc RM) **hoặc** tự sinh khi `production-jobs` start Job thiếu vật tư; `GET` list/detail + `PATCH`/`DELETE .../items/:purchaseRequestItemId` (sửa/xoá dòng, chỉ `DRAFT`/`REJECTED`) + `DELETE /:purchaseRequestId` (xoá cả phiếu, chỉ `DRAFT`/`REJECTED`) + `POST .../send`/`.../approve`/`.../reject` (gửi duyệt/duyệt/từ chối, `REJECTED` là điểm cuối trừ khi sửa/xoá dòng lại đưa về `DRAFT`); chưa sửa được header sau khi tạo, cũng chưa thêm được dòng mới vào phiếu đã tạo                                                                                 |
 | `purchase-ledger`      | purchasing        | Sổ cái mua hàng — chỉ `GET /purchase-ledger`, 1 dòng/1 `purchase_request_items` của phiếu `APPROVED`, mọi số tính lúc đọc từ bốn bảng của `purchase-quotations`/`purchase-orders`                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `purchase-quotations`  | purchasing        | Báo giá (RFQ) — một vật tư có nhiều NCC chào giá, một dòng vật tư gộp được nhiều dòng ĐXMH cùng mã vật tư (bảng phân bổ `purchase_quotation_item_allocations` giữ SL từng dòng); `GET` list/detail + CRUD tay + `send`/`approve` (chọn NCC thắng thầu từng vật tư, tự sinh PO Draft)/`reject`/`request-changes`/`recall`                                                                                                                                                                                                                                                                                                                         |
@@ -147,10 +148,9 @@ Một cảnh báo không thuộc file nào khác: **enum trạng thái (`OrderSt
 kể cả file này.
 
 <!-- gitnexus:start -->
-
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **be-quanlysanxuat** (4213 symbols, 11249 relationships, 177 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **be-quanlysanxuat** (5864 symbols, 15825 relationships, 203 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > Index stale? Run `node .gitnexus/run.cjs analyze` from the project root — it auto-selects an available runner. No `.gitnexus/run.cjs` yet? `npx gitnexus analyze` (npm 11 crash → `npm i -g gitnexus`; #1939).
 
@@ -172,22 +172,22 @@ This project is indexed by GitNexus as **be-quanlysanxuat** (4213 symbols, 11249
 
 ## Resources
 
-| Resource                                          | Use for                                  |
-| ------------------------------------------------- | ---------------------------------------- |
-| `gitnexus://repo/be-quanlysanxuat/context`        | Codebase overview, check index freshness |
-| `gitnexus://repo/be-quanlysanxuat/clusters`       | All functional areas                     |
-| `gitnexus://repo/be-quanlysanxuat/processes`      | All execution flows                      |
-| `gitnexus://repo/be-quanlysanxuat/process/{name}` | Step-by-step execution trace             |
+| Resource | Use for |
+|----------|---------|
+| `gitnexus://repo/be-quanlysanxuat/context` | Codebase overview, check index freshness |
+| `gitnexus://repo/be-quanlysanxuat/clusters` | All functional areas |
+| `gitnexus://repo/be-quanlysanxuat/processes` | All execution flows |
+| `gitnexus://repo/be-quanlysanxuat/process/{name}` | Step-by-step execution trace |
 
 ## CLI
 
-| Task                                         | Read this skill file                                        |
-| -------------------------------------------- | ----------------------------------------------------------- |
-| Understand architecture / "How does X work?" | `.claude/skills/gitnexus/gitnexus-exploring/SKILL.md`       |
-| Blast radius / "What breaks if I change X?"  | `.claude/skills/gitnexus/gitnexus-impact-analysis/SKILL.md` |
-| Trace bugs / "Why is X failing?"             | `.claude/skills/gitnexus/gitnexus-debugging/SKILL.md`       |
-| Rename / extract / split / refactor          | `.claude/skills/gitnexus/gitnexus-refactoring/SKILL.md`     |
-| Tools, resources, schema reference           | `.claude/skills/gitnexus/gitnexus-guide/SKILL.md`           |
-| Index, status, clean, wiki CLI commands      | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md`             |
+| Task | Read this skill file |
+|------|---------------------|
+| Understand architecture / "How does X work?" | `.claude/skills/gitnexus/gitnexus-exploring/SKILL.md` |
+| Blast radius / "What breaks if I change X?" | `.claude/skills/gitnexus/gitnexus-impact-analysis/SKILL.md` |
+| Trace bugs / "Why is X failing?" | `.claude/skills/gitnexus/gitnexus-debugging/SKILL.md` |
+| Rename / extract / split / refactor | `.claude/skills/gitnexus/gitnexus-refactoring/SKILL.md` |
+| Tools, resources, schema reference | `.claude/skills/gitnexus/gitnexus-guide/SKILL.md` |
+| Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
 
 <!-- gitnexus:end -->
