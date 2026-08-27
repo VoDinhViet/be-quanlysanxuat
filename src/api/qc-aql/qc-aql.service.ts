@@ -1,4 +1,10 @@
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import {
+  HttpStatus,
+  Inject,
+  Injectable,
+  Logger,
+  OnModuleInit,
+} from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { and, asc, count, eq, ne } from 'drizzle-orm';
 
@@ -21,8 +27,28 @@ import { QcAqlRuleReqDto } from './dto/qc-aql-rule.req.dto';
 import { UpdateQcAqlPlanReqDto } from './dto/update-qc-aql-plan.req.dto';
 
 @Injectable()
-export class QcAqlService {
+export class QcAqlService implements OnModuleInit {
+  private readonly logger = new Logger(QcAqlService.name);
+
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
+
+  /** `resolveAqlPlan` tra hụt im lặng khi bảng rỗng (`iqc-aql.query.ts`) — môi trường mới chưa chạy
+   * `pnpm db:seed:qc-aql` sẽ chặn xác nhận IQC/OQC không kèm `result` mà không có dấu hiệu gì ngoài
+   * log này (BUG-089, cùng loại thiếu-triển-khai với BUG-081). Chỉ log, không throw — không được
+   * chặn boot vì thiếu master data. */
+  async onModuleInit(): Promise<void> {
+    const [row] = await this.db
+      .select({ total: count() })
+      .from(qcAqlPlans)
+      .where(eq(qcAqlPlans.isActive, true));
+
+    if (row.total === 0) {
+      this.logger.warn(
+        'qc_aql_plans rỗng (0 plan active) — mọi xác nhận IQC/OQC không kèm `result` sẽ báo lỗi ' +
+          'không tra được AQL plan. Chạy `pnpm db:seed:qc-aql` để khắc phục.',
+      );
+    }
+  }
 
   async getQcAqlPlans(
     reqDto: GetQcAqlPlansReqDto,
