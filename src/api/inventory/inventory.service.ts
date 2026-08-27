@@ -44,9 +44,9 @@ export class InventoryService {
 
   /** Tồn thô theo (kho × mặt hàng). `reservedQuantity` KHÔNG đọc cột cùng tên trên
    * `inventory_balances` (cột đó vẫn luôn 0, chưa route nào ghi) — điền số tính động lúc đọc: phiếu
-   * lãnh `DRAFT`/`PENDING_APPROVAL`/`APPROVED` theo đúng kho (giữ từ lúc tạo, BUG-087), cộng DO
-   * `DRAFT`/`PENDING_APPROVAL`/`PENDING_DELIVERY` chỉ trên dòng kho `type = FG` (DO không có cột
-   * kho). Giữ nguyên hợp đồng API cũ, xem `docs/domains/inventory.md`. */
+   * lãnh `APPROVED` theo đúng kho, cộng DO `DRAFT`/`PENDING_APPROVAL`/`PENDING_DELIVERY` (giữ từ lúc
+   * tạo, BUG-087) chỉ trên dòng kho `type = FG` (DO không có cột kho). Giữ nguyên hợp đồng API cũ,
+   * xem `docs/domains/inventory.md`. */
   async getInventoryBalances(
     reqDto: GetInventoryBalancesReqDto,
   ): Promise<OffsetPaginatedDto<InventoryBalanceResDto>> {

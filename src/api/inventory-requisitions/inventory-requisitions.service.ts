@@ -165,11 +165,15 @@ export class InventoryRequisitionsService {
     this.ensureRequisitionTypeValid(reqDto.type, reqDto.productionJobId);
 
     const { items: itemsToCreate, ...requisitionFields } = reqDto;
+    const productionJobId =
+      reqDto.type === InventoryRequisitionType.PRODUCTION
+        ? (reqDto.productionJobId ?? null)
+        : null;
 
     await this.validateRequisitionLines(this.db, {
       warehouseId: reqDto.warehouseId,
       type: reqDto.type,
-      productionJobId: reqDto.productionJobId ?? null,
+      productionJobId,
       itemsToValidate: itemsToCreate,
     });
 
@@ -183,7 +187,12 @@ export class InventoryRequisitionsService {
 
       const [inventoryRequisition] = await tx
         .insert(inventoryRequisitions)
-        .values({ ...requisitionFields, code, createdBy: userId })
+        .values({
+          ...requisitionFields,
+          productionJobId,
+          code,
+          createdBy: userId,
+        })
         .returning({ id: inventoryRequisitions.id });
 
       await this.createRequisitionItems(
@@ -209,7 +218,9 @@ export class InventoryRequisitionsService {
 
       const type = reqDto.type ?? existing.type;
       const productionJobId =
-        reqDto.productionJobId ?? existing.productionJobId;
+        type === InventoryRequisitionType.PRODUCTION
+          ? (reqDto.productionJobId ?? existing.productionJobId)
+          : null;
       this.ensureRequisitionTypeValid(type, productionJobId);
 
       await this.validateRequisitionLines(tx, {
@@ -217,12 +228,11 @@ export class InventoryRequisitionsService {
         type,
         productionJobId,
         itemsToValidate: itemsToReplace,
-        excludeRequisitionId: requisitionId,
       });
 
       await tx
         .update(inventoryRequisitions)
-        .set(requisitionFields)
+        .set({ ...requisitionFields, productionJobId })
         .where(eq(inventoryRequisitions.id, requisitionId));
 
       await this.replaceRequisitionItems(tx, requisitionId, itemsToReplace);
@@ -255,13 +265,12 @@ export class InventoryRequisitionsService {
       .where(eq(inventoryRequisitions.id, requisitionId));
   }
 
-  /** `PENDING_APPROVAL → APPROVED` — vẫn kiểm lại `E231`/`E232` dù `create`/`update` đã chặn từ lúc
-   * giữ chỗ bắt đầu (BUG-087, `HOLDING_STATUSES` tính cả `DRAFT`) — tồn hoặc "Đã giữ" của phiếu khác
-   * có thể đổi giữa hai bước, TOCTOU của lượt chặn sớm chấp nhận được, đây mới là chốt thật. Chỉ đổi
-   * `status`, không đụng `inventory_balances`/`inventory_transactions` — "Đã giữ" là số tính lúc đọc,
-   * không ghi cột nào. Khoá trước các dòng `inventory_balances` liên quan (`itemIds` sort tăng dần,
-   * tránh deadlock với phiếu khác đang duyệt chồng vật tư) — nếu không, hai phiếu duyệt đồng thời
-   * cùng `(kho, vật tư)` có thể cùng đọc "Đã giữ" y hệt nhau và cùng qua được `E231`. */
+  /** `PENDING_APPROVAL → APPROVED` — mốc giữ chỗ thật (`HOLDING_STATUS` chỉ tính `APPROVED`), nên
+   * lượt `validateRequisitionLines` ở đây mới là chốt `E231`/`E232` chịu trách nhiệm chính. Chỉ đổi
+   * `status`, không đụng `inventory_balances`/`inventory_transactions` — "Đã giữ" là số tính lúc
+   * đọc, không ghi cột nào. Khoá trước các dòng `inventory_balances` liên quan (`itemIds` sort tăng
+   * dần, tránh deadlock với phiếu khác đang duyệt chồng vật tư) — nếu không, hai phiếu duyệt đồng
+   * thời cùng `(kho, vật tư)` có thể cùng đọc "Đã giữ" y hệt nhau và cùng qua được `E231`. */
   async approveInventoryRequisition(
     requisitionId: string,
     userId: string,
@@ -295,7 +304,6 @@ export class InventoryRequisitionsService {
         type: inventoryRequisition.type,
         productionJobId: inventoryRequisition.productionJobId,
         itemsToValidate: itemsToApprove,
-        excludeRequisitionId: requisitionId,
       });
 
       await tx
@@ -487,11 +495,12 @@ export class InventoryRequisitionsService {
     }
   }
 
-  /** Chốt chặn dùng chung cho `create`/`update` (ngoài transaction, TOCTOU chấp nhận được) và
-   * `approve` (trong transaction, sau `FOR UPDATE`, đây là chốt thật). Bốn bước: không trùng
-   * `itemId` (`E228`) → mọi item tồn tại + là RM (`E229`) → (`type = PRODUCTION`) mọi item nằm
-   * trong định mức BOM của Job (`E230`) → từng dòng `SL lãnh ≤ Có thể lãnh` (`E231`) và, nếu có
-   * Job, `SL lãnh ≤ SL BOM còn lại` (`E232`). */
+  /** Chốt chặn dùng chung cho `create`/`update` (chưa khoá dòng tồn, lại chỉ thấy "Đã giữ" của các
+   * phiếu đã `APPROVED` nên nhiều phiếu nháp cùng vượt tồn một vật tư vẫn lọt — cảnh báo sớm) và
+   * `approve` (sau `FOR UPDATE`, chốt thật vì đó mới là mốc giữ chỗ). Bốn bước: không trùng `itemId`
+   * (`E228`) → mọi item tồn tại + là RM (`E229`) → (`type = PRODUCTION`) mọi item nằm trong định mức
+   * BOM của Job (`E230`) → từng dòng `SL lãnh ≤ Có thể lãnh` (`E231`) và, nếu có Job,
+   * `SL lãnh ≤ SL BOM còn lại` (`E232`). */
   private async validateRequisitionLines(
     db: Database | DbTransaction,
     params: {
@@ -499,7 +508,6 @@ export class InventoryRequisitionsService {
       type: InventoryRequisitionType;
       productionJobId: string | null;
       itemsToValidate: { itemId: string; quantity: number }[];
-      excludeRequisitionId?: string;
     },
   ): Promise<void> {
     const itemIds = params.itemsToValidate.map((item) => item.itemId);
@@ -555,7 +563,6 @@ export class InventoryRequisitionsService {
       getReservedQuantities(db, {
         warehouseId: params.warehouseId,
         itemIds,
-        excludeRequisitionId: params.excludeRequisitionId,
       }),
       productionJobId
         ? getIssuedQuantities(db, { productionJobId, itemIds })

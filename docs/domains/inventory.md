@@ -85,7 +85,7 @@ reserved  = fgHeld   = Σ SL dòng outbound_order_items của DO DRAFT/PENDING_A
 bomDemand = fgDemand = max(orderDemand − fgHeld, 0)     orderDemand = phần chưa giao của đơn đã duyệt
 
 # GET /inventory-materials (RM) — nhu cầu BOM còn lại, trừ phần đã có phiếu lãnh giữ CÓ GẮN JOB
-rmHeld         = Σ SL dòng inventory_requisition_items của phiếu lãnh DRAFT/PENDING_APPROVAL/APPROVED (mọi type)
+rmHeld         = Σ SL dòng inventory_requisition_items của phiếu lãnh APPROVED (mọi type)
 rmHeldForJobs  = rmHeld, chỉ phiếu type=PRODUCTION (có production_job_id)
 reserved  = rmHeld
 bomDemand = rmDemand = max(remainingBomDemand − rmHeldForJobs, 0)   remainingBomDemand = Σ max(requiredQty − Đã lãnh, 0)
@@ -154,7 +154,7 @@ Ba số cốt lõi, khác hẳn "Bốn field"/"Bốn số khác" ở trên (nh�
 đây là công thức **duy nhất trong toàn hệ thống** dùng để chặn tạo/duyệt phiếu):
 
 ```
-Đã giữ      = Σ SL lãnh mọi phiếu khác đang DRAFT/PENDING_APPROVAL/APPROVED, cùng (warehouseId, itemId)
+Đã giữ      = Σ SL lãnh mọi phiếu khác đang APPROVED, cùng (warehouseId, itemId)
 Có thể lãnh = Tồn thực tế − Đã giữ                                    (chặn: SL lãnh ≤ giá trị này)
 Đã lãnh     = Σ SL lãnh mọi phiếu ISSUED, cùng (productionJobId, itemId)
 Khả dụng    = Tồn thực tế − Σ max(requiredQty − Đã lãnh, 0) mọi Job    (chỉ tham khảo, có thể âm)
@@ -388,13 +388,14 @@ DRAFT ──send──> PENDING_APPROVAL ──approve──> APPROVED ──iss
   └──cancel───────────┴─────────────────────┴──> CANCELLED
 ```
 
-- **Giữ chỗ bắt đầu ngay từ `create`** (`DRAFT`, BUG-087, đảo ngược mốc cũ "chỉ giữ từ `APPROVED`")
-  — `HOLDING_STATUSES` (`inventory-requisitions.query.ts`) tính cả `DRAFT`/`PENDING_APPROVAL`/
-  `APPROVED` vào "Đã giữ" (đổi số tính lúc đọc, xem Core concepts), nên `E231`/`E232` đã chặn thật
-  từ lúc tạo/sửa phiếu, không phải đợi tới `approve`. `approve` vẫn kiểm lại cùng điều kiện (TOCTOU
-  của lượt chặn sớm) nhưng **không đụng** `inventory_balances`/`inventory_transactions` — duyệt xong
-  tồn vẫn nguyên. Đừng khôi phục mốc "chỉ đếm `APPROVED`" — đó chính là lỗ hổng đã sửa (hai phiếu
-  nháp cùng vượt tồn một vật tư đều lọt qua `create`).
+- **Giữ chỗ bắt đầu từ `approve`** — `HOLDING_STATUS` (`inventory-requisitions.query.ts`) chỉ tính
+  `APPROVED` vào "Đã giữ" (số tính lúc đọc, xem Core concepts). `create`/`update` vẫn gọi cùng
+  `validateRequisitionLines` để cảnh báo sớm, nhưng chỉ chặn theo "Đã giữ" của các phiếu **đã
+  duyệt** khác — hai phiếu nháp cùng vượt tồn một vật tư đều lọt qua `create`, mỗi phiếu chỉ thật sự
+  bị chặn (`E231`/`E232`) lúc `approve`. `approve` **không đụng**
+  `inventory_balances`/`inventory_transactions` — duyệt xong tồn vẫn nguyên, chỉ đổi số tính lúc
+  đọc. Đây là đánh đổi cố ý: báo lỗi muộn hơn (tới lúc duyệt) nhưng không cho hai phiếu chưa duyệt
+  cùng giữ chỗ một lượng hàng.
 - `issue` (`APPROVED → ISSUED`, **điểm cuối**, không có `cancel` từ đây) mới thật sự trừ tồn — cùng
   transaction: sinh 1 `inventory_issues` (`issueType = PRODUCTION`, `POSTED` ngay, không qua `DRAFT`)
   + dòng, rồi gọi `InventoryPostingService.postDocument` y hệt `InventoryIssuesService.
@@ -733,21 +734,22 @@ Không phải invariant dù dễ tưởng:
     (`docs/workflows/inventory-requisition.md`). `issueType` khác (`SALES`/`RETURN`/`ADJUSTMENT`)
     không đổi, vẫn lập/`post` tay bình thường.
 28. **Tưởng `inventory_balances.reservedQuantity` được hồi sinh cho phiếu lãnh vật tư/DO.** Không —
-    "Đã giữ" của cả phiếu lãnh lẫn DO **tính lúc đọc** từ các dòng `DRAFT`/`PENDING_APPROVAL`/
-    `APPROVED` (phiếu lãnh) hoặc `DRAFT`/`PENDING_APPROVAL`/`PENDING_DELIVERY` (DO), không ghi cột
-    nào; cột `reservedQuantity` vẫn chết dưới DB (`GET /inventory/balances` trả số tính động chứ
-    không đọc cột — xem Invariants, Core concepts).
+    "Đã giữ" của cả phiếu lãnh lẫn DO **tính lúc đọc** từ các dòng `APPROVED` (phiếu lãnh) hoặc
+    `DRAFT`/`PENDING_APPROVAL`/`PENDING_DELIVERY` (DO), không ghi cột nào; cột `reservedQuantity`
+    vẫn chết dưới DB (`GET /inventory/balances` trả số tính động chứ không đọc cột — xem
+    Invariants, Core concepts).
 29. **Tưởng mọi phiếu lãnh `APPROVED` đều trùng với `remainingBomDemand`, nên trừ chéo bằng
     `rmHeld` gộp cả `type=OTHER`.** Sai — phiếu `type=OTHER` không gắn `production_job_id` (`E233`
     chỉ ép buộc với `PRODUCTION`), không có mặt trong `production_job_issues` để trùng. `rmDemand`
     phải trừ `rmHeldForJobs` (chỉ phần `PRODUCTION`), không phải `rmHeld` — trộn chung sẽ trừ nhầm
     phần chưa từng bị cộng trùng, khai khống `available` đúng bằng SL các phiếu `OTHER` đang
     `APPROVED`. `reserved` không bị ảnh hưởng, vẫn cộng nguyên `rmHeld`.
-30. **Tưởng "Đã giữ" chỉ tính từ phiếu lãnh `APPROVED`/DO `PENDING_APPROVAL` trở đi.** Không còn từ
-    BUG-087 (27/08/2026) — giữ chỗ bắt đầu ngay lúc **tạo** (`DRAFT`) cho cả hai loại chứng từ, để
-    hai bộ phận không cùng lập được kế hoạch trên một lượng hàng rồi mới vỡ ở bước duyệt. Đọc
-    `HOLDING_STATUSES` (`inventory-requisitions.query.ts`/`outbound-orders.query.ts`) trước khi tin
-    mốc cũ ở bất kỳ đâu khác chưa cập nhật.
+30. **Tưởng phiếu lãnh vật tư và DO giữ chỗ từ cùng một mốc trạng thái.** Không — hai module lệch
+    mốc có chủ ý: phiếu lãnh chỉ giữ từ `APPROVED` (`HOLDING_STATUS`,
+    `inventory-requisitions.query.ts`); DO vẫn giữ ngay từ `create` (`DRAFT`, BUG-087,
+    `HOLDING_STATUSES`, `outbound-orders.query.ts`) để hai bộ phận không cùng lập được kế hoạch trên
+    một lượng hàng FG rồi mới vỡ ở bước duyệt. Đọc đúng hằng của từng module trước khi tin mốc ở bất
+    kỳ đâu khác chưa cập nhật.
 31. **Tưởng `GET /inventory` vẫn tồn tại.** Đã xoá (27/08/2026) — tách thành `GET /inventory-products`
     (FG) và `GET /inventory-materials` (RM), mỗi route chỉ tính công thức của loại mình, xem "Bốn
     field" ở Core concepts. `GET /inventory/balances`/`GET /inventory/transactions` không đổi, vẫn ở

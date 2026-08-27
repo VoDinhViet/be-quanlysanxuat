@@ -48,8 +48,7 @@ export class InventoryMaterialResDto {
 
   @Expose()
   @NumberField({
-    description:
-      'Đã giữ — Σ SL phiếu lãnh vật tư đang DRAFT/PENDING_APPROVAL/APPROVED',
+    description: 'Đã giữ — Σ SL phiếu lãnh vật tư đang APPROVED',
   })
   reserved!: number;
 
