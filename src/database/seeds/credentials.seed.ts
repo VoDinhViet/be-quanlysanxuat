@@ -20,7 +20,7 @@ import { users } from '../schemas/identity-access/users';
 
 const PASSWORD_SALT_ROUNDS = 10;
 
-type SeedDatabase = ReturnType<typeof drizzle<typeof schema>>;
+export type SeedDatabase = ReturnType<typeof drizzle<typeof schema>>;
 
 interface RoleSeed {
   code: string;
@@ -40,6 +40,16 @@ interface AccountSeed {
   fullName: string;
   isProtected: boolean;
 }
+
+const DEPARTMENTS = {
+  IT: { code: 'IT', name: 'Phòng CNTT' },
+  BGD: { code: 'BGD', name: 'Ban Giám đốc' },
+  KD: { code: 'KD', name: 'Phòng Kinh doanh' },
+  MH: { code: 'MH', name: 'Phòng Mua hàng' },
+  KHO: { code: 'KHO', name: 'Phòng Kho' },
+  SX: { code: 'SX', name: 'Phòng Sản xuất' },
+  QC: { code: 'QC', name: 'Phòng QC' },
+} as const satisfies Record<string, { code: string; name: string }>;
 
 const ROLES = {
   ADMIN: {
@@ -211,12 +221,12 @@ const ROLES = {
   },
 } as const satisfies Record<string, RoleSeed>;
 
-const ACCOUNTS: AccountSeed[] = [
+export const ACCOUNTS: AccountSeed[] = [
   {
     username: 'admin',
     email: 'admin@tienhuy.com',
     role: ROLES.ADMIN,
-    department: { code: 'IT', name: 'Phòng CNTT' },
+    department: DEPARTMENTS.IT,
     position: { code: 'ADMIN', name: 'Quản trị viên' },
     userCode: 'NV-ADMIN',
     fullName: 'Quản trị hệ thống',
@@ -226,7 +236,7 @@ const ACCOUNTS: AccountSeed[] = [
     username: 'giamdoc',
     email: 'giamdoc@tienhuy.com',
     role: ROLES.DIRECTOR,
-    department: { code: 'BGD', name: 'Ban Giám đốc' },
+    department: DEPARTMENTS.BGD,
     position: { code: 'DIRECTOR', name: 'Giám đốc' },
     userCode: 'NV-GD',
     fullName: 'Giám đốc',
@@ -236,7 +246,7 @@ const ACCOUNTS: AccountSeed[] = [
     username: 'kinhdoanh',
     email: 'kinhdoanh@tienhuy.com',
     role: ROLES.SALES,
-    department: { code: 'KD', name: 'Phòng Kinh doanh' },
+    department: DEPARTMENTS.KD,
     position: { code: 'STAFF-KD', name: 'NV Kinh doanh' },
     userCode: 'NV-KD',
     fullName: 'Nhân viên Kinh doanh',
@@ -246,7 +256,7 @@ const ACCOUNTS: AccountSeed[] = [
     username: 'muahang',
     email: 'muahang@tienhuy.com',
     role: ROLES.PURCHASING,
-    department: { code: 'MH', name: 'Phòng Mua hàng' },
+    department: DEPARTMENTS.MH,
     position: { code: 'STAFF-MH', name: 'NV Mua hàng' },
     userCode: 'NV-MH',
     fullName: 'Nhân viên Mua hàng',
@@ -256,7 +266,7 @@ const ACCOUNTS: AccountSeed[] = [
     username: 'kho',
     email: 'kho@tienhuy.com',
     role: ROLES.WAREHOUSE,
-    department: { code: 'KHO', name: 'Phòng Kho' },
+    department: DEPARTMENTS.KHO,
     position: { code: 'STAFF-KHO', name: 'NV Kho' },
     userCode: 'NV-KHO',
     fullName: 'Nhân viên Kho',
@@ -266,7 +276,7 @@ const ACCOUNTS: AccountSeed[] = [
     username: 'sanxuat',
     email: 'sanxuat@tienhuy.com',
     role: ROLES.PRODUCTION,
-    department: { code: 'SX', name: 'Phòng Sản xuất' },
+    department: DEPARTMENTS.SX,
     position: { code: 'STAFF-SX', name: 'NV Sản xuất' },
     userCode: 'NV-SX',
     fullName: 'Nhân viên Sản xuất',
@@ -276,7 +286,7 @@ const ACCOUNTS: AccountSeed[] = [
     username: 'qc',
     email: 'qc@tienhuy.com',
     role: ROLES.QC,
-    department: { code: 'QC', name: 'Phòng QC' },
+    department: DEPARTMENTS.QC,
     position: { code: 'STAFF-QC', name: 'NV QC' },
     userCode: 'NV-QC',
     fullName: 'Nhân viên QC',
@@ -288,7 +298,10 @@ function getSeedPassword(): string {
   return process.env.SEED_PASSWORD || '123456';
 }
 
-async function ensureRole(db: SeedDatabase, role: RoleSeed): Promise<string> {
+export async function ensureRole(
+  db: SeedDatabase,
+  role: RoleSeed,
+): Promise<string> {
   const existing = await db.query.roles.findFirst({
     where: eq(roles.code, role.code),
     columns: { id: true, permissions: true },
@@ -330,7 +343,7 @@ async function ensureRole(db: SeedDatabase, role: RoleSeed): Promise<string> {
   return created.id;
 }
 
-async function ensureDepartment(
+export async function ensureDepartment(
   db: SeedDatabase,
   department: { code: string; name: string },
 ): Promise<string> {
@@ -353,7 +366,7 @@ async function ensureDepartment(
   return created.id;
 }
 
-async function ensurePosition(
+export async function ensurePosition(
   db: SeedDatabase,
   position: { code: string; name: string },
   departmentId: string,

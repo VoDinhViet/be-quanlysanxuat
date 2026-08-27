@@ -23,6 +23,7 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "db:generate": "drizzle-kit generate",
+    "db:seed:departments-roles-positions": "ts-node src/database/seeds/departments-roles-positions.seed.ts",
     "db:seed:credentials": "ts-node src/database/seeds/credentials.seed.ts",
     "db:seed:client-groups": "ts-node src/database/seeds/client-groups.seed.ts",
     "db:seed:clients": "ts-node src/database/seeds/clients.seed.ts",
