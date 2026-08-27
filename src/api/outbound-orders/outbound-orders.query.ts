@@ -9,8 +9,10 @@ import {
   OutboundOrderStatus,
 } from '../../database/schemas';
 
-// Hai trạng thái DO đang giữ chỗ thành phẩm — `DRAFT` chưa giữ, `DELIVERED`/`CANCELLED` hết giữ.
+// Ba trạng thái DO đang giữ chỗ thành phẩm — giữ ngay từ lúc tạo (`DRAFT`, BUG-087);
+// `DELIVERED`/`REJECTED`/`CANCELLED` hết giữ.
 const HOLDING_STATUSES = [
+  OutboundOrderStatus.DRAFT,
   OutboundOrderStatus.PENDING_APPROVAL,
   OutboundOrderStatus.PENDING_DELIVERY,
 ];

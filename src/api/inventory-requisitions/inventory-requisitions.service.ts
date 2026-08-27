@@ -255,12 +255,13 @@ export class InventoryRequisitionsService {
       .where(eq(inventoryRequisitions.id, requisitionId));
   }
 
-  /** `PENDING_APPROVAL → APPROVED` — **nơi chặn thật** `E231`/`E232` (create/update chỉ chặn sớm,
-   * chấp nhận TOCTOU). Chỉ đổi `status`, không đụng `inventory_balances`/`inventory_transactions` —
-   * "Đã giữ" là số tính lúc đọc từ các dòng `APPROVED`, không ghi cột nào. Khoá trước các dòng
-   * `inventory_balances` liên quan (`itemIds` sort tăng dần, tránh deadlock với phiếu khác đang
-   * duyệt chồng vật tư) — nếu không, hai phiếu duyệt đồng thời cùng `(kho, vật tư)` có thể cùng đọc
-   * "Đã giữ" y hệt nhau và cùng qua được `E231`. */
+  /** `PENDING_APPROVAL → APPROVED` — vẫn kiểm lại `E231`/`E232` dù `create`/`update` đã chặn từ lúc
+   * giữ chỗ bắt đầu (BUG-087, `HOLDING_STATUSES` tính cả `DRAFT`) — tồn hoặc "Đã giữ" của phiếu khác
+   * có thể đổi giữa hai bước, TOCTOU của lượt chặn sớm chấp nhận được, đây mới là chốt thật. Chỉ đổi
+   * `status`, không đụng `inventory_balances`/`inventory_transactions` — "Đã giữ" là số tính lúc đọc,
+   * không ghi cột nào. Khoá trước các dòng `inventory_balances` liên quan (`itemIds` sort tăng dần,
+   * tránh deadlock với phiếu khác đang duyệt chồng vật tư) — nếu không, hai phiếu duyệt đồng thời
+   * cùng `(kho, vật tư)` có thể cùng đọc "Đã giữ" y hệt nhau và cùng qua được `E231`. */
   async approveInventoryRequisition(
     requisitionId: string,
     userId: string,

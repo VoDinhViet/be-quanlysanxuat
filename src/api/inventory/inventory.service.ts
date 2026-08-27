@@ -94,11 +94,12 @@ export class InventoryService {
     const fgDemandSql = () =>
       sql<number>`greatest(coalesce(${openOrderDemand.demand}, 0) - (${fgHeldSql()}), 0)`;
 
-    /** `reserved` = tổng "Đã giữ" của RM (mọi phiếu lãnh `APPROVED`, cả `PRODUCTION` lẫn `OTHER`)
-     * và FG (DO `PENDING_APPROVAL`/`PENDING_DELIVERY`); `bomDemand` = phần nhu cầu CHƯA có chứng từ
-     * nào giữ. RM trừ chéo bằng `heldForJobsQuantity` (chỉ phiếu `PRODUCTION`, có `productionJobId`)
-     * chứ không phải `heldQuantity` — chỉ phiếu `PRODUCTION` mới trùng với `remainingBomDemand`
-     * (nguồn `production_job_issues`, `APPROVED` chưa bị trừ vì `remainingBomDemand` chỉ trừ phần
+    /** `reserved` = tổng "Đã giữ" của RM (mọi phiếu lãnh `DRAFT`/`PENDING_APPROVAL`/`APPROVED`, cả
+     * `PRODUCTION` lẫn `OTHER` — giữ từ lúc tạo, BUG-087) và FG (DO `DRAFT`/`PENDING_APPROVAL`/
+     * `PENDING_DELIVERY`, cùng đổi mốc); `bomDemand` = phần nhu cầu CHƯA có chứng từ nào giữ. RM trừ
+     * chéo bằng `heldForJobsQuantity` (chỉ phiếu `PRODUCTION`, có `productionJobId`) chứ không phải
+     * `heldQuantity` — chỉ phiếu `PRODUCTION` mới trùng với `remainingBomDemand` (nguồn
+     * `production_job_issues`, chưa `ISSUED` thì chưa bị trừ vì `remainingBomDemand` chỉ trừ phần
      * `ISSUED`); phiếu `OTHER` không có Job nên không có nhu cầu BOM đối ứng để trùng — trộn chung
      * rồi trừ chéo sẽ trừ nhầm phần chưa từng bị cộng trùng, khai khống `available`. Xem
      * `docs/domains/inventory.md`. */
@@ -183,9 +184,9 @@ export class InventoryService {
 
   /** Tồn thô theo (kho × mặt hàng). `reservedQuantity` KHÔNG đọc cột cùng tên trên
    * `inventory_balances` (cột đó vẫn luôn 0, chưa route nào ghi) — điền số tính động lúc đọc: phiếu
-   * lãnh `APPROVED` theo đúng kho, cộng DO `PENDING_APPROVAL`/`PENDING_DELIVERY` chỉ trên dòng kho
-   * `type = FG` (DO không có cột kho). Giữ nguyên hợp đồng API cũ, xem
-   * `docs/domains/inventory.md`. */
+   * lãnh `DRAFT`/`PENDING_APPROVAL`/`APPROVED` theo đúng kho (giữ từ lúc tạo, BUG-087), cộng DO
+   * `DRAFT`/`PENDING_APPROVAL`/`PENDING_DELIVERY` chỉ trên dòng kho `type = FG` (DO không có cột
+   * kho). Giữ nguyên hợp đồng API cũ, xem `docs/domains/inventory.md`. */
   async getInventoryBalances(
     reqDto: GetInventoryBalancesReqDto,
   ): Promise<OffsetPaginatedDto<InventoryBalanceResDto>> {

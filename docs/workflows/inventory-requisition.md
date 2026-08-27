@@ -1,7 +1,7 @@
 # Phiếu lãnh vật tư (Inventory Requisition)
 
-Trình tự lập → duyệt (giữ hàng) → xuất (trừ tồn) của `inventory_requisitions`. Business rule/công
-thức số: `docs/domains/inventory.md`, mục "Phiếu lãnh vật tư".
+Trình tự lập (giữ hàng, BUG-087) → duyệt (kiểm lại) → xuất (trừ tồn) của `inventory_requisitions`.
+Business rule/công thức số: `docs/domains/inventory.md`, mục "Phiếu lãnh vật tư".
 
 ## Trigger & actor
 
@@ -34,17 +34,20 @@ DRAFT ──send──> PENDING_APPROVAL ──approve──> APPROVED ──iss
 
 1. **Lập phiếu** (`createInventoryRequisition`) — validate đọc (item hợp lệ, `type`/`productionJobId`
    khớp nhau, mỗi dòng ≤ Có thể lãnh và ≤ SL BOM còn lại — cùng bộ check `approve` chạy, xem dưới)
-   chạy **trước** khi mở transaction; trong transaction: sinh mã `MR-{năm}-{5}` (tiếng Anh, khác quy
-   ước Việt hoá `PNK`/`PXK`/`PTNCC` — cố ý, `DocumentType.INVENTORY_REQUISITION`) → insert header
-   (`DRAFT`) + dòng.
+   chạy **trước** khi mở transaction; giữ chỗ bắt đầu ngay ở đây (BUG-087) — `Có thể lãnh` đã tính cả
+   các phiếu `DRAFT`/`PENDING_APPROVAL` khác, nên `E231`/`E232` chặn thật từ lúc tạo, không đợi tới
+   `approve`. Trong transaction: sinh mã `MR-{năm}-{5}` (tiếng Anh, khác quy ước Việt hoá
+   `PNK`/`PXK`/`PTNCC` — cố ý, `DocumentType.INVENTORY_REQUISITION`) → insert header (`DRAFT`) + dòng.
 2. **Gửi duyệt** (`sendInventoryRequisition`, `DRAFT`/`REJECTED → PENDING_APPROVAL`) — một `UPDATE`,
    không transaction.
 3. **Duyệt** (`approveInventoryRequisition`, `PENDING_APPROVAL → APPROVED`) — toàn bộ trong 1
-   transaction, đây là **nơi chặn thật** (create/update chỉ chặn sớm, TOCTOU chấp nhận được):
+   transaction, vẫn **kiểm lại** `E231`/`E232` dù `create`/`update` đã chặn (TOCTOU của lượt chặn
+   sớm chấp nhận được, đây mới là chốt thật):
    - `SELECT … FOR UPDATE` header + mọi dòng `inventory_balances` liên quan (`itemIds` sort tăng dần
      để hai phiếu chồng nhau không deadlock).
-   - `Có thể lãnh = Tồn thực tế − Đã giữ` (Đã giữ = Σ SL lãnh mọi phiếu khác đang `APPROVED` cùng
-     `(warehouseId, itemId)`, loại trừ chính phiếu đang xét) — dòng nào SL lãnh vượt → `E231`.
+   - `Có thể lãnh = Tồn thực tế − Đã giữ` (Đã giữ = Σ SL lãnh mọi phiếu khác đang
+     `DRAFT`/`PENDING_APPROVAL`/`APPROVED` cùng `(warehouseId, itemId)`, loại trừ chính phiếu đang
+     xét) — dòng nào SL lãnh vượt → `E231`.
    - `type = PRODUCTION`: `SL lãnh ≤ requiredQty − Đã lãnh` (Đã lãnh = Σ SL lãnh mọi phiếu `ISSUED`
      cùng `(productionJobId, itemId)`) — vượt → `E232`.
    - `UPDATE status = APPROVED`. **Không đụng tồn kho** — "Đã giữ" là số tính lúc đọc, không có cột
@@ -59,7 +62,8 @@ DRAFT ──send──> PENDING_APPROVAL ──approve──> APPROVED ──iss
    - `InventoryPostingService.postDocument` — trừ `inventory_balances`, ghi `inventory_transactions`
      (`PRODUCTION_OUT`, âm).
    - `UPDATE status = ISSUED, inventoryIssueId = <phiếu vừa sinh>`.
-   - "Đã giữ" tự giảm ngay sau bước này — phép SUM ở bước 3 chỉ tính phiếu còn `APPROVED`.
+   - "Đã giữ" tự giảm ngay sau bước này — phép SUM ở bước 3 chỉ tính phiếu còn
+     `DRAFT`/`PENDING_APPROVAL`/`APPROVED`, không còn tính phiếu đã `ISSUED`.
 5. **Từ chối** (`rejectInventoryRequisition`, `PENDING_APPROVAL → REJECTED`) — một `UPDATE` + lý do.
    Sửa/xoá dòng sau đó tự đưa `REJECTED → DRAFT` (cùng khuôn `purchase-requests`).
 6. **Huỷ** (`cancelInventoryRequisition`) — `DRAFT`/`PENDING_APPROVAL`/`APPROVED → CANCELLED`, một

@@ -9,9 +9,17 @@ import {
   productionJobIssues,
 } from '../../database/schemas';
 
-/** Σ SL lãnh mọi phiếu đang `APPROVED`, theo `(warehouseId, itemId)` — "Đã giữ", LEFT JOIN thẳng
- * vào SELECT hiển thị (popup/tab chi tiết). Dùng chung khuôn `sentQuantityByJobOperationSubquery`
- * (`outsourcing-orders.query.ts`). */
+// Ba trạng thái phiếu lãnh đang giữ chỗ — giữ ngay từ lúc tạo (`DRAFT`, BUG-087); `ISSUED` thôi giữ
+// vì đã trừ tồn thật (tính tiếp là trừ hai lần), `REJECTED`/`CANCELLED` nhả chỗ.
+const HOLDING_STATUSES = [
+  InventoryRequisitionStatus.DRAFT,
+  InventoryRequisitionStatus.PENDING_APPROVAL,
+  InventoryRequisitionStatus.APPROVED,
+];
+
+/** Σ SL lãnh mọi phiếu đang giữ chỗ (`HOLDING_STATUSES`), theo `(warehouseId, itemId)` — "Đã giữ",
+ * LEFT JOIN thẳng vào SELECT hiển thị (popup/tab chi tiết). Dùng chung khuôn
+ * `sentQuantityByJobOperationSubquery` (`outsourcing-orders.query.ts`). */
 export function reservedQuantitySubquery(db: Database) {
   return db
     .select({
@@ -28,9 +36,7 @@ export function reservedQuantitySubquery(db: Database) {
       inventoryRequisitions,
       eq(inventoryRequisitions.id, inventoryRequisitionItems.requisitionId),
     )
-    .where(
-      eq(inventoryRequisitions.status, InventoryRequisitionStatus.APPROVED),
-    )
+    .where(inArray(inventoryRequisitions.status, HOLDING_STATUSES))
     .groupBy(
       inventoryRequisitions.warehouseId,
       inventoryRequisitionItems.itemId,
@@ -69,7 +75,7 @@ export function requisitionHeldQuantityByItemSubquery(
     )
     .where(
       and(
-        eq(inventoryRequisitions.status, InventoryRequisitionStatus.APPROVED),
+        inArray(inventoryRequisitions.status, HOLDING_STATUSES),
         warehouseId
           ? eq(inventoryRequisitions.warehouseId, warehouseId)
           : undefined,
@@ -79,10 +85,10 @@ export function requisitionHeldQuantityByItemSubquery(
     .as('requisition_held_by_item');
 }
 
-/** Bản `Map` của "Đã giữ" — dùng để validate (`create`/`approve`), không có SELECT hiển thị nào để
- * LEFT JOIN vào. `excludeRequisitionId` loại chính phiếu đang duyệt (nó tự nằm trong "Đã giữ" của
- * chính nó lúc `APPROVED`, không được trừ nhu cầu của mình hai lần — cùng lý do `excludeOrderId` ở
- * `InventoryService.getStockLevels`). */
+/** Bản `Map` của "Đã giữ" — dùng để validate (`create`/`update`/`approve`), không có SELECT hiển thị
+ * nào để LEFT JOIN vào. `excludeRequisitionId` loại chính phiếu đang tạo/sửa/duyệt (nó tự nằm trong
+ * "Đã giữ" của chính nó vì `HOLDING_STATUSES` giờ tính cả `DRAFT`, không được trừ nhu cầu của mình
+ * hai lần — cùng lý do `excludeOrderId` ở `InventoryService.getStockLevels`). */
 export async function getReservedQuantities(
   db: Database | DbTransaction,
   params: {
@@ -109,7 +115,7 @@ export async function getReservedQuantities(
     .where(
       and(
         eq(inventoryRequisitions.warehouseId, params.warehouseId),
-        eq(inventoryRequisitions.status, InventoryRequisitionStatus.APPROVED),
+        inArray(inventoryRequisitions.status, HOLDING_STATUSES),
         inArray(inventoryRequisitionItems.itemId, params.itemIds),
         params.excludeRequisitionId
           ? ne(inventoryRequisitions.id, params.excludeRequisitionId)

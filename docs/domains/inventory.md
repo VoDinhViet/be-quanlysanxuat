@@ -77,11 +77,11 @@ loại vật tư** — không một biểu thức gộp chung, xem lý do ngay d
 onHand    = SUM(inventory_balances.quantity) gộp mọi kho              (thực tế đang có)
 
 # Khối FG — nhu cầu đơn hàng mở, trừ phần đã có DO giữ
-fgHeld    = Σ SL dòng outbound_order_items của DO PENDING_APPROVAL/PENDING_DELIVERY
+fgHeld    = Σ SL dòng outbound_order_items của DO DRAFT/PENDING_APPROVAL/PENDING_DELIVERY
 fgDemand  = max(orderDemand − fgHeld, 0)     orderDemand = phần chưa giao của đơn đã duyệt
 
 # Khối RM — nhu cầu BOM còn lại, trừ phần đã có phiếu lãnh giữ CÓ GẮN JOB
-rmHeld         = Σ SL dòng inventory_requisition_items của phiếu lãnh APPROVED (mọi type)
+rmHeld         = Σ SL dòng inventory_requisition_items của phiếu lãnh DRAFT/PENDING_APPROVAL/APPROVED (mọi type)
 rmHeldForJobs  = rmHeld, chỉ phiếu type=PRODUCTION (có production_job_id)
 rmDemand       = max(remainingBomDemand − rmHeldForJobs, 0)   remainingBomDemand = Σ max(requiredQty − Đã lãnh, 0)
 
@@ -91,8 +91,9 @@ available = onHand − reserved − bomDemand          (còn dùng được)
 ```
 
 Tách 2 khối vì `remainingBomDemand`/`orderDemand` và `rmHeldForJobs`/`fgHeld` **không loại trừ
-nhau** — một phiếu lãnh `type=PRODUCTION` `APPROVED` (chưa `ISSUED`) vừa nằm trong `rmHeldForJobs`
-vừa nằm trong `remainingBomDemand` (chỉ trừ phần `ISSUED`); cộng thẳng `onHand − (rmHeldForJobs+
+nhau** — một phiếu lãnh `type=PRODUCTION` đang giữ chỗ (`DRAFT`/`PENDING_APPROVAL`/`APPROVED`, chưa
+`ISSUED`) vừa nằm trong `rmHeldForJobs` vừa nằm trong `remainingBomDemand` (chỉ trừ phần `ISSUED`);
+cộng thẳng `onHand − (rmHeldForJobs+
 fgHeld) − (remainingBomDemand+orderDemand)` sẽ trừ hai lần. `orderDemand` chỉ tính đơn **đã được
 Giám đốc duyệt** (`AWAITING_PRODUCTION`/`IN_PROGRESS`), nguồn "đã giao" đọc từ
 `inventory_transactions` qua `orderItemId` (dòng bút toán âm trên phiếu xuất). `order_items`/
@@ -114,11 +115,14 @@ FG`, vì `outbound_orders` không có cột kho) — không đọc cột thật,
 **Popup "chọn PO/Job cần giao" của `outbound-orders`** (`GET
 /outbound-orders/unfulfilled-order-items`) hiện là một listing thuần: mọi dòng `order_items` của
 đơn `AWAITING_PRODUCTION`/`IN_PROGRESS` chưa xoá mềm, dòng chưa `CANCELLED` — không lọc theo SL đã
-giao, không tính tồn/giữ chỗ. **`create` không resolve/validate dòng phía server** — client gửi
-thẳng `itemId`/`productionJobId` lấy từ popup này, `E188`/`E190`-`E193` đều dự phòng (không còn
-throw site). Đây là quyết định cố ý, không phải khoảng trống bỏ sót: popup không trả số tồn/giữ chỗ
-nào để người dùng dự đoán trước, nên chặn ngay ở `create` sẽ ném lỗi không ai đoán được — cổng chặn
-tồn kho thật (`E194`) đặt ở `send` (xem Lifecycle), muộn hơn nhưng người dùng biết trước lý do.
+giao, không tính tồn/giữ chỗ. **`create` không resolve/validate cấu trúc dòng phía server** — client
+gửi thẳng `itemId`/`productionJobId` lấy từ popup này, `E188`/`E190`-`E193` đều dự phòng (không còn
+throw site). Đây là quyết định cố ý, không phải khoảng trống bỏ sót: popup không trả đủ thông tin để
+đối chiếu cấu trúc dòng trước khi gửi. **Riêng chốt chặn tồn kho thật (`E194`) đã đảo ngược từ
+BUG-087** — `create` giờ **có** gọi `ensureOutboundLinesIssuable` ngay khi tạo (giữ chỗ FG bắt đầu
+từ lúc này, không phải từ `send` nữa, xem Lifecycle); `send`/`approve` vẫn kiểm lại cùng điều kiện vì
+tồn/"Đã giữ" của DO khác có thể đổi giữa các bước. Đừng khôi phục "cổng chặn `E194` chỉ ở `send`" —
+đó chính là lỗ hổng đã sửa (hai DO nháp cùng vượt tồn một vật tư đều lọt qua `create`).
 
 **Bốn số khác trên dòng chi tiết phiếu nhập** (`GET /inventory-receipts/:receiptId`) và dòng chi
 tiết đề xuất mua (`GET /purchase-requests/:purchaseRequestId`, `docs/domains/purchase-requests.md`),
@@ -142,7 +146,7 @@ Ba số cốt lõi, khác hẳn "Bốn field"/"Bốn số khác" ở trên (nh�
 đây là công thức **duy nhất trong toàn hệ thống** dùng để chặn tạo/duyệt phiếu):
 
 ```
-Đã giữ      = Σ SL lãnh mọi phiếu khác đang APPROVED, cùng (warehouseId, itemId)
+Đã giữ      = Σ SL lãnh mọi phiếu khác đang DRAFT/PENDING_APPROVAL/APPROVED, cùng (warehouseId, itemId)
 Có thể lãnh = Tồn thực tế − Đã giữ                                    (chặn: SL lãnh ≤ giá trị này)
 Đã lãnh     = Σ SL lãnh mọi phiếu ISSUED, cùng (productionJobId, itemId)
 Khả dụng    = Tồn thực tế − Σ max(requiredQty − Đã lãnh, 0) mọi Job    (chỉ tham khảo, có thể âm)
@@ -173,7 +177,7 @@ nguyên `requiredQty` mãi mãi sẽ làm số càng lúc càng âm sai lệch d
 | `outsourcing_order_items` | Dòng OS-OUT — `itemId`/`quantity` + snapshot công đoạn (`operationCode`/`operationName`, NOT NULL), client gửi thẳng từ popup, server không resolve/validate lại (`docs/decisions/outsourcing-no-draft.md`) + `weight`(kg)/`area`(m²) tuỳ chọn, **không** tham gia tính tồn |
 | `outsourcing_receipts` | Phiếu nhận gia công ngoài (OS-IN) — header + nhiều dòng (`outsourcing_receipt_items`), cũng không còn nháp, cũng không đụng `inventory_balances`; mỗi dòng trỏ đúng 1 `outsourcingOrderItemId`, **cho phép gộp dòng từ nhiều OS-OUT khác nhau miễn cùng một NCC** (`supplierId` ở header, bất biến 1 phiếu = 1 NCC, `E187`); một dòng OS-OUT nhận được nhiều lần (partial); `requiresIqc` tuỳ chọn tự sinh N dòng `qc_requests` (`kind = INCOMING`, 1/dòng phiếu) lúc `create` |
 | `outsourcing_receipt_items` | Dòng OS-IN — `outsourcingOrderItemId` trỏ đúng 1 dòng OS-OUT nguồn, `itemId` denormalize từ dòng đó; `weight`/`area` mặc định copy từ dòng OS-OUT, sửa được |
-| `outbound_orders` | Phiếu giao hàng (DO) — header, `POST` tạo nháp + `GET` list/detail + `POST :id/send` (`DRAFT`/`REJECTED` → `PENDING_APPROVAL`, chặn `E205` nếu còn Job nào chưa qua hết OQC, chặn `E194` nếu có dòng vượt SL có thể giao — tồn FG trừ đã giữ của DO khác) + `POST :id/approve` (`PENDING_APPROVAL → PENDING_DELIVERY`, không kiểm lại OQC, kiểm lại `E194`) + `POST :id/reject` (`PENDING_APPROVAL → REJECTED`, lý do bắt buộc) + `POST :id/deliver` (`PENDING_DELIVERY → DELIVERED`, tự sinh + post phiếu xuất SALES, trừ tồn thật, đóng đơn hàng nếu giao đủ — xem "Giao hàng" bên dưới); `clientId` bắt buộc, bất biến "1 phiếu = 1 khách hàng" |
+| `outbound_orders` | Phiếu giao hàng (DO) — header, `POST` tạo nháp (chặn ngay `E194` nếu có dòng vượt SL có thể giao — tồn FG trừ đã giữ của DO khác, BUG-087) + `GET` list/detail + `POST :id/send` (`DRAFT`/`REJECTED` → `PENDING_APPROVAL`, chặn `E205` nếu còn Job nào chưa qua hết OQC, kiểm lại `E194`) + `POST :id/approve` (`PENDING_APPROVAL → PENDING_DELIVERY`, không kiểm lại OQC, kiểm lại `E194` lần nữa) + `POST :id/reject` (`PENDING_APPROVAL → REJECTED`, lý do bắt buộc) + `POST :id/deliver` (`PENDING_DELIVERY → DELIVERED`, tự sinh + post phiếu xuất SALES, trừ tồn thật, đóng đơn hàng nếu giao đủ — xem "Giao hàng" bên dưới); `clientId` bắt buộc, bất biến "1 phiếu = 1 khách hàng" |
 | `outbound_order_items` | Dòng DO — `orderItemId` trỏ dòng PO nguồn (**không** unique, một dòng PO được chọn ở nhiều phiếu DO khác nhau qua nhiều lần giao), `itemId` denormalize, `productionJobId` snapshot Job hiển thị (tuỳ chọn, `set null`) |
 
 `orderItemId` trên dòng phiếu xuất (và bút toán sinh ra từ nó) là **chỗ nối duy nhất sang Orders** —
@@ -341,8 +345,13 @@ DRAFT ──send──> PENDING_APPROVAL ──approve──> APPROVED ──iss
   └──cancel───────────┴─────────────────────┴──> CANCELLED
 ```
 
-- `APPROVED` chỉ **giữ hàng** (đổi số "Đã giữ" tính lúc đọc, xem Core concepts) — **không đụng
-  `inventory_balances`/`inventory_transactions`**. Duyệt xong tồn vẫn nguyên.
+- **Giữ chỗ bắt đầu ngay từ `create`** (`DRAFT`, BUG-087, đảo ngược mốc cũ "chỉ giữ từ `APPROVED`")
+  — `HOLDING_STATUSES` (`inventory-requisitions.query.ts`) tính cả `DRAFT`/`PENDING_APPROVAL`/
+  `APPROVED` vào "Đã giữ" (đổi số tính lúc đọc, xem Core concepts), nên `E231`/`E232` đã chặn thật
+  từ lúc tạo/sửa phiếu, không phải đợi tới `approve`. `approve` vẫn kiểm lại cùng điều kiện (TOCTOU
+  của lượt chặn sớm) nhưng **không đụng** `inventory_balances`/`inventory_transactions` — duyệt xong
+  tồn vẫn nguyên. Đừng khôi phục mốc "chỉ đếm `APPROVED`" — đó chính là lỗ hổng đã sửa (hai phiếu
+  nháp cùng vượt tồn một vật tư đều lọt qua `create`).
 - `issue` (`APPROVED → ISSUED`, **điểm cuối**, không có `cancel` từ đây) mới thật sự trừ tồn — cùng
   transaction: sinh 1 `inventory_issues` (`issueType = PRODUCTION`, `POSTED` ngay, không qua `DRAFT`)
   + dòng, rồi gọi `InventoryPostingService.postDocument` y hệt `InventoryIssuesService.
@@ -368,14 +377,16 @@ DRAFT ──send──> PENDING_APPROVAL ──approve──> PENDING_DELIVERY �
   └───────────────────────────────────┘
 ```
 
-- `send` (`DRAFT`/`REJECTED → PENDING_APPROVAL`) là nơi **giữ chỗ FG bắt đầu** — từ trạng thái này
-  DO chảy vào `fgHeld` (xem "Bốn field" ở Core concepts), và là **chốt chặn tồn kho thật**: `Σ SL
-  cùng vật tư ≤ Tồn kho FG − Đã giữ của DO khác` (`E194`, `OutboundOrdersService.
-  ensureOutboundLinesIssuable`), khoá `inventory_balances` trước khi so để hai DO gửi duyệt đồng
-  thời không cùng lọt. `approve` **kiểm lại** cùng điều kiện — có đường rò: một `POST
-  /inventory-issues` thủ công rút tồn FG giữa `send` và `approve` mà không đụng DO nào. Cả `send`
-  lẫn `approve` vẫn **không đụng tồn kho thành phẩm** (không sinh bút toán) — chỉ `deliver`
-  (`PENDING_DELIVERY → DELIVERED`) mới thật sự trừ tồn, xem "Giao hàng" bên dưới.
+- **`create` là nơi giữ chỗ FG bắt đầu** (BUG-087, đảo ngược mốc cũ "chỉ giữ từ `send`") — ngay khi
+  tạo, DO đã chảy vào `fgHeld` (xem "Bốn field" ở Core concepts) và đã qua **chốt chặn tồn kho
+  thật**: `Σ SL cùng vật tư ≤ Tồn kho FG − Đã giữ của DO khác` (`E194`,
+  `OutboundOrdersService.ensureOutboundLinesIssuable`, gọi ngay trong transaction `create`), khoá
+  `inventory_balances` trước khi so. `send`/`approve` **kiểm lại** cùng điều kiện — có đường rò: một
+  `POST /inventory-issues` thủ công rút tồn FG giữa các bước mà không đụng DO nào. Gate QC (`E205`)
+  vẫn chỉ chạy ở `send`, không kéo vào `create` — không liên quan giữ chỗ. Cả ba bước vẫn **không
+  đụng tồn kho thành phẩm** (không sinh bút toán) — chỉ `deliver` (`PENDING_DELIVERY → DELIVERED`)
+  mới thật sự trừ tồn, xem "Giao hàng" bên dưới. Đừng khôi phục mốc "chỉ giữ từ `send`" — đó chính
+  là lỗ hổng đã sửa (DO nháp vượt tồn không bị chặn cho tới khi gửi duyệt).
 - Gate QC (`E205`, còn Job nào chưa qua hết OQC) chỉ chạy **1 lần ở `send`**
   (`OutboundOrdersService.ensureAllJobsQcCompleted`) — `approve` không kiểm lại.
 - `CANCELLED` khai sẵn trong enum, chưa route nào gán.
@@ -593,8 +604,8 @@ Không phải invariant dù dễ tưởng:
 6. **Tưởng loại kho ràng buộc loại hàng.** Không — `warehouses.type` chỉ là nhãn, kho `RM`
    vẫn nhận được thành phẩm nếu người dùng lập phiếu như vậy.
 7. **Tưởng `reserved`/`bomDemand` trên `GET /inventory` luôn là 0 với RM.** Không còn — cả hai giờ
-   tính thật cho RM (phiếu lãnh `APPROVED`/nhu cầu BOM còn lại), không chỉ FG. Chỉ nguồn dữ liệu khác
-   nhau theo loại item (FG qua `order_items`/`outbound_order_items`, RM qua
+   tính thật cho RM (phiếu lãnh đang giữ chỗ/nhu cầu BOM còn lại), không chỉ FG. Chỉ nguồn dữ liệu
+   khác nhau theo loại item (FG qua `order_items`/`outbound_order_items`, RM qua
    `production_job_issues`/`inventory_requisition_items`) — không phải if/else theo `itemType`.
 29. **Tưởng `reserved` của `GET /inventory` và `reserved` của `InventoryService.getStockLevels` là
     một số.** Không — hai định nghĩa khác nhau kể từ đợt sửa BUG-031/032: `GET /inventory` là "đã có
@@ -647,12 +658,13 @@ Không phải invariant dù dễ tưởng:
 21. **Tưởng `createOutsourcingOrder` vẫn chặn gửi vượt định mức Job.** Không còn — dòng do client
     gửi thẳng, server không resolve/validate lại (`E166`/`E167`/`E168`/`E184` dự phòng, không route
     nào ném); `E172` bên OS-IN (chặn nhận vượt SL gửi) không đổi, hai module cố tình lệch nhau.
-22. **Tưởng tạo/gửi duyệt `outbound_orders` (DO) đã trừ tồn kho thành phẩm.** `create` vẫn chỉ tạo
-    nháp (`DRAFT`); `send` (gate OQC `E205` + chốt chặn tồn `E194`) và `approve` (kiểm lại `E194`)
-    **kiểm tra** nhưng vẫn không **đụng** tồn — không sinh bút toán, không đổi `inventory_balances`.
-    Chỉ `POST :id/deliver` (`PENDING_DELIVERY → DELIVERED`, 2026-08-24) mới thật sự trừ tồn: tự sinh
-    1 `inventory_issues` (`issueType = SALES`) rồi `post` ngay trong cùng transaction (tái dùng
-    `InventoryPostingService`), xem `docs/decisions/production-lifecycle-closing.md`.
+22. **Tưởng tạo/gửi duyệt `outbound_orders` (DO) đã trừ tồn kho thành phẩm.** `create` (chốt chặn
+    tồn `E194`, từ BUG-087), `send` (gate OQC `E205` + kiểm lại `E194`) và `approve` (kiểm lại `E194`
+    lần nữa) **kiểm tra** nhưng vẫn không **đụng** tồn — không sinh bút toán, không đổi
+    `inventory_balances`. Chỉ `POST :id/deliver` (`PENDING_DELIVERY → DELIVERED`, 2026-08-24) mới
+    thật sự trừ tồn: tự sinh 1 `inventory_issues` (`issueType = SALES`) rồi `post` ngay trong cùng
+    transaction (tái dùng `InventoryPostingService`), xem
+    `docs/decisions/production-lifecycle-closing.md`.
 23. **Tưởng `outsourcing_orders`/`outsourcing_receipts` có bước nháp thật như phiếu nhập/xuất.**
     Không còn — `create` là `POSTED` ngay, không có `PATCH`/`DELETE`/`post` riêng nữa. `status` cột
     dùng enum riêng (`outsourcing_order_status`/`outsourcing_receipt_status`, default `POSTED`) —
@@ -662,26 +674,33 @@ Không phải invariant dù dễ tưởng:
     `InventoryPostingService` ở đâu cả, `E106` không thể xảy ra ở hai route này nữa. Mặt hàng gửi
     gia công ngoài luôn là WIP, kho không quản tồn WIP — xem `docs/decisions/wip-not-stocked.md`.
 25. **Tưởng `outbound-orders` vẫn hoàn toàn không có giữ chỗ (reserve)/chặn theo tồn kho khả dụng.**
-    Từng đúng — gỡ đi rồi hồi sinh (đợt sửa BUG-032): `send`/`approve` giờ chặn thật `E194`, xem
-    Lifecycle. **`create` vẫn không resolve/validate dòng phía server** — dòng do client gửi thẳng
-    `itemId`/`productionJobId` từ popup `unfulfilled-order-items`, `quantity ≤ order_items.quantity`
-    (`E193`) vẫn dự phòng, không ai kiểm ở `create`. Vì vậy **nhiều DO vẫn có thể lần lượt trỏ cùng
-    một `orderItemId`, với `quantity` bất kỳ, ở trạng thái `DRAFT`** — cộng dồn vượt xa SL PO chỉ bị
-    chặn khi `send` (theo tồn kho thật, không theo SL PO). Giới hạn có chủ ý của phase này.
+    Từng đúng — gỡ đi rồi hồi sinh (đợt sửa BUG-032, rồi BUG-087 dời sớm lên `create`): `create`/
+    `send`/`approve` giờ đều chặn thật `E194`, xem Lifecycle. **`create` vẫn không resolve/validate
+    cấu trúc dòng phía server** — dòng do client gửi thẳng `itemId`/`productionJobId` từ popup
+    `unfulfilled-order-items`, `quantity ≤ order_items.quantity` (`E193`) vẫn dự phòng, không ai
+    kiểm ở `create`. Vì vậy **nhiều DO vẫn có thể lần lượt trỏ cùng một `orderItemId`, với
+    `quantity` bất kỳ, ở trạng thái `DRAFT`** — cộng dồn vượt xa SL PO không bị chặn theo SL PO (chỉ
+    theo tồn kho thật, từ `create`). Giới hạn có chủ ý của phase này.
 27. **Tưởng lập tay `POST /inventory-issues` với `issueType = PRODUCTION` vẫn xuất được cho sản
     xuất.** Không còn — bị chặn (`E234`). Đường duy nhất là `inventory_requisitions.issue`
     (`docs/workflows/inventory-requisition.md`). `issueType` khác (`SALES`/`RETURN`/`ADJUSTMENT`)
     không đổi, vẫn lập/`post` tay bình thường.
 28. **Tưởng `inventory_balances.reservedQuantity` được hồi sinh cho phiếu lãnh vật tư/DO.** Không —
-    "Đã giữ" của cả phiếu lãnh lẫn DO **tính lúc đọc** từ các dòng `APPROVED`/`PENDING_APPROVAL`/
-    `PENDING_DELIVERY`, không ghi cột nào; cột `reservedQuantity` vẫn chết dưới DB (`GET
-    /inventory/balances` trả số tính động chứ không đọc cột — xem Invariants, Core concepts).
+    "Đã giữ" của cả phiếu lãnh lẫn DO **tính lúc đọc** từ các dòng `DRAFT`/`PENDING_APPROVAL`/
+    `APPROVED` (phiếu lãnh) hoặc `DRAFT`/`PENDING_APPROVAL`/`PENDING_DELIVERY` (DO), không ghi cột
+    nào; cột `reservedQuantity` vẫn chết dưới DB (`GET /inventory/balances` trả số tính động chứ
+    không đọc cột — xem Invariants, Core concepts).
 29. **Tưởng mọi phiếu lãnh `APPROVED` đều trùng với `remainingBomDemand`, nên trừ chéo bằng
     `rmHeld` gộp cả `type=OTHER`.** Sai — phiếu `type=OTHER` không gắn `production_job_id` (`E233`
     chỉ ép buộc với `PRODUCTION`), không có mặt trong `production_job_issues` để trùng. `rmDemand`
     phải trừ `rmHeldForJobs` (chỉ phần `PRODUCTION`), không phải `rmHeld` — trộn chung sẽ trừ nhầm
     phần chưa từng bị cộng trùng, khai khống `available` đúng bằng SL các phiếu `OTHER` đang
     `APPROVED`. `reserved` không bị ảnh hưởng, vẫn cộng nguyên `rmHeld`.
+30. **Tưởng "Đã giữ" chỉ tính từ phiếu lãnh `APPROVED`/DO `PENDING_APPROVAL` trở đi.** Không còn từ
+    BUG-087 (27/08/2026) — giữ chỗ bắt đầu ngay lúc **tạo** (`DRAFT`) cho cả hai loại chứng từ, để
+    hai bộ phận không cùng lập được kế hoạch trên một lượng hàng rồi mới vỡ ở bước duyệt. Đọc
+    `HOLDING_STATUSES` (`inventory-requisitions.query.ts`/`outbound-orders.query.ts`) trước khi tin
+    mốc cũ ở bất kỳ đâu khác chưa cập nhật.
 
 ## Related docs
 

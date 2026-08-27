@@ -243,9 +243,11 @@ export class OutboundOrdersService {
     );
   }
 
-  /** Tạo phiếu DO — phase 1 luôn `DRAFT`, chưa duyệt/xác nhận giao, chưa đụng tồn kho
-   * (`docs/domains/inventory.md`, mục "Giao hàng"). Dòng do client gửi đủ cột (`itemId`/
-   * `productionJobId` lấy từ popup `unfulfilled-order-items`), server không resolve/validate lại. */
+  /** Tạo phiếu DO — phase 1 luôn `DRAFT`, chưa duyệt/xác nhận giao, chưa đụng tồn kho thật. Giữ chỗ
+   * thành phẩm bắt đầu ngay ở đây (BUG-087, đảo ngược quyết định cũ "create cố ý không chặn" —
+   * `docs/domains/inventory.md`, mục "Giao hàng"): `ensureOutboundLinesIssuable` chặn `E194` nếu
+   * vượt tồn khả dụng. Dòng do client gửi đủ cột (`itemId`/`productionJobId` lấy từ popup
+   * `unfulfilled-order-items`), server không resolve/validate lại phần còn lại. */
   async createOutboundOrder(
     reqDto: CreateOutboundOrderReqDto,
     userId: string,
@@ -269,13 +271,14 @@ export class OutboundOrdersService {
           sortOrder: index,
         })),
       );
+
+      await this.ensureOutboundLinesIssuable(tx, outboundOrder.id);
     });
   }
 
-  /** `DRAFT`/`REJECTED` → `PENDING_APPROVAL` — chạy gate QC, rồi đây là nơi **giữ chỗ FG bắt đầu**:
-   * chốt chặn `E194` (`ensureOutboundLinesIssuable`), `approveOutboundOrder` kiểm lại vì tồn có thể
-   * đổi giữa hai bước. `createOutboundOrder` cố ý không chặn (`docs/domains/inventory.md`, mục
-   * "Giao hàng"). */
+  /** `DRAFT`/`REJECTED` → `PENDING_APPROVAL` — chạy gate QC, rồi kiểm lại `E194`
+   * (`ensureOutboundLinesIssuable`, giữ chỗ FG đã bắt đầu từ `createOutboundOrder`, BUG-087) vì tồn
+   * có thể đổi giữa hai bước; `approveOutboundOrder` kiểm lại lần nữa cùng lý do. */
   async sendOutboundOrder(
     outboundOrderId: string,
     userId: string,
