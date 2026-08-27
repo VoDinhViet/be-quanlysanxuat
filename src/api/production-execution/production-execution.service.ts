@@ -228,7 +228,7 @@ export class ProductionExecutionService {
 
   /** `POST .../operations/:jobOperationId/reports` — cộng dồn vào `production_job_operations`,
    * khác `ProductionJobsService.updateProductionJobOperation` (ghi đè). Qua đúng các gate của route
-   * đó (`E087`/`E250`/`E210`/`E252`). Xem `docs/workflows/production-job-execution.md`. */
+   * đó (`E087`/`E250`/`E210`/`E256`). Xem `docs/workflows/production-job-execution.md`. */
   async createJobOperationReport(
     jobOperationId: string,
     reqDto: CreateJobOperationReportReqDto,
@@ -284,8 +284,10 @@ export class ProductionExecutionService {
       const newRejectedQuantity =
         lockedOperation.rejectedQuantity + rejectedQuantityDelta;
 
-      if (newCompletedQuantity + newRejectedQuantity > plannedQuantity) {
-        throw new AppException(ErrorCode.E252, HttpStatus.BAD_REQUEST);
+      // Chỉ trần SL đạt — SL NG cộng dồn không giới hạn theo plannedQuantity, cho phép báo bù thêm
+      // tới khi đạt chạm đủ kế hoạch (BUG-035, trần cũ gộp cả hai số làm công đoạn kẹt vĩnh viễn).
+      if (newCompletedQuantity > plannedQuantity) {
+        throw new AppException(ErrorCode.E256, HttpStatus.BAD_REQUEST);
       }
 
       const [report] = await tx

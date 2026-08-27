@@ -543,8 +543,10 @@ export enum ErrorCode {
   E250 = 'production_job.error.operations_not_approved',
   // `POST .../approve-operations` gọi lần hai — `operationsApprovedAt` đã có giá trị.
   E251 = 'production_job.error.operations_already_approved',
-  // `completedQuantity + rejectedQuantity` (đạt + NG) vượt `plannedQuantity` của node BOM cha —
-  // thay `E088` (nghỉ hưu, chỉ so riêng `completedQuantity`).
+  // Nghỉ hưu 2026-08-27 — thay bằng `E256`. Trần "đạt + NG ≤ plannedQuantity" làm công đoạn kẹt
+  // vĩnh viễn khi NG chiếm hết chỗ trước khi SL đạt kịp chạm đủ kế hoạch (không còn cách hợp lệ nào
+  // báo thêm để đạt `completedDate`, kéo theo cả Job kẹt qua gate `E210`, BUG-035 phát hiện
+  // 2026-08-27). Giữ comment, không tái sử dụng số.
   E252 = 'production_job_operation.error.completed_plus_rejected_exceeds_planned',
   // `POST`/`PATCH inventory-receipts` khi cả `supplierId` lẫn `clientId` cùng có giá trị — hai
   // nguồn loại trừ lẫn nhau (BUG-038).
@@ -556,6 +558,10 @@ export enum ErrorCode {
   // `DELETE /items/:itemId` khi item còn gắn `order_items`, `production_order_items`, hoặc
   // `production_jobs` (BUG-039).
   E255 = 'item.error.in_use',
+  // Riêng `completedQuantity` (SL đạt) vượt `plannedQuantity` của node BOM cha — thay `E252` (nghỉ
+  // hưu). `rejectedQuantity` (SL NG) không còn bị giới hạn theo `plannedQuantity`: cho phép báo bù
+  // thêm khi có hàng lỗi, tới khi SL đạt chạm đủ kế hoạch (BUG-035, 2026-08-27).
+  E256 = 'production_job_operation.error.completed_quantity_exceeds_planned',
   V003 = 'common.error.too_many_requests',
   // `GlobalExceptionFilter` bắt chuỗi "No values to set" của drizzle-orm — mọi `PATCH` khi
   // `ValidationPipe` whitelist đã loại sạch field lạ, còn lại payload rỗng cho `.set()`. Trước đây

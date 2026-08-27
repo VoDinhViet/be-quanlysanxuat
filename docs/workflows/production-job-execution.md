@@ -56,8 +56,8 @@ operations` (tổ sản xuất), không phải Giám đốc/Quản lý.
 - `PATCH operations`: trạng thái hiện tại phải là `IN_PROGRESS`, nếu không: `E087` — chưa `start` thì
   chưa có gì để báo tiến độ. Đã qua `approve-operations` (`operationsApprovedAt` khác null), nếu
   không: `E250`. `operationId` phải tồn tại **và** thuộc đúng `jobId`, nếu không: `E091`.
-  `completedQuantity + rejectedQuantity` gửi lên không được vượt `plannedQuantity` của node BOM cha,
-  nếu không: `E252`.
+  `completedQuantity` gửi lên không được vượt `plannedQuantity` của node BOM cha, nếu không: `E256`
+  — `rejectedQuantity` không bị giới hạn theo số đó (cho phép báo bù khi có hàng lỗi, BUG-035).
 - Các route còn lại (`bom`/`operations`/`notes`): không kiểm trạng thái — đọc/đăng được ở mọi trạng
   thái Job.
 - `GET /production-execution/operations`/`.../jobs`: **không** kiểm trạng thái Job — hiện mọi Job có
@@ -67,9 +67,10 @@ operations` (tổ sản xuất), không phải Giám đốc/Quản lý.
 - `POST /production-execution/operations/:jobOperationId/reports`: `jobOperationId` phải tồn tại
   (`E091`), Job chứa nó phải `IN_PROGRESS` (`E087`) và đã qua `approve-operations` (`E250`) — đúng ba
   điều kiện của `PATCH operations`. Cộng thêm: node Cấp 0 (`itemType = FG`) vẫn chặn `E210` nếu còn
-  part khác chưa `completedDate`; `(đã đạt + đã NG) + (đạt lần này + NG lần này)` không được vượt
-  `plannedQuantity` (`E252`, so **sau khi cộng dồn**, khác `PATCH operations` so trực tiếp số gửi
-  lên). Không chặn báo cáo "rỗng" — `completedQuantityDelta = 0` kèm chỉ ghi chú/ảnh là hợp lệ.
+  part khác chưa `completedDate`; `(đã đạt + đạt lần này)` không được vượt `plannedQuantity` (`E256`,
+  so **sau khi cộng dồn** riêng SL đạt, khác `PATCH operations` so trực tiếp số gửi lên) — SL NG cộng
+  dồn không bị giới hạn theo số đó. Không chặn báo cáo "rỗng" — `completedQuantityDelta = 0` kèm chỉ
+  ghi chú/ảnh là hợp lệ.
 
 ```
 PENDING ──start──> IN_PROGRESS ──approve-operations──> (PATCH operations mở khoá)
@@ -104,8 +105,8 @@ xuống từng công đoạn của nó → lọc bỏ node không có công đo�
 
 `PATCH operations`: đọc Job (kiểm trạng thái, `E250` nếu `operationsApprovedAt` còn null) → tìm
 `operationId` đúng phạm vi `jobId` (`E091` nếu không có), kèm luôn `plannedQuantity` của node BOM cha
-(`productionJobBomItemId`) trong cùng lượt query (`with: { bomItem }`) → so
-`completedQuantity + rejectedQuantity` gửi lên với số đó (`E252` nếu vượt) → trong 1 transaction:
+(`productionJobBomItemId`) trong cùng lượt query (`with: { bomItem }`) → so riêng `completedQuantity`
+gửi lên với số đó (`E256` nếu vượt — `rejectedQuantity` không giới hạn theo số đó) → trong 1 transaction:
 `UPDATE` ghi đè cả `completedQuantity` lẫn `rejectedQuantity`, tự set `completedDate = now()` nếu
 `completedQuantity >= plannedQuantity` (ngược lại về `null` — chỉ tính SL đạt, NG không tính) —
 **nếu** đây là công đoạn Cấp 0 (`itemType = FG`) **và** `completedDate` vừa được set, ghi thêm
@@ -142,8 +143,9 @@ liệu.
 `POST operations/:jobOperationId/reports`: đọc operation kèm `bomItem` + `productionJob` (`E091` nếu
 không có) → kiểm `E087`/`E250` → nếu node Cấp 0, đếm công đoạn non-FG chưa `completedDate` (`E210`
 nếu còn) → `FilesService.linkFiles(imageFileIds)` nếu có, **ngoài** transaction → **transaction**:
-khoá operation (`SELECT ... FOR UPDATE`) → so tổng sau khi cộng dồn `completedQuantityDelta`/
-`rejectedQuantityDelta` với `plannedQuantity` (`E252`) → `INSERT production_job_operation_reports` +
+khoá operation (`SELECT ... FOR UPDATE`) → so riêng `completedQuantity` sau khi cộng dồn
+`completedQuantityDelta` với `plannedQuantity` (`E256` — `rejectedQuantityDelta` cộng dồn không
+giới hạn theo số đó) → `INSERT production_job_operation_reports` +
 `INSERT production_job_operation_report_files` (0..N ảnh) → `UPDATE production_job_operations`
 (cộng dồn `completedQuantity`/`rejectedQuantity`, `completedDate = reqDto.completedDate` khi tổng
 đạt ≥ `plannedQuantity`, ngược lại `null`) → nếu node Cấp 0 và không còn công đoạn FG nào dở (đếm lại
@@ -223,11 +225,11 @@ cả.
 | `approve-operations` gọi lại khi Job đã duyệt công đoạn | `E251` | 409 |
 | `PATCH operations` gọi khi Job chưa qua `approve-operations` | `E250` | 409 |
 | `operationId` không tồn tại hoặc không thuộc `jobId` | `E091` | 404 |
-| `completedQuantity + rejectedQuantity` vượt `plannedQuantity` của node BOM cha | `E252` | 400 |
+| `completedQuantity` vượt `plannedQuantity` của node BOM cha (`rejectedQuantity` không giới hạn) | `E256` | 400 |
 | `start`: row `users` của người gọi không còn (token còn hạn nhưng user đã bị xoá mềm) | `E012` | 404 |
 
 Không có mã lỗi riêng cho việc Job chuyển `WAITING_QC` — đây là side effect tự động, không có điều
-kiện nào có thể fail độc lập với chính `PATCH operations` (đã qua hết `E091`/`E210`/`E252` trước đó).
+kiện nào có thể fail độc lập với chính `PATCH operations` (đã qua hết `E091`/`E210`/`E256` trước đó).
 
 ## Business rules
 

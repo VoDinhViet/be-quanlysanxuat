@@ -321,9 +321,11 @@ export class ProductionJobsService {
 
   /** Đường **điều chỉnh** của quản lý — ghi đè SL đạt + SL NG (không cộng dồn), khác
    * `ProductionExecutionService.createJobOperationReport` (đường **báo cáo** của xưởng, cộng dồn,
-   * `docs/domains/production.md`). SL kế hoạch đối chiếu = `plannedQuantity` của node BOM cha, tổng
-   * đạt + NG vượt số đó bị chặn (`E252`). `completedDate` tự set khi đạt chạm đủ, tự xoá khi sửa
-   * xuống dưới. Chỉ chạy khi Job đã qua `approve-operations` (`E250` nếu chưa). */
+   * `docs/domains/production.md`). Chỉ riêng SL đạt bị trần bởi `plannedQuantity` của node BOM cha
+   * (`E256`) — SL NG không giới hạn theo số đó, cho phép báo bù thêm tới khi đạt chạm đủ kế hoạch
+   * (BUG-035, trần cũ gộp cả hai số từng làm công đoạn kẹt vĩnh viễn nếu NG chiếm hết chỗ trước).
+   * `completedDate` tự set khi đạt chạm đủ, tự xoá khi sửa xuống dưới. Chỉ chạy khi Job đã qua
+   * `approve-operations` (`E250` nếu chưa). */
   async updateProductionJobOperation(
     jobId: string,
     operationId: string,
@@ -379,8 +381,8 @@ export class ProductionJobsService {
 
     const planned = operation.bomItem.plannedQuantity;
 
-    if (reqDto.completedQuantity + reqDto.rejectedQuantity > planned) {
-      throw new AppException(ErrorCode.E252, HttpStatus.BAD_REQUEST);
+    if (reqDto.completedQuantity > planned) {
+      throw new AppException(ErrorCode.E256, HttpStatus.BAD_REQUEST);
     }
 
     await this.db.transaction(async (tx) => {

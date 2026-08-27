@@ -53,7 +53,7 @@ export class ProductionJobBomOperationResDto {
   @NumberField({
     description:
       'SL kế hoạch của node BOM chứa công đoạn — định mức nhân luỹ kế theo cây × SL Job; cũng là ' +
-      'trần của completedQuantity (E088)',
+      'trần của completedQuantity (E256), không giới hạn rejectedQuantity',
   })
   plannedQuantity!: number;
 

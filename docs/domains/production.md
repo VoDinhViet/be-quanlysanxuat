@@ -63,9 +63,9 @@ công đoạn kèm `plannedQuantity` — đọc thẳng cột `production_job_bo
 **một lần** lúc duyệt LSX (nhân luỹ kế định mức từ gốc xuống × SL Job, `copyBomTree`; node Cấp 0
 dùng thẳng `plannedQuantity = job.quantity`) rồi đóng băng, không tính lại lúc đọc. Cùng một node
 BOM thì mọi công đoạn của nó có cùng số, vì đây là SL kế hoạch của **node**, không phải của riêng
-từng bước; cũng là trần mà `PATCH` đối chiếu (`E252`), và `updateProductionJobOperation`/
-`getOutsourceableOperations`/`oqc` đọc chung đúng cột này. Bản đơn giản hoá có chủ đích — vẫn chưa
-trả ảnh part hay số đã gửi/nhận gia công ngoài.
+từng bước; cũng là trần mà `PATCH` đối chiếu (`E256`, chỉ riêng SL đạt), và
+`updateProductionJobOperation`/`getOutsourceableOperations`/`oqc` đọc chung đúng cột này. Bản đơn
+giản hoá có chủ đích — vẫn chưa trả ảnh part hay số đã gửi/nhận gia công ngoài.
 
 **Node Cấp 0 — công đoạn của chính FG có snapshot, khác mô tả cũ.** `production_job_bom_items` nhận
 thêm **đúng một** node `itemType = 'FG'` mỗi Job (`ProductionJobsService.copyFinalAssemblyRouting`,
@@ -77,7 +77,7 @@ của nó snapshot y hệt cách snapshot node WIP thường, không nhánh code
 node như vậy (`uq_production_job_bom_items_final_assembly`, partial unique index). Bước Lắp ráp
 (công đoạn duy nhất/đầu tiên của node này, thường vậy) chỉ mở khi **mọi** công đoạn khác của Job đã
 báo `completedDate` khác null — `PATCH .../operations/:operationId` chặn `E210` nếu chưa, trước cả
-khi kiểm `E252`. Node Cấp 0 là neo để OQC kiểm chất lượng thành phẩm cuối cùng — xem
+khi kiểm `E256`. Node Cấp 0 là neo để OQC kiểm chất lượng thành phẩm cuối cùng — xem
 `docs/decisions/oqc-per-operation.md` mục "QC cho Cấp 0", `docs/domains/quality.md`.
 
 **Duyệt công đoạn (`operationsApprovedBy`/`operationsApprovedAt` trên `production_jobs`, thêm
@@ -93,11 +93,14 @@ buộc trước khi cho nhập `completedQuantity`/`rejectedQuantity` lần đ�
 `completedQuantity`/`rejectedQuantity`/`completedDate` sửa theo **từng công đoạn**
 (`PATCH .../operations/:operationId`, không phải theo node): cùng một part có thể công đoạn này đã
 xong trong khi công đoạn khác chưa. `rejectedQuantity` (thêm 2026-08-25) là SL không đạt (NG) của
-đúng công đoạn đó — `completedQuantity` vẫn giữ nguyên nghĩa cũ là SL **đạt**; server chặn
-`completedQuantity + rejectedQuantity > plannedQuantity` (`E252`, thay `E088` nghỉ hưu, chỉ so riêng
-`completedQuantity`). Chỉ số đạt (`completedQuantity`) được tính là "đã xong" để mở công đoạn/bước
-Lắp ráp kế tiếp (`completedDate`) — số NG không chuyển tiếp. Xem
-`docs/workflows/production-job-execution.md`.
+đúng công đoạn đó — `completedQuantity` vẫn giữ nguyên nghĩa cũ là SL **đạt**; server chỉ chặn riêng
+`completedQuantity > plannedQuantity` (`E256`, thay `E252` nghỉ hưu 2026-08-27) — **`rejectedQuantity`
+không bị giới hạn theo `plannedQuantity`**, cho phép báo bù thêm (làm lại phần hỏng) tới khi SL đạt
+chạm đủ kế hoạch. Trần cũ (`E252`, gộp cả hai số) làm công đoạn **kẹt vĩnh viễn** khi NG chiếm hết
+chỗ trước khi SL đạt kịp chạm đủ — không còn cách hợp lệ nào báo thêm để đạt `completedDate`, kéo
+theo cả Job kẹt qua gate `E210` (BUG-035, phát hiện 2026-08-27). Chỉ số đạt (`completedQuantity`)
+được tính là "đã xong" để mở công đoạn/bước Lắp ráp kế tiếp (`completedDate`) — số NG không chuyển
+tiếp. Xem `docs/workflows/production-job-execution.md`.
 
 **Hai đường ghi cùng chạm `production_job_operations` — module `production-execution` (thêm
 2026-08-26).** `PATCH .../operations/:operationId` (trên) là đường **điều chỉnh** của quản lý: ghi
@@ -106,7 +109,7 @@ Lắp ráp kế tiếp (`completedDate`) — số NG không chuyển tiếp. Xem
 "Lưu báo cáo" (SL đạt cộng thêm, SL NG cộng thêm optional, ngày hoàn thành do người báo chọn, ghi
 chú, 0..N ảnh) thêm một dòng `production_job_operation_reports` (+ dòng `..._report_files` cho ảnh)
 **và cộng dồn** (không ghi đè) vào `completedQuantity`/`rejectedQuantity` cùng công đoạn, trong cùng
-transaction — qua đúng các gate đã liệt kê ở trên (`E087`/`E250`/`E210`/`E252`); không chặn báo cáo
+transaction — qua đúng các gate đã liệt kê ở trên (`E087`/`E250`/`E210`/`E256`); không chặn báo cáo
 "rỗng" — gửi `completedQuantityDelta = 0` kèm chỉ ghi chú/ảnh là hợp lệ. Vì có hai đường ghi,
 `SUM(production_job_operation_reports)` của một công đoạn **có thể lệch**
 `production_job_operations.completedQuantity`/`rejectedQuantity` sau khi quản lý dùng `PATCH` điều
@@ -213,16 +216,16 @@ concepts phía trên.
 - Nhập `completedQuantity`/`rejectedQuantity` cho một công đoạn
   (`PATCH /production-jobs/:jobId/operations/:operationId`) chỉ hợp lệ khi Job đang `IN_PROGRESS`
   (`E087`) **và** đã qua `POST .../approve-operations` (`E250`), **ghi đè** giá trị cũ (không cộng
-  dồn), và bị chặn nếu tổng `completedQuantity + rejectedQuantity` vượt `plannedQuantity` của node
-  BOM cha (`E252`). `completedDate` do server tự set khi `completedQuantity` (chỉ SL đạt, không tính
-  NG) chạm đủ `plannedQuantity`, tự về `null` nếu sau đó sửa xuống dưới mức đó — không có input nhận
-  ngày từ client.
+  dồn), và bị chặn nếu riêng `completedQuantity` vượt `plannedQuantity` của node BOM cha (`E256`) —
+  `rejectedQuantity` không bị giới hạn theo số đó. `completedDate` do server tự set khi
+  `completedQuantity` (chỉ SL đạt, không tính NG) chạm đủ `plannedQuantity`, tự về `null` nếu sau đó
+  sửa xuống dưới mức đó — không có input nhận ngày từ client.
 - `POST /production-jobs/:jobId/approve-operations` (`production:approve`) chỉ chạy khi Job đang
   `IN_PROGRESS` và chưa duyệt (`E251` nếu gọi lại) — ghi `operationsApprovedBy`/`operationsApprovedAt`,
   không đổi `status`. Là điều kiện tiên quyết duy nhất để mở `PATCH .../operations/:operationId`
   (xem Core concepts).
 - `POST /production-execution/operations/:jobOperationId/reports` (`production:update`) qua đúng các gate
-  của `PATCH .../operations/:operationId` (`E087`/`E250`/`E210`/`E252`) nhưng **cộng dồn** thay vì
+  của `PATCH .../operations/:operationId` (`E087`/`E250`/`E210`/`E256`) nhưng **cộng dồn** thay vì
   ghi đè, thêm một dòng `production_job_operation_reports` (+ 0..N dòng `..._report_files`) — không
   chặn báo cáo rỗng, xem Core concepts.
 - Ghi chú Job (`production_job_notes`) là **append-only** — `POST` để đăng, không có route sửa/xoá;
@@ -351,10 +354,10 @@ Không phải invariant dù dễ tưởng:
     — `copyFinalAssemblyRouting` snapshot routing Cấp 0 của FG thành một node
     `production_job_bom_items` thật (`itemType = 'FG'`) ngay lúc duyệt LSX, y hệt mọi node WIP khác.
     Xem "Core concepts" ở trên, `docs/decisions/oqc-per-operation.md` mục "QC cho Cấp 0".
-17. **Tưởng `PATCH .../operations/:operationId` trên bước Lắp ráp chỉ kiểm `E252` như mọi
+17. **Tưởng `PATCH .../operations/:operationId` trên bước Lắp ráp chỉ kiểm `E256` như mọi
     công đoạn khác.** Còn kiểm thêm `E210` trước đó — chặn nếu còn công đoạn nào khác của Job chưa
     báo `completedDate`, vì bước Lắp ráp là bước cuối, cần mọi part đã xong. Thứ tự kiểm đầy đủ:
-    `E087` (status) → `E250` (chưa duyệt công đoạn) → `E210` (riêng bước Lắp ráp) → `E252`.
+    `E087` (status) → `E250` (chưa duyệt công đoạn) → `E210` (riêng bước Lắp ráp) → `E256`.
 18. **Tưởng `oqc_inspections` là bảng riêng của module `oqc`.** Đã gộp vào `qc_requests`
     (cột `kind`) cùng với IQC, xem `docs/decisions/qc-single-table.md` và `docs/domains/quality.md`.
 15. **Tưởng `GET /production-jobs/:jobId/bom` trả về cây BOM.** Không — tên route giữ nguyên nhưng
@@ -378,6 +381,12 @@ Không phải invariant dù dễ tưởng:
     nó là **kết quả** của việc ghi (`POST .../reports` cộng dồn vào đó), không phải nguồn để `SUM`
     ra `completedQuantity` mỗi lần đọc. Sau khi quản lý dùng `PATCH .../operations/:operationId` ghi
     đè, hai con số **được phép lệch nhau** — đây không phải lỗi đồng bộ, xem Core concepts.
+22. **Tưởng `completedQuantity + rejectedQuantity ≤ plannedQuantity` (trần cũ `E252`, 2026-08-25 →
+    2026-08-27) vẫn còn đúng.** Đã đảo ngược — trần đó khiến một công đoạn **kẹt vĩnh viễn** ngay khi
+    NG chiếm hết chỗ trước khi SL đạt kịp chạm đủ kế hoạch (không còn cách hợp lệ nào báo thêm để đạt
+    `completedDate`, kéo theo cả Job kẹt qua `E210`, BUG-035). Chốt mới: chỉ trần riêng
+    `completedQuantity` (`E256`), `rejectedQuantity` không giới hạn theo `plannedQuantity` — cho phép
+    báo bù (làm lại phần hỏng) tới khi đạt đủ. **Đừng khôi phục** trần gộp cũ.
 
 ## Related docs
 
