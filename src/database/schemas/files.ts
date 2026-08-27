@@ -41,8 +41,10 @@ export enum UploadType {
   MATERIAL_IMAGE = 'MATERIAL_IMAGE',
   MATERIAL_DOCUMENT = 'MATERIAL_DOCUMENT',
   PRODUCT_IMAGE = 'PRODUCT_IMAGE',
-  /** Retired — `product_attachments` was dropped in favour of per-BOM-item drawings. Value kept
-   * because Postgres can't drop an enum value; new files must not use it. */
+  /** Retired 2026-08-27 — thay bằng `ITEM_DOCUMENT`. Tài liệu đính kèm cấp sản phẩm bị bỏ nhầm khi
+   * gộp `products`+`materials` thành `items` (04/08), tưởng bản vẽ theo node BOM thay thế được —
+   * PhuocPT xác nhận đây là hai thứ khác nhau, khôi phục (BUG-007, 27/08). Giữ comment, không tái
+   * sử dụng số. */
   PRODUCT_DOCUMENT = 'PRODUCT_DOCUMENT',
   SUPPLIER_LOGO = 'SUPPLIER_LOGO',
   SUPPLIER_DOCUMENT = 'SUPPLIER_DOCUMENT',
@@ -58,6 +60,10 @@ export enum UploadType {
   PRODUCTION_OPERATION_EVIDENCE = 'PRODUCTION_OPERATION_EVIDENCE',
   // File đính kèm khi kho xác nhận xuất trả NCC (`POST /supplier-returns/:id/post`).
   SUPPLIER_RETURN_EVIDENCE = 'SUPPLIER_RETURN_EVIDENCE',
+  // Tài liệu đính kèm cấp item — mọi `type` (FG/WIP/RM), danh sách nhiều file, khác
+  // `BOM_ITEM_DRAWING` (tối đa 1 file, gắn theo từng node BOM, không phải theo item). Thay
+  // `PRODUCT_DOCUMENT` đã nghỉ hưu (BUG-007, 2026-08-27).
+  ITEM_DOCUMENT = 'ITEM_DOCUMENT',
 }
 
 export const uploadTypeEnum = pgEnum('upload_type', [
@@ -76,6 +82,7 @@ export const uploadTypeEnum = pgEnum('upload_type', [
   UploadType.OQC_DISPOSITION_EVIDENCE,
   UploadType.PRODUCTION_OPERATION_EVIDENCE,
   UploadType.SUPPLIER_RETURN_EVIDENCE,
+  UploadType.ITEM_DOCUMENT,
 ]);
 
 /**

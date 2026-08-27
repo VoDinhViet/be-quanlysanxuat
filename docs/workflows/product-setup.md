@@ -36,7 +36,9 @@ Các route `GET` của mọi module trong nhóm này đều `@ApiAuth()` — đ�
 
 ## Flow
 
-1. **Tạo item.** `POST /items` chỉ ghi `items`. **Không tạo BOM lẫn routing.**
+1. **Tạo item.** `POST /items` ghi `items`, cộng thêm `item_files` nếu gửi kèm `fileIds` (tài liệu
+   đính kèm cấp item — khác bản vẽ node BOM, `docs/domains/product-structure.md`). **Không tạo BOM
+   lẫn routing.**
 2. **Thêm node BOM đầu tiên.** Header `boms` được tạo **lười** (get-or-create) ngay trong
    transaction ghi node đầu tiên. Đọc BOM của item chưa có node → mảng rỗng, không phải lỗi.
 3. **Dựng cây.** Node không có `parentId` là con trực tiếp của item gốc ("Cấp 0" không phải một
@@ -51,10 +53,10 @@ Các route `GET` của mọi module trong nhóm này đều `@ApiAuth()` — đ�
    Không có ràng buộc thứ tự đặc biệt cho vật tư nữa — RM chỉ là một node bình thường trong
    `POST .../bom/items`, không cần một bước khai riêng.
 5. **Tạo biến thể (tuỳ chọn, chỉ FG/WIP).** `POST /items/:itemId/copy` (`E110` nếu RM) đọc trước
-   toàn bộ cây `bom_items` (thứ tự cha-trước-con) rồi trong một transaction ghi item mới + clone cây
-   (remap `parentId` sang id node mới). `clonedFromItemId` ghi lại nguồn gốc nhưng **không tạo ràng
-   buộc gì**. **Không** clone routing Cấp 0 (`routings`) hay công đoạn as-used (`bom_operations`) —
-   chỉ cấu trúc cây được nhân bản.
+   toàn bộ cây `bom_items` lẫn `item_files` của item gốc rồi trong một transaction ghi item mới +
+   clone cây (remap `parentId` sang id node mới) + clone danh sách `item_files`. `clonedFromItemId`
+   ghi lại nguồn gốc nhưng **không tạo ràng buộc gì**. **Không** clone routing Cấp 0 (`routings`)
+   hay công đoạn as-used (`bom_operations`) — chỉ cấu trúc cây và tài liệu đính kèm được nhân bản.
 
 ## State changes
 
@@ -67,9 +69,10 @@ theo nó; BOM, đơn hàng và sản xuất đều nhận item `INACTIVE`.
   header `routings` — hai bước ẩn duy nhất của workflow này.
 - Xoá một node giữa cây **cascade sạch cả nhánh con (kể cả lá RM) và công đoạn as-used
   (`bom_operations`) của chúng**, không cảnh báo, không đếm trước.
-- Nhân bản chỉ clone **cấu trúc cây**: các WIP/RM được tham chiếu giữ nguyên id, không được clone
-  theo; routing Cấp 0 và công đoạn as-used cũng không theo. Bản sao và bản gốc trỏ chung các dòng
-  `files` (bản vẽ node), đúng ý nghĩa registry.
+- Nhân bản clone **cấu trúc cây + `item_files`**: các WIP/RM được tham chiếu giữ nguyên id, không
+  được clone theo; routing Cấp 0 và công đoạn as-used cũng không theo. Bản sao và bản gốc trỏ chung
+  các dòng `files` (bản vẽ node lẫn tài liệu cấp item), đúng ý nghĩa registry — chỉ dòng
+  `item_files`/`bom_items.drawingFileId` là bản ghi riêng, `files` không nhân đôi.
 
 ## Transaction boundary
 
@@ -77,7 +80,8 @@ theo nó; BOM, đơn hàng và sản xuất đều nhận item `INACTIVE`.
 - Thêm công đoạn Cấp 0: transaction bao get-or-create header `routings` + ghi bước.
 - Nhân bản: một transaction bao **toàn bộ** item + cây. Đây là lý do mọi phần đọc phải xong trước
   khi mở.
-- Tạo item: transaction bao cấp mã (`document_sequences`) + một `INSERT` vào `items`.
+- Tạo/sửa item: transaction bao cấp mã (`document_sequences`, chỉ lúc tạo) + ghi `items` + replace-all
+  `item_files` nếu request gửi `fileIds`.
 
 ## Failure cases
 
@@ -103,7 +107,9 @@ toàn; node anh em trùng nhau hợp lệ. Xem `docs/domains/product-structure.m
 - Vì sao versioning là clone chứ không phải bảng lịch sử phiên bản → cùng file.
 - Vì sao đọc BOM không đệ quy xuống BOM của WIP con, và vì sao lá RM trên cây riêng của WIP con
   không tự cộng vào cây cha → cùng file.
-- Item không có bảng đính kèm; bản vẽ kỹ thuật gắn theo từng node BOM → cùng file.
+- Item có hai loại file khác nhau — tài liệu đính kèm cấp item (`item_files`, replace-all) và bản vẽ
+  kỹ thuật theo từng node BOM (`bom_items.drawingFileId`) — không thứ nào thay được thứ kia → cùng
+  file.
 
 ## Related domains
 

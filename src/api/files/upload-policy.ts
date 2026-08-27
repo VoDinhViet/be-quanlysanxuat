@@ -41,4 +41,5 @@ export const uploadPolicies: Record<UploadType, UploadPolicy> = {
   // Ảnh + tài liệu — "xuất trả" gần với bàn giao chứng từ vật lý hơn ảnh báo cáo xưởng, cùng lý do
   // OQC_EVIDENCE/IQC_DISPOSITION_EVIDENCE nhận cả hai.
   [UploadType.SUPPLIER_RETURN_EVIDENCE]: { kind: FileKind.EVIDENCE },
+  [UploadType.ITEM_DOCUMENT]: { kind: FileKind.DOCUMENT },
 };

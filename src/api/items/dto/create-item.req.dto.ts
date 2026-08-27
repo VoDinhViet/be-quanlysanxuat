@@ -82,4 +82,10 @@ export class CreateItemReqDto {
 
   @StringFieldOptional({ maxLength: 100, nullable: true })
   leadTime?: string | null;
+
+  @UUIDFieldOptional({
+    each: true,
+    description: 'File ids (from POST /files?type=ITEM_DOCUMENT)',
+  })
+  fileIds?: string[];
 }

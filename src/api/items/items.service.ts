@@ -30,6 +30,7 @@ import {
   boms,
   clients,
   files,
+  itemFiles,
   items,
   ItemStatus,
   ItemType,
@@ -141,6 +142,7 @@ export class ItemsService {
         creatorBy: true,
         imageFile: true,
         clonedFrom: true,
+        files: { with: { file: true } },
       },
     });
 
@@ -167,20 +169,28 @@ export class ItemsService {
     if (reqDto.supplierId) {
       await this.ensureSupplierExists(reqDto.supplierId);
     }
-    if (reqDto.imageFileId) {
-      await this.filesService.linkFiles([reqDto.imageFileId]);
-    }
+    await this.linkSuppliedFiles(reqDto);
+
+    // `fileIds` sống ở bảng riêng `item_files` — tách khỏi phần spread thẳng vào `items`.
+    const { fileIds, ...itemFields } = reqDto;
 
     try {
       await this.db.transaction(async (tx) => {
         const code = reqDto.code ?? (await this.generateItemCode(tx, type));
 
         // `type`/`status`/`minStock` đều có default ở cột schema, bỏ trống là DB tự điền.
-        await tx.insert(items).values({
-          ...reqDto,
-          code,
-          createdBy: userId,
-        });
+        const [item] = await tx
+          .insert(items)
+          .values({
+            ...itemFields,
+            code,
+            createdBy: userId,
+          })
+          .returning({ id: items.id });
+
+        if (fileIds?.length) {
+          await this.replaceFiles(tx, item.id, fileIds);
+        }
       });
     } catch (error) {
       // Mã client tự gửi vẫn còn TOCTOU giữa `validateCodeUniqueness` và `INSERT` — bắt ở đây
@@ -207,12 +217,23 @@ export class ItemsService {
     if (reqDto.supplierId) {
       await this.ensureSupplierExists(reqDto.supplierId);
     }
-    if (reqDto.imageFileId) {
-      await this.filesService.linkFiles([reqDto.imageFileId]);
-    }
+    await this.linkSuppliedFiles(reqDto);
 
-    // `updated_at` is bumped by the column's own `$onUpdate`.
-    await this.db.update(items).set(reqDto).where(eq(items.id, itemId));
+    const { fileIds, ...itemFields } = reqDto;
+
+    await this.db.transaction(async (tx) => {
+      // `updated_at` is bumped by the column's own `$onUpdate`. Skip the `UPDATE` entirely when a
+      // request only sends `fileIds` — `UpdateItemReqDto`'s declared-but-unset fields still show up
+      // as own keys (`undefined`) at runtime, so `Object.keys` alone can't tell "nothing sent" from
+      // "every other field sent"; checking for a defined value avoids drizzle's "No values to set".
+      if (Object.values(itemFields).some((value) => value !== undefined)) {
+        await tx.update(items).set(itemFields).where(eq(items.id, itemId));
+      }
+
+      if (fileIds) {
+        await this.replaceFiles(tx, itemId, fileIds);
+      }
+    });
   }
 
   async deleteItem(itemId: string): Promise<void> {
@@ -246,6 +267,35 @@ export class ItemsService {
 
     if (references.some((rows) => rows.length > 0)) {
       throw new AppException(ErrorCode.E255, HttpStatus.CONFLICT);
+    }
+  }
+
+  /**
+   * Validates every file id the request carries and marks them linked, so the orphan sweeper
+   * leaves them alone. Runs **before** the transaction on purpose — see `FilesService.linkFiles`.
+   */
+  private async linkSuppliedFiles(
+    reqDto: CreateItemReqDto | UpdateItemReqDto,
+  ): Promise<void> {
+    const fileIds = [reqDto.imageFileId, ...(reqDto.fileIds ?? [])].filter(
+      (id): id is string => Boolean(id),
+    );
+
+    await this.filesService.linkFiles(fileIds);
+  }
+
+  /** Replace-all. `tx` is required so a caller cannot accidentally write outside the transaction. */
+  private async replaceFiles(
+    tx: DbTransaction,
+    itemId: string,
+    fileIds: string[],
+  ): Promise<void> {
+    await tx.delete(itemFiles).where(eq(itemFiles.itemId, itemId));
+
+    if (fileIds.length) {
+      await tx
+        .insert(itemFiles)
+        .values(fileIds.map((fileId) => ({ itemId, fileId })));
     }
   }
 
@@ -363,7 +413,7 @@ export class ItemsService {
       throw new AppException(ErrorCode.E110, HttpStatus.BAD_REQUEST);
     }
 
-    // 1. Đọc BOM gốc trước khi mở transaction
+    // 1. Đọc BOM + tài liệu đính kèm gốc trước khi mở transaction
     const bom = await this.db.query.boms.findFirst({
       columns: { id: true },
       where: eq(boms.itemId, itemId),
@@ -375,6 +425,11 @@ export class ItemsService {
           orderBy: [asc(bomItems.level), asc(bomItems.sortOrder)],
         })
       : [];
+
+    const sourceFiles = await this.db
+      .select({ fileId: itemFiles.fileId })
+      .from(itemFiles)
+      .where(eq(itemFiles.itemId, itemId));
 
     // 2. Mở transaction để ghi dữ liệu mới
     await this.db.transaction(async (tx) => {
@@ -402,6 +457,14 @@ export class ItemsService {
 
       if (bom) {
         await this.copyBomTree(tx, createdItem.id, sourceBomItems, userId);
+      }
+
+      if (sourceFiles.length) {
+        await this.replaceFiles(
+          tx,
+          createdItem.id,
+          sourceFiles.map((row) => row.fileId),
+        );
       }
     });
   }

@@ -10,6 +10,7 @@ export * from './operations';
 export * from './units/units';
 export * from './units/unit-scopes';
 export * from './items/items';
+export * from './items/item-files';
 export * from './items/boms';
 export * from './items/bom-items';
 export * from './items/bom-operations';

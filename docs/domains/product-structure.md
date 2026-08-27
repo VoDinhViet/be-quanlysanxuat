@@ -23,11 +23,15 @@ tuỳ chọn qua `itemType`); dòng phiếu nhập/xuất thành phẩm chỉ nh
 `InventoryIssuesService.ensureItemsValid` khi có `orderItemId`). Mọi thứ còn lại (ảnh, mã tự sinh,
 clone) cả ba loại như nhau.
 
-**`items` không có bảng tài liệu đính kèm.** Chỉ mang một file duy nhất — `imageFileId`, ảnh đại
-diện. Tài liệu kỹ thuật (bản vẽ) gắn theo **từng node BOM** (`bom_items.drawingFileId`), không gắn
-theo item — đúng ngữ nghĩa nghiệp vụ: một WIP dùng lại ở hai vị trí trong hai cây khác nhau hoàn
-toàn có thể mang hai bản vẽ khác nhau. Mỗi node tối đa một file (không phải danh sách). RM trước
-đây có bảng đính kèm riêng (`material_attachments`) — đã xoá khi gộp, 0 dòng dữ liệu thật.
+**`items` mang hai loại file khác nhau, đừng nhầm lẫn.** Ảnh đại diện — `imageFileId`, tối đa một
+file, đọc ké vào mọi node BOM trỏ tới item đó. Tài liệu đính kèm cấp item — bảng nối `item_files`
+(cùng khuôn `supplier_files`/`order_files`), một item mang được **nhiều** tài liệu (hồ sơ kỹ thuật,
+tiêu chuẩn, catalogue...), ghi/đọc qua `fileIds` ở `POST`/`PATCH /items` (replace-all mỗi lần sửa,
+cùng khuôn `clients` contacts). **Khác** với bản vẽ kỹ thuật theo **từng node BOM**
+(`bom_items.drawingFileId`) — bản vẽ gắn theo *vị trí trong cây*, không gắn theo item: một WIP dùng
+lại ở hai vị trí trong hai cây khác nhau hoàn toàn có thể mang hai bản vẽ khác nhau, và mỗi node tối
+đa một file (không phải danh sách). Hai khái niệm không thay thế được nhau — `item_files` là hồ sơ
+chung của mã hàng, bản vẽ node là tài liệu riêng của một lần dùng lại trong cấu trúc.
 
 **Không có nhóm hàng hoá.** `product_groups`/`material_groups` đã xoá khi gộp — `type` là thứ duy
 nhất phân loại `items`.
@@ -78,6 +82,7 @@ ngược dữ liệu đã nằm trong đơn hàng cũ. `clonedFromItemId` chỉ 
 | Entity | Vai trò |
 | --- | --- |
 | `items` | FG, WIP, hoặc RM; `clonedFromItemId` (nullable, tự trỏ) ghi lineage khi clone |
+| `item_files` | Nối `items` ↔ `files` — tài liệu đính kèm cấp item, nhiều dòng/item, replace-all qua `fileIds` |
 | `boms` | Header, **đúng một dòng cho mỗi item** (unique `itemId`); chỉ FG/WIP có (`E111` nếu RM) |
 | `bom_items` | Node của cây cấu trúc, tự lồng qua `parentId`; `itemId` NOT NULL, có thể trỏ WIP (node) hoặc RM (lá); `drawingFileId` (nullable) là bản vẽ kỹ thuật riêng của node |
 | `bom_operations` | Công đoạn as-used; `bomItemId` NOT NULL — chỉ gắn được vào node WIP |
@@ -192,16 +197,26 @@ trong cây) — sắp theo `code`.
    (`bom_operations`) của chúng, không cảnh báo trước, không đếm trước.
 5. **Thêm ràng buộc "một node cho mỗi (cha, item)" hoặc chống chu trình xuyên cây vì tưởng đã có.**
    Cả hai đều chưa có.
-6. **Tưởng ảnh (`items.imageFileId`) và bản vẽ (`bom_items.drawingFileId`) là một.** Khác nhau: ảnh
-   là ảnh đại diện của item, đọc ké vào mọi node BOM trỏ tới item đó; bản vẽ là tài liệu kỹ thuật
-   riêng của **từng node**, không đọc qua `itemId`.
-7. **Tưởng clone là đệ quy.** Clone giữ nguyên `itemId` của node — nó **không** clone các WIP/RM
-   được tham chiếu, chỉ clone cấu trúc cây của chính cây đó.
-8. **Đi tìm bảng `bom_materials` riêng.** Không còn — vật tư (RM) là lá ngay trong `bom_items`, xem
+6. **Tưởng ảnh (`items.imageFileId`), tài liệu đính kèm (`item_files`) và bản vẽ
+   (`bom_items.drawingFileId`) là cùng một thứ.** Ba khái niệm khác nhau: ảnh là ảnh đại diện, tối
+   đa một file, đọc ké vào mọi node BOM trỏ tới item đó; `item_files` là hồ sơ tài liệu chung của mã
+   hàng (nhiều file, không phân biệt node); bản vẽ là tài liệu kỹ thuật riêng của **từng node**,
+   không đọc qua `itemId`.
+7. **Bỏ `item_files` vì tưởng bản vẽ node BOM đã thay thế được.** Đã từng bị bỏ nhầm khi gộp
+   `products`+`materials` thành `items` (04/08/2026, `docs/decisions/items-merge.md`) — tưởng
+   `bom_items.drawingFileId` phủ luôn nhu cầu tài liệu cấp item. Sai: bản vẽ node là tài liệu riêng
+   của *một vị trí trong cấu trúc*, không phải hồ sơ chung của mã hàng — tài liệu đã chốt với khách
+   (Excel dòng 17, chức năng [4.2]) đòi cả hai, không thứ nào thay được thứ kia. Khôi phục lại
+   27/08/2026 (BUG-007). Đừng lặp lại nhầm lẫn này.
+8. **Tưởng clone là đệ quy.** Clone giữ nguyên `itemId` của node — nó **không** clone các WIP/RM
+   được tham chiếu, chỉ clone cấu trúc cây của chính cây đó. Clone **có** mang theo `item_files`
+   (cùng `drawingFileId` trên `bom_items`) — không rơi mất tài liệu như từng xảy ra với bản vẽ trước
+   khi được sửa.
+9. **Đi tìm bảng `bom_materials` riêng.** Không còn — vật tư (RM) là lá ngay trong `bom_items`, xem
    `docs/decisions/items-merge.md`.
-9. **Tưởng một WIP không có node `bom_items` con nào có thể tự làm lá của chính nó.** Một item
-   không được tự làm con của chính nó (`E054`), nên không có cách "tự gắn" một node vào chính BOM
-   của mình ngoài luồng thêm node bình thường.
+10. **Tưởng một WIP không có node `bom_items` con nào có thể tự làm lá của chính nó.** Một item
+    không được tự làm con của chính nó (`E054`), nên không có cách "tự gắn" một node vào chính BOM
+    của mình ngoài luồng thêm node bình thường.
 
 ## Related docs
 

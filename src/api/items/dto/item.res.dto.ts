@@ -16,6 +16,7 @@ import {
 } from '../../../decorators/field.decorators';
 import { SupplierRefResDto } from '../../suppliers/dto/supplier-ref.res.dto';
 import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
+import { ItemFileResDto } from './item-file.res.dto';
 import { ItemRefResDto } from './item-ref.res.dto';
 
 @Exclude()
@@ -121,4 +122,8 @@ export class ItemResDto {
     description: 'Item gốc được sao chép từ (nếu là bản sao)',
   })
   clonedFrom!: ItemRefResDto | null;
+
+  @Expose()
+  @ClassField(() => ItemFileResDto, { each: true })
+  files!: ItemFileResDto[];
 }

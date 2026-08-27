@@ -119,17 +119,19 @@ phân loại, xem `docs/decisions/items-merge.md`.
 ## Thứ tự ghi của các luồng bắc cầu nhiều module
 
 **Tạo item** (`ItemsService.createItem`): transaction bao cấp mã (`document_sequences`) + một
-`INSERT` vào `items`, không ghi bảng nào khác.
+`INSERT` vào `items`, cộng thêm `INSERT` vào `item_files` nếu request gửi kèm `fileIds` (tài liệu
+đính kèm cấp item) — không ghi bảng nào khác. `updateItem` cùng khuôn: `UPDATE items` +
+replace-all `item_files` trong cùng transaction khi request gửi `fileIds`.
 **`boms`/`bom_items`/`routings`/`routing_operations` KHÔNG được tạo ở bước này** — cả BOM lẫn
 routing Cấp 0 sinh ra lười (get-or-create), ngay trong transaction ghi dòng đầu tiên. BOM ghi qua
 `POST /items/:itemId/bom/items` (`BomsModule`) — một node có thể trỏ WIP (node) hoặc RM (lá).
 `bom_operations` viết riêng qua `.../bom/items/:bomItemId/operations` (`BomOperationsModule`), luôn
 gắn vào một node WIP có sẵn. Routing Cấp 0 viết riêng qua `POST /items/:itemId/operations`
 (`RoutingsModule`, tạo lười `routings` + `routing_operations`). `POST /items/:id/copy` (chỉ
-FG/WIP, `E110` nếu RM) đọc trước toàn bộ cây `bom_items` rồi ghi lại tất cả — kể cả header `boms` —
-trong một transaction, ghi `clonedFromItemId` vào bản clone; **không** clone routing Cấp 0 hay
-`bom_operations` (xem `docs/domains/product-structure.md`, mục "Related docs" của
-`docs/decisions/items-merge.md`). Chi tiết từng bước: `docs/workflows/product-setup.md`.
+FG/WIP, `E110` nếu RM) đọc trước toàn bộ cây `bom_items` lẫn `item_files` của item gốc rồi ghi lại
+tất cả — kể cả header `boms` — trong một transaction, ghi `clonedFromItemId` vào bản clone;
+**không** clone routing Cấp 0 hay `bom_operations` (xem `docs/domains/product-structure.md`, mục
+"Related docs" của `docs/decisions/items-merge.md`). Chi tiết từng bước: `docs/workflows/product-setup.md`.
 
 **Duyệt đơn hàng** (`OrdersService.approveOrder`, chỉ hợp lệ từ `PENDING_CONFIRMATION` — `E074` nếu
 không, `DRAFT` chưa gửi duyệt thì chưa duyệt được): đọc `InventoryService.getStockLevels` (chỉ đọc,
