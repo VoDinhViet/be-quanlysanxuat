@@ -1,6 +1,6 @@
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
-import { and, count, desc, eq, exists, isNull, or, sql } from 'drizzle-orm';
+import { and, count, desc, eq, isNull, sql } from 'drizzle-orm';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
@@ -73,11 +73,6 @@ export class IqcService {
     reqDto: GetIqcsReqDto,
   ): Promise<OffsetPaginatedDto<PageIqcResDto>> {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
-    const materialKeyword = reqDto.materialKeyword
-      ? `%${reqDto.materialKeyword}%`
-      : undefined;
-    const poKeyword = reqDto.poCode ? `%${reqDto.poCode}%` : undefined;
-    const nkKeyword = reqDto.nkCode ? `%${reqDto.nkCode}%` : undefined;
 
     const where = and(
       eq(qcRequests.kind, QcKind.INCOMING),
@@ -91,48 +86,6 @@ export class IqcService {
         ? eq(qcRequests.disposition, reqDto.disposition)
         : undefined,
       reqDto.status ? eq(qcRequests.status, reqDto.status) : undefined,
-      materialKeyword
-        ? exists(
-            this.db
-              .select({ one: sql`1` })
-              .from(items)
-              .where(
-                and(
-                  eq(items.id, qcRequests.itemId),
-                  or(
-                    unaccentILike(items.name, materialKeyword),
-                    unaccentILike(items.code, materialKeyword),
-                  ),
-                ),
-              ),
-          )
-        : undefined,
-      poKeyword
-        ? exists(
-            this.db
-              .select({ one: sql`1` })
-              .from(purchaseOrders)
-              .where(
-                and(
-                  eq(purchaseOrders.id, qcRequests.purchaseOrderId),
-                  unaccentILike(purchaseOrders.code, poKeyword),
-                ),
-              ),
-          )
-        : undefined,
-      nkKeyword
-        ? exists(
-            this.db
-              .select({ one: sql`1` })
-              .from(inventoryReceipts)
-              .where(
-                and(
-                  eq(inventoryReceipts.id, qcRequests.inventoryReceiptId),
-                  unaccentILike(inventoryReceipts.code, nkKeyword),
-                ),
-              ),
-          )
-        : undefined,
     );
 
     const [entities, countRows] = await Promise.all([
