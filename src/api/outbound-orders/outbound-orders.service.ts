@@ -490,6 +490,7 @@ export class OutboundOrdersService {
           issueType: InventoryIssueType.SALES,
           status: InventoryDocumentStatus.POSTED,
           issueDate,
+          outboundOrderId,
           postedBy: userId,
           postedAt: issueDate,
           createdBy: userId,

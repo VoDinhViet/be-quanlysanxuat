@@ -7,4 +7,5 @@ import { InventoryIssueResDto } from './inventory-issue.res.dto';
 export class InventoryIssueRefResDto extends PickType(InventoryIssueResDto, [
   'id',
   'code',
+  'issueType',
 ] as const) {}

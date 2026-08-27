@@ -1,44 +1,35 @@
 import { Exclude, Expose } from 'class-transformer';
 
-import { ItemType } from '../../../database/schemas';
 import {
   ClassField,
   ClassFieldOptional,
-  EnumField,
   NumberField,
   StringField,
   UUIDField,
 } from '../../../decorators/field.decorators';
 import { FileResDto } from '../../files/dto/file.res.dto';
-import { SupplierRefResDto } from '../../suppliers/dto/supplier-ref.res.dto';
 import { UnitRefResDto } from '../../units/dto/unit-ref.res.dto';
-import { StockStatus } from '../inventory.constant';
 
+/** Không trả `status`/`minStock` — minStock luôn 0 với FG nên FE tự suy status từ dấu `available`
+ * (`docs/domains/inventory.md`). `GET /inventory-products?status=` vẫn lọc được — filter chạy
+ * thẳng trên SQL, không cần hiển thị field. */
 @Exclude()
-export class InventoryItemResDto {
+export class InventoryProductResDto {
   @Expose()
   @UUIDField({ description: 'Item id' })
   id!: string;
 
   @Expose()
-  @StringField({ description: 'Item code' })
+  @StringField({ description: 'Mã thành phẩm' })
   code!: string;
 
   @Expose()
-  @StringField({ description: 'Item name' })
+  @StringField({ description: 'Tên thành phẩm' })
   name!: string;
-
-  @Expose()
-  @EnumField(() => ItemType)
-  type!: ItemType;
 
   @Expose()
   @ClassField(() => UnitRefResDto)
   unit!: UnitRefResDto;
-
-  @Expose()
-  @ClassFieldOptional(() => SupplierRefResDto, { nullable: true })
-  supplier!: SupplierRefResDto | null;
 
   @Expose()
   @ClassFieldOptional(() => FileResDto, { nullable: true })
@@ -53,14 +44,13 @@ export class InventoryItemResDto {
   @Expose()
   @NumberField({
     description:
-      'Đã giữ bởi chứng từ: DO PENDING_APPROVAL/PENDING_DELIVERY (FG) hoặc phiếu lãnh APPROVED (RM)',
+      'Đã giữ — Σ SL lệnh giao hàng (DO) đang PENDING_APPROVAL/PENDING_DELIVERY',
   })
   reserved!: number;
 
   @Expose()
   @NumberField({
-    description:
-      'Nhu cầu chưa có chứng từ giữ: đơn đã duyệt chưa giao (FG) hoặc BOM còn lại (RM), đã trừ phần nằm trong reserved',
+    description: 'Nhu cầu đơn hàng mở chưa có DO nào giữ',
   })
   bomDemand!: number;
 
@@ -69,14 +59,4 @@ export class InventoryItemResDto {
     description: 'Tồn khả dụng = onHand − reserved − bomDemand',
   })
   available!: number;
-
-  @Expose()
-  @NumberField({
-    description: 'Định mức tồn tối thiểu — chỉ có ý nghĩa với RM',
-  })
-  minStock!: number;
-
-  @Expose()
-  @EnumField(() => StockStatus)
-  status!: StockStatus;
 }

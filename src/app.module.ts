@@ -30,6 +30,8 @@ import { FilesModule } from './api/files/files.module';
 import { HealthModule } from './api/health/health.module';
 import { InventoryModule } from './api/inventory/inventory.module';
 import { InventoryIssuesModule } from './api/inventory-issues/inventory-issues.module';
+import { InventoryMaterialsModule } from './api/inventory-materials/inventory-materials.module';
+import { InventoryProductsModule } from './api/inventory-products/inventory-products.module';
 import { InventoryReceiptsModule } from './api/inventory-receipts/inventory-receipts.module';
 import { InventoryRequisitionsModule } from './api/inventory-requisitions/inventory-requisitions.module';
 import { IqcModule } from './api/iqc/iqc.module';
@@ -107,6 +109,8 @@ import { WarehousesModule } from './api/warehouses/warehouses.module';
     SupplierGroupsModule,
     WarehousesModule,
     InventoryModule,
+    InventoryProductsModule,
+    InventoryMaterialsModule,
     InventoryReceiptsModule,
     InventoryIssuesModule,
     InventoryRequisitionsModule,

@@ -1,6 +1,9 @@
 import { Exclude, Expose } from 'class-transformer';
 
-import { InventoryDocumentStatus } from '../../../database/schemas';
+import {
+  InventoryDocumentStatus,
+  InventoryReceiptType,
+} from '../../../database/schemas';
 import {
   DateField,
   EnumField,
@@ -21,6 +24,10 @@ export class InventoryReceiptRefResDto {
   @Expose()
   @EnumField(() => InventoryDocumentStatus)
   status!: InventoryDocumentStatus;
+
+  @Expose()
+  @EnumField(() => InventoryReceiptType)
+  receiptType!: InventoryReceiptType;
 
   @Expose()
   @DateField({ description: 'Ngày chứng từ' })

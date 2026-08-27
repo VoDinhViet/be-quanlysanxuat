@@ -1,20 +1,14 @@
 import { PageOptionsDto } from '../../../common/dto/offset-pagination/page-options.dto';
-import { ItemType } from '../../../database/schemas';
+import { StockStatus } from '../../inventory/inventory.constant';
 import {
   DateFieldOptional,
   EnumFieldOptional,
   UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
-import { StockStatus } from '../inventory.constant';
 
-export class GetInventoryReqDto extends PageOptionsDto {
-  @EnumFieldOptional(() => ItemType, {
-    description: 'Bỏ trống = FG/RM (kho không quản tồn WIP)',
-  })
-  readonly itemType?: ItemType;
-
-  @UUIDFieldOptional({ description: 'Filter theo NCC — chỉ có ý nghĩa với RM' })
-  readonly supplierId?: string;
+export class GetInventoryProductsReqDto extends PageOptionsDto {
+  @UUIDFieldOptional({ description: 'Filter theo đúng 1 item' })
+  readonly itemId?: string;
 
   @EnumFieldOptional(() => StockStatus)
   readonly status?: StockStatus;

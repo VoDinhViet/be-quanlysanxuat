@@ -5,10 +5,8 @@ import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated
 import { ApiAuth } from '../../decorators/http.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
 import { GetInventoryBalancesReqDto } from './dto/get-inventory-balances.req.dto';
-import { GetInventoryReqDto } from './dto/get-inventory.req.dto';
 import { GetInventoryTransactionsReqDto } from './dto/get-inventory-transactions.req.dto';
 import { InventoryBalanceResDto } from './dto/inventory-balance.res.dto';
-import { InventoryItemResDto } from './dto/inventory-item.res.dto';
 import { InventoryTransactionResDto } from './dto/inventory-transaction.res.dto';
 import { InventoryService } from './inventory.service';
 
@@ -16,20 +14,6 @@ import { InventoryService } from './inventory.service';
 @Controller('inventory')
 export class InventoryController {
   constructor(private readonly inventoryService: InventoryService) {}
-
-  @Get()
-  @Permissions('inventory:read')
-  @ApiAuth({
-    type: InventoryItemResDto,
-    summary:
-      'List stock levels (onHand/reserved/bomDemand/available/status) — filter theo itemType, bỏ trống = FG/RM (kho không quản tồn WIP)',
-    isPaginated: true,
-  })
-  getInventory(
-    @Query() reqDto: GetInventoryReqDto,
-  ): Promise<OffsetPaginatedDto<InventoryItemResDto>> {
-    return this.inventoryService.getInventory(reqDto);
-  }
 
   @Get('balances')
   @Permissions('inventory:read')

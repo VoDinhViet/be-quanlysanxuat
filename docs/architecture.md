@@ -61,6 +61,7 @@ erDiagram
     INVENTORY_ISSUE_ITEMS }o--|| ITEMS : "mặt hàng (FG/WIP/RM)"
     INVENTORY_ISSUE_ITEMS }o--o| ORDER_ITEMS : "delivery tracking (tuỳ chọn)"
     INVENTORY_RECEIPTS }o--o| PURCHASE_REQUESTS : "phát sinh từ đề xuất (tuỳ chọn)"
+    OUTBOUND_ORDERS ||--o| INVENTORY_ISSUES : "tự sinh lúc deliver (issueType=SALES, POSTED ngay, migration 0159 — không backfill phiếu cũ)"
 
     WAREHOUSES ||--o{ INVENTORY_REQUISITIONS : "kho lãnh"
     PRODUCTION_JOBS }o--o| INVENTORY_REQUISITIONS : "Job liên quan (bắt buộc nếu type=PRODUCTION)"

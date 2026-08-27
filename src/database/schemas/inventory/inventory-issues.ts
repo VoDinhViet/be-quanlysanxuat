@@ -15,6 +15,7 @@ import {
   inventoryDocumentStatusEnum,
 } from './inventory-documents';
 import { inventoryIssueItems } from './inventory-issue-items';
+import { outboundOrders } from './outbound-orders';
 import { warehouses } from './warehouses';
 import { productionJobs } from '../production/production-jobs';
 import { productionOrders } from '../production/production-orders';
@@ -61,6 +62,13 @@ export const inventoryIssues = pgTable(
       () => productionJobs.id,
       { onDelete: 'set null' },
     ),
+    // Chỉ `OutboundOrdersService.deliver` (issueType = SALES) ghi cột này — phiếu xuất tự sinh lúc
+    // giao hàng, dùng để thẻ kho trace ngược về DO. `set null`, không backfill phiếu cũ trước
+    // migration này (`docs/domains/inventory.md`).
+    outboundOrderId: uuid('outbound_order_id').references(
+      () => outboundOrders.id,
+      { onDelete: 'set null' },
+    ),
     departmentId: uuid('department_id').references(() => departments.id, {
       onDelete: 'set null',
     }),
@@ -90,6 +98,7 @@ export const inventoryIssues = pgTable(
       table.productionOrderId,
     ),
     index('idx_inventory_issues_production_job_id').on(table.productionJobId),
+    index('idx_inventory_issues_outbound_order_id').on(table.outboundOrderId),
     index('idx_inventory_issues_department_id').on(table.departmentId),
     index('idx_inventory_issues_created_by').on(table.createdBy),
     index('idx_inventory_issues_requested_by').on(table.requestedBy),
@@ -111,6 +120,10 @@ export const inventoryIssuesRelations = relations(
     productionJob: one(productionJobs, {
       fields: [inventoryIssues.productionJobId],
       references: [productionJobs.id],
+    }),
+    outboundOrder: one(outboundOrders, {
+      fields: [inventoryIssues.outboundOrderId],
+      references: [outboundOrders.id],
     }),
     department: one(departments, {
       fields: [inventoryIssues.departmentId],

@@ -60,55 +60,63 @@ trị mới, xem "Gia công ngoài" ở Entities và `docs/decisions/wip-not-sto
 (`inventory_receipt_items`, `inventory_issue_items`, `inventory_transactions`, `inventory_balances`)
 chỉ mang một `itemId` NOT NULL — không còn discriminator, không còn CHECK "đúng một trong hai FK
 khớp `itemType`" (xem `docs/decisions/items-merge.md`). Loại mặt hàng (FG/WIP/RM) suy từ join sang
-`items.type` khi cần lọc — `GetInventoryReqDto`/`GetInventoryBalancesReqDto` bỏ trống `itemType` mặc
-định lọc còn FG/RM (gửi tường minh `itemType=WIP` vẫn xem được, luôn rỗng);
-`GetInventoryTransactionsReqDto` không đổi, bỏ trống vẫn trả cả ba loại. Service lọc bằng subquery
-`inArray` trên `items`, không phải một cột thật trên các bảng kho.
+`items.type` khi cần lọc — `GET /inventory-products` cứng FG, `GET /inventory-materials` cứng RM
+(`InventoryProductsService`/`InventoryMaterialsService`, tách khỏi `InventoryService.getInventory`
+cũ), `GetInventoryBalancesReqDto` bỏ trống `itemType` mặc định lọc còn FG/RM (gửi tường minh
+`itemType=WIP` vẫn xem được, luôn rỗng); `GetInventoryTransactionsReqDto` không đổi, bỏ trống vẫn
+trả cả ba loại. Service lọc bằng subquery `inArray` trên `items`, không phải một cột thật trên các
+bảng kho.
 
 **Loại kho không ràng buộc cứng loại hàng.** `warehouses.type` (`RM`/`FG`/`WIP`)
 là nhãn phân loại/lọc — quyết định nghiệp vụ, không phải constraint kỹ thuật. Một kho `RM`
 vẫn nhận được thành phẩm nếu người dùng chủ động lập phiếu như vậy.
 
-**Bốn field trên `GET /inventory`, một công thức chung cho mọi loại item** (FG/WIP/RM — route này
-không còn tách theo `type`). `reserved`/`bomDemand` mỗi field là **tổng của 2 khối tách biệt theo
-loại vật tư** — không một biểu thức gộp chung, xem lý do ngay dưới:
+**Bốn field tồn (`onHand`/`reserved`/`bomDemand`/`available`), tách route theo loại item** —
+`GET /inventory-products` (`InventoryProductsService.getInventoryProducts`) chỉ FG,
+`GET /inventory-materials` (`InventoryMaterialsService.getInventoryMaterials`) chỉ RM; mỗi route chỉ
+tính đúng khối công thức của loại mình, không còn một route/một biểu thức gộp chung cho cả FG lẫn RM
+như thiết kế cũ (`InventoryService.getInventory`, đã xoá):
 
 ```
 onHand    = SUM(inventory_balances.quantity) gộp mọi kho              (thực tế đang có)
 
-# Khối FG — nhu cầu đơn hàng mở, trừ phần đã có DO giữ
-fgHeld    = Σ SL dòng outbound_order_items của DO DRAFT/PENDING_APPROVAL/PENDING_DELIVERY
-fgDemand  = max(orderDemand − fgHeld, 0)     orderDemand = phần chưa giao của đơn đã duyệt
+# GET /inventory-products (FG) — nhu cầu đơn hàng mở, trừ phần đã có DO giữ
+reserved  = fgHeld   = Σ SL dòng outbound_order_items của DO DRAFT/PENDING_APPROVAL/PENDING_DELIVERY
+bomDemand = fgDemand = max(orderDemand − fgHeld, 0)     orderDemand = phần chưa giao của đơn đã duyệt
 
-# Khối RM — nhu cầu BOM còn lại, trừ phần đã có phiếu lãnh giữ CÓ GẮN JOB
+# GET /inventory-materials (RM) — nhu cầu BOM còn lại, trừ phần đã có phiếu lãnh giữ CÓ GẮN JOB
 rmHeld         = Σ SL dòng inventory_requisition_items của phiếu lãnh DRAFT/PENDING_APPROVAL/APPROVED (mọi type)
 rmHeldForJobs  = rmHeld, chỉ phiếu type=PRODUCTION (có production_job_id)
-rmDemand       = max(remainingBomDemand − rmHeldForJobs, 0)   remainingBomDemand = Σ max(requiredQty − Đã lãnh, 0)
+reserved  = rmHeld
+bomDemand = rmDemand = max(remainingBomDemand − rmHeldForJobs, 0)   remainingBomDemand = Σ max(requiredQty − Đã lãnh, 0)
 
-reserved  = fgHeld + rmHeld                        (đã có chứng từ giữ)
-bomDemand = fgDemand + rmDemand                    (chưa có chứng từ nào giữ)
-available = onHand − reserved − bomDemand          (còn dùng được)
+available = onHand − reserved − bomDemand          (còn dùng được, cả 2 route)
 ```
 
-Tách 2 khối vì `remainingBomDemand`/`orderDemand` và `rmHeldForJobs`/`fgHeld` **không loại trừ
-nhau** — một phiếu lãnh `type=PRODUCTION` đang giữ chỗ (`DRAFT`/`PENDING_APPROVAL`/`APPROVED`, chưa
-`ISSUED`) vừa nằm trong `rmHeldForJobs` vừa nằm trong `remainingBomDemand` (chỉ trừ phần `ISSUED`);
-cộng thẳng `onHand − (rmHeldForJobs+
-fgHeld) − (remainingBomDemand+orderDemand)` sẽ trừ hai lần. `orderDemand` chỉ tính đơn **đã được
-Giám đốc duyệt** (`AWAITING_PRODUCTION`/`IN_PROGRESS`), nguồn "đã giao" đọc từ
-`inventory_transactions` qua `orderItemId` (dòng bút toán âm trên phiếu xuất). `order_items`/
-`outbound_order_items` chỉ trỏ FG, `production_job_issues`/`inventory_requisition_items` chỉ chứa
-RM — 2 khối không giao nhau, không có phần tử nào rơi vào cả hai. Nguồn RM
-(`production_job_issues`, qua `copyBomIssues`) là định mức đã **nổ cấp** — nhân luỹ kế qua toàn bộ
-chuỗi node WIP cha, xem "Chuẩn nổ cấp BOM", `docs/domains/product-structure.md`.
+`order_items`/`outbound_order_items` chỉ trỏ FG, `production_job_issues`/`inventory_requisition_items`
+chỉ chứa RM — không giao nhau, đây chính là lý do 2 route tách hẳn thay vì một route lọc `itemType`
+như cũ. `orderDemand` chỉ tính đơn **đã được Giám đốc duyệt** (`AWAITING_PRODUCTION`/`IN_PROGRESS`),
+nguồn "đã giao" đọc từ `inventory_transactions` qua `orderItemId` (dòng bút toán âm trên phiếu xuất).
+Nguồn RM (`production_job_issues`, qua `copyBomIssues`) là định mức đã **nổ cấp** — nhân luỹ kế qua
+toàn bộ chuỗi node WIP cha, xem "Chuẩn nổ cấp BOM", `docs/domains/product-structure.md`.
 
 `rmDemand` trừ đúng `rmHeldForJobs`, **không phải** `rmHeld` — phiếu lãnh `type=OTHER` (không gắn
 `production_job_id`, `E233`) không có nhu cầu BOM đối ứng trong `remainingBomDemand` để trùng, nên
 không được trừ chéo. `reserved` thì vẫn cộng nguyên `rmHeld` (cả `PRODUCTION` lẫn `OTHER`) — số này
-không đụng tới việc chống trùng ở trên.
+không đụng tới việc chống trùng ở trên. `remainingBomDemand` và `rmHeldForJobs` **không loại trừ
+nhau** — một phiếu lãnh `type=PRODUCTION` đang giữ chỗ (`DRAFT`/`PENDING_APPROVAL`/`APPROVED`, chưa
+`ISSUED`) vừa nằm trong `rmHeldForJobs` vừa nằm trong `remainingBomDemand` (chỉ trừ phần `ISSUED`) —
+đây là lý do `rmDemand` phải trừ `rmHeldForJobs` ra khỏi `remainingBomDemand` thay vì cộng thẳng cả
+hai vào `available`, sẽ trừ hai lần.
+
+**Cả hai route không trả `status`/`minStock`/`type`/`supplier` (RM giữ `minStock`/`supplier`, FG bỏ
+cả hai) — FE tự suy trạng thái tồn kho (`NORMAL`/`WARNING`/`SHORTAGE`) từ `available`/`minStock` nếu
+cần hiển thị**, cùng chủ trương với "Thẻ kho" bên dưới (không suy diễn hộ FE thứ FE có đủ nguyên
+liệu để tự tính). `stockStatusCondition` vẫn chạy ở tầng SQL cho filter `status` trên cả 2 route —
+chỉ bỏ hiển thị field, không bỏ khả năng lọc.
 
 **`reservedQuantity` trên `inventory_balances` vẫn chưa route nào ghi, luôn `0` dưới DB.**
-`GET /inventory/balances` (khác `GET /inventory` ở trên) trả `reservedQuantity` **tính động lúc
+`GET /inventory/balances` (khác 2 route trên) trả `reservedQuantity` **tính động lúc
 đọc** — cùng nguồn `fgHeld`/`rmHeld` (RM lọc đúng kho qua `warehouseId`; FG gán lên dòng kho `type =
 FG`, vì `outbound_orders` không có cột kho) — không đọc cột thật, giữ nguyên hợp đồng API cũ.
 
@@ -159,6 +167,41 @@ không trừ phần đã lãnh) — lý do: Job không có trạng thái kết t
 nguyên `requiredQty` mãi mãi sẽ làm số càng lúc càng âm sai lệch dù Job đã lãnh xong. Xem
 `docs/workflows/inventory-requisition.md`.
 
+**Thẻ kho thành phẩm** (`GET /inventory-products/:itemId/ledger`,
+`InventoryProductsService.getProductLedger`) — sổ cái cắt riêng theo 1 item, kèm tồn luỹ kế
+(`balanceAfter`) sau từng giao dịch. Chưa có bản RM (`inventory-materials` chưa có route ledger
+riêng, đợt sau).
+
+```
+ledger      = SELECT inventory_transactions WHERE itemId = :itemId [AND warehouseId = :warehouseId]
+balanceAfter = SUM(ledger.quantity) OVER (ORDER BY transactionDate, createdAt, id)   -- window, TOÀN BỘ lịch sử
+```
+
+`balanceAfter` **luôn tính trên toàn bộ lịch sử của item**, không theo `startDate`/`endDate` truyền
+vào — lọc ngày chỉ cắt bớt **dòng hiển thị** ở query ngoài, chạy sau khi window đã tính xong trên
+subquery `ledger`; nếu lọc ngày trước khi tính window, tồn luỹ kế của các dòng còn lại sẽ sai (thiếu
+mất phần lịch sử bị cắt). `count()` cho phân trang chạy thẳng trên `inventory_transactions` (cùng
+điều kiện ngày), không qua `ledger` — không cần chạy window chỉ để đếm dòng.
+
+Mỗi dòng join `inventory_receipts`/`inventory_issues` theo `(referenceType, referenceId)` — đúng một
+trong hai luôn có mặt, không bao giờ cả hai lẫn không cái nào (`inventory_transactions.referenceType`
+loại trừ lẫn nhau). **Response không trả sẵn "loại giao dịch"/"diễn giải" đã suy diễn** — FE tự phân
+loại từ `quantity` (dấu) + `inventoryReceipt.receiptType`/`inventoryIssue.issueType`
+(`resolveProductLedgerMovementType` ở FE, `product-ledger.type.ts`) rồi tự ghép câu diễn giải từ
+`productionJob`/`order`/`outboundOrder`/`note`. Lý do suy ở FE thay vì trả sẵn enum: chính enum này
+(7 giá trị: `PRODUCTION_RECEIPT`/`CUSTOMER_RETURN`/`PURCHASE_RECEIPT`/`DELIVERY`/`ADJUSTMENT`/
+`OTHER_ISSUE`/`REVERSAL`) từng được thiết kế ở BE rồi dời hẳn sang FE theo yêu cầu — không còn tồn
+tại ở BE, đừng khôi phục. `REVERSAL` phải xét **trước** mọi giá trị khác khi suy: bút toán đảo lúc
+`cancel` một phiếu POSTED dùng lại đúng `receiptType`/`issueType` của chứng từ gốc (xem
+`InventoryPostingService.reverseDocument`), chỉ dấu `quantity` trái ngược bản chất chứng từ (phiếu
+nhập ra số âm, phiếu xuất ra số dương) mới phân biệt được với phiếu `ADJUSTMENT` thật.
+
+`inventory_issues.outbound_order_id` (migration `0159`, 27/08/2026) — cột mới, chỉ
+`OutboundOrdersService.postOutboundOrder` (`POST :id/deliver`) ghi, để thẻ kho trace được đúng mã DO
+ở dòng giao hàng thay vì chỉ thấy mã PXK tự sinh. **Không backfill dữ liệu cũ** — một `order_item`
+có thể được giao bởi nhiều DO nên map ngược không đơn trị; dòng thẻ kho của các lần giao trước
+migration này hiển thị đúng mã PXK, `outboundOrder` trả `null`.
+
 ## Entities
 
 | Entity | Vai trò |
@@ -166,7 +209,7 @@ nguyên `requiredQty` mãi mãi sẽ làm số càng lúc càng âm sai lệch d
 | `warehouses` | Danh mục kho — `code`/`name`/`type`, không soft delete |
 | `inventory_receipts` | Phiếu nhập — header, vòng đời 5 trạng thái (`DRAFT`/`PENDING_IQC`/`PENDING_RECEIPT`/`POSTED`/`CANCELLED`, xem Lifecycle); `purchaseOrderId` tuỳ chọn trỏ đơn mua (`docs/domains/purchasing.md`), validate PO phải `ORDERED` lúc tạo/sửa; `requiresIqc` quyết định nhánh `confirm` đi qua `PENDING_IQC` hay `PENDING_RECEIPT`; `productionJobId` **bắt buộc** khi `receiptType = PRODUCTION` (`E179`) — `confirm` chặn nếu Job chưa qua hết OQC (`E196`) hoặc SL các dòng vượt `production_jobs.quantity` (`E197`), xem "Gate nhập kho thành phẩm" bên dưới; `supplierId`/`clientId` loại trừ lẫn nhau (`E253`) — `clientId` dùng cho `receiptType = RETURN` gắn khách hàng (BUG-038/065, xem "Nhập từ khách hàng" ở Business rules) |
 | `inventory_receipt_items` | Dòng phiếu nhập — `itemId` + `quantity` + `unitPrice` tuỳ chọn; `purchaseOrderItemId` tuỳ chọn, phải thuộc đúng `purchaseOrderId` của header; SL cộng dồn qua các phiếu đã `confirm` không được vượt SL đặt của dòng PO đó (`E154`) |
-| `inventory_issues` | Phiếu xuất — header, cùng vòng đời |
+| `inventory_issues` | Phiếu xuất — header, cùng vòng đời; `outboundOrderId` (nullable, migration `0159`) chỉ `OutboundOrdersService.postOutboundOrder` ghi — nối phiếu xuất SALES tự sinh ngược về DO, phục vụ "Thẻ kho" bên trên, không backfill phiếu cũ |
 | `inventory_issue_items` | Dòng phiếu xuất — cùng khuôn dòng nhập, thêm `orderItemId` tuỳ chọn |
 | `inventory_transactions` | Sổ cái — append-only, nguồn sự thật, `quantity` có dấu |
 | `inventory_balances` | Tồn hiện tại — một dòng/(kho × mặt hàng), dựng lại được từ sổ cái |
@@ -437,15 +480,15 @@ DRAFT ──send──> PENDING_APPROVAL ──approve──> PENDING_DELIVERY �
 - `items` trên `PATCH` phiếu `DRAFT` là **replace-all** — và bắt buộc tối thiểu 1 dòng trên cả
   `POST` lẫn `PATCH`, nên `PATCH` sửa mỗi field header cũng phải gửi lại đủ mảng `items`; phiếu rỗng
   dòng không tạo/sửa được nữa.
-- Danh sách tồn kho (`GET /inventory`, một route cho mọi loại item, lọc tuỳ chọn qua `itemType`)
-  chạy trên **danh mục**, không phải trên phiếu — một sản phẩm chưa từng nhập kho vẫn hiện với
-  `onHand: 0`. Bỏ trống `itemType` trả FG/RM (kho không quản tồn WIP,
-  `docs/decisions/wip-not-stocked.md`) — gửi tường minh `itemType=WIP` vẫn xem được, luôn `onHand:
-  0`. `GET /inventory/balances` cùng quy tắc; `GET /inventory/transactions` **không đổi**, bỏ trống
-  vẫn trả cả ba loại.
-- `asOfDate` của `GET /inventory` không đọc `inventory_balances` được (bảng đó là tồn **hiện tại**)
-  — nhánh này cộng lại từ `inventory_transactions` với `transactionDate <= asOfDate`, đúng cách
-  phiếu cũ từng làm.
+- Danh sách tồn kho (`GET /inventory-products` cứng FG, `GET /inventory-materials` cứng RM — kho
+  không quản tồn WIP, `docs/decisions/wip-not-stocked.md`, không route nào trong hai route này xem
+  được WIP) chạy trên **danh mục**, không phải trên phiếu — một sản phẩm/vật tư chưa từng nhập kho
+  vẫn hiện với `onHand: 0`. `GET /inventory/balances` vẫn giữ hành vi cũ: bỏ trống `itemType` trả
+  FG/RM, gửi tường minh `itemType=WIP` vẫn xem được (luôn `onHand: 0`). `GET /inventory/transactions`
+  **không đổi**, bỏ trống vẫn trả cả ba loại.
+- `asOfDate` của `GET /inventory-products`/`GET /inventory-materials` không đọc `inventory_balances`
+  được (bảng đó là tồn **hiện tại**) — nhánh này cộng lại từ `inventory_transactions` với
+  `transactionDate <= asOfDate`, đúng cách phiếu cũ từng làm.
 - **Chặn nhận vượt SL đặt ở tầng dòng PO** (`E154`) — tính lúc `create`/`update`/`confirm` phiếu
   nhập: `Σ quantity` mọi dòng phiếu nhập đã `confirm` (`PENDING_IQC`/`PENDING_RECEIPT`/`POSTED`,
   không tính `DRAFT`/`CANCELLED`) trỏ cùng một `purchaseOrderItemId`, cộng SL của payload đang xét,
@@ -495,14 +538,16 @@ Không phải invariant dù dễ tưởng:
 - **`reservedQuantity` trên `inventory_balances` luôn bằng 0 — chỉ đúng ở tầng DB.** Cột có sẵn,
   chưa route nào ghi; nhưng `GET /inventory/balances` không đọc cột này, trả số tính động (xem
   "Bốn field" ở Core concepts) — đừng tưởng API cũng luôn trả 0.
-- **`bomDemand` trên `GET /inventory` không còn luôn bằng 0 với bất kỳ loại item nào.** Trước đây là
-  placeholder `0` cho mọi item; giờ tính thật cho cả FG (nhu cầu đơn hàng chưa có DO giữ) lẫn RM (nhu
-  cầu BOM chưa có phiếu lãnh giữ), xem "Bốn field" ở Core concepts. Dòng chi tiết phiếu nhập/đề xuất
-  mua (khối "Bốn số khác" ở Core concepts) vẫn tính `bomDemand` bằng công thức khác, không cùng nguồn
-  trừ.
-- **`SHORTAGE` trên `GET /inventory` không còn "chưa bao giờ xuất hiện thực tế"** — trước đây chỉ
-  xảy ra được ở dòng FG (nếu `reserved > onHand`); giờ RM cũng có thể ra `SHORTAGE` thật khi
-  `bomDemand` (nhu cầu BOM chưa có phiếu lãnh giữ) vượt tồn thực tế.
+- **`bomDemand` trên `GET /inventory-products`/`GET /inventory-materials` không còn luôn bằng 0 với
+  bất kỳ loại item nào.** Trước đây là placeholder `0` cho mọi item; giờ tính thật cho cả FG (nhu
+  cầu đơn hàng chưa có DO giữ) lẫn RM (nhu cầu BOM chưa có phiếu lãnh giữ), xem "Bốn field" ở Core
+  concepts. Dòng chi tiết phiếu nhập/đề xuất mua (khối "Bốn số khác" ở Core concepts) vẫn tính
+  `bomDemand` bằng công thức khác, không cùng nguồn trừ.
+- **`status`/`SHORTAGE` không còn nằm trên response của `GET /inventory-products`/
+  `GET /inventory-materials`** — chỉ còn dùng để **lọc** (`?status=`, `stockStatusCondition` chạy ở
+  SQL), FE tự suy để hiển thị từ `available`/`minStock`. Trước khi tách route, `SHORTAGE` từng "chưa
+  bao giờ xuất hiện thực tế" ở dòng FG (nếu `reserved > onHand`) — giờ vẫn có thể xảy ra ở cả FG lẫn
+  RM khi `bomDemand` vượt tồn thực tế, chỉ là không còn field nào để nhìn thấy trực tiếp trên JSON.
 
 ## Cross-domain dependencies
 
@@ -584,13 +629,13 @@ Không phải invariant dù dễ tưởng:
 - **← Quality (gate giao hàng)**: `OutboundOrdersService.ensureAllJobsQcCompleted` cũng đọc
   `getJobQcCoverage` (tái dùng nguyên hàm trên) để chặn (`E205`) `send` DO khi còn Job nào chưa qua
   hết QC — `outbound-orders` không import `OqcModule`/`IqcModule`. Xem "Giao hàng" bên dưới.
-- **← Product Structure**: `GET /inventory` chỉ thấy item `ACTIVE` + chưa xoá mềm, mặc định lọc
-  FG/RM khi bỏ trống `itemType` (`docs/decisions/wip-not-stocked.md`) — gửi tường minh `itemType=WIP`
-  vẫn xem được (luôn `onHand: 0`), dù `minStock`/`supplierId` trên dòng WIP luôn `0`/`null` (chỉ RM
-  dùng, xem `docs/decisions/items-merge.md`).
-- **← Suppliers**: filter `supplierId` trên `GET /inventory` lọc theo NCC chính (`items.supplierId`)
-  — chỉ có ý nghĩa với dòng RM, FG/WIP luôn `supplierId = null` nên filter này tự nhiên rỗng với
-  chúng. `inventory_receipts.supplierId` liên kết tuỳ chọn NCC đã giao hàng, khái niệm khác.
+- **← Product Structure**: `GET /inventory-products`/`GET /inventory-materials` chỉ thấy item
+  `ACTIVE` + chưa xoá mềm, cứng FG/RM (kho không quản tồn WIP, `docs/decisions/wip-not-stocked.md`)
+  — không route nào trong hai route này nhận `itemType=WIP`, khác `GET /inventory/balances` vẫn còn
+  giữ tham số đó.
+- **← Suppliers**: filter `supplierId` trên `GET /inventory-materials` lọc theo NCC chính
+  (`items.supplierId`) — `GET /inventory-products` không có filter này, FG luôn `supplierId = null`
+  nên không cần. `inventory_receipts.supplierId` liên kết tuỳ chọn NCC đã giao hàng, khái niệm khác.
 
 ## Common mistakes
 
@@ -603,15 +648,17 @@ Không phải invariant dù dễ tưởng:
 5. **Gắn `orderItemId` vào dòng vật tư (RM).** Chỉ hợp lệ trên dòng mà `itemId` là FG, ở phiếu xuất.
 6. **Tưởng loại kho ràng buộc loại hàng.** Không — `warehouses.type` chỉ là nhãn, kho `RM`
    vẫn nhận được thành phẩm nếu người dùng lập phiếu như vậy.
-7. **Tưởng `reserved`/`bomDemand` trên `GET /inventory` luôn là 0 với RM.** Không còn — cả hai giờ
-   tính thật cho RM (phiếu lãnh đang giữ chỗ/nhu cầu BOM còn lại), không chỉ FG. Chỉ nguồn dữ liệu
-   khác nhau theo loại item (FG qua `order_items`/`outbound_order_items`, RM qua
-   `production_job_issues`/`inventory_requisition_items`) — không phải if/else theo `itemType`.
-29. **Tưởng `reserved` của `GET /inventory` và `reserved` của `InventoryService.getStockLevels` là
-    một số.** Không — hai định nghĩa khác nhau kể từ đợt sửa BUG-031/032: `GET /inventory` là "đã có
-    chứng từ giữ" (DO/phiếu lãnh); `getStockLevels` (chỉ `ProductionOrdersService` dùng, gợi ý SL sản
-    xuất) vẫn là "nhu cầu đơn hàng mở" như cũ (`InventoryService.openOrderDemandSubquery`, tên đổi
-    nhưng logic giữ nguyên) — cố ý không đổi để không ảnh hưởng luồng duyệt đơn, xem Cross-domain.
+7. **Tưởng `reserved`/`bomDemand` trên `GET /inventory-materials` luôn là 0 với RM.** Không còn —
+   cả hai giờ tính thật cho RM (phiếu lãnh đang giữ chỗ/nhu cầu BOM còn lại). Chỉ nguồn dữ liệu
+   khác nhau theo loại item (FG qua `order_items`/`outbound_order_items` trên `GET
+   /inventory-products`, RM qua `production_job_issues`/`inventory_requisition_items` trên `GET
+   /inventory-materials`) — không phải một route if/else theo `itemType` như thiết kế cũ.
+29. **Tưởng `reserved` của `GET /inventory-products` và `reserved` của
+    `InventoryService.getStockLevels` là một số.** Không — hai định nghĩa khác nhau kể từ đợt sửa
+    BUG-031/032: `GET /inventory-products` là "đã có chứng từ giữ" (DO); `getStockLevels` (chỉ
+    `ProductionOrdersService` dùng, gợi ý SL sản xuất) vẫn là "nhu cầu đơn hàng mở" như cũ
+    (`openOrderDemandByItemSubquery`, `inventory.query.ts` — tên đổi nhưng logic giữ nguyên) — cố ý
+    không đổi để không ảnh hưởng luồng duyệt đơn, xem Cross-domain.
 8. **Tưởng sản xuất tự động lập phiếu nhập.** Chưa — `startJob`/hoàn thành Job không sinh phiếu
    nhập nào. **Phiếu xuất thì có** — `inventory_requisitions.issue` tự sinh `inventory_issues`, xem
    #27.
@@ -701,6 +748,21 @@ Không phải invariant dù dễ tưởng:
     hai bộ phận không cùng lập được kế hoạch trên một lượng hàng rồi mới vỡ ở bước duyệt. Đọc
     `HOLDING_STATUSES` (`inventory-requisitions.query.ts`/`outbound-orders.query.ts`) trước khi tin
     mốc cũ ở bất kỳ đâu khác chưa cập nhật.
+31. **Tưởng `GET /inventory` vẫn tồn tại.** Đã xoá (27/08/2026) — tách thành `GET /inventory-products`
+    (FG) và `GET /inventory-materials` (RM), mỗi route chỉ tính công thức của loại mình, xem "Bốn
+    field" ở Core concepts. `GET /inventory/balances`/`GET /inventory/transactions` không đổi, vẫn ở
+    module `inventory` cũ.
+32. **Tưởng thẻ kho (`GET /inventory-products/:itemId/ledger`) trả sẵn "loại giao dịch"/"diễn giải"
+    như một cột enum.** Không — cố ý để FE tự suy từ `quantity` (dấu) +
+    `inventoryReceipt.receiptType`/`inventoryIssue.issueType`, xem "Thẻ kho thành phẩm" ở Core
+    concepts. Đây là quyết định lặp lại 2 lần trong cùng một đợt (`status` của
+    `GET /inventory-products`/`GET /inventory-materials` cũng bị bỏ vì cùng lý do) — chủ trương
+    chung: BE không suy diễn hộ FE thứ FE có đủ nguyên liệu để tự tính.
+33. **Tưởng mọi lần giao hàng (DO) trong thẻ kho đều trace được về đúng mã DO.** Chỉ đúng cho phiếu
+    xuất SALES post **sau** migration `0159` (27/08/2026) — `inventory_issues.outbound_order_id`
+    không backfill dữ liệu cũ (một `order_item` có thể được giao bởi nhiều DO nên map ngược không
+    đơn trị). Dòng thẻ kho của các lần giao trước đó vẫn hiện đúng mã PXK, chỉ riêng `outboundOrder`
+    trả `null`.
 
 ## Related docs
 

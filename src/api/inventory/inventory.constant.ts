@@ -1,7 +1,8 @@
 /**
- * Trạng thái tồn kho — tính lúc đọc (`InventoryService.getInventory`), không lưu cột nào nên không
- * cần `pgEnum`. Công thức áp dụng cho mọi loại item (FG/WIP/RM) như nhau, không riêng vật tư — dù
- * `GET /inventory` mặc định chỉ trả FG/RM (`docs/decisions/wip-not-stocked.md`).
+ * Trạng thái tồn kho — chỉ dùng để lọc (`stockStatusCondition`, tham số `status` của
+ * `GET /inventory-products`/`GET /inventory-materials`), không trả trên response: FE tự suy từ
+ * `available`/`minStock` để hiển thị. Không lưu cột nào nên không cần `pgEnum`. Công thức áp dụng
+ * cho mọi loại item (FG/WIP/RM) như nhau, không riêng vật tư.
  *
  * Rules:
  * - `SHORTAGE`: `available < 0`.
