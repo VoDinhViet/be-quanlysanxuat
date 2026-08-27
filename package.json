@@ -40,6 +40,7 @@
     "db:seed:document-sequences-bootstrap": "ts-node src/database/seeds/document-sequences-bootstrap.seed.ts",
     "db:migrate": "drizzle-kit migrate",
     "db:check-drift": "ts-node src/database/check-migration-drift.ts",
+    "db:reset": "ts-node src/database/reset-data.ts",
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {

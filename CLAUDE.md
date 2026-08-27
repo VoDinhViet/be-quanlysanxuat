@@ -41,6 +41,7 @@ pnpm start:dev                    # dev server watch, cổng lấy từ .env POR
 pnpm db:generate                  # sinh migration từ thay đổi schema
 pnpm db:migrate                   # áp migration — không chạy vào DB dùng chung/prod khi chưa được duyệt
 pnpm db:studio
+pnpm db:reset                     # dry-run mặc định (in sẽ xoá gì); thêm --yes để xoá thật, chỉ giữ 1 admin + countries, chặn cứng khi NODE_ENV=production
 
 pnpm db:seed:<name>                # xem package.json cho danh sách đầy đủ
 ```
