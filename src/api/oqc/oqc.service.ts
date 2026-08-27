@@ -7,7 +7,6 @@ import {
   eq,
   getTableColumns,
   gte,
-  inArray,
   isNull,
   lt,
   ne,
@@ -58,9 +57,9 @@ import { GetOqcsReqDto } from './dto/get-oqcs.req.dto';
 import { OqcResDto } from './dto/oqc.res.dto';
 import { PageOqcResDto } from './dto/page-oqc.res.dto';
 import {
+  closeJobIfQcCovered,
   getInspectedQuantityByBomItemId,
   getInspectedQuantityByOperationId,
-  getJobQcCoverage,
 } from './oqc.query';
 
 @Injectable()
@@ -471,30 +470,11 @@ export class OqcService {
       await this.linkOqcEvidence(tx, attempt.id, reqDto, decision.result);
 
       // Job đứng yên ở `WAITING_QC` cho tới khi QC xử lý xong hết (không chỉ lần confirm này) —
-      // `getJobQcCoverage` đếm lại toàn bộ dòng QC của Job, `open = 0` mới coi là xong hẳn. Ghi
-      // thẳng bằng drizzle, không qua `ProductionJobsService` — tránh vòng import
+      // `closeJobIfQcCovered` đếm lại toàn bộ dòng QC của Job (IQC lẫn OQC), mở khoá khi hết dở
+      // dang. Ghi thẳng bằng drizzle, không qua `ProductionJobsService` — tránh vòng import
       // (`production-jobs` đã import `oqc`). Xem `docs/decisions/production-lifecycle-closing.md`.
       if (status === OqcStatus.COMPLETED && lockedOqcRequest.productionJobId) {
-        const coverage = await getJobQcCoverage(
-          tx,
-          lockedOqcRequest.productionJobId,
-        );
-        if (coverage.total > 0 && coverage.open === 0) {
-          await tx
-            .update(productionJobs)
-            .set({ status: ProductionJobStatus.WAITING_DELIVERY })
-            .where(
-              and(
-                eq(productionJobs.id, lockedOqcRequest.productionJobId),
-                // Job cũ (trước bản vá `createOqcForJob`) có thể còn đứng ở `IN_PROGRESS` — cùng
-                // lý do chấp nhận cả hai giá trị ở `createOqcForJob` phía trên.
-                inArray(productionJobs.status, [
-                  ProductionJobStatus.IN_PROGRESS,
-                  ProductionJobStatus.WAITING_QC,
-                ]),
-              ),
-            );
-        }
+        await closeJobIfQcCovered(tx, lockedOqcRequest.productionJobId);
       }
     });
   }

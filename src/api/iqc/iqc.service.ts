@@ -42,6 +42,7 @@ import { PageIqcResDto } from './dto/page-iqc.res.dto';
 import { UpdateIqcReqDto } from './dto/update-iqc.req.dto';
 import { resolveAqlPlan } from './iqc-aql.query';
 import { linkQcFiles } from './iqc.write';
+import { closeJobIfQcCovered } from '../oqc/oqc.query';
 
 // `supplierId` có thể null từ BUG-065 (dòng INCOMING sinh từ phiếu RETURN gắn khách hàng dùng
 // `clientId` thay thế, loại trừ lẫn nhau — `chk_qc_requests_supplier_client_exclusive`). `confirmIqc`
@@ -57,6 +58,7 @@ type IqcSavableRequest = Pick<
   | 'purchaseOrderId'
   | 'supplierId'
   | 'itemId'
+  | 'productionJobId'
 >;
 
 @Injectable()
@@ -611,6 +613,13 @@ export class IqcService {
         })
         .where(eq(qcRequests.id, iqcId));
 
+      // Công đoạn `OUTSOURCE` neo IQC vào `productionJobId` (`getJobQcCoverage` gộp chung IQC/OQC,
+      // `docs/decisions/qc-single-table.md`) — dòng IQC này có thể là dòng QC cuối cùng đóng Job,
+      // không chỉ OQC mới làm được việc đó. Xem `docs/decisions/production-lifecycle-closing.md`.
+      if (status === IqcStatus.COMPLETED && request.productionJobId) {
+        await closeJobIfQcCovered(tx, request.productionJobId);
+      }
+
       await linkQcFiles(
         tx,
         attempt.id,
@@ -735,6 +744,7 @@ export class IqcService {
         purchaseOrderId: true,
         supplierId: true,
         itemId: true,
+        productionJobId: true,
       },
       where: and(
         eq(qcRequests.kind, QcKind.INCOMING),

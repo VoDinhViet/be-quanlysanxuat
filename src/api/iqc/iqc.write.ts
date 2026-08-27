@@ -11,6 +11,7 @@ import {
   qcRequests,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
+import { closeJobIfQcCovered } from '../oqc/oqc.query';
 
 /** Hoàn tất phiếu IQC sau khi phiếu trả NCC liên kết được `post` — gọi bởi
  *  `SupplierReturnsService.postSupplierReturn`, trong CÙNG transaction với việc trừ tồn. Plain
@@ -26,7 +27,7 @@ export async function completeIqcAfterSupplierReturn(
   iqcId: string,
 ): Promise<void> {
   const request = await tx.query.qcRequests.findFirst({
-    columns: { status: true },
+    columns: { status: true, productionJobId: true },
     where: and(eq(qcRequests.kind, QcKind.INCOMING), eq(qcRequests.id, iqcId)),
   });
 
@@ -42,6 +43,12 @@ export async function completeIqcAfterSupplierReturn(
     .update(qcRequests)
     .set({ status: IqcStatus.COMPLETED })
     .where(eq(qcRequests.id, iqcId));
+
+  // Cùng lý do ở `IqcService.confirmIqc` — dòng IQC neo vào công đoạn `OUTSOURCE` có thể là dòng QC
+  // cuối cùng đóng Job, dù được hoàn tất qua đường phiếu trả NCC chứ không phải `confirm` trực tiếp.
+  if (request.productionJobId) {
+    await closeJobIfQcCovered(tx, request.productionJobId);
+  }
 }
 
 /** Gắn bằng chứng cho MỘT attempt vừa tạo — attempt append-only nên đây luôn là insert vào một

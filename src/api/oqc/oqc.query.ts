@@ -1,10 +1,12 @@
-import { and, eq, isNull, ne, or, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, ne, or, sql } from 'drizzle-orm';
 
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
   OqcDisposition,
   productionJobBomItems,
   productionJobOperations,
+  productionJobs,
+  ProductionJobStatus,
   QcKind,
   qcRequests,
 } from '../../database/schemas';
@@ -144,4 +146,31 @@ export async function getJobQcCoverage(
     finalCompleted: row?.finalCompleted ?? 0,
     hasFinalAssembly: row?.hasFinalAssembly ?? false,
   };
+}
+
+/** Mở khoá Job sang `WAITING_DELIVERY` khi mọi dòng QC (IQC lẫn OQC, `getJobQcCoverage` gộp chung
+ * theo `qc-single-table.md`) đã xong — gọi từ **mọi** nơi có thể đưa một dòng `qc_requests` về
+ * `COMPLETED`: `OqcService.confirmOqc`, `IqcService.confirmIqc`, `completeIqcAfterSupplierReturn`.
+ * Job có công đoạn `OUTSOURCE` mà dòng QC cuối cùng hoàn tất lại là IQC (không phải OQC) vẫn phải mở
+ * khoá đúng lúc đó — thiếu chỗ nào gọi hàm này thì Job kẹt vĩnh viễn ở `WAITING_QC` (BUG-047). */
+export async function closeJobIfQcCovered(
+  tx: DbTransaction,
+  productionJobId: string,
+): Promise<void> {
+  const coverage = await getJobQcCoverage(tx, productionJobId);
+
+  if (coverage.total > 0 && coverage.open === 0) {
+    await tx
+      .update(productionJobs)
+      .set({ status: ProductionJobStatus.WAITING_DELIVERY })
+      .where(
+        and(
+          eq(productionJobs.id, productionJobId),
+          inArray(productionJobs.status, [
+            ProductionJobStatus.IN_PROGRESS,
+            ProductionJobStatus.WAITING_QC,
+          ]),
+        ),
+      );
+  }
 }

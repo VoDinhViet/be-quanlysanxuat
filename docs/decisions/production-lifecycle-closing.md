@@ -44,14 +44,19 @@ DO:   DRAFT → PENDING_DELIVERY → DELIVERED (OutboundOrdersService.postOutbou
   (FG) **không còn công đoạn nào dở** — đếm lại cả node sau mỗi lần ghi, không suy từ một công đoạn
   vừa báo (node Cấp 0 có thể nhiều bước, BUG-079 sửa 2026-08-25). `E210` đã đảm bảo mọi công đoạn
   khác (ngoài Cấp 0) xong trước đó rồi.
-- `WAITING_QC → WAITING_DELIVERY`: `OqcService.confirmOqc`, khi `getJobQcCoverage` báo `open = 0`
-  sau lần confirm — tái dùng đúng gate đã có (`E196`/`E205`), không dựng cơ chế mới.
+- `WAITING_QC → WAITING_DELIVERY`: `closeJobIfQcCovered` (`src/api/oqc/oqc.query.ts`), khi
+  `getJobQcCoverage` báo `open = 0` — tái dùng đúng gate đã có (`E196`/`E205`), không dựng cơ chế
+  mới. `getJobQcCoverage` gộp chung IQC/OQC (`docs/decisions/qc-single-table.md`), nên hàm này được
+  gọi từ **ba** nơi có thể đưa dòng QC cuối cùng của Job về `COMPLETED`: `OqcService.confirmOqc`,
+  `IqcService.confirmIqc`, và `completeIqcAfterSupplierReturn` — Job có công đoạn `OUTSOURCE` đóng
+  bằng IQC (không phải OQC), thiếu một trong ba chỗ gọi thì Job kẹt vĩnh viễn ở `WAITING_QC`
+  (BUG-047, phát hiện 2026-08-27).
 - `WAITING_DELIVERY → COMPLETED`: `InventoryReceiptsService.postInventoryReceipt`
   (`receiptType = PRODUCTION`), khi tổng SL đã nhập kho (`getConfirmedProductionQuantityByJobId`)
   đạt `job.quantity` — đúng ngưỡng gate `E197` đã chặn từ trước, giờ dùng luôn để đóng Job.
 - Cascade LSX: Job cuối cùng của LSX đạt `COMPLETED` → LSX tự đóng `COMPLETED`, ghi 1 dòng
   `production_order_logs` (`action = COMPLETED`).
-- Ghi thẳng bằng drizzle ở cả 2 module ngoài (`oqc`, `inventory-receipts`) — không gọi qua
+- Ghi thẳng bằng drizzle ở cả 3 module ngoài (`oqc`, `iqc`, `inventory-receipts`) — không gọi qua
   `ProductionJobsService`/`ProductionOrdersService` để tránh vòng import
   (`production-jobs`/`production-orders` đã import `oqc`/không import các module kia theo chiều
   ngược lại).
