@@ -5,8 +5,8 @@ công ngoài, tới lúc nhận hàng về, và (tuỳ chọn) kiểm chất lư
 lý hàng nhập mua. Mô hình `outsourcing_orders`/`outsourcing_order_items`/`outsourcing_receipts`/
 `outsourcing_receipt_items` ở `docs/domains/inventory.md`, mô hình `production_job_operations`
 (anchor) + cột `plannedQuantity` ở `docs/domains/production.md`, mô hình QC (bảng gộp
-`qc_requests`, `kind = INCOMING` cho IQC, `docs/decisions/qc-single-table.md`) ở
-`docs/domains/quality.md`; đây là trình tự đầy đủ nối ba domain đó.
+`qc_requests`, `kind = INCOMING` cho IQC, `docs/decisions/qc-data-model.md`) ở
+`docs/domains/quality-iqc.md`; đây là trình tự đầy đủ nối ba domain đó.
 
 Cả hai chứng từ là **header + nhiều dòng** (khác thiết kế lần đầu — bảng phẳng 1 phiếu = 1 dòng vật
 tư, xem lịch sử ở `docs/domains/inventory.md` Common mistakes #19). Một OS-OUT gom nhiều part/công
@@ -89,7 +89,7 @@ trở đi.
    `qc_requests` (`kind = INCOMING`, `NOT_INSPECTED`, 1/dòng phiếu OS-IN), kèm neo
    `outsourcingReceiptItemId`/`productionJobId`/`productionJobOperationId` suy thẳng từ dòng OS-OUT
    nguồn (không phải join mờ theo `(outsourcingReceiptId, itemId)` như thiết kế cũ,
-   `docs/decisions/qc-single-table.md`), **không** gate transaction này (hàng đã về nhà máy vật lý
+   `docs/decisions/qc-data-model.md`), **không** gate transaction này (hàng đã về nhà máy vật lý
    ngay khi lập phiếu, không phải ghi tồn — gia công ngoài không gọi `InventoryPostingService`,
    `docs/decisions/wip-not-stocked.md`).
 
@@ -101,7 +101,7 @@ trở đi.
    `supplier_returns` (`DRAFT`, `outsourcingReceiptId` trỏ về header OS-IN — **không** trỏ dòng cụ
    thể, `iqcId` mới là chỗ trace về đúng dòng) — nhưng `outsourcing_receipts` không còn cột
    `warehouseId` (`docs/decisions/wip-not-stocked.md`), nên dòng IQC xuất phát từ OS-IN **luôn**
-   rơi vào `E163` ở bước suy kho trả (`resolveReturnWarehouseId`, xem `docs/domains/quality.md`) —
+   rơi vào `E163` ở bước suy kho trả (`resolveReturnWarehouseId`, xem `docs/domains/quality-iqc.md`) —
    chấp nhận là hạn chế đã biết cho tới khi có điểm nhập kho khác cho nhánh này.
 6. `postSupplierReturn` — đúng khuôn `docs/workflows/supplier-return.md`, nhưng
    **`shouldPostStock` luôn `false`** ở nhánh này: hàng OS-IN chưa từng vào `inventory_balances`
@@ -172,20 +172,18 @@ hơn OS-OUT một chút (thêm bước sinh IQC khi `requiresIqc = true`).
 - Vì sao IQC trên OS-IN không gate `create` (khác phiếu nhập mua), và vì sao `shouldPostStock` luôn
   `false` cho nhánh này → `docs/domains/inventory.md`, "Gia công ngoài" ở Cross-domain dependencies.
 - Quy tắc suy `status`/`disposition` của một dòng IQC, không đổi gì cho nguồn OS-IN →
-  `docs/domains/quality.md`.
+  `docs/domains/quality-iqc.md`.
 - Vì sao không còn bước nháp, route nào bị bỏ, và điều gì không nên hoàn lại →
   `docs/decisions/outsourcing-no-draft.md`.
 - Vì sao gia công ngoài không đụng `inventory_balances`/`inventory_transactions` →
   `docs/decisions/wip-not-stocked.md`.
-- **Chưa có** gating/block tiến độ Job hay công đoạn kế tiếp theo trạng thái OS-OUT/OS-IN — để đợt
-  sau, xem `docs/domains/production.md`.
-- **Chưa có** xuất Excel, in PDF/QR, hay endpoint dữ liệu in phiếu — chỉ có `GET` list/detail trả
-  JSON đầy đủ cột; in phiếu (nếu làm) là việc của đợt sau.
+- Giới hạn phạm vi (chưa gate tiến độ Job theo OS-OUT/OS-IN, chưa có xuất Excel/in phiếu) →
+  `docs/domains/production.md`.
 
 ## Related domains
 
 `inventory` (chủ cả hai chứng từ) ↔ `production` (đọc-một-chiều, anchor, cả `production_job_operations`
-lẫn cột `plannedQuantity`) ↔ `quality` (tuỳ chọn, tự sinh N dòng khi `requiresIqc`). Không đụng
+lẫn cột `plannedQuantity`) ↔ `quality-iqc` (tuỳ chọn, tự sinh N dòng khi `requiresIqc`). Không đụng
 `purchasing`/`suppliers` ngoài việc `outsourcing_orders.supplierId`/`outsourcing_receipts.supplierId`
 trỏ `suppliers` (thuần FK, không validate nhóm).
 

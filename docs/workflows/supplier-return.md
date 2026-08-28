@@ -1,10 +1,10 @@
 # Trả hàng NCC từ IQC FAIL đến hoàn tất
 
-Chặng nối `quality` → `inventory`: từ lúc QC chọn phương án xử lý một dòng IQC FAIL, tới lúc kho
+Chặng nối `quality-iqc` → `inventory`: từ lúc QC chọn phương án xử lý một dòng IQC FAIL, tới lúc kho
 xác nhận đã thật sự xuất hàng trả nhà cung cấp, và IQC gốc được hoàn tất. Mô hình QC (bảng gộp
-`qc_requests`, `kind = INCOMING` cho IQC, `docs/decisions/qc-single-table.md`) ở
-`docs/domains/quality.md`, mô hình `supplier_returns`/bù trừ tồn ở `docs/domains/inventory.md`; đây
-là trình tự đầy đủ nối hai domain đó.
+`qc_requests`, `kind = INCOMING` cho IQC, `docs/decisions/qc-data-model.md`) ở
+`docs/domains/quality-iqc.md`, mô hình `supplier_returns`/bù trừ tồn ở `docs/domains/inventory.md`;
+đây là trình tự đầy đủ nối hai domain đó.
 
 ## Trigger
 
@@ -25,7 +25,7 @@ là bên xác nhận vật lý, khác vai trò với QC.
 | --- | --- | --- |
 | Dòng IQC tồn tại, đang lưu được | `E138`/`E159` (đã kiểm ở đầu `confirm`) | — |
 | Suy được kho trả (`receipt.warehouseId ?? purchaseOrder.receiptWarehouseId`) | `E163` | — |
-| `disposition = SORT` phải có `sortOkQty`/`sortNgQty` hợp lệ | `E160`/`E161`/`E162` (đã kiểm ở `validateDecision`, xem `docs/domains/quality.md`) | — |
+| `disposition = SORT` phải có `sortOkQty`/`sortNgQty` hợp lệ | `E160`/`E161`/`E162` (đã kiểm ở `validateDecision`, xem `docs/domains/quality-iqc.md`) | — |
 | Phiếu trả tồn tại | — | `E137` |
 | Đúng trạng thái nguồn (`DRAFT`) | — | `E098` |
 | Dòng IQC liên kết đang `WAITING_RETURN` | — | `E164` |
@@ -44,9 +44,9 @@ là bên xác nhận vật lý, khác vai trò với QC.
 2. Trong transaction, sau khi khoá `qc_requests` (`FOR UPDATE`), insert 1 dòng `qc_inspections`
    (attempt — khoá `WAITING_RETURN` trên mirror `qc_requests`) và insert (không phải replace) 2 bộ
    file đính kèm cho attempt đó, gọi `SupplierReturnsService.createFromIqcDisposition(tx, {...})`:
-   sinh mã `PTNCC-{năm}-{đếm trong năm + 1, pad 5}` (đọc trong `tx`, vẫn đếm-rồi-cộng trên chính
-   bảng — xem "Transaction boundary"), insert một dòng `status = DRAFT`, `iqcId` = request vừa khoá,
-   `qcInspectionId` = attempt vừa insert (`docs/decisions/qc-request-attempt-split.md`).
+   sinh mã `PTNCC-{năm}-{5}` qua `document_sequences` (atomic, trong `tx`), insert một dòng
+   `status = DRAFT`, `iqcId` = request vừa khoá, `qcInspectionId` = attempt vừa insert
+   (`docs/decisions/qc-data-model.md`).
 3. Vì `WAITING_RETURN` khoá mọi lần `confirm` sau đó (`E159`), đây là lần **duy nhất** dòng IQC này
    chuyển sang trạng thái đó — không cần guard chống tạo phiếu trả trùng.
 
@@ -106,10 +106,9 @@ trực tiếp (import function, không qua service/DI) từ `postSupplierReturn`
 việc trừ tồn, đảm bảo "đã trừ tồn (hoặc quyết định không trừ) + IQC hoàn tất" là một đơn vị nguyên
 tử.
 
-Sinh mã phiếu trả nằm **trong** transaction `confirm` nhưng **chưa** chuyển sang bảng đếm dùng chung
-`document_sequences` như phần lớn chứng từ khác (`docs/architecture.md`, mục "Bất biến xuyên
-module") — vẫn đếm-rồi-cộng, nên hai lượt `confirm` song song (hai dòng IQC khác nhau, cùng
-disposition SORT/RETURN) có thể trùng mã, unique constraint trên `code` là chốt chặn thật.
+Sinh mã phiếu trả nằm **trong** transaction `confirm`, cấp qua `document_sequences`
+(`docs/architecture.md`, mục "Bất biến xuyên module") — atomic, hai lượt `confirm` song song không
+thể ra cùng mã.
 
 ## Failure cases
 
@@ -127,7 +126,7 @@ cuối phòng gọi sai).
   bù trừ → `docs/domains/inventory.md`, mục Business rules ("`shouldPostStock` bỏ qua trừ tồn ở 2
   ca").
 - Quy tắc suy `status` của một dòng IQC, và vì sao `WAITING_RETURN` khoá `confirm` →
-  `docs/domains/quality.md`.
+  `docs/domains/quality-iqc.md`.
 - **Chưa có `cancel`** cho `supplier_returns` — huỷ một phiếu đã `POSTED` cần đường "un-complete"
   IQC (`COMPLETED → WAITING_RETURN`), trong khi phiếu nhập gốc rất có thể đã `post` dựa trên đó
   rồi; để đợt sau.
@@ -138,7 +137,7 @@ cuối phòng gọi sai).
 lại nhưng **không** qua service injection — xem "Transaction boundary". Không đụng `purchasing`
 ở luồng này ngoài việc trace `purchaseOrderId` (thuần copy từ dòng IQC, không validate lại).
 
-Bước trước: `POST /iqc/:iqcId/confirm` với disposition SORT/RETURN (xem `docs/domains/quality.md`).
+Bước trước: `POST /iqc/:iqcId/confirm` với disposition SORT/RETURN (xem `docs/domains/quality-iqc.md`).
 Bước sau: không có — phiếu trả `POSTED` là điểm cuối (chưa có `cancel`); dòng IQC `COMPLETED` mở
 khoá cho phiếu nhập gốc (nếu có) được `post` khi mọi IQC liên quan cũng `COMPLETED`
 (`docs/workflows/receipt-confirmation.md`).

@@ -5,15 +5,11 @@ tạo ra thứ bước sau cần khoá vào. Khái niệm BOM/routing ở `docs/
 
 ## Trigger
 
-Người dùng khai báo một item mới (FG, WIP, hoặc RM), hoặc tạo biến thể từ một FG/WIP đã có.
-
-| Bước | Route |
-| --- | --- |
-| Tạo item | `POST /items` |
-| Thêm node BOM (WIP hoặc RM) | `POST /items/:itemId/bom/items` |
-| Công đoạn Cấp 0 | `POST /items/:itemId/operations` |
-| Công đoạn của một node WIP | `POST /items/:itemId/bom/items/:bomItemId/operations` |
-| Nhân bản (chỉ FG/WIP) | `POST /items/:itemId/copy` |
+Người dùng khai báo một item mới (FG, WIP, hoặc RM), hoặc tạo biến thể từ một FG/WIP đã có. Thứ tự
+bắt buộc: tạo item (`POST /items`) → thêm node BOM (`POST /items/:itemId/bom/items`) → gắn công
+đoạn (Cấp 0 qua `POST /items/:itemId/operations`, hoặc của một node WIP qua
+`POST /items/:itemId/bom/items/:bomItemId/operations`) → nhân bản tuỳ chọn, chỉ FG/WIP
+(`POST /items/:itemId/copy`). Method/path đầy đủ: Swagger `/api-docs`.
 
 ## Actor
 
@@ -114,9 +110,10 @@ toàn; node anh em trùng nhau hợp lệ. Xem `docs/domains/product-structure.m
 ## Related domains
 
 `product-structure` là chủ; đọc `operations` (`docs/domains/partners.md`). Dữ liệu này chảy xuống
-`orders` (mỗi dòng đơn một `itemId`, chỉ FG) và `production` — nhưng **sản xuất hiện chỉ lấy
-`itemId` + số lượng, không đọc BOM và không đọc routing** ở tầng quyết định sản xuất (chỉ đọc lúc
-duyệt LSX, xem `docs/domains/production.md`).
+`orders` (mỗi dòng đơn một `itemId` — không có ràng buộc nào ép phải là FG, xem
+`docs/domains/product-structure.md`, Cross-domain dependencies) và `production` — nhưng **sản xuất
+hiện chỉ lấy `itemId` + số lượng, không đọc BOM và không đọc routing** ở tầng quyết định sản xuất
+(chỉ đọc lúc duyệt LSX, xem `docs/domains/production.md`).
 
 Code: `ItemsService.createItem`/`copyItem`, `BomsService` (cây, `boms.controller.ts`),
 `BomOperationsService` (công đoạn as-used của node, module riêng import `BomsModule`),

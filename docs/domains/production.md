@@ -2,397 +2,185 @@
 
 ## Purpose
 
-Bắc cầu giữa **đơn hàng đã duyệt** và **việc thật ở xưởng**: kiểm tồn thành phẩm, quyết định sản xuất bao nhiêu, rồi chốt thành các đầu việc cho xưởng theo dõi tiến độ.
+Bắc cầu giữa đơn hàng đã duyệt và việc thật ở xưởng: kiểm tồn thành phẩm, quyết định sản xuất bao
+nhiêu, rồi chốt thành đầu việc cho xưởng theo dõi tiến độ.
 
 ## Core concepts
 
-**Ba tầng, ba đơn vị đếm khác nhau** — đây là chỗ mô hình từng bị làm sai và đã sửa lại:
-
+**Ba tầng, ba đơn vị đếm:**
 ```
-1 đơn hàng đã duyệt   =  1 LSX          (production_orders — header)
-   └─ 1 dòng PO       =  1 dòng quyết định sản xuất  (production_order_items)
-        └─ 1 item FG  =  1 Job          (production_jobs)
+1 đơn hàng đã duyệt  =  1 LSX (production_orders)
+   └─ 1 dòng đơn      =  1 dòng quyết định SX (production_order_items, 1-1)
+        └─ 1 item FG  =  1 Job (production_jobs) — GỘP theo sản phẩm, không 1-1 với dòng đơn
 ```
 
-Tầng giữa giữ **1-1 với dòng đơn hàng** (vì phiếu xuất kho cần khoá theo đó). Tầng Job thì **gộp theo sản phẩm**: hai dòng đơn cùng đặt một sản phẩm sinh ra *một* Job duy nhất, vì Job là đơn vị công việc thực tế của xưởng — không phải đơn vị kế toán kho.
+**Job snapshot 3 thứ từ Product Structure lúc duyệt LSX, độc lập hoàn toàn với master data sống
+(denormalize `code`/`name`, FK gốc chỉ còn tham khảo `set null`):**
 
-**Job mang theo ba bản sao từ Product Structure lúc duyệt LSX — cây BOM, công đoạn, và vật tư — cả ba
-đều là snapshot text độc lập hoàn toàn với `items`/`units` sống, không chỉ độc lập ở mức FK:**
+| Bảng | Nguồn | Sửa sau khi sinh |
+| --- | --- | --- |
+| `production_job_bom_items` (cây BOM) | `bom_items`, id nhân bản mới | Không route nào sửa |
+| `production_job_operations` (công đoạn as-used) | `bom_operations` as-used | `completedQuantity`/`rejectedQuantity`/`completedDate` sửa qua `PATCH .../operations/:id`; phần còn lại đóng băng |
+| `production_job_issues` (vật tư, gộp theo `itemId` trên node RM) | `production_job_bom_items.plannedQuantity` (đã nổ cấp) | Không route đọc/ghi — nội bộ, chỉ dùng bởi `startJob`/`bomDemand`/`GET .../bom` |
 
-| | `production_job_bom_items` (cây BOM) | `production_job_operations` (công đoạn as-used) | `production_job_issues` (vật tư) |
-| --- | --- | --- | --- |
-| Nguồn | `bom_items` (cả node WIP lẫn lá RM), id nhân bản hoàn toàn mới | `bom_operations` as-used của từng node WIP (`bomItemId`), `productionJobBomItemId` remap qua id snapshot mới | `production_job_bom_items.plannedQuantity` (đã nổ cấp, xem cột đầu), gộp theo `itemId` chỉ trên node `itemType = RM` |
-| Vai trò | **Snapshot thuần, đóng băng vĩnh viễn** | **Snapshot cấu trúc đóng băng, tiến độ sửa được** | **Snapshot nội bộ — không có route đọc/ghi nào** |
-| Độc lập master data | `code`/`name` denormalize, `itemType` (`WIP`/`RM`) copy, `imageFileId` copy tham chiếu từ `items.imageFileId` lúc duyệt — `itemId` chỉ còn liên kết tham khảo (`set null`) | `code`/`name`/`type` (của công đoạn) denormalize — `operationId` chỉ còn liên kết tham khảo (`set null`) | Mã/tên vật tư + mã/tên ĐVT **không** nằm trên dòng này — hai FK `NOT NULL` `restrict` trỏ sang `production_job_items`/`production_job_units`, hai bảng chiều dùng chung theo bộ ba nội dung (xem dưới); `imageFileId` copy tham chiếu, ở lại dòng này; `itemId` chỉ còn liên kết tham khảo (`set null`) |
-| Sửa sau khi sinh | Không có route nào sửa | `completedQuantity`/`rejectedQuantity`/`completedDate` sửa qua `PATCH .../operations/:operationId` (ghi đè, chỉ chạy sau khi Job qua `approve-operations`, xem dưới) — phần còn lại (`code`/`name`/`type`/`sortOrder`/`note`/`operationId`) vẫn đóng băng | Không có route sửa — và cũng không có route **đọc**; chỉ còn là nguồn nội bộ |
-| Sửa/xoá `items`/`units`/`operations`/BOM gốc sau đó | Không ảnh hưởng Job đã duyệt | Không ảnh hưởng Job đã duyệt | Không ảnh hưởng Job đã duyệt |
+`production_job_items`/`production_job_units` là 2 bảng chiều (SCD) **dùng chung, không thuộc Job
+nào** — khoá bộ ba `(itemId/unitId, code, name)`, get-or-create lúc duyệt LSX, tuyệt đối không
+`UPDATE` (một dòng có thể đang dùng chung bởi nhiều Job). `production_job_issues` giữ 2 FK song
+song tới hai bảng này.
 
-**`production_job_items`/`production_job_units` là hai bảng chiều (dimension) dùng chung — không
-thuộc về một Job hay một LSX cụ thể nào**, khác ba bảng snapshot còn lại trong bảng trên (tất cả đều
-`productionJobId NOT NULL cascade`). Khoá định danh là **bộ ba nội dung** `(itemId, code, name)` /
-`(unitId, code, name)` — kiểu SCD type-2: master data không đổi thì mọi Job/LSX dùng chung **một**
-dòng (khử trùng lặp text); vật tư/ĐVT đổi mã/tên thì lần duyệt LSX sau sinh dòng **mới**, Job cũ vẫn
-trỏ dòng cũ (giữ nguyên nghĩa "đóng băng lúc duyệt"). Bất biến sau khi ghi, không `updatedAt`, không
-route sửa — một dòng có thể đang được nhiều Job dùng chung, `UPDATE` là viết lại lịch sử của tất cả.
-`production_job_issues` giữ hai FK **song song** tới hai bảng này — chúng không tham chiếu nhau, nên
-đổi tên vật tư và đổi tên ĐVT là hai sự kiện độc lập, mỗi cái chỉ sinh dòng mới ở đúng một bên.
+**Node Cấp 0** — mỗi Job có thêm đúng 1 node `itemType='FG'` (nếu FG có khai routing Cấp 0,
+`copyFinalAssemblyRouting`, cùng transaction duyệt LSX; bỏ qua nếu không) — `parentId=null`,
+`level=0`, `plannedQuantity=job.quantity`, công đoạn snapshot y hệt node WIP. Tối đa 1 node/Job
+(`uq_production_job_bom_items_final_assembly`). Bước Lắp ráp của nó khoá cứng (`E210`) cho tới khi
+**mọi công đoạn khác của Job** đã `completedDate` — neo QC thành phẩm cuối, xem
+`docs/decisions/oqc-per-operation.md`.
 
-`GET /production-jobs/:jobId/bom` trả về **nhu cầu vật tư của Job** (phân trang, `q` lọc mã/tên vật
-tư) — đọc `production_job_issues` join hai bảng chiều trên, không đụng cây BOM. Mỗi dòng là một vật
-tư đã gộp sẵn: `item` (`{code, name}`, từ `production_job_items`), `unit` (`{code, name}`, từ
-`production_job_units`), `requiredQty` (định mức đã **nổ cấp** × SL Job, tính sẵn lúc duyệt LSX —
-nhân luỹ kế `quantity` qua toàn bộ chuỗi node cha, xem "Chuẩn nổ cấp BOM",
-`docs/domains/product-structure.md`), và **"Theo dõi đã lãnh"**: `issuedQuantity` (Σ SL lãnh mọi
-phiếu lãnh vật tư `ISSUED` cùng `(productionJobId, itemId)`) + `remainingQuantity = max(requiredQty
-− issuedQuantity, 0)` — đọc qua hàm thuần từ `src/api/inventory-requisitions/inventory-requisitions.query.ts`
-(Inventory sở hữu số liệu, Production chỉ import hàm đọc, đúng tiền lệ `inventory-issues` import
-`iqc.query.ts`), xem `docs/domains/inventory.md`, `docs/workflows/inventory-requisition.md`.
-`item`/`unit` lồng chứ không phẳng — `code`/`name` trùng tên giữa hai bảng chiều. Vật tư nào chưa có
-dòng ở đây (Job tạo trước khi bảng này tồn tại) thì **không xuất hiện** trong danh sách, không phải
-lỗi. Vẫn chưa trả "Dùng cho Part" (vị trí trong cây của mỗi vật tư), để mở rộng sau nếu cần.
+**Duyệt công đoạn** (`POST /production-jobs/:jobId/approve-operations`, `production:approve`) —
+điều kiện tiên quyết bắt buộc trước khi `PATCH .../operations/:id` mở (`E250` nếu chưa duyệt, `E251`
+nếu duyệt lại). Không khoá gì thêm về cấu trúc (vốn đã bất biến từ lúc duyệt LSX).
 
-Cây cha-con của Job (`parentId`, `level`, `quantity` từng node) **không được trả ra qua `/bom`** —
-snapshot vẫn nằm nguyên trong DB, chỉ là không có API đọc trực tiếp cây đó.
-`GET /production-jobs/:jobId/operations` đọc **mọi** công đoạn as-used (cả `INHOUSE` lẫn
-`OUTSOURCE`, cộng công đoạn của node Cấp 0 — xem dưới), **nhóm theo BOM item** chứa nó — mỗi phần
-tử là `{id, code, name, itemType, operations: [...]}`, dùng quan hệ `productionJobBomItems.operations`
-có sẵn (`with`, không phải `.select()`/join thủ công). Chỉ BOM item **có** công đoạn as-used mới
-xuất hiện (RM lá và WIP không routing không có `production_job_operations` nên bị lọc ra sau khi
-fetch). Cũng là nguồn duy nhất để FE lấy `operationId` cho `PATCH .../operations/:operationId`. Mỗi
-công đoạn kèm `plannedQuantity` — đọc thẳng cột `production_job_bom_items.planned_quantity`, tính
-**một lần** lúc duyệt LSX (nhân luỹ kế định mức từ gốc xuống × SL Job, `copyBomTree`; node Cấp 0
-dùng thẳng `plannedQuantity = job.quantity`) rồi đóng băng, không tính lại lúc đọc. Cùng một node
-BOM thì mọi công đoạn của nó có cùng số, vì đây là SL kế hoạch của **node**, không phải của riêng
-từng bước; cũng là trần mà `PATCH` đối chiếu (`E256`, chỉ riêng SL đạt), và
-`updateProductionJobOperation`/`getOutsourceableOperations`/`oqc` đọc chung đúng cột này. Bản đơn
-giản hoá có chủ đích — vẫn chưa trả ảnh part hay số đã gửi/nhận gia công ngoài.
+**Hai đường ghi cùng chạm `production_job_operations`, có thể lệch nhau:**
+- `PATCH .../operations/:id` (quản lý điều chỉnh) — ghi đè cả `completedQuantity`/`rejectedQuantity`,
+  `completedDate` set server-side (`new Date()` khi `completedQuantity ≥ plannedQuantity`, về `null`
+  nếu sửa xuống dưới).
+- `POST /production-execution/operations/:jobOperationId/reports` (xưởng báo cáo) — **cộng dồn**
+  (không ghi đè), `completedDate` do người báo **tự chọn**; ghi thêm 1 dòng
+  `production_job_operation_reports` (+ ảnh) mỗi lần, không chặn báo cáo rỗng. Qua cùng gate
+  (`E087`/`E250`/`E091`/`E210`/`E256`, thứ tự kiểm).
+Cả hai chỉ trần riêng `completedQuantity ≤ plannedQuantity` (`E256`) — `rejectedQuantity` không giới
+hạn, cho phép báo bù (làm lại phần hỏng) tới khi SL đạt chạm đủ. Trần cũ (`E252`, gộp cả hai số) đã
+bỏ vì làm công đoạn kẹt vĩnh viễn khi NG chiếm hết chỗ trước khi SL đạt kịp đủ — không khôi phục.
+`SUM(reports)` có thể lệch cột chính thức sau khi `PATCH` ghi đè — cột trên
+`production_job_operations` luôn là số chính thức, bảng report chỉ là nhật ký.
 
-**Node Cấp 0 — công đoạn của chính FG có snapshot, khác mô tả cũ.** `production_job_bom_items` nhận
-thêm **đúng một** node `itemType = 'FG'` mỗi Job (`ProductionJobsService.copyFinalAssemblyRouting`,
-gọi ngay sau `copyBomTree` trong cùng transaction duyệt LSX), chỉ khi item FG có khai routing Cấp 0
-(`routings`/`routing_operations` của chính `job.itemId`) — bỏ qua, không tạo node rỗng, nếu không.
-Node này `parentId = null`, `level = 0` (ngoài quy ước 1-based của cây con — cố ý), `sortOrder` lớn
-nhất Job (đứng cuối danh sách trả về), `quantity = 1`, `plannedQuantity = job.quantity`; công đoạn
-của nó snapshot y hệt cách snapshot node WIP thường, không nhánh code riêng. Một Job nhiều nhất một
-node như vậy (`uq_production_job_bom_items_final_assembly`, partial unique index). Bước Lắp ráp
-(công đoạn duy nhất/đầu tiên của node này, thường vậy) chỉ mở khi **mọi** công đoạn khác của Job đã
-báo `completedDate` khác null — `PATCH .../operations/:operationId` chặn `E210` nếu chưa, trước cả
-khi kiểm `E256`. Node Cấp 0 là neo để OQC kiểm chất lượng thành phẩm cuối cùng — xem
-`docs/decisions/oqc-per-operation.md` mục "QC cho Cấp 0", `docs/domains/quality.md`.
+`GET /production-jobs/:jobId/bom` trả **bảng vật tư phẳng** (không phải cây), mỗi dòng kèm
+`requiredQty` (đã nổ cấp) + `issuedQuantity`/`remainingQuantity` (đọc hàm thuần từ
+`inventory-requisitions.query.ts`, xem `docs/domains/inventory.md`). `GET .../operations` đọc mọi
+công đoạn as-used (kể cả `OUTSOURCE` + Cấp 0), nhóm theo BOM item, kèm `plannedQuantity` đóng băng.
+Cây cha-con snapshot **không có route đọc trực tiếp**.
 
-**Duyệt công đoạn (`operationsApprovedBy`/`operationsApprovedAt` trên `production_jobs`, thêm
-2026-08-25) khoá cấu trúc công đoạn của cả Job một lần, trước khi cho báo tiến độ.**
-`POST /production-jobs/:jobId/approve-operations` (Giám đốc hoặc Quản lý sản xuất, `production:approve`
-— cùng quyền dùng để duyệt LSX) chỉ chạy khi Job đang `IN_PROGRESS` và chưa duyệt (`E251` nếu gọi lại
-lần hai). Trước khi Job được duyệt, `PATCH .../operations/:operationId` bị chặn cứng (`E250`) — không
-có cách nào báo tiến độ một công đoạn nào của Job đó, kể cả công đoạn Cấp 0. Về mặt cấu trúc thì
-`production_job_bom_items`/`production_job_operations` vốn đã bất biến từ lúc duyệt LSX (không có
-route sửa nào, xem Invariants) — nút duyệt này không mở khoá gì thêm, chỉ là điều kiện tiên quyết bắt
-buộc trước khi cho nhập `completedQuantity`/`rejectedQuantity` lần đầu.
-
-`completedQuantity`/`rejectedQuantity`/`completedDate` sửa theo **từng công đoạn**
-(`PATCH .../operations/:operationId`, không phải theo node): cùng một part có thể công đoạn này đã
-xong trong khi công đoạn khác chưa. `rejectedQuantity` (thêm 2026-08-25) là SL không đạt (NG) của
-đúng công đoạn đó — `completedQuantity` vẫn giữ nguyên nghĩa cũ là SL **đạt**; server chỉ chặn riêng
-`completedQuantity > plannedQuantity` (`E256`, thay `E252` nghỉ hưu 2026-08-27) — **`rejectedQuantity`
-không bị giới hạn theo `plannedQuantity`**, cho phép báo bù thêm (làm lại phần hỏng) tới khi SL đạt
-chạm đủ kế hoạch. Trần cũ (`E252`, gộp cả hai số) làm công đoạn **kẹt vĩnh viễn** khi NG chiếm hết
-chỗ trước khi SL đạt kịp chạm đủ — không còn cách hợp lệ nào báo thêm để đạt `completedDate`, kéo
-theo cả Job kẹt qua gate `E210` (BUG-035, phát hiện 2026-08-27). Chỉ số đạt (`completedQuantity`)
-được tính là "đã xong" để mở công đoạn/bước Lắp ráp kế tiếp (`completedDate`) — số NG không chuyển
-tiếp. Xem `docs/workflows/production-job-execution.md`.
-
-**Hai đường ghi cùng chạm `production_job_operations` — module `production-execution` (thêm
-2026-08-26).** `PATCH .../operations/:operationId` (trên) là đường **điều chỉnh** của quản lý: ghi
-đè cả hai số, `completedDate` server tự set/xoá theo `new Date()`. `POST
-/production-execution/operations/:jobOperationId/reports` là đường **báo cáo** của xưởng — mỗi lần
-"Lưu báo cáo" (SL đạt cộng thêm, SL NG cộng thêm optional, ngày hoàn thành do người báo chọn, ghi
-chú, 0..N ảnh) thêm một dòng `production_job_operation_reports` (+ dòng `..._report_files` cho ảnh)
-**và cộng dồn** (không ghi đè) vào `completedQuantity`/`rejectedQuantity` cùng công đoạn, trong cùng
-transaction — qua đúng các gate đã liệt kê ở trên (`E087`/`E250`/`E210`/`E256`); không chặn báo cáo
-"rỗng" — gửi `completedQuantityDelta = 0` kèm chỉ ghi chú/ảnh là hợp lệ. Vì có hai đường ghi,
-`SUM(production_job_operation_reports)` của một công đoạn **có thể lệch**
-`production_job_operations.completedQuantity`/`rejectedQuantity` sau khi quản lý dùng `PATCH` điều
-chỉnh — cột trên `production_job_operations` luôn là con số chính thức, bảng report chỉ là nhật ký
-truy vết ai báo gì lúc nào, không phải nguồn tính lại. `GET
-/production-execution/operations`/`.../jobs` phục vụ 2 bước đầu màn "Thực hiện sản xuất" (chọn công
-đoạn → công việc của công đoạn); bước 3 (Part của Job) đọc lại `GET
-/production-jobs/:jobId/operations` có sẵn, lọc phía FE theo `operationId` — không có route riêng.
-`GET operations` không gộp gì theo `type` — mỗi thẻ là một dòng thật của `operations` (master data),
-`operationId` dùng xuyên suốt cả hai route đọc.
-
-Job tạo trước khi các bảng này tồn tại (chưa migrate) trả về rỗng — không phải lỗi, giống
-cách BOM chưa có node trả mảng rỗng.
-
-**"Đề xuất SX" được tính một lần, tại thời điểm duyệt đơn, rồi đóng băng.** Công thức:
-
+**"Đề xuất SX" tính một lần lúc duyệt đơn, đóng băng:**
 ```
-Khả dụng   = onHand − reserved (LOẠI TRỪ chính đơn đang xét)
-Đề xuất SX = Khả dụng >= 0 ? max(0, SL đặt − Khả dụng) : SL đặt
+Khả dụng   = onHand − reserved (loại trừ chính đơn đang xét, qua excludeOrderId)
+Đề xuất SX = Khả dụng ≥ 0 ? max(0, SL đặt − Khả dụng) : SL đặt
 Lấy từ tồn = max(0, SL đặt − Đề xuất SX)
 ```
-
-Chỗ tinh tế: phải **loại trừ chính đơn đang xét** khỏi `reserved`. Đơn đã duyệt nên nó đã tự giữ chỗ rồi — dùng thẳng `available` của màn Kho sẽ trừ nhu cầu của nó hai lần.
-
-`reserved` ở công thức này đến từ `InventoryService.getStockLevels` — nguồn là **nhu cầu đơn hàng
-mở** (`order_items` của đơn đã duyệt, chưa giao), khác `reserved` hiển thị trên màn Kho
-(`GET /inventory`, đã có chứng từ giữ — DO/phiếu lãnh) kể từ đợt sửa BUG-031/032. Hai định nghĩa
-tách biệt cố ý — `getStockLevels` không đổi để không ảnh hưởng công thức Đề xuất SX, xem
-`docs/domains/inventory.md`, mục Common mistakes.
-
-**Đọc lại chi tiết LSX là snapshot, không tính lại.** Số liệu tồn kho trong LSX là ảnh chụp lúc duyệt (hoặc lúc sửa số lượng gần nhất) — có thể đã lệch thực tế. Đây là lựa chọn có chủ đích, không phải thiếu sót.
+`reserved` ở đây là `getStockLevels` (nhu cầu đơn hàng mở) — **khác** `reserved` của
+`GET /inventory-products` (đã có chứng từ giữ), 2 định nghĩa tách biệt cố ý, xem
+`docs/domains/inventory.md`. Đọc lại chi tiết LSX là snapshot, không tính lại.
 
 ## Entities
 
 | Entity | Vai trò |
 | --- | --- |
-| `production_orders` | Header LSX; `orderId` **unique** (1 đơn = 1 LSX); mã `LSXxxxx` chỉ có khi đã duyệt |
-| `production_order_items` | Quyết định sản xuất từng dòng; 1-1 với `order_items` |
+| `production_orders` | Header LSX; `orderId` unique (1 đơn = 1 LSX) |
+| `production_order_items` | Quyết định SX từng dòng, 1-1 `order_items` |
 | `production_jobs` | Đầu việc xưởng; unique `(productionOrderId, itemId)` |
-| `production_job_bom_items` | Snapshot cây BOM của Job (nhân bản `bom_items`, id mới), đóng băng lúc duyệt LSX — không route sửa |
-| `production_job_operations` | Snapshot công đoạn as-used của từng node BOM, đóng băng lúc duyệt LSX — không route sửa |
-| `production_job_operation_reports` | Nhật ký báo cáo hoàn thành **từng lần** của một công đoạn (append-only, kèm ghi chú) — module `production-execution` |
-| `production_job_operation_report_files` | Ảnh đính kèm của một lần báo cáo (0..N/lần) — bảng con của trên |
-| `production_job_issues` | Danh sách vật tư của Job, khởi tạo từ BOM lúc duyệt — không có route đọc/ghi, chỉ dùng nội bộ (`startJob` tính vật tư thiếu, `bomDemand` của Inventory/Purchase Requests, `GET .../bom`) |
-| `production_job_items` | Bảng chiều dùng chung: mã/tên vật tư đóng băng, khoá `(itemId, code, name)` — không thuộc Job nào, không `updatedAt`, không route sửa |
-| `production_job_units` | Bảng chiều dùng chung: mã/tên ĐVT đóng băng, khoá `(unitId, code, name)` — song sinh `production_job_items`, không tham chiếu nó |
-| `production_order_logs` | Lịch sử thao tác **ở mức LSX** (append-only) |
-| `production_job_notes` | Ghi chú tự do trên Job, người dùng chủ động viết (append-only) |
+| `production_job_bom_items` / `production_job_operations` | Snapshot cây BOM/công đoạn, đóng băng lúc duyệt LSX |
+| `production_job_operation_reports` / `_report_files` | Nhật ký báo cáo append-only + ảnh |
+| `production_job_issues` | Vật tư của Job — nội bộ, không route |
+| `production_job_items` / `production_job_units` | Bảng chiều SCD dùng chung, không `UPDATE` |
+| `production_order_logs` | Log thao tác **mức LSX**, append-only |
+| `production_job_notes` | Ghi chú tự do trên Job, append-only, không kiểm `status` |
 
-Job **không có log thao tác** — cố ý bỏ, chỉ `startedBy`/`startedAt` được ghi thật cho hành động
-`start`. Job **có ghi chú** (`production_job_notes`) — khác log ở chỗ nội dung do người dùng gõ tay,
-không tự sinh khi có hành động, và không ghi lại "ai đã làm gì".
-
-Job **không có tài liệu đính kèm dưới bất kỳ dạng nào** — sản phẩm cũng không còn bảng đính kèm
-riêng nữa. Bản vẽ kỹ thuật (nếu có) tra ở BOM của sản phẩm, theo từng node
-(`bom_items.drawingFileId`, `docs/domains/product-structure.md`), không phải theo Job.
+Job không có log thao tác (chỉ `startedBy`/`startedAt`) và không có tài liệu đính kèm — bản vẽ (nếu
+có) tra ở BOM sản phẩm theo node (`bom_items.drawingFileId`).
 
 ## Lifecycle
 
-**LSX** — một chiều, chưa có đường lùi:
+**LSX** — một chiều: `PENDING →(approve)→ APPROVED →(mọi Job COMPLETED, tự động)→ COMPLETED`.
 
+**Job** — một chiều, phần lớn tự động:
 ```
-PENDING (kế hoạch, sửa số lượng tự do) ──approve──> APPROVED (chốt, sinh mã LSX + sinh Job)
-   ──(mọi Job của LSX COMPLETED)──> COMPLETED (tự động, không route tay)
+PENDING ──start──> IN_PROGRESS ──approve-operations──> (mở PATCH .../operations/:id)
+   ──(không còn công đoạn nào của node FG dở — chỉ đếm lại khi vừa patch 1 op thuộc node FG)──> WAITING_QC
+   ──(closeJobIfQcCovered: total>0 && open=0, nhận cả IN_PROGRESS)──> WAITING_DELIVERY
+   ──(closeJobIfFullyReceived: nhập kho TP đủ job.quantity)──> COMPLETED
 ```
+5 điểm ghi `production_jobs.status`: `startJob`; `updateProductionJobOperation`
+(`PATCH`)/`createJobOperationReport` (`reports`, cùng điều kiện: đếm lại công đoạn FG dở sau khi
+vừa patch một công đoạn thuộc node đó); `closeJobIfQcCovered` (gọi từ `confirmOqc`/`confirmIqc`/
+`completeIqcAfterSupplierReturn` — chấp nhận cả `IN_PROGRESS`, có thể nhảy thẳng bỏ qua
+`WAITING_QC`); `closeJobIfFullyReceived` (cũng cascade `production_orders.status=COMPLETED`).
 
-**Job** — một chiều, không có đường lùi, tự động hết (route tay chỉ có `start` và
-`approve-operations`, cái sau không đổi `status`):
+**Job không khai routing Cấp 0 (không có node `itemType=FG`) không bao giờ tự chuyển
+`WAITING_QC`** — điều kiện chỉ đếm lại khi thao tác vừa rồi chạm một công đoạn thuộc node đó; không
+có node thì nhánh code không bao giờ chạy. Giới hạn thật, không phải bug.
 
-```
-PENDING ──start──> IN_PROGRESS ──approve-operations──> (mở khoá PATCH .../operations/:operationId)
-   ──(mọi công đoạn xong)──> WAITING_QC
-   ──(OQC clear, getJobQcCoverage.open = 0)──> WAITING_DELIVERY
-   ──(nhập kho TP đủ job.quantity)──> COMPLETED
-```
-
-`report`/`hold`/`resume` (báo sản lượng ở mức Job, tạm dừng/làm tiếp) vẫn chưa có — xưởng chưa cần
-tạm dừng qua API. 3 trạng thái kết thúc (`WAITING_QC`/`WAITING_DELIVERY`/`COMPLETED`, khôi phục
-2026-08-24 sau khi bị rút ở `0068`/`0071`) đều do hệ thống tự chuyển, không có route tay nào set
-thẳng — xem `docs/decisions/production-lifecycle-closing.md`. Tiến độ **ở mức từng công đoạn** vẫn
-trackable riêng — xem `completedQuantity`/`completedDate` trên `production_job_operations`, mục Core
-concepts phía trên.
+`report`/`hold`/`resume` ở mức Job chưa có API.
 
 ## Business rules
 
-- Duyệt LSX chỉ hợp lệ khi LSX đang `PENDING` **và** đơn gốc vẫn `AWAITING_PRODUCTION`.
-- Duyệt LSX làm ba việc trong **một** transaction: chốt LSX (+ sinh mã), đẩy đơn sang `IN_PROGRESS`, sinh Job cho mọi item FG có SL > 0.
-- Sửa số lượng sản xuất là **partial** (chỉ dòng gửi lên bị ghi), chỉ khi LSX còn `PENDING` (`E084`), và chỉ tính lại `fromStockQty` — **không** refresh tồn kho.
-- LSX không có item FG nào SL > 0 → duyệt xong **không có Job nào**, không phải lỗi.
-- Một đơn bị từ chối rồi duyệt lại sẽ **ghi đè hoàn toàn** hồ sơ LSX cũ — không cộng dồn, không giữ lịch sử các lần duyệt.
-- Duyệt LSX còn nhân bản **toàn bộ** cây `bom_items` (cả node WIP lẫn lá RM) sang
-  `production_job_bom_items`, copy công đoạn as-used của từng node WIP (`bom_operations`) sang
-  `production_job_operations`, và gộp riêng mọi lá RM thuộc cây theo `itemId` sang
-  `production_job_issues` — tất cả **denormalize luôn `code`/`name`** (và `type` cho công đoạn),
-  không chỉ giữ FK, nên độc lập hoàn toàn với việc sửa/xoá `items`/`units`/`operations` sau đó. Riêng
-  vật tư: `code`/`name`/ĐVT không nằm trực tiếp trên `production_job_issues` mà qua get-or-create hai
-  bảng chiều dùng chung `production_job_items`/`production_job_units` (khoá theo bộ ba nội dung, xem
-  Core concepts) — vẫn cùng tinh thần "đóng băng, độc lập master data sống", chỉ khác chỗ lưu. Nhu
-  cầu vật tư khởi tạo = định mức **đã nổ cấp** × SL Job, tính **một lần** lúc duyệt, đọc lại từ
-  `production_job_bom_items.plannedQuantity` (đã nhân luỹ kế qua chuỗi node cha ngay trong cùng
-  transaction) — xem "Chuẩn nổ cấp BOM", `docs/domains/product-structure.md`.
-- Danh sách vật tư của Job **không expose route nào**, cả đọc lẫn ghi — chỉ là nguồn nội bộ (xem
-  Entities).
-- Nhập `completedQuantity`/`rejectedQuantity` cho một công đoạn
-  (`PATCH /production-jobs/:jobId/operations/:operationId`) chỉ hợp lệ khi Job đang `IN_PROGRESS`
-  (`E087`) **và** đã qua `POST .../approve-operations` (`E250`), **ghi đè** giá trị cũ (không cộng
-  dồn), và bị chặn nếu riêng `completedQuantity` vượt `plannedQuantity` của node BOM cha (`E256`) —
-  `rejectedQuantity` không bị giới hạn theo số đó. `completedDate` do server tự set khi
-  `completedQuantity` (chỉ SL đạt, không tính NG) chạm đủ `plannedQuantity`, tự về `null` nếu sau đó
-  sửa xuống dưới mức đó — không có input nhận ngày từ client.
-- `POST /production-jobs/:jobId/approve-operations` (`production:approve`) chỉ chạy khi Job đang
-  `IN_PROGRESS` và chưa duyệt (`E251` nếu gọi lại) — ghi `operationsApprovedBy`/`operationsApprovedAt`,
-  không đổi `status`. Là điều kiện tiên quyết duy nhất để mở `PATCH .../operations/:operationId`
-  (xem Core concepts).
-- `POST /production-execution/operations/:jobOperationId/reports` (`production:update`) qua đúng các gate
-  của `PATCH .../operations/:operationId` (`E087`/`E250`/`E210`/`E256`) nhưng **cộng dồn** thay vì
-  ghi đè, thêm một dòng `production_job_operation_reports` (+ 0..N dòng `..._report_files`) — không
-  chặn báo cáo rỗng, xem Core concepts.
-- Ghi chú Job (`production_job_notes`) là **append-only** — `POST` để đăng, không có route sửa/xoá;
-  đăng được ở mọi trạng thái Job, không kiểm `status`.
-- Ghi chú LSX (`production_orders.note`, expose `productionOrderNote` — khác `note`/`order.note` là
-  ghi chú đơn hàng gốc) sửa qua `PATCH .../note`, sửa được ở **mọi trạng thái** LSX, không kiểm
-  `status` (khác route sửa số lượng, chỉ `PENDING`). Mỗi lần sửa ghi một dòng
+- Duyệt LSX chỉ hợp lệ khi LSX `PENDING` và đơn gốc `AWAITING_PRODUCTION`; trong 1 transaction: chốt
+  LSX (+ mã `LSXxxxx`), đẩy đơn `IN_PROGRESS`, sinh Job cho mọi item FG SL > 0 (không có thì không
+  lỗi, chỉ không sinh Job nào).
+- Sửa SL sản xuất là partial, chỉ khi `PENDING` (`E084`), chỉ tính lại `fromStockQty` — không refresh
+  tồn kho. Một đơn bị từ chối rồi duyệt lại **ghi đè hoàn toàn** LSX cũ.
+- `PATCH .../operations/:id`: hợp lệ khi Job `IN_PROGRESS` (`E087`) và đã `approve-operations`
+  (`E250`); riêng bước Lắp ráp (node Cấp 0) kiểm thêm `E210`; `completedQuantity ≤ plannedQuantity`
+  → `E256`. Thứ tự kiểm đầy đủ: `E087` → `E250` → `E091` (công đoạn tồn tại) → `E210` (riêng Cấp 0)
+  → `E256`.
+- Ghi chú Job (`production_job_notes`) append-only, mọi trạng thái. Ghi chú LSX
+  (`production_orders.note`) sửa được mọi trạng thái qua `PATCH .../note`, mỗi lần ghi 1 dòng
   `production_order_logs` (`NOTE_UPDATED`).
 
 ## Invariants
 
-- Một đơn hàng có tối đa một LSX (`orderId` unique).
-- Một sản phẩm có tối đa một Job trong một LSX.
-- Job chỉ sinh ra từ transaction duyệt LSX — **không có route tạo Job trực tiếp**.
-- `quantity` của Job luôn > 0 (DB CHECK) — sản phẩm SL 0 không sinh Job.
-- LSX `APPROVED` thì mã `LSXxxxx` và `approvedAt` cùng có; `PENDING` thì cả hai cùng NULL (DB CHECK).
-- Đã có LSX `APPROVED` thì dòng `items` của đơn gốc không sửa được nữa (`E080`).
-- **Cấu trúc** của `production_job_bom_items`/`production_job_operations` (node/bước, `code`/`name`/
-  `type`/`sortOrder`/`quantity`/`parentId`/`plannedQuantity`) chỉ được ghi trong transaction duyệt
-  LSX — không có route thêm/sửa/xoá một node/bước, không có kế hoạch thêm. `plannedQuantity` là giá
-  trị **dẫn xuất** (nhân luỹ kế `quantity` theo cây × SL Job) nhưng đóng băng cùng lúc với phần còn
-  lại, không tính lại lúc đọc. Ngoại lệ duy nhất: `completedQuantity`/
-  `completedDate` trên `production_job_operations` sửa được sau đó, qua route riêng (xem Business
-  rules) — hai cột này không phải "cấu trúc", là tiến độ.
-- `production_job_issues` cũng chỉ có đúng **một** đường ghi (transaction duyệt LSX) tại thời
-  điểm viết tài liệu này — chưa có route sửa nào khác, khác `production_job_operations` ở chỗ đây là tạm
-  hoãn có chủ đích (dự kiến mở rộng), không phải giới hạn vĩnh viễn. Đường ghi đó (`copyBomIssues`)
-  **phải chạy sau** `copyBomTree` trong cùng transaction — đọc lại `production_job_bom_items` vừa
-  insert để lấy `plannedQuantity` đã nổ cấp, không tự tính lại từ `bom_items`.
-- `production_job_items`/`production_job_units` **tuyệt đối không có `UPDATE`** ở bất kỳ đường nào —
-  không chỉ "chưa có route", mà là bất biến thiết kế: một dòng chiều có thể đang được nhiều Job ở
-  nhiều LSX khác nhau dùng chung, sửa nó sẽ viết lại lịch sử của tất cả. Đổi nội dung luôn là chèn
-  dòng mới (get-or-create trong `copyBomIssues`), không bao giờ là sửa dòng cũ.
-
-Không phải invariant dù dễ tưởng:
-
-- **Không có chốt chặn tồn kho tổng hợp.** Hai dòng đơn khác nhau cùng một sản phẩm tính "Lấy từ tồn" độc lập trên cùng một con số Khả dụng — cộng lại có thể vượt tồn thực tế. Đã cân nhắc, cố ý để ngoài phạm vi.
-- **Duyệt LSX không lập phiếu xuất kho.** Phần "Lấy từ tồn" hiện **không** sinh chứng từ kho nào.
+- 1 đơn = tối đa 1 LSX; 1 sản phẩm = tối đa 1 Job/LSX; Job chỉ sinh từ transaction duyệt LSX.
+- `production_jobs.quantity > 0` (CHECK). LSX `APPROVED` ⟺ có mã + `approvedAt` (CHECK).
+- Có LSX `APPROVED` thì dòng `items` của đơn gốc không sửa được (`E080`).
+- Cấu trúc `production_job_bom_items`/`production_job_operations` chỉ ghi trong transaction duyệt
+  LSX — không route thêm/sửa/xoá node/bước, ngoại lệ duy nhất `completedQuantity`/`rejectedQuantity`/
+  `completedDate` (tiến độ, không phải cấu trúc). `production_job_items`/`_units` tuyệt đối không
+  `UPDATE` — đổi nội dung luôn là chèn dòng mới.
+- Không có chốt chặn tồn kho tổng hợp giữa nhiều đơn cùng sản phẩm — cố ý ngoài phạm vi. Duyệt LSX
+  không lập phiếu xuất kho nào.
 
 ## Cross-domain dependencies
 
-- **← Orders**: `approveOrder` seed toàn bộ tầng LSX. Không có đường nào khác tạo LSX.
-- **→ Orders**: duyệt LSX là con đường **duy nhất** đẩy đơn `AWAITING_PRODUCTION → IN_PROGRESS`.
-- **← Inventory**: chỉ đọc, qua `getStockLevels` (LSX, tham số `excludeOrderId`) và
-  `getMaterialStockLevels` (`ProductionJobsService.startJob`, tính phần vật tư thiếu). Domain này
-  **không ghi** gì vào sổ kho.
-- **→ Inventory (Phiếu lãnh vật tư)**: `inventory_requisitions` (`type = PRODUCTION`) đọc
-  `production_job_issues.requiredQty` để chặn vượt định mức BOM — một chiều, Production không biết
-  module đó tồn tại. Chiều đọc ngược: `GET /production-jobs/:jobId/bom` đọc lại dòng phiếu lãnh
-  `ISSUED` để hiển thị "Theo dõi đã lãnh" (`issuedQuantity`/`remainingQuantity`, xem Core concepts)
-  — vẫn là Production đọc, không phải Inventory ghi vào bảng nào của Production. Xem
-  `docs/domains/inventory.md`, `docs/workflows/inventory-requisition.md`.
-- **→ Inventory (Gia công ngoài)**: `production_job_operations.type` (snapshot `OUTSOURCE`) +
-  `production_jobs.status` là **anchor đọc-một-chiều** cho mỗi dòng `outsourcing_order_items` —
-  Inventory đọc, Production không ghi/biết gì về OS-OUT/OS-IN. `outsourcing-orders` còn đọc thẳng
-  cột `production_job_bom_items.plannedQuantity` (đóng băng lúc duyệt LSX, xem trên) cho popup
-  "chọn part cần gia công" và chặn gửi vượt định mức. Đợt này **không** có
-  gating nào ngược lại: tạo/hủy chứng từ gia công ngoài không tự đổi
-  `completedQuantity`/`completedDate` hay chặn công đoạn kế tiếp. Xem `docs/domains/inventory.md`.
-- **↔ Quality (IQC/OQC hợp nhất)**: `production_job_operations` (không phải `production_jobs`) là
-  **anchor** cho cả hai nhánh QC (`qc_requests.kind`, `docs/decisions/qc-single-table.md`)
-  — công đoạn `INHOUSE` (kể cả node Cấp 0) nhận dòng `OUTGOING` (OQC), công đoạn `OUTSOURCE` nhận
-  dòng `INCOMING` (IQC sinh từ OS-IN). Quality đọc `operation.productionJob.status` (phải
-  `IN_PROGRESS`), `operation.completedQuantity` (trần chặn lot size) và node BOM chứa nó
-  (`itemId`/`code`/`name` để snapshot) lúc tạo OQC (`docs/decisions/oqc-per-operation.md`). **Chiều
-  ghi**: `ProductionJobsModule` nay import `OqcModule` — `POST /production-jobs/:jobId/qc`
-  (`ProductionJobsService.requestJobQc`) gọi thẳng `OqcService.createOqcForJob` qua DI, đúng 1 cạnh
-  duy nhất, có chủ đích (thay cho route `POST /oqc` cấp-công-đoạn cũ đã bỏ). **Chiều đọc** vẫn không
-  đổi — tóm tắt QC từng công đoạn (từng hiển thị trên `GET /production-jobs/:jobId/bom`) đã bỏ cùng
-  lúc route đó đổi sang trả bảng vật tư; `getOqcSummaryByJobOperationIds` đã xoá khỏi
-  `src/api/oqc/oqc.query.ts`; `getJobQcCoverage` (gate nhập kho/giao hàng) vẫn là plain function,
-  không qua DI. Không nhánh nào của OQC ghi ngược `completedQuantity`/`completedDate`, kể cả khi
-  `disposition = SCRAP` (giải phóng quota bằng cách loại trừ khỏi Σ đã xin QC, không phải bằng cách
-  trừ `completedQuantity`) — tránh race với thao tác tay của xưởng qua
-  `PATCH .../operations/:operationId`. Chiều ngược lại của node Cấp 0: bước Lắp ráp của nó tự khoá
-  (`E210`) cho tới khi mọi công đoạn khác báo xong — xem "Core concepts" ở trên. Xem
-  `docs/domains/quality.md`.
-- **→ Purchase Requests**: `startJob` là domain khác **duy nhất ghi vào** `purchase_requests` —
-  vật tư thiếu tồn khi bấm start tự sinh một đề xuất mua, xem
-  `docs/workflows/production-job-execution.md`. Không đi ngược: Purchase Requests không đọc/ghi gì
-  vào Production.
-- **← Product Structure**: đọc **một nguồn duy nhất** trong transaction duyệt LSX, đúng **một lần**:
-  toàn bộ cây `bom_items` (WIP + RM) + `bom_operations` as-used của từng node WIP (`bomItemId`),
-  nhân bản sang `production_job_bom_items`/`production_job_operations`; vật tư
-  (`production_job_issues`) đọc lại `production_job_bom_items.plannedQuantity` (đã nổ cấp) rồi gộp
-  theo `itemId` trên mọi node `itemType = RM`. Ngoài thời điểm đó không đọc lại — sửa
-  routing/BOM/vật tư sau khi đã duyệt không ảnh hưởng Job đã có. Tiến độ
-  chia theo **từng công đoạn** (`completedQuantity`/`completedDate`), không chia theo node/Job — xem
-  Core concepts.
+- **← Orders**: `approveOrder` seed toàn bộ tầng LSX — đường duy nhất tạo LSX.
+- **→ Orders**: duyệt LSX là đường duy nhất đẩy đơn `AWAITING_PRODUCTION → IN_PROGRESS`.
+- **← Inventory**: chỉ đọc qua `getStockLevels`/`getMaterialStockLevels`. Domain này không ghi vào
+  sổ kho.
+- **→ Inventory (ghi, gián tiếp)**: Inventory **ghi ngược** vào `production_jobs.status`/
+  `production_orders.status` — xem Lifecycle (`closeJobIfQcCovered`/`closeJobIfFullyReceived`).
+  Production không chủ động, chỉ bị đọc/ghi bởi 2 domain kia.
+- **↔ Inventory (Phiếu lãnh)**: `inventory_requisitions` đọc `production_job_issues.requiredQty`
+  chặn vượt định mức — một chiều đọc; `GET .../bom` đọc ngược dòng `ISSUED` để hiển thị "Đã lãnh".
+- **← Inventory (Gia công ngoài)**: `production_job_operations.type`/`production_jobs.status`/
+  `production_job_bom_items.plannedQuantity` là anchor đọc-một-chiều cho OS-OUT — không gate ngược
+  tiến độ Job.
+- **↔ Quality**: `production_job_operations` là anchor cho cả IQC (`OUTSOURCE`) lẫn OQC
+  (`INHOUSE`, kể cả Cấp 0). Chiều ghi duy nhất: `POST /production-jobs/:jobId/qc` gọi thẳng
+  `OqcService.createOqcForJob` qua DI. Không nhánh QC nào ghi ngược `completedQuantity`/
+  `completedDate`, kể cả `SCRAP`. Xem `docs/domains/quality-oqc.md`.
+- **→ Purchase Requests**: `startJob` là domain duy nhất ghi vào `purchase_requests` (thiếu vật tư
+  tự sinh đề xuất). Không đi ngược.
+- **← Product Structure**: đọc đúng 1 lần lúc duyệt LSX (cây `bom_items` + `bom_operations`); sửa
+  routing/BOM sau đó không ảnh hưởng Job đã có.
 
 ## Common mistakes
 
-1. **Đi tìm cách biết Job "đã xong" qua API — ở mức tổng.** Từ 2026-08-24 có: `status = COMPLETED`
-   (tự động, xem Lifecycle) — nhưng hệ thống vẫn **không** ghi nhận sản lượng đạt/phế cộng dồn ở mức
-   Job, chỉ biết "xong hay chưa". Tiến độ **từng công đoạn** vẫn đọc riêng (`completedQuantity`/
-   `rejectedQuantity`/`completedDate`, `rejectedQuantity` thêm 2026-08-25) — đừng nhầm hai mức này.
-2. **Tưởng duyệt LSX sẽ trừ kho.** Không lập phiếu xuất kho nào — tồn chỉ đổi khi có người lập phiếu tay.
-3. **Tưởng "Đề xuất SX" là số liệu sống.** Là snapshot lúc duyệt; mở lại màn chi tiết không tính lại.
-4. **Quên `excludeOrderId` khi tính Khả dụng cho một PO** → trừ nhu cầu của chính nó hai lần.
-5. **Tưởng Job map 1-1 với dòng đơn hàng.** Job gộp theo sản phẩm; dòng quyết định sản xuất mới là tầng 1-1.
-6. **Tìm log thao tác của Job.** Không tồn tại — chỉ LSX có log. Job chỉ có **ghi chú**
-   (`production_job_notes`, người dùng tự viết), không tự sinh khi có hành động.
-7. **Tưởng có thể huỷ duyệt LSX.** `APPROVED` hiện là điểm cuối, chưa có route đưa về `PENDING`.
-8. **Tưởng sửa routing/BOM của sản phẩm sẽ cập nhật công đoạn/vật tư của Job đã duyệt.** Cả hai đều
-   là bản copy đóng băng tại thời điểm duyệt, không đọc lại nguồn.
-9. **Tìm route sửa/thêm/xoá vật tư của Job.** Chưa có, và cũng không có route **đọc** — chỉ là
-   nguồn nội bộ.
-10. **Đi tìm bảng/route tài liệu đính kèm cho Job.** Không có, và cũng không có đường vòng qua sản
-    phẩm — sản phẩm không còn bảng đính kèm. Bản vẽ kỹ thuật (nếu cần) tra ở BOM của sản phẩm, theo
-    từng node.
-12. **Tưởng công đoạn `type = OUTSOURCE` tự chặn tiến độ hay cần "xác nhận gia công xong" mới cho
-    nhập `completedQuantity` cho công đoạn kế tiếp.** Không — đợt này gia công ngoài
-    (`docs/domains/inventory.md`) chỉ đọc Job để validate lúc tạo OS-OUT, không ghi/gate gì ngược
-    lại tiến độ Job.
-13. **Tưởng OQC (`docs/domains/quality.md`) ghi nhận sản lượng đạt/phế cho Job hay công đoạn.**
-    Không — OQC chỉ đọc `operation.productionJob.status`/`operation.completedQuantity` để validate
-    lúc tạo, kết quả OQC (kể cả `disposition = SCRAP`) không ghi ngược `completedQuantity`/
-    `completedDate` của bất kỳ công đoạn nào. Ngoại lệ duy nhất (2026-08-24): `OqcService.confirmOqc`
-    có ghi `productionJobs.status` (`WAITING_QC → WAITING_DELIVERY` khi QC xong hết) — khác hẳn
-    `completedQuantity`/`completedDate`, xem `docs/decisions/production-lifecycle-closing.md`.
-14. **Tưởng OQC vẫn gắn theo cả Job như trước.** Đã đổi — từ khi `docs/decisions/
-    oqc-per-operation.md`, một dòng OQC gắn theo **một công đoạn** (`production_job_operations`),
-    không phải cả Job; `itemId` của dòng OQC là part đang QC ở đúng công đoạn đó, không phải thành
-    phẩm cuối cùng của Job.
-16. **Tưởng không có khái niệm "Cấp 0" ở tầng Job, phải đọc `job.itemId → routings` trực tiếp.** Sai
-    — `copyFinalAssemblyRouting` snapshot routing Cấp 0 của FG thành một node
-    `production_job_bom_items` thật (`itemType = 'FG'`) ngay lúc duyệt LSX, y hệt mọi node WIP khác.
-    Xem "Core concepts" ở trên, `docs/decisions/oqc-per-operation.md` mục "QC cho Cấp 0".
-17. **Tưởng `PATCH .../operations/:operationId` trên bước Lắp ráp chỉ kiểm `E256` như mọi
-    công đoạn khác.** Còn kiểm thêm `E210` trước đó — chặn nếu còn công đoạn nào khác của Job chưa
-    báo `completedDate`, vì bước Lắp ráp là bước cuối, cần mọi part đã xong. Thứ tự kiểm đầy đủ:
-    `E087` (status) → `E250` (chưa duyệt công đoạn) → `E210` (riêng bước Lắp ráp) → `E256`.
-18. **Tưởng `oqc_inspections` là bảng riêng của module `oqc`.** Đã gộp vào `qc_requests`
-    (cột `kind`) cùng với IQC, xem `docs/decisions/qc-single-table.md` và `docs/domains/quality.md`.
-15. **Tưởng `GET /production-jobs/:jobId/bom` trả về cây BOM.** Không — tên route giữ nguyên nhưng
-    nội dung là **bảng vật tư phẳng đã gộp**, phân trang. Cây snapshot của Job
-    (`production_job_bom_items`/`production_job_operations`) hiện **không có route đọc nào** — chỉ
-    còn `GET .../operations` đọc công đoạn (kèm part chứa nó), phục vụ `PATCH
-    .../operations/:operationId`. Cây BOM của sản phẩm thì tra `GET /items/:id/bom` (BOM **sống**,
-    không phải snapshot của Job — hai thứ khác nhau).
-19. **Tưởng vẫn tạo OQC theo từng công đoạn qua `POST /oqc`.** Đã bỏ — tạo OQC nay chỉ qua
-    `POST /production-jobs/:jobId/qc`, **cấp Job, không nhận body**: 1 cú bấm, server tự resolve
-    node Cấp 0 và tự suy `quantity`/`inspectionDate` từ công đoạn `sortOrder` cao nhất của node đó.
-    Job không khai báo routing Cấp 0 → `E213`; node Cấp 0 có thể nhiều công đoạn — còn **bất kỳ**
-    công đoạn nào của nó (không riêng công đoạn cuối) chưa `completedDate` → `E214` (BUG-079). Xem
-    `docs/domains/quality.md` mục "Trigger từ production".
-20. **Tưởng "duyệt công đoạn" khoá thêm được gì ngoài việc mở `PATCH .../operations/:operationId`.**
-    Không — cấu trúc `production_job_bom_items`/`production_job_operations` vốn đã bất biến từ lúc
-    duyệt LSX (không route sửa nào, xem Invariants) trước cả khi tính năng này tồn tại.
-    `approve-operations` chỉ thêm một điều kiện tiên quyết (`E250`), không "khoá" gì mới về mặt kỹ
-    thuật — xem Core concepts.
-21. **Tưởng `production_job_operation_reports` là nguồn tính lại `completedQuantity`.** Sai chiều —
-    nó là **kết quả** của việc ghi (`POST .../reports` cộng dồn vào đó), không phải nguồn để `SUM`
-    ra `completedQuantity` mỗi lần đọc. Sau khi quản lý dùng `PATCH .../operations/:operationId` ghi
-    đè, hai con số **được phép lệch nhau** — đây không phải lỗi đồng bộ, xem Core concepts.
-22. **Tưởng `completedQuantity + rejectedQuantity ≤ plannedQuantity` (trần cũ `E252`, 2026-08-25 →
-    2026-08-27) vẫn còn đúng.** Đã đảo ngược — trần đó khiến một công đoạn **kẹt vĩnh viễn** ngay khi
-    NG chiếm hết chỗ trước khi SL đạt kịp chạm đủ kế hoạch (không còn cách hợp lệ nào báo thêm để đạt
-    `completedDate`, kéo theo cả Job kẹt qua `E210`, BUG-035). Chốt mới: chỉ trần riêng
-    `completedQuantity` (`E256`), `rejectedQuantity` không giới hạn theo `plannedQuantity` — cho phép
-    báo bù (làm lại phần hỏng) tới khi đạt đủ. **Đừng khôi phục** trần gộp cũ.
+1. Duyệt LSX không trừ kho — tồn chỉ đổi khi có người lập phiếu tay.
+2. "Đề xuất SX" là snapshot lúc duyệt, không tính lại khi mở lại màn chi tiết.
+3. Job gộp theo sản phẩm — dòng quyết định SX mới là tầng 1-1 với dòng đơn.
+4. Không có log thao tác của Job — chỉ LSX có; Job chỉ có ghi chú tự do.
+5. `APPROVED` là điểm cuối của LSX, chưa có route đưa về `PENDING`.
+6. Sửa routing/BOM sau khi Job đã duyệt không cập nhật ngược Job — cả hai là bản copy đóng băng.
+7. Chưa có route **sửa** vật tư của Job (`production_job_issues`) — chỉ đọc được qua
+   `GET /production-jobs/:jobId/bom` (bảng phẳng, **không phải** cây BOM; cây snapshot không có
+   route đọc trực tiếp, BOM sống của sản phẩm tra ở `GET /items/:id/bom`).
+8. Tạo OQC không còn qua `POST /oqc` cấp-công-đoạn — chỉ qua `POST /production-jobs/:jobId/qc`
+   (cấp Job, không nhận body). `E213` nếu Job không khai Cấp 0; `E214` nếu còn công đoạn Cấp 0 nào
+   chưa `completedDate` (không riêng công đoạn cuối).
+9. `production_job_operation_reports` là **kết quả** ghi, không phải nguồn tính lại
+   `completedQuantity` — sau khi `PATCH` ghi đè, hai số được phép lệch nhau, không phải lỗi đồng bộ.
+10. Trần cũ `completedQuantity + rejectedQuantity ≤ plannedQuantity` (`E252`) đã bỏ — chỉ còn trần
+    riêng `completedQuantity` (`E256`). Đừng khôi phục trần gộp.
 
 ## Related docs
 
-- `docs/workflows/production-order-approval.md`, `docs/workflows/production-job-execution.md` —
-  trình tự chạy của hai chặng.
-- `docs/domains/orders.md` — điều kiện để một đơn tới được đây.
-- `docs/domains/inventory.md` — nguồn `onHand`/`reserved`.
-- `docs/domains/quality.md` — OQC, gắn theo công đoạn để kiểm chất lượng.
-- `docs/decisions/oqc-per-operation.md` — vì sao OQC đổi từ gắn Job sang gắn công đoạn.
+- `docs/workflows/production-order-approval.md`, `docs/workflows/production-job-execution.md`.
+- `docs/domains/orders.md`, `docs/domains/inventory.md`.
+- `docs/domains/quality-oqc.md`, `docs/decisions/oqc-per-operation.md`,
+  `docs/decisions/production-lifecycle-closing.md`.

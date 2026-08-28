@@ -12,10 +12,8 @@ Không có route tạo LSX: LSX chỉ ra đời từ `docs/workflows/order-appro
 
 ## Actor
 
-Sửa số lượng: `production:update`. Duyệt: `production:approve` — hai quyền tách rời.
-
-⚠️ Không role seed nào có `production:*`; hiện chỉ `ADMIN` chạy được (xem
-`docs/domains/identity-access.md`).
+Sửa số lượng: `production:update`. Duyệt: `production:approve` — hai quyền tách rời. Seed hiện cấp
+cả hai cho DIRECTOR và PRODUCTION (`credentials.seed.ts`).
 
 ## Preconditions
 
@@ -50,9 +48,9 @@ lượng **không** hỏi lại tồn kho.
 2. **Ngoài transaction** — đọc lại các dòng quyết định sản xuất và **gộp số lượng theo
    `itemId`**, bỏ item số lượng 0. Đây là chỗ ba dòng đơn cùng một item thu về một Job.
 3. **Transaction**:
-   - Sinh mã `LSXxxxx` (đếm số LSX đã duyệt + 1), ghi `APPROVED` + `approvedBy`/`approvedAt`.
+   - Sinh mã `LSXxxxx` qua `document_sequences` (atomic), ghi `APPROVED` + `approvedBy`/`approvedAt`.
    - Đẩy đơn gốc `AWAITING_PRODUCTION` → `IN_PROGRESS`.
-   - Sinh Job: mỗi sản phẩm một dòng, mã `JOBxxxx` cấp liên tiếp từ tổng số Job toàn bảng.
+   - Sinh Job: mỗi sản phẩm một dòng, mã `JOBxxxx` cũng cấp qua `document_sequences`.
    - Nhân bản toàn bộ cây BOM (cả `WIP` lẫn `RM`) sang `production_job_bom_items` (id mới,
      `code`/`name` denormalize), rồi copy routing as-used của từng node sang
      `production_job_operations` (`code`/`name`/`type` công đoạn denormalize) — đóng băng, không
@@ -100,8 +98,8 @@ nhận `tx`. Hệ quả mới: `production_job_items`/`production_job_units` dù
 hai LSX song song cùng đụng một vật tư/ĐVT sẽ tranh chấp khoá insert của nhau trong lúc get-or-create
 — trước đây transaction duyệt chỉ đụng dữ liệu riêng của chính LSX đó, không tranh chấp gì.
 
-Sinh mã nằm **trong** transaction nhưng vẫn là đếm-rồi-cộng-1: hai lượt duyệt song song có thể ra
-cùng mã, unique constraint là chốt chặn thật (biểu hiện: 500 thô, không phải mã lỗi sạch).
+Sinh mã (`LSXxxxx`/`JOBxxxx`) nằm **trong** transaction, cấp qua `document_sequences` — atomic
+(`INSERT … ON CONFLICT DO UPDATE … RETURNING`), hai lượt duyệt song song không thể ra cùng mã.
 
 ## Failure cases
 
@@ -113,7 +111,6 @@ cùng mã, unique constraint là chốt chặn thật (biểu hiện: 500 thô, 
 | Đơn gốc không còn `AWAITING_PRODUCTION` | `E076` | 409 |
 | LSX không còn `PENDING` khi sửa SL | `E084` | 409 |
 | `orderItemId` lạ | `E078` | 400, **không dòng nào được ghi** |
-| Trùng mã `LSXxxxx`/`JOBxxxx` | — | 500 thô, rollback |
 
 Rollback để lại trạng thái nhất quán: hoặc cả LSX+đơn+Job cùng đổi, hoặc không gì đổi.
 

@@ -873,7 +873,7 @@ export class InventoryReceiptsService {
   }
 
   /** Gate nhập kho thành phẩm theo QC (`docs/domains/inventory.md`, "Gate nhập kho thành phẩm";
-   * `docs/workflows/final-qc.md`) — chỉ chạy khi `receiptType = PRODUCTION`. `productionJobId`
+   * `docs/workflows/outgoing-qc.md`) — chỉ chạy khi `receiptType = PRODUCTION`. `productionJobId`
    * NULL tại đây nghĩa là một phiếu cũ tồn tại từ trước ràng buộc này (cột vốn không `NOT NULL` ở
    * DB, chỉ service-enforced) — vẫn chặn bằng `E179` thay vì bỏ qua. Mọi dòng phải cùng `itemId`
    * với Job (`E107`, tái dùng — cùng ngữ nghĩa `inventory_issues` dùng cho `orderItemId` lệch

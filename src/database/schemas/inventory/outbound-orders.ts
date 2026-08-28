@@ -26,10 +26,10 @@ export const fulfillmentTypeEnum = pgEnum('fulfillment_type', [
 ]);
 
 /**
- * Vòng đời xem `docs/domains/inventory.md`, mục "Giao hàng": `DRAFT ─send→ PENDING_APPROVAL
+ * Vòng đời xem `docs/workflows/outbound-delivery.md`: `DRAFT ─send→ PENDING_APPROVAL
  * ─approve→ PENDING_DELIVERY ─deliver→ DELIVERED`, có nhánh `PENDING_APPROVAL ─reject→ REJECTED
  * ─send→ PENDING_APPROVAL`. `cancel` (DRAFT/PENDING_APPROVAL/PENDING_DELIVERY → CANCELLED) và
- * `DELETE` (DRAFT-only, hard delete) là hai điểm cuối riêng, không nằm trên chuỗi trên (BUG-090).
+ * `DELETE` (DRAFT-only, hard delete) là hai điểm cuối riêng, không nằm trên chuỗi trên.
  */
 export enum OutboundOrderStatus {
   DRAFT = 'DRAFT',

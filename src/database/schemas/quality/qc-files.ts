@@ -14,9 +14,9 @@ import { qcInspections } from './qc-inspections';
 /**
  * Ảnh mẫu "Chi tiết IQC" có 2 bộ file riêng: bằng chứng kiểm tra và bằng chứng quyết định xử lý.
  * 1 bảng, discriminator `kind`, dùng chung cho cả `INCOMING` lẫn `OUTGOING` — trước gộp OQC không có
- * chỗ đính kèm, nay có miễn phí (`docs/decisions/qc-single-table.md`). Treo dưới `qc_inspections`
+ * chỗ đính kèm, nay có miễn phí (`docs/decisions/qc-data-model.md`). Treo dưới `qc_inspections`
  * (lần kiểm cụ thể, không phải request) từ khi tách request/attempt
- * (`docs/decisions/qc-request-attempt-split.md`) — mỗi bộ file gắn đúng lần kiểm sinh ra nó, replace-
+ * (`docs/decisions/qc-data-model.md`) — mỗi bộ file gắn đúng lần kiểm sinh ra nó, replace-
  * all không còn ý nghĩa (attempt append-only): `IqcService.confirmIqc`/`OqcService.confirmOqc` chỉ
  * insert bộ file cho attempt vừa tạo.
  */

@@ -31,7 +31,7 @@ export const paymentRequestStatusEnum = pgEnum('payment_request_status', [
  * con item — dòng vật tư ở chi tiết đọc lại từ `purchase_order_items` của PO đó, không lưu trùng.
  * Tự sinh khi PO đạt tiến độ COMPLETED (`PaymentRequestsService.createIfOrderCompleted`, gọi từ
  * `InventoryReceiptsService.postInventoryReceipt`) — không có route tạo tay
- * (`docs/domains/purchasing.md`, `docs/decisions/no-procurement.md`).
+ * (`docs/domains/purchasing.md`, `docs/decisions/purchasing-scope-limits.md`).
  */
 export const paymentRequests = pgTable(
   'payment_requests',

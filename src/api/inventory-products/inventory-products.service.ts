@@ -138,7 +138,7 @@ export class InventoryProductsService {
   }
 
   /** Sổ cái (thẻ kho) — lịch sử bút toán của một thành phẩm, tồn luỹ kế sau từng giao dịch
-   * (`docs/domains/inventory.md`, mục "Thẻ kho vật chất — item ledger"). */
+   * (`docs/domains/inventory.md`, mục "Thẻ kho thành phẩm"). */
   async getProductLedger(
     itemId: string,
     reqDto: GetProductLedgerReqDto,

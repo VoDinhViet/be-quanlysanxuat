@@ -299,11 +299,10 @@ export class OutboundOrdersService {
     );
   }
 
-  /** Tạo phiếu DO — phase 1 luôn `DRAFT`, chưa duyệt/xác nhận giao, chưa đụng tồn kho thật. Giữ chỗ
-   * thành phẩm bắt đầu ngay ở đây (BUG-087, đảo ngược quyết định cũ "create cố ý không chặn" —
-   * `docs/domains/inventory.md`, mục "Giao hàng"): `ensureOutboundLinesIssuable` chặn `E194` nếu
-   * vượt tồn khả dụng. Dòng do client gửi đủ cột (`itemId`/`productionJobId` lấy từ popup
-   * `unfulfilled-order-items`), server không resolve/validate lại phần còn lại. */
+  /** Tạo phiếu DO — luôn `DRAFT`, chưa duyệt/xác nhận giao, chưa đụng tồn kho thật. Giữ chỗ thành
+   * phẩm bắt đầu ngay ở đây (`docs/workflows/outbound-delivery.md`): `ensureOutboundLinesIssuable`
+   * chặn `E194` nếu vượt tồn khả dụng. Dòng do client gửi đủ cột (`itemId`/`productionJobId` lấy từ
+   * popup `unfulfilled-order-items`), server không resolve/validate lại phần còn lại. */
   async createOutboundOrder(
     reqDto: CreateOutboundOrderReqDto,
     userId: string,

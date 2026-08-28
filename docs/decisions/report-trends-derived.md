@@ -51,5 +51,5 @@ trạng thái hiện tại, vì thông tin "đã đóng lúc nào" đơn giản 
 
 ## Related docs
 
-`docs/domains/orders.md`, `docs/domains/production.md`, `docs/domains/quality.md` — mỗi trạng thái
+`docs/domains/orders.md`, `docs/domains/production.md`, `docs/domains/quality-iqc.md`, `docs/domains/quality-oqc.md` — mỗi trạng thái
 dùng trong `reports` được định nghĩa đầy đủ ở đó, module `reports` chỉ đọc lại.

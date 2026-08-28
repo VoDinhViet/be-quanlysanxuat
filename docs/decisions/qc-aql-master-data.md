@@ -31,7 +31,7 @@ Bản đầu của quyết định này chấp nhận một khoảng hở tạm 
 tính `ac`/`re` **lúc đọc** (`resolveAqlPlan` mỗi lần `GET`) vì bảng lúc đó (`quality_inspections`) là
 1-dòng-1-lô, không có chỗ tự nhiên để snapshot theo từng lần kiểm — sửa một `qc_aql_rules` sẽ đổi
 luôn `ac`/`re` hiển thị của mọi lần kiểm cũ đã tra theo rule đó, kể cả lần đã `COMPLETED`. Đóng lại
-ngay trong đợt tách `qc_requests`/`qc_inspections` (`docs/decisions/qc-request-attempt-split.md`):
+ngay trong đợt tách `qc_requests`/`qc_inspections` (`docs/decisions/qc-data-model.md`):
 mỗi dòng `qc_inspections` (một lần kiểm/attempt) lưu thật `aqlPlanId`/`aqlRuleId`/`codeLetter`/
 `acceptanceNumber`/`rejectionNumber` lúc tạo, không tính lại lúc đọc — `IqcService.getIqc` nay đọc
 `ac`/`re`/`codeLetter` từ attempt mới nhất để trả trong response. `OqcService.getOqc` ghi snapshot
@@ -52,5 +52,5 @@ serializable) — chấp nhận, cùng mức rủi ro với các `validateXUniqu
 
 ## Related docs
 
-`docs/domains/quality.md` — mục "Lưu kết quả QC IQC" và "AQL auto-suggest" đọc nguồn mới.
-`docs/decisions/qc-request-attempt-split.md` — bảng `qc_inspections` đóng khoảng hở snapshot ở trên.
+`docs/domains/quality-iqc.md` — mục "Lưu kết quả QC IQC" và "AQL auto-suggest" đọc nguồn mới.
+`docs/decisions/qc-data-model.md` — bảng `qc_inspections` đóng khoảng hở snapshot ở trên.

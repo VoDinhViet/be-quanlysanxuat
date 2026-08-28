@@ -259,7 +259,7 @@ export enum ErrorCode {
   E138 = 'iqc_inspection.error.not_found',
   // `result = PASS` không được kèm `disposition` trên `POST /iqc` (tạo tay) — DB còn giữ
   // `chk_qc_requests_disposition_requires_fail` làm chốt chặn cuối. `confirmIqc` không còn ném mã
-  // này — QC toàn quyền quyết định ở luồng "Lưu" (`docs/domains/quality.md`).
+  // này — QC toàn quyền quyết định ở luồng "Lưu" (`docs/domains/quality-iqc.md`).
   E139 = 'iqc_inspection.error.disposition_not_allowed_for_pass',
   // Nghỉ hưu — cùng lý do `E097`: `code` không còn cho client tự truyền trên `create`.
   E140 = 'iqc_inspection.error.code_exists',
@@ -466,7 +466,7 @@ export enum ErrorCode {
   E211 = 'oqc_inspection.error.outsourced_operation',
   // Nghỉ hưu — chưa từng phát hành: điều kiện của nó ("Job có công đoạn OUTSOURCE mà chưa có IQC
   // nào từ OS-IN") hoá ra là tập con của `E196` sau khi `getJobQcCoverage` hợp nhất IQC/OQC theo
-  // công đoạn (`docs/decisions/qc-single-table.md`) — công đoạn OS-IN chưa `requiresIqc` đóng góp
+  // công đoạn (`docs/decisions/qc-data-model.md`) — công đoạn OS-IN chưa `requiresIqc` đóng góp
   // `(0, 0)` vào tổng, không tự nó chặn được gì; `E196` đã bắt đúng ca "đã yêu cầu IQC mà chưa
   // xong". Giữ số, không tái sử dụng.
   E212 = 'inventory_receipt.error.outsourcing_iqc_missing',

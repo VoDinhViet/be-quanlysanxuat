@@ -34,12 +34,12 @@ import {
  * Một **lần kiểm** (attempt) của một `qc_requests` — append-only, không bao giờ `UPDATE`. Mỗi lần
  * QC bấm "Lưu" (`IqcService.confirmIqc`/`OqcService.confirmOqc`) sinh 1 dòng mới, vá lỗ hổng cũ:
  * trước đây mỗi lần confirm ghi đè chính dòng `quality_inspections`, PASS ở cuối vòng REWORK xoá
- * sạch lịch sử các lần rework trước — xem `docs/decisions/qc-request-attempt-split.md`.
+ * sạch lịch sử các lần rework trước — xem `docs/decisions/qc-data-model.md`.
  *
  * `kind`/`quantity` là **mirror của cha**, không phải snapshot độc lập — composite FK 3 cột bên
  * dưới khiến Postgres tự đảm bảo chúng luôn khớp `qc_requests`, nhờ đó 2 CHECK cross-nhánh
  * (`disposition_requires_fail`, `sort_qty_total`) vẫn viết được **trên cùng một bảng vật lý** dù đã
- * tách cha–con — đúng điều kiện mà `docs/decisions/qc-single-table.md` đặt ra khi loại bỏ mô hình
+ * tách cha–con — đúng điều kiện mà `docs/decisions/qc-data-model.md` đặt ra khi loại bỏ mô hình
  * cha–con IQC/OQC (trục tách ở đây là request→attempt, không phải trục IQC-vs-OQC mà quyết định đó
  * từng xét).
  *

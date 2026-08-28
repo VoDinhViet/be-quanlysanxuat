@@ -18,7 +18,7 @@ import { AQL_LEVELS } from '../iqc-aql.constant';
  * Nút "Lưu" duy nhất của trang chi tiết IQC — ghi đè toàn bộ quyết định QC mỗi lần gọi (không
  * phải patch một phần): field vắng mặt nghĩa là xoá, không phải giữ nguyên. QC tự chọn `result`;
  * bảng AQL chỉ còn là gợi ý hiển thị (`IqcService.getIqc` tính `ac`/`re` tham khảo), không còn
- * chặn được `confirm` (xem `docs/domains/quality.md`).
+ * chặn được `confirm` (xem `docs/domains/quality-iqc.md`).
  */
 export class ConfirmIqcReqDto {
   @EnumField(() => IqcInspectionLevel, {

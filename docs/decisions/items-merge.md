@@ -1,5 +1,7 @@
 # Gộp `products` + `materials` thành `items`
 
+**Trạng thái:** còn hiệu lực
+
 ## Quyết định
 
 `products` (FG/WIP) và `materials` (vật tư) gộp thành một bảng `items` duy nhất, phân biệt bằng

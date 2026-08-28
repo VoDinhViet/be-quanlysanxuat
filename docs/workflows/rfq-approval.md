@@ -126,13 +126,13 @@ ra cùng mã.
 | Gửi duyệt khi còn dòng NCC thiếu giá | `E120` | 400 |
 | Duyệt khi còn vật tư chưa chọn thắng thầu | `E132` | 409, **transaction không mở** |
 | Thu hồi khi đã có PO `ORDERED` | `E133` | 409 |
-| Trùng mã `RFQ-xxxxx`/`PO-xxxxx` | — | 500 thô, rollback |
 
 ## Business rules
 
 - Vì sao SL báo giá sống ở bảng phân bổ (không ở tầng vật tư/NCC), vì sao thắng thầu là unique index
   từng phần → `docs/domains/purchasing.md`, mục Core concepts.
-- Vì sao PO chỉ sinh tự động, chưa có lập tay → cùng file, mục "Trạng thái hiện tại".
+- `POST /purchase-orders` cho phép lập PO tay thẳng, không qua RFQ — RFQ là một đường dẫn tới PO,
+  không phải đường duy nhất → `docs/domains/purchasing.md`.
 
 ## Related domains
 
@@ -141,8 +141,8 @@ ra cùng mã.
 (ngoài phạm vi domain này).
 
 Bước trước: RFQ được lập tay (`POST /purchase-quotations`, không có workflow riêng — một write đơn
-giản, xem `docs/domains/purchasing.md`). Bước sau: đặt mua thật (`docs/domains/purchasing.md`, mục
-"Đi tìm route `POST /purchase-orders`" — chưa có, PO Draft phải chuyển `ORDERED` tay đợt sau).
+giản, xem `docs/domains/purchasing.md`). Bước sau: PO Draft chuyển `ORDERED` rồi tiếp tục sang nhập
+kho/thanh toán — `docs/workflows/purchase-to-payment.md`.
 
 Code: `PurchaseQuotationsService.sendQuotation`/`approveQuotation`/`rejectQuotation`/
 `recallQuotation`, `PurchaseOrdersService.createDraftOrdersFromQuotation`.

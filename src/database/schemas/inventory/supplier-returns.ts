@@ -73,7 +73,7 @@ export const supplierReturns = pgTable(
     // Luôn 'INCOMING' khi `iqcId` có giá trị — phiếu trả NCC chỉ sinh từ nhánh IQC
     // (`IqcService.confirmIqc` → `createFromIqcDisposition`), không bao giờ từ nhánh OUTGOING. Cột
     // + CHECK + composite FK bên dưới là cách duy nhất giữ lại ràng buộc "chỉ trỏ được vào phiếu
-    // IQC" sau khi IQC/OQC gộp một bảng (`docs/decisions/qc-single-table.md`) — không có cột này,
+    // IQC" sau khi IQC/OQC gộp một bảng (`docs/decisions/qc-data-model.md`) — không có cột này,
     // `iqcId` trỏ được vào bất kỳ dòng `qc_requests` nào, kể cả OQC. Nullable (không `NOT NULL`) dù
     // luôn được set ở INSERT (default) — composite FK `ON DELETE SET NULL` set cả hai cột về NULL
     // cùng lúc khi dòng QC bị xoá, `NOT NULL` sẽ vi phạm ngay lúc đó.

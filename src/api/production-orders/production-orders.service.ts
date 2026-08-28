@@ -336,8 +336,8 @@ export class ProductionOrdersService {
     return this.getProductionOrdersById(productionOrdersId);
   }
 
-  /** Khuôn `OrdersService.generateOrderCode`/`ItemsService.generateItemCode` — vẫn TOCTOU như mọi
-   * generator khác trong repo, unique constraint trên `code` là chốt chặn thật. */
+  /** Khuôn `OrdersService.generateOrderCode`/`ItemsService.generateItemCode` — cấp số qua
+   * `generateDocumentSequence` (atomic `INSERT ... ON CONFLICT DO UPDATE`), không TOCTOU. */
   private async generateProductionOrderCode(
     tx: DbTransaction,
   ): Promise<string> {

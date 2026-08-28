@@ -1,8 +1,8 @@
 # Khôi phục điểm kết thúc cho Job/LSX/Order/DO
 
-**Trạng thái:** còn hiệu lực — đảo một phần quyết định cũ (`0068`/`0071`, 2026-07-31: rút
-`production_job_status` từ 5 xuống 2 giá trị, bỏ `COMPLETED`/`CANCELLED`) và khép lại "phase giao
-hàng 2" từng để ngỏ (`docs/decisions/qc-gates-on-stock-moves.md`, mục "Phạm vi cố ý hẹp của gate D2").
+**Trạng thái:** còn hiệu lực — đảo một phần quyết định cũ (rút `production_job_status` từ 5 xuống 2
+giá trị, bỏ `COMPLETED`/`CANCELLED`) và khép lại "phase giao hàng 2" từng để ngỏ
+(`docs/decisions/qc-gates-on-stock-moves.md`, mục "Phạm vi cố ý hẹp của gate D2").
 
 ## Bối cảnh
 
@@ -14,9 +14,9 @@ LSX=APPROVED, Job=IN_PROGRESS, DO=PENDING_DELIVERY` vĩnh viễn. Hệ quả: th
 cáo doanh thu ghi nhận luôn bằng 0, quản đốc không biết Job nào xong, kho không biết DO nào đã giao,
 không chốt được kỳ.
 
-Đây không phải tính năng cố ý chưa làm — `docs/domains/inventory.md` (mục "Giao hàng") đã ghi sẵn
-đúng thiết kế "phase giao hàng 2" (DO có bước xác nhận giao thật thì tự sinh + post 1
-`inventory_issues` SALES), chỉ chưa từng implement. `production_job_status` từng có 5 giá trị, bị
+Đây không phải tính năng cố ý chưa làm — thiết kế "phase giao hàng 2" (DO có bước xác nhận giao
+thật thì tự sinh + post 1 `inventory_issues` SALES) đã được vạch sẵn từ trước, chỉ chưa từng
+implement — nay là `docs/workflows/outbound-delivery.md`. `production_job_status` từng có 5 giá trị, bị
 rút bớt vì "xưởng chưa cần" — `docs/decisions/stored-inventory-balances.md` đã cảnh báo trước đây là
 chặn kỹ thuật cho việc auto-post kho từ sản xuất.
 
@@ -33,8 +33,9 @@ Hai nhánh đóng vòng đời **độc lập nhau**, không có quan hệ 1:1 g
 ```
 Job:  PENDING → IN_PROGRESS → WAITING_QC → WAITING_DELIVERY → COMPLETED → (mọi Job cùng LSX
       COMPLETED) → LSX COMPLETED
-DO:   DRAFT → PENDING_DELIVERY → DELIVERED (OutboundOrdersService.postOutboundOrder) → (mọi
-      order_item NORMAL của đơn liên quan đã issuedQty ≥ quantity) → Order COMPLETED
+DO:   DRAFT → (send) → PENDING_APPROVAL → (approve) → PENDING_DELIVERY → DELIVERED
+      (OutboundOrdersService.postOutboundOrder) → (mọi order_item NORMAL của đơn liên quan đã
+      issuedQty ≥ quantity) → Order COMPLETED
 ```
 
 **Nhánh production** (`ProductionJobStatus` thêm `WAITING_QC`/`WAITING_DELIVERY`/`COMPLETED`,
@@ -42,15 +43,14 @@ DO:   DRAFT → PENDING_DELIVERY → DELIVERED (OutboundOrdersService.postOutbou
 
 - `IN_PROGRESS → WAITING_QC`: `ProductionJobsService.updateProductionJobOperation`, khi node Cấp 0
   (FG) **không còn công đoạn nào dở** — đếm lại cả node sau mỗi lần ghi, không suy từ một công đoạn
-  vừa báo (node Cấp 0 có thể nhiều bước, BUG-079 sửa 2026-08-25). `E210` đã đảm bảo mọi công đoạn
+  vừa báo (node Cấp 0 có thể nhiều bước). `E210` đã đảm bảo mọi công đoạn
   khác (ngoài Cấp 0) xong trước đó rồi.
 - `WAITING_QC → WAITING_DELIVERY`: `closeJobIfQcCovered` (`src/api/oqc/oqc.query.ts`), khi
   `getJobQcCoverage` báo `open = 0` — tái dùng đúng gate đã có (`E196`/`E205`), không dựng cơ chế
-  mới. `getJobQcCoverage` gộp chung IQC/OQC (`docs/decisions/qc-single-table.md`), nên hàm này được
+  mới. `getJobQcCoverage` gộp chung IQC/OQC (`docs/decisions/qc-data-model.md`), nên hàm này được
   gọi từ **ba** nơi có thể đưa dòng QC cuối cùng của Job về `COMPLETED`: `OqcService.confirmOqc`,
   `IqcService.confirmIqc`, và `completeIqcAfterSupplierReturn` — Job có công đoạn `OUTSOURCE` đóng
-  bằng IQC (không phải OQC), thiếu một trong ba chỗ gọi thì Job kẹt vĩnh viễn ở `WAITING_QC`
-  (BUG-047, phát hiện 2026-08-27).
+  bằng IQC (không phải OQC), thiếu một trong ba chỗ gọi thì Job kẹt vĩnh viễn ở `WAITING_QC`.
 - `WAITING_DELIVERY → COMPLETED`: `InventoryReceiptsService.postInventoryReceipt`
   (`receiptType = PRODUCTION`), khi tổng SL đã nhập kho (`getConfirmedProductionQuantityByJobId`)
   đạt `job.quantity` — đúng ngưỡng gate `E197` đã chặn từ trước, giờ dùng luôn để đóng Job.
@@ -112,7 +112,7 @@ dùng, khác 1 thì ném `E238` thay vì đoán. Không thêm cột `warehouseId
 
 ## Related docs
 
-`docs/domains/production.md` (Lifecycle Job/LSX), `docs/domains/inventory.md` (mục "Giao hàng"),
-`docs/domains/orders.md` (Lifecycle, Common mistakes #5), `docs/workflows/final-qc.md`,
+`docs/domains/production.md` (Lifecycle Job/LSX), `docs/workflows/outbound-delivery.md` (vòng đời
+DO đầy đủ), `docs/domains/orders.md` (Lifecycle, Common mistakes), `docs/workflows/outgoing-qc.md`,
 `docs/workflows/production-job-execution.md`, `docs/decisions/qc-gates-on-stock-moves.md` (gate D2,
 nay đã có `DELIVERED`), `docs/decisions/stored-inventory-balances.md` (cảnh báo blocker cũ).

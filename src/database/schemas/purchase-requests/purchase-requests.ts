@@ -32,7 +32,7 @@ export const purchaseRequestStatusEnum = pgEnum('purchase_request_status', [
 /**
  * Đề xuất mua hàng — phiếu xin duyệt nội bộ, không phải procurement. Hai đường sinh (lập tay
  * `POST /purchase-requests`, tự động từ `startJob`), vòng đời và quyền: xem
- * `docs/domains/purchase-requests.md` + `docs/decisions/no-procurement.md`.
+ * `docs/domains/purchase-requests.md` + `docs/decisions/purchasing-scope-limits.md`.
  */
 export const purchaseRequests = pgTable(
   'purchase_requests',

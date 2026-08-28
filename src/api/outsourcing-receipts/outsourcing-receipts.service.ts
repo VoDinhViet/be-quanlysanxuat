@@ -60,7 +60,7 @@ type ResolvedReceiptItem = {
   note: string | null;
   // Denormalize từ dòng OS-OUT nguồn — neo sang đúng công đoạn `OUTSOURCE` sinh ra dòng này, dùng
   // để gắn `qcRequests.productionJobOperationId` khi `requiresIqc` (xem
-  // `createOutsourcingReceipt`, `docs/domains/quality.md`).
+  // `createOutsourcingReceipt`, `docs/domains/quality-iqc.md`).
   productionJobId: string | null;
   productionJobOperationId: string | null;
 };

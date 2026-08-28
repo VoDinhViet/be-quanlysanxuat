@@ -26,19 +26,19 @@ Hai phương án tầng để gắn OQC được cân nhắc:
 tầng Cấp 0.**
 
 - Thêm cột `productionJobOperationId` — **nullable**, ép bắt buộc theo `kind` bằng CHECK
-  (`chk_qc_requests_outgoing_job`, `docs/decisions/qc-single-table.md`) thay vì `NOT NULL` cứng trên
+  (`chk_qc_requests_outgoing_job`, `docs/decisions/qc-data-model.md`) thay vì `NOT NULL` cứng trên
   cột, vì `qc_requests` giờ dùng chung cho cả IQC lẫn OQC (một bảng vật lý, `kind` phân nhánh) —
   `onDelete: 'restrict'`; LSX một khi `APPROVED` không có đường nào xoá được cây
   `production_job_operations`/`production_job_bom_items` của nó nữa (`ensureItemsNotLockedByProduction`
   chặn cứng `E080` khi còn thao tác trên LSX đã duyệt), nên FK không cần phòng hờ mồ côi. Chi tiết:
-  `docs/domains/quality.md`.
+  `docs/domains/quality-oqc.md`.
 - Giữ `productionJobId`, cùng lý do trên (nullable + CHECK theo `kind`, không `NOT NULL` cứng) —
   denormalize từ `operation.productionJobId`, dùng để lọc/join theo Job không phải qua
   `production_job_operations`, và là neo cho 2 gate cross-domain (gate nhập kho TP, gate giao hàng —
   cả hai đều hỏi "Job này đã QC xong hết chưa", không hỏi "công đoạn này đã QC xong chưa").
 - `operationCode`/`operationName`/`bomItem.code`/`bomItem.name` **không còn là cột lưu** — đọc thẳng
   qua relation `productionJobOperation`/`productionJobOperation.bomItem` lúc `GET`, response DTO vẫn
-  trả nested `operation`/`bomItem` (xem `docs/domains/quality.md`).
+  trả nested `operation`/`bomItem` (xem `docs/domains/quality-oqc.md`).
 - `itemId` đổi nguồn: từ `job.itemId` (thành phẩm) sang `bomItem.itemId` (part của node BOM chứa
   công đoạn) — đây là thay đổi ngữ nghĩa quan trọng nhất: **`itemId` của một dòng OQC không còn là
   thành phẩm cuối cùng, mà là part đang được QC ở đúng công đoạn đó** (có thể là WIP trung gian).
@@ -64,7 +64,7 @@ cho chính Cấp 0 (bước cuối ra thành phẩm) — quy đổi từ QC các
 thái + trần kế hoạch**:
 
 - `E196`: Job phải có ≥1 phiếu OQC, và không còn phiếu nào chưa `COMPLETED` — hàm đọc gate này đã đổi
-  tên/hợp nhất thành `getJobQcCoverage` (`docs/decisions/qc-single-table.md`), cùng ngữ nghĩa.
+  tên/hợp nhất thành `getJobQcCoverage` (`docs/decisions/qc-data-model.md`), cùng ngữ nghĩa.
 - `E197`: SL nhập kho TP (cộng dồn) vẫn chặn trần theo `production_jobs.quantity` — giữ nguyên ý
   nghĩa "không nhập vượt kế hoạch", chỉ tách riêng khỏi điều kiện QC.
 
@@ -75,7 +75,7 @@ khác.
 
 Cùng đợt đổi model, thêm `resultAuto` (server tự suy từ `defectQty` so `ac` của plan AQL) và cho QC
 toàn quyền ghi đè, không cần lý do (`E201` từng bắt buộc kèm lý do khi lệch, đã nghỉ hưu — AQL chỉ
-còn là gợi ý hiển thị, `docs/domains/quality.md`). **Chỉ áp cho OQC** — IQC giữ nguyên hành vi cũ
+còn là gợi ý hiển thị, `docs/domains/quality-oqc.md`). **Chỉ áp cho OQC** — IQC giữ nguyên hành vi cũ
 (QC tự chọn `result` hoàn toàn, bảng AQL chỉ tính `ac`/`re` tham khảo, không ảnh hưởng khả năng lưu
 kết quả). Hai module cố tình lệch nhau ở điểm này.
 
@@ -84,8 +84,9 @@ kết quả). Hai module cố tình lệch nhau ở điểm này.
 - `OqcDisposition` (`ACCEPT`/`REWORK`/`SCRAP`) — enum riêng của OQC, không dùng chung
   `IqcDisposition` (`CONCESSION`/`SORT`/`RETURN`) vì OQC là QC nội bộ sản xuất, không có NCC để trả
   hàng.
-- `E175`/`E177`/`E178`/`E181` (Job không `IN_PROGRESS`, đã `COMPLETED`, không xoá được, mã trùng) —
-  không đổi ngữ nghĩa.
+- `E177`/`E178`/`E181` (OQC đã `COMPLETED`, không xoá được, mã trùng) — không đổi ngữ nghĩa. `E175`
+  **đã đổi** ở một đợt sau quyết định này — nay chấp nhận cả `IN_PROGRESS` lẫn `WAITING_QC` (Job tự
+  chuyển `WAITING_QC` ngay khi công đoạn Cấp 0 xong), xem `docs/domains/quality-oqc.md`.
 
 ## QC cho Cấp 0 (bước cuối ra thành phẩm) — đã làm, không phải bảng mới
 
@@ -107,14 +108,14 @@ phẩm thì không cho nhập kho), quyết định cuối **không** làm vậy
 - Bước Lắp ráp (công đoạn của node Cấp 0) chỉ mở khi **mọi** công đoạn khác của Job đã báo hoàn
   thành (`completedDate` khác null) — `E210` chặn `PATCH .../operations/:operationId` nếu chưa.
 - OQC gắn vào công đoạn của node Cấp 0 y hệt mọi công đoạn khác — không route/bảng riêng.
-  `getJobQcCoverage` (`docs/decisions/qc-single-table.md`) đọc cờ `isFinalAssembly` qua
+  `getJobQcCoverage` (`docs/decisions/qc-data-model.md`) đọc cờ `isFinalAssembly` qua
   `productionJobBomItems.itemType = 'FG'` để tính `E209` tách khỏi `E196`.
-- **Entry point tạo OQC cho Cấp 0 đổi chỗ (2026-08-21):** từ popup chọn tay `GET
-  /oqc/inspectable-operations` + `POST /oqc` (tạo được cho bất kỳ công đoạn nào, kể cả Cấp 0) sang
-  đúng một route cấp Job, không nhận body: `POST /production-jobs/:jobId/qc` —
+- **Entry point tạo OQC cho Cấp 0 đổi chỗ:** từ popup chọn tay `GET /oqc/inspectable-operations` +
+  `POST /oqc` (tạo được cho bất kỳ công đoạn nào, kể cả Cấp 0) sang đúng một route cấp Job, không
+  nhận body: `POST /production-jobs/:jobId/qc` —
   `OqcService.createOqcForJob` tự tìm công đoạn Cấp 0 của Job (1 Job = 1 FG nên "QC cho Job" nghĩa
   là QC cho chính bước lắp ráp cuối), tự suy `quantity`/`inspectionDate`, không tạo được cho công
-  đoạn nào khác ngoài Cấp 0 qua API nữa. Chi tiết: `docs/workflows/final-qc.md`.
+  đoạn nào khác ngoài Cấp 0 qua API nữa. Chi tiết: `docs/workflows/outgoing-qc.md`.
 
 Lý do tái dùng thay vì bảng mới: node Cấp 0 cần đúng những gì `production_job_bom_items`/
 `production_job_operations` đã cung cấp cho mọi node khác (snapshot, `plannedQuantity` đóng băng,
@@ -130,6 +131,6 @@ bằng cột đó, không bằng bảng khác.
 ## Related docs
 
 `docs/decisions/qc-gates-on-stock-moves.md` (quyết định song song, thêm 2 gate cross-domain).
-`docs/decisions/qc-single-table.md` (`getJobQcCoverage` hợp nhất OQC + IQC gia công ngoài theo công
+`docs/decisions/qc-data-model.md` (`getJobQcCoverage` hợp nhất OQC + IQC gia công ngoài theo công
 đoạn, kế thừa neo `production_job_operations` mà quyết định này thiết lập). `docs/domains/
-quality.md`, `docs/domains/production.md`, `docs/domains/inventory.md`, `docs/workflows/final-qc.md`.
+quality.md`, `docs/domains/production.md`, `docs/domains/inventory.md`, `docs/workflows/outgoing-qc.md`.

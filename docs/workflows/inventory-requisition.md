@@ -5,21 +5,19 @@ Business rule/công thức số: `docs/domains/inventory.md`, mục "Phiếu lã
 
 ## Trigger & actor
 
-| Bước                    | Route                                 | Actor (role seed)                                  |
-| ----------------------- | ------------------------------------- | -------------------------------------------------- |
-| Lập phiếu               | `POST /inventory-requisitions`        | PRODUCTION                                         |
-| Sửa/xoá dòng, gửi duyệt | `PATCH`/`DELETE`, `POST .../send`     | PRODUCTION                                         |
-| Duyệt/từ chối           | `POST .../approve`, `POST .../reject` | DIRECTOR                                           |
-| Xuất kho                | `POST .../issue`                      | WAREHOUSE                                          |
-| Huỷ                     | `POST .../cancel`                     | PRODUCTION/WAREHOUSE (mọi trạng thái trừ `ISSUED`) |
+Lập/sửa/xoá dòng/gửi duyệt (`create`/`PATCH`/`DELETE`/`send`): PRODUCTION
+(`inventory-requisitions:create`/`:update`/`:delete`). Duyệt/từ chối (`approve`/`reject`): DIRECTOR
+(`:approve`). Xuất kho (`issue`): WAREHOUSE (`:issue` — quyền riêng, WAREHOUSE **không** có
+`:update`/`:delete`). Huỷ (`cancel`, `inventory-requisitions:update`): chỉ **PRODUCTION** — WAREHOUSE
+không có quyền này dù thao tác vật lý ở kho. Method/path đầy đủ: Swagger `/api-docs`.
 
 ## Precondition
 
+- Mọi `itemId` phải tồn tại (`E007`), là `type = RM`, chưa xoá mềm (`E229`).
 - `type = PRODUCTION` bắt buộc `productionJobId` (`E233`) — dòng lấy từ popup chọn vật tư dùng
   chung (`GET /inventory-requisitions/lines`, kèm `productionJobId` để khoanh vùng theo định mức
   BOM của Job). `type = OTHER` không bắt buộc, dùng cột `reason` thay cho liên kết Job (cùng popup,
   gọi không kèm `productionJobId`).
-- Mọi `itemId` trong dòng phải là `type = RM`, chưa xoá mềm (`E229`).
 - `type = PRODUCTION`: mọi `itemId` phải có mặt trong `production_job_issues` của đúng Job đó
   (`E230`) — không lãnh được vật tư ngoài định mức BOM.
 
@@ -29,8 +27,12 @@ Business rule/công thức số: `docs/domains/inventory.md`, mục "Phiếu lã
 DRAFT ──send──> PENDING_APPROVAL ──approve──> APPROVED ──issue──> ISSUED  (điểm cuối)
   │                   │      │                    │
   │                   │      └──reject──> REJECTED ──send──> PENDING_APPROVAL
-  └──cancel───────────┴─────────────────────┴──> CANCELLED
+  │                                          │
+  └──cancel───────────┴──────────────────────┴─────────────> CANCELLED
 ```
+
+`cancel` hợp lệ từ mọi trạng thái trừ `ISSUED`/`CANCELLED` (kể cả từ `REJECTED`, không cần quay lại
+`DRAFT` trước).
 
 1. **Lập phiếu** (`createInventoryRequisition`) — validate đọc (item hợp lệ, `type`/`productionJobId`
    khớp nhau, mỗi dòng ≤ Có thể lãnh và ≤ SL BOM còn lại — cùng bộ check `approve` chạy, xem dưới)
@@ -83,7 +85,7 @@ chạm ≥ 2 module (ghi `inventory_issues`/`inventory_issue_items`, gọi
 | Code   | Khi nào                                                                                               |
 | ------ | ----------------------------------------------------------------------------------------------------- |
 | `E223` | Phiếu không tồn tại                                                                                   |
-| `E224` | Sửa/xoá khi không còn `DRAFT`/`REJECTED`                                                              |
+| `E224` | Sửa/xoá/`send` khi không còn `DRAFT`/`REJECTED`                                                       |
 | `E225` | `approve`/`reject` khi không còn `PENDING_APPROVAL`                                                   |
 | `E226` | `issue` khi không còn `APPROVED`                                                                      |
 | `E227` | `issue` khi phiếu 0 dòng                                                                              |

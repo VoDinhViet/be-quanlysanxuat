@@ -56,25 +56,25 @@ nhập/xuất có vòng đời `DRAFT`/`POSTED`/`CANCELLED`, sổ cái `inventor
 
 - Auto-post kho từ sản xuất (`ProductionJobsService.startJob` xuất vật tư, Job hoàn thành nhập
   thành phẩm) — vẫn ngoài phạm vi, dù chặn kỹ thuật gốc (`ProductionJobStatus` chưa có trạng thái
-  hoàn thành) đã được gỡ 2026-08-24 (`docs/decisions/production-lifecycle-closing.md`). Job
-  `COMPLETED` giờ suy ra **từ** phiếu nhập TP đã `post` đủ SL — chưa đảo ngược lại thành "Job xong tự
-  lập phiếu". Phiếu nhập/xuất vẫn có cột liên kết `productionOrderId`/`productionJobId`.
+  hoàn thành) đã được gỡ (`docs/decisions/production-lifecycle-closing.md`). Job `COMPLETED` giờ
+  suy ra **từ** phiếu nhập TP đã `post` đủ SL — chưa đảo ngược lại thành "Job xong tự lập phiếu".
+  Phiếu nhập/xuất vẫn có cột liên kết `productionOrderId`/`productionJobId`.
 - Chuyển kho (`TRANSFER_IN`/`TRANSFER_OUT` có trong enum nhưng chưa route nào phát ra), quản lý lô/
   vị trí (không `locationId`/`batchId`). `reservedQuantity` thành cột thật vẫn ngoài phạm vi — cột
-  `inventory_balances.reserved_quantity` luôn `0` dưới DB — nhưng **đã đảo một phần** (đợt sửa
-  BUG-031/032/048): `GET /inventory/balances.reservedQuantity` giờ trả số tính động thay vì literal
-  `0`, và `reserved` của thành phẩm trên `GET /inventory` không còn tính thuần từ `order_items` —
-  giờ là chứng từ giữ (DO `PENDING_APPROVAL`/`PENDING_DELIVERY`). Xem `docs/domains/inventory.md`.
+  `inventory_balances.reserved_quantity` luôn `0` dưới DB — nhưng **đã đảo một phần**:
+  `GET /inventory/balances.reservedQuantity` giờ trả số tính động thay vì literal `0`, và `reserved`
+  của thành phẩm trên `GET /inventory-products` không còn tính thuần từ `order_items` — giờ là
+  chứng từ giữ (DO `PENDING_APPROVAL`/`PENDING_DELIVERY`). Xem `docs/domains/inventory.md`.
 - **Chưa phân biệt chủ sở hữu** — khoá dòng vẫn đúng một cặp `(warehouseId, itemId)`, không có
   chiều thứ ba. Hàng khách gửi (`inventory_receipts.clientId`, `receiptType = RETURN`) và hàng công
-  ty mua cùng item/kho cộng chung vào một số `quantity` — biết đây là giới hạn thật (BUG-038, xác
-  nhận có dữ liệu dev bị gộp), cân nhắc tách theo `clientId` rồi quyết định **chưa làm** vì đụng
-  toàn bộ luồng ghi/đọc tồn (posting engine, gate IQC, lãnh vật tư, các màn tồn kho). Traceability
-  hiện chỉ ở mức chứng từ, không ở mức số tồn — xem `docs/domains/inventory.md`.
+  ty mua cùng item/kho cộng chung vào một số `quantity` — biết đây là giới hạn thật (xác nhận có dữ
+  liệu dev bị gộp), cân nhắc tách theo `clientId` rồi quyết định **chưa làm** vì đụng toàn bộ luồng
+  ghi/đọc tồn (posting engine, gate IQC, lãnh vật tư, các màn tồn kho). Traceability hiện chỉ ở mức
+  chứng từ, không ở mức số tồn — xem `docs/domains/inventory.md`.
 
 ## Không nhầm với
 
-`docs/decisions/no-procurement.md` — đợt này **nới** một phần quyết định đó: phiếu nhập giờ có
+`docs/decisions/purchasing-scope-limits.md` — đợt này **nới** một phần quyết định đó: phiếu nhập giờ có
 `unitPrice` (nullable) và `purchaseRequestId`, nhưng vẫn không có đơn mua hàng thật, không có bảng
 giá NCC, không có công nợ. Xem cross-link ở file đó.
 

@@ -9,8 +9,8 @@ Repo từng có 13 file `docs/features/<module>.md`, mỗi file mở đầu bằ
 tay là nguồn sai lớn nhất trong toàn bộ tài liệu**: route đổi tên, permission đổi, DTO thêm field —
 bảng không đổi theo, và không có cách nào phát hiện tự động.
 
-87 handler đã được `@ApiAuth`/`@ApiPublic` mô tả đầy đủ; Swagger sinh ra từ chính chúng nên **không
-thể stale**.
+Toàn bộ handler đã được `@ApiAuth`/`@ApiPublic` mô tả đầy đủ (200+); Swagger sinh ra từ chính chúng
+nên **không thể stale**.
 
 ## Quyết định
 

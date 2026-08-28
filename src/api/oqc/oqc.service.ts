@@ -104,7 +104,7 @@ export class OqcService {
     );
 
     // Một `.select()` phẳng — join tường minh thay vì `db.query` quan hệ + hydrate riêng
-    // (`docs/decisions/qc-single-table.md`). `productionJobOperations`/`productionJobBomItems`/
+    // (`docs/decisions/qc-data-model.md`). `productionJobOperations`/`productionJobBomItems`/
     // `items` dùng `innerJoin` — `chk_qc_requests_outgoing_job` đảm bảo mọi dòng `kind = OUTGOING`
     // (đã lọc ở `where`) luôn có cả hai, nên Drizzle tự suy kiểu non-null, không cần assertion.
     // `items` chỉ join để lấy `unitId` (cột `unit` bên dưới) — không select nguyên `item`, danh
@@ -412,7 +412,7 @@ export class OqcService {
    * attempt mới (`qc_inspections`), mirror trên `qc_requests`, và đính kèm. `linkFiles` chạy trước
    * khi mở transaction (`.claude/rules/transactions.md`) nên `dispositionEvidenceFileIds` vẫn bị
    * validate/stamp `linkedAt` kể cả khi PASS — chỉ dòng `qc_files` bị bỏ qua. Xem
-   * `docs/workflows/final-qc.md`. */
+   * `docs/workflows/outgoing-qc.md`. */
   async confirmOqc(
     oqcId: string,
     reqDto: ConfirmOqcReqDto,

@@ -26,7 +26,7 @@ import { users } from '../identity-access/users';
 
 /**
  * `INCOMING` — kiểm hàng nhập từ NCC (IQC cũ). `OUTGOING` — kiểm công đoạn sản xuất, kể cả công
- * đoạn gia công ngoài (OQC cũ, gộp `type = OUTSOURCE` vào từ `docs/decisions/qc-single-table.md`).
+ * đoạn gia công ngoài (OQC cũ, gộp `type = OUTSOURCE` vào từ `docs/decisions/qc-data-model.md`).
  * Discriminator quyết định cột nào bắt buộc (`chk_qc_requests_outgoing_job`...) — xem doc đó cho
  * lý do gộp một bảng thay vì cha–con.
  */
@@ -93,7 +93,7 @@ export const qcDispositionEnum = pgEnum('qc_disposition', [
  * hợp lệ theo `kind`: `chk_qc_requests_status_by_kind`. `COMPLETED` → PASS, hoặc FAIL với disposition không
  * cần xử lý thêm (`CONCESSION`/`ACCEPT`/`SCRAP`) — `INCOMING.COMPLETED` vẫn `confirm` lại được,
  * `OUTGOING.COMPLETED` khoá cứng (`E177`, mốc gate nhập kho/giao hàng) — khác biệt cố ý giữa hai
- * `kind`, xem `docs/domains/quality.md`.
+ * `kind`, xem `docs/domains/quality-iqc.md`/`docs/domains/quality-oqc.md`.
  */
 export enum IqcStatus {
   NOT_INSPECTED = 'NOT_INSPECTED',
@@ -120,11 +120,11 @@ export const qcStatusEnum = pgEnum('qc_status', [
 /**
  * "Lô kiểm QC" hợp nhất — `kind = INCOMING` (hàng nhập từ NCC, IQC cũ) hoặc `OUTGOING` (công đoạn
  * sản xuất, OQC cũ). Bảng phẳng + discriminator, không cha–con giữa `INCOMING`/`OUTGOING` — lý do
- * đầy đủ: `docs/decisions/qc-single-table.md`. `IqcService`/`OqcService` (2 module riêng, không đổi
+ * đầy đủ: `docs/decisions/qc-data-model.md`. `IqcService`/`OqcService` (2 module riêng, không đổi
  * route) đều đọc/ghi bảng này, luôn kèm `eq(kind, ...)`.
  *
  * Đây là bảng **cha** của `qc_inspections` — mỗi request có 0..N lần kiểm (attempt), append-only,
- * xem `docs/decisions/qc-request-attempt-split.md`. `status`/`result`/`disposition`/`sortOkQty`/
+ * xem `docs/decisions/qc-data-model.md`. `status`/`result`/`disposition`/`sortOkQty`/
  * `sortNgQty`/`resultNote`/`dispositionNote`/`confirmedBy`/`confirmedAt`/`resolvedBy`/
  * `resolvedAt` trên bảng này là **mirror của attempt mới nhất** — nguồn duy nhất ghi vào các cột
  * này là `IqcService`/`OqcService` sau khi insert 1 dòng `qc_inspections` mới, không có đường ghi
@@ -135,7 +135,7 @@ export const qcStatusEnum = pgEnum('qc_status', [
  * Cột riêng `INCOMING`: `supplierId`/`clientId` (loại trừ lẫn nhau —
  * `chk_qc_requests_supplier_client_exclusive`, `clientId` chỉ có khi sinh từ phiếu nhập RETURN gắn
  * khách hàng, không có phương án trả-lại-khách nên FAIL dạng SORT/RETURN bị chặn ở service —
- * `docs/domains/quality.md`)/`inventoryReceiptId`/`outsourcingReceiptId`/
+ * `docs/domains/quality-iqc.md`)/`inventoryReceiptId`/`outsourcingReceiptId`/
  * `outsourcingReceiptItemId`/`purchaseOrderId` (chứng từ nguồn, tối đa một cặp mua/gia công ngoài
  * khác `null` — `chk_qc_requests_source_exclusive`), `reason`, `inspectionStandard`/`inspectorName`/
  * `measuringTools`, `qcDepartmentId`, `sortOkQty`/`sortNgQty`.

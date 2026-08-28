@@ -396,7 +396,7 @@ export class IqcService {
     });
   }
 
-  /** Xem `docs/domains/quality.md` — quy tắc suy `status`, dùng chung cho tạo lẫn lưu kết quả QC. */
+  /** Xem `docs/domains/quality-iqc.md` — quy tắc suy `status`, dùng chung cho tạo lẫn lưu kết quả QC. */
   private resolveIqcStatus(
     result: IqcResult | undefined,
     disposition: IqcDisposition | undefined,
@@ -419,7 +419,7 @@ export class IqcService {
    * xử lý FAIL (route `POST /iqc/:iqcId/resolve` cũ đã xoá). Gọi lại được nhiều lần trừ khi request
    * đã `WAITING_RETURN` (`E159`) — mỗi lần gọi sinh **1 dòng `qc_inspections` mới** (attempt), không
    * còn `UPDATE` đè lên chính nó như trước khi tách request/attempt
-   * (`docs/decisions/qc-request-attempt-split.md`); `qc_requests` chỉ giữ mirror của attempt mới
+   * (`docs/decisions/qc-data-model.md`); `qc_requests` chỉ giữ mirror của attempt mới
    * nhất — nguồn duy nhất mọi gate/list/detail khác đang đọc. */
   async confirmIqc(
     iqcId: string,
@@ -567,7 +567,7 @@ export class IqcService {
         .where(eq(qcRequests.id, iqcId));
 
       // Công đoạn `OUTSOURCE` neo IQC vào `productionJobId` (`getJobQcCoverage` gộp chung IQC/OQC,
-      // `docs/decisions/qc-single-table.md`) — dòng IQC này có thể là dòng QC cuối cùng đóng Job,
+      // `docs/decisions/qc-data-model.md`) — dòng IQC này có thể là dòng QC cuối cùng đóng Job,
       // không chỉ OQC mới làm được việc đó. Xem `docs/decisions/production-lifecycle-closing.md`.
       if (status === IqcStatus.COMPLETED && request.productionJobId) {
         await closeJobIfQcCovered(tx, request.productionJobId);

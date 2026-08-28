@@ -4,7 +4,7 @@
 
 ## Bối cảnh
 
-Repo có 50 file `*.spec.ts` (~9.400 dòng) viết ở giai đoạn đầu. Schema, enum trạng thái và business
+Repo có 31 file `*.spec.ts` viết ở giai đoạn đầu. Schema, enum trạng thái và business
 rule còn đổi liên tục — spec hỏng nhanh hơn tốc độ sửa, và mỗi lần đổi enum lại kéo theo một đợt sửa
 mock không mang lại tín hiệu nào.
 
@@ -21,9 +21,9 @@ Dự án **chưa cần test**. Cụ thể:
 ## Hệ quả
 
 - Validation sau khi code là `pnpm lint` + `npx tsc --noEmit` + `pnpm build`.
-- **50 file spec trong `src/` đã lệch code và không ai chạy chúng.** Đừng đọc chúng như tài liệu về
+- **File spec trong `src/` đã lệch code và không ai chạy chúng.** Đừng đọc chúng như tài liệu về
   hành vi hiện tại, và đừng sửa chúng khi đổi service — chúng không phải nguồn sự thật.
-- `src/test-utils/` (`chainable-mock.util.ts`, `jest-setup.ts`) chỉ còn phục vụ đám spec đó.
+- `src/test-utils/chainable-mock.util.ts` chỉ còn phục vụ đám spec đó.
 
 ## Khi nào bật lại
 

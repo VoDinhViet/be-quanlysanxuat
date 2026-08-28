@@ -10,10 +10,9 @@ Job — **không nhân qua số lượng của các node WIP cha ở giữa**. �
 rõ trong code lẫn `docs/domains/product-structure.md`/`docs/domains/production.md`/
 `docs/domains/inventory.md`.
 
-BUG-086 (26/08/2026, staging 5439) đo trực tiếp: BOM 3 cấp, sản phẩm `TU-TL` có node cha `NGAN-KEO`
-(WIP) SL 3, node con `BULONG-M8` (RM) SL 4 — nhu cầu đúng là 12, hệ thống tính 4 (thiếu 67%). PhuocPT
-xác nhận cùng ngày: "BOM có thể chứa nhiều cấp" — dữ liệu thật của khách hàng dùng BOM đa cấp, nên
-giới hạn "không nổ theo cấp" không còn chấp nhận được.
+Đo trực tiếp trên dữ liệu thật: BOM 3 cấp, node cha WIP SL 3, node con RM SL 4 — nhu cầu đúng là 12,
+hệ thống cũ tính 4 (thiếu 67%). Dữ liệu khách hàng dùng BOM đa cấp thật, nên giới hạn "không nổ theo
+cấp" không còn chấp nhận được.
 
 Đáng chú ý: `ProductionJobsService.copyBomTree` (chạy ngay **trước** `copyBomIssues` trong cùng
 transaction) đã tính đúng số nổ cấp từ trước — `production_job_bom_items.plannedQuantity = SL cha
@@ -35,7 +34,7 @@ tắc**, không lặp lại ở đây.
   theo `itemId`) — đổi shape DTO, kéo theo sửa FE tab "Thành phần vật tư" (`web-qlsx-start`).
 - Migration data-only backfill lại `production_job_issues.requiredQty`/`unitQty` cho mọi Job đã tồn
   tại từ nguồn `production_job_bom_items.plannedQuantity` (cột này đã đúng sẵn cho toàn bộ Job lịch
-  sử nhờ migration `0125_lumpy_scrambler.sql`, backfill `plannedQuantity` bằng `WITH RECURSIVE`).
+  sử nhờ một migration backfill trước đó dùng `WITH RECURSIVE`).
 
 Route cây `GET /items/:itemId/bom` ("Cấu trúc & Công đoạn") **không đổi** — SL mỗi node so với cha
 trực tiếp vẫn đúng và cần thiết cho một màn xem/biên tập cấu trúc.
@@ -46,8 +45,8 @@ trực tiếp vẫn đúng và cần thiết cho một màn xem/biên tập cấ
   nhu cầu thật), không phải hồi quy.
 - Gate `E232` (chặn lãnh vượt `requiredQty`) nới ra cho các phiếu trước đây bị chặn oan vì số nền
   thấp hơn thực tế.
-- `available` trên `GET /inventory` giảm theo, có thể xuống âm — hành vi cố ý sẵn có của công thức
-  `onHand − reserved − bomDemand`, không phải lỗi mới.
+- `available` trên `GET /inventory-products`/`GET /inventory-materials` giảm theo, có thể xuống âm —
+  hành vi cố ý sẵn có của công thức `onHand − reserved − bomDemand`, không phải lỗi mới.
 - Job đã `IN_PROGRESS` trước migration không tự chạy lại `collectMaterialShortages` — đề xuất mua
   hàng tự sinh lúc `startJob` cho các Job đó vẫn giữ số cũ, cần vận hành tự xử lý nếu cần.
 
@@ -55,7 +54,7 @@ trực tiếp vẫn đúng và cần thiết cho một màn xem/biên tập cấ
 
 Đừng quay về gộp phẳng `SUM(quantity) GROUP BY itemId` trên `bom_items`/`quantity` thô với lý do
 "đơn giản hơn" hay "chưa cần đa cấp" — dữ liệu thật của khách hàng đã xác nhận dùng BOM nhiều cấp,
-và giới hạn cũ đã gây thiếu vật tư thực tế ở xưởng (Blocker, BUG-086).
+và giới hạn cũ đã gây thiếu vật tư thực tế ở xưởng.
 
 ## Related docs
 

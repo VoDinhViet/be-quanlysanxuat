@@ -13,11 +13,7 @@ Không có trigger tự động, không có job nền, không có hạn duyệt.
 ## Actor
 
 Cả hai route đòi `orders:approve` — permission **riêng**, tách khỏi `orders:update` để người sửa đơn
-không tự duyệt được đơn của mình.
-
-⚠️ Trong `credentials.seed.ts` hiện **không role nào được cấp `orders:approve`** (kể cả `DIRECTOR`).
-Chỉ `ADMIN` chạy được, nhờ `system:manage` vượt mọi kiểm tra. Xem
-`docs/domains/identity-access.md`.
+không tự duyệt được đơn của mình. Seed hiện cấp cho DIRECTOR (`credentials.seed.ts`).
 
 ## Preconditions
 
