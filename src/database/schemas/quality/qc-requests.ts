@@ -27,8 +27,8 @@ import { users } from '../identity-access/users';
 /**
  * `INCOMING` — kiểm hàng nhập từ NCC (IQC cũ). `OUTGOING` — kiểm công đoạn sản xuất, kể cả công
  * đoạn gia công ngoài (OQC cũ, gộp `type = OUTSOURCE` vào từ `docs/decisions/qc-single-table.md`).
- * Discriminator quyết định cột nào bắt buộc (`chk_qc_requests_incoming_supplier`/`chk_qc_requests_outgoing_job`...) —
- * xem doc đó cho lý do gộp một bảng thay vì cha–con.
+ * Discriminator quyết định cột nào bắt buộc (`chk_qc_requests_outgoing_job`...) — xem doc đó cho
+ * lý do gộp một bảng thay vì cha–con.
  */
 export enum QcKind {
   INCOMING = 'INCOMING',
@@ -339,10 +339,9 @@ export const qcRequests = pgTable(
       'chk_qc_requests_outsourcing_item',
       sql`outsourcing_receipt_item_id IS NULL OR outsourcing_receipt_id IS NOT NULL`,
     ),
-    check(
-      'chk_qc_requests_incoming_supplier',
-      sql`kind <> 'INCOMING' OR supplier_id IS NOT NULL OR client_id IS NOT NULL`,
-    ),
+    // `chk_qc_requests_incoming_supplier` (đòi INCOMING phải có supplier_id hoặc client_id) đã bỏ
+    // — phiếu nhập `receiptType = ADJUSTMENT` ("nhập từ khác") không có nguồn nào, dòng IQC sinh
+    // từ nó hợp lệ với cả hai cột null (`InventoryReceiptsService.resolveIqcSourceIds`).
     check(
       'chk_qc_requests_outgoing_no_supplier',
       sql`kind <> 'OUTGOING' OR supplier_id IS NULL`,

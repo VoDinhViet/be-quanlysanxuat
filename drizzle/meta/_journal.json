@@ -1121,6 +1121,20 @@
       "when": 1787815394422,
       "tag": "0159_perpetual_spirit",
       "breakpoints": true
+    },
+    {
+      "idx": 160,
+      "version": "7",
+      "when": 1787882530961,
+      "tag": "0160_redundant_winter_soldier",
+      "breakpoints": true
+    },
+    {
+      "idx": 161,
+      "version": "7",
+      "when": 1787886474899,
+      "tag": "0161_smart_madelyne_pryor",
+      "breakpoints": true
     }
   ]
 }

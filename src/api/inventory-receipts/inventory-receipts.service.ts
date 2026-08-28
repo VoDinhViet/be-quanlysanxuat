@@ -253,7 +253,7 @@ export class InventoryReceiptsService {
   async createInventoryReceipt(
     reqDto: CreateInventoryReceiptReqDto,
     userId: string,
-  ): Promise<void> {
+  ): Promise<InventoryReceiptResDto> {
     await this.ensureItemsValid(reqDto.items);
     await this.ensureReferencesValid(reqDto);
     this.ensureSupplierClientExclusive(reqDto);
@@ -270,7 +270,7 @@ export class InventoryReceiptsService {
 
     const { items: itemsToCreate, ...receiptFields } = reqDto;
 
-    await this.db.transaction(async (tx) => {
+    const receiptId = await this.db.transaction(async (tx) => {
       const code = await this.generateReceiptCode(tx, reqDto.receiptDate);
 
       const [inventoryReceipt] = await tx
@@ -279,13 +279,17 @@ export class InventoryReceiptsService {
         .returning();
 
       await this.createReceiptItems(tx, inventoryReceipt.id, itemsToCreate);
+
+      return inventoryReceipt.id;
     });
+
+    return this.getInventoryReceipt(receiptId);
   }
 
   async updateInventoryReceipt(
     receiptId: string,
     reqDto: UpdateInventoryReceiptReqDto,
-  ): Promise<void> {
+  ): Promise<InventoryReceiptResDto> {
     const inventoryReceipt = await this.ensureReceiptDraft(receiptId);
 
     await this.ensureItemsValid(reqDto.items);
@@ -315,6 +319,8 @@ export class InventoryReceiptsService {
 
       await this.replaceReceiptItems(tx, receiptId, itemsToReplace);
     });
+
+    return this.getInventoryReceipt(receiptId);
   }
 
   async deleteInventoryReceipt(receiptId: string): Promise<void> {
@@ -970,21 +976,29 @@ export class InventoryReceiptsService {
 
   /** Nguồn (NCC/khách hàng) của phiếu IQC sinh ra khi `confirm` — ưu tiên `inventoryReceipt.supplierId`,
    * rồi `inventoryReceipt.clientId` (RETURN gắn khách hàng, BUG-038/065), rồi rơi về NCC của PO gắn
-   * với phiếu. Không suy được nguồn nào → `E152` (`chk_qc_requests_incoming_supplier` đòi một trong
-   * hai `supplier_id`/`client_id` khác null cho dòng `kind = INCOMING`). */
+   * với phiếu. `receiptType = ADJUSTMENT` ("nhập từ khác") không bao giờ có supplier/client/PO —
+   * trả thẳng `{null, null}` thay vì `E152` (`chk_qc_requests_incoming_supplier` đã bỏ, dòng IQC
+   * `kind = INCOMING` giờ chấp nhận cả hai cột null). Loại phiếu khác không suy được nguồn nào →
+   * vẫn `E152`. */
   private async resolveIqcSourceIds(
     tx: DbTransaction,
     inventoryReceipt: Pick<
       InventoryReceiptSelect,
-      'supplierId' | 'clientId' | 'purchaseOrderId'
+      'receiptType' | 'supplierId' | 'clientId' | 'purchaseOrderId'
     >,
   ): Promise<IqcSourceIds> {
     if (inventoryReceipt.supplierId) {
-      return { supplierId: inventoryReceipt.supplierId, clientId: null };
+      return {
+        supplierId: inventoryReceipt.supplierId,
+        clientId: null,
+      };
     }
 
     if (inventoryReceipt.clientId) {
-      return { supplierId: null, clientId: inventoryReceipt.clientId };
+      return {
+        supplierId: null,
+        clientId: inventoryReceipt.clientId,
+      };
     }
 
     if (inventoryReceipt.purchaseOrderId) {
@@ -995,6 +1009,10 @@ export class InventoryReceiptsService {
       if (purchaseOrder?.supplierId) {
         return { supplierId: purchaseOrder.supplierId, clientId: null };
       }
+    }
+
+    if (inventoryReceipt.receiptType === InventoryReceiptType.ADJUSTMENT) {
+      return { supplierId: null, clientId: null };
     }
 
     throw new AppException(ErrorCode.E152, HttpStatus.BAD_REQUEST);

@@ -58,13 +58,14 @@ export class InventoryReceiptsController {
   @Post()
   @Permissions('inventory:create')
   @ApiAuth({
+    type: InventoryReceiptResDto,
     summary: 'Create an inventory receipt — always DRAFT, does not touch stock',
-    statusCode: HttpStatus.NO_CONTENT,
+    statusCode: HttpStatus.CREATED,
   })
   createInventoryReceipt(
     @Body() reqDto: CreateInventoryReceiptReqDto,
     @CurrentUser() payload: JwtPayloadType,
-  ): Promise<void> {
+  ): Promise<InventoryReceiptResDto> {
     return this.inventoryReceiptsService.createInventoryReceipt(
       reqDto,
       payload.userId,
@@ -74,13 +75,13 @@ export class InventoryReceiptsController {
   @Patch(':receiptId')
   @Permissions('inventory:update')
   @ApiAuth({
+    type: InventoryReceiptResDto,
     summary: 'Update an inventory receipt — only while DRAFT',
-    statusCode: HttpStatus.NO_CONTENT,
   })
   updateInventoryReceipt(
     @UUIDParam('receiptId') receiptId: string,
     @Body() reqDto: UpdateInventoryReceiptReqDto,
-  ): Promise<void> {
+  ): Promise<InventoryReceiptResDto> {
     return this.inventoryReceiptsService.updateInventoryReceipt(
       receiptId,
       reqDto,

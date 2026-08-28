@@ -33,7 +33,7 @@ nhau, hai quyền độc lập.
 | Đúng trạng thái nguồn | `E098` (phải `DRAFT`) | `E098` (phải `PENDING_RECEIPT`) | `E098` (phải `PENDING_IQC`) |
 | Có ≥ 1 dòng | `E151` | — (đã chặn từ `confirm`) | — |
 | SL cộng dồn không vượt SL đặt của dòng PO | `E154` | — (đã chặn từ `confirm`) | — |
-| `requiresIqc=true` phải suy được `supplierId`/`clientId` | `E152` | — | — |
+| `requiresIqc=true` phải suy được `supplierId`/`clientId` (bỏ qua với `receiptType = ADJUSTMENT`, xem Flow) | `E152` | — | — |
 | `supplierId`/`clientId` không cùng có giá trị | `E253` | — | — |
 | Mọi phiếu IQC gắn với phiếu đã `COMPLETED` | — | — | `E153` |
 
@@ -52,7 +52,9 @@ nhau, hai quyền độc lập.
    - `false`: `status = PENDING_RECEIPT`.
    - `true`: suy nguồn `{ supplierId, clientId } = receipt.supplierId ?? receipt.clientId ??
      purchaseOrder.supplierId` (đọc PO nếu có, `resolveIqcSourceIds` — `clientId` chỉ khi phiếu
-     `RETURN` gắn khách hàng, BUG-038/065) — không suy được → `E152`. Gọi
+     `RETURN` gắn khách hàng, BUG-038/065) — không suy được thì `E152`, **trừ** `receiptType =
+     ADJUSTMENT` ("nhập từ khác", không NCC/khách/PO): trả thẳng `{null, null}` thay vì chặn, xem
+     `docs/domains/inventory.md` mục "Nhập từ khác". Gọi
      `IqcService.createInspectionsFromReceipt(tx, {...})`: một
      `INSERT` duy nhất sinh N dòng `qc_requests` (`kind = INCOMING`, N = số dòng phiếu), mỗi
      dòng

@@ -1,0 +1,1 @@
+ALTER TABLE "qc_requests" DROP CONSTRAINT "chk_qc_requests_incoming_supplier";

@@ -40,6 +40,16 @@ export const inventoryReceiptTypeEnum = pgEnum('inventory_receipt_type', [
   InventoryReceiptType.ADJUSTMENT,
 ]);
 
+export enum InventoryReceiptAssetType {
+  COMPANY = 'COMPANY',
+  CLIENT = 'CLIENT',
+}
+
+export const inventoryReceiptAssetTypeEnum = pgEnum(
+  'inventory_receipt_asset_type',
+  [InventoryReceiptAssetType.COMPANY, InventoryReceiptAssetType.CLIENT],
+);
+
 /**
  * Phiếu nhập kho — header. `DRAFT` sửa/xoá tự do, không đụng tồn; `post` (`DRAFT → POSTED`) mới
  * sinh `inventory_transactions`/cập nhật `inventory_balances`, sau đó phiếu bất biến
@@ -68,6 +78,11 @@ export const inventoryReceipts = pgTable(
     clientId: uuid('client_id').references(() => clients.id, {
       onDelete: 'set null',
     }),
+    // Nhãn phân loại tài sản, chọn tay độc lập với clientId — không tách tồn kho theo chủ sở
+    // hữu, xem docs/domains/inventory.md mục "Nhập từ khách hàng".
+    assetType: inventoryReceiptAssetTypeEnum('asset_type')
+      .notNull()
+      .default(InventoryReceiptAssetType.COMPANY),
     purchaseRequestId: uuid('purchase_request_id').references(
       () => purchaseRequests.id,
       { onDelete: 'set null' },

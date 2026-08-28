@@ -1,0 +1,2 @@
+CREATE TYPE "public"."inventory_receipt_asset_type" AS ENUM('COMPANY', 'CLIENT');--> statement-breakpoint
+ALTER TABLE "inventory_receipts" ADD COLUMN "asset_type" "inventory_receipt_asset_type" DEFAULT 'COMPANY' NOT NULL;

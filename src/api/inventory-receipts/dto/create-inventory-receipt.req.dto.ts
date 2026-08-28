@@ -1,9 +1,13 @@
-import { InventoryReceiptType } from '../../../database/schemas';
+import {
+  InventoryReceiptAssetType,
+  InventoryReceiptType,
+} from '../../../database/schemas';
 import {
   BooleanFieldOptional,
   ClassField,
   DateField,
   EnumField,
+  EnumFieldOptional,
   StringFieldOptional,
   UUIDField,
   UUIDFieldOptional,
@@ -16,6 +20,11 @@ export class CreateInventoryReceiptReqDto {
 
   @EnumField(() => InventoryReceiptType)
   readonly receiptType!: InventoryReceiptType;
+
+  @EnumFieldOptional(() => InventoryReceiptAssetType, {
+    description: 'Phân loại tài sản — mặc định COMPANY nếu bỏ trống',
+  })
+  readonly assetType?: InventoryReceiptAssetType;
 
   @DateField({ description: 'Ngày chứng từ' })
   readonly receiptDate!: Date;

@@ -453,6 +453,19 @@ DRAFT ──send──> PENDING_APPROVAL ──approve──> PENDING_DELIVERY �
   FAIL. Xem `docs/domains/quality.md`. `inventory_balances` **chưa** phân biệt hàng khách với hàng
   công ty mua cùng item/kho — cộng chung một số tồn, giới hạn đã biết, chưa làm
   (`docs/decisions/stored-inventory-balances.md`).
+- **`assetType`** (`COMPANY`/`CLIENT`, mặc định `COMPANY`) — nhãn phân loại tài sản, người dùng chọn
+  tay tự do ở cả 3 luồng tạo phiếu nhập, độc lập với `clientId`/`receiptType` (không có ràng buộc
+  chéo nào ở tầng service/DB). Thuần để hiển thị/truy vết — **không** tách `inventory_balances` theo
+  chủ sở hữu, giới hạn đã biết vẫn giữ nguyên (`docs/decisions/stored-inventory-balances.md`).
+- **Nhập từ khác** (`receiptType = ADJUSTMENT`) — dùng khi phiếu không có nguồn từ PO và không phải
+  vật tư khách hàng cấp: điều chỉnh kiểm kê, trả vật tư dư từ LSX, thu hồi vật tư về kho, hàng mẫu.
+  Không `supplierId`/`clientId`/`purchaseOrderId`/`productionJobId` nào — `note` mang lý do (bắt
+  buộc ở tầng FE, DB không ràng). Vẫn cho phép `requiresIqc = true`: `resolveIqcSourceIds` trả thẳng
+  `{supplierId: null, clientId: null}` cho `receiptType = ADJUSTMENT` thay vì `E152`
+  (`chk_qc_requests_incoming_supplier` đã bỏ — dòng IQC `kind = INCOMING` giờ chấp nhận cả hai cột
+  null). Hệ quả: dòng IQC sinh từ phiếu này không có `supplierId` nên vẫn bị `E254` chặn chọn
+  `disposition = SORT`/`RETURN` như "Nhập từ khách hàng" ở trên — QC chỉ còn `CONCESSION` cho hàng
+  FAIL.
 - **`shouldPostStock` bỏ qua trừ tồn ở 2 ca, còn lại luôn trừ** (`postSupplierReturn`):
   1. **Bù trừ SL đã trả trước khi ghi bút toán `RECEIPT`**: một IQC `FAIL` chạy **trước** khi phiếu
      nhập gốc `post` (cổng IQC nằm ở `confirm`, xem Lifecycle), nên tại thời điểm `disposition` ra

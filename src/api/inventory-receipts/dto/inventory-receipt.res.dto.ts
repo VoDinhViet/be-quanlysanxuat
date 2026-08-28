@@ -2,6 +2,7 @@ import { Exclude, Expose } from 'class-transformer';
 
 import {
   InventoryDocumentStatus,
+  InventoryReceiptAssetType,
   InventoryReceiptType,
 } from '../../../database/schemas';
 import {
@@ -42,6 +43,10 @@ export class InventoryReceiptResDto {
   @Expose()
   @EnumField(() => InventoryReceiptType)
   receiptType!: InventoryReceiptType;
+
+  @Expose()
+  @EnumField(() => InventoryReceiptAssetType)
+  assetType!: InventoryReceiptAssetType;
 
   @Expose()
   @EnumField(() => InventoryDocumentStatus)

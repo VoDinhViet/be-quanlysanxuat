@@ -236,13 +236,17 @@ gọi bởi `SupplierReturnsService.postSupplierReturn` khi kho xác nhận đã
   mức mới vào `qc_aql_plans` (Phase B, `docs/decisions/qc-aql-master-data.md`) không bị CHECK ở đây
   chặn INSERT.
 - `supplierId`/`clientId`/`productionJobId`/`productionJobOperationId` **nullable ở tầng cột** (dùng
-  chung với nhánh OUTGOING) — `chk_qc_requests_incoming_supplier` chỉ đảm bảo **một trong hai**
-  `supplierId`/`clientId` non-null cho mọi dòng `kind = INCOMING` thật (từ BUG-038/065; trước đó chỉ
-  `supplierId` được đảm bảo non-null — `clientId` sinh từ phiếu nhập `RETURN` gắn khách hàng, loại
-  trừ lẫn nhau với `supplierId` — `chk_qc_requests_supplier_client_exclusive`). Code cũ từng cast
-  `supplierId` non-null sau khi lọc `kind = INCOMING` — không còn đúng, đã bỏ (`IqcService
-  .ensureIqcSavable`); nơi nào thật sự cần `supplierId` khác null (tự sinh phiếu trả NCC) phải tự
-  chặn riêng (`E254`, xem Business rules). Xem `docs/decisions/qc-single-table.md`.
+  chung với nhánh OUTGOING). Trước BUG-038/065 chỉ `supplierId` được đảm bảo non-null cho dòng
+  `kind = INCOMING`; BUG-038/065 nới CHECK để chấp nhận `clientId` thay thế (phiếu nhập `RETURN` gắn
+  khách hàng, loại trừ lẫn nhau với `supplierId` — `chk_qc_requests_supplier_client_exclusive`).
+  `chk_qc_requests_incoming_supplier` (đòi một trong hai non-null) đã **bỏ hẳn** để phục vụ phiếu
+  nhập `receiptType = ADJUSTMENT` ("nhập từ khác", `docs/domains/inventory.md`) — dòng IQC sinh từ
+  phiếu này có cả `supplierId` lẫn `clientId` null hợp lệ, `resolveIqcSourceIds` trả thẳng
+  `{null, null}` thay vì `E152`. Điểm chặn cho `kind = INCOMING` giờ hoàn toàn ở service, không còn
+  DB CHECK nào ràng cột này. Code cũ từng cast `supplierId` non-null sau khi lọc `kind = INCOMING`
+  — không còn đúng, đã bỏ (`IqcService.ensureIqcSavable`); nơi nào thật sự cần `supplierId` khác
+  null (tự sinh phiếu trả NCC) phải tự chặn riêng (`E254`, xem Business rules). Xem
+  `docs/decisions/qc-single-table.md`.
 
 ## Cross-domain dependencies (IQC)
 
