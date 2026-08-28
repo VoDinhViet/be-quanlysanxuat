@@ -11,7 +11,7 @@ hôm qua/tuần trước". Hệ thống không có bảng lịch sử trạng th
 ## Quyết định
 
 Trend tính lúc đọc bằng cách so filter hiện tại với cùng filter cộng thêm điều kiện thời gian (ví
-dụ `overdueOrdersTrendCount` = số đơn trễ hôm nay trừ số đơn trễ tính đến hôm qua) — cùng khuôn với
+dụ `orderDueDateTrendCount` = số đơn trễ hôm nay trừ số đơn trễ tính đến hôm qua) — cùng khuôn với
 `OrdersService.getOrderStats.expiredTrendCount` (`src/api/orders/orders.service.ts`). Không thêm
 bảng snapshot, không thêm cron.
 
@@ -41,6 +41,15 @@ Khi có filter, **mọi field trend/window trả `null`** (không tính lại "s
 — quyết định có chủ ý: so với "hôm qua"/"tuần trước" không còn ý nghĩa rõ ràng khi người dùng đang
 xem một khoảng ngày tuỳ chọn trong quá khứ; thêm một định nghĩa trend thứ hai chỉ cho trường hợp có
 filter sẽ làm response khó đoán hơn là hữu ích hơn.
+
+## Time-series theo ngày — `GET /reports/qc-pass-rate`
+
+Mọi endpoint khác trong module đều là một con số tại-thời-điểm-đọc; `qc-pass-rate` là điểm khác
+biệt duy nhất — 7 điểm liên tiếp theo ngày (giờ VN), mỗi điểm % đạt IQC/OQC riêng. Đọc
+`qc_inspections` (append-only, mỗi lần kiểm 1 dòng), không đọc `qc_requests` (chỉ giữ trạng thái
+mới nhất của lần kiểm gần nhất) — cùng nguyên lý với `openNcrTrendCount` ở trên: dựng lại quá khứ
+từ bảng lịch sử có sẵn, không cần bảng snapshot. `generate_series` đảm bảo đủ 7 điểm kể cả ngày
+không có lần kiểm nào (`null`, không phải `0%` — "chưa kiểm gì" khác "kiểm hết đều FAIL").
 
 ## Đừng hoàn lại
 

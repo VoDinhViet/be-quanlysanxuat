@@ -69,6 +69,15 @@ Lấy từ tồn = max(0, SL đặt − Đề xuất SX)
 `GET /inventory-products` (đã có chứng từ giữ), 2 định nghĩa tách biệt cố ý, xem
 `docs/domains/inventory.md`. Đọc lại chi tiết LSX là snapshot, không tính lại.
 
+**jobDueDate** — Job không có cột due date riêng; hạn của Job được coi là `orders.dueDate` của đơn
+hàng gốc (qua `production_orders.orderId`). `ReportAlertsResDto.jobDueDate`
+(`GET /reports/alerts`) là số đếm Job có `status ≠ COMPLETED` mà jobDueDate đã qua hôm nay (giờ VN)
+— tên field trùng tên khái niệm, nhưng field là **số đếm**, không phải bản thân ngày.
+
+Phân bố Job theo `status` (donut "Tiến độ sản xuất") đọc qua `GET /reports/production-progress` —
+luôn trả đủ 5 status kể cả `count = 0`; `startDate`/`endDate` lọc theo `orders.dueDate`, cùng cột
+`GET /production-jobs` dùng, để 2 route khớp số khi drill-down.
+
 ## Entities
 
 | Entity | Vai trò |

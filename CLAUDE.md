@@ -103,7 +103,7 @@ lỗi validate trả 422. Prefix toàn cục `api`, trừ `GET /`/`GET /health`.
 | `purchase-quotations`    | purchasing         | RFQ — `GET`/CRUD tay + `send`/`approve` (tự sinh PO Draft)/`reject`/`recall`                                                                                                 |
 | `purchase-orders`        | purchasing         | PO — `GET`/`POST` tay/`PATCH`/`POST :id/confirm` (`DRAFT→ORDERED`)/`POST :id/cancel`; PO cũng sinh tự động từ duyệt RFQ                                                      |
 | `payment-requests`       | purchasing         | **không có `POST` tay** — tự sinh khi PO `COMPLETED` (từ `inventory-receipts` lúc `post`); `mark-paid`/`cancel`                                                              |
-| `reports`                | —                  | Chỉ `GET /reports/stats`                                                                                                                                                      |
+| `reports`                | —                  | `GET /reports/stats` (KPI), `.../alerts` (cảnh báo), `.../production-progress` (donut Job theo status) |
 
 ## Domain docs
 

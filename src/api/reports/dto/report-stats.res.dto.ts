@@ -28,15 +28,15 @@ export class ReportStatsResDto {
     description:
       'Running orders (AWAITING_PRODUCTION/IN_PROGRESS) with dueDate before today (Asia/Ho_Chi_Minh)',
   })
-  overdueOrders!: number;
+  orderDueDate!: number;
 
   @Expose()
   @NumberFieldOptional({
     nullable: true,
     description:
-      'overdueOrders minus overdueOrders as of yesterday; null when a startDate/endDate filter is applied',
+      'orderDueDate minus orderDueDate as of yesterday; null when a startDate/endDate filter is applied',
   })
-  overdueOrdersTrendCount!: number | null;
+  orderDueDateTrendCount!: number | null;
 
   @Expose()
   @NumberField({

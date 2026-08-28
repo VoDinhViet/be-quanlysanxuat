@@ -194,6 +194,11 @@ Chi tiết đầy đủ (giữ chỗ FG từ `create`, gate `E194`/`E205`, side 
   `update`/`confirm`, cộng dồn mọi phiếu đã xác nhận (không tính `DRAFT`/`CANCELLED`).
 - `weight`/`area` trên dòng OS-OUT/OS-IN thuần hiển thị/tính phí NCC — không tham gia validate.
 - NCC của OS-OUT không bị ép thuộc nhóm "Gia công" — chỉ là gợi ý lọc FE.
+- **"OS trễ hạn"** (`ReportAlertsResDto.outsourcingOrderDueDate`, `GET /reports/alerts`) — chỉ 2
+  trạng thái `POSTED`/`CANCELLED`, không có "đã nhận đủ" riêng, nên phải cộng dồn SL đã nhận
+  (`outsourcing_receipt_items` qua các OS-IN còn `POSTED`) so với SL đã gửi
+  (`outsourcing_order_items`) mới biết phiếu còn treo. Định nghĩa: `status=POSTED`,
+  `expectedReturnDate` đã qua hôm nay (giờ VN), và SL đã nhận < SL đã gửi.
 
 ## Invariants
 
