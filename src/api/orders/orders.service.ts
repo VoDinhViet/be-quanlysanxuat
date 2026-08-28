@@ -21,7 +21,6 @@ import {
   DocumentType,
   generateDocumentSequence,
 } from '../../common/utils/document-sequence.util';
-import { mapNullableNumber } from '../../common/utils/number.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
@@ -133,7 +132,7 @@ export class OrdersService {
           case when count(*) filter (where ${lastMonth}) = 0 then null
             else (count(*) filter (where ${thisMonth})::numeric - count(*) filter (where ${lastMonth})::numeric)
                  / count(*) filter (where ${lastMonth}) * 100
-          end, 1)`.mapWith(mapNullableNumber),
+          end, 1)`,
         totalValue:
           sql<number>`round(coalesce(sum(${totalVnd}), 0), 0)`.mapWith(Number),
         totalValueTrendPercent: sql<number | null>`round(
@@ -141,7 +140,7 @@ export class OrdersService {
             else (coalesce(sum(${totalVnd}) filter (where ${thisMonth}), 0)
                   - coalesce(sum(${totalVnd}) filter (where ${lastMonth}), 0))
                  / coalesce(sum(${totalVnd}) filter (where ${lastMonth}), 0) * 100
-          end, 1)`.mapWith(mapNullableNumber),
+          end, 1)`,
         completedValue:
           sql<number>`round(coalesce(sum(${totalVnd}) filter (where ${orders.status} = ${OrderStatus.COMPLETED}), 0), 0)`.mapWith(
             Number,
