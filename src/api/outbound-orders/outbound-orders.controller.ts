@@ -1,4 +1,13 @@
-import { Body, Controller, Get, HttpStatus, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpStatus,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
@@ -15,6 +24,7 @@ import { OutboundOrderResDto } from './dto/outbound-order.res.dto';
 import { PageOutboundOrderResDto } from './dto/page-outbound-order.res.dto';
 import { RejectOutboundOrderReqDto } from './dto/reject-outbound-order.req.dto';
 import { UnfulfilledOrderItemResDto } from './dto/unfulfilled-order-item.res.dto';
+import { UpdateOutboundOrderReqDto } from './dto/update-outbound-order.req.dto';
 import { OutboundOrdersService } from './outbound-orders.service';
 
 @ApiTags('Outbound Orders')
@@ -91,6 +101,22 @@ export class OutboundOrdersController {
     );
   }
 
+  @Patch(':outboundOrderId')
+  @Permissions('outbound:update')
+  @ApiAuth({
+    summary: 'Sửa (BUG-090) — chỉ khi DRAFT, replace-all dòng, kiểm lại E194',
+    statusCode: HttpStatus.NO_CONTENT,
+  })
+  updateOutboundOrder(
+    @UUIDParam('outboundOrderId') outboundOrderId: string,
+    @Body() reqDto: UpdateOutboundOrderReqDto,
+  ): Promise<void> {
+    return this.outboundOrdersService.updateOutboundOrder(
+      outboundOrderId,
+      reqDto,
+    );
+  }
+
   @Post(':outboundOrderId/send')
   @Permissions('outbound:update')
   @ApiAuth({
@@ -158,5 +184,30 @@ export class OutboundOrdersController {
       outboundOrderId,
       payload.userId,
     );
+  }
+
+  @Post(':outboundOrderId/cancel')
+  @Permissions('outbound:update')
+  @ApiAuth({
+    summary:
+      'Huỷ (BUG-090) — DRAFT/PENDING_APPROVAL/PENDING_DELIVERY → CANCELLED, giải phóng giữ chỗ thành phẩm',
+    statusCode: HttpStatus.NO_CONTENT,
+  })
+  cancelOutboundOrder(
+    @UUIDParam('outboundOrderId') outboundOrderId: string,
+  ): Promise<void> {
+    return this.outboundOrdersService.cancelOutboundOrder(outboundOrderId);
+  }
+
+  @Delete(':outboundOrderId')
+  @Permissions('outbound:delete')
+  @ApiAuth({
+    summary: 'Xoá (BUG-090) — chỉ khi DRAFT',
+    statusCode: HttpStatus.NO_CONTENT,
+  })
+  deleteOutboundOrder(
+    @UUIDParam('outboundOrderId') outboundOrderId: string,
+  ): Promise<void> {
+    return this.outboundOrdersService.deleteOutboundOrder(outboundOrderId);
   }
 }

@@ -1,22 +1,21 @@
 import { FulfillmentType } from '../../../database/schemas';
 import {
   ClassField,
-  DateField,
-  EnumField,
+  DateFieldOptional,
+  EnumFieldOptional,
   StringFieldOptional,
-  UUIDField,
 } from '../../../decorators/field.decorators';
 import { OutboundOrderItemReqDto } from './outbound-order-item.req.dto';
 
-export class CreateOutboundOrderReqDto {
-  @UUIDField({ description: 'Khách hàng — 1 phiếu chỉ giao cho 1 khách hàng' })
-  readonly clientId!: string;
+// Chỉ hợp lệ khi phiếu còn DRAFT (E259, BUG-090). `clientId` không có ở đây — bất biến ("1 phiếu
+// = 1 khách hàng", xem entity `outbound_orders`). Tái dùng nguyên `OutboundOrderItemReqDto` cho
+// items — replace-all, phải gửi lại toàn bộ dòng.
+export class UpdateOutboundOrderReqDto {
+  @DateFieldOptional({ description: 'Ngày giao' })
+  readonly fulfillmentDate?: Date;
 
-  @DateField({ description: 'Ngày giao' })
-  readonly fulfillmentDate!: Date;
-
-  @EnumField(() => FulfillmentType, { description: 'Hình thức giao' })
-  readonly fulfillmentType!: FulfillmentType;
+  @EnumFieldOptional(() => FulfillmentType, { description: 'Hình thức giao' })
+  readonly fulfillmentType?: FulfillmentType;
 
   @StringFieldOptional({
     nullable: true,
@@ -53,6 +52,10 @@ export class CreateOutboundOrderReqDto {
   })
   readonly vehicle?: string | null;
 
-  @ClassField(() => OutboundOrderItemReqDto, { each: true })
+  @ClassField(() => OutboundOrderItemReqDto, {
+    each: true,
+    description:
+      'Dòng giao hàng — replace-all, phải gửi lại toàn bộ; khách hàng của phiếu không sửa được',
+  })
   readonly items!: OutboundOrderItemReqDto[];
 }

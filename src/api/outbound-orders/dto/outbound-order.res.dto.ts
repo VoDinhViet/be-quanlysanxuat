@@ -48,6 +48,22 @@ export class OutboundOrderResDto {
   note!: string | null;
 
   @Expose()
+  @StringFieldOptional({ nullable: true, description: 'Địa chỉ giao hàng' })
+  deliveryAddress!: string | null;
+
+  @Expose()
+  @StringFieldOptional({ nullable: true, description: 'Người nhận' })
+  receiverName!: string | null;
+
+  @Expose()
+  @StringFieldOptional({ nullable: true, description: 'Điện thoại người nhận' })
+  receiverPhone!: string | null;
+
+  @Expose()
+  @StringFieldOptional({ nullable: true, description: 'Phương tiện' })
+  vehicle!: string | null;
+
+  @Expose()
   @ClassFieldOptional(() => UserRefResDto, { nullable: true })
   creatorBy!: UserRefResDto | null;
 

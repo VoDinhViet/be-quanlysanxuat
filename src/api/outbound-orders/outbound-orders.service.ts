@@ -50,7 +50,10 @@ import {
 import { AppException } from '../../exceptions/app.exception';
 import type { InventoryPostingLine } from '../inventory/inventory-posting.service';
 import { InventoryPostingService } from '../inventory/inventory-posting.service';
-import { getInventoryBalancesForUpdate } from '../inventory/item-stock.query';
+import {
+  getInventoryBalancesForUpdate,
+  onHandQuantityByItemSubquery,
+} from '../inventory/item-stock.query';
 import { getJobQcCoverage } from '../oqc/oqc.query';
 import { issuedQuantityByOrderItemIdSubquery } from '../orders/orders.query';
 import { CreateOutboundOrderReqDto } from './dto/create-outbound-order.req.dto';
@@ -59,10 +62,13 @@ import { GetUnfulfilledOrderItemsReqDto } from './dto/get-unfulfilled-order-item
 import { OutboundOrderItemResDto } from './dto/outbound-order-item.res.dto';
 import { OutboundOrderResDto } from './dto/outbound-order.res.dto';
 import { PageOutboundOrderResDto } from './dto/page-outbound-order.res.dto';
+import { OutboundOrderItemReqDto } from './dto/outbound-order-item.req.dto';
 import { RejectOutboundOrderReqDto } from './dto/reject-outbound-order.req.dto';
 import { UnfulfilledOrderItemResDto } from './dto/unfulfilled-order-item.res.dto';
+import { UpdateOutboundOrderReqDto } from './dto/update-outbound-order.req.dto';
 import {
   getOutboundHeldQuantities,
+  outboundHeldQuantityByItemSubquery,
   outboundOrderSummarySubquery,
 } from './outbound-orders.query';
 
@@ -157,11 +163,18 @@ export class OutboundOrdersService {
   }
 
   /** `.select()` + join tường minh thay vì `db.query` quan hệ lồng 2 cấp: DTO nhận `item`/`unit`
-   * cùng cấp (không lồng `item.unit`), khớp thẳng shape select nên không cần map lại. */
+   * cùng cấp (không lồng `item.unit`), khớp thẳng shape select nên không cần map lại. 5 cột tồn
+   * kho (BUG-090, mở rộng theo UI Spec) `LEFT JOIN` 3 subquery — `excludeOutboundOrderId =
+   * outboundOrderId` cho "Đã giữ" để phiếu đang xem không tự trừ mình, cùng lý do
+   * `ensureOutboundLinesIssuable` làm khi kiểm `E194`. */
   async getOutboundOrderItems(
     outboundOrderId: string,
   ): Promise<OutboundOrderItemResDto[]> {
     await this.ensureOutboundOrderExists(outboundOrderId);
+
+    const issuedQty = issuedQuantityByOrderItemIdSubquery(this.db);
+    const onHand = onHandQuantityByItemSubquery(this.db);
+    const held = outboundHeldQuantityByItemSubquery(this.db, outboundOrderId);
 
     const rows = await this.db
       .select({
@@ -170,6 +183,19 @@ export class OutboundOrdersService {
         unit: getTableColumns(units),
         productionJob: getTableColumns(productionJobs),
         order: getTableColumns(orders),
+        orderedQuantity: orderItems.quantity,
+        issuedQuantity:
+          sql<number>`coalesce(${issuedQty.issuedQty}, 0)`.mapWith(Number),
+        onHandQuantity: sql<number>`coalesce(${onHand.onHand}, 0)`.mapWith(
+          Number,
+        ),
+        heldQuantity: sql<number>`coalesce(${held.heldQuantity}, 0)`.mapWith(
+          Number,
+        ),
+        availableQuantity:
+          sql<number>`coalesce(${onHand.onHand}, 0) - coalesce(${held.heldQuantity}, 0)`.mapWith(
+            Number,
+          ),
       })
       .from(outboundOrderItems)
       .innerJoin(items, eq(items.id, outboundOrderItems.itemId))
@@ -180,6 +206,12 @@ export class OutboundOrdersService {
       )
       .innerJoin(orderItems, eq(orderItems.id, outboundOrderItems.orderItemId))
       .innerJoin(orders, eq(orders.id, orderItems.orderId))
+      .leftJoin(
+        issuedQty,
+        eq(issuedQty.orderItemId, outboundOrderItems.orderItemId),
+      )
+      .leftJoin(onHand, eq(onHand.itemId, outboundOrderItems.itemId))
+      .leftJoin(held, eq(held.itemId, outboundOrderItems.itemId))
       .where(eq(outboundOrderItems.outboundOrderId, outboundOrderId))
       .orderBy(asc(outboundOrderItems.sortOrder));
 
@@ -188,9 +220,10 @@ export class OutboundOrdersService {
     });
   }
 
-  /** Popup "Chọn PO/Job cần giao" — listing thuần theo trạng thái: mọi dòng `order_items` chưa
-   * `CANCELLED` của đơn `AWAITING_PRODUCTION`/`IN_PROGRESS`. Không lọc theo SL đã giao, không tính
-   * tồn/giữ chỗ — chờ thiết kế lại (`docs/domains/inventory.md`, mục "Giao hàng"). */
+  /** Popup "Chọn PO/Job cần giao" — mọi dòng `order_items` chưa `CANCELLED` của đơn
+   * `AWAITING_PRODUCTION`/`IN_PROGRESS`, lọc thêm `clientId` khi mở lại từ trang Sửa một DO đã có
+   * khách hàng (BUG-090). 5 cột tồn kho cùng khuôn `getOutboundOrderItems`;
+   * `excludeOutboundOrderId` loại chính phiếu đang sửa khỏi "Đã giữ". */
   async getUnfulfilledOrderItems(
     reqDto: GetUnfulfilledOrderItemsReqDto,
   ): Promise<OffsetPaginatedDto<UnfulfilledOrderItemResDto>> {
@@ -198,6 +231,14 @@ export class OutboundOrdersService {
       isNull(orders.deletedAt),
       inArray(orders.status, OutboundOrdersService.UNFULFILLED_ORDER_STATUSES),
       eq(orderItems.status, OrderItemStatus.NORMAL),
+      reqDto.clientId ? eq(orders.clientId, reqDto.clientId) : undefined,
+    );
+
+    const issuedQty = issuedQuantityByOrderItemIdSubquery(this.db);
+    const onHand = onHandQuantityByItemSubquery(this.db);
+    const held = outboundHeldQuantityByItemSubquery(
+      this.db,
+      reqDto.excludeOutboundOrderId,
     );
 
     const [rows, [{ total }]] = await Promise.all([
@@ -210,6 +251,18 @@ export class OutboundOrdersService {
           item: getTableColumns(items),
           unit: getTableColumns(units),
           orderedQuantity: orderItems.quantity,
+          issuedQuantity:
+            sql<number>`coalesce(${issuedQty.issuedQty}, 0)`.mapWith(Number),
+          onHandQuantity: sql<number>`coalesce(${onHand.onHand}, 0)`.mapWith(
+            Number,
+          ),
+          heldQuantity: sql<number>`coalesce(${held.heldQuantity}, 0)`.mapWith(
+            Number,
+          ),
+          availableQuantity:
+            sql<number>`coalesce(${onHand.onHand}, 0) - coalesce(${held.heldQuantity}, 0)`.mapWith(
+              Number,
+            ),
         })
         .from(orderItems)
         .innerJoin(orders, eq(orders.id, orderItems.orderId))
@@ -224,6 +277,9 @@ export class OutboundOrdersService {
             eq(productionJobs.itemId, orderItems.itemId),
           ),
         )
+        .leftJoin(issuedQty, eq(issuedQty.orderItemId, orderItems.id))
+        .leftJoin(onHand, eq(onHand.itemId, orderItems.itemId))
+        .leftJoin(held, eq(held.itemId, orderItems.itemId))
         .where(where)
         .orderBy(desc(orders.createdAt))
         .limit(reqDto.limit)
@@ -264,16 +320,122 @@ export class OutboundOrdersService {
         .values({ ...outboundOrderFields, code, createdBy: userId })
         .returning({ id: outboundOrders.id });
 
-      await tx.insert(outboundOrderItems).values(
-        reqItems.map((item, index) => ({
-          ...item,
-          outboundOrderId: outboundOrder.id,
-          sortOrder: index,
-        })),
-      );
+      await this.createOutboundOrderItems(tx, outboundOrder.id, reqItems);
 
       await this.ensureOutboundLinesIssuable(tx, outboundOrder.id);
     });
+  }
+
+  /** Sửa (BUG-090) — chỉ khi DRAFT (`E259`), replace-all dòng (delete + reinsert, cùng khuôn
+   * `InventoryRequisitionsService.replaceRequisitionItems`), rồi kiểm lại `E194` vì SL dòng có thể
+   * đổi. `clientId` không sửa được (bất biến), nên không cần `ensureClientExists` lại. */
+  async updateOutboundOrder(
+    outboundOrderId: string,
+    reqDto: UpdateOutboundOrderReqDto,
+  ): Promise<void> {
+    const { items: itemsToReplace, ...outboundOrderFields } = reqDto;
+
+    await this.db.transaction(async (tx) => {
+      const outboundOrder = await this.getOutboundOrderForUpdate(
+        tx,
+        outboundOrderId,
+      );
+
+      if (outboundOrder.status !== OutboundOrderStatus.DRAFT) {
+        throw new AppException(ErrorCode.E259, HttpStatus.CONFLICT);
+      }
+
+      await tx
+        .update(outboundOrders)
+        .set(outboundOrderFields)
+        .where(eq(outboundOrders.id, outboundOrderId));
+
+      await this.replaceOutboundOrderItems(tx, outboundOrderId, itemsToReplace);
+
+      await this.ensureOutboundLinesIssuable(tx, outboundOrderId);
+    });
+  }
+
+  /** Huỷ (BUG-090) — `DRAFT`/`PENDING_APPROVAL`/`PENDING_DELIVERY` → `CANCELLED` (`E257` nếu không
+   * thuộc 3 trạng thái này, kể cả `DELIVERED`). Chỉ đổi `status` — ba trạng thái trên đều chưa
+   * `deliver` nên chưa có `inventory_transactions`/`inventory_balances` nào để đảo ngược; giữ chỗ
+   * FG tự hết vì `HOLDING_STATUSES` (`outbound-orders.query.ts`) không còn khớp `CANCELLED`. */
+  async cancelOutboundOrder(outboundOrderId: string): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      const outboundOrder = await this.getOutboundOrderForUpdate(
+        tx,
+        outboundOrderId,
+      );
+
+      const cancellableStatuses: OutboundOrderStatus[] = [
+        OutboundOrderStatus.DRAFT,
+        OutboundOrderStatus.PENDING_APPROVAL,
+        OutboundOrderStatus.PENDING_DELIVERY,
+      ];
+      if (!cancellableStatuses.includes(outboundOrder.status)) {
+        throw new AppException(ErrorCode.E257, HttpStatus.CONFLICT);
+      }
+
+      await tx
+        .update(outboundOrders)
+        .set({ status: OutboundOrderStatus.CANCELLED })
+        .where(eq(outboundOrders.id, outboundOrderId));
+    });
+  }
+
+  /** Xoá (BUG-090) — chỉ khi DRAFT (`E258`), hard delete, cùng khuôn
+   * `InventoryRequisitionsService.deleteInventoryRequisition`. Không transaction (1 write) và
+   * không khoá `FOR UPDATE` — đúng quy ước repo cho xoá DRAFT-only. `outbound_order_items` xoá theo
+   * qua cascade (`onDelete: 'cascade'`). */
+  async deleteOutboundOrder(outboundOrderId: string): Promise<void> {
+    await this.ensureOutboundOrderDraft(outboundOrderId);
+
+    await this.db
+      .delete(outboundOrders)
+      .where(eq(outboundOrders.id, outboundOrderId));
+  }
+
+  private async ensureOutboundOrderDraft(
+    outboundOrderId: string,
+  ): Promise<void> {
+    const outboundOrder = await this.db.query.outboundOrders.findFirst({
+      columns: { status: true },
+      where: eq(outboundOrders.id, outboundOrderId),
+    });
+
+    if (!outboundOrder) {
+      throw new AppException(ErrorCode.E195, HttpStatus.NOT_FOUND);
+    }
+
+    if (outboundOrder.status !== OutboundOrderStatus.DRAFT) {
+      throw new AppException(ErrorCode.E258, HttpStatus.CONFLICT);
+    }
+  }
+
+  private async createOutboundOrderItems(
+    tx: DbTransaction,
+    outboundOrderId: string,
+    items: OutboundOrderItemReqDto[],
+  ): Promise<void> {
+    await tx.insert(outboundOrderItems).values(
+      items.map((item, index) => ({
+        ...item,
+        outboundOrderId,
+        sortOrder: index,
+      })),
+    );
+  }
+
+  private async replaceOutboundOrderItems(
+    tx: DbTransaction,
+    outboundOrderId: string,
+    items: OutboundOrderItemReqDto[],
+  ): Promise<void> {
+    await tx
+      .delete(outboundOrderItems)
+      .where(eq(outboundOrderItems.outboundOrderId, outboundOrderId));
+
+    await this.createOutboundOrderItems(tx, outboundOrderId, items);
   }
 
   /** `DRAFT`/`REJECTED` → `PENDING_APPROVAL` — chạy gate QC, rồi kiểm lại `E194`
@@ -397,8 +559,8 @@ export class OutboundOrdersService {
     }
   }
 
-  /** `PENDING_APPROVAL → REJECTED` — điểm dừng tạm, `send` lại được từ đây (không có route sửa
-   * dòng nào cho DO, khác `purchase-requests`/`inventory-requisitions`). */
+  /** `PENDING_APPROVAL → REJECTED` — điểm dừng tạm, `send` lại được từ đây (hoặc `updateOutboundOrder`
+   * sửa dòng trước khi gửi lại — nhưng chỉ khi đã về `DRAFT`, `update` không nhận `REJECTED`). */
   async rejectOutboundOrder(
     outboundOrderId: string,
     reqDto: RejectOutboundOrderReqDto,

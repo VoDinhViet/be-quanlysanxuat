@@ -28,7 +28,8 @@ export const fulfillmentTypeEnum = pgEnum('fulfillment_type', [
 /**
  * Vòng đời xem `docs/domains/inventory.md`, mục "Giao hàng": `DRAFT ─send→ PENDING_APPROVAL
  * ─approve→ PENDING_DELIVERY ─deliver→ DELIVERED`, có nhánh `PENDING_APPROVAL ─reject→ REJECTED
- * ─send→ PENDING_APPROVAL`. `CANCELLED` vẫn khai sẵn, chưa route nào ghi.
+ * ─send→ PENDING_APPROVAL`. `cancel` (DRAFT/PENDING_APPROVAL/PENDING_DELIVERY → CANCELLED) và
+ * `DELETE` (DRAFT-only, hard delete) là hai điểm cuối riêng, không nằm trên chuỗi trên (BUG-090).
  */
 export enum OutboundOrderStatus {
   DRAFT = 'DRAFT',
@@ -67,6 +68,12 @@ export const outboundOrders = pgTable(
       .notNull()
       .default(OutboundOrderStatus.DRAFT),
     note: varchar('note', { length: 500 }),
+    // 4 cột vận chuyển (BUG-090, mở rộng theo UI Spec) — tất cả nullable: PICKUP (khách tự đến
+    // lấy) không có địa chỉ giao, và mọi phiếu hiện có chưa từng có giá trị nào cho các cột này.
+    deliveryAddress: varchar('delivery_address', { length: 500 }),
+    receiverName: varchar('receiver_name', { length: 255 }),
+    receiverPhone: varchar('receiver_phone', { length: 30 }),
+    vehicle: varchar('vehicle', { length: 255 }),
     createdBy: uuid('created_by').references(() => users.id, {
       onDelete: 'set null',
     }),

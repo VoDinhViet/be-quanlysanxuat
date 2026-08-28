@@ -562,6 +562,13 @@ export enum ErrorCode {
   // hưu). `rejectedQuantity` (SL NG) không còn bị giới hạn theo `plannedQuantity`: cho phép báo bù
   // thêm khi có hàng lỗi, tới khi SL đạt chạm đủ kế hoạch (BUG-035, 2026-08-27).
   E256 = 'production_job_operation.error.completed_quantity_exceeds_planned',
+  // `POST /outbound-orders/:id/cancel` khi DO không còn DRAFT/PENDING_APPROVAL/PENDING_DELIVERY
+  // (BUG-090).
+  E257 = 'outbound_order.error.not_cancellable',
+  // `DELETE /outbound-orders/:id` khi DO không còn DRAFT (BUG-090).
+  E258 = 'outbound_order.error.not_deletable',
+  // `PATCH /outbound-orders/:id` khi DO không còn DRAFT (BUG-090).
+  E259 = 'outbound_order.error.not_editable',
   V003 = 'common.error.too_many_requests',
   // `GlobalExceptionFilter` bắt chuỗi "No values to set" của drizzle-orm — mọi `PATCH` khi
   // `ValidationPipe` whitelist đã loại sạch field lạ, còn lại payload rỗng cho `.set()`. Trước đây

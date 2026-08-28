@@ -43,4 +43,23 @@ export class UnfulfilledOrderItemResDto {
   @Expose()
   @NumberField({ description: 'SL đặt của dòng PO' })
   orderedQuantity!: number;
+
+  @Expose()
+  @NumberField({ description: 'SL đã xuất kho luỹ kế của dòng PO' })
+  issuedQuantity!: number;
+
+  @Expose()
+  @NumberField({ description: 'Tồn kho hiện tại của thành phẩm (mọi kho)' })
+  onHandQuantity!: number;
+
+  @Expose()
+  @NumberField({
+    description:
+      'Đã giữ chỗ bởi DO khác đang DRAFT/PENDING_APPROVAL/PENDING_DELIVERY',
+  })
+  heldQuantity!: number;
+
+  @Expose()
+  @NumberField({ description: 'Có thể giao = Tồn TP − Đã giữ' })
+  availableQuantity!: number;
 }

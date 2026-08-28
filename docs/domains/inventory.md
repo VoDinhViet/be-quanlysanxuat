@@ -121,16 +121,30 @@ chỉ bỏ hiển thị field, không bỏ khả năng lọc.
 FG`, vì `outbound_orders` không có cột kho) — không đọc cột thật, giữ nguyên hợp đồng API cũ.
 
 **Popup "chọn PO/Job cần giao" của `outbound-orders`** (`GET
-/outbound-orders/unfulfilled-order-items`) hiện là một listing thuần: mọi dòng `order_items` của
-đơn `AWAITING_PRODUCTION`/`IN_PROGRESS` chưa xoá mềm, dòng chưa `CANCELLED` — không lọc theo SL đã
-giao, không tính tồn/giữ chỗ. **`create` không resolve/validate cấu trúc dòng phía server** — client
-gửi thẳng `itemId`/`productionJobId` lấy từ popup này, `E188`/`E190`-`E193` đều dự phòng (không còn
-throw site). Đây là quyết định cố ý, không phải khoảng trống bỏ sót: popup không trả đủ thông tin để
-đối chiếu cấu trúc dòng trước khi gửi. **Riêng chốt chặn tồn kho thật (`E194`) đã đảo ngược từ
-BUG-087** — `create` giờ **có** gọi `ensureOutboundLinesIssuable` ngay khi tạo (giữ chỗ FG bắt đầu
-từ lúc này, không phải từ `send` nữa, xem Lifecycle); `send`/`approve` vẫn kiểm lại cùng điều kiện vì
-tồn/"Đã giữ" của DO khác có thể đổi giữa các bước. Đừng khôi phục "cổng chặn `E194` chỉ ở `send`" —
-đó chính là lỗ hổng đã sửa (hai DO nháp cùng vượt tồn một vật tư đều lọt qua `create`).
+/outbound-orders/unfulfilled-order-items`): mọi dòng `order_items` của đơn
+`AWAITING_PRODUCTION`/`IN_PROGRESS` chưa xoá mềm, dòng chưa `CANCELLED` — không lọc theo SL đã giao.
+Lọc thêm được `clientId` (mở lại popup từ trang Sửa một DO đã có khách hàng, BUG-090) và
+`excludeOutboundOrderId` (loại chính phiếu đang sửa khỏi "Đã giữ", cùng tham số
+`getOutboundHeldQuantities` dùng khi kiểm `E194`). **`create` không resolve/validate cấu trúc dòng
+phía server** — client gửi thẳng `itemId`/`productionJobId` lấy từ popup này, `E188`/`E190`-`E193`
+đều dự phòng (không còn throw site). Đây là quyết định cố ý, không phải khoảng trống bỏ sót: popup
+không trả đủ thông tin để đối chiếu cấu trúc dòng trước khi gửi. **Riêng chốt chặn tồn kho thật
+(`E194`) đã đảo ngược từ BUG-087** — `create` giờ **có** gọi `ensureOutboundLinesIssuable` ngay khi
+tạo (giữ chỗ FG bắt đầu từ lúc này, không phải từ `send` nữa, xem Lifecycle); `send`/`approve` vẫn
+kiểm lại cùng điều kiện vì tồn/"Đã giữ" của DO khác có thể đổi giữa các bước. Đừng khôi phục "cổng
+chặn `E194` chỉ ở `send`" — đó chính là lỗ hổng đã sửa (hai DO nháp cùng vượt tồn một vật tư đều lọt
+qua `create`).
+
+**5 cột tồn kho trên popup trên và trên `GET /outbound-orders/:id/items`** (BUG-090, mở rộng theo UI
+Spec — trước đây popup không tính gì, comment cũ "chưa thiết kế lại" đã lỗi thời):
+`orderedQuantity` (`order_items.quantity`), `issuedQuantity` (Σ `inventory_transactions` đã xuất
+theo `orderItemId`, `issuedQuantityByOrderItemIdSubquery`), `onHandQuantity` (Σ `inventory_balances`
+mọi kho theo `itemId`, xấp xỉ — không scope riêng kho FG, cùng lý do
+`outboundHeldQuantityByItemSubquery` không scope theo kho), `heldQuantity` (Σ dòng DO khác đang
+`DRAFT`/`PENDING_APPROVAL`/`PENDING_DELIVERY`, loại trừ chính phiếu đang xem/sửa) và
+`availableQuantity = onHandQuantity − heldQuantity`. Bốn số cuối chỉ để hiển thị — **không** thay
+`ensureOutboundLinesIssuable`, chốt chặn `E194` thật vẫn tính lại trong transaction lúc `create`/
+`send`/`approve`/`update`.
 
 **Bốn số khác trên dòng chi tiết phiếu nhập** (`GET /inventory-receipts/:receiptId`) và dòng chi
 tiết đề xuất mua (`GET /purchase-requests/:purchaseRequestId`, `docs/domains/purchase-requests.md`),
@@ -220,7 +234,7 @@ migration này hiển thị đúng mã PXK, `outboundOrder` trả `null`.
 | `outsourcing_order_items` | Dòng OS-OUT — `itemId`/`quantity` + snapshot công đoạn (`operationCode`/`operationName`, NOT NULL), client gửi thẳng từ popup, server không resolve/validate lại (`docs/decisions/outsourcing-no-draft.md`) + `weight`(kg)/`area`(m²) tuỳ chọn, **không** tham gia tính tồn |
 | `outsourcing_receipts` | Phiếu nhận gia công ngoài (OS-IN) — header + nhiều dòng (`outsourcing_receipt_items`), cũng không còn nháp, cũng không đụng `inventory_balances`; mỗi dòng trỏ đúng 1 `outsourcingOrderItemId`, **cho phép gộp dòng từ nhiều OS-OUT khác nhau miễn cùng một NCC** (`supplierId` ở header, bất biến 1 phiếu = 1 NCC, `E187`); một dòng OS-OUT nhận được nhiều lần (partial); `requiresIqc` tuỳ chọn tự sinh N dòng `qc_requests` (`kind = INCOMING`, 1/dòng phiếu) lúc `create` |
 | `outsourcing_receipt_items` | Dòng OS-IN — `outsourcingOrderItemId` trỏ đúng 1 dòng OS-OUT nguồn, `itemId` denormalize từ dòng đó; `weight`/`area` mặc định copy từ dòng OS-OUT, sửa được |
-| `outbound_orders` | Phiếu giao hàng (DO) — header, `POST` tạo nháp (chặn ngay `E194` nếu có dòng vượt SL có thể giao — tồn FG trừ đã giữ của DO khác, BUG-087) + `GET` list/detail + `POST :id/send` (`DRAFT`/`REJECTED` → `PENDING_APPROVAL`, chặn `E205` nếu còn Job nào chưa qua hết OQC, kiểm lại `E194`) + `POST :id/approve` (`PENDING_APPROVAL → PENDING_DELIVERY`, không kiểm lại OQC, kiểm lại `E194` lần nữa) + `POST :id/reject` (`PENDING_APPROVAL → REJECTED`, lý do bắt buộc) + `POST :id/deliver` (`PENDING_DELIVERY → DELIVERED`, tự sinh + post phiếu xuất SALES, trừ tồn thật, đóng đơn hàng nếu giao đủ — xem "Giao hàng" bên dưới); `clientId` bắt buộc, bất biến "1 phiếu = 1 khách hàng" |
+| `outbound_orders` | Phiếu giao hàng (DO) — header, `POST` tạo nháp (chặn ngay `E194` nếu có dòng vượt SL có thể giao — tồn FG trừ đã giữ của DO khác, BUG-087) + `GET` list/detail + `POST :id/send` (`DRAFT`/`REJECTED` → `PENDING_APPROVAL`, chặn `E205` nếu còn Job nào chưa qua hết OQC, kiểm lại `E194`) + `POST :id/approve` (`PENDING_APPROVAL → PENDING_DELIVERY`, không kiểm lại OQC, kiểm lại `E194` lần nữa) + `POST :id/reject` (`PENDING_APPROVAL → REJECTED`, lý do bắt buộc) + `POST :id/deliver` (`PENDING_DELIVERY → DELIVERED`, tự sinh + post phiếu xuất SALES, trừ tồn thật, đóng đơn hàng nếu giao đủ — xem "Giao hàng" bên dưới) + `PATCH :id` (DRAFT-only, replace-all dòng, kiểm lại `E194`, BUG-090) + `POST :id/cancel` (`DRAFT`/`PENDING_APPROVAL`/`PENDING_DELIVERY` → `CANCELLED`, BUG-090) + `DELETE :id` (DRAFT-only, hard delete, BUG-090); `clientId` bắt buộc, bất biến "1 phiếu = 1 khách hàng"; `deliveryAddress`/`receiverName`/`receiverPhone`/`vehicle` (BUG-090, tất cả nullable — `PICKUP` không có địa chỉ giao) |
 | `outbound_order_items` | Dòng DO — `orderItemId` trỏ dòng PO nguồn (**không** unique, một dòng PO được chọn ở nhiều phiếu DO khác nhau qua nhiều lần giao), `itemId` denormalize, `productionJobId` snapshot Job hiển thị (tuỳ chọn, `set null`) |
 
 `orderItemId` trên dòng phiếu xuất (và bút toán sinh ra từ nó) là **chỗ nối duy nhất sang Orders** —
@@ -416,9 +430,11 @@ Chi tiết từng bước, nhánh lỗi đầy đủ: `docs/workflows/inventory-
 
 ```
 DRAFT ──send──> PENDING_APPROVAL ──approve──> PENDING_DELIVERY ──deliver──> DELIVERED  (điểm cuối)
-  ▲                   │
-  │                   └──reject──> REJECTED ──send──> PENDING_APPROVAL
-  └───────────────────────────────────┘
+  │                   │                             │
+  │                   └──reject──> REJECTED ──send──┘
+  └──cancel───────────┴─────────────────────────────┴──> CANCELLED  (điểm cuối)
+
+DRAFT ──delete──> (xoá hẳn dòng khỏi DB, không qua CANCELLED)
 ```
 
 - **`create` là nơi giữ chỗ FG bắt đầu** (BUG-087, đảo ngược mốc cũ "chỉ giữ từ `send`") — ngay khi
@@ -433,7 +449,14 @@ DRAFT ──send──> PENDING_APPROVAL ──approve──> PENDING_DELIVERY �
   là lỗ hổng đã sửa (DO nháp vượt tồn không bị chặn cho tới khi gửi duyệt).
 - Gate QC (`E205`, còn Job nào chưa qua hết OQC) chỉ chạy **1 lần ở `send`**
   (`OutboundOrdersService.ensureAllJobsQcCompleted`) — `approve` không kiểm lại.
-- `CANCELLED` khai sẵn trong enum, chưa route nào gán.
+- **`cancel`** (BUG-090, `DRAFT`/`PENDING_APPROVAL`/`PENDING_DELIVERY` → `CANCELLED`, `E257` nếu
+  không thuộc 3 trạng thái này — kể cả `DELIVERED`) chỉ đổi `status`, không đụng
+  `inventory_transactions`/`inventory_balances` — cả ba trạng thái cho phép huỷ đều chưa `deliver`
+  nên chưa có gì để đảo ngược; giữ chỗ FG tự hết vì `HOLDING_STATUSES`
+  (`outbound-orders.query.ts`) không còn khớp `CANCELLED`. **`delete`** (BUG-090, DRAFT-only,
+  `E258`) hard-delete, con `outbound_order_items` xoá theo qua cascade. **`update`/PATCH** (BUG-090,
+  DRAFT-only, `E259`) replace-all dòng (delete + reinsert, khuôn `InventoryRequisitionsService
+  .replaceRequisitionItems`) rồi kiểm lại `E194` vì SL dòng có thể đổi; `clientId` không sửa được.
 
 ## Business rules
 
