@@ -3,7 +3,7 @@ import { Exclude, Expose } from 'class-transformer';
 import {
   IqcDisposition,
   IqcResult,
-  IqcStatus,
+  QualityInspectionStatus,
 } from '../../../database/schemas';
 import {
   ClassField,
@@ -95,8 +95,8 @@ export class PageIqcResDto {
   disposition!: IqcDisposition | null;
 
   @Expose()
-  @EnumField(() => IqcStatus)
-  status!: IqcStatus;
+  @EnumField(() => QualityInspectionStatus)
+  status!: QualityInspectionStatus;
 
   @Expose()
   @StringFieldOptional({ nullable: true, description: 'Lý do kiểm' })

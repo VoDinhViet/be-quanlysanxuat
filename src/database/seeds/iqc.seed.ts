@@ -9,14 +9,19 @@ import postgres from 'postgres';
 import * as schema from '../schemas';
 import { credentials } from '../schemas/identity-access/credentials';
 import { ItemType, items } from '../schemas/items/items';
-import { qcInspections } from '../schemas/quality/qc-inspections';
 import {
   IqcDisposition,
   IqcResult,
   IqcStatus,
-  QcKind,
-  qcRequests,
 } from '../schemas/quality/qc-requests';
+import {
+  QualityInspectionDecision,
+  QualityInspectionOriginType,
+  QualityInspectionType,
+} from '../schemas/quality/quality-enums';
+import { qualityInspectionResults } from '../schemas/quality/quality-inspection-results';
+import { qualityInspections } from '../schemas/quality/quality-inspections';
+import { toInspectionStatus } from '../../api/iqc/quality-inspection-status.util';
 
 type SeedDatabase = ReturnType<typeof drizzle<typeof schema>>;
 
@@ -120,10 +125,10 @@ async function seedIqcInspections(db: SeedDatabase): Promise<void> {
   for (let index = 0; index < IQC_COUNT; index++) {
     const code = `IQC-${year}-${String(index + 1).padStart(5, '0')}`;
 
-    const existing = await db.query.qcRequests.findFirst({
+    const existing = await db.query.qualityInspections.findFirst({
       where: and(
-        eq(qcRequests.kind, QcKind.INCOMING),
-        eq(qcRequests.code, code),
+        eq(qualityInspections.inspectionType, QualityInspectionType.IQC),
+        eq(qualityInspections.inspectionNo, code),
       ),
       columns: { id: true },
     });
@@ -142,39 +147,46 @@ async function seedIqcInspections(db: SeedDatabase): Promise<void> {
     const inventoryReceiptId = index === 0 ? (receipt?.id ?? null) : null;
     const purchaseOrderId = index === 1 ? (purchaseOrder?.id ?? null) : null;
     const quantity = 10 + index * 5;
+    const dbStatus = toInspectionStatus(status);
+    const dbDecision = result as string as
+      | QualityInspectionDecision
+      | undefined;
 
     await db.transaction(async (tx) => {
-      const [request] = await tx
-        .insert(qcRequests)
+      const [inspection] = await tx
+        .insert(qualityInspections)
         .values({
-          code,
-          kind: QcKind.INCOMING,
-          inventoryReceiptId,
+          inspectionNo: code,
+          inspectionType: QualityInspectionType.IQC,
+          originType: inventoryReceiptId
+            ? QualityInspectionOriginType.INVENTORY_RECEIPT
+            : QualityInspectionOriginType.MANUAL,
+          originId: inventoryReceiptId,
           purchaseOrderId,
           supplierId,
           itemId,
           quantity,
-          inspectionDate,
-          result,
+          requestedAt: inspectionDate,
+          decision: dbDecision,
           disposition,
-          status,
+          status: dbStatus,
           reason: purchaseOrderId ? null : 'Kiểm tra định kỳ theo lô',
           attemptCount: result ? 1 : 0,
           createdBy,
         })
-        .returning({ id: qcRequests.id });
+        .returning({ id: qualityInspections.id });
 
       if (result) {
-        await tx.insert(qcInspections).values({
-          qcRequestId: request.id,
-          kind: QcKind.INCOMING,
+        await tx.insert(qualityInspectionResults).values({
+          qualityInspectionId: inspection.id,
+          inspectionType: QualityInspectionType.IQC,
           quantity,
           attemptNo: 1,
-          inspectionDate,
-          result,
+          inspectedAt: inspectionDate,
+          decision: dbDecision!,
           disposition,
-          resultingStatus: status,
-          confirmedBy: createdBy,
+          resultingStatus: dbStatus,
+          inspectedBy: createdBy,
         });
       }
     });

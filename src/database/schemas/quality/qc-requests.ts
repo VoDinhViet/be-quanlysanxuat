@@ -23,6 +23,7 @@ import { productionJobs } from '../production/production-jobs';
 import { purchaseOrders } from '../purchasing/purchase-orders';
 import { suppliers } from '../suppliers/suppliers';
 import { users } from '../identity-access/users';
+import { qcInspectionLevelEnum } from './quality-enums';
 
 /**
  * `INCOMING` — kiểm hàng nhập từ NCC (IQC cũ). `OUTGOING` — kiểm công đoạn sản xuất, kể cả công
@@ -45,18 +46,6 @@ export enum IqcResult {
 export const qcResultEnum = pgEnum('qc_result', [
   IqcResult.PASS,
   IqcResult.FAIL,
-]);
-
-export enum IqcInspectionLevel {
-  I = 'I',
-  II = 'II',
-  III = 'III',
-}
-
-export const qcInspectionLevelEnum = pgEnum('qc_inspection_level', [
-  IqcInspectionLevel.I,
-  IqcInspectionLevel.II,
-  IqcInspectionLevel.III,
 ]);
 
 /**

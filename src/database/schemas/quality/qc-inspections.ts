@@ -17,13 +17,13 @@ import { users } from '../identity-access/users';
 import { qcAqlPlans } from './qc-aql-plans';
 import { qcAqlRules } from './qc-aql-rules';
 import { qcFiles } from './qc-files';
+import { qcInspectionLevelEnum } from './quality-enums';
 import {
   IqcDisposition,
   IqcStatus,
   OqcDisposition,
   OqcStatus,
   qcDispositionEnum,
-  qcInspectionLevelEnum,
   qcKindEnum,
   qcRequests,
   qcResultEnum,

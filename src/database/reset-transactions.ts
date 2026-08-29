@@ -98,10 +98,14 @@ const WIPE_TABLES = [
   'production_job_operation_report_files',
   'production_job_issues',
   'production_job_notes',
-  // Quality
+  // Quality — bảng cũ (đóng băng, không còn đường ghi mới từ Step 3 migration schema QC) song song
+  // bảng mới tới khi dọn ở step cuối, xem plan migration.
   'qc_requests',
   'qc_inspections',
   'qc_files',
+  'quality_inspections',
+  'quality_inspection_results',
+  'quality_inspection_evidences',
 ] as const;
 
 // Loại chứng từ cấp mã cho master data đang giữ — reset counter về 0 sẽ đâm vào mã đang sống

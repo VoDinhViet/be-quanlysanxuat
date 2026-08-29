@@ -4,7 +4,7 @@ import {
   IqcInspectionLevel,
   IqcResult,
   OqcDisposition,
-  OqcStatus,
+  QualityInspectionStatus,
 } from '../../../database/schemas';
 import {
   ClassField,
@@ -111,8 +111,8 @@ export class OqcResDto {
   result!: IqcResult | null;
 
   @Expose()
-  @EnumField(() => OqcStatus)
-  status!: OqcStatus;
+  @EnumField(() => QualityInspectionStatus)
+  status!: QualityInspectionStatus;
 
   @Expose()
   @StringFieldOptional({

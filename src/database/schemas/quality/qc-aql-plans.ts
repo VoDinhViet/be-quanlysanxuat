@@ -12,7 +12,7 @@ import {
 } from 'drizzle-orm/pg-core';
 
 import { users } from '../identity-access/users';
-import { qcInspectionLevelEnum } from './qc-requests';
+import { qcInspectionLevelEnum } from './quality-enums';
 import { qcAqlRules } from './qc-aql-rules';
 
 /**

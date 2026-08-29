@@ -19,8 +19,8 @@ import {
   InventoryTransactionType,
   items,
   purchaseOrders,
-  QcKind,
-  qcRequests,
+  QualityInspectionType,
+  qualityInspections,
   supplierReturnFiles,
   supplierReturns,
   type SupplierReturnSelect,
@@ -62,12 +62,21 @@ export class SupplierReturnsService {
         ? exists(
             this.db
               .select({ one: sql`1` })
-              .from(qcRequests)
+              .from(qualityInspections)
               .where(
                 and(
-                  eq(qcRequests.kind, QcKind.INCOMING),
-                  eq(qcRequests.id, supplierReturns.iqcId),
-                  unaccentILike(qcRequests.code, `%${reqDto.iqcCode}%`),
+                  eq(
+                    qualityInspections.inspectionType,
+                    QualityInspectionType.IQC,
+                  ),
+                  eq(
+                    qualityInspections.id,
+                    supplierReturns.qualityInspectionId,
+                  ),
+                  unaccentILike(
+                    qualityInspections.inspectionNo,
+                    `%${reqDto.iqcCode}%`,
+                  ),
                 ),
               ),
           )
@@ -129,7 +138,7 @@ export class SupplierReturnsService {
           purchaseOrder: true,
           inventoryReceipt: true,
           outsourcingReceipt: true,
-          iqc: true,
+          qualityInspection: true,
           creatorBy: true,
         },
       }),
@@ -137,11 +146,26 @@ export class SupplierReturnsService {
     ]);
 
     return new OffsetPaginatedDto(
-      plainToInstance(PageSupplierReturnResDto, entities, {
-        excludeExtraneousValues: true,
-      }),
+      plainToInstance(
+        PageSupplierReturnResDto,
+        entities.map((entity) => ({
+          ...entity,
+          iqc: this.toIqcRef(entity.qualityInspection),
+        })),
+        { excludeExtraneousValues: true },
+      ),
       new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
     );
+  }
+
+  /** `SupplierReturnBaseResDto.iqc` giữ tên/field cũ (`{id, code}`, xem `IqcRefResDto`) cho FE dù
+   * bảng nguồn đã đổi tên — `code` lấy từ `inspectionNo` của `quality_inspections`. */
+  private toIqcRef(
+    qualityInspection: { id: string; inspectionNo: string } | null,
+  ): { id: string; code: string } | null {
+    return qualityInspection
+      ? { id: qualityInspection.id, code: qualityInspection.inspectionNo }
+      : null;
   }
 
   async getSupplierReturn(
@@ -156,10 +180,10 @@ export class SupplierReturnsService {
         purchaseOrder: true,
         inventoryReceipt: true,
         outsourcingReceipt: true,
-        iqc: true,
+        qualityInspection: true,
         creatorBy: true,
         posterBy: true,
-        qcInspection: true,
+        qualityInspectionResult: true,
         files: { with: { file: true } },
       },
     });
@@ -172,7 +196,9 @@ export class SupplierReturnsService {
       SupplierReturnResDto,
       {
         ...supplierReturn,
-        returnReason: supplierReturn.qcInspection?.dispositionNote ?? null,
+        iqc: this.toIqcRef(supplierReturn.qualityInspection),
+        returnReason:
+          supplierReturn.qualityInspectionResult?.dispositionNote ?? null,
         files: supplierReturn.files.map((row) => row.file),
       },
       { excludeExtraneousValues: true },
@@ -185,8 +211,8 @@ export class SupplierReturnsService {
   async createFromIqcDisposition(
     tx: DbTransaction,
     params: {
-      iqcId: string;
-      qcInspectionId: string;
+      qualityInspectionId: string;
+      qualityInspectionResultId: string;
       warehouseId: string | null;
       supplierId: string;
       itemId: string;
@@ -209,8 +235,9 @@ export class SupplierReturnsService {
       purchaseOrderId: params.purchaseOrderId,
       inventoryReceiptId: params.inventoryReceiptId,
       outsourcingReceiptId: params.outsourcingReceiptId,
-      iqcId: params.iqcId,
-      qcInspectionId: params.qcInspectionId,
+      qualityInspectionId: params.qualityInspectionId,
+      qualityInspectionResultId: params.qualityInspectionResultId,
+      qcInspectionType: QualityInspectionType.IQC,
       returnDate: params.returnDate,
       status: InventoryDocumentStatus.DRAFT,
       createdBy: params.userId,
@@ -281,8 +308,11 @@ export class SupplierReturnsService {
         );
       }
 
-      if (supplierReturn.iqcId) {
-        await completeIqcAfterSupplierReturn(tx, supplierReturn.iqcId);
+      if (supplierReturn.qualityInspectionId) {
+        await completeIqcAfterSupplierReturn(
+          tx,
+          supplierReturn.qualityInspectionId,
+        );
       }
     });
   }

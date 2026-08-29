@@ -13,7 +13,7 @@ import {
   files,
   FileKind,
   FileSelect,
-  qcFiles,
+  qualityInspectionEvidences,
   UploadType,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
@@ -215,12 +215,12 @@ export class FilesService {
     return file;
   }
 
-  /** `qc_files.fileId` là `restrict`, không `cascade` — xoá file đã gắn bằng chứng QC sẽ vỡ
-   * FK thô (23503) nếu không chặn sớm ở đây. */
+  /** `quality_inspection_evidences.fileId` là `restrict`, không `cascade` — xoá file đã gắn bằng
+   * chứng QC sẽ vỡ FK thô (23503) nếu không chặn sớm ở đây. */
   private async ensureFileNotLinkedToQcEvidence(fileId: string): Promise<void> {
-    const linked = await this.db.query.qcFiles.findFirst({
+    const linked = await this.db.query.qualityInspectionEvidences.findFirst({
       columns: { id: true },
-      where: eq(qcFiles.fileId, fileId),
+      where: eq(qualityInspectionEvidences.fileId, fileId),
     });
 
     if (linked) {

@@ -1,0 +1,5 @@
+ALTER TABLE "supplier_returns" ADD CONSTRAINT "fk_supplier_returns_quality_inspection_id_type" FOREIGN KEY ("quality_inspection_id","qc_inspection_type") REFERENCES "public"."quality_inspections"("id","inspection_type") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "supplier_returns" ADD CONSTRAINT "fk_supplier_returns_quality_inspection_result_id_type" FOREIGN KEY ("quality_inspection_result_id","qc_inspection_type") REFERENCES "public"."quality_inspection_results"("id","inspection_type") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "idx_supplier_returns_quality_inspection_id" ON "supplier_returns" USING btree ("quality_inspection_id");--> statement-breakpoint
+CREATE INDEX "idx_supplier_returns_quality_inspection_result_id" ON "supplier_returns" USING btree ("quality_inspection_result_id");--> statement-breakpoint
+ALTER TABLE "supplier_returns" ADD CONSTRAINT "chk_supplier_returns_qc_inspection_type" CHECK (qc_inspection_type IS NULL OR qc_inspection_type = 'IQC');

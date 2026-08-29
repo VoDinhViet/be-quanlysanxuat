@@ -1,7 +1,7 @@
 import {
   IqcDisposition,
   IqcResult,
-  IqcStatus,
+  QualityInspectionStatus,
 } from '../../../database/schemas';
 import { PageOptionsDto } from '../../../common/dto/offset-pagination/page-options.dto';
 import {
@@ -22,6 +22,6 @@ export class GetIqcsReqDto extends PageOptionsDto {
   @EnumFieldOptional(() => IqcDisposition)
   readonly disposition?: IqcDisposition;
 
-  @EnumFieldOptional(() => IqcStatus)
-  readonly status?: IqcStatus;
+  @EnumFieldOptional(() => QualityInspectionStatus)
+  readonly status?: QualityInspectionStatus;
 }

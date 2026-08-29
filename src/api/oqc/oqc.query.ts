@@ -7,19 +7,19 @@ import {
   productionJobOperations,
   productionJobs,
   ProductionJobStatus,
-  QcKind,
-  qcRequests,
+  QualityInspectionType,
+  qualityInspections,
 } from '../../database/schemas';
 
 /** Dòng `disposition = SCRAP` không tính vào SL đã xin QC của một công đoạn — hàng đã loại bỏ hẳn,
  * giải phóng lại quota lô để xưởng làm bù (`docs/domains/quality-oqc.md`). `disposition` chỉ khác
- * `null` khi `result = FAIL` (`chk_qc_requests_disposition_requires_fail`), nên chỉ cần lọc trên
- * `disposition` — không cần đụng tới `result`. `qc_requests.disposition` mirror đúng attempt mới
- * nhất (`docs/decisions/qc-data-model.md`), nên lọc trên request cho cùng kết quả như
- * lọc trên attempt mới nhất mà không cần join thêm. */
+ * `null` khi `decision = FAIL` (`chk_quality_inspections_disposition_requires_fail`), nên chỉ cần
+ * lọc trên `disposition` — không cần đụng tới `decision`. `quality_inspections.disposition` mirror
+ * đúng attempt mới nhất (`docs/decisions/qc-data-model.md`), nên lọc trên case row cho cùng kết
+ * quả như lọc trên attempt mới nhất mà không cần join thêm. */
 const notScrapped = or(
-  isNull(qcRequests.disposition),
-  ne(qcRequests.disposition, OqcDisposition.SCRAP),
+  isNull(qualityInspections.disposition),
+  ne(qualityInspections.disposition, OqcDisposition.SCRAP),
 );
 
 /** Σ `quantity` mọi OQC (trừ `disposition = SCRAP`) của riêng một công đoạn — dùng để validate
@@ -30,15 +30,19 @@ export async function getInspectedQuantityByOperationId(
 ): Promise<number> {
   const [row] = await db
     .select({
-      total: sql<number>`coalesce(sum(${qcRequests.quantity}), 0)`.mapWith(
-        Number,
-      ),
+      total:
+        sql<number>`coalesce(sum(${qualityInspections.quantity}), 0)`.mapWith(
+          Number,
+        ),
     })
-    .from(qcRequests)
+    .from(qualityInspections)
     .where(
       and(
-        eq(qcRequests.kind, QcKind.OUTGOING),
-        eq(qcRequests.productionJobOperationId, productionJobOperationId),
+        eq(qualityInspections.inspectionType, QualityInspectionType.OQC),
+        eq(
+          qualityInspections.productionJobOperationId,
+          productionJobOperationId,
+        ),
         notScrapped,
       ),
     );
@@ -56,18 +60,22 @@ export async function getInspectedQuantityByBomItemId(
 ): Promise<number> {
   const [row] = await db
     .select({
-      total: sql<number>`coalesce(sum(${qcRequests.quantity}), 0)`.mapWith(
-        Number,
-      ),
+      total:
+        sql<number>`coalesce(sum(${qualityInspections.quantity}), 0)`.mapWith(
+          Number,
+        ),
     })
-    .from(qcRequests)
+    .from(qualityInspections)
     .innerJoin(
       productionJobOperations,
-      eq(productionJobOperations.id, qcRequests.productionJobOperationId),
+      eq(
+        productionJobOperations.id,
+        qualityInspections.productionJobOperationId,
+      ),
     )
     .where(
       and(
-        eq(qcRequests.kind, QcKind.OUTGOING),
+        eq(qualityInspections.inspectionType, QualityInspectionType.OQC),
         eq(
           productionJobOperations.productionJobBomItemId,
           productionJobBomItemId,
@@ -82,10 +90,10 @@ export async function getInspectedQuantityByBomItemId(
 /** Điều kiện "Job đã QC xong hết" dùng cho gate nhập kho TP (`E196`/`E209`, xem
  * `InventoryReceiptsService.ensureProductionReceiptOqcCleared`) và gate giao hàng (`E205`,
  * `OutboundOrdersService.ensureAllJobsQcCompleted`). Gộp cả hai nhánh QC qua neo chung
- * `productionJobOperationId` — công đoạn `INHOUSE` chỉ có thể có dòng `OUTGOING` (OQC) trỏ vào,
- * công đoạn `OUTSOURCE` chỉ có thể có dòng `INCOMING` (IQC sinh từ OS-IN, xem
+ * `productionJobOperationId` — công đoạn `INHOUSE` chỉ có thể có dòng `OQC` trỏ vào, công đoạn
+ * `OUTSOURCE` chỉ có thể có dòng `IQC` sinh từ OS-IN (xem
  * `IqcService.createInspectionsFromOutsourcingReceipt`) trỏ vào — hai tập không giao nhau, nên
- * LEFT JOIN theo đúng một cột này tự nhiên gộp đúng, không cần lọc `kind` ở đây
+ * LEFT JOIN theo đúng một cột này tự nhiên gộp đúng, không cần lọc `inspectionType` ở đây
  * (`docs/decisions/qc-data-model.md`).
  *
  * `total`/`open` dùng cho cả `E196` lẫn `E205`: Job phải có ít nhất 1 dòng QC, không còn dòng nào
@@ -114,14 +122,14 @@ export async function getJobQcCoverage(
   const [row] = await db
     .select({
       total:
-        sql<number>`count(${qcRequests.id}) filter (where ${qcRequests.disposition} is distinct from ${OqcDisposition.SCRAP})`.mapWith(
+        sql<number>`count(${qualityInspections.id}) filter (where ${qualityInspections.disposition} is distinct from ${OqcDisposition.SCRAP})`.mapWith(
           Number,
         ),
-      open: sql<number>`count(${qcRequests.id}) filter (where ${qcRequests.status} <> 'COMPLETED')`.mapWith(
+      open: sql<number>`count(${qualityInspections.id}) filter (where ${qualityInspections.status} <> 'COMPLETED')`.mapWith(
         Number,
       ),
       finalCompleted:
-        sql<number>`count(${qcRequests.id}) filter (where ${productionJobBomItems.itemType} = 'FG' and ${qcRequests.status} = 'COMPLETED' and ${qcRequests.disposition} is distinct from ${OqcDisposition.SCRAP})`.mapWith(
+        sql<number>`count(${qualityInspections.id}) filter (where ${productionJobBomItems.itemType} = 'FG' and ${qualityInspections.status} = 'COMPLETED' and ${qualityInspections.disposition} is distinct from ${OqcDisposition.SCRAP})`.mapWith(
           Number,
         ),
       hasFinalAssembly: sql<boolean>`bool_or(${productionJobBomItems.itemType} = 'FG')`,
@@ -135,8 +143,11 @@ export async function getJobQcCoverage(
       ),
     )
     .leftJoin(
-      qcRequests,
-      eq(qcRequests.productionJobOperationId, productionJobOperations.id),
+      qualityInspections,
+      eq(
+        qualityInspections.productionJobOperationId,
+        productionJobOperations.id,
+      ),
     )
     .where(eq(productionJobOperations.productionJobId, productionJobId));
 
@@ -149,7 +160,7 @@ export async function getJobQcCoverage(
 }
 
 /** Mở khoá Job sang `WAITING_DELIVERY` khi mọi dòng QC (IQC lẫn OQC, `getJobQcCoverage` gộp chung
- * theo `qc-data-model.md`) đã xong — gọi từ **mọi** nơi có thể đưa một dòng `qc_requests` về
+ * theo `qc-data-model.md`) đã xong — gọi từ **mọi** nơi có thể đưa một dòng `quality_inspections` về
  * `COMPLETED`: `OqcService.confirmOqc`, `IqcService.confirmIqc`, `completeIqcAfterSupplierReturn`.
  * Job có công đoạn `OUTSOURCE` mà dòng QC cuối cùng hoàn tất lại là IQC (không phải OQC) vẫn phải mở
  * khoá đúng lúc đó — thiếu chỗ nào gọi hàm này thì Job kẹt vĩnh viễn ở `WAITING_QC` (BUG-047). */

@@ -82,7 +82,7 @@ hai lệnh `post` gọi trùng lên cùng phiếu không cùng lọt qua và c�
      (`hasPendingIqcForItems`, `src/api/iqc/iqc.query.ts`) — vật tư chưa qua IQC (hoặc còn FAIL
      chưa xử lý) không được xuất cho sản xuất, xem `docs/decisions/qc-gates-on-stock-moves.md`.
    - Phiếu nhập: `status = PENDING_RECEIPT` cho qua thẳng; `status = PENDING_IQC` thì đếm thêm
-     `qc_requests` (`kind = INCOMING`) gắn với phiếu — còn dòng nào `status !== COMPLETED`
+     `quality_inspections` (`inspectionType = IQC`) gắn với phiếu — còn dòng nào `status !== COMPLETED`
      (kể cả **chưa có dòng nào**) thì ném `E153`, không rollback bút toán vì bước 2 chưa chạy; mọi
      trạng thái khác
      (`DRAFT`/`POSTED`/`CANCELLED`) → `E098`. Xem `docs/workflows/receipt-confirmation.md`.
@@ -119,7 +119,7 @@ Không có đường `CANCELLED → *`.
 | --- | --- | --- | --- |
 | `inventory_receipts`/`inventory_issues` | lập | *(chưa có)* | `DRAFT` |
 | `inventory_receipts` | `confirm` | `DRAFT` | `PENDING_RECEIPT` (`requiresIqc=false`) hoặc `PENDING_IQC` (`requiresIqc=true`) |
-| `qc_requests` (`kind = INCOMING`) | `confirm` phiếu nhập (`requiresIqc=true`) | *(chưa có)* | N dòng mới `NOT_INSPECTED` (N = số dòng phiếu) |
+| `quality_inspections` (`inspectionType = IQC`) | `confirm` phiếu nhập (`requiresIqc=true`) | *(chưa có)* | N dòng mới `DRAFT` (N = số dòng phiếu) |
 | `inventory_issues` | `post` | `DRAFT` | `POSTED` |
 | `inventory_receipts` | `post` | `PENDING_RECEIPT` hoặc `PENDING_IQC` (mọi IQC `COMPLETED`) | `POSTED` |
 | `inventory_receipts`/`inventory_issues` | `cancel` | `DRAFT`/`PENDING_IQC`/`PENDING_RECEIPT`/`POSTED` (tuỳ loại phiếu) | `CANCELLED` |
@@ -203,9 +203,9 @@ Các mã riêng của nhánh `confirm`/gate OQC (`E151`-`E154`, `E179`, `E196`, 
 `purchasing` (qua `purchaseOrderId`/`purchaseOrderItemId`, hai chiều — validate PO lúc `confirm`,
 `post` ghi ngược `payment_requests` qua `createIfOrderCompleted`), `suppliers` (qua `supplierId`),
 `product-structure` (`items`, mặt hàng), `quality-iqc`/`quality-oqc` — hai chiều, khác nhau giữa
-nhập/xuất: phiếu **nhập** `confirm` ghi sang `qc_requests` (`kind = INCOMING`), `post` đọc lại
-(`E153`) + gate OQC (`E196`/`E197`/`E209`, xem `docs/workflows/outgoing-qc.md`); phiếu **xuất**
-(`issueType = PRODUCTION`) chỉ **đọc** `qc_requests` lúc `post` (`E203`,
+nhập/xuất: phiếu **nhập** `confirm` ghi sang `quality_inspections` (`inspectionType = IQC`), `post`
+đọc lại (`E153`) + gate OQC (`E196`/`E197`/`E209`, xem `docs/workflows/outgoing-qc.md`); phiếu
+**xuất** (`issueType = PRODUCTION`) chỉ **đọc** `quality_inspections` lúc `post` (`E203`,
 `docs/decisions/qc-gates-on-stock-moves.md`), không ghi gì.
 
 Code: `InventoryReceiptsService`/`InventoryIssuesService` (`createInventoryReceipt`/`createInventoryIssue`,

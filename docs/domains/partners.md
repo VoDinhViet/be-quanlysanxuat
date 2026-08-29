@@ -28,7 +28,7 @@ thật, không bảng giá theo thời gian) ở `docs/decisions/purchasing-scop
 | Entity | Vai trò | Ai tham chiếu |
 | --- | --- | --- |
 | `clients` (+ `client_contacts`) | Khách hàng và danh bạ liên hệ | `orders.clientId`, `outbound_orders.clientId` |
-| `suppliers` (+ payment info, representatives, files) | Nhà cung cấp | `items.supplierId` (chính, RM); `purchase_orders`/`purchase_quotation_item_suppliers`/`qc_requests`/`outsourcing_orders`/`supplier_returns`/`inventory_receipts.supplierId` |
+| `suppliers` (+ payment info, representatives, files) | Nhà cung cấp | `items.supplierId` (chính, RM); `purchase_orders`/`purchase_quotation_item_suppliers`/`quality_inspections`/`outsourcing_orders`/`supplier_returns`/`inventory_receipts.supplierId` |
 | Danh mục nhỏ (5 chỉ-đọc + `operations`) | Phân loại + cơ cấu tổ chức + công đoạn | `clients`/`suppliers`/`items`/`users`/routing/BOM |
 
 `supplier_payment_info` là 1-1, merge từng phần khi update; `supplier_representatives`/

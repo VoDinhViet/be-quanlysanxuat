@@ -23,6 +23,9 @@ import { items } from '../items/items';
 import { purchaseOrders } from '../purchasing/purchase-orders';
 import { qcInspections } from '../quality/qc-inspections';
 import { qcKindEnum, QcKind, qcRequests } from '../quality/qc-requests';
+import { qualityInspectionTypeEnum } from '../quality/quality-enums';
+import { qualityInspectionResults } from '../quality/quality-inspection-results';
+import { qualityInspections } from '../quality/quality-inspections';
 import { suppliers } from '../suppliers/suppliers';
 import { users } from '../identity-access/users';
 
@@ -83,6 +86,13 @@ export const supplierReturns = pgTable(
     // cùng lý do `iqcId`; không có CHECK riêng vì composite FK bên dưới đã ràng buộc `kind` qua cột
     // `qcKind` dùng chung.
     qcInspectionId: uuid('qc_inspection_id'),
+    // 3 cột thay `iqcId`/`qcInspectionId`/`qcKind` — bảng phẳng migrate schema QC
+    // (`quality_inspections`/`quality_inspection_results`), cutover code đã chuyển hẳn sang đọc/ghi
+    // 3 cột này; 3 cột cũ ở trên giữ nguyên (đóng băng, chỉ còn dữ liệu backfill) tới khi dọn ở step
+    // cuối cùng của plan migration.
+    qualityInspectionId: uuid('quality_inspection_id'),
+    qualityInspectionResultId: uuid('quality_inspection_result_id'),
+    qcInspectionType: qualityInspectionTypeEnum('qc_inspection_type'),
     returnDate: date('return_date', { mode: 'date' }).notNull(),
     status: inventoryDocumentStatusEnum('status')
       .notNull()
@@ -118,6 +128,12 @@ export const supplierReturns = pgTable(
     ),
     index('idx_supplier_returns_iqc_id').on(table.iqcId),
     index('idx_supplier_returns_qc_inspection_id').on(table.qcInspectionId),
+    index('idx_supplier_returns_quality_inspection_id').on(
+      table.qualityInspectionId,
+    ),
+    index('idx_supplier_returns_quality_inspection_result_id').on(
+      table.qualityInspectionResultId,
+    ),
     index('idx_supplier_returns_status').on(table.status),
     index('idx_supplier_returns_return_date').on(table.returnDate),
     index('idx_supplier_returns_created_by').on(table.createdBy),
@@ -139,6 +155,27 @@ export const supplierReturns = pgTable(
       columns: [table.qcInspectionId, table.qcKind],
       foreignColumns: [qcInspections.id, qcInspections.kind],
       name: 'fk_supplier_returns_qc_inspection_id_qc_kind',
+    }).onDelete('set null'),
+    // Cùng khuôn 2 CHECK/FK cũ ở trên (`qc_kind`) — phiếu trả NCC chỉ sinh từ nhánh IQC.
+    check(
+      'chk_supplier_returns_qc_inspection_type',
+      sql`qc_inspection_type IS NULL OR qc_inspection_type = 'IQC'`,
+    ),
+    foreignKey({
+      columns: [table.qualityInspectionId, table.qcInspectionType],
+      foreignColumns: [
+        qualityInspections.id,
+        qualityInspections.inspectionType,
+      ],
+      name: 'fk_supplier_returns_quality_inspection_id_type',
+    }).onDelete('set null'),
+    foreignKey({
+      columns: [table.qualityInspectionResultId, table.qcInspectionType],
+      foreignColumns: [
+        qualityInspectionResults.id,
+        qualityInspectionResults.inspectionType,
+      ],
+      name: 'fk_supplier_returns_quality_inspection_result_id_type',
     }).onDelete('set null'),
   ],
 );
@@ -177,6 +214,14 @@ export const supplierReturnsRelations = relations(
     qcInspection: one(qcInspections, {
       fields: [supplierReturns.qcInspectionId],
       references: [qcInspections.id],
+    }),
+    qualityInspection: one(qualityInspections, {
+      fields: [supplierReturns.qualityInspectionId],
+      references: [qualityInspections.id],
+    }),
+    qualityInspectionResult: one(qualityInspectionResults, {
+      fields: [supplierReturns.qualityInspectionResultId],
+      references: [qualityInspectionResults.id],
     }),
     creatorBy: one(users, {
       fields: [supplierReturns.createdBy],

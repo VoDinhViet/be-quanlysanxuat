@@ -2,7 +2,7 @@ import { PageOptionsDto } from '../../../common/dto/offset-pagination/page-optio
 import {
   IqcResult,
   OqcDisposition,
-  OqcStatus,
+  QualityInspectionStatus,
 } from '../../../database/schemas';
 import {
   DateFieldOptional,
@@ -23,8 +23,8 @@ export class GetOqcsReqDto extends PageOptionsDto {
   @EnumFieldOptional(() => IqcResult)
   readonly result?: IqcResult;
 
-  @EnumFieldOptional(() => OqcStatus)
-  readonly status?: OqcStatus;
+  @EnumFieldOptional(() => QualityInspectionStatus)
+  readonly status?: QualityInspectionStatus;
 
   @EnumFieldOptional(() => OqcDisposition)
   readonly disposition?: OqcDisposition;

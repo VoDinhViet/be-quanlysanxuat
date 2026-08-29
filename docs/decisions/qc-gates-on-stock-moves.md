@@ -28,7 +28,7 @@ Thêm 2 gate mới, không sửa gate `E153` đang có:
   OQC (công đoạn `INHOUSE`) lẫn IQC sinh từ OS-IN (công đoạn `OUTSOURCE`). Dòng OQC
   `disposition=SCRAP` không được tính là "đã QC xong" dù `COMPLETED`.
 
-**Đường gỡ đi kèm gate D1:** `DELETE /iqc/:iqcId` (chỉ khi `NOT_INSPECTED`, `E206`) — cần một cách
+**Đường gỡ đi kèm gate D1:** `DELETE /iqc/:iqcId` (chỉ khi `DRAFT`, `E206`) — cần một cách
 gỡ phiếu IQC tạo nhầm mà không phải chờ QC "confirm cho qua" một phiếu không nên tồn tại.
 
 ## Giới hạn chấp nhận của gate D1
@@ -52,5 +52,6 @@ với user, không phải bug bỏ sót.
 ## Related docs
 
 `docs/decisions/oqc-per-operation.md`, `docs/decisions/qc-data-model.md` (`getJobQcCoverage`),
+`docs/decisions/quality-schema-rename.md` (đổi tên bảng/cột QC, 2026-08),
 `docs/decisions/production-lifecycle-closing.md`, `docs/domains/quality-iqc.md`,
 `docs/domains/quality-oqc.md`, `docs/workflows/outgoing-qc.md`, `docs/workflows/outbound-delivery.md`.

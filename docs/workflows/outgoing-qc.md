@@ -10,7 +10,7 @@ phép nhập lô thành phẩm và DO được phép gửi duyệt. Mô hình QC
 - `POST /production-jobs/:jobId/qc` — "Yêu cầu QC" cho cả Job, không nhận body.
 - `GET /oqc/aql-plan` — gợi ý `sampleSize`/`ac`/`re` trước khi QC nhập `defectQty`.
 - `POST /oqc/:oqcId/confirm` — QC lưu kết quả, gọi lại được nhiều lần tới khi `COMPLETED`.
-- `DELETE /oqc/:oqcId` — gỡ phiếu tạo nhầm, chỉ khi `NOT_INSPECTED`.
+- `DELETE /oqc/:oqcId` — gỡ phiếu tạo nhầm, chỉ khi `DRAFT`.
 - `POST /inventory-receipts/:receiptId/confirm` (`receiptType=PRODUCTION`) — đọc lại QC coverage
   của Job trước khi cho `confirm`.
 - `POST /outbound-orders/:outboundOrderId/send` — đọc QC coverage của Job liên quan, gate duy nhất
@@ -58,8 +58,9 @@ cho `send` DO.
 4. Hai câu tính SL đã xin QC song song: Σ `quantity` mọi OQC (trừ `SCRAP`) của mọi công đoạn
    as-used cùng node so `plannedQuantity` — vượt → `E176`. Σ tương tự riêng công đoạn Cấp 0 phải
    bằng 0 (lô luôn lấy trọn `completedQuantity`) → `E198`.
-5. Trong 1 transaction: cấp mã `OQC-{năm}-{5}` qua `document_sequences` + `INSERT` — `quantity =
-   completedQuantity` công đoạn Cấp 0, `inspectionDate = new Date()`, `status: NOT_INSPECTED`.
+5. Trong 1 transaction: cấp mã `OQC-{năm}-{5}` qua `document_sequences` + `INSERT` vào
+   `quality_inspections` — `quantity = completedQuantity` công đoạn Cấp 0, `requestedAt = new
+   Date()`, `status: DRAFT`.
 
 ### Xác nhận (`OqcService.confirmOqc`)
 
@@ -69,10 +70,11 @@ cho `send` DO.
 3. `result = reqDto.result ?? resultAuto` — cả hai vắng → `E200`. QC toàn quyền quyết định
    `result`/`disposition`, không validate chéo (`E201`/`E202`/`E215` đã nghỉ hưu).
 4. `resolveOqcStatus`: `PASS→COMPLETED`; `FAIL`+không disposition→`PENDING`; `FAIL`+`ACCEPT`/
-   `SCRAP`→`COMPLETED`; `FAIL`+`REWORK`→`REWORK` (vẫn mở).
-5. Trong 1 transaction: khoá `qc_requests` (`FOR UPDATE`), tính `attemptNo`, insert 1 dòng
-   `qc_inspections` (attempt) rồi cập nhật `qc_requests` (mirror). `linkFiles` chạy **ngoài**
-   transaction trước đó (stamp `linkedAt`, `E042`), `linkOqcEvidence` insert `qc_files` trong tx.
+   `SCRAP`→`COMPLETED`; `FAIL`+`REWORK`→`REWORK` (DB `IN_PROGRESS`, vẫn mở).
+5. Trong 1 transaction: khoá `quality_inspections` (`FOR UPDATE`), tính `attemptNo`, insert 1 dòng
+   `quality_inspection_results` (attempt) rồi cập nhật `quality_inspections` (mirror). `linkFiles`
+   chạy **ngoài** transaction trước đó (stamp `linkedAt`, `E042`), `linkOqcEvidence` insert
+   `quality_inspection_evidences` trong tx.
 6. `PENDING`/`REWORK` → QC gọi lại chính phiếu tới khi `COMPLETED`. Không nhánh nào ghi ngược
    `completedQuantity`.
 7. Sau khi ghi mirror, nếu vào `COMPLETED`, gọi `closeJobIfQcCovered` (`total>0 && open=0`) →
@@ -102,11 +104,11 @@ Chi tiết đầy đủ route `send`/`approve`/`reject`/`deliver`: `docs/workflo
 
 | Entity | Trigger | Trước | Sau |
 | --- | --- | --- | --- |
-| `qc_requests` (`kind=OUTGOING`) | `POST /production-jobs/:jobId/qc` | *(chưa có)* | 1 dòng `NOT_INSPECTED` |
-| `qc_requests.status` | `confirm` (PASS/ACCEPT/SCRAP) | — | `COMPLETED` |
-| `qc_requests.status` | `confirm` (FAIL, không disposition) | — | `PENDING` |
-| `qc_requests.status` | `confirm` (FAIL+REWORK) | — | `REWORK` |
-| `qc_inspections` | `confirm` (mọi kết quả) | — | +1 attempt mới |
+| `quality_inspections` (`inspectionType=OQC`) | `POST /production-jobs/:jobId/qc` | *(chưa có)* | 1 dòng `DRAFT` |
+| `quality_inspections.status` | `confirm` (PASS/ACCEPT/SCRAP) | — | `COMPLETED` |
+| `quality_inspections.status` | `confirm` (FAIL, không disposition) | — | `PENDING` |
+| `quality_inspections.status` | `confirm` (FAIL+REWORK) | — | `IN_PROGRESS` |
+| `quality_inspection_results` | `confirm` (mọi kết quả) | — | +1 attempt mới |
 | `production_jobs.status` | `confirm` OQC (coverage hết `open`) | `IN_PROGRESS`/`WAITING_QC` | `WAITING_DELIVERY` |
 | `production_jobs.status` | `post` phiếu nhập TP (đủ SL) | `WAITING_DELIVERY` | `COMPLETED` |
 | `production_orders.status` | `post` phiếu nhập TP (mọi Job xong) | `APPROVED` | `COMPLETED` |
@@ -114,8 +116,8 @@ Chi tiết đầy đủ route `send`/`approve`/`reject`/`deliver`: `docs/workflo
 ## Side effects
 
 `POST .../qc`: chỉ 1 dòng mới, không đụng công đoạn/Job/kho. `confirm` OQC: đổi status/kết quả +
-`qc_files` (evidence), không ghi ngược `production_job_operations`. `confirm` phiếu nhập: gate chỉ
-đọc, một chiều.
+`quality_inspection_evidences` (evidence), không ghi ngược `production_job_operations`. `confirm`
+phiếu nhập: gate chỉ đọc, một chiều.
 
 ## Transaction boundary
 
@@ -129,7 +131,7 @@ thẳng `createOqcForJob`.
 ## Failure cases
 
 `E082`, `E175` (Job không `IN_PROGRESS`/`WAITING_QC`), `E213`, `E214` (đếm lại mọi công đoạn Cấp 0),
-`E199`, `E176`, `E198`, `E174`, `E177`, `E200`, `E178` (xoá phiếu không `NOT_INSPECTED`),
+`E199`, `E176`, `E198`, `E174`, `E177`, `E200`, `E178` (xoá phiếu không `DRAFT`),
 `E179`, `E107`, `E196`, `E209`, `E197`, `E205` (gate duy nhất ở `send` DO). `E201`/`E202`/`E211`/
 `E212`/`E215` đã nghỉ hưu.
 
@@ -139,6 +141,9 @@ thẳng `createOqcForJob`.
 - Vì sao OQC gắn theo công đoạn thay vì Job → `docs/decisions/oqc-per-operation.md`.
 - Vì sao có gate ở cả `inventory-issues`/`inventory-receipts`/`outbound-orders` →
   `docs/decisions/qc-gates-on-stock-moves.md`.
+- Tên bảng/cột `quality_inspections`/`quality_inspection_results` (ex-`qc_requests`/
+  `qc_inspections`), vocabulary `status`/`result` API không đổi → `docs/decisions/
+  quality-schema-rename.md`.
 
 ## Related domains
 

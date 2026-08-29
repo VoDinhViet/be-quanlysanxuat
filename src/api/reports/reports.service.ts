@@ -19,8 +19,6 @@ import { DRIZZLE } from '../../database/database.module';
 import type { Database } from '../../database/database.type';
 import {
   IqcResult,
-  IqcStatus,
-  OqcStatus,
   orders,
   OrderStatus,
   outboundOrders,
@@ -30,9 +28,12 @@ import {
   ProductionJobStatus,
   productionJobs,
   productionOrders,
-  qcInspections,
   QcKind,
-  qcRequests,
+  QualityInspectionDecision,
+  QualityInspectionStatus,
+  QualityInspectionType,
+  qualityInspectionResults,
+  qualityInspections,
   suppliers,
 } from '../../database/schemas';
 import { GetProductionProgressReqDto } from './dto/get-production-progress.req.dto';
@@ -48,7 +49,6 @@ import {
   receivedQuantityByOrderIdSubquery,
   sentQuantityByOrderIdSubquery,
 } from '../outsourcing-orders/outsourcing-orders.query';
-
 type ReportDateRange = { startDate?: Date; endDate?: Date };
 
 // Cột `timestamp` (có giờ) — cận trên dùng `exclusiveEndOfDay`, không `lte endDate` (sẽ loại sai
@@ -96,8 +96,11 @@ function withinDaysFromToday<TColumn extends Column>(
 // Định nghĩa "NCR chưa xử lý", dùng chung cho `/reports/stats` lẫn `/reports/alerts` — hai endpoint
 // cùng trả field `openNcr` nên phải cùng một định nghĩa, không khai lại ở mỗi nơi.
 const OPEN_NCR = and(
-  eq(qcRequests.result, IqcResult.FAIL),
-  ne(qcRequests.status, IqcStatus.COMPLETED),
+  eq(
+    qualityInspections.decision,
+    IqcResult.FAIL as string as QualityInspectionDecision,
+  ),
+  ne(qualityInspections.status, QualityInspectionStatus.COMPLETED),
 )!;
 
 // "Job trễ hạn" — jobDueDate (orders.dueDate của đơn hàng gốc, qua productionOrders) đã qua hôm
@@ -231,20 +234,31 @@ export class ReportsService {
   async getOpenNcr(): Promise<OpenNcrResDto[]> {
     const rows = await this.db
       .select({
-        id: qcRequests.id,
-        code: qcRequests.code,
-        kind: qcRequests.kind,
-        createdAt: qcRequests.createdAt,
-        status: qcRequests.status,
+        id: qualityInspections.id,
+        code: qualityInspections.inspectionNo,
+        inspectionType: qualityInspections.inspectionType,
+        createdAt: qualityInspections.createdAt,
+        status: qualityInspections.status,
       })
-      .from(qcRequests)
+      .from(qualityInspections)
       .where(OPEN_NCR)
-      .orderBy(asc(qcRequests.createdAt))
+      .orderBy(asc(qualityInspections.createdAt))
       .limit(ReportsService.OPEN_NCR_LIMIT);
 
-    return plainToInstance(OpenNcrResDto, rows, {
-      excludeExtraneousValues: true,
-    });
+    // `kind` là vocabulary API cũ (`QcKind`) — dịch theo đúng inspectionType của từng dòng.
+    // `status` trả thẳng `quality_inspections.status` (`QualityInspectionStatus`) — OPEN_NCR đảm
+    // bảo chỉ còn PENDING/IN_PROGRESS ở đây (decision=FAIL nên khác DRAFT, ne COMPLETED loại nốt).
+    return plainToInstance(
+      OpenNcrResDto,
+      rows.map((row) => ({
+        ...row,
+        kind:
+          row.inspectionType === QualityInspectionType.IQC
+            ? QcKind.INCOMING
+            : QcKind.OUTGOING,
+      })),
+      { excludeExtraneousValues: true },
+    );
   }
 
   // Duy nhất trong module đọc `qc_inspections` (append-only, mỗi lần kiểm 1 dòng) thay vì
@@ -254,7 +268,7 @@ export class ReportsService {
   // QC_PASS_RATE_WINDOW_DAYS điểm kể cả ngày không có lần kiểm nào (LEFT JOIN, null khi ngày đó
   // không có lần kiểm nào của kind tương ứng).
   async getQcPassRate(): Promise<QcPassRateResDto[]> {
-    const inspectionDay = sql`(${qcInspections.createdAt} at time zone 'Asia/Ho_Chi_Minh')::date`;
+    const inspectionDay = sql`(${qualityInspectionResults.createdAt} at time zone 'Asia/Ho_Chi_Minh')::date`;
     const windowStart = sql`${VN_TODAY} - ${ReportsService.QC_PASS_RATE_WINDOW_DAYS - 1}::int`;
 
     const rows = await this.db
@@ -262,21 +276,21 @@ export class ReportsService {
         date: sql<Date>`d.day::date`,
         iqcPassRate: sql<number | null>`
           round(
-            100.0 * count(*) filter (where ${qcInspections.kind} = ${QcKind.INCOMING} and ${qcInspections.result} = ${IqcResult.PASS})
-            / nullif(count(*) filter (where ${qcInspections.kind} = ${QcKind.INCOMING}), 0)
+            100.0 * count(*) filter (where ${qualityInspectionResults.inspectionType} = ${QualityInspectionType.IQC} and ${qualityInspectionResults.decision} = ${IqcResult.PASS})
+            / nullif(count(*) filter (where ${qualityInspectionResults.inspectionType} = ${QualityInspectionType.IQC}), 0)
           )
         `,
         oqcPassRate: sql<number | null>`
           round(
-            100.0 * count(*) filter (where ${qcInspections.kind} = ${QcKind.OUTGOING} and ${qcInspections.result} = ${IqcResult.PASS})
-            / nullif(count(*) filter (where ${qcInspections.kind} = ${QcKind.OUTGOING}), 0)
+            100.0 * count(*) filter (where ${qualityInspectionResults.inspectionType} = ${QualityInspectionType.OQC} and ${qualityInspectionResults.decision} = ${IqcResult.PASS})
+            / nullif(count(*) filter (where ${qualityInspectionResults.inspectionType} = ${QualityInspectionType.OQC}), 0)
           )
         `,
       })
       .from(
         sql`generate_series(${windowStart}, ${VN_TODAY}, interval '1 day') as d(day)`,
       )
-      .leftJoin(qcInspections, sql`${inspectionDay} = d.day::date`)
+      .leftJoin(qualityInspectionResults, sql`${inspectionDay} = d.day::date`)
       .groupBy(sql`d.day`)
       .orderBy(sql`d.day`);
 
@@ -461,51 +475,55 @@ export class ReportsService {
   private async getQcStats(reqDto: GetReportStatsReqDto) {
     const isFiltered = Boolean(reqDto.startDate || reqDto.endDate);
 
-    const createdInRange = timestampRangeFilter(qcRequests.createdAt, reqDto);
+    const createdInRange = timestampRangeFilter(
+      qualityInspections.createdAt,
+      reqDto,
+    );
 
     const waitingQc = and(
-      eq(qcRequests.kind, QcKind.OUTGOING),
-      eq(qcRequests.status, OqcStatus.NOT_INSPECTED),
+      eq(qualityInspections.inspectionType, QualityInspectionType.OQC),
+      eq(qualityInspections.status, QualityInspectionStatus.DRAFT),
       createdInRange,
     )!;
     const waitingQcAsOfYesterday = and(
       waitingQc,
-      lt(qcRequests.createdAt, sql`now() - interval '1 day'`),
+      lt(qualityInspections.createdAt, sql`now() - interval '1 day'`),
     )!;
     // Cả IQC lẫn OQC — `PENDING` (FAIL chưa chọn disposition) không tính vào đây, đã thuộc `openNcr`.
     const openNcr = and(OPEN_NCR, createdInRange)!;
     // Có filter → `openNcrTrendCount` bị null-hoá ở cuối hàm, nên bỏ hẳn việc dựng subquery tương
-    // quan bên dưới cho mỗi dòng `qc_requests` — `sql\`false\`` để Postgres hằng-số-hoá FILTER,
-    // không eval cho dòng nào.
+    // quan bên dưới cho mỗi dòng `quality_inspections` — `sql\`false\`` để Postgres hằng-số-hoá
+    // FILTER, không eval cho dòng nào.
     //
-    // Không filter: "trạng thái tại thời điểm T trong quá khứ" — không đọc `qc_requests.status`
-    // (chỉ mirror trạng thái HIỆN TẠI) mà dò lại `qc_inspections`: `resultingStatus` của attempt
-    // gần nhất có `createdAt < T`. Ba giá trị PENDING/WAITING_RETURN/REWORK tương đương "FAIL,
-    // chưa xử lý xong" — đúng định nghĩa `openNcr` ở trên nhưng nhìn từ quá khứ. Không có attempt
-    // nào trước T (request tạo sau T, hoặc còn NOT_INSPECTED lúc đó) → subquery trả NULL → tự động
-    // không tính, không cần xử lý riêng.
+    // Không filter: "trạng thái tại thời điểm T trong quá khứ" — không đọc
+    // `quality_inspections.status` (chỉ mirror trạng thái HIỆN TẠI) mà dò lại
+    // `quality_inspection_results`: `resultingStatus` của attempt gần nhất có `createdAt < T`. Hai
+    // giá trị PENDING/IN_PROGRESS (gộp WAITING_RETURN/REWORK cũ, D2) tương đương "FAIL, chưa xử lý
+    // xong" — đúng định nghĩa `openNcr` ở trên nhưng nhìn từ quá khứ. Không có attempt nào trước T
+    // (request tạo sau T, hoặc còn DRAFT lúc đó) → subquery trả NULL → tự động không tính, không
+    // cần xử lý riêng.
     const openNcrAsOfYesterday = isFiltered
       ? sql`false`
       : and(
           createdInRange,
           sql`(
-            select ${qcInspections.resultingStatus}
-            from ${qcInspections}
-            where ${qcInspections.qcRequestId} = ${qcRequests.id}
-              and ${qcInspections.createdAt} < now() - interval '1 day'
-            order by ${qcInspections.createdAt} desc
+            select ${qualityInspectionResults.resultingStatus}
+            from ${qualityInspectionResults}
+            where ${qualityInspectionResults.qualityInspectionId} = ${qualityInspections.id}
+              and ${qualityInspectionResults.createdAt} < now() - interval '1 day'
+            order by ${qualityInspectionResults.createdAt} desc
             limit 1
-          ) in (${IqcStatus.PENDING}, ${IqcStatus.WAITING_RETURN}, ${OqcStatus.REWORK})`,
+          ) in (${QualityInspectionStatus.PENDING}, ${QualityInspectionStatus.IN_PROGRESS})`,
         )!;
 
     const [row] = await this.db
       .select({
         jobsWaitingQc: sql<number>`
-          count(distinct ${qcRequests.productionJobId}) filter (where ${waitingQc})
+          count(distinct ${qualityInspections.productionJobId}) filter (where ${waitingQc})
         `.mapWith(Number),
         jobsWaitingQcTrendCount: sql<number>`
-          count(distinct ${qcRequests.productionJobId}) filter (where ${waitingQc})
-          - count(distinct ${qcRequests.productionJobId}) filter (where ${waitingQcAsOfYesterday})
+          count(distinct ${qualityInspections.productionJobId}) filter (where ${waitingQc})
+          - count(distinct ${qualityInspections.productionJobId}) filter (where ${waitingQcAsOfYesterday})
         `.mapWith(Number),
         openNcr: sql<number>`count(*) filter (where ${openNcr})`.mapWith(
           Number,
@@ -514,7 +532,7 @@ export class ReportsService {
           count(*) filter (where ${openNcr}) - count(*) filter (where ${openNcrAsOfYesterday})
         `.mapWith(Number),
       })
-      .from(qcRequests);
+      .from(qualityInspections);
 
     return isFiltered
       ? { ...row, jobsWaitingQcTrendCount: null, openNcrTrendCount: null }
@@ -584,7 +602,7 @@ export class ReportsService {
   private async getOpenNcrCount(): Promise<number> {
     const [row] = await this.db
       .select({ count: sql<number>`count(*)`.mapWith(Number) })
-      .from(qcRequests)
+      .from(qualityInspections)
       .where(OPEN_NCR);
 
     return row.count;

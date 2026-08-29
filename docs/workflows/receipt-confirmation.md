@@ -57,11 +57,11 @@ nhau, hai quyền độc lập.
      ADJUSTMENT` ("nhập từ khác", không NCC/khách/PO): trả thẳng `{null, null}` thay vì chặn, xem
      `docs/domains/inventory.md` mục "Nhập từ khác". Gọi
      `IqcService.createInspectionsFromReceipt(tx, {...})`: một
-     `INSERT` duy nhất sinh N dòng `qc_requests` (`kind = INCOMING`, N = số dòng phiếu), mỗi
-     dòng
-     `status = NOT_INSPECTED`, `result`/`disposition` `NULL`, mã cấp theo lô qua
-     `generateIqcCodes` (không lặp gọi hàm sinh mã đơn — xem `docs/domains/quality-iqc.md`, Common
-     mistakes #5). `status = PENDING_IQC`.
+     `INSERT` duy nhất sinh N dòng `quality_inspections` (`inspectionType = IQC`,
+     `originType = INVENTORY_RECEIPT`, N = số dòng phiếu), mỗi dòng `status = DRAFT`,
+     `decision`/`disposition` `NULL`, mã cấp theo lô qua `generateIqcCodes` (không
+     lặp gọi hàm sinh mã đơn — xem `docs/domains/quality-iqc.md`, Common mistakes #5). `status =
+     PENDING_IQC`.
 5. **Riêng `receiptType = PRODUCTION`** (`ensureProductionReceiptOqcCleared`, chạy trong cùng
    transaction, trước khi cập nhật `status` header): `productionJobId` bắt buộc (`E179`), mọi dòng
    phải `itemId = job.itemId` (`E107`), Job phải qua hết QC coverage (`E196`/`E209`), Σ SL nhập cộng
@@ -72,45 +72,46 @@ nhau, hai quyền độc lập.
 ### `post` — nhánh `PENDING_IQC`
 
 Trong cùng khoá `SELECT … FOR UPDATE` của `post` (`docs/workflows/stock-movement.md`): đếm
-`qc_requests` (`kind = INCOMING`) gắn với phiếu, nếu **không có dòng nào** hoặc còn dòng
-`status !== COMPLETED` →
-`E153`, dừng trước khi chạm `inventory_balances`. Qua được thì `post` chạy y hệt nhánh
-`PENDING_RECEIPT` — không phân biệt gì thêm ở bước ghi bút toán.
+`quality_inspections` (`inspectionType = IQC`, `originType = INVENTORY_RECEIPT`) gắn với phiếu, nếu
+**không có dòng nào** hoặc còn dòng `status !== COMPLETED` → `E153`, dừng trước khi chạm
+`inventory_balances`. Qua được thì `post` chạy y hệt nhánh `PENDING_RECEIPT` — không phân biệt gì
+thêm ở bước ghi bút toán.
 
 Muốn một dòng IQC đạt `COMPLETED` phải đi qua `POST /iqc/:iqcId/confirm` với `result = PASS` (ngay
 `COMPLETED`), hoặc `result = FAIL` + `disposition = CONCESSION` (ngay `COMPLETED`), hoặc `result =
-FAIL` + `disposition = SORT`/`RETURN` — dừng ở `WAITING_RETURN` trước, chỉ `COMPLETED` sau khi
-phiếu trả NCC tự sinh cho dòng đó được kho `post` (`docs/workflows/supplier-return.md`). Tức là
-hàng phải trả/phân loại vẫn chặn `post` phiếu nhập này **cho tới khi** kho xác nhận xuất trả xong —
-không tự động. Dòng IQC sinh từ phiếu `RETURN` gắn khách hàng (`clientId`, không `supplierId`) không
-chọn được `disposition = SORT`/`RETURN` — `E254`, chưa có phương án trả-lại-khách, xem
-`docs/domains/inventory.md` mục "Nhập từ khách hàng". Xem `docs/domains/quality-iqc.md`.
+FAIL` + `disposition = SORT`/`RETURN` — dừng ở `status = IN_PROGRESS` trước, chỉ `COMPLETED` sau khi
+phiếu trả NCC tự sinh cho dòng đó được kho `post`
+(`docs/workflows/supplier-return.md`). Tức là hàng phải trả/phân loại vẫn chặn `post` phiếu nhập này
+**cho tới khi** kho xác nhận xuất trả xong — không tự động. Dòng IQC sinh từ phiếu `RETURN` gắn
+khách hàng (`clientId`, không `supplierId`) không chọn được `disposition = SORT`/`RETURN` — `E254`,
+chưa có phương án trả-lại-khách, xem `docs/domains/inventory.md` mục "Nhập từ khách hàng". Xem
+`docs/domains/quality-iqc.md`.
 
 ## State changes
 
 | Entity | Trigger | Trước | Sau |
 | --- | --- | --- | --- |
 | `inventory_receipts.status` | `confirm` | `DRAFT` | `PENDING_RECEIPT`/`PENDING_IQC` |
-| `qc_requests` (`kind = INCOMING`) | `confirm` (`requiresIqc=true`) | *(chưa có)* | N dòng `NOT_INSPECTED` |
-| `qc_requests.status` | `POST /iqc/:id/confirm` | theo `docs/domains/quality-iqc.md` | — |
+| `quality_inspections` (`inspectionType = IQC`) | `confirm` (`requiresIqc=true`) | *(chưa có)* | N dòng `DRAFT` |
+| `quality_inspections.status` | `POST /iqc/:id/confirm` | theo `docs/domains/quality-iqc.md` | — |
 | `production_jobs`/`production_orders`/`payment_requests` | `post` (nhánh `PRODUCTION`/PO) | — | cascade — xem `docs/workflows/stock-movement.md`, `docs/workflows/outgoing-qc.md` |
 | `inventory_receipts.status` | `post` | `PENDING_RECEIPT`/`PENDING_IQC` | `POSTED` |
 | `inventory_balances`/`inventory_transactions` | `post` | — | cập nhật (xem `docs/workflows/stock-movement.md`) |
 
 ## Side effects
 
-- `confirm` với `requiresIqc=true`: N dòng `qc_requests` mới, mã liên tiếp cùng năm
+- `confirm` với `requiresIqc=true`: N dòng `quality_inspections` mới, mã liên tiếp cùng năm
   (`IQC-{năm}-xxxxx`). Không side effect nào khác ngoài đổi `status` phiếu.
-- `post` từ `PENDING_IQC` không đụng gì tới `qc_requests` — chỉ đọc để kiểm điều kiện,
+- `post` từ `PENDING_IQC` không đụng gì tới `quality_inspections` — chỉ đọc để kiểm điều kiện,
   không ghi.
 
 ## Transaction boundary
 
 `confirm` mở transaction bao **hai module**: `inventory_receipts` (khoá + đổi `status`) và
-`qc_requests` (insert hàng loạt khi có QC) — lý do `IqcService.createInspectionsFromReceipt`
+`quality_inspections` (insert hàng loạt khi có QC) — lý do `IqcService.createInspectionsFromReceipt`
 bắt buộc nhận `tx`, không tự mở transaction (`.claude/rules/transactions.md`, cùng khuôn
 `PurchaseOrdersService.createDraftOrdersFromQuotation` ở `docs/workflows/rfq-approval.md`). `post`
-đọc `qc_requests` **trong** transaction của chính nó (đã khoá phiếu nhập, không cần khoá
+đọc `quality_inspections` **trong** transaction của chính nó (đã khoá phiếu nhập, không cần khoá
 thêm dòng IQC — dòng IQC không bị `post` phiếu nhập ghi lại) rồi mới quyết định có ghi
 `inventory_balances`/`inventory_transactions` hay không.
 
@@ -131,16 +132,19 @@ kiểm ở cả `create`/`update`/`confirm`), `E253` (`create`/`update` gửi c�
 
 - Vì sao 2 trạng thái mới dùng chung enum với phiếu xuất thay vì tách bảng riêng, vì sao không có
   transition tự động `PENDING_IQC → PENDING_RECEIPT` → `docs/domains/inventory.md`.
-- Quy tắc suy `status` của một dòng IQC (`result`/`disposition` → `NOT_INSPECTED`/`PENDING`/
-  `WAITING_RETURN`/`COMPLETED`) → `docs/domains/quality-iqc.md`.
+- Quy tắc suy `status` của một dòng IQC (`result`/`disposition` → `DRAFT`/`PENDING`/
+  `IN_PROGRESS`/`COMPLETED`) → `docs/domains/quality-iqc.md`.
+- Tên bảng/cột `quality_inspections` (ex-`qc_requests`), `originType`/`originId` thay
+  `inventoryReceiptId` → `docs/decisions/quality-schema-rename.md`.
 
 ## Related domains
 
 `inventory` (chủ) → `quality-iqc` (một chiều, chỉ lúc `confirm` với `requiresIqc=true`; `post` đọc
-lại `qc_requests` nhưng không ghi) + `quality-oqc` (gate `receiptType=PRODUCTION`, một chiều đọc).
-Không domain QC nào ghi ngược về `inventory_receipts` ngoài cột trace tuỳ chọn
-`qc_requests.inventoryReceiptId`. `post` còn ghi ngược `production`/`purchasing` (xem State
-changes) — validate PO cơ bản đã có sẵn từ lúc lập phiếu (`docs/domains/purchasing.md`).
+lại `quality_inspections` nhưng không ghi) + `quality-oqc` (gate `receiptType=PRODUCTION`, một chiều
+đọc). Không domain QC nào ghi ngược về `inventory_receipts` ngoài cột trace tuỳ chọn qua
+`quality_inspections.originId` (khi `originType = INVENTORY_RECEIPT`). `post` còn ghi ngược
+`production`/`purchasing` (xem State changes) — validate PO cơ bản đã có sẵn từ lúc lập phiếu
+(`docs/domains/purchasing.md`).
 
 Bước trước: lập phiếu `DRAFT` (`POST`/`PATCH /inventory-receipts`, không có workflow riêng — một
 write đơn giản kèm validate PO, xem `docs/domains/inventory.md`). Bước sau: `cancel` (huỷ ở bất kỳ

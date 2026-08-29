@@ -94,7 +94,7 @@ xuất SALES về đúng mã DO.
 | `inventory_balances` | Tồn hiện tại, dựng lại được từ sổ cái |
 | `inventory_requisitions` | Phiếu lãnh — 6 trạng thái riêng; `type=PRODUCTION` bắt buộc `productionJobId` (`E233`) |
 | `inventory_requisition_items` | Dòng — luôn RM, unique `(requisitionId, itemId)` |
-| `supplier_returns` | Trả NCC — bảng phẳng, tự sinh `DRAFT` từ IQC `WAITING_RETURN`; chưa có tạo tay/`cancel` |
+| `supplier_returns` | Trả NCC — bảng phẳng, tự sinh `DRAFT` từ IQC `IN_PROGRESS`; chưa có tạo tay/`cancel` |
 | `outsourcing_orders`/`_items` | OS-OUT — không nháp, `POSTED` ngay; không đụng tồn (WIP) |
 | `outsourcing_receipts`/`_items` | OS-IN — cùng khuôn OS-OUT; 1 phiếu = 1 NCC, gộp nhiều OS-OUT |
 | `outbound_orders`/`_items` | DO — 6 trạng thái; `clientId` bắt buộc, bất biến 1 phiếu = 1 khách hàng |
@@ -136,7 +136,7 @@ không suy được kho). Lý do có gate này dù hàng NG "chưa từng vào t
 `post` trừ tồn **chỉ khi** phiếu nhập gốc đã `POSTED` (nếu có) và phiếu không sinh từ OS-IN (hàng
 gia công ngoài chưa từng vào tồn) — bù lại, `postInventoryReceipt` tự trừ SL đã trả `POSTED` khỏi
 từng dòng trước khi ghi `RECEIPT` (`buildReceiptPostingLines`). Cùng tx gọi
-`completeIqcAfterSupplierReturn` (`WAITING_RETURN → COMPLETED`). Chưa có `cancel` (cần đường
+`completeIqcAfterSupplierReturn` (`IN_PROGRESS → COMPLETED`). Chưa có `cancel` (cần đường
 "un-complete" IQC, để đợt sau).
 
 **OS-OUT/OS-IN** — không nháp: `(tạo tay, POSTED ngay) →(cancel)→ CANCELLED`. `create` OS-OUT chỉ

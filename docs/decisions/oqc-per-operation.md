@@ -25,9 +25,10 @@ Hai phương án tầng để gắn OQC được cân nhắc:
 **Chọn phương án 1 — `oqc_inspections` gắn theo `production_job_operations`, không tạo bảng mới cho
 tầng Cấp 0.**
 
-- Thêm cột `productionJobOperationId` — **nullable**, ép bắt buộc theo `kind` bằng CHECK
-  (`chk_qc_requests_outgoing_job`, `docs/decisions/qc-data-model.md`) thay vì `NOT NULL` cứng trên
-  cột, vì `qc_requests` giờ dùng chung cho cả IQC lẫn OQC (một bảng vật lý, `kind` phân nhánh) —
+- Thêm cột `productionJobOperationId` — **nullable**, ép bắt buộc theo discriminator bằng CHECK
+  (`chk_quality_inspections_oqc_job`, `docs/decisions/qc-data-model.md`) thay vì `NOT NULL` cứng
+  trên cột, vì `quality_inspections` (ex-`qc_requests`, `docs/decisions/quality-schema-rename.md`)
+  giờ dùng chung cho cả IQC lẫn OQC (một bảng vật lý, `inspectionType` phân nhánh) —
   `onDelete: 'restrict'`; LSX một khi `APPROVED` không có đường nào xoá được cây
   `production_job_operations`/`production_job_bom_items` của nó nữa (`ensureItemsNotLockedByProduction`
   chặn cứng `E080` khi còn thao tác trên LSX đã duyệt), nên FK không cần phòng hờ mồ côi. Chi tiết:
@@ -132,5 +133,7 @@ bằng cột đó, không bằng bảng khác.
 
 `docs/decisions/qc-gates-on-stock-moves.md` (quyết định song song, thêm 2 gate cross-domain).
 `docs/decisions/qc-data-model.md` (`getJobQcCoverage` hợp nhất OQC + IQC gia công ngoài theo công
-đoạn, kế thừa neo `production_job_operations` mà quyết định này thiết lập). `docs/domains/
-quality.md`, `docs/domains/production.md`, `docs/domains/inventory.md`, `docs/workflows/outgoing-qc.md`.
+đoạn, kế thừa neo `production_job_operations` mà quyết định này thiết lập).
+`docs/decisions/quality-schema-rename.md` (đổi tên `qc_requests`/`kind` → `quality_inspections`/
+`inspectionType`, 2026-08). `docs/domains/production.md`, `docs/domains/inventory.md`,
+`docs/workflows/outgoing-qc.md`.

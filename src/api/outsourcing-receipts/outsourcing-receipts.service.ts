@@ -34,8 +34,9 @@ import {
   outsourcingReceipts,
   OutsourcingReceiptStatus,
   productionJobs,
-  QcKind,
-  qcRequests,
+  QualityInspectionOriginType,
+  QualityInspectionType,
+  qualityInspections,
   suppliers,
   units,
 } from '../../database/schemas';
@@ -59,7 +60,7 @@ type ResolvedReceiptItem = {
   area: number | null;
   note: string | null;
   // Denormalize từ dòng OS-OUT nguồn — neo sang đúng công đoạn `OUTSOURCE` sinh ra dòng này, dùng
-  // để gắn `qcRequests.productionJobOperationId` khi `requiresIqc` (xem
+  // để gắn `qualityInspections.productionJobOperationId` khi `requiresIqc` (xem
   // `createOutsourcingReceipt`, `docs/domains/quality-iqc.md`).
   productionJobId: string | null;
   productionJobOperationId: string | null;
@@ -465,20 +466,38 @@ export class OutsourcingReceiptsService {
     }
   }
 
-  /** Huỷ OS-IN đã `POSTED` bị chặn (`E173`) nếu đã sinh `qc_requests` (`kind = INCOMING`)
-   * trỏ vào — cùng lý do `supplier_returns` chưa có `cancel`: cần đường "un-complete" IQC. Chặn bất
-   * kể trạng thái IQC, kể cả đã `COMPLETED`. */
+  /** Huỷ OS-IN đã `POSTED` bị chặn (`E173`) nếu đã sinh `quality_inspections`
+   * (`inspectionType = IQC`) trỏ vào — cùng lý do `supplier_returns` chưa có `cancel`: cần đường
+   * "un-complete" IQC. Chặn bất kể trạng thái IQC, kể cả đã `COMPLETED`. Origin polymorphic chỉ giữ
+   * `outsourcingReceiptItemId` (`originId`) — join qua `outsourcing_receipt_items` để suy lại
+   * `outsourcingReceiptId`, xem `quality-inspections.ts`. */
   private async hasLinkedIqc(
     tx: DbTransaction,
     outsourcingReceiptId: string,
   ): Promise<boolean> {
-    const existing = await tx.query.qcRequests.findFirst({
-      columns: { id: true },
-      where: and(
-        eq(qcRequests.kind, QcKind.INCOMING),
-        eq(qcRequests.outsourcingReceiptId, outsourcingReceiptId),
-      ),
-    });
+    const [existing] = await tx
+      .select({ id: qualityInspections.id })
+      .from(qualityInspections)
+      .innerJoin(
+        outsourcingReceiptItems,
+        and(
+          eq(
+            qualityInspections.originType,
+            QualityInspectionOriginType.OUTSOURCING_RECEIPT_ITEM,
+          ),
+          eq(qualityInspections.originId, outsourcingReceiptItems.id),
+        ),
+      )
+      .where(
+        and(
+          eq(qualityInspections.inspectionType, QualityInspectionType.IQC),
+          eq(
+            outsourcingReceiptItems.outsourcingReceiptId,
+            outsourcingReceiptId,
+          ),
+        ),
+      )
+      .limit(1);
 
     return !!existing;
   }

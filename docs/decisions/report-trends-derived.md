@@ -6,7 +6,7 @@
 
 `GET /reports/stats` trả 6 nhóm KPI cho trang Bảng điều khiển, mỗi nhóm kèm một con số "so với
 hôm qua/tuần trước". Hệ thống không có bảng lịch sử trạng thái cho `orders`/`production_jobs`/
-`qc_requests` — mọi trạng thái là "hiện tại", không có bản ghi "trạng thái tại thời điểm X".
+`quality_inspections` — mọi trạng thái là "hiện tại", không có bản ghi "trạng thái tại thời điểm X".
 
 ## Quyết định
 
@@ -23,13 +23,13 @@ giảm thật sự, kể cả khi số liệu nghiệp vụ thực tế đã gi�
 
 **Ngoại lệ — `openNcrTrendCount`:** đây là trend duy nhất *không* theo quy tắc "base là tập con"
 ở trên. `ReportsService.getQcSummary` dựng lại số NCR đang mở **tại một thời điểm quá khứ** bằng
-cách dò `qc_inspections.resultingStatus` (trạng thái request nhận ngay sau mỗi attempt, append-only
-nên giữ được lịch sử thật) của attempt gần nhất trước mốc đó, rồi trừ cho số hiện tại. Vì một NCR có
-thể đã đóng (`COMPLETED`) từ lúc đó đến nay, delta này **có thể âm** — cố ý, để FE hiện được mũi tên
-giảm khi NCR tồn đọng thực sự giảm. Đây là mẫu để tham khảo nếu sau này muốn làm chính xác thêm cho
-các trend khác — không cần bảng snapshot, chỉ cần dò lại lịch sử qua bảng attempt append-only đã có
-sẵn (không áp dụng được cho `orders`/`production_jobs` vì hai bảng đó không có bảng lịch sử tương
-đương `qc_inspections`).
+cách dò `quality_inspection_results.resultingStatus` (trạng thái request nhận ngay sau mỗi attempt,
+append-only nên giữ được lịch sử thật) của attempt gần nhất trước mốc đó, rồi trừ cho số hiện tại. Vì
+một NCR có thể đã đóng (`COMPLETED`) từ lúc đó đến nay, delta này **có thể âm** — cố ý, để FE hiện
+được mũi tên giảm khi NCR tồn đọng thực sự giảm. Đây là mẫu để tham khảo nếu sau này muốn làm chính
+xác thêm cho các trend khác — không cần bảng snapshot, chỉ cần dò lại lịch sử qua bảng attempt
+append-only đã có sẵn (không áp dụng được cho `orders`/`production_jobs` vì hai bảng đó không có bảng
+lịch sử tương đương `quality_inspection_results`).
 
 ## Lọc theo khoảng ngày (`startDate`/`endDate`)
 
@@ -46,7 +46,7 @@ filter sẽ làm response khó đoán hơn là hữu ích hơn.
 
 Mọi endpoint khác trong module đều là một con số tại-thời-điểm-đọc; `qc-pass-rate` là điểm khác
 biệt duy nhất — 7 điểm liên tiếp theo ngày (giờ VN), mỗi điểm % đạt IQC/OQC riêng. Đọc
-`qc_inspections` (append-only, mỗi lần kiểm 1 dòng), không đọc `qc_requests` (chỉ giữ trạng thái
+`quality_inspection_results` (append-only, mỗi lần kiểm 1 dòng), không đọc `quality_inspections` (chỉ giữ trạng thái
 mới nhất của lần kiểm gần nhất) — cùng nguyên lý với `openNcrTrendCount` ở trên: dựng lại quá khứ
 từ bảng lịch sử có sẵn, không cần bảng snapshot. `generate_series` đảm bảo đủ 7 điểm kể cả ngày
 không có lần kiểm nào (`null`, không phải `0%` — "chưa kiểm gì" khác "kiểm hết đều FAIL").
@@ -62,3 +62,5 @@ trạng thái hiện tại, vì thông tin "đã đóng lúc nào" đơn giản 
 
 `docs/domains/orders.md`, `docs/domains/production.md`, `docs/domains/quality-iqc.md`, `docs/domains/quality-oqc.md` — mỗi trạng thái
 dùng trong `reports` được định nghĩa đầy đủ ở đó, module `reports` chỉ đọc lại.
+`docs/decisions/quality-schema-rename.md` — đổi tên `qc_requests`/`qc_inspections` →
+`quality_inspections`/`quality_inspection_results`, 2026-08.
