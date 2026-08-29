@@ -21,8 +21,6 @@ import { supplierReturnFiles } from './supplier-return-files';
 import { warehouses } from './warehouses';
 import { items } from '../items/items';
 import { purchaseOrders } from '../purchasing/purchase-orders';
-import { qcInspections } from '../quality/qc-inspections';
-import { qcKindEnum, QcKind, qcRequests } from '../quality/qc-requests';
 import { qualityInspectionTypeEnum } from '../quality/quality-enums';
 import { qualityInspectionResults } from '../quality/quality-inspection-results';
 import { qualityInspections } from '../quality/quality-inspections';
@@ -69,27 +67,8 @@ export const supplierReturns = pgTable(
       () => outsourcingReceipts.id,
       { onDelete: 'set null' },
     ),
-    // Trỏ `qc_requests` (lô kiểm), không phải `qc_inspections` (lần kiểm) — dòng mà
-    // `completeIqcAfterSupplierReturn` `UPDATE status = COMPLETED` là request, attempt append-only
-    // không update được.
-    iqcId: uuid('iqc_id'),
-    // Luôn 'INCOMING' khi `iqcId` có giá trị — phiếu trả NCC chỉ sinh từ nhánh IQC
-    // (`IqcService.confirmIqc` → `createFromIqcDisposition`), không bao giờ từ nhánh OUTGOING. Cột
-    // + CHECK + composite FK bên dưới là cách duy nhất giữ lại ràng buộc "chỉ trỏ được vào phiếu
-    // IQC" sau khi IQC/OQC gộp một bảng (`docs/decisions/qc-data-model.md`) — không có cột này,
-    // `iqcId` trỏ được vào bất kỳ dòng `qc_requests` nào, kể cả OQC. Nullable (không `NOT NULL`) dù
-    // luôn được set ở INSERT (default) — composite FK `ON DELETE SET NULL` set cả hai cột về NULL
-    // cùng lúc khi dòng QC bị xoá, `NOT NULL` sẽ vi phạm ngay lúc đó.
-    qcKind: qcKindEnum('qc_kind').default(QcKind.INCOMING),
-    // Trỏ đúng lần kiểm (`qc_inspections`) đã ra quyết định SORT/RETURN sinh ra phiếu này — trả lời
-    // được "phiếu trả NCC này sinh từ lần kiểm thứ mấy" khi 1 request có nhiều attempt. Nullable
-    // cùng lý do `iqcId`; không có CHECK riêng vì composite FK bên dưới đã ràng buộc `kind` qua cột
-    // `qcKind` dùng chung.
-    qcInspectionId: uuid('qc_inspection_id'),
-    // 3 cột thay `iqcId`/`qcInspectionId`/`qcKind` — bảng phẳng migrate schema QC
-    // (`quality_inspections`/`quality_inspection_results`), cutover code đã chuyển hẳn sang đọc/ghi
-    // 3 cột này; 3 cột cũ ở trên giữ nguyên (đóng băng, chỉ còn dữ liệu backfill) tới khi dọn ở step
-    // cuối cùng của plan migration.
+    // Trỏ `quality_inspections` (lô kiểm) + `quality_inspection_results` (lần kiểm) — bảng phẳng
+    // thay `qc_requests`/`qc_inspections` cũ (đã xoá cùng migration dọn bảng QC cũ).
     qualityInspectionId: uuid('quality_inspection_id'),
     qualityInspectionResultId: uuid('quality_inspection_result_id'),
     qcInspectionType: qualityInspectionTypeEnum('qc_inspection_type'),
@@ -126,8 +105,6 @@ export const supplierReturns = pgTable(
     index('idx_supplier_returns_outsourcing_receipt_id').on(
       table.outsourcingReceiptId,
     ),
-    index('idx_supplier_returns_iqc_id').on(table.iqcId),
-    index('idx_supplier_returns_qc_inspection_id').on(table.qcInspectionId),
     index('idx_supplier_returns_quality_inspection_id').on(
       table.qualityInspectionId,
     ),
@@ -142,21 +119,7 @@ export const supplierReturns = pgTable(
       'chk_supplier_returns_warehouse_required',
       sql`(warehouse_id IS NULL) = (outsourcing_receipt_id IS NOT NULL)`,
     ),
-    check(
-      'chk_supplier_returns_qc_kind',
-      sql`qc_kind IS NULL OR qc_kind = 'INCOMING'`,
-    ),
-    foreignKey({
-      columns: [table.iqcId, table.qcKind],
-      foreignColumns: [qcRequests.id, qcRequests.kind],
-      name: 'fk_supplier_returns_iqc_id_qc_kind',
-    }).onDelete('set null'),
-    foreignKey({
-      columns: [table.qcInspectionId, table.qcKind],
-      foreignColumns: [qcInspections.id, qcInspections.kind],
-      name: 'fk_supplier_returns_qc_inspection_id_qc_kind',
-    }).onDelete('set null'),
-    // Cùng khuôn 2 CHECK/FK cũ ở trên (`qc_kind`) — phiếu trả NCC chỉ sinh từ nhánh IQC.
+    // Phiếu trả NCC chỉ sinh từ nhánh IQC.
     check(
       'chk_supplier_returns_qc_inspection_type',
       sql`qc_inspection_type IS NULL OR qc_inspection_type = 'IQC'`,
@@ -206,14 +169,6 @@ export const supplierReturnsRelations = relations(
     outsourcingReceipt: one(outsourcingReceipts, {
       fields: [supplierReturns.outsourcingReceiptId],
       references: [outsourcingReceipts.id],
-    }),
-    iqc: one(qcRequests, {
-      fields: [supplierReturns.iqcId],
-      references: [qcRequests.id],
-    }),
-    qcInspection: one(qcInspections, {
-      fields: [supplierReturns.qcInspectionId],
-      references: [qcInspections.id],
     }),
     qualityInspection: one(qualityInspections, {
       fields: [supplierReturns.qualityInspectionId],

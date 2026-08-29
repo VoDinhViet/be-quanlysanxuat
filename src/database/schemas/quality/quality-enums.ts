@@ -86,10 +86,10 @@ export const qualityInspectionOriginTypeEnum = pgEnum(
   ],
 );
 
-// Đổi tên Postgres type từ `qc_disposition` — giá trị giữ nguyên, `disposition` vẫn là cột enum
-// (không tách bảng tra cứu, xem `docs/decisions/qc-data-model.md` mục kế thừa). Giá trị viết literal
-// (không import `IqcDisposition`/`OqcDisposition` từ `qc-requests.ts`) — import ngược sẽ tạo vòng
-// lặp module thật (`qc-requests.ts` đã import `qcInspectionLevelEnum` từ file này).
+// Type Postgres mới hoàn toàn (không phải rename từ `qc_disposition` cũ — type đó đã bị `DROP`
+// riêng khi dọn bảng QC cũ), giá trị giữ nguyên y hệt, `disposition` vẫn là cột enum (không tách
+// bảng tra cứu, xem `docs/decisions/qc-data-model.md` mục kế thừa). Giá trị viết literal (không
+// import `IqcDisposition`/`OqcDisposition` từ enum bên dưới trong cùng file) — tránh lặp.
 export const qualityDispositionEnum = pgEnum('quality_disposition', [
   'CONCESSION',
   'SORT',
@@ -98,3 +98,58 @@ export const qualityDispositionEnum = pgEnum('quality_disposition', [
   'REWORK',
   'SCRAP',
 ]);
+
+/**
+ * `INCOMING` — kiểm hàng nhập từ NCC (IQC cũ). `OUTGOING` — kiểm công đoạn sản xuất, kể cả công
+ * đoạn gia công ngoài (OQC cũ, gộp `type = OUTSOURCE` vào từ `docs/decisions/qc-data-model.md`).
+ * Chuyển từ `qc-requests.ts` khi dọn bảng QC cũ — chỉ dùng làm vocabulary TS thuần (`kind` trên
+ * `OpenNcrResDto`, `reports.service.ts`, `supplier_returns.qcInspectionType`), không còn `pgEnum`
+ * vật lý riêng (bảng dùng `qc_kind` đã bị xoá cùng bảng cũ).
+ */
+export enum QcKind {
+  INCOMING = 'INCOMING',
+  OUTGOING = 'OUTGOING',
+}
+
+export enum IqcResult {
+  PASS = 'PASS',
+  FAIL = 'FAIL',
+}
+
+/**
+ * Chỉ có ý nghĩa khi `result = FAIL`. Giá trị hợp lệ khác nhau theo `kind` — `INCOMING` dùng
+ * `IqcDisposition`, `OUTGOING` dùng `OqcDisposition`. Chuyển từ `qc-requests.ts` khi dọn bảng QC
+ * cũ — vẫn dùng cho `.$type<>()` cast trên `quality_inspections`/`quality_inspection_results`
+ * (giá trị Postgres nằm chung 1 cột `quality_disposition`, xem 2 file đó).
+ */
+export enum IqcDisposition {
+  CONCESSION = 'CONCESSION',
+  SORT = 'SORT',
+  RETURN = 'RETURN',
+}
+
+export enum OqcDisposition {
+  ACCEPT = 'ACCEPT',
+  REWORK = 'REWORK',
+  SCRAP = 'SCRAP',
+}
+
+/**
+ * Vocabulary `status` cũ (`qc_requests`/`qc_inspections`) — không còn `pgEnum` vật lý (cột thật đã
+ * chuyển sang `QualityInspectionStatus`/`quality_inspection_status`). Chuyển từ `qc-requests.ts`
+ * khi dọn bảng QC cũ, vẫn dùng ở đường **ghi** (`toInspectionStatus()`,
+ * `quality-inspection-status.util.ts`) để tính status nội bộ trước khi map sang giá trị DB mới.
+ */
+export enum IqcStatus {
+  NOT_INSPECTED = 'NOT_INSPECTED',
+  PENDING = 'PENDING',
+  WAITING_RETURN = 'WAITING_RETURN',
+  COMPLETED = 'COMPLETED',
+}
+
+export enum OqcStatus {
+  NOT_INSPECTED = 'NOT_INSPECTED',
+  PENDING = 'PENDING',
+  REWORK = 'REWORK',
+  COMPLETED = 'COMPLETED',
+}

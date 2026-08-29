@@ -1,8 +1,10 @@
 # Đổi tên bảng/cột QC: `qc_requests`/`qc_inspections`/`qc_files` → `quality_inspections`/`quality_inspection_results`/`quality_inspection_evidences`
 
-**Trạng thái:** còn hiệu lực — migration 3 bảng cũ sang 3 bảng mới, giữ nguyên cấu trúc/quyết định của
-`docs/decisions/qc-data-model.md` (một bảng case-row + một bảng attempt-row append-only, discriminator
-IQC/OQC), chỉ đổi tên vật lý + polymorphic hoá một phần cột nguồn.
+**Trạng thái:** hoàn tất (2026-08-29) — migration 3 bảng cũ sang 3 bảng mới, giữ nguyên cấu trúc/quyết
+định của `docs/decisions/qc-data-model.md` (một bảng case-row + một bảng attempt-row append-only,
+discriminator IQC/OQC), chỉ đổi tên vật lý + polymorphic hoá một phần cột nguồn. Bảng cũ
+(`qc_requests`/`qc_inspections`/`qc_files`) và 3 cột cũ trên `supplier_returns` đã bị xoá — xem
+"Step 6" ở cuối file.
 
 ## Bối cảnh
 
@@ -56,12 +58,11 @@ Cột mới duy nhất ngoài rename thuần: `completedAt` (nullable, để dà
 `inspectionId→qualityInspectionResultId`. `QcFileKind`/`qc_file_kind` → `QualityEvidenceKind`/
 `quality_evidence_kind` (giá trị `QC_EVIDENCE`/`DISPOSITION_EVIDENCE` giữ nguyên).
 
-### `supplier_returns` — 3 cột mới song song 3 cột cũ
+### `supplier_returns` — 3 cột cũ đã xoá (Step 6, 2026-08-29)
 
-`iqcId`/`qcInspectionId`/`qcKind` (trỏ bảng cũ, composite FK cũ còn nguyên) đóng băng — không còn
-đường ghi mới sau cutover code, chỉ còn dữ liệu backfill. `qualityInspectionId`/
-`qualityInspectionResultId`/`qcInspectionType` (trỏ bảng mới, composite FK mới) là đường ghi/đọc
-duy nhất từ nay. Cả hai bộ cột cùng tồn tại tới khi dọn bảng cũ (bước cuối, hoãn ≥1 chu kỳ soak).
+`iqcId`/`qcInspectionId`/`qcKind` (trỏ bảng cũ) đã bị xoá cùng migration dọn bảng QC cũ — xem "Step
+6" ở cuối file. `qualityInspectionId`/`qualityInspectionResultId`/`qcInspectionType` (trỏ bảng mới,
+composite FK mới) là đường ghi/đọc duy nhất.
 
 ## D1 — Đổi physical enum value: đảo ngược quyết định cũ
 
@@ -102,10 +103,10 @@ ngược về `IqcStatus`/`OqcStatus` cũ. Xem "Cập nhật 2026-08-29" ở D5.
 
 - **D3**: `decision` nullable, chỉ `PASS`/`FAIL` có đường ghi thật — khớp `IqcResDto.result: IqcResult
   | null` hiện tại, FE không đổi.
-- **D4**: `disposition` giữ là cột enum phẳng (`quality_disposition`, đổi tên Postgres type từ
-  `qc_disposition`, giá trị union `IqcDisposition`+`OqcDisposition` giữ nguyên) — **không** tách
-  bảng tra cứu `quality_dispositions`. Nhờ vậy CHECK so trực tiếp giá trị (`sort_qty_requires_sort`)
-  giữ nguyên mạnh, không yếu đi.
+- **D4**: `disposition` giữ là cột enum phẳng (`quality_disposition`, type Postgres **mới hoàn
+  toàn** — không phải rename từ `qc_disposition`, xem "Step 6" — giá trị union
+  `IqcDisposition`+`OqcDisposition` giữ nguyên) — **không** tách bảng tra cứu `quality_dispositions`.
+  Nhờ vậy CHECK so trực tiếp giá trị (`sort_qty_requires_sort`) giữ nguyên mạnh, không yếu đi.
 - **D5** (gốc, khi migrate schema): Route/DTO field name, giá trị enum string trả ra API,
   `ErrorCode`, permission **giữ nguyên 100%** — FE không cần đổi gì. Đánh đổi: cần lớp dịch `status`
   2 chiều (D2) ở `IqcService`/`OqcService`/`reports.service.ts`, vì đây là field DUY NHẤT giá trị
@@ -152,9 +153,32 @@ minh — polymorphic column không dùng được trong `with: {...}` của Driz
 
 Tạo bảng mới → backfill (`INSERT ... SELECT`, giữ nguyên `id`) → cutover code (1 bước atomic, không
 tách được vì `getJobQcCoverage` đọc chung IQC+OQC trong 1 câu) → bật composite FK/CHECK trên
-`supplier_returns` sau khi code đã chạy ổn định → dọn bảng cũ (hoãn ≥1 chu kỳ soak). **Không**
+`supplier_returns` sau khi code đã chạy ổn định → dọn bảng cũ (Step 6, thực hiện 2026-08-29). **Không**
 `ALTER TABLE RENAME` tại chỗ — không rollback được giữa chừng, không có test tự động
 (`docs/decisions/testing-paused.md`) trên một thay đổi chạm 5+ module.
+
+## Step 6 (2026-08-29) — dọn bảng cũ
+
+Xoá `qc_requests`/`qc_inspections`/`qc_files` (`DROP TABLE ... CASCADE`) + 3 cột cũ trên
+`supplier_returns` (`iqcId`/`qcKind`/`qcInspectionId`, cùng CHECK/FK/index ăn theo) + 4 file schema
+(`qc-requests.ts`, `qc-requests-relations.ts`, `qc-inspections.ts`, `qc-files.ts`). 6 TS enum thuần
+vẫn còn dùng thật (`QcKind`, `IqcResult`, `IqcDisposition`, `OqcDisposition`, `IqcStatus`,
+`OqcStatus`) chuyển sang `quality-enums.ts` trước khi xoá file — vẫn dùng ở `kind`/đường ghi
+`toInspectionStatus()`/cast `.$type<>()`, không phải bảng chết. `QcFileKind` → đổi hẳn sang
+`QualityEvidenceKind` (đã có sẵn, cùng 2 giá trị) thay vì chuyển, tránh trùng enum.
+
+**Phát hiện khi làm Step 6 — sửa lại 1 giả định sai của bản kế hoạch gốc:** `qc_disposition` (Postgres
+type cũ) **không hề được `ALTER TYPE RENAME`** sang `quality_disposition` như tài liệu này từng mô tả
+(xem D4 cũ) — đọc thẳng `drizzle/0163_sleepy_namor.sql` cho thấy `quality_disposition` được `CREATE
+TYPE` mới hoàn toàn, giá trị giống hệt nhưng là type độc lập. `qc_disposition` cũ vẫn tồn tại tới tận
+Step 6, bị `DROP TYPE` tường minh cùng đợt này (5 type bị xoá: `qc_kind`, `qc_status`, `qc_result`,
+`qc_disposition`, `qc_file_kind` — không đụng `qc_inspection_level`, vẫn dùng thật).
+
+Migration sinh bởi `drizzle-kit generate` có bug thứ tự: `DROP TABLE ... CASCADE` tự xoá 2 FK trên
+`supplier_returns` trước, khiến 2 câu `ALTER TABLE supplier_returns DROP CONSTRAINT` sinh sau đó lặp
+lại thao tác trên constraint đã mất — phải tay đảo thứ tự thành "dọn `supplier_returns` trước, `DROP
+TABLE` sau" (nội dung từng câu SQL không đổi, chỉ đổi thứ tự) mới áp được — cùng loại bug thứ tự
+FK-trước-unique-index đã gặp ở bước tạo bảng mới đầu migration này.
 
 ## Đừng hoàn lại
 

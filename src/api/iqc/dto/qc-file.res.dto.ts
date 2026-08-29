@@ -1,6 +1,6 @@
 import { Exclude, Expose } from 'class-transformer';
 
-import { QcFileKind } from '../../../database/schemas';
+import { QualityEvidenceKind } from '../../../database/schemas';
 import {
   ClassField,
   EnumField,
@@ -15,8 +15,8 @@ export class QcFileResDto {
   id!: string;
 
   @Expose()
-  @EnumField(() => QcFileKind)
-  kind!: QcFileKind;
+  @EnumField(() => QualityEvidenceKind)
+  kind!: QualityEvidenceKind;
 
   @Expose()
   @ClassField(() => FileResDto)

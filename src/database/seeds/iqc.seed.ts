@@ -13,8 +13,6 @@ import {
   IqcDisposition,
   IqcResult,
   IqcStatus,
-} from '../schemas/quality/qc-requests';
-import {
   QualityInspectionDecision,
   QualityInspectionOriginType,
   QualityInspectionType,

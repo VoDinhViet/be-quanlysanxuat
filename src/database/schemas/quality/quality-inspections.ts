@@ -19,10 +19,9 @@ import { purchaseOrders } from '../purchasing/purchase-orders';
 import { suppliers } from '../suppliers/suppliers';
 import { clients } from '../clients/clients';
 import { users } from '../identity-access/users';
-// Tạm import từ `qc-requests.ts` (còn tồn tại song song tới khi dọn ở bước cuối migration) — tránh
-// khai trùng tên export `IqcDisposition`/`OqcDisposition` qua `export *` ở `schemas/index.ts`.
-import { IqcDisposition, OqcDisposition } from './qc-requests';
 import {
+  IqcDisposition,
+  OqcDisposition,
   qcInspectionLevelEnum,
   qualityDispositionEnum,
   qualityInspectionDecisionEnum,

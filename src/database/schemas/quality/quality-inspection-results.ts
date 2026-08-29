@@ -17,9 +17,9 @@ import { users } from '../identity-access/users';
 import { qcAqlPlans } from './qc-aql-plans';
 import { qcAqlRules } from './qc-aql-rules';
 import { qualityInspectionEvidences } from './quality-inspection-evidences';
-// Tạm import từ `qc-requests.ts` — xem comment tương ứng ở `quality-inspections.ts`.
-import { IqcDisposition, OqcDisposition } from './qc-requests';
 import {
+  IqcDisposition,
+  OqcDisposition,
   qcInspectionLevelEnum,
   qualityDispositionEnum,
   qualityInspectionDecisionEnum,
