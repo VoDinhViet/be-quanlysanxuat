@@ -137,7 +137,7 @@ export enum OqcDisposition {
 /**
  * Vocabulary `status` cũ (`qc_requests`/`qc_inspections`) — không còn `pgEnum` vật lý (cột thật đã
  * chuyển sang `QualityInspectionStatus`/`quality_inspection_status`). Chuyển từ `qc-requests.ts`
- * khi dọn bảng QC cũ, vẫn dùng ở đường **ghi** (`toInspectionStatus()`,
+ * khi dọn bảng QC cũ, vẫn dùng ở đường **ghi** (`mapToQualityInspectionStatus()`,
  * `quality-inspection-status.util.ts`) để tính status nội bộ trước khi map sang giá trị DB mới.
  */
 export enum IqcStatus {
