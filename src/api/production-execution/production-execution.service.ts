@@ -25,6 +25,7 @@ import {
   items,
   ItemType,
   operations,
+  OperationType,
   orders,
   productionJobBomItems,
   productionJobOperationReportFiles,
@@ -36,6 +37,7 @@ import {
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { FilesService } from '../files/files.service';
+import { closeJobIfFinalAssemblyDone } from '../production-jobs/production-jobs.query';
 import { CreateJobOperationReportReqDto } from './dto/create-job-operation-report.req.dto';
 import { GetProductionExecutionJobsReqDto } from './dto/get-production-execution-jobs.req.dto';
 import { GetProductionExecutionOperationsReqDto } from './dto/get-production-execution-operations.req.dto';
@@ -243,6 +245,13 @@ export class ProductionExecutionService {
       throw new AppException(ErrorCode.E091, HttpStatus.NOT_FOUND);
     }
 
+    // completedQuantity/completedDate của công đoạn OUTSOURCE chỉ do OS-IN ghi
+    // (`recomputeOutsourcedOperationProgress`) — không cho báo cáo tay,
+    // `docs/decisions/outsourced-operation-progress-writeback.md`.
+    if (operation.type === OperationType.OUTSOURCE) {
+      throw new AppException(ErrorCode.E260, HttpStatus.CONFLICT);
+    }
+
     if (operation.productionJob.status !== ProductionJobStatus.IN_PROGRESS) {
       throw new AppException(ErrorCode.E087, HttpStatus.CONFLICT);
     }
@@ -326,23 +335,7 @@ export class ProductionExecutionService {
       // Node FG có thể có nhiều công đoạn Cấp 0 — chỉ chuyển WAITING_QC khi KHÔNG CÒN công đoạn FG
       // nào dở, đếm lại trong `tx` sau khi ghi (BUG-079, `docs/decisions/production-lifecycle-closing.md`).
       if (operation.bomItem.itemType === ItemType.FG) {
-        const pendingFinalAssemblyCount = await this.countPendingOperations(
-          tx,
-          operation.productionJobId,
-          true,
-        );
-
-        if (pendingFinalAssemblyCount === 0) {
-          await tx
-            .update(productionJobs)
-            .set({ status: ProductionJobStatus.WAITING_QC })
-            .where(
-              and(
-                eq(productionJobs.id, operation.productionJobId),
-                eq(productionJobs.status, ProductionJobStatus.IN_PROGRESS),
-              ),
-            );
-        }
+        await closeJobIfFinalAssemblyDone(tx, operation.productionJobId);
       }
     });
   }

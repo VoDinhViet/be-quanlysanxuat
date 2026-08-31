@@ -102,15 +102,18 @@ có) tra ở BOM sản phẩm theo node (`bom_items.drawingFileId`).
 **Job** — một chiều, phần lớn tự động:
 ```
 PENDING ──start──> IN_PROGRESS ──approve-operations──> (mở PATCH .../operations/:id)
-   ──(không còn công đoạn nào của node FG dở — chỉ đếm lại khi vừa patch 1 op thuộc node FG)──> WAITING_QC
-   ──(closeJobIfQcCovered: total>0 && open=0, nhận cả IN_PROGRESS)──> WAITING_DELIVERY
+   ──(closeJobIfFinalAssemblyDone: không còn công đoạn nào của node FG dở)──> WAITING_QC
+   ──(closeJobIfQcCovered: total>0 && open=0 && không còn công đoạn nào của Job dở)──> WAITING_DELIVERY
    ──(closeJobIfFullyReceived: nhập kho TP đủ job.quantity)──> COMPLETED
 ```
-5 điểm ghi `production_jobs.status`: `startJob`; `updateProductionJobOperation`
-(`PATCH`)/`createJobOperationReport` (`reports`, cùng điều kiện: đếm lại công đoạn FG dở sau khi
-vừa patch một công đoạn thuộc node đó); `closeJobIfQcCovered` (gọi từ `confirmOqc`/`confirmIqc`/
+5 điểm ghi `production_jobs.status`: `startJob`; `closeJobIfFinalAssemblyDone`
+(`production-jobs.query.ts`, đếm lại công đoạn FG dở, gọi từ `updateProductionJobOperation`
+(`PATCH`)/`createJobOperationReport` (`reports`)/`recomputeOutsourcedOperationProgress` khi OS-IN
+vừa hoàn tất đúng công đoạn FG); `closeJobIfQcCovered` (gọi từ `confirmOqc`/`confirmIqc`/
 `completeIqcAfterSupplierReturn` — chấp nhận cả `IN_PROGRESS`, có thể nhảy thẳng bỏ qua
-`WAITING_QC`); `closeJobIfFullyReceived` (cũng cascade `production_orders.status=COMPLETED`).
+`WAITING_QC`, nhưng từ 2026-08-31 còn đòi hết công đoạn dở mới mở khoá,
+`docs/decisions/outsourced-operation-progress-writeback.md`); `closeJobIfFullyReceived` (cũng cascade
+`production_orders.status=COMPLETED`).
 
 **Job không khai routing Cấp 0 (không có node `itemType=FG`) không bao giờ tự chuyển
 `WAITING_QC`** — điều kiện chỉ đếm lại khi thao tác vừa rồi chạm một công đoạn thuộc node đó; không
@@ -156,13 +159,17 @@ có node thì nhánh code không bao giờ chạy. Giới hạn thật, không p
   Production không chủ động, chỉ bị đọc/ghi bởi 2 domain kia.
 - **↔ Inventory (Phiếu lãnh)**: `inventory_requisitions` đọc `production_job_issues.requiredQty`
   chặn vượt định mức — một chiều đọc; `GET .../bom` đọc ngược dòng `ISSUED` để hiển thị "Đã lãnh".
-- **← Inventory (Gia công ngoài)**: `production_job_operations.type`/`production_jobs.status`/
-  `production_job_bom_items.plannedQuantity` là anchor đọc-một-chiều cho OS-OUT — không gate ngược
-  tiến độ Job.
+- **← Inventory (Gia công ngoài)**: `production_job_operations.type`/
+  `production_job_bom_items.plannedQuantity` là anchor đọc cho OS-OUT (popup chọn part, snapshot
+  lúc tạo). Từ 2026-08-31, OS-IN **ghi ngược** `completedQuantity`/`completedDate` của đúng công
+  đoạn `OUTSOURCE` nhận về (`recomputeOutsourcedOperationProgress`, `production-jobs.query.ts`) —
+  đảo lại quyết định "không gate ngược tiến độ Job" trước đó, xem
+  `docs/decisions/outsourced-operation-progress-writeback.md`.
 - **↔ Quality**: `production_job_operations` là anchor cho cả IQC (`OUTSOURCE`) lẫn OQC
   (`INHOUSE`, kể cả Cấp 0). Chiều ghi duy nhất: `POST /production-jobs/:jobId/qc` gọi thẳng
   `OqcService.createOqcForJob` qua DI. Không nhánh QC nào ghi ngược `completedQuantity`/
-  `completedDate`, kể cả `SCRAP`. Xem `docs/domains/quality-oqc.md`.
+  `completedDate`, kể cả `SCRAP` — chỉ OS-IN (Inventory) mới ghi, xem bullet trên. Xem
+  `docs/domains/quality-oqc.md`.
 - **→ Purchase Requests**: `startJob` là domain duy nhất ghi vào `purchase_requests` (thiếu vật tư
   tự sinh đề xuất). Không đi ngược.
 - **← Product Structure**: đọc đúng 1 lần lúc duyệt LSX (cây `bom_items` + `bom_operations`); sửa

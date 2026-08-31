@@ -5,6 +5,7 @@ import { ClientBaseResDto } from '../../clients/dto/client-base.res.dto';
 import { ItemRefResDto } from '../../items/dto/item-ref.res.dto';
 import { OrderBaseResDto } from '../../orders/dto/order-base.res.dto';
 import {
+  BooleanField,
   ClassField,
   ClassFieldOptional,
   DateField,
@@ -76,6 +77,13 @@ export class ProductionJobDetailResDto {
       'Thời điểm duyệt công đoạn — null thì PATCH .../operations/:operationId còn bị chặn (E250)',
   })
   operationsApprovedAt!: Date | null;
+
+  @Expose()
+  @BooleanField({
+    description:
+      'Job này đã có phiếu OQC (Cấp 0) hay chưa — true thì nút "Yêu cầu OQC" khoá lại',
+  })
+  oqcRequested!: boolean;
 
   @Expose()
   @DateField({ description: 'Thời điểm tạo Job' })

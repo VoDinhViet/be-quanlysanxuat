@@ -54,7 +54,7 @@ import type { AqlPlan } from '../iqc/iqc-aql.constant';
 import { resolveAqlResult } from '../iqc/iqc-aql.constant';
 import { resolveAqlPlan } from '../iqc/iqc-aql.query';
 import { linkQcFiles } from '../iqc/iqc.write';
-import { toInspectionStatus } from '../iqc/quality-inspection-status.util';
+import { mapToQualityInspectionStatus } from '../iqc/quality-inspection-status.util';
 import { ConfirmOqcReqDto } from './dto/confirm-oqc.req.dto';
 import { GetOqcsReqDto } from './dto/get-oqcs.req.dto';
 import { OqcResDto } from './dto/oqc.res.dto';
@@ -455,7 +455,7 @@ export class OqcService {
     );
     const decision = this.buildOqcDecision(reqDto, plan);
     const status = this.resolveOqcStatus(decision.decision, reqDto.disposition);
-    const dbStatus = toInspectionStatus(status);
+    const dbStatus = mapToQualityInspectionStatus(status);
     // `IqcResult` (PASS/FAIL) là API vocabulary cũ, `decision` cột mới union rộng hơn
     // (`quality_inspection_decision`) — ép kiểu tại 2 điểm ghi dưới, giữ nguyên `decision.decision`
     // kiểu `IqcResult` cho `resolveOqcStatus`/`linkOqcEvidence` phía trên.
@@ -514,7 +514,11 @@ export class OqcService {
         status === OqcStatus.COMPLETED &&
         lockedOqcInspection.productionJobId
       ) {
-        await closeJobIfQcCovered(tx, lockedOqcInspection.productionJobId);
+        await closeJobIfQcCovered(
+          tx,
+          lockedOqcInspection.productionJobId,
+          userId,
+        );
       }
     });
   }

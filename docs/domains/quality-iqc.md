@@ -111,14 +111,13 @@ qua `confirm`. Hợp lệ ở mọi status **trừ** `DRAFT` (`E144`) — chủ 
 - `confirmedBy`/`confirmedAt` (cột DB `inspectedBy`/`startedAt`) chỉ ghi ở lần lưu đầu tiên;
   `resolvedBy`/`resolvedAt` (cột DB `approvedBy`/`approvedAt`) chỉ ghi khi `disposition` mới xuất
   hiện lần đầu — sửa lại kết quả ở lần sau không ghi đè hai mốc này.
-- Nếu `disposition` ra `SORT`/`RETURN` mà không suy được kho trả (thử
-  `inventoryReceipt.warehouseId` → `purchaseOrder.receiptWarehouseId`; dòng từ OS-IN
-  (`originType = OUTSOURCING_RECEIPT_ITEM`) luôn hợp lệ trả `null` vì `outsourcing_receipts` không
-  có cột kho, không tính là lỗi) → `E163`.
 - Dòng không có `supplierId` (sinh từ phiếu nhập `RETURN` gắn `clientId`) không chọn được
   `disposition = SORT`/`RETURN` → `E254` — chưa có luồng trả hàng cho khách hàng, chỉ xử lý được
   bằng `CONCESSION`.
 - `E140`–`E143` (namespace `iqc_inspection.error.code_*`) không còn throw site — mã dự phòng.
+- `E163` (không suy được kho trả) retired cùng đợt bỏ khái niệm kho
+  (`docs/decisions/single-warehouse.md`) — `disposition = SORT`/`RETURN` giờ luôn sinh được
+  `supplier_returns`, không còn ca nào bị chặn vì thiếu kho.
 
 ## Invariants
 
@@ -140,8 +139,7 @@ qua `confirm`. Hợp lệ ở mọi status **trừ** `DRAFT` (`E144`) — chủ 
   (`requiresIqc`) là 2 đường tạo tự động — xem Core concepts.
 - **→ Inventory**: `inventory-receipts post` chặn `E153` khi còn IQC nào của phiếu chưa `COMPLETED`.
   `inventory-issues post` (`issueType=PRODUCTION`) chặn `E203` nếu còn IQC chưa `COMPLETED` của cùng
-  `(itemId, warehouseId)` — `hasPendingIqcForItems`, bỏ qua nếu phiếu IQC không suy được kho
-  (`docs/decisions/qc-gates-on-stock-moves.md`).
+  `itemId` — `hasPendingIqcForItems` (`docs/decisions/qc-gates-on-stock-moves.md`).
 - **↔ Inventory (Supplier Returns)**: `confirmIqc` tự sinh `supplier_returns DRAFT` khi vào
   `IN_PROGRESS` (`createFromIqcDisposition`, cùng tx); `postSupplierReturn` gọi ngược
   `completeIqcAfterSupplierReturn` khi kho xuất trả xong. `supplier_returns.qualityInspectionId`

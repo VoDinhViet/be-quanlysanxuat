@@ -44,6 +44,7 @@ import {
 import { AppException } from '../../exceptions/app.exception';
 import { IqcService } from '../iqc/iqc.service';
 import { recomputeOutsourcingOrderStatus } from '../outsourcing-orders/outsourcing-orders.query';
+import { recomputeOutsourcedOperationProgress } from '../production-jobs/production-jobs.query';
 import { CreateOutsourcingReceiptReqDto } from './dto/create-outsourcing-receipt.req.dto';
 import { GetOutsourcingReceiptsReqDto } from './dto/get-outsourcing-receipts.req.dto';
 import { GetPendingOrderItemsReqDto } from './dto/get-pending-order-items.req.dto';
@@ -356,6 +357,20 @@ export class OutsourcingReceiptsService {
       for (const outsourcingOrderId of affectedOrderIds) {
         await recomputeOutsourcingOrderStatus(tx, outsourcingOrderId);
       }
+
+      // Ghi ngược tiến độ đúng công đoạn OUTSOURCE vừa nhận về — cùng lý do gộp Set ở trên, 1 phiếu
+      // có thể chạm nhiều công đoạn (docs/decisions/outsourced-operation-progress-writeback.md).
+      const affectedOperationIds = new Set(
+        resolvedItems
+          .map((item) => item.productionJobOperationId)
+          .filter((id): id is string => id !== null),
+      );
+      for (const productionJobOperationId of affectedOperationIds) {
+        await recomputeOutsourcedOperationProgress(
+          tx,
+          productionJobOperationId,
+        );
+      }
     });
   }
 
@@ -378,9 +393,10 @@ export class OutsourcingReceiptsService {
       }
 
       // Phải lấy trước khi update — sau khi CANCELLED, receipt không còn nằm trong tập
-      // `outsourcingReceiptItems` mà `recomputeOutsourcingOrderStatus` tính (chỉ tính receipt
-      // POSTED), nhưng vẫn cần đúng tập OS-OUT bị ảnh hưởng để gọi recompute cho từng phiếu.
-      const affectedOrderIds = await this.getOrderIdsForReceipt(
+      // `outsourcingReceiptItems` mà `recomputeOutsourcingOrderStatus`/
+      // `recomputeOutsourcedOperationProgress` tính (chỉ tính receipt POSTED), nhưng vẫn cần đúng
+      // tập OS-OUT/công đoạn bị ảnh hưởng để gọi recompute cho từng cái.
+      const affectedTargets = await this.getRecomputeTargetsForReceipt(
         tx,
         outsourcingReceiptId,
       );
@@ -390,19 +406,30 @@ export class OutsourcingReceiptsService {
         .set({ status: OutsourcingReceiptStatus.CANCELLED })
         .where(eq(outsourcingReceipts.id, outsourcingReceiptId));
 
-      for (const outsourcingOrderId of affectedOrderIds) {
+      for (const outsourcingOrderId of affectedTargets.outsourcingOrderIds) {
         await recomputeOutsourcingOrderStatus(tx, outsourcingOrderId);
+      }
+      for (const productionJobOperationId of affectedTargets.productionJobOperationIds) {
+        await recomputeOutsourcedOperationProgress(
+          tx,
+          productionJobOperationId,
+        );
       }
     });
   }
 
-  private async getOrderIdsForReceipt(
+  private async getRecomputeTargetsForReceipt(
     tx: DbTransaction,
     outsourcingReceiptId: string,
-  ): Promise<Set<string>> {
+  ): Promise<{
+    outsourcingOrderIds: Set<string>;
+    productionJobOperationIds: Set<string>;
+  }> {
     const rows = await tx
       .selectDistinct({
         outsourcingOrderId: outsourcingOrderItems.outsourcingOrderId,
+        productionJobOperationId:
+          outsourcingOrderItems.productionJobOperationId,
       })
       .from(outsourcingReceiptItems)
       .innerJoin(
@@ -416,7 +443,14 @@ export class OutsourcingReceiptsService {
         eq(outsourcingReceiptItems.outsourcingReceiptId, outsourcingReceiptId),
       );
 
-    return new Set(rows.map((row) => row.outsourcingOrderId));
+    return {
+      outsourcingOrderIds: new Set(rows.map((row) => row.outsourcingOrderId)),
+      productionJobOperationIds: new Set(
+        rows
+          .map((row) => row.productionJobOperationId)
+          .filter((id): id is string => id !== null),
+      ),
+    };
   }
 
   private validateReceiptItems(reqItems: OutsourcingReceiptItemReqDto[]): void {

@@ -51,20 +51,19 @@ erDiagram
     PURCHASE_REQUESTS ||--o{ PURCHASE_REQUEST_ITEMS : gồm
     PURCHASE_REQUEST_ITEMS }o--|| ITEMS : "vật tư cần mua (RM)"
 
-    WAREHOUSES ||--o{ INVENTORY_RECEIPTS : "kho nhận"
-    WAREHOUSES ||--o{ INVENTORY_ISSUES : "kho xuất"
-    WAREHOUSES ||--o{ INVENTORY_TRANSACTIONS : "sổ cái"
-    WAREHOUSES ||--o{ INVENTORY_BALANCES : "tồn theo kho"
     INVENTORY_RECEIPTS ||--o{ INVENTORY_RECEIPT_ITEMS : gồm
     INVENTORY_ISSUES ||--o{ INVENTORY_ISSUE_ITEMS : gồm
+    INVENTORY_ADJUSTMENTS ||--o{ INVENTORY_ADJUSTMENT_ITEMS : gồm
     INVENTORY_RECEIPT_ITEMS }o--|| ITEMS : "mặt hàng (FG/WIP/RM)"
     INVENTORY_ISSUE_ITEMS }o--|| ITEMS : "mặt hàng (FG/WIP/RM)"
+    INVENTORY_ADJUSTMENT_ITEMS }o--|| ITEMS : "mặt hàng (FG/WIP/RM)"
     INVENTORY_ISSUE_ITEMS }o--o| ORDER_ITEMS : "delivery tracking (tuỳ chọn)"
     INVENTORY_RECEIPTS }o--o| PURCHASE_REQUESTS : "phát sinh từ đề xuất (tuỳ chọn)"
     INVENTORY_RECEIPTS }o--o| PURCHASE_ORDERS : "trace mức phiếu (tuỳ chọn)"
     INVENTORY_RECEIPT_ITEMS }o--o| PURCHASE_ORDER_ITEMS : "SL đã nhập theo dòng (tuỳ chọn)"
+    ITEMS ||--o{ ITEM_UNITS : "đơn vị phụ + hệ số quy đổi"
+    ITEM_UNITS }o--|| UNITS : "đơn vị"
 
-    WAREHOUSES ||--o{ INVENTORY_REQUISITIONS : "kho lãnh"
     PRODUCTION_JOBS }o--o| INVENTORY_REQUISITIONS : "Job liên quan (bắt buộc nếu type=PRODUCTION)"
     INVENTORY_REQUISITIONS ||--o{ INVENTORY_REQUISITION_ITEMS : gồm
     INVENTORY_REQUISITION_ITEMS }o--|| ITEMS : "vật tư lãnh (RM)"
@@ -82,7 +81,6 @@ erDiagram
     PURCHASE_ORDER_ITEMS }o--o| PURCHASE_QUOTATION_ITEM_SUPPLIERS : "NCC + giá đã chốt (tuỳ chọn)"
     PURCHASE_ORDERS ||--o{ PAYMENT_REQUESTS : "PO COMPLETED tự sinh YCTT"
 
-    WAREHOUSES ||--o{ SUPPLIER_RETURNS : "kho xuất trả"
     SUPPLIERS ||--o{ SUPPLIER_RETURNS : "NCC nhận trả"
     SUPPLIER_RETURNS }o--|| ITEMS : "vật tư trả"
     SUPPLIER_RETURNS }o--o| PURCHASE_ORDERS : "trace mức phiếu (tuỳ chọn)"
@@ -114,9 +112,8 @@ erDiagram
 Master data (`client-groups`, `supplier-groups`, `countries`, `departments`, `positions`, `units`,
 `operations`) chỉ được tham chiếu, không tham chiếu ngược — bỏ khỏi sơ đồ cho gọn, xem
 `docs/domains/partners.md`. `items` không còn nhóm hàng hoá — `type` (FG/WIP/RM) là thứ duy nhất
-phân loại (`docs/decisions/items-merge.md`). `outbound_orders` **không giữ `warehouseId`** — kho
-xuất suy từ dòng lúc `deliver` (`resolveFgWarehouseId`, `E238`), nên không có cạnh
-`WAREHOUSES → OUTBOUND_ORDERS`.
+phân loại (`docs/decisions/items-merge.md`). Hệ thống chỉ một kho vật lý — không có bảng
+`warehouses`/cột `warehouseId` ở đâu trong sơ đồ này (`docs/decisions/single-warehouse.md`).
 
 ## Thứ tự ghi của các luồng bắc cầu nhiều module
 
@@ -187,6 +184,12 @@ theo `supplierId` → `createDraftOrdersFromQuotation` sinh `purchase_orders DRA
 transaction. `recallQuotation` làm ngược lại: gọi `deleteDraftOrdersByQuotation`. Chi tiết:
 `docs/workflows/rfq-approval.md`.
 
+**Xác nhận QC đóng hết coverage Job** (`confirmOqc`/`confirmIqc`/`completeIqcAfterSupplierReturn`
+→ `closeJobIfQcCovered`): cùng transaction, `production_jobs.status → WAITING_DELIVERY`
+(`.returning()` non-empty mới tiếp); nếu có, gọi tiếp `createProductionReceiptForJob` cấp mã
+`document_sequences` (`INVENTORY_RECEIPT`) → `INSERT inventory_receipts` thẳng `PENDING_RECEIPT`
+(không qua `DRAFT`) + 1 dòng `inventory_receipt_items`. Chi tiết: `docs/workflows/outgoing-qc.md`.
+
 ## Chuỗi import module (NestJS DI)
 
 Không vòng phụ thuộc nào — mỗi mũi tên là một chiều `imports` duy nhất:
@@ -212,6 +215,11 @@ cần hoàn tất IQC) không đi qua DI để tránh vòng lặp — `completeI
 
 `OutboundOrdersModule` chỉ import `InventoryModule` (cho `deliver` gọi `postDocument`) — không
 import `OrdersModule`, đọc thẳng `orders`/`order_items`/`production_jobs` qua `DRIZZLE`.
+
+`OqcModule`/`IqcModule` không import `InventoryReceiptsModule` (và ngược lại `InventoryReceiptsModule`
+không import `OqcModule`/`IqcModule`) — `closeJobIfQcCovered` (`src/api/oqc/oqc.query.ts`) gọi sang
+`createProductionReceiptForJob` (`src/api/inventory-receipts/inventory-receipts.write.ts`)
+cùng khuôn `completeIqcAfterSupplierReturn` ở trên: hàm thuần nhận `tx`, không qua DI.
 
 `InventoryRequisitionsModule` chỉ import `InventoryModule` (cho `issue` gọi `postDocument`) —
 **không** import `IqcModule`/`ProductionJobsModule`, đọc thẳng bảng liên quan qua `DRIZZLE`.
@@ -247,10 +255,12 @@ Những sự thật này không nằm trọn trong một `docs/domains/<x>.md` n
   (`generateDocumentSequence`, `src/common/utils/document-sequence.util.ts`) — 1 câu
   `INSERT ... ON CONFLICT DO UPDATE ... RETURNING` atomic theo `(documentType, year)`, bắt buộc gọi
   trong transaction của lượt tạo. `outbound_orders` mượn cột `year` làm khoá reset-theo-ngày, encode
-  YYMMDD thay vì năm thật. `warehouses`/`items` là hai loại duy nhất còn nhận `code` tay nếu gửi kèm.
+  YYMMDD thay vì năm thật. `items` là loại duy nhất còn nhận `code` tay nếu gửi kèm.
   Môi trường có dữ liệu cũ (đếm-rồi-cộng) phải chạy
   `pnpm db:seed:document-sequences-bootstrap` trước khi dùng — xem
   `src/database/seeds/document-sequences-bootstrap.seed.ts`.
+- **Chỉ một kho vật lý, không có khái niệm phân kho** — không bảng `warehouses`, không cột
+  `warehouseId` ở bất kỳ bảng nào (`docs/decisions/single-warehouse.md`).
 
 ## Xem thêm
 

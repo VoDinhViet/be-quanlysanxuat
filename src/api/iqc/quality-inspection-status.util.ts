@@ -11,7 +11,7 @@ import {
  * còn dịch ngược — trả thẳng `QualityInspectionStatus` từ DB (API đã lộ vocabulary mới,
  * `docs/decisions/quality-schema-rename.md`).
  */
-export function toInspectionStatus(
+export function mapToQualityInspectionStatus(
   status: IqcStatus | OqcStatus,
 ): QualityInspectionStatus {
   switch (status) {

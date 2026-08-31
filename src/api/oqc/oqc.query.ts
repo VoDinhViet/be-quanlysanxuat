@@ -10,6 +10,8 @@ import {
   QualityInspectionType,
   qualityInspections,
 } from '../../database/schemas';
+import { createProductionReceiptForJob } from '../inventory-receipts/inventory-receipts.write';
+import { countPendingJobOperations } from '../production-jobs/production-jobs.query';
 
 /** Dòng `disposition = SCRAP` không tính vào SL đã xin QC của một công đoạn — hàng đã loại bỏ hẳn,
  * giải phóng lại quota lô để xưởng làm bù (`docs/domains/quality-oqc.md`). `disposition` chỉ khác
@@ -160,18 +162,24 @@ export async function getJobQcCoverage(
 }
 
 /** Mở khoá Job sang `WAITING_DELIVERY` khi mọi dòng QC (IQC lẫn OQC, `getJobQcCoverage` gộp chung
- * theo `qc-data-model.md`) đã xong — gọi từ **mọi** nơi có thể đưa một dòng `quality_inspections` về
- * `COMPLETED`: `OqcService.confirmOqc`, `IqcService.confirmIqc`, `completeIqcAfterSupplierReturn`.
- * Job có công đoạn `OUTSOURCE` mà dòng QC cuối cùng hoàn tất lại là IQC (không phải OQC) vẫn phải mở
- * khoá đúng lúc đó — thiếu chỗ nào gọi hàm này thì Job kẹt vĩnh viễn ở `WAITING_QC` (BUG-047). */
+ * theo `qc-data-model.md`) đã xong **và** không còn công đoạn nào của Job dở
+ * (`countPendingJobOperations`, `production-jobs.query.ts`) — gọi từ **mọi** nơi có thể đưa một
+ * dòng `quality_inspections` về `COMPLETED`: `OqcService.confirmOqc`, `IqcService.confirmIqc`,
+ * `completeIqcAfterSupplierReturn`; thiếu chỗ nào thì Job kẹt vĩnh viễn ở `WAITING_QC` (BUG-047).
+ * Đóng được Job thì ghi tiếp sang module kho — tự sinh phiếu nhập TP thẳng `PENDING_RECEIPT`
+ * (`createProductionReceiptForJob`, `docs/domains/inventory.md`). */
 export async function closeJobIfQcCovered(
   tx: DbTransaction,
   productionJobId: string,
+  userId: string,
 ): Promise<void> {
-  const coverage = await getJobQcCoverage(tx, productionJobId);
+  const [coverage, pendingOperations] = await Promise.all([
+    getJobQcCoverage(tx, productionJobId),
+    countPendingJobOperations(tx, productionJobId),
+  ]);
 
-  if (coverage.total > 0 && coverage.open === 0) {
-    await tx
+  if (coverage.total > 0 && coverage.open === 0 && pendingOperations === 0) {
+    const [closedJob] = await tx
       .update(productionJobs)
       .set({ status: ProductionJobStatus.WAITING_DELIVERY })
       .where(
@@ -182,6 +190,13 @@ export async function closeJobIfQcCovered(
             ProductionJobStatus.WAITING_QC,
           ]),
         ),
-      );
+      )
+      .returning({ id: productionJobs.id });
+
+    // Hàm này bị gọi lại mỗi lần confirm 1 dòng QC bất kỳ và `coverage` vẫn true sau đó — chỉ
+    // UPDATE trên mới khớp đúng một lần trong đời Job, nên phiếu nhập TP không bao giờ trùng.
+    if (closedJob) {
+      await createProductionReceiptForJob(tx, productionJobId, userId);
+    }
   }
 }

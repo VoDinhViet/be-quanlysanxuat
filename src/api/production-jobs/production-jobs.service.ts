@@ -34,6 +34,7 @@ import {
   bomOperations,
   items,
   ItemType,
+  OperationType,
   orders,
   productionJobBomItems,
   productionJobIssues,
@@ -44,6 +45,8 @@ import {
   ProductionJobStatus,
   productionJobUnits,
   productionOrders,
+  qualityInspections,
+  QualityInspectionType,
   routingOperations,
   routings,
   units,
@@ -52,6 +55,7 @@ import { AppException } from '../../exceptions/app.exception';
 import { issuedQuantityByJobItemSubquery } from '../inventory-requisitions/inventory-requisitions.query';
 import { InventoryService } from '../inventory/inventory.service';
 import { OqcService } from '../oqc/oqc.service';
+import { closeJobIfFinalAssemblyDone } from './production-jobs.query';
 import { PurchaseRequestsService } from '../purchase-requests/purchase-requests.service';
 import { PurchaseRequestShortageItem } from '../purchase-requests/types/shortage-request.type';
 import { UsersService } from '../users/users.service';
@@ -192,9 +196,22 @@ export class ProductionJobsService {
       throw new AppException(ErrorCode.E082, HttpStatus.NOT_FOUND);
     }
 
-    return plainToInstance(ProductionJobDetailResDto, job, {
-      excludeExtraneousValues: true,
-    });
+    const [oqcRequest] = await this.db
+      .select({ id: qualityInspections.id })
+      .from(qualityInspections)
+      .where(
+        and(
+          eq(qualityInspections.productionJobId, jobId),
+          eq(qualityInspections.inspectionType, QualityInspectionType.OQC),
+        ),
+      )
+      .limit(1);
+
+    return plainToInstance(
+      ProductionJobDetailResDto,
+      { ...job, oqcRequested: !!oqcRequest },
+      { excludeExtraneousValues: true },
+    );
   }
 
   /** `GET /production-jobs/:jobId/bom` — nhu cầu vật tư của Job. Đọc `production_job_issues`
@@ -343,7 +360,7 @@ export class ProductionJobsService {
         eq(productionJobOperations.id, operationId),
         eq(productionJobOperations.productionJobId, jobId),
       ),
-      columns: { id: true },
+      columns: { id: true, type: true },
       with: {
         bomItem: true,
       },
@@ -351,6 +368,13 @@ export class ProductionJobsService {
 
     if (!operation) {
       throw new AppException(ErrorCode.E091, HttpStatus.NOT_FOUND);
+    }
+
+    // completedQuantity/completedDate của công đoạn OUTSOURCE chỉ do OS-IN ghi
+    // (`recomputeOutsourcedOperationProgress`) — không cho ghi đè tay,
+    // `docs/decisions/outsourced-operation-progress-writeback.md`.
+    if (operation.type === OperationType.OUTSOURCE) {
+      throw new AppException(ErrorCode.E260, HttpStatus.CONFLICT);
     }
 
     // Bước Lắp ráp (node `itemType = 'FG'`, xem `copyFinalAssemblyRouting`) chỉ mở khi mọi part
@@ -400,35 +424,7 @@ export class ProductionJobsService {
       // WAITING_QC khi KHÔNG CÒN công đoạn FG nào dở, đếm lại trong `tx` sau khi ghi, không suy
       // từ mỗi request hiện tại (BUG-079, `docs/decisions/production-lifecycle-closing.md`).
       if (operation.bomItem.itemType === ItemType.FG) {
-        const [{ pendingFinalAssemblyCount }] = await tx
-          .select({ pendingFinalAssemblyCount: count() })
-          .from(productionJobOperations)
-          .innerJoin(
-            productionJobBomItems,
-            eq(
-              productionJobBomItems.id,
-              productionJobOperations.productionJobBomItemId,
-            ),
-          )
-          .where(
-            and(
-              eq(productionJobOperations.productionJobId, jobId),
-              eq(productionJobBomItems.itemType, ItemType.FG),
-              isNull(productionJobOperations.completedDate),
-            ),
-          );
-
-        if (pendingFinalAssemblyCount === 0) {
-          await tx
-            .update(productionJobs)
-            .set({ status: ProductionJobStatus.WAITING_QC })
-            .where(
-              and(
-                eq(productionJobs.id, jobId),
-                eq(productionJobs.status, ProductionJobStatus.IN_PROGRESS),
-              ),
-            );
-        }
+        await closeJobIfFinalAssemblyDone(tx, jobId);
       }
     });
 

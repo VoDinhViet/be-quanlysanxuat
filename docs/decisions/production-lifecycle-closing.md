@@ -50,7 +50,16 @@ DO:   DRAFT → (send) → PENDING_APPROVAL → (approve) → PENDING_DELIVERY �
   mới. `getJobQcCoverage` gộp chung IQC/OQC (`docs/decisions/qc-data-model.md`), nên hàm này được
   gọi từ **ba** nơi có thể đưa dòng QC cuối cùng của Job về `COMPLETED`: `OqcService.confirmOqc`,
   `IqcService.confirmIqc`, và `completeIqcAfterSupplierReturn` — Job có công đoạn `OUTSOURCE` đóng
-  bằng IQC (không phải OQC), thiếu một trong ba chỗ gọi thì Job kẹt vĩnh viễn ở `WAITING_QC`.
+  bằng IQC (không phải OQC), thiếu một trong ba chỗ gọi thì Job kẹt vĩnh viễn ở `WAITING_QC`. Từ
+  2026-08-31, điều kiện mở khoá thêm `countPendingJobOperations(...) === 0` (không còn công đoạn
+  nào của Job thiếu `completedDate`) — trước đó chỉ đếm dòng QC đã đóng, nên 1 công đoạn `OUTSOURCE`
+  có IQC `COMPLETED` (duy nhất dòng QC tồn tại) có thể đẩy nhầm cả Job sang `WAITING_DELIVERY` dù
+  công đoạn khác còn dở, xem `docs/decisions/outsourced-operation-progress-writeback.md`. Cùng lượt
+  gọi, nếu UPDATE thật sự đổi trạng thái (`.returning()` non-empty — chỉ đúng một lần trong đời Job),
+  `closeJobIfQcCovered` gọi tiếp `createProductionReceiptForJob`
+  (`src/api/inventory-receipts/inventory-receipts.write.ts`) tự sinh 1 phiếu nhập TP thẳng
+  `PENDING_RECEIPT` (không qua `DRAFT`) — bỏ qua im lặng nếu Job đã có phiếu `PRODUCTION` rồi
+  (không sinh lại sau khi phiếu tự sinh bị xoá/huỷ). Xem `docs/domains/quality-oqc.md`.
 - `WAITING_DELIVERY → COMPLETED`: `InventoryReceiptsService.postInventoryReceipt`
   (`receiptType = PRODUCTION`), khi tổng SL đã nhập kho (`getConfirmedProductionQuantityByJobId`)
   đạt `job.quantity` — đúng ngưỡng gate `E197` đã chặn từ trước, giờ dùng luôn để đóng Job.
@@ -85,14 +94,6 @@ Tồn kho thành phẩm là fungible — không có ràng buộc 1:1 giữa mộ
 gộp hàng vốn xuất phát từ nhiều Job khác nhau. Vì vậy Job đóng theo tiến độ **sản xuất của chính nó**
 (QC xong + nhập kho đủ), không chờ "đơn hàng của nó" giao xong — hai khái niệm tách biệt hoàn toàn.
 
-## Kho xuất cho phiếu SALES tự sinh — tự resolve, không thêm cột
-
-`outbound_orders`/`outbound_order_items` không có cột kho (comment cũ trên schema nói "kho xuất suy
-từ dòng" nhưng `order_items` cũng không có cột kho — đường suy đó chưa từng tồn tại). Đã hỏi user,
-chọn: `postOutboundOrder` tự tìm kho `type = FG` — đúng 1 kho (thực tế hiện chỉ có `KHO-TP`) thì
-dùng, khác 1 thì ném `E238` thay vì đoán. Không thêm cột `warehouseId`/không đổi DTO tạo DO/không
-đụng FE — nếu sau này có ≥ 2 kho FG thật, đó là lúc thêm cột tường minh, không phải bây giờ.
-
 ## Giữ nguyên, không đổi
 
 - `orders.status = COMPLETED` vẫn có thể set tay qua `PATCH /orders/:id` (`ensureStatusSettable`
@@ -109,10 +110,16 @@ dùng, khác 1 thì ném `E238` thay vì đoán. Không thêm cột `warehouseId
   thật, không phải tính năng thừa.
 - Đừng thay `postOutboundOrder` tự sinh phiếu SALES bằng cách quay lại quy trình tạo tay tách rời —
   đó chính là lỗ hổng đã sửa (phiếu tạo tay không gắn `orderItemId`, làm "SL đã giao" sai vĩnh viễn).
+- Đừng bắt kho phải tự tạo phiếu nhập TP đầu tiên của Job bằng tay — `closeJobIfQcCovered` đã tự
+  sinh `DRAFT` đúng lúc Job qua hết QC; nhu cầu tạo tay chỉ còn cho phiếu **thứ hai trở đi** (nhập
+  từng phần).
 
 ## Related docs
 
 `docs/domains/production.md` (Lifecycle Job/LSX), `docs/workflows/outbound-delivery.md` (vòng đời
 DO đầy đủ), `docs/domains/orders.md` (Lifecycle, Common mistakes), `docs/workflows/outgoing-qc.md`,
 `docs/workflows/production-job-execution.md`, `docs/decisions/qc-gates-on-stock-moves.md` (gate D2,
-nay đã có `DELIVERED`), `docs/decisions/stored-inventory-balances.md` (cảnh báo blocker cũ).
+nay đã có `DELIVERED`), `docs/decisions/stored-inventory-balances.md` (cảnh báo blocker cũ),
+`docs/decisions/outsourced-operation-progress-writeback.md` (siết thêm điều kiện công đoạn cho
+`WAITING_QC → WAITING_DELIVERY`), `docs/decisions/single-warehouse.md` (bỏ hẳn khái niệm kho, gỡ
+`E238`/resolve kho FG khỏi `deliver`).

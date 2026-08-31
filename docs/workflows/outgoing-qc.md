@@ -80,9 +80,17 @@ cho `send` DO.
 7. Sau khi ghi mirror, nếu vào `COMPLETED`, gọi `closeJobIfQcCovered` (`total>0 && open=0`) →
    `production_jobs.status: {IN_PROGRESS, WAITING_QC} → WAITING_DELIVERY` (ghi thẳng, không qua
    `ProductionJobsService`). Cùng hàm này được gọi từ `confirmIqc`/`completeIqcAfterSupplierReturn`
-   — xem `docs/domains/quality-iqc.md`.
+   — xem `docs/domains/quality-iqc.md`. Nếu UPDATE thật sự đổi trạng thái (`.returning()`
+   non-empty), gọi tiếp `createProductionReceiptForJob` tự sinh 1 phiếu nhập TP thẳng
+   `PENDING_RECEIPT` (không qua `DRAFT`/`confirm` — OQC vừa đóng coverage chính là gate chất
+   lượng, và phiếu PRODUCTION không bao giờ `requiresIqc`) — xem `docs/domains/quality-oqc.md`,
+   mục "→ Inventory (ghi)".
 
 ### Nhập kho thành phẩm (`InventoryReceiptsService.confirmInventoryReceipt`, nhánh `PRODUCTION`)
+
+Chỉ áp dụng cho phiếu PRODUCTION tạo tay (`InventoryReceiptCreateFromJobForm.tsx`, bắt đầu ở
+`DRAFT`) — phiếu do `closeJobIfQcCovered` tự sinh bỏ qua bước `confirm` này hoàn toàn (đã
+`PENDING_RECEIPT` sẵn, `post` thẳng).
 
 1. `productionJobId` không có → `E179`. Dòng phiếu lệch `itemId` → `E107`.
 2. `getJobQcCoverage(tx, productionJobId)` — Job ≥1 dòng QC chưa `SCRAP`, không còn dòng nào chưa
@@ -110,14 +118,18 @@ Chi tiết đầy đủ route `send`/`approve`/`reject`/`deliver`: `docs/workflo
 | `quality_inspections.status` | `confirm` (FAIL+REWORK) | — | `IN_PROGRESS` |
 | `quality_inspection_results` | `confirm` (mọi kết quả) | — | +1 attempt mới |
 | `production_jobs.status` | `confirm` OQC (coverage hết `open`) | `IN_PROGRESS`/`WAITING_QC` | `WAITING_DELIVERY` |
+| `inventory_receipts` | Job vừa chuyển `WAITING_DELIVERY` | *(chưa có)* | 1 dòng `PENDING_RECEIPT` (`receiptType=PRODUCTION`, đã "confirm" sẵn) |
+| `inventory_receipt_items` | cùng lúc | *(chưa có)* | 1 dòng `itemId=job.itemId`/`quantity=job.quantity` |
 | `production_jobs.status` | `post` phiếu nhập TP (đủ SL) | `WAITING_DELIVERY` | `COMPLETED` |
 | `production_orders.status` | `post` phiếu nhập TP (mọi Job xong) | `APPROVED` | `COMPLETED` |
 
 ## Side effects
 
 `POST .../qc`: chỉ 1 dòng mới, không đụng công đoạn/Job/kho. `confirm` OQC: đổi status/kết quả +
-`quality_inspection_evidences` (evidence), không ghi ngược `production_job_operations`. `confirm`
-phiếu nhập: gate chỉ đọc, một chiều.
+`quality_inspection_evidences` (evidence), không ghi ngược `production_job_operations`; nếu đóng
+hết coverage của Job còn tự sinh 1 phiếu nhập TP thẳng `PENDING_RECEIPT` (xem State changes).
+`confirm` phiếu nhập: gate chỉ đọc, một chiều — không áp dụng cho phiếu tự sinh (đã bỏ qua bước
+này).
 
 ## Transaction boundary
 
@@ -126,7 +138,10 @@ transaction sẵn — gate QC chỉ thêm kiểm tra bên trong. `getJobQcCovera
 là plain function nhận `Database | DbTransaction`, không qua DI —
 `InventoryReceiptsModule`/`OutboundOrdersModule` không import `OqcModule`/`IqcModule`. Riêng
 `ProductionJobsModule` **có** import `OqcModule` — ngoại lệ duy nhất, chỉ để `requestJobQc` gọi
-thẳng `createOqcForJob`.
+thẳng `createOqcForJob`. `closeJobIfQcCovered` nay gọi tiếp sang
+`createProductionReceiptForJob` (`inventory-receipts.write.ts`) trong CÙNG transaction —
+cùng lý do không qua DI, chiều ngược lại (`InventoryReceiptsModule` gọi sang `OqcModule`) sẽ tạo
+cycle vì `OqcModule` không import `InventoryReceiptsModule`.
 
 ## Failure cases
 

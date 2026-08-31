@@ -65,7 +65,7 @@ import { PageIqcResDto } from './dto/page-iqc.res.dto';
 import { UpdateIqcReqDto } from './dto/update-iqc.req.dto';
 import { resolveAqlPlan } from './iqc-aql.query';
 import { linkQcFiles } from './iqc.write';
-import { toInspectionStatus } from './quality-inspection-status.util';
+import { mapToQualityInspectionStatus } from './quality-inspection-status.util';
 
 // `supplierId` có thể null từ BUG-065 (dòng IQC sinh từ phiếu RETURN gắn khách hàng dùng `clientId`
 // thay thế, loại trừ lẫn nhau — `chk_quality_inspections_supplier_client_exclusive`). `confirmIqc`
@@ -305,7 +305,7 @@ export class IqcService {
           requestedAt: inspectionDate,
           decision,
           disposition: result ? disposition : undefined,
-          status: toInspectionStatus(status),
+          status: mapToQualityInspectionStatus(status),
           reason,
           note,
           attemptCount: result ? 1 : 0,
@@ -322,7 +322,7 @@ export class IqcService {
           inspectedAt: inspectionDate,
           decision: decision!,
           disposition,
-          resultingStatus: toInspectionStatus(status),
+          resultingStatus: mapToQualityInspectionStatus(status),
           inspectedBy: userId,
         });
       }
@@ -691,14 +691,9 @@ export class IqcService {
       qcDepartmentId: reqDto.qcDepartmentId ?? null,
     };
 
-    // Suy kho trả hàng NGOÀI transaction — thuần đọc, và phải fail sớm (E163) trước khi ghi bất
-    // cứ gì nếu không suy được, thay vì rollback nửa chừng.
     const returnTarget =
       status === IqcStatus.WAITING_RETURN
-        ? {
-            warehouseId: await this.resolveReturnWarehouseId(inspection),
-            quantity: this.resolveReturnQuantity(inspection, reqDto),
-          }
+        ? { quantity: this.resolveReturnQuantity(inspection, reqDto) }
         : null;
 
     const plan = await resolveAqlPlan(
@@ -753,7 +748,7 @@ export class IqcService {
         audit.approvedAt = new Date();
       }
 
-      const dbStatus = toInspectionStatus(status);
+      const dbStatus = mapToQualityInspectionStatus(status);
 
       const [attempt] = await tx
         .insert(qualityInspectionResults)
@@ -789,7 +784,7 @@ export class IqcService {
       // `docs/decisions/qc-data-model.md`) — dòng IQC này có thể là dòng QC cuối cùng đóng Job,
       // không chỉ OQC mới làm được việc đó. Xem `docs/decisions/production-lifecycle-closing.md`.
       if (status === IqcStatus.COMPLETED && inspection.productionJobId) {
-        await closeJobIfQcCovered(tx, inspection.productionJobId);
+        await closeJobIfQcCovered(tx, inspection.productionJobId, userId);
       }
 
       await linkQcFiles(
@@ -817,9 +812,7 @@ export class IqcService {
             : null;
         // `supplier_returns.outsourcingReceiptId` là FK riêng của bảng đó (không thuộc origin
         // polymorphic của QC) — dòng IQC sinh từ OS-IN chỉ giữ `outsourcingReceiptItemId` qua
-        // `originId`, phải suy ngược `outsourcingReceiptId` qua join để CHECK
-        // `chk_supplier_returns_warehouse_required` (warehouseId NULL ⟺ outsourcingReceiptId khác
-        // NULL) khớp với `resolveReturnWarehouseId` đã trả `null` ở trên cho đúng ca này.
+        // `originId`, phải suy ngược `outsourcingReceiptId` qua join.
         const outsourcingReceiptId =
           inspection.originType ===
           QualityInspectionOriginType.OUTSOURCING_RECEIPT_ITEM
@@ -834,7 +827,6 @@ export class IqcService {
         await this.supplierReturnsService.createFromIqcDisposition(tx, {
           qualityInspectionId: iqcId,
           qualityInspectionResultId: attempt.id,
-          warehouseId: returnTarget.warehouseId,
           supplierId: inspection.supplierId!,
           itemId: inspection.itemId,
           quantity: returnTarget.quantity,
@@ -913,55 +905,6 @@ export class IqcService {
       return reqDto.sortNgQty;
     }
     return inspection.quantity;
-  }
-
-  /** Kho nhận hàng trả — suy từ phiếu nhập liên quan trước, PO liên quan sau (cùng thứ tự
-   *  `InventoryReceiptsService.resolveIqcSupplierId` suy `supplierId`). Dòng IQC xuất phát từ OS-IN
-   *  (`originType = OUTSOURCING_RECEIPT_ITEM`, không có `inventoryReceiptId` lẫn `purchaseOrderId`
-   *  — `outsourcing_receipts` không có cột kho, `docs/decisions/wip-not-stocked.md`) trả `null` —
-   *  hợp lệ, không phải lỗi: `SupplierReturnsService.shouldPostStock` không bao giờ trừ tồn cho
-   *  phiếu trả gốc OS-IN nên không cần kho. `E163` chỉ còn ném khi thực sự không suy được từ nguồn
-   *  nào cả (không phải purchase, không phải OS-IN — dữ liệu bất thường). */
-  private async resolveReturnWarehouseId(inspection: {
-    originType: QualityInspectionOriginType;
-    originId: string | null;
-    purchaseOrderId: string | null;
-  }): Promise<string | null> {
-    if (
-      inspection.originType ===
-      QualityInspectionOriginType.OUTSOURCING_RECEIPT_ITEM
-    ) {
-      return null;
-    }
-
-    const inventoryReceiptId =
-      inspection.originType === QualityInspectionOriginType.INVENTORY_RECEIPT
-        ? inspection.originId
-        : null;
-
-    const [receipt, purchaseOrder] = await Promise.all([
-      inventoryReceiptId
-        ? this.db.query.inventoryReceipts.findFirst({
-            columns: { warehouseId: true },
-            where: eq(inventoryReceipts.id, inventoryReceiptId),
-          })
-        : Promise.resolve(null),
-      inspection.purchaseOrderId
-        ? this.db.query.purchaseOrders.findFirst({
-            columns: { receiptWarehouseId: true },
-            where: eq(purchaseOrders.id, inspection.purchaseOrderId),
-          })
-        : Promise.resolve(null),
-    ]);
-
-    const warehouseId =
-      receipt?.warehouseId ?? purchaseOrder?.receiptWarehouseId ?? null;
-
-    if (!warehouseId) {
-      throw new AppException(ErrorCode.E163, HttpStatus.BAD_REQUEST);
-    }
-
-    return warehouseId;
   }
 
   private async ensureIqcSavable(iqcId: string): Promise<IqcSavableInspection> {

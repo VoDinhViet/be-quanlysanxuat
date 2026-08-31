@@ -124,7 +124,14 @@ FAIL, gửi kèm PASS không báo lỗi (tự ép `NULL`).
   `closeJobIfQcCovered` (`src/api/oqc/oqc.query.ts`) — khi `getJobQcCoverage` báo `total > 0 &&
   open === 0`, chuyển `production_jobs.status` từ `IN_PROGRESS`/`WAITING_QC` sang
   `WAITING_DELIVERY` (nhận cả `IN_PROGRESS` — Job có thể nhảy thẳng nếu QC hoàn tất trước khi mọi
-  công đoạn khác báo xong). Đây là cạnh ghi duy nhất từ Quality sang bảng của Production.
+  công đoạn khác báo xong).
+- **→ Inventory (ghi)**: cùng lượt gọi trên, nếu UPDATE thật sự đổi trạng thái (`.returning()`
+  non-empty — chỉ đúng một lần trong đời Job), `closeJobIfQcCovered` gọi tiếp
+  `createProductionReceiptForJob` (`src/api/inventory-receipts/inventory-receipts.write.ts`,
+  plain function nhận `tx`, không qua DI) tự sinh 1 `inventory_receipts` thẳng `PENDING_RECEIPT`
+  (`receiptType = PRODUCTION`, không qua `DRAFT` — OQC vừa đóng coverage chính là gate chất lượng)
+  + 1 dòng `itemId = job.itemId`/`quantity = job.quantity`. Bỏ qua im lặng nếu Job đã có phiếu
+  `PRODUCTION` — xem `docs/domains/inventory.md`.
 - **→ Inventory (Gate nhập kho TP)**: `inventory-receipts confirm` (`receiptType=PRODUCTION`) chặn
   nếu Job chưa có dòng QC nào hoặc còn dòng chưa `COMPLETED` (`E196`) — `getJobQcCoverage` gộp cả
   IQC (công đoạn `OUTSOURCE`) lẫn OQC (công đoạn `INHOUSE`) qua neo chung

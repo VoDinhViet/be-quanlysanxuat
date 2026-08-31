@@ -26,6 +26,7 @@ import { closeJobIfQcCovered } from '../oqc/oqc.query';
 export async function completeIqcAfterSupplierReturn(
   tx: DbTransaction,
   iqcId: string,
+  userId: string,
 ): Promise<void> {
   const inspection = await tx.query.qualityInspections.findFirst({
     columns: { status: true, productionJobId: true },
@@ -51,7 +52,7 @@ export async function completeIqcAfterSupplierReturn(
   // Cùng lý do ở `IqcService.confirmIqc` — dòng IQC neo vào công đoạn `OUTSOURCE` có thể là dòng QC
   // cuối cùng đóng Job, dù được hoàn tất qua đường phiếu trả NCC chứ không phải `confirm` trực tiếp.
   if (inspection.productionJobId) {
-    await closeJobIfQcCovered(tx, inspection.productionJobId);
+    await closeJobIfQcCovered(tx, inspection.productionJobId, userId);
   }
 }
 
