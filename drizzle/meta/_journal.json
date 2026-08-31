@@ -1184,6 +1184,13 @@
       "when": 1788177080490,
       "tag": "0168_chemical_union_jack",
       "breakpoints": true
+    },
+    {
+      "idx": 169,
+      "version": "7",
+      "when": 1788182684372,
+      "tag": "0169_migrate_legacy_adjustment_docs",
+      "breakpoints": true
     }
   ]
 }
