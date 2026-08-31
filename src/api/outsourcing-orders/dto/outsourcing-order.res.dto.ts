@@ -7,6 +7,7 @@ import {
   DateField,
   DateFieldOptional,
   EnumField,
+  NumberField,
   StringField,
   StringFieldOptional,
   UUIDField,
@@ -37,8 +38,24 @@ export class OutsourcingOrderResDto {
   expectedReturnDate!: Date | null;
 
   @Expose()
-  @EnumField(() => OutsourcingOrderStatus)
+  @EnumField(() => OutsourcingOrderStatus, {
+    description: 'Trạng thái chứng từ, kiêm tiến độ nhận hàng',
+  })
   status!: OutsourcingOrderStatus;
+
+  @Expose()
+  @NumberField({ description: 'Tổng SL gửi mọi dòng' })
+  totalQuantity!: number;
+
+  @Expose()
+  @NumberField({ description: 'Tổng SL đã nhận mọi dòng (phiếu OS-IN POSTED)' })
+  receivedQuantity!: number;
+
+  @Expose()
+  @NumberField({
+    description: 'Tổng SL còn lại chưa nhận (totalQuantity - receivedQuantity)',
+  })
+  remainingQuantity!: number;
 
   @Expose()
   @StringFieldOptional({ nullable: true, description: 'Ghi chú' })

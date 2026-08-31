@@ -38,7 +38,9 @@ export class PageOutsourcingOrderResDto {
   expectedReturnDate!: Date | null;
 
   @Expose()
-  @EnumField(() => OutsourcingOrderStatus)
+  @EnumField(() => OutsourcingOrderStatus, {
+    description: 'Trạng thái chứng từ, kiêm tiến độ nhận hàng',
+  })
   status!: OutsourcingOrderStatus;
 
   @Expose()

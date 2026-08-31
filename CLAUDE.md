@@ -126,7 +126,7 @@ Bốn tầng, đọc từ trên xuống khi cần hiểu một vùng nghiệp v�
   `orders-no-delete`, `items-merge`, `stored-inventory-balances`, `outsourcing-no-draft`,
   `wip-not-stocked`, `oqc-per-operation`, `qc-gates-on-stock-moves`, `qc-data-model`,
   `qc-aql-master-data`, `bom-explosion-in-job-demand`, `production-lifecycle-closing`,
-  `report-trends-derived`.
+  `report-trends-derived`, `quality-schema-rename`, `outsourcing-order-status-progress-merge`.
 
 **Không có tầng doc theo module** — Swagger `/api-docs` sở hữu route/DTO; `ErrorCode` đọc ở
 `src/constants/error-code.constant.ts` + service ném nó.

@@ -14,21 +14,35 @@ import { warehouses } from './warehouses';
 import { suppliers } from '../suppliers/suppliers';
 import { users } from '../identity-access/users';
 
+/**
+ * Vừa là trạng thái chứng từ vừa là tiến độ nhận hàng — gộp làm một, không tách cột `progress`
+ * riêng (`docs/decisions/outsourcing-order-status-progress-merge.md`). `SENT` set thẳng lúc tạo
+ * (không có nháp, `docs/decisions/outsourcing-no-draft.md`); `PARTIAL`/`WAITING_QC`/`COMPLETED` chỉ
+ * do `recomputeOutsourcingOrderStatus` (`outsourcing-orders.query.ts`) ghi, gọi từ
+ * `OutsourcingReceiptsService`/`IqcService` mỗi khi có sự kiện đổi SL đã nhận hoặc IQC — không có
+ * route nào ghi tay 3 giá trị này. `CANCELLED` chỉ do `cancelOutsourcingOrder` ghi, và một khi đã
+ * `CANCELLED` thì `recomputeOutsourcingOrderStatus` không ghi đè lại (early return).
+ */
 export enum OutsourcingOrderStatus {
-  POSTED = 'POSTED',
+  SENT = 'SENT',
+  PARTIAL = 'PARTIAL',
+  WAITING_QC = 'WAITING_QC',
+  COMPLETED = 'COMPLETED',
   CANCELLED = 'CANCELLED',
 }
 
 export const outsourcingOrderStatusEnum = pgEnum('outsourcing_order_status', [
-  OutsourcingOrderStatus.POSTED,
+  OutsourcingOrderStatus.SENT,
+  OutsourcingOrderStatus.PARTIAL,
+  OutsourcingOrderStatus.WAITING_QC,
+  OutsourcingOrderStatus.COMPLETED,
   OutsourcingOrderStatus.CANCELLED,
 ]);
 
 /**
  * Phiếu gửi gia công ngoài (OS-OUT) — header, nhiều dòng ở `outsourcing_order_items`. Không có
- * nháp — service luôn set `POSTED` lúc tạo, không route nào ghi giá trị khác `POSTED`/`CANCELLED`
- * (xem `docs/domains/inventory.md`, `docs/workflows/outsourcing-round-trip.md`,
- * `docs/decisions/outsourcing-no-draft.md`).
+ * nháp — service luôn set `SENT` lúc tạo (xem `docs/domains/inventory.md`,
+ * `docs/workflows/outsourcing-round-trip.md`, `docs/decisions/outsourcing-no-draft.md`).
  */
 export const outsourcingOrders = pgTable(
   'outsourcing_orders',
@@ -48,7 +62,7 @@ export const outsourcingOrders = pgTable(
     expectedReturnDate: date('expected_return_date', { mode: 'date' }),
     status: outsourcingOrderStatusEnum('status')
       .notNull()
-      .default(OutsourcingOrderStatus.POSTED),
+      .default(OutsourcingOrderStatus.SENT),
     note: varchar('note', { length: 1000 }),
     postedBy: uuid('posted_by').references(() => users.id, {
       onDelete: 'set null',

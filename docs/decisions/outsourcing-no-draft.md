@@ -12,11 +12,15 @@ soạn-rồi-sửa trước khi gửi đi/xác nhận đã nhận.
 
 ## Quyết định
 
-Bỏ hẳn bước nháp — `create` là gửi/nhận luôn (`POSTED` ngay), cho cả hai module. Đã xoá hẳn route
-`PATCH`/`DELETE :id` và `POST :id/post`. `status` của cả hai bảng tách khỏi
-`inventory_document_status` sang 2 enum riêng, chỉ 2 giá trị `POSTED`/`CANCELLED`
-(`outsourcing_order_status`/`outsourcing_receipt_status`), default `POSTED` — `DRAFT` không còn là
-giá trị hợp lệ ở DB, không chỉ "không route nào ghi".
+Bỏ hẳn bước nháp — `create` là gửi/nhận luôn, cho cả hai module. Đã xoá hẳn route `PATCH`/`DELETE
+:id` và `POST :id/post`. `status` của cả hai bảng tách khỏi `inventory_document_status` sang 2 enum
+riêng — `DRAFT` không còn là giá trị hợp lệ ở DB cho cả hai, không chỉ "không route nào ghi".
+
+`outsourcing_receipt_status` (OS-IN) giữ đúng 2 giá trị `POSTED`/`CANCELLED`, default `POSTED`, như
+lúc quyết định này viết. `outsourcing_order_status` (OS-OUT) **đã mở rộng thành 5 giá trị**
+(`SENT`/`PARTIAL`/`WAITING_QC`/`COMPLETED`/`CANCELLED`, default `SENT`) ở một quyết định sau —
+`docs/decisions/outsourcing-order-status-progress-merge.md` — gộp luôn khái niệm tiến độ nhận hàng
+vào cột này; đọc doc đó trước khi giả định OS-OUT chỉ có 2 trạng thái như mô tả gốc ở đây.
 
 `createOutsourcingOrder`/`createOutsourcingReceipt`: validate mềm (ngoài transaction) → `INSERT`
 header thẳng `status: POSTED` + `INSERT` mọi dòng → `postDocument` (chỉ OS-IN gọi `IqcService` nếu

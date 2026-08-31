@@ -11,6 +11,7 @@ import {
   gte,
   inArray,
   lt,
+  ne,
   or,
   sql,
 } from 'drizzle-orm';
@@ -42,6 +43,7 @@ import {
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { IqcService } from '../iqc/iqc.service';
+import { recomputeOutsourcingOrderStatus } from '../outsourcing-orders/outsourcing-orders.query';
 import { CreateOutsourcingReceiptReqDto } from './dto/create-outsourcing-receipt.req.dto';
 import { GetOutsourcingReceiptsReqDto } from './dto/get-outsourcing-receipts.req.dto';
 import { GetPendingOrderItemsReqDto } from './dto/get-pending-order-items.req.dto';
@@ -54,6 +56,9 @@ import { getReceivedQuantityByOrderItemIds } from './outsourcing-receipts.query'
 
 type ResolvedReceiptItem = {
   outsourcingOrderItemId: string;
+  // Phiếu OS-OUT chứa dòng nguồn — dùng để gọi `recomputeOutsourcingOrderStatus` sau khi insert
+  // (`createOutsourcingReceipt`), không phải cột ghi xuống `outsourcing_receipt_items`.
+  outsourcingOrderId: string;
   itemId: string;
   quantity: number;
   weight: number | null;
@@ -210,7 +215,7 @@ export class OutsourcingReceiptsService {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
 
     const where = and(
-      eq(outsourcingOrders.status, OutsourcingOrderStatus.POSTED),
+      ne(outsourcingOrders.status, OutsourcingOrderStatus.CANCELLED),
       reqDto.operationId
         ? eq(outsourcingOrderItems.operationId, reqDto.operationId)
         : undefined,
@@ -273,8 +278,9 @@ export class OutsourcingReceiptsService {
   }
 
   /** Không còn nháp — tạo là nhận luôn: resolve/validate xong thì `INSERT` header thẳng `POSTED`,
-   * sinh IQC nếu `requiresIqc` ngay sau đó. Không đụng `inventory_balances` — hàng nhận về là cùng
-   * WIP đã trừ ở OS-OUT, kho không quản tồn WIP (`docs/decisions/wip-not-stocked.md`). */
+   * sinh IQC nếu `requiresIqc` ngay sau đó, rồi `recomputeOutsourcingOrderStatus` cho từng OS-OUT
+   * nguồn (SL đã nhận vừa đổi). Không đụng `inventory_balances` — hàng nhận về là cùng WIP đã trừ ở
+   * OS-OUT, kho không quản tồn WIP (`docs/decisions/wip-not-stocked.md`). */
   async createOutsourcingReceipt(
     reqDto: CreateOutsourcingReceiptReqDto,
     userId: string,
@@ -341,6 +347,15 @@ export class OutsourcingReceiptsService {
           userId,
         });
       }
+
+      // 1 phiếu OS-IN có thể gộp nhiều OS-OUT cùng NCC — tính lại status từng phiếu nguồn bị ảnh
+      // hưởng, không chỉ 1.
+      const affectedOrderIds = new Set(
+        resolvedItems.map((item) => item.outsourcingOrderId),
+      );
+      for (const outsourcingOrderId of affectedOrderIds) {
+        await recomputeOutsourcingOrderStatus(tx, outsourcingOrderId);
+      }
     });
   }
 
@@ -362,11 +377,46 @@ export class OutsourcingReceiptsService {
         }
       }
 
+      // Phải lấy trước khi update — sau khi CANCELLED, receipt không còn nằm trong tập
+      // `outsourcingReceiptItems` mà `recomputeOutsourcingOrderStatus` tính (chỉ tính receipt
+      // POSTED), nhưng vẫn cần đúng tập OS-OUT bị ảnh hưởng để gọi recompute cho từng phiếu.
+      const affectedOrderIds = await this.getOrderIdsForReceipt(
+        tx,
+        outsourcingReceiptId,
+      );
+
       await tx
         .update(outsourcingReceipts)
         .set({ status: OutsourcingReceiptStatus.CANCELLED })
         .where(eq(outsourcingReceipts.id, outsourcingReceiptId));
+
+      for (const outsourcingOrderId of affectedOrderIds) {
+        await recomputeOutsourcingOrderStatus(tx, outsourcingOrderId);
+      }
     });
+  }
+
+  private async getOrderIdsForReceipt(
+    tx: DbTransaction,
+    outsourcingReceiptId: string,
+  ): Promise<Set<string>> {
+    const rows = await tx
+      .selectDistinct({
+        outsourcingOrderId: outsourcingOrderItems.outsourcingOrderId,
+      })
+      .from(outsourcingReceiptItems)
+      .innerJoin(
+        outsourcingOrderItems,
+        eq(
+          outsourcingOrderItems.id,
+          outsourcingReceiptItems.outsourcingOrderItemId,
+        ),
+      )
+      .where(
+        eq(outsourcingReceiptItems.outsourcingReceiptId, outsourcingReceiptId),
+      );
+
+    return new Set(rows.map((row) => row.outsourcingOrderId));
   }
 
   private validateReceiptItems(reqItems: OutsourcingReceiptItemReqDto[]): void {
@@ -410,6 +460,7 @@ export class OutsourcingReceiptsService {
 
       return {
         outsourcingOrderItemId: item.outsourcingOrderItemId,
+        outsourcingOrderId: orderItem.outsourcingOrderId,
         itemId: orderItem.itemId,
         quantity: item.quantity,
         weight: item.weight ?? orderItem.weight,
@@ -430,8 +481,9 @@ export class OutsourcingReceiptsService {
     return new Map(orderItems.map((row) => [row.id, row]));
   }
 
-  /** OS-OUT nguồn tồn tại (`E165`, tái dùng mã "không tìm thấy OS-OUT" — cùng aggregate) + `POSTED`
-   * (`E171`) + NCC khớp header (`E187`). */
+  /** OS-OUT nguồn tồn tại (`E165`, tái dùng mã "không tìm thấy OS-OUT" — cùng aggregate) + chưa
+   * `CANCELLED` (`E171` — status đã gộp tiến độ, không còn chỉ `POSTED`,
+   * `docs/decisions/outsourcing-order-status-progress-merge.md`) + NCC khớp header (`E187`). */
   private ensureOrderItemValid(
     orderItem:
       | {
@@ -446,7 +498,9 @@ export class OutsourcingReceiptsService {
     if (!orderItem) {
       throw new AppException(ErrorCode.E165, HttpStatus.NOT_FOUND);
     }
-    if (orderItem.outsourcingOrder.status !== OutsourcingOrderStatus.POSTED) {
+    if (
+      orderItem.outsourcingOrder.status === OutsourcingOrderStatus.CANCELLED
+    ) {
       throw new AppException(ErrorCode.E171, HttpStatus.CONFLICT);
     }
     if (orderItem.outsourcingOrder.supplierId !== supplierId) {

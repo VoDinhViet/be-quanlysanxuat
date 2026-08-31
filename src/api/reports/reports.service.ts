@@ -45,10 +45,7 @@ import { ProductionProgressResDto } from './dto/production-progress.res.dto';
 import { QcPassRateResDto } from './dto/qc-pass-rate.res.dto';
 import { ReportAlertsResDto } from './dto/report-alerts.res.dto';
 import { ReportStatsResDto } from './dto/report-stats.res.dto';
-import {
-  receivedQuantityByOrderIdSubquery,
-  sentQuantityByOrderIdSubquery,
-} from '../outsourcing-orders/outsourcing-orders.query';
+
 type ReportDateRange = { startDate?: Date; endDate?: Date };
 
 // Cột `timestamp` (có giờ) — cận trên dùng `exclusiveEndOfDay`, không `lte endDate` (sẽ loại sai
@@ -195,9 +192,6 @@ export class ReportsService {
   // Top OUTSOURCING_ORDER_DUE_DATE_LIMIT OS-OUT trễ hạn nhất, cho widget "Gia công ngoài trễ hạn"
   // ở Bảng điều khiển — không phân trang, cùng khuôn `getJobDueDate`.
   async getOutsourcingOrderDueDate(): Promise<OutsourcingOrderDueDateResDto[]> {
-    const sentQuantityByOrder = sentQuantityByOrderIdSubquery(this.db);
-    const receivedQuantityByOrder = receivedQuantityByOrderIdSubquery(this.db);
-
     const rows = await this.db
       .select({
         id: outsourcingOrders.id,
@@ -207,20 +201,7 @@ export class ReportsService {
       })
       .from(outsourcingOrders)
       .innerJoin(suppliers, eq(suppliers.id, outsourcingOrders.supplierId))
-      .leftJoin(
-        sentQuantityByOrder,
-        eq(sentQuantityByOrder.outsourcingOrderId, outsourcingOrders.id),
-      )
-      .leftJoin(
-        receivedQuantityByOrder,
-        eq(receivedQuantityByOrder.outsourcingOrderId, outsourcingOrders.id),
-      )
-      .where(
-        this.outsourcingOrderDuePassed(
-          sentQuantityByOrder,
-          receivedQuantityByOrder,
-        ),
-      )
+      .where(this.outsourcingOrderDuePassed())
       .orderBy(asc(outsourcingOrders.expectedReturnDate))
       .limit(ReportsService.OUTSOURCING_ORDER_DUE_DATE_LIMIT);
 
@@ -553,48 +534,25 @@ export class ReportsService {
     return row.count;
   }
 
-  // Chỉ 2 trạng thái (POSTED/CANCELLED), không có "đã nhận đủ" riêng — so SL đã gửi/đã nhận (cùng
-  // subquery `OutsourcingOrdersService.getOutsourcingOrders` dùng) mới biết phiếu còn treo. Dùng
-  // chung cho getOutsourcingOrderDueDateCount lẫn getOutsourcingOrderDueDate — không khai lại rule
-  // ở 2 nơi. Không đưa lên module-level const như `JOB_DUE_DATE_PASSED` được vì 2 subquery là
-  // instance mới mỗi lần gọi (phụ thuộc `this.db`), không phải table tĩnh.
-  private outsourcingOrderDuePassed(
-    sentQuantityByOrder: ReturnType<typeof sentQuantityByOrderIdSubquery>,
-    receivedQuantityByOrder: ReturnType<
-      typeof receivedQuantityByOrderIdSubquery
-    >,
-  ) {
+  // "Còn hàng chưa về đủ" giờ đọc thẳng từ `status` (đã gộp tiến độ — SENT/PARTIAL nghĩa là còn
+  // treo, WAITING_QC/COMPLETED nghĩa là đã nhận đủ, `docs/decisions/outsourcing-order-status-progress-merge.md`)
+  // — không cần JOIN thêm subquery SL gửi/nhận như trước. Dùng chung cho
+  // getOutsourcingOrderDueDateCount lẫn getOutsourcingOrderDueDate — không khai lại rule ở 2 nơi.
+  private outsourcingOrderDuePassed() {
     return and(
-      eq(outsourcingOrders.status, OutsourcingOrderStatus.POSTED),
+      inArray(outsourcingOrders.status, [
+        OutsourcingOrderStatus.SENT,
+        OutsourcingOrderStatus.PARTIAL,
+      ]),
       lt(outsourcingOrders.expectedReturnDate, VN_TODAY),
-      sql`
-        coalesce(${receivedQuantityByOrder.receivedQuantity}, 0)
-        < coalesce(${sentQuantityByOrder.totalQuantity}, 0)
-      `,
     )!;
   }
 
   private async getOutsourcingOrderDueDateCount(): Promise<number> {
-    const sentQuantityByOrder = sentQuantityByOrderIdSubquery(this.db);
-    const receivedQuantityByOrder = receivedQuantityByOrderIdSubquery(this.db);
-
     const [row] = await this.db
       .select({ count: sql<number>`count(*)`.mapWith(Number) })
       .from(outsourcingOrders)
-      .leftJoin(
-        sentQuantityByOrder,
-        eq(sentQuantityByOrder.outsourcingOrderId, outsourcingOrders.id),
-      )
-      .leftJoin(
-        receivedQuantityByOrder,
-        eq(receivedQuantityByOrder.outsourcingOrderId, outsourcingOrders.id),
-      )
-      .where(
-        this.outsourcingOrderDuePassed(
-          sentQuantityByOrder,
-          receivedQuantityByOrder,
-        ),
-      );
+      .where(this.outsourcingOrderDuePassed());
 
     return row.count;
   }

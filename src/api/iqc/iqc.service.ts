@@ -30,6 +30,7 @@ import {
   IqcResult,
   IqcStatus,
   items,
+  outsourcingOrderItems,
   outsourcingReceiptItems,
   outsourcingReceipts,
   productionJobOperations,
@@ -51,6 +52,7 @@ import {
 import { AppException } from '../../exceptions/app.exception';
 import { FilesService } from '../files/files.service';
 import { closeJobIfQcCovered } from '../oqc/oqc.query';
+import { recomputeOutsourcingOrderStatus } from '../outsourcing-orders/outsourcing-orders.query';
 import { SupplierReturnsService } from '../supplier-returns/supplier-returns.service';
 import { AqlPlanResDto } from './dto/aql-plan.res.dto';
 import { ConfirmIqcReqDto } from './dto/confirm-iqc.req.dto';
@@ -842,6 +844,35 @@ export class IqcService {
           returnDate: vnToday(),
           userId,
         });
+      }
+
+      // IQC sinh từ OS-IN — lần confirm này có thể vừa xoá nốt IQC treo cuối cùng của OS-OUT nguồn
+      // (WAITING_QC → COMPLETED) hoặc vẫn còn treo (giữ nguyên WAITING_QC); gọi vô điều kiện, để
+      // `recomputeOutsourcingOrderStatus` tự quyết theo dữ liệu thật, không suy trước ở đây.
+      if (
+        inspection.originType ===
+        QualityInspectionOriginType.OUTSOURCING_RECEIPT_ITEM
+      ) {
+        const [orderItem] = await tx
+          .select({
+            outsourcingOrderId: outsourcingOrderItems.outsourcingOrderId,
+          })
+          .from(outsourcingReceiptItems)
+          .innerJoin(
+            outsourcingOrderItems,
+            eq(
+              outsourcingOrderItems.id,
+              outsourcingReceiptItems.outsourcingOrderItemId,
+            ),
+          )
+          .where(eq(outsourcingReceiptItems.id, inspection.originId!));
+
+        if (orderItem) {
+          await recomputeOutsourcingOrderStatus(
+            tx,
+            orderItem.outsourcingOrderId,
+          );
+        }
       }
     });
   }

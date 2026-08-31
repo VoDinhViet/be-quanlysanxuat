@@ -124,17 +124,40 @@ export class OutsourcingOrdersService {
     const creatorUsers = alias(users, 'creator_users');
     const posterUsers = alias(users, 'poster_users');
 
+    const sentQuantityByOrder = sentQuantityByOrderIdSubquery(this.db);
+    const receivedQuantityByOrder = receivedQuantityByOrderIdSubquery(this.db);
+
     const [outsourcingOrder] = await this.db
       .select({
         ...getTableColumns(outsourcingOrders),
         supplier: getTableColumns(suppliers),
         creatorBy: getTableColumns(creatorUsers),
         posterBy: getTableColumns(posterUsers),
+        totalQuantity:
+          sql<number>`coalesce(${sentQuantityByOrder.totalQuantity}, 0)`.mapWith(
+            Number,
+          ),
+        receivedQuantity:
+          sql<number>`coalesce(${receivedQuantityByOrder.receivedQuantity}, 0)`.mapWith(
+            Number,
+          ),
+        remainingQuantity:
+          sql<number>`coalesce(${sentQuantityByOrder.totalQuantity}, 0) - coalesce(${receivedQuantityByOrder.receivedQuantity}, 0)`.mapWith(
+            Number,
+          ),
       })
       .from(outsourcingOrders)
       .innerJoin(suppliers, eq(suppliers.id, outsourcingOrders.supplierId))
       .leftJoin(creatorUsers, eq(creatorUsers.id, outsourcingOrders.createdBy))
       .leftJoin(posterUsers, eq(posterUsers.id, outsourcingOrders.postedBy))
+      .leftJoin(
+        sentQuantityByOrder,
+        eq(sentQuantityByOrder.outsourcingOrderId, outsourcingOrders.id),
+      )
+      .leftJoin(
+        receivedQuantityByOrder,
+        eq(receivedQuantityByOrder.outsourcingOrderId, outsourcingOrders.id),
+      )
       .where(eq(outsourcingOrders.id, outsourcingOrderId))
       .limit(1);
 
@@ -307,10 +330,10 @@ export class OutsourcingOrdersService {
     );
   }
 
-  /** Không còn nháp — tạo là gửi luôn: `INSERT` header thẳng `POSTED`, không qua bước `DRAFT`
-   * trung gian nào. Không đụng `inventory_balances` — mặt hàng gửi gia công luôn là WIP, kho không
-   * quản tồn WIP (`docs/decisions/wip-not-stocked.md`). Dòng do client gửi đủ cột (không resolve
-   * lại từ `productionJobOperationId`), `docs/decisions/outsourcing-no-draft.md`. */
+  /** Không còn nháp — tạo là gửi luôn: `INSERT` header thẳng `SENT`, không qua bước `DRAFT` trung
+   * gian nào. Không đụng `inventory_balances` — mặt hàng gửi gia công luôn là WIP, kho không quản
+   * tồn WIP (`docs/decisions/wip-not-stocked.md`). Dòng do client gửi đủ cột (không resolve lại từ
+   * `productionJobOperationId`), `docs/decisions/outsourcing-no-draft.md`. */
   async createOutsourcingOrder(
     reqDto: CreateOutsourcingOrderReqDto,
     userId: string,
@@ -328,7 +351,7 @@ export class OutsourcingOrdersService {
           ...orderFields,
           code,
           createdBy: userId,
-          status: OutsourcingOrderStatus.POSTED,
+          status: OutsourcingOrderStatus.SENT,
           postedBy: userId,
           postedAt: new Date(),
         })
@@ -355,14 +378,14 @@ export class OutsourcingOrdersService {
         throw new AppException(ErrorCode.E098, HttpStatus.CONFLICT);
       }
 
-      if (outsourcingOrder.status === OutsourcingOrderStatus.POSTED) {
-        const hasActiveReceipts = await hasActiveReceiptsForOrder(
-          tx,
-          outsourcingOrderId,
-        );
-        if (hasActiveReceipts) {
-          throw new AppException(ErrorCode.E169, HttpStatus.CONFLICT);
-        }
+      // Mọi trạng thái khác CANCELLED đều "còn hoạt động" (status đã gộp tiến độ, không còn chỉ
+      // POSTED — docs/decisions/outsourcing-order-status-progress-merge.md).
+      const hasActiveReceipts = await hasActiveReceiptsForOrder(
+        tx,
+        outsourcingOrderId,
+      );
+      if (hasActiveReceipts) {
+        throw new AppException(ErrorCode.E169, HttpStatus.CONFLICT);
       }
 
       await tx
