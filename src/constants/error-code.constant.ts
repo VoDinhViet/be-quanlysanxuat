@@ -298,7 +298,8 @@ export enum ErrorCode {
   E153 = 'inventory_receipt.error.iqc_not_completed',
   // SL nhận (cộng dồn mọi phiếu đã xác nhận) vượt SL đặt của dòng đơn mua.
   E154 = 'purchase_order_item.error.received_quantity_exceeded',
-  // Xác nhận đặt hàng (`DRAFT → ORDERED`) khi chưa chọn kho nhận hàng.
+  // BE tự gán kho nhận (kho RM duy nhất) lúc tạo/xác nhận PO — ném khi danh mục kho chưa seed
+  // kho loại RM nào, không còn nghĩa "người dùng chưa chọn".
   E155 = 'purchase_order.error.missing_receipt_warehouse',
   // Xác nhận đặt hàng khi chưa chọn điều khoản thanh toán — cần có để tính `dueDate` lúc PO đạt
   // COMPLETED và tự sinh yêu cầu thanh toán.

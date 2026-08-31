@@ -19,12 +19,6 @@ export class UpdatePurchaseOrderReqDto {
   })
   readonly paymentTerm?: PaymentTerm | null;
 
-  @UUIDFieldOptional({
-    nullable: true,
-    description: 'Kho sẽ nhập hàng về khi PO hoàn tất',
-  })
-  readonly receiptWarehouseId?: string | null;
-
   @StringFieldOptional({ nullable: true, maxLength: 1000 })
   readonly note?: string | null;
 }

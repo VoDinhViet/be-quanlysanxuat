@@ -24,7 +24,8 @@ Nhánh nhập kho: `docs/workflows/receipt-confirmation.md`, `docs/workflows/sto
    hoặc PO `DRAFT` tự sinh từ `approveQuotation` (`docs/workflows/rfq-approval.md`).
 2. **Sửa PO Draft** — `PATCH` header/dòng, chỉ khi `DRAFT` (`E122`).
 3. **Xác nhận đặt hàng** — `POST /purchase-orders/:id/confirm`: `DRAFT → ORDERED`, chặn thiếu
-   `expectedDate`/`receiptWarehouseId`/`paymentTerm`/giá dòng (`E134`/`E155`/`E156`/`E135`).
+   `expectedDate`/`paymentTerm`/giá dòng (`E134`/`E156`/`E135`). `receiptWarehouseId` BE tự gán
+   ngay từ bước 1 (kho RM duy nhất), không phải người dùng điền.
 4. **Nhận hàng** — `POST /inventory-receipts` gắn `purchaseOrderId` (validate PO `ORDERED`, dòng
    thuộc đúng PO, SL cộng dồn ≤ SL đặt — `E121`/`E145`/`E123`/`E127`/`E154`) → `confirm` (`DRAFT →
    PENDING_RECEIPT`/`PENDING_IQC`) → `post` (ghi tồn thật).
