@@ -8,6 +8,7 @@ import {
   UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
 import { ItemRefResDto } from '../../items/dto/item-ref.res.dto';
+import { UnitRefResDto } from '../../units/dto/unit-ref.res.dto';
 
 @Exclude()
 export class InventoryIssueItemResDto {
@@ -18,6 +19,10 @@ export class InventoryIssueItemResDto {
   @Expose()
   @ClassField(() => ItemRefResDto)
   item!: ItemRefResDto;
+
+  @Expose()
+  @ClassField(() => UnitRefResDto)
+  unit!: UnitRefResDto;
 
   @Expose()
   @NumberField({ description: 'Số lượng' })

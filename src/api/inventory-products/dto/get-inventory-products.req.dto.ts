@@ -18,9 +18,4 @@ export class GetInventoryProductsReqDto extends PageOptionsDto {
       'Xem tồn tại thời điểm 23:59 ngày này; bỏ trống = tồn hiện tại',
   })
   readonly asOfDate?: Date;
-
-  @UUIDFieldOptional({
-    description: 'Chỉ tính tồn ở kho này — bỏ trống thì gộp mọi kho',
-  })
-  readonly warehouseId?: string;
 }

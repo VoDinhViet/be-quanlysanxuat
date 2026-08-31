@@ -10,6 +10,7 @@ import {
 } from '../../../decorators/field.decorators';
 import { ItemRefResDto } from '../../items/dto/item-ref.res.dto';
 import { PurchaseOrderItemRefResDto } from '../../purchase-orders/dto/purchase-order-item-ref.res.dto';
+import { UnitRefResDto } from '../../units/dto/unit-ref.res.dto';
 
 @Exclude()
 export class InventoryReceiptItemResDto {
@@ -20,6 +21,10 @@ export class InventoryReceiptItemResDto {
   @Expose()
   @ClassField(() => ItemRefResDto)
   item!: ItemRefResDto;
+
+  @Expose()
+  @ClassField(() => UnitRefResDto)
+  unit!: UnitRefResDto;
 
   @Expose()
   @NumberField({ description: 'Số lượng' })

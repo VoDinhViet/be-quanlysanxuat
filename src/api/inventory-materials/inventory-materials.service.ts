@@ -48,15 +48,8 @@ export class InventoryMaterialsService {
   async getInventoryMaterials(
     reqDto: GetInventoryMaterialsReqDto,
   ): Promise<OffsetPaginatedDto<InventoryMaterialResDto>> {
-    const stock = balanceByItemSubquery(
-      this.db,
-      reqDto.asOfDate,
-      reqDto.warehouseId,
-    );
-    const requisitionHeld = requisitionHeldQuantityByItemSubquery(
-      this.db,
-      reqDto.warehouseId,
-    );
+    const stock = balanceByItemSubquery(this.db, reqDto.asOfDate);
+    const requisitionHeld = requisitionHeldQuantityByItemSubquery(this.db);
     const bomRemaining = remainingBomDemandByItemSubquery(this.db);
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
 

@@ -33,7 +33,6 @@
     "db:seed:suppliers": "ts-node src/database/seeds/suppliers.seed.ts",
     "db:seed:items": "ts-node src/database/seeds/items.seed.ts",
     "db:seed:operations": "ts-node src/database/seeds/operations.seed.ts",
-    "db:seed:warehouses": "ts-node src/database/seeds/warehouses.seed.ts",
     "db:seed:supplier-returns": "ts-node src/database/seeds/supplier-returns.seed.ts",
     "db:seed:iqc": "ts-node src/database/seeds/iqc.seed.ts",
     "db:seed:material-stock": "ts-node src/database/seeds/material-stock.seed.ts",

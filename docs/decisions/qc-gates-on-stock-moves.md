@@ -20,7 +20,7 @@ Thêm 2 gate mới, không sửa gate `E153` đang có:
 
 - **Gate D1 (IQC → xuất kho sản xuất):** `InventoryIssuesService.postInventoryIssue`
   (`issueType=PRODUCTION` only) chặn (`E203`) nếu còn ≥1 phiếu IQC chưa `COMPLETED` của cùng
-  `(itemId, warehouseId)` — `hasPendingIqcForItems`. Đặt ở `post`, không phải `create`, vì `post`
+  `itemId` — `hasPendingIqcForItems`. Đặt ở `post`, không phải `create`, vì `post`
   mới là lúc hàng thật rời kho.
 - **Gate D2 (QC → giao hàng):** `POST /outbound-orders/:id/send` (`DRAFT`/`REJECTED →
   PENDING_APPROVAL`) chặn (`E205`) nếu còn Job nào (qua `outbound_order_items.productionJobId`)
@@ -33,10 +33,9 @@ gỡ phiếu IQC tạo nhầm mà không phải chờ QC "confirm cho qua" một
 
 ## Giới hạn chấp nhận của gate D1
 
-IQC không có cột kho riêng — suy qua `inventoryReceipt.warehouseId`. Phiếu IQC tạo tay hoặc từ
-OS-IN không suy được kho thì **bỏ qua, không chặn** — tránh khoá vĩnh viễn luồng xuất khi không truy
-được ngữ cảnh, đổi lại D1 không phủ 100% trường hợp. Gate chặn theo `(item, kho)`, không theo lô cụ
-thể — không có lot tracking, có thể chặn nhầm tồn tốt cùng item/kho khác lô đang FAIL. Đã xác nhận
+IQC không có cột kho — hệ thống chỉ 1 kho vật lý (`docs/decisions/single-warehouse.md`), gate chỉ
+còn xét `itemId`, không phân biệt lô/nguồn IQC nào phát hiện lỗi. Gate chặn theo item, không theo lô
+cụ thể — không có lot tracking, có thể chặn nhầm tồn tốt cùng item khác lô đang FAIL. Đã xác nhận
 với user, không phải bug bỏ sót.
 
 ## Phạm vi cố ý hẹp của gate D2
@@ -53,5 +52,6 @@ với user, không phải bug bỏ sót.
 
 `docs/decisions/oqc-per-operation.md`, `docs/decisions/qc-data-model.md` (`getJobQcCoverage`),
 `docs/decisions/quality-schema-rename.md` (đổi tên bảng/cột QC, 2026-08),
-`docs/decisions/production-lifecycle-closing.md`, `docs/domains/quality-iqc.md`,
-`docs/domains/quality-oqc.md`, `docs/workflows/outgoing-qc.md`, `docs/workflows/outbound-delivery.md`.
+`docs/decisions/production-lifecycle-closing.md`, `docs/decisions/single-warehouse.md`,
+`docs/domains/quality-iqc.md`, `docs/domains/quality-oqc.md`, `docs/workflows/outgoing-qc.md`,
+`docs/workflows/outbound-delivery.md`.

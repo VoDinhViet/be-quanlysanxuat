@@ -5,7 +5,6 @@ import {
   InventoryRequisitionType,
 } from '../../../database/schemas';
 import {
-  ClassField,
   ClassFieldOptional,
   DateField,
   EnumField,
@@ -16,7 +15,6 @@ import {
 import { DepartmentResDto } from '../../departments/dto/department.res.dto';
 import { ProductionJobRefResDto } from '../../production-jobs/dto/production-job-ref.res.dto';
 import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
-import { WarehouseRefResDto } from '../../warehouses/dto/warehouse-ref.res.dto';
 import { RequisitionProductionOrderResDto } from './requisition-production-order.res.dto';
 
 @Exclude()
@@ -40,10 +38,6 @@ export class PageInventoryRequisitionResDto {
   @Expose()
   @EnumField(() => InventoryRequisitionStatus)
   status!: InventoryRequisitionStatus;
-
-  @Expose()
-  @ClassField(() => WarehouseRefResDto)
-  warehouse!: WarehouseRefResDto;
 
   @Expose()
   @ClassFieldOptional(() => DepartmentResDto, { nullable: true })

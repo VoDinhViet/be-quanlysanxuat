@@ -15,7 +15,6 @@ import { productionOrders } from '../production/production-orders';
 import { users } from '../identity-access/users';
 import { inventoryIssues } from './inventory-issues';
 import { inventoryRequisitionItems } from './inventory-requisition-items';
-import { warehouses } from './warehouses';
 
 export enum InventoryRequisitionType {
   PRODUCTION = 'PRODUCTION',
@@ -61,9 +60,6 @@ export const inventoryRequisitions = pgTable(
     code: varchar('code', { length: 50 }).notNull().unique(),
     requisitionDate: date('requisition_date', { mode: 'date' }).notNull(),
     type: inventoryRequisitionTypeEnum('type').notNull(),
-    warehouseId: uuid('warehouse_id')
-      .notNull()
-      .references(() => warehouses.id, { onDelete: 'restrict' }),
     departmentId: uuid('department_id').references(() => departments.id, {
       onDelete: 'set null',
     }),
@@ -114,7 +110,6 @@ export const inventoryRequisitions = pgTable(
       .$onUpdate(() => new Date()),
   },
   (table) => [
-    index('idx_inventory_requisitions_warehouse_id').on(table.warehouseId),
     index('idx_inventory_requisitions_department_id').on(table.departmentId),
     index('idx_inventory_requisitions_production_order_id').on(
       table.productionOrderId,
@@ -141,10 +136,6 @@ export const inventoryRequisitions = pgTable(
 export const inventoryRequisitionsRelations = relations(
   inventoryRequisitions,
   ({ one, many }) => ({
-    warehouse: one(warehouses, {
-      fields: [inventoryRequisitions.warehouseId],
-      references: [warehouses.id],
-    }),
     department: one(departments, {
       fields: [inventoryRequisitions.departmentId],
       references: [departments.id],

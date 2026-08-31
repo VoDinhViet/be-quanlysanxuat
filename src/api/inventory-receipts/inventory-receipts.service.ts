@@ -17,10 +17,6 @@ import {
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
-import {
-  DocumentType,
-  generateDocumentSequence,
-} from '../../common/utils/document-sequence.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
@@ -48,6 +44,7 @@ import {
   PurchaseOrderStatus,
   purchaseRequests,
   suppliers,
+  units,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import {
@@ -68,6 +65,7 @@ import { InventoryReceiptItemReqDto } from './dto/inventory-receipt-item.req.dto
 import { InventoryReceiptResDto } from './dto/inventory-receipt.res.dto';
 import { PageInventoryReceiptResDto } from './dto/page-inventory-receipt.res.dto';
 import { UpdateInventoryReceiptReqDto } from './dto/update-inventory-receipt.req.dto';
+import { generateReceiptCode } from './inventory-receipts.write';
 
 /** Loại phiếu → loại bút toán lúc `post` — bảng đầy đủ ở `docs/domains/inventory.md`. */
 const receiptTypeTransactionType: Record<
@@ -77,7 +75,6 @@ const receiptTypeTransactionType: Record<
   [InventoryReceiptType.PURCHASE]: InventoryTransactionType.RECEIPT,
   [InventoryReceiptType.RETURN]: InventoryTransactionType.RECEIPT,
   [InventoryReceiptType.PRODUCTION]: InventoryTransactionType.PRODUCTION_IN,
-  [InventoryReceiptType.ADJUSTMENT]: InventoryTransactionType.ADJUSTMENT_IN,
 };
 
 type IqcSourceIds = {
@@ -107,9 +104,6 @@ export class InventoryReceiptsService {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
     const where = and(
       keyword ? unaccentILike(inventoryReceipts.code, keyword) : undefined,
-      reqDto.warehouseId
-        ? eq(inventoryReceipts.warehouseId, reqDto.warehouseId)
-        : undefined,
       reqDto.receiptType
         ? eq(inventoryReceipts.receiptType, reqDto.receiptType)
         : undefined,
@@ -151,7 +145,6 @@ export class InventoryReceiptsService {
           desc(inventoryReceipts.createdAt),
         ],
         with: {
-          warehouse: true,
           supplier: true,
           client: true,
           purchaseRequest: true,
@@ -160,7 +153,7 @@ export class InventoryReceiptsService {
           purchaseOrder: true,
           posterBy: true,
           creatorBy: true,
-          items: { with: { item: true } },
+          items: { with: { item: true, unit: true } },
         },
       }),
       this.db.select({ total: count() }).from(inventoryReceipts).where(where),
@@ -180,13 +173,13 @@ export class InventoryReceiptsService {
     const inventoryReceipt = await this.db.query.inventoryReceipts.findFirst({
       where: eq(inventoryReceipts.id, receiptId),
       with: {
-        warehouse: true,
         supplier: true,
         client: true,
         purchaseRequest: true,
         productionOrder: true,
         productionJob: true,
         purchaseOrder: true,
+        confirmerBy: true,
         posterBy: true,
         creatorBy: true,
       },
@@ -235,11 +228,13 @@ export class InventoryReceiptsService {
         unitPrice: inventoryReceiptItems.unitPrice,
         note: inventoryReceiptItems.note,
         item: getTableColumns(items),
+        unit: getTableColumns(units),
         purchaseOrderItem: getTableColumns(purchaseOrderItems),
         ...itemStockColumns(balance, demand),
       })
       .from(inventoryReceiptItems)
       .innerJoin(items, eq(items.id, inventoryReceiptItems.itemId))
+      .innerJoin(units, eq(units.id, inventoryReceiptItems.unitId))
       .leftJoin(
         purchaseOrderItems,
         eq(purchaseOrderItems.id, inventoryReceiptItems.purchaseOrderItemId),
@@ -254,7 +249,7 @@ export class InventoryReceiptsService {
     reqDto: CreateInventoryReceiptReqDto,
     userId: string,
   ): Promise<InventoryReceiptResDto> {
-    await this.ensureItemsValid(reqDto.items);
+    const baseUnitByItemId = await this.ensureItemsValid(reqDto.items);
     await this.ensureReferencesValid(reqDto);
     this.ensureSupplierClientExclusive(reqDto);
     this.ensureProductionJobRequired(
@@ -266,19 +261,25 @@ export class InventoryReceiptsService {
       reqDto.purchaseOrderId,
       reqDto.items,
     );
-    await this.ensureReceiptQuantitiesWithinOrdered(this.db, reqDto.items);
 
     const { items: itemsToCreate, ...receiptFields } = reqDto;
+    await this.ensureReceiptQuantitiesWithinOrdered(this.db, itemsToCreate);
 
     const receiptId = await this.db.transaction(async (tx) => {
-      const code = await this.generateReceiptCode(tx, reqDto.receiptDate);
+      const code = await generateReceiptCode(tx, reqDto.receiptDate);
 
       const [inventoryReceipt] = await tx
         .insert(inventoryReceipts)
         .values({ ...receiptFields, code, createdBy: userId })
         .returning();
 
-      await this.createReceiptItems(tx, inventoryReceipt.id, itemsToCreate);
+      await tx.insert(inventoryReceiptItems).values(
+        itemsToCreate.map((item) => ({
+          ...item,
+          receiptId: inventoryReceipt.id,
+          unitId: item.unitId ?? baseUnitByItemId.get(item.itemId)!,
+        })),
+      );
 
       return inventoryReceipt.id;
     });
@@ -292,7 +293,7 @@ export class InventoryReceiptsService {
   ): Promise<InventoryReceiptResDto> {
     const inventoryReceipt = await this.ensureReceiptDraft(receiptId);
 
-    await this.ensureItemsValid(reqDto.items);
+    const baseUnitByItemId = await this.ensureItemsValid(reqDto.items);
     await this.ensureReferencesValid(reqDto);
     this.ensureSupplierClientExclusive({
       supplierId: reqDto.supplierId ?? inventoryReceipt.supplierId,
@@ -307,9 +308,9 @@ export class InventoryReceiptsService {
       reqDto.purchaseOrderId ?? inventoryReceipt.purchaseOrderId,
       reqDto.items,
     );
-    await this.ensureReceiptQuantitiesWithinOrdered(this.db, reqDto.items);
 
     const { items: itemsToReplace, ...receiptFields } = reqDto;
+    await this.ensureReceiptQuantitiesWithinOrdered(this.db, itemsToReplace);
 
     await this.db.transaction(async (tx) => {
       await tx
@@ -317,7 +318,17 @@ export class InventoryReceiptsService {
         .set(receiptFields)
         .where(eq(inventoryReceipts.id, receiptId));
 
-      await this.replaceReceiptItems(tx, receiptId, itemsToReplace);
+      await tx
+        .delete(inventoryReceiptItems)
+        .where(eq(inventoryReceiptItems.receiptId, receiptId));
+
+      await tx.insert(inventoryReceiptItems).values(
+        itemsToReplace.map((item) => ({
+          ...item,
+          receiptId,
+          unitId: item.unitId ?? baseUnitByItemId.get(item.itemId)!,
+        })),
+      );
     });
 
     return this.getInventoryReceipt(receiptId);
@@ -392,7 +403,7 @@ export class InventoryReceiptsService {
 
       await tx
         .update(inventoryReceipts)
-        .set({ status })
+        .set({ status, confirmedBy: userId, confirmedAt: new Date() })
         .where(eq(inventoryReceipts.id, receiptId));
     });
   }
@@ -426,7 +437,6 @@ export class InventoryReceiptsService {
       });
 
       await this.inventoryPostingService.postDocument(tx, {
-        warehouseId: inventoryReceipt.warehouseId,
         referenceType: InventoryReferenceType.INVENTORY_RECEIPT,
         referenceId: receiptId,
         transactionDate: inventoryReceipt.receiptDate,
@@ -612,51 +622,16 @@ export class InventoryReceiptsService {
     });
   }
 
-  private async createReceiptItems(
-    tx: DbTransaction,
-    receiptId: string,
-    items: InventoryReceiptItemReqDto[],
-  ): Promise<void> {
-    await tx
-      .insert(inventoryReceiptItems)
-      .values(items.map((item) => ({ ...item, receiptId })));
-  }
-
-  private async replaceReceiptItems(
-    tx: DbTransaction,
-    receiptId: string,
-    items: InventoryReceiptItemReqDto[],
-  ): Promise<void> {
-    await tx
-      .delete(inventoryReceiptItems)
-      .where(eq(inventoryReceiptItems.receiptId, receiptId));
-
-    await this.createReceiptItems(tx, receiptId, items);
-  }
-
-  private async generateReceiptCode(
-    tx: DbTransaction,
-    receiptDate: Date,
-  ): Promise<string> {
-    const year = receiptDate.getFullYear();
-    const sequence = await generateDocumentSequence(
-      tx,
-      DocumentType.INVENTORY_RECEIPT,
-      year,
-    );
-
-    return `PNK-${year}-${String(sequence).padStart(5, '0')}`;
-  }
-
   /** Mặt hàng của mỗi dòng phải tồn tại (`E100`). Không kiểm loại kho ↔ loại hàng — cố ý, xem
-   * `docs/domains/inventory.md`. */
+   * `docs/domains/inventory.md`. Trả về `itemId → unitId gốc` để mặc định `unitId` hiển thị khi
+   * payload không gửi. */
   private async ensureItemsValid(
     itemsToValidate: InventoryReceiptItemReqDto[],
-  ): Promise<void> {
+  ): Promise<Map<string, string>> {
     const itemIds = [...new Set(itemsToValidate.map((item) => item.itemId))];
 
     const found = await this.db.query.items.findMany({
-      columns: { id: true },
+      columns: { id: true, unitId: true },
       where: and(inArray(items.id, itemIds), isNull(items.deletedAt)),
     });
     const foundIds = new Set(found.map((item) => item.id));
@@ -666,6 +641,8 @@ export class InventoryReceiptsService {
         throw new AppException(ErrorCode.E100, HttpStatus.NOT_FOUND);
       }
     }
+
+    return new Map(found.map((item) => [item.id, item.unitId]));
   }
 
   private async ensureReferencesValid(reqDto: {
@@ -976,10 +953,7 @@ export class InventoryReceiptsService {
 
   /** Nguồn (NCC/khách hàng) của phiếu IQC sinh ra khi `confirm` — ưu tiên `inventoryReceipt.supplierId`,
    * rồi `inventoryReceipt.clientId` (RETURN gắn khách hàng, BUG-038/065), rồi rơi về NCC của PO gắn
-   * với phiếu. `receiptType = ADJUSTMENT` ("nhập từ khác") không bao giờ có supplier/client/PO —
-   * trả thẳng `{null, null}` thay vì `E152` (`chk_qc_requests_incoming_supplier` đã bỏ, dòng IQC
-   * `kind = INCOMING` giờ chấp nhận cả hai cột null). Loại phiếu khác không suy được nguồn nào →
-   * vẫn `E152`. */
+   * với phiếu. Không suy được nguồn nào → `E152`. */
   private async resolveIqcSourceIds(
     tx: DbTransaction,
     inventoryReceipt: Pick<
@@ -1009,10 +983,6 @@ export class InventoryReceiptsService {
       if (purchaseOrder?.supplierId) {
         return { supplierId: purchaseOrder.supplierId, clientId: null };
       }
-    }
-
-    if (inventoryReceipt.receiptType === InventoryReceiptType.ADJUSTMENT) {
-      return { supplierId: null, clientId: null };
     }
 
     throw new AppException(ErrorCode.E152, HttpStatus.BAD_REQUEST);

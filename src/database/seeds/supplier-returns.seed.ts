@@ -11,7 +11,6 @@ import { credentials } from '../schemas/identity-access/credentials';
 import { ItemType, items } from '../schemas/items/items';
 import { InventoryDocumentStatus } from '../schemas/inventory/inventory-documents';
 import { supplierReturns } from '../schemas/inventory/supplier-returns';
-import { warehouses, WarehouseType } from '../schemas/inventory/warehouses';
 
 type SeedDatabase = ReturnType<typeof drizzle<typeof schema>>;
 
@@ -53,17 +52,6 @@ async function seedSupplierReturns(db: SeedDatabase): Promise<void> {
 
   const createdBy = admin?.userId ?? null;
 
-  const warehouse = await db.query.warehouses.findFirst({
-    where: eq(warehouses.type, WarehouseType.RM),
-    columns: { id: true },
-  });
-
-  if (!warehouse) {
-    throw new Error(
-      'No RM warehouse found — run `pnpm db:seed:warehouses` first.',
-    );
-  }
-
   const supplierRows = await db.query.suppliers.findMany({
     columns: { id: true },
   });
@@ -101,7 +89,6 @@ async function seedSupplierReturns(db: SeedDatabase): Promise<void> {
 
     await db.insert(supplierReturns).values({
       code,
-      warehouseId: warehouse.id,
       supplierId,
       itemId,
       quantity: 10 + index * 5,

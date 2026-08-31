@@ -15,7 +15,6 @@ import {
 import { QuotationRefResDto } from '../../purchase-quotations/dto/quotation-ref.res.dto';
 import { SupplierRefResDto } from '../../suppliers/dto/supplier-ref.res.dto';
 import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
-import { WarehouseRefResDto } from '../../warehouses/dto/warehouse-ref.res.dto';
 import { PurchaseOrderItemResDto } from './purchase-order-item.res.dto';
 
 @Exclude()
@@ -51,10 +50,6 @@ export class PurchaseOrderResDto {
   @Expose()
   @EnumFieldOptional(() => PaymentTerm, { nullable: true })
   paymentTerm!: PaymentTerm | null;
-
-  @Expose()
-  @ClassFieldOptional(() => WarehouseRefResDto, { nullable: true })
-  receiptWarehouse!: WarehouseRefResDto | null;
 
   @Expose()
   @StringFieldOptional({ nullable: true })

@@ -29,12 +29,14 @@ import { DepartmentsModule } from './api/departments/departments.module';
 import { FilesModule } from './api/files/files.module';
 import { HealthModule } from './api/health/health.module';
 import { InventoryModule } from './api/inventory/inventory.module';
+import { InventoryAdjustmentsModule } from './api/inventory-adjustments/inventory-adjustments.module';
 import { InventoryIssuesModule } from './api/inventory-issues/inventory-issues.module';
 import { InventoryMaterialsModule } from './api/inventory-materials/inventory-materials.module';
 import { InventoryProductsModule } from './api/inventory-products/inventory-products.module';
 import { InventoryReceiptsModule } from './api/inventory-receipts/inventory-receipts.module';
 import { InventoryRequisitionsModule } from './api/inventory-requisitions/inventory-requisitions.module';
 import { IqcModule } from './api/iqc/iqc.module';
+import { ItemUnitsModule } from './api/item-units/item-units.module';
 import { ItemsModule } from './api/items/items.module';
 import { OperationsModule } from './api/operations/operations.module';
 import { OqcModule } from './api/oqc/oqc.module';
@@ -57,7 +59,6 @@ import { RoutingsModule } from './api/routings/routings.module';
 import { SupplierReturnsModule } from './api/supplier-returns/supplier-returns.module';
 import { UnitsModule } from './api/units/units.module';
 import { UsersModule } from './api/users/users.module';
-import { WarehousesModule } from './api/warehouses/warehouses.module';
 
 @Module({
   imports: [
@@ -96,6 +97,7 @@ import { WarehousesModule } from './api/warehouses/warehouses.module';
     CountriesModule,
     UnitsModule,
     ItemsModule,
+    ItemUnitsModule,
     BomsModule,
     BomOperationsModule,
     OperationsModule,
@@ -107,12 +109,12 @@ import { WarehousesModule } from './api/warehouses/warehouses.module';
     RolesModule,
     SuppliersModule,
     SupplierGroupsModule,
-    WarehousesModule,
     InventoryModule,
     InventoryProductsModule,
     InventoryMaterialsModule,
     InventoryReceiptsModule,
     InventoryIssuesModule,
+    InventoryAdjustmentsModule,
     InventoryRequisitionsModule,
     SupplierReturnsModule,
     OutsourcingOrdersModule,

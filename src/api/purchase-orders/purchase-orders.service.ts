@@ -39,8 +39,6 @@ import {
   PurchaseRequestStatus,
   suppliers,
   users,
-  warehouses,
-  WarehouseType,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { CancelPurchaseOrderReqDto } from './dto/cancel-purchase-order.req.dto';
@@ -194,7 +192,6 @@ export class PurchaseOrdersService {
             supplier: true,
             quotation: true,
             assignedUser: true,
-            receiptWarehouse: true,
             ordererBy: true,
             cancellerBy: true,
             creatorBy: true,
@@ -345,7 +342,6 @@ export class PurchaseOrdersService {
         supplier: true,
         quotation: true,
         assignedUser: true,
-        receiptWarehouse: true,
         ordererBy: true,
         cancellerBy: true,
         creatorBy: true,
@@ -397,13 +393,11 @@ export class PurchaseOrdersService {
 
     await this.db.transaction(async (tx) => {
       const code = await this.generatePurchaseOrderCode(tx);
-      const receiptWarehouseId = await this.resolveReceiptWarehouseId(tx);
       const [order] = await tx
         .insert(purchaseOrders)
         .values({
           ...purchaseOrderFields,
           code,
-          receiptWarehouseId,
           orderDate: vnToday(),
           createdBy: userId,
         })
@@ -462,24 +456,6 @@ export class PurchaseOrdersService {
     }
   }
 
-  /** Kho nhận của PO — hệ thống chỉ có đúng 1 kho RM (`KHO-NVL`), vật tư mua về luôn nhập kho đó
-   * nên BE tự gán, không có picker ở FE nữa. `E155` giờ chỉ ném khi danh mục kho chưa seed kho
-   * loại RM. */
-  private async resolveReceiptWarehouseId(
-    tx: Database | DbTransaction,
-  ): Promise<string> {
-    const warehouse = await tx.query.warehouses.findFirst({
-      columns: { id: true },
-      where: eq(warehouses.type, WarehouseType.RM),
-    });
-
-    if (!warehouse) {
-      throw new AppException(ErrorCode.E155, HttpStatus.CONFLICT);
-    }
-
-    return warehouse.id;
-  }
-
   /** Sinh PO Draft từ NCC thắng thầu của một RFQ — một NCC nhiều vật tư gộp chung một PO. Bắt
    * buộc truyền `tx` — chỉ gọi được từ transaction `approve`/`recall` của
    * `PurchaseQuotationsService` (`docs/workflows/rfq-approval.md`). */
@@ -487,8 +463,6 @@ export class PurchaseOrdersService {
     tx: DbTransaction,
     input: CreateDraftOrdersFromQuotationInput,
   ): Promise<void> {
-    const receiptWarehouseId = await this.resolveReceiptWarehouseId(tx);
-
     for (const [supplierId, lines] of input.linesBySupplierId) {
       const code = await this.generatePurchaseOrderCode(tx);
       const orderDate = vnToday();
@@ -500,7 +474,6 @@ export class PurchaseOrdersService {
           quotationId: input.quotationId,
           orderDate,
           expectedDate: this.expectedDateFromLeadTime(orderDate, lines),
-          receiptWarehouseId,
           createdBy: input.createdBy,
         })
         .returning({ id: purchaseOrders.id });
@@ -566,10 +539,7 @@ export class PurchaseOrdersService {
   /** Xác nhận đặt hàng — `DRAFT → ORDERED`. Chặn nếu chưa có `expectedDate` (`E134`), chưa chọn
    * `paymentTerm` (`E156` — cần để tính `dueDate` khi PO đạt COMPLETED tự sinh yêu cầu thanh
    * toán, `PaymentRequestsService.createIfOrderCompleted`), hoặc còn dòng thiếu `unitPrice`
-   * (`E135`); `quantity` luôn > 0 sẵn (`CHECK` ở DB), không cần kiểm lại. `receiptWarehouseId`
-   * không còn là điều kiện chặn — PO tạo trước khi BE tự gán kho (xem
-   * `resolveReceiptWarehouseId`) được backfill ngay tại đây; `E155` giờ chỉ ném khi danh mục kho
-   * chưa seed kho loại RM. */
+   * (`E135`); `quantity` luôn > 0 sẵn (`CHECK` ở DB), không cần kiểm lại. */
   async confirmPurchaseOrder(
     purchaseOrderId: string,
     userId: string,
@@ -579,7 +549,6 @@ export class PurchaseOrdersService {
     const order = await this.db.query.purchaseOrders.findFirst({
       columns: {
         expectedDate: true,
-        receiptWarehouseId: true,
         paymentTerm: true,
       },
       where: eq(purchaseOrders.id, purchaseOrderId),
@@ -601,17 +570,12 @@ export class PurchaseOrdersService {
       throw new AppException(ErrorCode.E135, HttpStatus.BAD_REQUEST);
     }
 
-    const receiptWarehouseId =
-      order.receiptWarehouseId ??
-      (await this.resolveReceiptWarehouseId(this.db));
-
     await this.db
       .update(purchaseOrders)
       .set({
         status: PurchaseOrderStatus.ORDERED,
         orderedBy: userId,
         orderedAt: new Date(),
-        receiptWarehouseId,
       })
       .where(eq(purchaseOrders.id, purchaseOrderId));
   }

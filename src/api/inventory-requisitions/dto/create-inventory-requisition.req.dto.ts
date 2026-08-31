@@ -4,7 +4,6 @@ import {
   DateField,
   EnumField,
   StringFieldOptional,
-  UUIDField,
   UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
 import { CreateInventoryRequisitionItemReqDto } from './create-inventory-requisition-item.req.dto';
@@ -15,9 +14,6 @@ export class CreateInventoryRequisitionReqDto {
 
   @EnumField(() => InventoryRequisitionType)
   readonly type!: InventoryRequisitionType;
-
-  @UUIDField({ description: 'Kho lãnh' })
-  readonly warehouseId!: string;
 
   @UUIDFieldOptional({ description: 'Bộ phận lãnh' })
   readonly departmentId?: string;

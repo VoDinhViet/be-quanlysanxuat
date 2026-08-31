@@ -134,7 +134,6 @@ export class SupplierReturnsService {
         with: {
           item: { with: { unit: true } },
           supplier: true,
-          warehouse: true,
           purchaseOrder: true,
           inventoryReceipt: true,
           outsourcingReceipt: true,
@@ -176,7 +175,6 @@ export class SupplierReturnsService {
       with: {
         item: { with: { unit: true } },
         supplier: true,
-        warehouse: true,
         purchaseOrder: true,
         inventoryReceipt: true,
         outsourcingReceipt: true,
@@ -213,7 +211,6 @@ export class SupplierReturnsService {
     params: {
       qualityInspectionId: string;
       qualityInspectionResultId: string;
-      warehouseId: string | null;
       supplierId: string;
       itemId: string;
       quantity: number;
@@ -228,7 +225,6 @@ export class SupplierReturnsService {
 
     await tx.insert(supplierReturns).values({
       code,
-      warehouseId: params.warehouseId,
       supplierId: params.supplierId,
       itemId: params.itemId,
       quantity: params.quantity,
@@ -270,10 +266,6 @@ export class SupplierReturnsService {
 
       if (await this.shouldPostStock(tx, supplierReturn)) {
         await this.inventoryPostingService.postDocument(tx, {
-          // `shouldPostStock` trả `false` khi `outsourcingReceiptId` có giá trị — tới được đây
-          // nghĩa là không, nên CHECK `chk_supplier_returns_warehouse_required` đảm bảo
-          // `warehouseId` khác null.
-          warehouseId: supplierReturn.warehouseId!,
           referenceType: InventoryReferenceType.SUPPLIER_RETURN,
           referenceId: supplierReturn.id,
           transactionDate: supplierReturn.returnDate,
@@ -312,6 +304,7 @@ export class SupplierReturnsService {
         await completeIqcAfterSupplierReturn(
           tx,
           supplierReturn.qualityInspectionId,
+          userId,
         );
       }
     });
@@ -322,11 +315,9 @@ export class SupplierReturnsService {
    *     đụng `inventory_balances`), trừ vào đó sẽ ra âm giả (`E106`) hoặc trừ nhầm tồn của lô khác.
    *     `postInventoryReceipt` tự bù trừ số lượng đã trả `POSTED` trước khi ghi bút toán `RECEIPT`
    *     (`getReturnedQuantityByReceiptItemId`), nên không ghi thiếu tồn.
-   *  2. Sinh từ IQC của OS-IN (`outsourcingReceiptId` có giá trị, `warehouseId` khi đó luôn `null`)
-   *     — hàng đó chưa từng vào tồn (`docs/decisions/wip-not-stocked.md`, gia công ngoài không ghi
-   *     `inventory_balances`), trừ vào cũng ra âm giả. Hàm này là nguồn thẩm quyền duy nhất cho
-   *     việc có `warehouseId` hay không — trả `true` thì CHECK `chk_supplier_returns_warehouse_required`
-   *     đảm bảo cột đó khác null.
+   *  2. Sinh từ IQC của OS-IN (`outsourcingReceiptId` có giá trị) — hàng đó chưa từng vào tồn
+   *     (`docs/decisions/wip-not-stocked.md`, gia công ngoài không ghi `inventory_balances`), trừ
+   *     vào cũng ra âm giả.
    *  Không có phiếu nhập/OS-IN liên quan (IQC tạo tay) → luôn trừ tồn bình thường. */
   private async shouldPostStock(
     tx: DbTransaction,

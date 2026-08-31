@@ -12,10 +12,12 @@ import {
 import { inventoryIssues } from './inventory-issues';
 import { items } from '../items/items';
 import { orderItems } from '../orders/order-items';
+import { units } from '../units/units';
 
 /** Một dòng phiếu xuất — cùng khuôn `inventory_receipt_items`, không có `unitPrice`. `orderItemId`
  * là mối nối duy nhất sang Orders (cơ sở tính `reserved`) — chỉ hợp lệ khi item là FG,
- * service-enforced (`InventoryIssuesService.ensureItemsValid`). */
+ * service-enforced (`InventoryIssuesService.ensureItemsValid`). `unitId` chỉ để hiển thị
+ * (`docs/decisions/unit-conversion.md`) — không quy đổi, mọi bút toán đọc thẳng `quantity`. */
 export const inventoryIssueItems = pgTable(
   'inventory_issue_items',
   {
@@ -26,6 +28,9 @@ export const inventoryIssueItems = pgTable(
     itemId: uuid('item_id')
       .notNull()
       .references(() => items.id, { onDelete: 'restrict' }),
+    unitId: uuid('unit_id')
+      .notNull()
+      .references(() => units.id, { onDelete: 'restrict' }),
     quantity: numeric('quantity', {
       precision: 18,
       scale: 3,
@@ -45,6 +50,7 @@ export const inventoryIssueItems = pgTable(
     index('idx_inventory_issue_items_issue_id').on(table.issueId),
     index('idx_inventory_issue_items_item_id').on(table.itemId),
     index('idx_inventory_issue_items_order_item_id').on(table.orderItemId),
+    index('idx_inventory_issue_items_unit_id').on(table.unitId),
     check('chk_inventory_issue_items_quantity_positive', sql`quantity > 0`),
   ],
 );
@@ -63,6 +69,10 @@ export const inventoryIssueItemsRelations = relations(
     orderItem: one(orderItems, {
       fields: [inventoryIssueItems.orderItemId],
       references: [orderItems.id],
+    }),
+    unit: one(units, {
+      fields: [inventoryIssueItems.unitId],
+      references: [units.id],
     }),
   }),
 );

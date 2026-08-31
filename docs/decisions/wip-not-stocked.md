@@ -30,28 +30,23 @@ trên các route liệt kê tồn kho.**
   cứng FG/RM theo route. `GET /inventory/balances` giữ hành vi cũ hơn: bỏ trống `itemType` trả FG/RM,
   gửi tường minh `itemType=WIP` vẫn xem được (luôn rỗng, chỉ để đối chiếu/debug). `GET
   /inventory/transactions` không đổi — vẫn liệt kê mọi loại.
-- `WarehousesService.ensureWarehouseNotInUse` kiểm tồn tại trực tiếp trên
-  `outsourcing_orders`/`supplier_returns` theo `warehouseId` — vì đường gián tiếp qua
-  `inventory_transactions` (từng có do `create` gọi `postDocument`) đã biến mất.
 
 ## Giữ nguyên, không đổi
 
 - `InventoryReferenceType.OUTSOURCING_ORDER`/`OUTSOURCING_RECEIPT` vẫn còn trong pgEnum (gỡ phải
-  migrate cột dùng chung 5 bảng), chỉ không còn nguồn nào phát sinh giá trị mới.
-- `warehouseId` trên `outsourcing_orders` — vẫn là thông tin "hàng đi khỏi kho nào", chỉ không còn
-  dùng để ghi bút toán.
-- `ensureWarehouseActive`, `E184`/`E172`, `E169`/`E173` chặn `cancel`.
+  migrate cột dùng chung), chỉ không còn nguồn nào phát sinh giá trị mới.
+- `E184`/`E172`, `E169`/`E173` chặn `cancel`.
 - Phiếu nhập/xuất kho lập tay không bị chặn cứng chọn WIP — người dùng vẫn tự chọn được nếu muốn,
   chỉ là kho không quản tồn đó theo mặc định.
 
-## `outsourcing_receipts` không giữ `warehouseId`
+## `warehouseId` đã bỏ khỏi toàn hệ thống, không riêng gia công ngoài
 
-Khác `outsourcing_orders`, OS-IN **không có cột `warehouseId`** — phiếu nhận gia công ngoài không
-cần biết hàng về kho nào (hàng gia công về thẳng chuyền/NCC tiếp theo, không nhập kho vật lý). Hệ
-quả: `IqcService.resolveReturnWarehouseId` chỉ còn `inventoryReceipt.warehouseId ??
-purchaseOrder.receiptWarehouseId ?? null` — IQC FAIL với `disposition=RETURN` sinh từ một phiếu
-OS-IN **luôn** trả `E163` (không xác định được kho nguồn) cho tới khi có thiết kế khác (một điểm
-nhập kho riêng cho hàng gia công ngoài, hoặc chọn tay kho trả hàng). Chấp nhận có chủ ý.
+`docs/decisions/single-warehouse.md` bỏ hẳn khái niệm kho (chỉ 1 kho vật lý duy nhất) — cột
+`outsourcing_orders.warehouseId` (từng là cột chết giữ lại "cho không mất dữ liệu cũ") và
+`IqcService.resolveReturnWarehouseId` cũng bị xoá theo, không còn nữa. Hệ quả tích cực: giới hạn cũ
+"`disposition=RETURN` sinh từ IQC của OS-IN luôn trả `E163`" (không suy được kho trả, vì
+`outsourcing_receipts` chưa từng có cột `warehouseId`) **không còn tồn tại** — `supplier_returns`
+không còn cột `warehouseId` để suy, `shouldPostStock` chỉ còn xét `outsourcingReceiptId`.
 
 ## Đừng hoàn lại
 
@@ -63,5 +58,6 @@ toán hay không — không phải bật lại `postDocument` trong `createOutso
 ## Related docs
 
 `docs/decisions/outsourcing-no-draft.md` (quyết định liền trước — không đảo ngược gì ở đó, chỉ bỏ
-tiếp phần ghi bút toán). `docs/domains/inventory.md`, `docs/workflows/outsourcing-round-trip.md`,
+tiếp phần ghi bút toán). `docs/decisions/single-warehouse.md` (bỏ hẳn khái niệm kho).
+`docs/domains/inventory.md`, `docs/workflows/outsourcing-round-trip.md`,
 `docs/workflows/supplier-return.md`.

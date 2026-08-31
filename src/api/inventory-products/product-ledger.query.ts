@@ -7,11 +7,7 @@ import { inventoryTransactions } from '../../database/schemas';
  * — không lọc theo khoảng ngày ở đây, nếu không số luỹ kế của các dòng còn lại sẽ sai. Nơi gọi lọc
  * ngày + phân trang ở query ngoài, sau khi đã có `balanceAfter` đúng (`docs/domains/inventory.md`).
  */
-export function productLedgerSubquery(
-  db: Database,
-  itemId: string,
-  warehouseId?: string,
-) {
+export function productLedgerSubquery(db: Database, itemId: string) {
   return db
     .select({
       ...getTableColumns(inventoryTransactions),
@@ -24,14 +20,7 @@ export function productLedgerSubquery(
         .as('balance_after'),
     })
     .from(inventoryTransactions)
-    .where(
-      and(
-        eq(inventoryTransactions.itemId, itemId),
-        warehouseId
-          ? eq(inventoryTransactions.warehouseId, warehouseId)
-          : undefined,
-      ),
-    )
+    .where(eq(inventoryTransactions.itemId, itemId))
     .as('ledger');
 }
 

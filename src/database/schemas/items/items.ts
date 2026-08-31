@@ -17,6 +17,7 @@ import { suppliers } from '../suppliers/suppliers';
 import { units } from '../units/units';
 import { users } from '../identity-access/users';
 import { itemFiles } from './item-files';
+import { itemUnits } from './item-units';
 
 /**
  * FG (thành phẩm, gốc cây BOM của chính nó), WIP (bán thành phẩm, chỉ xuất hiện như node con trong
@@ -138,6 +139,7 @@ export const items = pgTable(
 
 export const itemsRelations = relations(items, ({ one, many }) => ({
   files: many(itemFiles),
+  units: many(itemUnits),
   client: one(clients, {
     fields: [items.clientId],
     references: [clients.id],

@@ -13,16 +13,15 @@ import {
 // tồn thật (tính tiếp là trừ hai lần), `REJECTED`/`CANCELLED` nhả chỗ.
 const HOLDING_STATUS = InventoryRequisitionStatus.APPROVED;
 
-/** Σ SL lãnh mọi phiếu đang giữ chỗ (`HOLDING_STATUS`), theo `(warehouseId, itemId)` — "Đã giữ",
- * LEFT JOIN thẳng vào SELECT hiển thị (popup/tab chi tiết). Dùng chung khuôn
- * `sentQuantityByJobOperationSubquery` (`outsourcing-orders.query.ts`). */
+/** Σ SL lãnh mọi phiếu đang giữ chỗ (`HOLDING_STATUS`), theo `itemId` — "Đã giữ", LEFT JOIN thẳng
+ * vào SELECT hiển thị (popup/tab chi tiết). Dùng chung khuôn `sentQuantityByJobOperationSubquery`
+ * (`outsourcing-orders.query.ts`). */
 export function reservedQuantitySubquery(db: Database) {
   return db
     .select({
-      warehouseId: inventoryRequisitions.warehouseId,
       itemId: inventoryRequisitionItems.itemId,
-      // Alias SQL cố ý khác tên cột JS `reservedQuantity` — `inventory_balances` cũng có cột thật
-      // `reserved_quantity`, trùng tên gây "ambiguous column" khi cả hai cùng LEFT JOIN một query.
+      // Alias SQL cố ý khác tên cột JS `reservedQuantity` — `inventory_balances` cũng từng có cột
+      // cùng tên, giữ khác biệt cho rõ.
       reservedQuantity: sql<number>`sum(${inventoryRequisitionItems.quantity})`
         .mapWith(Number)
         .as('requisition_held_quantity'),
@@ -33,26 +32,19 @@ export function reservedQuantitySubquery(db: Database) {
       eq(inventoryRequisitions.id, inventoryRequisitionItems.requisitionId),
     )
     .where(eq(inventoryRequisitions.status, HOLDING_STATUS))
-    .groupBy(
-      inventoryRequisitions.warehouseId,
-      inventoryRequisitionItems.itemId,
-    )
-    .as('reserved_quantity_by_warehouse_item');
+    .groupBy(inventoryRequisitionItems.itemId)
+    .as('reserved_quantity_by_item');
 }
 
-/** Bản gộp theo `itemId` (không theo kho) của `reservedQuantitySubquery` — `GET /inventory` gộp mọi
- * kho (hoặc lọc đúng một kho qua `warehouseId`), không group được theo `(kho, vật tư)`. Field trả
- * về `heldQuantity`, cố ý khác `reservedQuantity` của hàm gốc để không đọc nhầm 2 hàm là một.
+/** Bản gộp theo `itemId` của `reservedQuantitySubquery` — field trả về `heldQuantity`, cố ý khác
+ * `reservedQuantity` của hàm gốc để không đọc nhầm 2 hàm là một.
  *
  * `heldForJobsQuantity` tách riêng phần giữ có gắn `productionJobId` (`type = PRODUCTION`) — chỉ
  * phần này mới trùng với `remainingBomDemandByItemSubquery` (nguồn `production_job_issues`) nên
  * mới được trừ chéo ở `InventoryService.getInventory`; phiếu `type = OTHER` không có Job nên không
  * có nhu cầu BOM đối ứng để trùng, trộn chung vào `heldQuantity` rồi trừ chéo sẽ trừ nhầm phần
  * chưa từng bị cộng trùng. Xem `docs/domains/inventory.md`. */
-export function requisitionHeldQuantityByItemSubquery(
-  db: Database,
-  warehouseId?: string,
-) {
+export function requisitionHeldQuantityByItemSubquery(db: Database) {
   return db
     .select({
       itemId: inventoryRequisitionItems.itemId,
@@ -69,14 +61,7 @@ export function requisitionHeldQuantityByItemSubquery(
       inventoryRequisitions,
       eq(inventoryRequisitions.id, inventoryRequisitionItems.requisitionId),
     )
-    .where(
-      and(
-        eq(inventoryRequisitions.status, HOLDING_STATUS),
-        warehouseId
-          ? eq(inventoryRequisitions.warehouseId, warehouseId)
-          : undefined,
-      ),
-    )
+    .where(eq(inventoryRequisitions.status, HOLDING_STATUS))
     .groupBy(inventoryRequisitionItems.itemId)
     .as('requisition_held_by_item');
 }
@@ -86,7 +71,6 @@ export function requisitionHeldQuantityByItemSubquery(
 export async function getReservedQuantities(
   db: Database | DbTransaction,
   params: {
-    warehouseId: string;
     itemIds: string[];
   },
 ): Promise<Map<string, number>> {
@@ -107,7 +91,6 @@ export async function getReservedQuantities(
     )
     .where(
       and(
-        eq(inventoryRequisitions.warehouseId, params.warehouseId),
         eq(inventoryRequisitions.status, HOLDING_STATUS),
         inArray(inventoryRequisitionItems.itemId, params.itemIds),
       ),
@@ -177,7 +160,7 @@ export async function getIssuedQuantities(
   return new Map(rows.map((row) => [row.itemId, row.issuedQuantity]));
 }
 
-/** "Khả dụng" — theo `itemId`, KHÔNG scope theo kho/Job: `Tồn thực tế − Σ max(requiredQty −
+/** "Khả dụng" — theo `itemId`, KHÔNG scope theo Job: `Tồn thực tế − Σ max(requiredQty −
  * Đã lãnh, 0)` cộng dồn mọi Job đang mở, cố ý có thể âm (chỉ báo thiếu, không chặn thao tác nào,
  * khác "Có thể lãnh"). Trừ phần **còn lại** (không phải nguyên `requiredQty`) vì Job không có trạng
  * thái kết thúc (`docs/domains/production.md`) — trừ nguyên `requiredQty` mãi mãi sẽ làm số càng
@@ -207,8 +190,8 @@ export function remainingBomDemandByItemSubquery(db: Database) {
 
 /** 4 cột số spread vào cả ba `.select()` đọc dòng vật tư (chi tiết phiếu + 2 popup) — cùng khuôn
  * `itemStockColumns` (`inventory/item-stock.query.ts`). Nơi gọi phải LEFT JOIN sẵn
- * `inventory_balances` + hai subquery theo đúng `(kho, vật tư)`; `availableQuantity` cố ý có thể
- * âm, `issuableQuantity` mới là số dùng để chặn. */
+ * `inventory_balances` + hai subquery theo đúng `itemId`; `availableQuantity` cố ý có thể âm,
+ * `issuableQuantity` mới là số dùng để chặn. */
 export function requisitionStockColumns(
   reserved: ReturnType<typeof reservedQuantitySubquery>,
   remainingDemand: ReturnType<typeof remainingBomDemandByItemSubquery>,

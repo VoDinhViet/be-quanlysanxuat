@@ -5,7 +5,6 @@ import {
   InventoryIssueType,
 } from '../../../database/schemas';
 import {
-  ClassField,
   ClassFieldOptional,
   DateField,
   DateFieldOptional,
@@ -18,7 +17,6 @@ import { DepartmentResDto } from '../../departments/dto/department.res.dto';
 import { ProductionJobRefResDto } from '../../production-jobs/dto/production-job-ref.res.dto';
 import { ProductionOrderRefResDto } from '../../production-orders/dto/production-order-ref.res.dto';
 import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
-import { WarehouseRefResDto } from '../../warehouses/dto/warehouse-ref.res.dto';
 import { InventoryIssueItemResDto } from './inventory-issue-item.res.dto';
 
 @Exclude()
@@ -30,10 +28,6 @@ export class InventoryIssueResDto {
   @Expose()
   @StringField({ description: 'Mã phiếu' })
   code!: string;
-
-  @Expose()
-  @ClassField(() => WarehouseRefResDto)
-  warehouse!: WarehouseRefResDto;
 
   @Expose()
   @EnumField(() => InventoryIssueType)

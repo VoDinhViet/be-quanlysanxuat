@@ -17,7 +17,6 @@ import {
   inventoryDocumentStatusEnum,
 } from './inventory-documents';
 import { inventoryReceiptItems } from './inventory-receipt-items';
-import { warehouses } from './warehouses';
 import { clients } from '../clients/clients';
 import { productionJobs } from '../production/production-jobs';
 import { productionOrders } from '../production/production-orders';
@@ -30,14 +29,12 @@ export enum InventoryReceiptType {
   PURCHASE = 'PURCHASE',
   PRODUCTION = 'PRODUCTION',
   RETURN = 'RETURN',
-  ADJUSTMENT = 'ADJUSTMENT',
 }
 
 export const inventoryReceiptTypeEnum = pgEnum('inventory_receipt_type', [
   InventoryReceiptType.PURCHASE,
   InventoryReceiptType.PRODUCTION,
   InventoryReceiptType.RETURN,
-  InventoryReceiptType.ADJUSTMENT,
 ]);
 
 export enum InventoryReceiptAssetType {
@@ -61,9 +58,6 @@ export const inventoryReceipts = pgTable(
   {
     id: uuid('id').defaultRandom().primaryKey(),
     code: varchar('code', { length: 50 }).notNull().unique(),
-    warehouseId: uuid('warehouse_id')
-      .notNull()
-      .references(() => warehouses.id, { onDelete: 'restrict' }),
     receiptType: inventoryReceiptTypeEnum('receipt_type').notNull(),
     status: inventoryDocumentStatusEnum('status')
       .notNull()
@@ -107,6 +101,12 @@ export const inventoryReceipts = pgTable(
       { onDelete: 'set null' },
     ),
     note: varchar('note', { length: 1000 }),
+    // Ghi ở `confirm` — khác `postedBy`/`postedAt` (ghi ở `post`), hai mốc/hai người có thể khác
+    // nhau (`docs/workflows/receipt-confirmation.md`).
+    confirmedBy: uuid('confirmed_by').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    confirmedAt: timestamp('confirmed_at'),
     postedBy: uuid('posted_by').references(() => users.id, {
       onDelete: 'set null',
     }),
@@ -121,7 +121,6 @@ export const inventoryReceipts = pgTable(
       .$onUpdate(() => new Date()),
   },
   (table) => [
-    index('idx_inventory_receipts_warehouse_id').on(table.warehouseId),
     index('idx_inventory_receipts_status').on(table.status),
     index('idx_inventory_receipts_receipt_type').on(table.receiptType),
     index('idx_inventory_receipts_receipt_date').on(table.receiptDate),
@@ -136,6 +135,7 @@ export const inventoryReceipts = pgTable(
     index('idx_inventory_receipts_purchase_request_id').on(
       table.purchaseRequestId,
     ),
+    index('idx_inventory_receipts_confirmed_by').on(table.confirmedBy),
     index('idx_inventory_receipts_posted_by').on(table.postedBy),
     check(
       'chk_inventory_receipts_supplier_client_exclusive',
@@ -147,10 +147,6 @@ export const inventoryReceipts = pgTable(
 export const inventoryReceiptsRelations = relations(
   inventoryReceipts,
   ({ one, many }) => ({
-    warehouse: one(warehouses, {
-      fields: [inventoryReceipts.warehouseId],
-      references: [warehouses.id],
-    }),
     supplier: one(suppliers, {
       fields: [inventoryReceipts.supplierId],
       references: [suppliers.id],
@@ -174,6 +170,10 @@ export const inventoryReceiptsRelations = relations(
     purchaseOrder: one(purchaseOrders, {
       fields: [inventoryReceipts.purchaseOrderId],
       references: [purchaseOrders.id],
+    }),
+    confirmerBy: one(users, {
+      fields: [inventoryReceipts.confirmedBy],
+      references: [users.id],
     }),
     posterBy: one(users, {
       fields: [inventoryReceipts.postedBy],

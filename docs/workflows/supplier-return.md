@@ -24,7 +24,6 @@ là bên xác nhận vật lý, khác vai trò với QC.
 | Điều kiện | Tự sinh (trong `confirm`) | `post` |
 | --- | --- | --- |
 | Dòng IQC tồn tại, đang lưu được | `E138`/`E159` (đã kiểm ở đầu `confirm`) | — |
-| Suy được kho trả (`receipt.warehouseId ?? purchaseOrder.receiptWarehouseId`) | `E163` | — |
 | `disposition = SORT` phải có `sortOkQty`/`sortNgQty` hợp lệ | `E160`/`E161`/`E162` (đã kiểm ở `validateDecision`, xem `docs/domains/quality-iqc.md`) | — |
 | Phiếu trả tồn tại | — | `E137` |
 | Đúng trạng thái nguồn (`DRAFT`) | — | `E098` |
@@ -35,12 +34,9 @@ là bên xác nhận vật lý, khác vai trò với QC.
 ### Tự sinh (trong transaction của `IqcService.confirmIqc`)
 
 1. `confirmIqc` tính `status` mới từ `resolveIqcStatus(reqDto.result, reqDto.disposition)`. Ra
-   `IN_PROGRESS` (`FAIL` + `SORT`/`RETURN`) thì, **trước** khi mở transaction, suy sẵn:
-   - `warehouseId` — đọc phiếu nhập liên quan (`inspection.inventoryReceiptId`) trước, PO liên quan
-     (`inspection.purchaseOrderId`) sau; không suy được cả hai → `E163`, dừng trước khi ghi bất cứ
-     gì (dòng IQC tạo tay không gắn phiếu/PO nào rơi vào ca này).
-   - `quantity` — `RETURN` lấy cả `inspection.quantity`; `SORT` lấy `reqDto.sortNgQty` (đã đảm bảo
-     hợp lệ ở `validateDecision`, cộng đúng `quantity` cùng `sortOkQty`).
+   `IN_PROGRESS` (`FAIL` + `SORT`/`RETURN`) thì, **trước** khi mở transaction, suy sẵn `quantity` —
+   `RETURN` lấy cả `inspection.quantity`; `SORT` lấy `reqDto.sortNgQty` (đã đảm bảo hợp lệ ở
+   `validateDecision`, cộng đúng `quantity` cùng `sortOkQty`).
 2. Trong transaction, sau khi khoá `quality_inspections` (`FOR UPDATE`), insert 1 dòng
    `quality_inspection_results` (attempt — khoá `IN_PROGRESS` trên mirror `quality_inspections`) và
    insert (không phải replace) 2 bộ file đính kèm cho attempt đó, gọi
@@ -114,8 +110,8 @@ thể ra cùng mã.
 
 ## Failure cases
 
-`E138` (dòng IQC không tồn tại), `E159` (lưu lại kết quả QC khi đã `IN_PROGRESS`), `E163`
-(không suy được kho trả), `E137` (phiếu trả không tồn tại), `E098` (`post` khi không còn `DRAFT`),
+`E138` (dòng IQC không tồn tại), `E159` (lưu lại kết quả QC khi đã `IN_PROGRESS`),
+`E137` (phiếu trả không tồn tại), `E098` (`post` khi không còn `DRAFT`),
 `E106` (thiếu tồn — chỉ có thể xảy ra khi `shouldPostStock = true` mà tồn thực tế đã bị tiêu bởi
 giao dịch khác từ lúc phiếu nhập `post`; **không bao giờ** xảy ra ở nhánh sinh từ OS-IN vì
 `shouldPostStock` luôn `false` ở đó), `E164` (hoàn tất IQC khi không còn `IN_PROGRESS` — về

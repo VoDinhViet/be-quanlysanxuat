@@ -12,10 +12,13 @@ import {
 import { inventoryReceipts } from './inventory-receipts';
 import { items } from '../items/items';
 import { purchaseOrderItems } from '../purchasing/purchase-order-items';
+import { units } from '../units/units';
 
 /** Một dòng phiếu nhập. `quantity` luôn dương — dấu chỉ xuất hiện ở bút toán sinh ra lúc `post`,
  * không ở đây. `purchaseOrderItemId` là nguồn duy nhất để sổ cái mua hàng tính "SL đã nhập kho"
- * theo từng dòng vật tư (`docs/domains/purchasing.md`) — chỉ đọc khi phiếu `POSTED`. */
+ * theo từng dòng vật tư (`docs/domains/purchasing.md`) — chỉ đọc khi phiếu `POSTED`. `unitId` chỉ
+ * để hiển thị (`docs/decisions/unit-conversion.md`) — không quy đổi, mọi bút toán/so sánh định mức
+ * đọc thẳng `quantity`. */
 export const inventoryReceiptItems = pgTable(
   'inventory_receipt_items',
   {
@@ -30,6 +33,9 @@ export const inventoryReceiptItems = pgTable(
       () => purchaseOrderItems.id,
       { onDelete: 'set null' },
     ),
+    unitId: uuid('unit_id')
+      .notNull()
+      .references(() => units.id, { onDelete: 'restrict' }),
     quantity: numeric('quantity', {
       precision: 18,
       scale: 3,
@@ -53,6 +59,7 @@ export const inventoryReceiptItems = pgTable(
     index('idx_inventory_receipt_items_purchase_order_item_id').on(
       table.purchaseOrderItemId,
     ),
+    index('idx_inventory_receipt_items_unit_id').on(table.unitId),
     check('chk_inventory_receipt_items_quantity_positive', sql`quantity > 0`),
     check(
       'chk_inventory_receipt_items_unit_price',
@@ -75,6 +82,10 @@ export const inventoryReceiptItemsRelations = relations(
     purchaseOrderItem: one(purchaseOrderItems, {
       fields: [inventoryReceiptItems.purchaseOrderItemId],
       references: [purchaseOrderItems.id],
+    }),
+    unit: one(units, {
+      fields: [inventoryReceiptItems.unitId],
+      references: [units.id],
     }),
   }),
 );

@@ -18,11 +18,10 @@ const HOLDING_STATUSES = [
 ];
 
 /** Σ SL mọi dòng DO đang giữ chỗ, theo `itemId` — "Đã giữ" của thành phẩm bởi chứng từ giao hàng,
- * cùng khuôn `reservedQuantitySubquery` (`inventory-requisitions.query.ts`). `outbound_orders`
- * không có cột kho — `deliver` luôn rút từ đúng một kho FG (`resolveFgWarehouseId`, `E238`) nên số
- * này toàn cục, không scope được theo `warehouseId`. `excludeOutboundOrderId` (BUG-090, dùng ở
- * trang Chi tiết/Sửa) loại chính phiếu đang xem — cùng lý do `getOutboundHeldQuantities` bên dưới
- * loại phiếu đang duyệt: nó không được trừ nhu cầu của chính mình. */
+ * cùng khuôn `reservedQuantitySubquery` (`inventory-requisitions.query.ts`). `excludeOutboundOrderId`
+ * (BUG-090, dùng ở trang Chi tiết/Sửa) loại chính phiếu đang xem — cùng lý do
+ * `getOutboundHeldQuantities` bên dưới loại phiếu đang duyệt: nó không được trừ nhu cầu của
+ * chính mình. */
 export function outboundHeldQuantityByItemSubquery(
   db: Database,
   excludeOutboundOrderId?: string,

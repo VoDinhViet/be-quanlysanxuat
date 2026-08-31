@@ -22,7 +22,6 @@ import {
   inventoryTransactions,
 } from '../schemas/inventory/inventory-transactions';
 import { suppliers } from '../schemas/suppliers/suppliers';
-import { warehouses } from '../schemas/inventory/warehouses';
 
 type SeedDatabase = ReturnType<typeof drizzle<typeof schema>>;
 
@@ -31,8 +30,8 @@ type SeedDatabase = ReturnType<typeof drizzle<typeof schema>>;
 // `InventoryPostingService`, phải tự replay đúng thứ tự `applyLine` (balance trước, bút toán sau).
 // Cố tình KHÔNG seed tồn FG/WIP — có tồn FG sẽ làm `ProductionOrdersService` tụt SL đề xuất sản
 // xuất (thậm chí về 0, không sinh Job nào), phá luôn kịch bản test đường tự sinh đề xuất mua hàng.
-// Không đảo ngược được: `KHO-NVL` sau khi có dòng sẽ không xoá được nữa (`E095`), và
-// `inventory_transactions` append-only — gỡ sạch phải DELETE tay theo `reference_id`.
+// Không đảo ngược được — `inventory_transactions` append-only, gỡ sạch phải DELETE tay theo
+// `reference_id`.
 interface MaterialStockSeed {
   code: string;
   quantity: number;
@@ -141,16 +140,6 @@ async function seedMaterialStock(db: SeedDatabase): Promise<void> {
 
   const userId = admin?.userId ?? null;
 
-  const warehouse = await db.query.warehouses.findFirst({
-    where: eq(warehouses.code, 'KHO-NVL'),
-  });
-
-  if (!warehouse) {
-    throw new Error(
-      'Warehouse "KHO-NVL" not found — run `pnpm db:seed:warehouses` first.',
-    );
-  }
-
   const materialCodes = MATERIAL_STOCK.map((m) => m.code);
   const materialRows = await db.query.items.findMany({
     where: and(
@@ -158,7 +147,7 @@ async function seedMaterialStock(db: SeedDatabase): Promise<void> {
       isNull(items.deletedAt),
       inArray(items.code, materialCodes),
     ),
-    columns: { id: true, code: true, minStock: true },
+    columns: { id: true, code: true, minStock: true, unitId: true },
   });
 
   if (materialRows.length === 0) {
@@ -217,9 +206,8 @@ async function seedMaterialStock(db: SeedDatabase): Promise<void> {
     console.log(`Item "${spec.code}" minStock set to ${spec.minStock}.`);
   }
 
-  // Pass B — tồn kho. Khoá idempotency là unique thật (warehouseId, itemId) trên
-  // inventory_balances, không phải mã phiếu — mã phiếu do app tạo độc lập, dùng nó làm khoá dễ đụng
-  // hàng của app.
+  // Pass B — tồn kho. Khoá idempotency là unique thật (itemId) trên inventory_balances, không phải
+  // mã phiếu — mã phiếu do app tạo độc lập, dùng nó làm khoá dễ đụng hàng của app.
   const quantityByCode = new Map(
     MATERIAL_STOCK.filter((m) => m.quantity > 0).map((m) => [
       m.code,
@@ -234,10 +222,7 @@ async function seedMaterialStock(db: SeedDatabase): Promise<void> {
     }
 
     const existingBalance = await db.query.inventoryBalances.findFirst({
-      where: and(
-        eq(inventoryBalances.warehouseId, warehouse.id),
-        eq(inventoryBalances.itemId, item.id),
-      ),
+      where: eq(inventoryBalances.itemId, item.id),
       columns: { quantity: true },
     });
 
@@ -294,7 +279,6 @@ async function seedMaterialStock(db: SeedDatabase): Promise<void> {
         .insert(inventoryReceipts)
         .values({
           code,
-          warehouseId: warehouse.id,
           receiptType: InventoryReceiptType.PURCHASE,
           status: InventoryDocumentStatus.POSTED,
           receiptDate,
@@ -312,18 +296,17 @@ async function seedMaterialStock(db: SeedDatabase): Promise<void> {
         await tx.insert(inventoryReceiptItems).values({
           receiptId: receipt.id,
           itemId: item.id,
+          unitId: item.unitId,
           quantity,
           unitPrice: line.unitPrice,
         });
 
         await tx.insert(inventoryBalances).values({
-          warehouseId: warehouse.id,
           itemId: item.id,
           quantity,
         });
 
         await tx.insert(inventoryTransactions).values({
-          warehouseId: warehouse.id,
           itemId: item.id,
           type: InventoryTransactionType.RECEIPT,
           quantity,

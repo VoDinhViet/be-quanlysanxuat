@@ -11,9 +11,6 @@ import {
 } from '../../../decorators/field.decorators';
 
 export class GetInventoryTransactionsReqDto extends PageOptionsDto {
-  @UUIDFieldOptional()
-  readonly warehouseId?: string;
-
   @EnumFieldOptional(() => ItemType)
   readonly itemType?: ItemType;
 

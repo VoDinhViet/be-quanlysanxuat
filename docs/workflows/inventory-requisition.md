@@ -48,7 +48,7 @@ DRAFT ──send──> PENDING_APPROVAL ──approve──> APPROVED ──iss
    - `SELECT … FOR UPDATE` header + mọi dòng `inventory_balances` liên quan (`itemIds` sort tăng dần
      để hai phiếu chồng nhau không deadlock).
    - `Có thể lãnh = Tồn thực tế − Đã giữ` (Đã giữ = Σ SL lãnh mọi phiếu khác đang `APPROVED` cùng
-     `(warehouseId, itemId)`) — dòng nào SL lãnh vượt → `E231`.
+     `itemId`) — dòng nào SL lãnh vượt → `E231`.
    - `type = PRODUCTION`: `SL lãnh ≤ requiredQty − Đã lãnh` (Đã lãnh = Σ SL lãnh mọi phiếu `ISSUED`
      cùng `(productionJobId, itemId)`) — vượt → `E232`.
    - `UPDATE status = APPROVED`. **Không đụng tồn kho** — "Đã giữ" là số tính lúc đọc, không có cột
@@ -57,7 +57,7 @@ DRAFT ──send──> PENDING_APPROVAL ──approve──> APPROVED ──iss
 4. **Xuất kho** (`issueInventoryRequisition`, `APPROVED → ISSUED`) — toàn bộ trong 1 transaction:
    - `SELECT … FOR UPDATE` header → `E226` nếu không còn `APPROVED`; `E227` nếu 0 dòng.
    - Gate IQC (`hasPendingIqcForItems`, `src/api/iqc/iqc.query.ts`) — còn IQC `INCOMING` chưa
-     `COMPLETED` của cùng `(itemId, warehouseId)` → `E203`, cùng gate `inventory-issues` đang chạy.
+     `COMPLETED` của cùng `itemId` → `E203`, cùng gate `inventory-issues` đang chạy.
    - Sinh mã `PXK-{năm}-{5}` → insert `inventory_issues` (`POSTED` ngay, `issueType = PRODUCTION` dù
      `type` gốc là `PRODUCTION` hay `OTHER` — xem lý do ở `docs/domains/inventory.md`) +
      `inventory_issue_items` copy từ dòng phiếu lãnh.
@@ -95,7 +95,7 @@ chạm ≥ 2 module (ghi `inventory_issues`/`inventory_issue_items`, gọi
 | `E231` | SL lãnh > Có thể lãnh (Tồn − Đã giữ)                                                                  |
 | `E232` | `type = PRODUCTION`: SL lãnh > SL BOM còn lại (requiredQty − Đã lãnh)                                 |
 | `E233` | `type = PRODUCTION` thiếu `productionJobId`                                                           |
-| `E203` | `issue`: còn IQC `INCOMING` chưa `COMPLETED` cùng `(item, kho)`                                       |
+| `E203` | `issue`: còn IQC `INCOMING` chưa `COMPLETED` cùng item                                              |
 | `E234` | `POST`/`PATCH /inventory-issues` với `issueType = PRODUCTION` — đường cũ bị chặn, phải qua module này |
 | `E235` | `cancel` một `inventory_issues` do phiếu lãnh sinh ra                                                 |
 

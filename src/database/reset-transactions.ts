@@ -9,8 +9,8 @@ import postgres from 'postgres';
 
 /**
  * Wipe chứng từ giao dịch (đơn hàng, LSX, kho, mua hàng, QC) trên một DB đang chạy thật, giữ
- * nguyên toàn bộ master data (items/BOM/routing, clients, suppliers, units, operations,
- * warehouses, QC AQL, countries) và toàn bộ tài khoản đăng nhập. Khác `reset-data.ts` (chỉ dùng
+ * nguyên toàn bộ master data (items/BOM/routing, clients, suppliers, units, item_units, operations,
+ * QC AQL, countries) và toàn bộ tài khoản đăng nhập. Khác `reset-data.ts` (chỉ dùng
  * cho dev, wipe gần hết trừ 1 admin): công cụ này CHO PHÉP chạy trên `NODE_ENV=production`, nên
  * đổi hẳn cơ chế an toàn — hai danh sách bảng tường minh + fail-closed thay vì suy ra động, và
  * TRUNCATE không CASCADE để Postgres tự chặn nếu thiếu một bảng giao dịch nào đó.
@@ -30,8 +30,8 @@ const KEEP_TABLES = [
   'document_sequences',
   'units',
   'unit_scopes',
+  'item_units',
   'operations',
-  'warehouses',
   'client_groups',
   'clients',
   'client_contacts',
@@ -75,6 +75,8 @@ const WIPE_TABLES = [
   'inventory_issue_items',
   'inventory_requisitions',
   'inventory_requisition_items',
+  'inventory_adjustments',
+  'inventory_adjustment_items',
   'outbound_orders',
   'outbound_order_items',
   'inventory_transactions',
@@ -105,15 +107,14 @@ const WIPE_TABLES = [
 
 // Loại chứng từ cấp mã cho master data đang giữ — reset counter về 0 sẽ đâm vào mã đang sống
 // ngay lần tạo tiếp theo (`items` dùng partial unique index `uq_items_code_active`, và
-// `document-sequences-bootstrap.seed.ts` không phủ ITEM_RM/ITEM_FG_WIP/WAREHOUSE nên không có
-// đường phục hồi tự động).
+// `document-sequences-bootstrap.seed.ts` không phủ ITEM_RM/ITEM_FG_WIP nên không có đường phục
+// hồi tự động).
 const KEEP_DOCUMENT_TYPES = [
   'ITEM_RM',
   'ITEM_FG_WIP',
   'CLIENT',
   'SUPPLIER',
   'USER',
-  'WAREHOUSE',
 ] as const;
 
 function parseArgs() {

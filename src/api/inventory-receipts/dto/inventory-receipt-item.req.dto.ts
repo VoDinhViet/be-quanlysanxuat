@@ -15,7 +15,13 @@ export class InventoryReceiptItemReqDto {
   })
   readonly purchaseOrderItemId?: string;
 
-  @NumberField({ isPositive: true, description: 'Số lượng' })
+  @UUIDFieldOptional({
+    description:
+      'Đơn vị nhập liệu — mặc định đơn vị gốc của item; phải có trong item_units nếu khác',
+  })
+  readonly unitId?: string;
+
+  @NumberField({ isPositive: true, description: 'Số lượng theo unitId' })
   readonly quantity!: number;
 
   @NumberFieldOptional({

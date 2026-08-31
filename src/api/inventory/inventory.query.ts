@@ -16,11 +16,7 @@ import { StockStatus } from './inventory.constant';
  * cộng lại từ `inventory_transactions` với `transactionDate <= asOfDate`. Không tự lọc theo loại
  * item — nơi gọi join/lọc `items` ở tầng ngoài, subquery chỉ gộp theo `itemId`. Dùng chung giữa
  * `InventoryService`, `inventory-products`, `inventory-materials`. */
-export function balanceByItemSubquery(
-  db: Database,
-  asOfDate?: Date,
-  warehouseId?: string,
-) {
+export function balanceByItemSubquery(db: Database, asOfDate?: Date) {
   if (asOfDate) {
     return db
       .select({
@@ -30,14 +26,7 @@ export function balanceByItemSubquery(
           .as('on_hand'),
       })
       .from(inventoryTransactions)
-      .where(
-        and(
-          lte(inventoryTransactions.transactionDate, asOfDate),
-          warehouseId
-            ? eq(inventoryTransactions.warehouseId, warehouseId)
-            : undefined,
-        ),
-      )
+      .where(lte(inventoryTransactions.transactionDate, asOfDate))
       .groupBy(inventoryTransactions.itemId)
       .as('item_on_hand');
   }
@@ -50,9 +39,6 @@ export function balanceByItemSubquery(
         .as('on_hand'),
     })
     .from(inventoryBalances)
-    .where(
-      warehouseId ? eq(inventoryBalances.warehouseId, warehouseId) : undefined,
-    )
     .groupBy(inventoryBalances.itemId)
     .as('item_balance');
 }

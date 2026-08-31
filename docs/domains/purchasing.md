@@ -77,8 +77,7 @@ RFQ:  DRAFT ──send (E131/E130/E120)────> PENDING_APPROVAL
       APPROVED ──recall (chưa PO nào ORDERED, E133)──> DRAFT
 
 PO:   (lập tay: E249 trùng dòng ĐXMH, E125 dòng không APPROVED/đã huỷ, E019 NCC)
-      (hoặc tự sinh DRAFT từ approve RFQ) — `receiptWarehouseId` BE tự gán ngay lúc tạo (kho RM
-      duy nhất, `resolveReceiptWarehouseId`), không còn picker
+      (hoặc tự sinh DRAFT từ approve RFQ)
       DRAFT ──confirm (đủ ngày giao+paymentTerm+mọi dòng có giá, E134/E156/E135)──> ORDERED
       DRAFT/ORDERED ──cancel (chưa có phiếu nhập POSTED nối tới, E124)──> CANCELLED
 ```
@@ -117,8 +116,6 @@ paymentTerm`. PO `confirm` trước khi có gate `E156` (không `paymentTerm`) t
   giá (`E120`). RFQ không hợp lệ transition khác → `E118`.
 - `cancel` PO chặn nếu đã có phiếu nhập `POSTED` nối tới (`E124`), hoặc đã `CANCELLED` (`E122`).
 - `confirm` PO chặn thiếu `expectedDate`/`paymentTerm`/giá dòng (`E134`/`E156`/`E135`).
-  `receiptWarehouseId` không còn là điều kiện chặn — nếu vì lý do gì đó PO vẫn chưa có (tạo trước
-  khi có tự gán), `confirm` backfill tại chỗ; `E155` giờ chỉ ném khi danh mục kho thiếu kho RM.
 - Mã (`RFQ-`/`PO-`) bất biến, unique toàn bảng, cấp qua `document_sequences`.
 
 ## Cross-domain dependencies
@@ -129,9 +126,6 @@ paymentTerm`. PO `confirm` trước khi có gate `E156` (không `paymentTerm`) t
   validate PO `ORDERED` + SL cộng dồn ≤ SL đặt (`E121`/`E145`/`E123`/`E127`/`E154`). Chiều ngược:
   `orderReceivedQuantitySubquery` đọc `inventory_receipt_items POSTED` tính tiến độ nhận;
   `postInventoryReceipt` gọi `createIfOrderCompleted` (Payment Requests) cùng transaction.
-- **→ Warehouses**: `purchase_orders.receiptWarehouseId` — BE tự resolve kho loại RM duy nhất
-  (`resolveReceiptWarehouseId`) lúc tạo PO (lập tay lẫn tự sinh từ RFQ) và backfill ở `confirm`
-  nếu còn thiếu; không có picker, `E155` chỉ ném khi danh mục kho chưa seed kho RM.
 - **→ Product Structure**: dòng RFQ trỏ `items` bằng FK riêng; dòng PO trỏ gián tiếp qua
   `purchase_request_items.itemId`.
 

@@ -36,6 +36,11 @@ thì sơn, không cần ốc.
 (`MATERIAL`↔RM, `PRODUCT`↔FG/WIP, `E043` sai scope). Một unit không còn scope nào là unit chết — CRUD
 `units` ghi/xoá cả 2 bảng trong 1 transaction. `SEMI_FINISHED` là scope thứ 3, chưa module nào đọc.
 
+**`item_units` khai đơn vị phụ + hệ số quy đổi tham khảo ra đơn vị gốc (`items.unitId`) của riêng
+item đó** — mount `/items/:itemId/units`. Dòng phiếu kho chỉ mặc định `unitId` hiển thị từ đây khi
+payload không gửi — hệ số quy đổi thuần thông tin, không module nào đọc lại để tính toán
+(`docs/decisions/unit-conversion.md`).
+
 **Versioning = clone cả item** (`clonedFromItemId` chỉ ghi lineage, không ràng buộc) — không phải
 lịch sử phiên bản, vì sửa BOM/routing sau này không được đổi ngược dữ liệu đã nằm trong đơn cũ.
 Clone chỉ FG/WIP (`E110` nếu RM).
@@ -52,6 +57,7 @@ Clone chỉ FG/WIP (`E110` nếu RM).
 | `routings` / `routing_operations` | Routing Cấp 0 của item gốc, 1 dòng/item |
 | `operations` | Danh mục công đoạn gốc, full CRUD — `docs/domains/partners.md` |
 | `units` / `unit_scopes` | ĐVT + scope dùng được, ghi/xoá theo cặp |
+| `item_units` | Đơn vị phụ + hệ số quy đổi ra đơn vị gốc, riêng theo từng item |
 
 ## Lifecycle
 
@@ -138,4 +144,5 @@ Cần một số duy nhất/vật tư thì gộp `SUM(...) GROUP BY itemId` sau 
 
 - `docs/workflows/product-setup.md` — thứ tự dựng item → BOM → công đoạn → nhân bản.
 - `docs/architecture.md` — vị trí cụm này trong sơ đồ ER tổng.
-- `docs/decisions/items-merge.md`, `docs/decisions/bom-explosion-in-job-demand.md`.
+- `docs/decisions/items-merge.md`, `docs/decisions/bom-explosion-in-job-demand.md`,
+  `docs/decisions/unit-conversion.md`.

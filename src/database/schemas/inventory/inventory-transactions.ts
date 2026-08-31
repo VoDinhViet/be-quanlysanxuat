@@ -10,7 +10,6 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 
-import { warehouses } from './warehouses';
 import { items } from '../items/items';
 import { orderItems } from '../orders/order-items';
 import { users } from '../identity-access/users';
@@ -46,6 +45,7 @@ export const inventoryTransactionTypeEnum = pgEnum(
 export enum InventoryReferenceType {
   INVENTORY_RECEIPT = 'INVENTORY_RECEIPT',
   INVENTORY_ISSUE = 'INVENTORY_ISSUE',
+  INVENTORY_ADJUSTMENT = 'INVENTORY_ADJUSTMENT',
   SUPPLIER_RETURN = 'SUPPLIER_RETURN',
   // Gia công ngoài không còn ghi `inventory_transactions` (`docs/decisions/wip-not-stocked.md`) —
   // giữ 2 giá trị này chỉ để tương thích bút toán cũ/`GET /inventory/transactions?referenceType=`.
@@ -56,6 +56,7 @@ export enum InventoryReferenceType {
 export const inventoryReferenceTypeEnum = pgEnum('inventory_reference_type', [
   InventoryReferenceType.INVENTORY_RECEIPT,
   InventoryReferenceType.INVENTORY_ISSUE,
+  InventoryReferenceType.INVENTORY_ADJUSTMENT,
   InventoryReferenceType.SUPPLIER_RETURN,
   InventoryReferenceType.OUTSOURCING_ORDER,
   InventoryReferenceType.OUTSOURCING_RECEIPT,
@@ -66,18 +67,15 @@ export const inventoryReferenceTypeEnum = pgEnum('inventory_reference_type', [
  * `reverseDocument` được ghi vào bảng này (`docs/domains/inventory.md`).
  *
  * Rules:
- * - `referenceId` trỏ về `inventory_receipts`/`inventory_issues`/`supplier_returns`/
- *   `outsourcing_orders`/`outsourcing_receipts` theo `referenceType` — cố ý không FK vì đa hình, DB
- *   không tự kiểm được.
+ * - `referenceId` trỏ về `inventory_receipts`/`inventory_issues`/`inventory_adjustments`/
+ *   `supplier_returns`/`outsourcing_orders`/`outsourcing_receipts` theo `referenceType` — cố ý
+ *   không FK vì đa hình, DB không tự kiểm được.
  * - Không `updatedAt`/xoá mềm — sửa sai bằng bút toán đảo dấu mới, không sửa/xoá bút toán cũ.
  */
 export const inventoryTransactions = pgTable(
   'inventory_transactions',
   {
     id: uuid('id').defaultRandom().primaryKey(),
-    warehouseId: uuid('warehouse_id')
-      .notNull()
-      .references(() => warehouses.id, { onDelete: 'restrict' }),
     itemId: uuid('item_id')
       .notNull()
       .references(() => items.id, { onDelete: 'restrict' }),
@@ -99,7 +97,6 @@ export const inventoryTransactions = pgTable(
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => [
-    index('idx_inventory_transactions_warehouse_id').on(table.warehouseId),
     index('idx_inventory_transactions_item_id').on(table.itemId),
     index('idx_inventory_transactions_order_item_id').on(table.orderItemId),
     index('idx_inventory_transactions_type').on(table.type),
@@ -109,10 +106,6 @@ export const inventoryTransactions = pgTable(
     index('idx_inventory_transactions_reference').on(
       table.referenceType,
       table.referenceId,
-    ),
-    index('idx_inventory_transactions_warehouse_item').on(
-      table.warehouseId,
-      table.itemId,
     ),
     index('idx_inventory_transactions_created_by').on(table.createdBy),
     check(
@@ -126,10 +119,6 @@ export const inventoryTransactions = pgTable(
 export const inventoryTransactionsRelations = relations(
   inventoryTransactions,
   ({ one }) => ({
-    warehouse: one(warehouses, {
-      fields: [inventoryTransactions.warehouseId],
-      references: [warehouses.id],
-    }),
     item: one(items, {
       fields: [inventoryTransactions.itemId],
       references: [items.id],

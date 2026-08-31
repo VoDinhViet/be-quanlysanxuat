@@ -99,10 +99,7 @@ trở đi.
    `result`/`disposition` riêng cho mỗi dòng. `result = PASS` hoặc `disposition = CONCESSION` →
    `COMPLETED` ngay. `result = FAIL` + `disposition = SORT`/`RETURN` → `IN_PROGRESS`, tự sinh
    `supplier_returns` (`DRAFT`, `outsourcingReceiptId` trỏ về header OS-IN — **không** trỏ dòng cụ
-   thể, `qualityInspectionId` mới là chỗ trace về đúng dòng) — nhưng `outsourcing_receipts` không còn cột
-   `warehouseId` (`docs/decisions/wip-not-stocked.md`), nên dòng IQC xuất phát từ OS-IN **luôn**
-   rơi vào `E163` ở bước suy kho trả (`resolveReturnWarehouseId`, xem `docs/domains/quality-iqc.md`) —
-   chấp nhận là hạn chế đã biết cho tới khi có điểm nhập kho khác cho nhánh này.
+   thể, `qualityInspectionId` mới là chỗ trace về đúng dòng).
 6. `postSupplierReturn` — đúng khuôn `docs/workflows/supplier-return.md`, nhưng
    **`shouldPostStock` luôn `false`** ở nhánh này: hàng OS-IN chưa từng vào `inventory_balances`
    (`docs/decisions/wip-not-stocked.md`), trừ tồn sẽ ra âm giả — `shouldPostStock` nhận diện qua
@@ -119,6 +116,8 @@ trở đi.
 | `outsourcing_receipts` + `outsourcing_receipt_items`                   | `create`                           | _(chưa có)_ | 1 header `POSTED` + N dòng            |
 | `quality_inspections` (`inspectionType = IQC`)                  | `create` OS-IN (nếu `requiresIqc`) | _(chưa có)_ | N dòng `DRAFT` (1/dòng phiếu) |
 | `outsourcing_receipts.status`                                          | `cancel`                           | `POSTED`    | `CANCELLED`                           |
+| `production_job_operations.completedQuantity`/`completedDate` (đúng công đoạn `OUTSOURCE`) | `create`/`cancel` OS-IN | Σ SL nhận trước đó | Σ SL nhận mới (`recomputeOutsourcedOperationProgress`) — `completedDate` set/xoá theo ngưỡng `plannedQuantity` |
+| `production_jobs.status`                                               | gián tiếp, khi op vừa hoàn tất thuộc node FG | `IN_PROGRESS`/`WAITING_QC` | `WAITING_QC`/`WAITING_DELIVERY` (có thể) |
 | ...(từ đây giống `docs/workflows/supplier-return.md`, "State changes") |                                    |             |                                       |
 
 ## Side effects
@@ -127,6 +126,11 @@ trở đi.
 - `create` OS-IN với `requiresIqc = true`: thêm N dòng `quality_inspections` (`inspectionType = IQC`,
   bằng số dòng phiếu OS-IN), mã `IQC-{năm}-xxxxx` — dùng chung bộ đếm với IQC sinh từ phiếu nhập mua
   (cùng bảng, cùng hàm `generateIqcCodes`, sinh N mã liên tiếp trong một lượt).
+- `create`/`cancel` OS-IN (mọi trường hợp, không riêng `requiresIqc`): ghi ngược
+  `completedQuantity`/`completedDate` của mỗi công đoạn `OUTSOURCE` bị ảnh hưởng
+  (`recomputeOutsourcedOperationProgress`) — có thể kéo theo đẩy `production_jobs.status` sang
+  `WAITING_QC`/`WAITING_DELIVERY` nếu đó là công đoạn cuối cùng còn dở. Xem
+  `docs/decisions/outsourced-operation-progress-writeback.md`.
 - Nhánh QC (nếu FAIL + SORT/RETURN): xem "Side effects" ở `docs/workflows/supplier-return.md` —
   không có gì khác nguồn OS-IN so với nguồn phiếu nhập mua từ bước `confirm` IQC trở đi.
 
@@ -177,13 +181,16 @@ hơn OS-OUT một chút (thêm bước sinh IQC khi `requiresIqc = true`).
   `docs/decisions/outsourcing-no-draft.md`.
 - Vì sao gia công ngoài không đụng `inventory_balances`/`inventory_transactions` →
   `docs/decisions/wip-not-stocked.md`.
-- Giới hạn phạm vi (chưa gate tiến độ Job theo OS-OUT/OS-IN, chưa có xuất Excel/in phiếu) →
-  `docs/domains/production.md`.
+- Vì sao OS-IN ghi ngược tiến độ công đoạn `OUTSOURCE` tại thời điểm `POSTED` (không đợi IQC), và vì
+  sao `rejectedQuantity` không suy từ IQC → `docs/decisions/outsourced-operation-progress-writeback.md`.
+- Giới hạn phạm vi còn lại (chưa có xuất Excel/in phiếu) → `docs/domains/production.md`.
 
 ## Related domains
 
-`inventory` (chủ cả hai chứng từ) ↔ `production` (đọc-một-chiều, anchor, cả `production_job_operations`
-lẫn cột `plannedQuantity`) ↔ `quality-iqc` (tuỳ chọn, tự sinh N dòng khi `requiresIqc`). Không đụng
+`inventory` (chủ cả hai chứng từ) ↔ `production` (đọc `production_job_operations`/`plannedQuantity`
+làm anchor lúc `create`; OS-IN `create`/`cancel` ghi ngược `completedQuantity`/`completedDate` đúng
+công đoạn `OUTSOURCE`, `docs/decisions/outsourced-operation-progress-writeback.md`) ↔ `quality-iqc`
+(tuỳ chọn, tự sinh N dòng khi `requiresIqc`). Không đụng
 `purchasing`/`suppliers` ngoài việc `outsourcing_orders.supplierId`/`outsourcing_receipts.supplierId`
 trỏ `suppliers` (thuần FK, không validate nhóm).
 

@@ -21,8 +21,6 @@ import {
   inventoryTransactions,
   items,
   ItemType,
-  warehouses,
-  WarehouseType,
 } from '../../database/schemas';
 import { reservedQuantitySubquery } from '../inventory-requisitions/inventory-requisitions.query';
 import { outboundHeldQuantityByItemSubquery } from '../outbound-orders/outbound-orders.query';
@@ -42,21 +40,18 @@ import {
 export class InventoryService {
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
 
-  /** Tồn thô theo (kho × mặt hàng). `reservedQuantity` KHÔNG đọc cột cùng tên trên
-   * `inventory_balances` (cột đó vẫn luôn 0, chưa route nào ghi) — điền số tính động lúc đọc: phiếu
-   * lãnh `APPROVED` theo đúng kho, cộng DO `DRAFT`/`PENDING_APPROVAL`/`PENDING_DELIVERY` (giữ từ lúc
-   * tạo, BUG-087) chỉ trên dòng kho `type = FG` (DO không có cột kho). Giữ nguyên hợp đồng API cũ,
-   * xem `docs/domains/inventory.md`. */
+  /** Tồn thô theo mặt hàng. `reservedQuantity` KHÔNG đọc cột cùng tên trên `inventory_balances`
+   * (cột đó đã bỏ) — điền số tính động lúc đọc: phiếu lãnh `APPROVED` (RM) cộng DO
+   * `DRAFT`/`PENDING_APPROVAL`/`PENDING_DELIVERY` (FG, giữ từ lúc tạo, BUG-087). Hai nguồn loại trừ
+   * lẫn nhau theo `items.type` nên cộng thẳng, không cần điều kiện phân loại. Giữ nguyên hợp đồng
+   * API cũ, xem `docs/domains/inventory.md`. */
   async getInventoryBalances(
     reqDto: GetInventoryBalancesReqDto,
   ): Promise<OffsetPaginatedDto<InventoryBalanceResDto>> {
     const requisitionHeld = reservedQuantitySubquery(this.db);
     const outboundHeld = outboundHeldQuantityByItemSubquery(this.db);
 
-    const where = and(
-      reqDto.warehouseId
-        ? eq(inventoryBalances.warehouseId, reqDto.warehouseId)
-        : undefined,
+    const where =
       // Bỏ trống `itemType` = FG/RM (kho không quản tồn WIP,
       // `docs/decisions/wip-not-stocked.md`) — gửi tường minh `itemType=WIP` vẫn xem được.
       inArray(
@@ -69,8 +64,7 @@ export class InventoryService {
               ? eq(items.type, reqDto.itemType)
               : inArray(items.type, [ItemType.FG, ItemType.RM]),
           ),
-      ),
-    );
+      );
 
     const rmHeldSql = sql<number>`coalesce(${requisitionHeld.reservedQuantity}, 0)`;
     const fgHeldSql = sql<number>`coalesce(${outboundHeld.heldQuantity}, 0)`;
@@ -79,31 +73,20 @@ export class InventoryService {
       this.db
         .select({
           ...getTableColumns(inventoryBalances),
-          warehouse: getTableColumns(warehouses),
           item: getTableColumns(items),
           // Sau spread để thắng cột thật `reservedQuantity` (`.claude/rules/service.md`).
           reservedQuantity:
             sql<number>`(${rmHeldSql}) + (${fgHeldSql})`.mapWith(Number),
         })
         .from(inventoryBalances)
-        .innerJoin(warehouses, eq(warehouses.id, inventoryBalances.warehouseId))
         .innerJoin(items, eq(items.id, inventoryBalances.itemId))
         .leftJoin(
           requisitionHeld,
-          and(
-            eq(requisitionHeld.warehouseId, inventoryBalances.warehouseId),
-            eq(requisitionHeld.itemId, inventoryBalances.itemId),
-          ),
+          eq(requisitionHeld.itemId, inventoryBalances.itemId),
         )
-        // DO không có cột kho — chỉ gán "Đã giữ" FG lên dòng của kho `type = FG`. Ngầm định đúng 1
-        // kho FG, cùng bất biến `OutboundOrdersService.resolveFgWarehouseId` ép cứng (`E238`); nếu
-        // sau này có ≥2 kho FG, nhánh ghi báo lỗi ngay còn nhánh đọc này sẽ cộng nhầm.
         .leftJoin(
           outboundHeld,
-          and(
-            eq(outboundHeld.itemId, inventoryBalances.itemId),
-            eq(warehouses.type, WarehouseType.FG),
-          ),
+          eq(outboundHeld.itemId, inventoryBalances.itemId),
         )
         .where(where)
         .orderBy(desc(inventoryBalances.updatedAt))
@@ -125,9 +108,6 @@ export class InventoryService {
     reqDto: GetInventoryTransactionsReqDto,
   ): Promise<OffsetPaginatedDto<InventoryTransactionResDto>> {
     const where = and(
-      reqDto.warehouseId
-        ? eq(inventoryTransactions.warehouseId, reqDto.warehouseId)
-        : undefined,
       reqDto.itemType
         ? inArray(
             inventoryTransactions.itemId,
@@ -165,7 +145,7 @@ export class InventoryService {
           desc(inventoryTransactions.transactionDate),
           desc(inventoryTransactions.createdAt),
         ],
-        with: { warehouse: true, item: true, creatorBy: true },
+        with: { item: true, creatorBy: true },
       }),
       this.db
         .select({ total: count() })

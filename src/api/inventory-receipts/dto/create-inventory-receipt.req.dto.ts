@@ -9,15 +9,11 @@ import {
   EnumField,
   EnumFieldOptional,
   StringFieldOptional,
-  UUIDField,
   UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
 import { InventoryReceiptItemReqDto } from './inventory-receipt-item.req.dto';
 
 export class CreateInventoryReceiptReqDto {
-  @UUIDField({ description: 'Kho nhận' })
-  readonly warehouseId!: string;
-
   @EnumField(() => InventoryReceiptType)
   readonly receiptType!: InventoryReceiptType;
 

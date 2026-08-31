@@ -32,7 +32,6 @@ xem `docs/workflows/outgoing-qc.md`.
 | Đúng trạng thái nguồn | — | `E259` (`DRAFT`) | `E239` (`DRAFT`/`REJECTED`) | `E240` (`PENDING_APPROVAL`) | `E237` (`PENDING_DELIVERY`) | `E257` | `E258` (`DRAFT`) |
 | Σ SL cùng vật tư ≤ Tồn FG − Đã giữ DO khác | `E194` | `E194` | `E194` | `E194` | — | — | — |
 | Job liên quan đã qua hết QC (`getJobQcCoverage`) | — | — | `E205` | — | — | — | — |
-| Có đúng 1 kho `type=FG` | — | — | — | — | `E238` | — | — |
 
 `clientId` bắt buộc, bất biến — không route nào sửa lại. `create`/`update` **không** resolve/
 validate cấu trúc dòng phía server — client gửi thẳng `itemId`/`productionJobId` từ popup
@@ -77,12 +76,11 @@ trạng thái + ghi lý do → `REJECTED` (gửi lại được qua `send`).
 
 ### `deliver`
 
-`getOutboundOrderForUpdate` → tìm kho `type=FG` (khác đúng 1 kho → `E238`) → trong **một**
-transaction: sinh mã `PXK-{năm}-{5}` → `INSERT inventory_issues` (`issueType=SALES`, `POSTED`
-thẳng) + `inventory_issue_items` map 1:1 dòng DO (gắn `orderItemId`) → `postDocument` trừ tồn →
-`outbound_orders.status = DELIVERED` → với mỗi đơn hàng bị đụng: mọi dòng `order_items NORMAL` đã
-`issuedQty ≥ quantity` → `orders.status: IN_PROGRESS → COMPLETED`
-(`docs/decisions/production-lifecycle-closing.md`).
+`getOutboundOrderForUpdate` → trong **một** transaction: sinh mã `PXK-{năm}-{5}` → `INSERT
+inventory_issues` (`issueType=SALES`, `POSTED` thẳng) + `inventory_issue_items` map 1:1 dòng DO
+(gắn `orderItemId`) → `postDocument` trừ tồn → `outbound_orders.status = DELIVERED` → với mỗi đơn
+hàng bị đụng: mọi dòng `order_items NORMAL` đã `issuedQty ≥ quantity` → `orders.status: IN_PROGRESS
+→ COMPLETED` (`docs/decisions/production-lifecycle-closing.md`).
 
 ### `cancel` / `delete`
 
@@ -117,7 +115,7 @@ update DO, và đóng `orders` liên quan, tất cả trong một transaction.
 ## Failure cases
 
 `E195` (không tồn tại), `E194` (vượt tồn khả giao), `E205` (còn Job chưa qua hết QC), `E237`
-(`deliver` sai trạng thái), `E238` (không đúng 1 kho FG), `E239` (`send` sai trạng thái), `E240`
+(`deliver` sai trạng thái), `E239` (`send` sai trạng thái), `E240`
 (`approve`/`reject` sai trạng thái), `E257` (`cancel` sai trạng thái), `E258` (`delete` không phải
 `DRAFT`), `E259` (`update` không phải `DRAFT`).
 

@@ -16,7 +16,6 @@ import {
 } from './inventory-documents';
 import { inventoryIssueItems } from './inventory-issue-items';
 import { outboundOrders } from './outbound-orders';
-import { warehouses } from './warehouses';
 import { productionJobs } from '../production/production-jobs';
 import { productionOrders } from '../production/production-orders';
 import { users } from '../identity-access/users';
@@ -25,14 +24,12 @@ export enum InventoryIssueType {
   PRODUCTION = 'PRODUCTION',
   SALES = 'SALES',
   RETURN = 'RETURN',
-  ADJUSTMENT = 'ADJUSTMENT',
 }
 
 export const inventoryIssueTypeEnum = pgEnum('inventory_issue_type', [
   InventoryIssueType.PRODUCTION,
   InventoryIssueType.SALES,
   InventoryIssueType.RETURN,
-  InventoryIssueType.ADJUSTMENT,
 ]);
 
 /**
@@ -44,9 +41,6 @@ export const inventoryIssues = pgTable(
   {
     id: uuid('id').defaultRandom().primaryKey(),
     code: varchar('code', { length: 50 }).notNull().unique(),
-    warehouseId: uuid('warehouse_id')
-      .notNull()
-      .references(() => warehouses.id, { onDelete: 'restrict' }),
     issueType: inventoryIssueTypeEnum('issue_type').notNull(),
     status: inventoryDocumentStatusEnum('status')
       .notNull()
@@ -90,7 +84,6 @@ export const inventoryIssues = pgTable(
       .$onUpdate(() => new Date()),
   },
   (table) => [
-    index('idx_inventory_issues_warehouse_id').on(table.warehouseId),
     index('idx_inventory_issues_status').on(table.status),
     index('idx_inventory_issues_issue_type').on(table.issueType),
     index('idx_inventory_issues_issue_date').on(table.issueDate),
@@ -109,10 +102,6 @@ export const inventoryIssues = pgTable(
 export const inventoryIssuesRelations = relations(
   inventoryIssues,
   ({ one, many }) => ({
-    warehouse: one(warehouses, {
-      fields: [inventoryIssues.warehouseId],
-      references: [warehouses.id],
-    }),
     productionOrder: one(productionOrders, {
       fields: [inventoryIssues.productionOrderId],
       references: [productionOrders.id],

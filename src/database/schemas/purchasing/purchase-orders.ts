@@ -9,7 +9,6 @@ import {
   varchar,
 } from 'drizzle-orm/pg-core';
 
-import { warehouses } from '../inventory/warehouses';
 import { paymentTermEnum } from '../suppliers/supplier-payment-info';
 import { suppliers } from '../suppliers/suppliers';
 import { purchaseOrderItems } from './purchase-order-items';
@@ -54,12 +53,6 @@ export const purchaseOrders = pgTable(
       onDelete: 'set null',
     }),
     paymentTerm: paymentTermEnum('payment_term'),
-    // Kho sẽ nhập hàng về khi PO này hoàn tất — đặt tên theo chiều nghiệp vụ (PO → nhập kho,
-    // `inventory_receipts.warehouseId`), không phải kho xuất (`inventory-issues`).
-    receiptWarehouseId: uuid('receipt_warehouse_id').references(
-      () => warehouses.id,
-      { onDelete: 'set null' },
-    ),
     note: varchar('note', { length: 1000 }),
     orderedBy: uuid('ordered_by').references(() => users.id, {
       onDelete: 'set null',
@@ -85,9 +78,6 @@ export const purchaseOrders = pgTable(
     index('idx_purchase_orders_status').on(table.status),
     index('idx_purchase_orders_created_by').on(table.createdBy),
     index('idx_purchase_orders_assigned_user_id').on(table.assignedUserId),
-    index('idx_purchase_orders_receipt_warehouse_id').on(
-      table.receiptWarehouseId,
-    ),
     index('idx_purchase_orders_ordered_by').on(table.orderedBy),
     index('idx_purchase_orders_cancelled_by').on(table.cancelledBy),
   ],
@@ -107,10 +97,6 @@ export const purchaseOrdersRelations = relations(
     assignedUser: one(users, {
       fields: [purchaseOrders.assignedUserId],
       references: [users.id],
-    }),
-    receiptWarehouse: one(warehouses, {
-      fields: [purchaseOrders.receiptWarehouseId],
-      references: [warehouses.id],
     }),
     ordererBy: one(users, {
       fields: [purchaseOrders.orderedBy],

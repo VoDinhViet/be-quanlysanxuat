@@ -10,9 +10,6 @@ import {
 } from '../../../decorators/field.decorators';
 
 export class GetInventoryReceiptsReqDto extends PageOptionsDto {
-  @UUIDFieldOptional()
-  readonly warehouseId?: string;
-
   @EnumFieldOptional(() => InventoryReceiptType)
   readonly receiptType?: InventoryReceiptType;
 

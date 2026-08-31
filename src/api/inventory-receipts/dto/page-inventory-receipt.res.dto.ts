@@ -7,7 +7,6 @@ import {
 } from '../../../database/schemas';
 import {
   BooleanField,
-  ClassField,
   ClassFieldOptional,
   DateField,
   DateFieldOptional,
@@ -23,7 +22,6 @@ import { PurchaseOrderRefResDto } from '../../purchase-orders/dto/purchase-order
 import { PurchaseRequestRefResDto } from '../../purchase-requests/dto/purchase-request-ref.res.dto';
 import { SupplierRefResDto } from '../../suppliers/dto/supplier-ref.res.dto';
 import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
-import { WarehouseRefResDto } from '../../warehouses/dto/warehouse-ref.res.dto';
 import { PageInventoryReceiptItemResDto } from './page-inventory-receipt-item.res.dto';
 
 @Exclude()
@@ -35,10 +33,6 @@ export class PageInventoryReceiptResDto {
   @Expose()
   @StringField({ description: 'Mã phiếu' })
   code!: string;
-
-  @Expose()
-  @ClassField(() => WarehouseRefResDto)
-  warehouse!: WarehouseRefResDto;
 
   @Expose()
   @EnumField(() => InventoryReceiptType)

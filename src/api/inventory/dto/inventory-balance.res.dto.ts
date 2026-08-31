@@ -7,17 +7,12 @@ import {
   UUIDField,
 } from '../../../decorators/field.decorators';
 import { ItemRefResDto } from '../../items/dto/item-ref.res.dto';
-import { WarehouseRefResDto } from '../../warehouses/dto/warehouse-ref.res.dto';
 
 @Exclude()
 export class InventoryBalanceResDto {
   @Expose()
   @UUIDField()
   id!: string;
-
-  @Expose()
-  @ClassField(() => WarehouseRefResDto)
-  warehouse!: WarehouseRefResDto;
 
   @Expose()
   @ClassField(() => ItemRefResDto)
@@ -30,7 +25,7 @@ export class InventoryBalanceResDto {
   @Expose()
   @NumberField({
     description:
-      'Số lượng giữ chỗ — tính động lúc đọc (phiếu lãnh APPROVED + DO PENDING_APPROVAL/PENDING_DELIVERY), không phải cột inventory_balances.reserved_quantity (cột đó vẫn luôn 0)',
+      'Số lượng giữ chỗ — tính động lúc đọc (phiếu lãnh APPROVED + DO PENDING_APPROVAL/PENDING_DELIVERY), không lưu cột riêng',
   })
   reservedQuantity!: number;
 

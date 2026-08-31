@@ -10,7 +10,6 @@ import {
 } from 'drizzle-orm/pg-core';
 
 import { outsourcingOrderItems } from './outsourcing-order-items';
-import { warehouses } from './warehouses';
 import { suppliers } from '../suppliers/suppliers';
 import { users } from '../identity-access/users';
 
@@ -49,12 +48,6 @@ export const outsourcingOrders = pgTable(
   {
     id: uuid('id').defaultRandom().primaryKey(),
     code: varchar('code', { length: 50 }).notNull().unique(),
-    // Tuỳ chọn — không còn dùng để trừ/theo dõi tồn kho (WIP không quản tồn,
-    // docs/decisions/wip-not-stocked.md), không đọc lại ở bất kỳ response nào. Giữ cột (không
-    // DROP) để không mất dữ liệu các phiếu cũ đã có warehouseId.
-    warehouseId: uuid('warehouse_id').references(() => warehouses.id, {
-      onDelete: 'restrict',
-    }),
     supplierId: uuid('supplier_id')
       .notNull()
       .references(() => suppliers.id, { onDelete: 'restrict' }),
@@ -78,7 +71,6 @@ export const outsourcingOrders = pgTable(
       .$onUpdate(() => new Date()),
   },
   (table) => [
-    index('idx_outsourcing_orders_warehouse_id').on(table.warehouseId),
     index('idx_outsourcing_orders_supplier_id').on(table.supplierId),
     index('idx_outsourcing_orders_status').on(table.status),
     index('idx_outsourcing_orders_send_date').on(table.sendDate),
@@ -90,10 +82,6 @@ export const outsourcingOrders = pgTable(
 export const outsourcingOrdersRelations = relations(
   outsourcingOrders,
   ({ one, many }) => ({
-    warehouse: one(warehouses, {
-      fields: [outsourcingOrders.warehouseId],
-      references: [warehouses.id],
-    }),
     supplier: one(suppliers, {
       fields: [outsourcingOrders.supplierId],
       references: [suppliers.id],

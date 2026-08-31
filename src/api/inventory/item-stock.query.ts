@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, sql, type SQL } from 'drizzle-orm';
+import { asc, eq, inArray, sql, type SQL } from 'drizzle-orm';
 
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
@@ -7,14 +7,13 @@ import {
   productionJobs,
 } from '../../database/schemas';
 
-/** Khoá (`FOR UPDATE`) các dòng `inventory_balances` của `(warehouseId, itemIds)`, sort tăng dần
- * theo `itemId` — thứ tự khoá cố định để hai chứng từ chồng vật tư (phiếu lãnh, DO) không deadlock.
- * Vật tư chưa có dòng `inventory_balances` thì `FOR UPDATE` không khoá được gì — vô hại: `Tồn = 0`
- * nên bước validate ngay sau đó chặn với mọi SL dương, không có gì để đọc lệch. Dùng chung cho
+/** Khoá (`FOR UPDATE`) các dòng `inventory_balances` của `itemIds`, sort tăng dần theo `itemId` —
+ * thứ tự khoá cố định để hai chứng từ chồng vật tư (phiếu lãnh, DO) không deadlock. Vật tư chưa có
+ * dòng `inventory_balances` thì `FOR UPDATE` không khoá được gì — vô hại: `Tồn = 0` nên bước
+ * validate ngay sau đó chặn với mọi SL dương, không có gì để đọc lệch. Dùng chung cho
  * `inventory-requisitions` và `outbound-orders`. */
 export async function getInventoryBalancesForUpdate(
   tx: DbTransaction,
-  warehouseId: string,
   itemIds: string[],
 ): Promise<{ itemId: string; quantity: number }[]> {
   if (!itemIds.length) {
@@ -27,12 +26,7 @@ export async function getInventoryBalancesForUpdate(
       quantity: inventoryBalances.quantity,
     })
     .from(inventoryBalances)
-    .where(
-      and(
-        eq(inventoryBalances.warehouseId, warehouseId),
-        inArray(inventoryBalances.itemId, itemIds),
-      ),
-    )
+    .where(inArray(inventoryBalances.itemId, itemIds))
     .orderBy(asc(inventoryBalances.itemId))
     .for('update');
 }

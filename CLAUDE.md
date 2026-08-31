@@ -76,17 +76,18 @@ lỗi validate trả 422. Prefix toàn cục `api`, trừ `GET /`/`GET /health`.
 | `suppliers`              | partners           |                                                                                                                                                                                |
 | `supplier-groups`        | partners           |                                                                                                                                                                                |
 | `units`                  | product-structure  | `scope` (`PRODUCT`/`MATERIAL`/`SEMI_FINISHED`); `PATCH` gửi `scopes` thì xoá + chèn lại toàn bộ                                                                              |
+| `item-units`             | product-structure  | mount ở `/items/:itemId/units`; đơn vị phụ + hệ số quy đổi ra đơn vị gốc, riêng theo từng item                                                                               |
 | `departments`            | partners           |                                                                                                                                                                                |
 | `positions`              | partners           |                                                                                                                                                                                |
 | `countries`              | partners           | chỉ đọc, không phân trang                                                                                                                                                     |
 | `operations`             | partners           | full CRUD; `delete`/`update` chặn `E248` nếu đang được routing/BOM dùng                                                                                                      |
 | `orders`                 | orders             | **mọi** route cần bearer token, kể cả đọc                                                                                                                                    |
-| `warehouses`             | inventory          | danh mục kho — `code`/`name`/`type`, không soft delete                                                                                                                       |
 | `inventory`              | inventory          | chỉ `GET /balances` + `GET /transactions`, không còn route list                                                                                                              |
 | `inventory-products`     | inventory          | Tồn kho thành phẩm — `GET /inventory-products` (FG) + `.../ledger` (thẻ kho)                                                                                                 |
 | `inventory-materials`    | inventory          | Tồn kho vật tư — `GET /inventory-materials` (RM); chưa có thẻ kho riêng                                                                                                      |
-| `inventory-receipts`     | inventory          | phiếu nhập — 5 trạng thái, nhánh IQC tự sinh khi `requiresIqc`; `receiptType=PRODUCTION` gate OQC                                                                            |
+| `inventory-receipts`     | inventory          | phiếu nhập — 5 trạng thái, nhánh IQC tự sinh khi `requiresIqc`; `receiptType=PRODUCTION` gate OQC; `confirmedBy`/`confirmedAt` ghi ở `confirm`                              |
 | `inventory-issues`       | inventory          | phiếu xuất — cùng khuôn `inventory-receipts`; `issueType=PRODUCTION` bị chặn tạo tay (`E234`)                                                                                |
+| `inventory-adjustments`  | inventory          | phiếu điều chỉnh tồn (kiểm kê/hao hụt) — 3 trạng thái, `adjustmentType = INCREASE\|DECREASE`                                                                                 |
 | `inventory-requisitions` | inventory          | Phiếu lãnh vật tư — đường **duy nhất** đưa RM ra khỏi kho cho SX; 6 trạng thái riêng; `issue` tự sinh 1 `inventory_issues POSTED`                                            |
 | `supplier-returns`       | inventory          | phiếu trả NCC — bảng phẳng; tự sinh (`DRAFT`) từ `iqc`; chỉ có `GET` + `POST /:id/post`, chưa có tạo tay/`cancel`                                                            |
 | `outsourcing-orders`     | inventory          | OS-OUT — không có nháp, `POST` là `POSTED` ngay; không đụng tồn kho (mặt hàng luôn WIP)                                                                                      |
@@ -117,16 +118,18 @@ Bốn tầng, đọc từ trên xuống khi cần hiểu một vùng nghiệp v�
   `purchase-requests`, `purchasing`, `quality-iqc`, `quality-oqc`. Đọc trước khi làm feature trong
   vùng đó.
 - `docs/workflows/<flow>.md` — **"chạy theo trình tự nào"**: trigger, actor, precondition, các bước,
-  đổi trạng thái gì, ranh giới transaction, nhánh lỗi. Mười ba luồng: `order-approval`,
+  đổi trạng thái gì, ranh giới transaction, nhánh lỗi. Mười bốn luồng: `order-approval`,
   `production-order-approval`, `production-job-execution`, `stock-movement`, `receipt-confirmation`,
-  `product-setup`, `rfq-approval`, `supplier-return`, `outsourcing-round-trip`, `outgoing-qc`,
-  `inventory-requisition`, `outbound-delivery`, `purchase-to-payment`.
+  `inventory-adjustment`, `product-setup`, `rfq-approval`, `supplier-return`,
+  `outsourcing-round-trip`, `outgoing-qc`, `inventory-requisition`, `outbound-delivery`,
+  `purchase-to-payment`.
 - `docs/decisions/<slug>.md` — **quyết định đảo chiều hoặc ranh giới phạm vi** không domain nào sở
   hữu: `files-registry`, `testing-paused`, `swagger-owns-api-reference`, `purchasing-scope-limits`,
   `orders-no-delete`, `items-merge`, `stored-inventory-balances`, `outsourcing-no-draft`,
   `wip-not-stocked`, `oqc-per-operation`, `qc-gates-on-stock-moves`, `qc-data-model`,
   `qc-aql-master-data`, `bom-explosion-in-job-demand`, `production-lifecycle-closing`,
-  `report-trends-derived`, `quality-schema-rename`, `outsourcing-order-status-progress-merge`.
+  `report-trends-derived`, `quality-schema-rename`, `outsourcing-order-status-progress-merge`,
+  `outsourced-operation-progress-writeback`, `single-warehouse`, `unit-conversion`.
 
 **Không có tầng doc theo module** — Swagger `/api-docs` sở hữu route/DTO; `ErrorCode` đọc ở
 `src/constants/error-code.constant.ts` + service ném nó.

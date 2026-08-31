@@ -18,7 +18,6 @@ import { OutsourcingReceiptRefResDto } from '../../outsourcing-receipts/dto/outs
 import { PurchaseOrderRefResDto } from '../../purchase-orders/dto/purchase-order-ref.res.dto';
 import { SupplierRefResDto } from '../../suppliers/dto/supplier-ref.res.dto';
 import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
-import { WarehouseRefResDto } from '../../warehouses/dto/warehouse-ref.res.dto';
 
 @Exclude()
 export class SupplierReturnBaseResDto {
@@ -41,10 +40,6 @@ export class SupplierReturnBaseResDto {
   @Expose()
   @ClassField(() => SupplierRefResDto)
   supplier!: SupplierRefResDto;
-
-  @Expose()
-  @ClassFieldOptional(() => WarehouseRefResDto, { nullable: true })
-  warehouse!: WarehouseRefResDto | null;
 
   @Expose()
   @ClassFieldOptional(() => PurchaseOrderRefResDto, { nullable: true })

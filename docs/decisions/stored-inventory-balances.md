@@ -1,6 +1,9 @@
 # Tồn kho chuyển sang lưu trữ (đảo `docs/domains/inventory.md`)
 
-**Trạng thái:** còn hiệu lực — đảo ngược một quyết định kiến trúc trung tâm trước đó
+**Trạng thái:** còn hiệu lực — đảo ngược một quyết định kiến trúc trung tâm trước đó. **Phần khoá
+theo `(warehouseId, itemId)` mô tả dưới đây đã bị `docs/decisions/single-warehouse.md` thay thế
+bằng khoá theo `itemId` — giữ nguyên phần còn lại của quyết định này (lưu trữ thay vì tính lại) làm
+sử liệu, không tự sửa lại các đoạn nhắc `warehouseId` bên dưới.**
 
 ## Bối cảnh
 
@@ -83,3 +86,5 @@ giá NCC, không có công nợ. Xem cross-link ở file đó.
 - `docs/domains/inventory.md` — mô hình mới đầy đủ.
 - `docs/workflows/stock-movement.md` — trình tự lập/post/cancel phiếu.
 - `docs/architecture.md` — vị trí các bảng mới trong sơ đồ ER.
+- `docs/decisions/single-warehouse.md` — bỏ hẳn `warehouses`, khoá `inventory_balances` còn lại
+  `itemId`.

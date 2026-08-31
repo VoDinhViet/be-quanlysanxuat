@@ -16,7 +16,6 @@ import { PurchaseRequestRefResDto } from '../../purchase-requests/dto/purchase-r
 import { QuotationRefResDto } from '../../purchase-quotations/dto/quotation-ref.res.dto';
 import { SupplierRefResDto } from '../../suppliers/dto/supplier-ref.res.dto';
 import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
-import { WarehouseRefResDto } from '../../warehouses/dto/warehouse-ref.res.dto';
 import { PurchaseOrderProgress } from '../purchase-orders.constant';
 
 @Exclude()
@@ -52,10 +51,6 @@ export class PagePurchaseOrderResDto {
   @Expose()
   @EnumFieldOptional(() => PaymentTerm, { nullable: true })
   paymentTerm!: PaymentTerm | null;
-
-  @Expose()
-  @ClassFieldOptional(() => WarehouseRefResDto, { nullable: true })
-  receiptWarehouse!: WarehouseRefResDto | null;
 
   @Expose()
   @NumberField({ description: 'Số dòng vật tư' })

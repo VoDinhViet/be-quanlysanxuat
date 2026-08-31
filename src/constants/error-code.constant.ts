@@ -177,20 +177,21 @@ export enum ErrorCode {
   // `operationId` trên `PATCH /production-jobs/:jobId/operations/:operationId` không tồn tại hoặc
   // không thuộc đúng `jobId`.
   E091 = 'production_job_operation.error.not_found',
-  E092 = 'warehouse.error.not_found',
-  E093 = 'warehouse.error.code_exists',
-  // E094 (warehouse.error.inactive) stays reserved — warehouses.status (ACTIVE/INACTIVE) bỏ hẳn,
-  // kho hoạt động 24/7 nên không có khái niệm đóng/mở; check nó từng bảo vệ không còn tồn tại.
-  // `DELETE /warehouses/:warehouseId` khi kho còn phiếu/bút toán/tồn tham chiếu tới — FK là
-  // `restrict`, kiểm trước để trả 409 sạch thay vì 500 thô.
-  E095 = 'warehouse.error.in_use',
-  // Dùng chung cho cả `inventory_receipts` lẫn `inventory_issues` — phiếu không tồn tại.
+  // E092 (warehouse.error.not_found) stays reserved — bảng `warehouses` bỏ hẳn, hệ thống chỉ 1 kho
+  // vật lý duy nhất (`docs/decisions/single-warehouse.md`).
+  // E093 (warehouse.error.code_exists) stays reserved — cùng lý do E092.
+  // E094 (warehouse.error.inactive) stays reserved — warehouses.status (ACTIVE/INACTIVE) bỏ hẳn
+  // trước cả khi bỏ bảng, kho hoạt động 24/7 nên không có khái niệm đóng/mở; check nó từng bảo vệ
+  // không còn tồn tại.
+  // E095 (warehouse.error.in_use) stays reserved — cùng lý do E092.
+  // Dùng chung cho `inventory_receipts`/`inventory_issues`/`inventory_adjustments` — phiếu không
+  // tồn tại.
   E096 = 'inventory_document.error.not_found',
   // Nghỉ hưu — `code` không còn cho client tự truyền trên `create`, luôn server tự sinh qua
   // `document_sequences` (atomic, không thể trùng). Giữ số, không tái sử dụng.
   E097 = 'inventory_document.error.code_exists',
   // `PATCH`/`DELETE`/`post` gọi trên phiếu không còn `DRAFT`, hoặc `cancel` gọi trên phiếu đã
-  // `CANCELLED`.
+  // `CANCELLED` — dùng chung cho `inventory_receipts`/`inventory_issues`/`inventory_adjustments`.
   E098 = 'inventory_document.error.invalid_status_transition',
   // E099 (inventory_document.error.item_target_mismatch) stays reserved — dòng phiếu giờ chỉ có
   // một `itemId` (không còn cặp `productId`/`materialId` + `itemType`), nên "sai target" bất khả
@@ -288,8 +289,9 @@ export enum ErrorCode {
   E149 = 'purchase_quotation_item.error.allocation_item_mismatch',
   // Một dòng vật tư trong payload tạo/sửa báo giá không có phân bổ nào về dòng ĐXMH nguồn.
   E150 = 'purchase_quotation_item.error.no_allocations',
-  // Xác nhận phiếu nhập/xuất không có dòng nào. `items: []` lọt qua ValidationPipe nên phải chặn ở
-  // bước confirm, không phải lúc tạo.
+  // Xác nhận phiếu nhập không có dòng nào (`confirm`, `items: []` lọt qua ValidationPipe nên phải
+  // chặn ở đây, không phải lúc tạo). Phiếu điều chỉnh dùng lại mã này ở `post` — không có bước
+  // `confirm` riêng.
   E151 = 'inventory_document.error.no_items',
   // Phiếu nhập yêu cầu IQC nhưng không suy ra được NCC (cả `supplierId` lẫn NCC của PO đều trống) —
   // `chk_qc_requests_incoming_supplier` đòi `supplier_id` khác null cho dòng `kind = INCOMING`.
@@ -298,9 +300,8 @@ export enum ErrorCode {
   E153 = 'inventory_receipt.error.iqc_not_completed',
   // SL nhận (cộng dồn mọi phiếu đã xác nhận) vượt SL đặt của dòng đơn mua.
   E154 = 'purchase_order_item.error.received_quantity_exceeded',
-  // BE tự gán kho nhận (kho RM duy nhất) lúc tạo/xác nhận PO — ném khi danh mục kho chưa seed
-  // kho loại RM nào, không còn nghĩa "người dùng chưa chọn".
-  E155 = 'purchase_order.error.missing_receipt_warehouse',
+  // E155 (purchase_order.error.missing_receipt_warehouse) stays reserved — `receiptWarehouseId` bỏ
+  // hẳn cùng đợt bỏ khái niệm kho (`docs/decisions/single-warehouse.md`).
   // Xác nhận đặt hàng khi chưa chọn điều khoản thanh toán — cần có để tính `dueDate` lúc PO đạt
   // COMPLETED và tự sinh yêu cầu thanh toán.
   E156 = 'purchase_order.error.missing_payment_term',
@@ -316,9 +317,9 @@ export enum ErrorCode {
   E161 = 'iqc_inspection.error.sort_quantity_not_allowed',
   // `disposition = SORT` nhưng thiếu `sortOkQty`/`sortNgQty`.
   E162 = 'iqc_inspection.error.sort_quantity_required',
-  // Tự sinh phiếu trả NCC từ IQC (disposition SORT/RETURN) nhưng không suy được kho trả hàng —
-  // cả phiếu nhập liên quan lẫn kho nhận của PO liên quan đều trống.
-  E163 = 'iqc_inspection.error.missing_warehouse_for_return',
+  // E163 (iqc_inspection.error.missing_warehouse_for_return) stays reserved — `supplier_returns`
+  // không còn cột kho để suy, `disposition = SORT`/`RETURN` giờ luôn sinh được phiếu trả
+  // (`docs/decisions/single-warehouse.md`).
   // Hoàn tất phiếu IQC sau khi phiếu trả NCC liên kết được `post` (`SupplierReturnsService.
   // postSupplierReturn`) khi dòng IQC không còn `WAITING_RETURN`.
   E164 = 'iqc_inspection.error.not_waiting_return',
@@ -430,9 +431,8 @@ export enum ErrorCode {
   // vẫn là chốt chặn cuối. Giữ comment, không tái sử dụng số.
   E202 = 'oqc_inspection.error.disposition_not_allowed_for_pass',
   // `postInventoryIssue` (`issueType = PRODUCTION`) khi còn ≥1 phiếu IQC chưa `COMPLETED` của cùng
-  // (item, kho) — vật tư chưa qua IQC (hoặc IQC còn FAIL chưa xử lý) không được xuất cho sản xuất.
-  // Chỉ tính IQC suy được kho qua `inventoryReceipt.warehouseId`; IQC tạo tay/từ OS-IN không suy
-  // được kho thì bỏ qua, không chặn (`docs/decisions/qc-gates-on-stock-moves.md`).
+  // `itemId` — vật tư chưa qua IQC (hoặc IQC còn FAIL chưa xử lý) không được xuất cho sản xuất
+  // (`docs/decisions/qc-gates-on-stock-moves.md`).
   E203 = 'inventory_issue.error.iqc_pending',
   // `DELETE /iqc/:iqcId` khi đã từng `confirm` (`confirmedAt` khác null) — chỉ xoá được phiếu chưa
   // ai đụng vào, khuôn `E178` (OQC) nhưng mint riêng vì hai domain khác nhau.
@@ -515,9 +515,8 @@ export enum ErrorCode {
   E236 = 'order.error.has_approved_production_order',
   // `POST /outbound-orders/:id/deliver` khi phiếu không ở `PENDING_DELIVERY`.
   E237 = 'outbound_order.error.not_deliverable',
-  // `deliver` cần đúng 1 kho `type = FG` để tự sinh phiếu xuất SALES — 0 hoặc >1 kho đều ném lỗi
-  // này thay vì đoán, xem `docs/decisions/production-lifecycle-closing.md`.
-  E238 = 'outbound_order.error.fg_warehouse_ambiguous',
+  // E238 (outbound_order.error.fg_warehouse_ambiguous) stays reserved — `deliver` không còn cần
+  // resolve kho, hệ thống chỉ 1 kho vật lý (`docs/decisions/single-warehouse.md`).
   // `POST /outbound-orders/:id/send` khi phiếu không ở `DRAFT`/`REJECTED`.
   E239 = 'outbound_order.error.not_sendable',
   // `POST /outbound-orders/:id/approve` hoặc `.../reject` khi phiếu không ở `PENDING_APPROVAL`.
@@ -570,6 +569,20 @@ export enum ErrorCode {
   E258 = 'outbound_order.error.not_deletable',
   // `PATCH /outbound-orders/:id` khi DO không còn DRAFT (BUG-090).
   E259 = 'outbound_order.error.not_editable',
+  // `PATCH .../operations/:id` / `POST .../reports` trên công đoạn `OUTSOURCE` — completedQuantity/
+  // completedDate chỉ do OS-IN ghi (`recomputeOutsourcedOperationProgress`), không cho nhập tay
+  // (`docs/decisions/outsourced-operation-progress-writeback.md`).
+  E260 = 'production_job_operation.error.outsource_not_editable',
+  // Trùng `itemId` trong cùng payload lập/sửa phiếu điều chỉnh tồn — cùng khuôn `E228` (phiếu
+  // lãnh), mint riêng vì khác resource.
+  E261 = 'inventory_adjustment_item.error.duplicate_item',
+  // `PATCH /items/:itemId/units/:unitId`/`DELETE` khi dòng `item_units` không tồn tại đúng item đó
+  // — khác `E011` (unit gốc không tồn tại trong danh mục `units`).
+  E262 = 'item_unit.error.not_found',
+  // `POST /items/:itemId/units` khi `(itemId, unitId)` đã có dòng — mỗi cặp chỉ 1 hệ số quy đổi.
+  // Xoá một dòng `item_units` không cần mã lỗi "in_use" riêng — `unitId` của dòng phiếu kho FK
+  // thẳng `units`, không FK `item_units` (`docs/decisions/unit-conversion.md`).
+  E263 = 'item_unit.error.duplicate_unit',
   V003 = 'common.error.too_many_requests',
   // `GlobalExceptionFilter` bắt chuỗi "No values to set" của drizzle-orm — mọi `PATCH` khi
   // `ValidationPipe` whitelist đã loại sạch field lạ, còn lại payload rỗng cho `.set()`. Trước đây

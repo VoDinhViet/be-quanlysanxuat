@@ -4,15 +4,11 @@ import {
   DateField,
   EnumField,
   StringFieldOptional,
-  UUIDField,
   UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
 import { InventoryIssueItemReqDto } from './inventory-issue-item.req.dto';
 
 export class CreateInventoryIssueReqDto {
-  @UUIDField({ description: 'Kho xuất' })
-  readonly warehouseId!: string;
-
   @EnumField(() => InventoryIssueType)
   readonly issueType!: InventoryIssueType;
 

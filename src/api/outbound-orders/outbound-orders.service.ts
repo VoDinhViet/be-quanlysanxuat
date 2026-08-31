@@ -44,8 +44,6 @@ import {
   productionOrders,
   units,
   users,
-  warehouses,
-  WarehouseType,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import type { InventoryPostingLine } from '../inventory/inventory-posting.service';
@@ -512,16 +510,13 @@ export class OutboundOrdersService {
     tx: DbTransaction,
     outboundOrderId: string,
   ): Promise<void> {
-    const [warehouseId, itemsToValidate] = await Promise.all([
-      this.resolveFgWarehouseId(tx),
-      tx
-        .select({
-          itemId: outboundOrderItems.itemId,
-          quantity: outboundOrderItems.quantity,
-        })
-        .from(outboundOrderItems)
-        .where(eq(outboundOrderItems.outboundOrderId, outboundOrderId)),
-    ]);
+    const itemsToValidate = await tx
+      .select({
+        itemId: outboundOrderItems.itemId,
+        quantity: outboundOrderItems.quantity,
+      })
+      .from(outboundOrderItems)
+      .where(eq(outboundOrderItems.outboundOrderId, outboundOrderId));
 
     const lineQuantityByItemId = new Map<string, number>();
     for (const item of itemsToValidate) {
@@ -536,7 +531,7 @@ export class OutboundOrdersService {
     // `getInventoryBalancesForUpdate` đã khoá VÀ trả về đúng các dòng cần — dùng thẳng làm
     // `onHandRows`, không đọc lại lần hai.
     const [onHandRows, heldByOtherOrdersByItemId] = await Promise.all([
-      getInventoryBalancesForUpdate(tx, warehouseId, itemIds),
+      getInventoryBalancesForUpdate(tx, itemIds),
       getOutboundHeldQuantities(tx, {
         itemIds,
         excludeOutboundOrderId: outboundOrderId,
@@ -629,15 +624,15 @@ export class OutboundOrdersService {
         throw new AppException(ErrorCode.E237, HttpStatus.CONFLICT);
       }
 
-      const warehouseId = await this.resolveFgWarehouseId(tx);
-
       const itemsToDeliver = await tx
         .select({
           itemId: outboundOrderItems.itemId,
           quantity: outboundOrderItems.quantity,
           orderItemId: outboundOrderItems.orderItemId,
+          unitId: items.unitId,
         })
         .from(outboundOrderItems)
+        .innerJoin(items, eq(items.id, outboundOrderItems.itemId))
         .where(eq(outboundOrderItems.outboundOrderId, outboundOrderId));
 
       const issueDate = new Date();
@@ -647,7 +642,6 @@ export class OutboundOrdersService {
         .insert(inventoryIssues)
         .values({
           code: issueCode,
-          warehouseId,
           issueType: InventoryIssueType.SALES,
           status: InventoryDocumentStatus.POSTED,
           issueDate,
@@ -662,6 +656,7 @@ export class OutboundOrdersService {
         itemsToDeliver.map((item) => ({
           issueId: inventoryIssue.id,
           itemId: item.itemId,
+          unitId: item.unitId,
           quantity: item.quantity,
           orderItemId: item.orderItemId,
         })),
@@ -678,7 +673,6 @@ export class OutboundOrdersService {
       );
 
       await this.inventoryPostingService.postDocument(tx, {
-        warehouseId,
         referenceType: InventoryReferenceType.INVENTORY_ISSUE,
         referenceId: inventoryIssue.id,
         transactionDate: issueDate,
@@ -696,22 +690,6 @@ export class OutboundOrdersService {
         itemsToDeliver.map((item) => item.orderItemId),
       );
     });
-  }
-
-  /** `deliver` cần đúng 1 kho `type = FG` để tự sinh phiếu xuất — DO/`outbound_order_items` không
-   * giữ cột kho (thực tế hiện chỉ có `KHO-TP`). 0 hoặc >1 kho FG thì báo lỗi thay vì đoán, xem
-   * `docs/decisions/production-lifecycle-closing.md`. */
-  private async resolveFgWarehouseId(tx: DbTransaction): Promise<string> {
-    const fgWarehouses = await tx
-      .select({ id: warehouses.id })
-      .from(warehouses)
-      .where(eq(warehouses.type, WarehouseType.FG));
-
-    if (fgWarehouses.length !== 1) {
-      throw new AppException(ErrorCode.E238, HttpStatus.CONFLICT);
-    }
-
-    return fgWarehouses[0].id;
   }
 
   /** Copy có chủ ý từ `InventoryIssuesService.generateIssueCode` (`private`, khác module) — cùng

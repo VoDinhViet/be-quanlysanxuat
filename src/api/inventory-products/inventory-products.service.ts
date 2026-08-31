@@ -33,7 +33,6 @@ import {
   productionJobs,
   units,
   users,
-  warehouses,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import {
@@ -64,11 +63,7 @@ export class InventoryProductsService {
   async getInventoryProducts(
     reqDto: GetInventoryProductsReqDto,
   ): Promise<OffsetPaginatedDto<InventoryProductResDto>> {
-    const stock = balanceByItemSubquery(
-      this.db,
-      reqDto.asOfDate,
-      reqDto.warehouseId,
-    );
+    const stock = balanceByItemSubquery(this.db, reqDto.asOfDate);
     const openOrderDemand = openOrderDemandByItemSubquery(this.db);
     const outboundHeld = outboundHeldQuantityByItemSubquery(this.db);
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
@@ -145,7 +140,7 @@ export class InventoryProductsService {
   ): Promise<OffsetPaginatedDto<ProductLedgerEntryResDto>> {
     await this.ensureFinishedGoodExists(itemId);
 
-    const ledger = productLedgerSubquery(this.db, itemId, reqDto.warehouseId);
+    const ledger = productLedgerSubquery(this.db, itemId);
 
     const [rows, countRows] = await Promise.all([
       this.db
@@ -155,7 +150,6 @@ export class InventoryProductsService {
           createdAt: ledger.createdAt,
           quantity: ledger.quantity,
           balanceAfter: ledger.balanceAfter,
-          warehouse: getTableColumns(warehouses),
           inventoryReceipt: getTableColumns(inventoryReceipts),
           inventoryIssue: getTableColumns(inventoryIssues),
           productionJob: getTableColumns(productionJobs),
@@ -167,7 +161,6 @@ export class InventoryProductsService {
           creatorBy: getTableColumns(users),
         })
         .from(ledger)
-        .innerJoin(warehouses, eq(warehouses.id, ledger.warehouseId))
         .leftJoin(
           inventoryReceipts,
           and(
@@ -218,9 +211,6 @@ export class InventoryProductsService {
         .where(
           and(
             eq(inventoryTransactions.itemId, itemId),
-            reqDto.warehouseId
-              ? eq(inventoryTransactions.warehouseId, reqDto.warehouseId)
-              : undefined,
             productLedgerDateRangeCondition(
               inventoryTransactions.transactionDate,
               reqDto.startDate,

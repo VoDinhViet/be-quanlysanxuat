@@ -9,7 +9,13 @@ export class InventoryIssueItemReqDto {
   @UUIDField({ description: 'Id mặt hàng (item)' })
   readonly itemId!: string;
 
-  @NumberField({ isPositive: true, description: 'Số lượng' })
+  @UUIDFieldOptional({
+    description:
+      'Đơn vị nhập liệu — mặc định đơn vị gốc của item; phải có trong item_units nếu khác',
+  })
+  readonly unitId?: string;
+
+  @NumberField({ isPositive: true, description: 'Số lượng theo unitId' })
   readonly quantity!: number;
 
   @UUIDFieldOptional({

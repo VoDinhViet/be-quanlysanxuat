@@ -50,7 +50,7 @@ export class InventoryRequisitionLinesService {
    * gắn Job (`type = OTHER`) — hai subquery tự trả rỗng khi không có `productionJobId` để join. */
   async getRequisitionLines(
     requisitionId: string,
-    scope: { warehouseId: string; productionJobId: string | null },
+    scope: { productionJobId: string | null },
   ) {
     const demand = jobIssueDemandSubquery(this.db, {
       productionJobId: scope.productionJobId,
@@ -83,20 +83,8 @@ export class InventoryRequisitionLinesService {
             )
           : sql`false`,
       )
-      .leftJoin(
-        inventoryBalances,
-        and(
-          eq(inventoryBalances.warehouseId, scope.warehouseId),
-          eq(inventoryBalances.itemId, items.id),
-        ),
-      )
-      .leftJoin(
-        reserved,
-        and(
-          eq(reserved.warehouseId, scope.warehouseId),
-          eq(reserved.itemId, items.id),
-        ),
-      )
+      .leftJoin(inventoryBalances, eq(inventoryBalances.itemId, items.id))
+      .leftJoin(reserved, eq(reserved.itemId, items.id))
       .leftJoin(remainingDemand, eq(remainingDemand.itemId, items.id))
       .where(eq(inventoryRequisitionItems.requisitionId, requisitionId))
       .orderBy(
@@ -171,20 +159,8 @@ export class InventoryRequisitionLinesService {
               )
             : sql`false`,
         )
-        .leftJoin(
-          inventoryBalances,
-          and(
-            eq(inventoryBalances.warehouseId, reqDto.warehouseId),
-            eq(inventoryBalances.itemId, items.id),
-          ),
-        )
-        .leftJoin(
-          reserved,
-          and(
-            eq(reserved.warehouseId, reqDto.warehouseId),
-            eq(reserved.itemId, items.id),
-          ),
-        )
+        .leftJoin(inventoryBalances, eq(inventoryBalances.itemId, items.id))
+        .leftJoin(reserved, eq(reserved.itemId, items.id))
         .leftJoin(remainingDemand, eq(remainingDemand.itemId, items.id))
         .where(where)
         .orderBy(asc(items.code))

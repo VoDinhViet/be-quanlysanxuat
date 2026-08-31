@@ -19,7 +19,7 @@ import {
 } from '../schemas/quality/quality-enums';
 import { qualityInspectionResults } from '../schemas/quality/quality-inspection-results';
 import { qualityInspections } from '../schemas/quality/quality-inspections';
-import { toInspectionStatus } from '../../api/iqc/quality-inspection-status.util';
+import { mapToQualityInspectionStatus } from '../../api/iqc/quality-inspection-status.util';
 
 type SeedDatabase = ReturnType<typeof drizzle<typeof schema>>;
 
@@ -145,7 +145,7 @@ async function seedIqcInspections(db: SeedDatabase): Promise<void> {
     const inventoryReceiptId = index === 0 ? (receipt?.id ?? null) : null;
     const purchaseOrderId = index === 1 ? (purchaseOrder?.id ?? null) : null;
     const quantity = 10 + index * 5;
-    const dbStatus = toInspectionStatus(status);
+    const dbStatus = mapToQualityInspectionStatus(status);
     const dbDecision = result as string as
       | QualityInspectionDecision
       | undefined;

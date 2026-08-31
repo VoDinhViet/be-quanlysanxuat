@@ -47,7 +47,6 @@ const issueTypeTransactionType: Record<
   [InventoryIssueType.SALES]: InventoryTransactionType.ISSUE,
   [InventoryIssueType.RETURN]: InventoryTransactionType.ISSUE,
   [InventoryIssueType.PRODUCTION]: InventoryTransactionType.PRODUCTION_OUT,
-  [InventoryIssueType.ADJUSTMENT]: InventoryTransactionType.ADJUSTMENT_OUT,
 };
 
 @Injectable()
@@ -63,9 +62,6 @@ export class InventoryIssuesService {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
     const where = and(
       keyword ? unaccentILike(inventoryIssues.code, keyword) : undefined,
-      reqDto.warehouseId
-        ? eq(inventoryIssues.warehouseId, reqDto.warehouseId)
-        : undefined,
       reqDto.issueType
         ? eq(inventoryIssues.issueType, reqDto.issueType)
         : undefined,
@@ -101,14 +97,13 @@ export class InventoryIssuesService {
           desc(inventoryIssues.createdAt),
         ],
         with: {
-          warehouse: true,
           productionOrder: true,
           productionJob: true,
           department: true,
           requesterBy: true,
           posterBy: true,
           creatorBy: true,
-          items: { with: { item: true } },
+          items: { with: { item: true, unit: true } },
         },
       }),
       this.db.select({ total: count() }).from(inventoryIssues).where(where),
@@ -126,14 +121,13 @@ export class InventoryIssuesService {
     const inventoryIssue = await this.db.query.inventoryIssues.findFirst({
       where: eq(inventoryIssues.id, issueId),
       with: {
-        warehouse: true,
         productionOrder: true,
         productionJob: true,
         department: true,
         requesterBy: true,
         posterBy: true,
         creatorBy: true,
-        items: { with: { item: true } },
+        items: { with: { item: true, unit: true } },
       },
     });
 
@@ -151,7 +145,7 @@ export class InventoryIssuesService {
     userId: string,
   ): Promise<void> {
     this.ensureNotDirectProductionIssue(reqDto.issueType);
-    await this.ensureItemsValid(reqDto.items);
+    const baseUnitByItemId = await this.ensureItemsValid(reqDto.items);
     await this.ensureReferencesValid(reqDto);
 
     const { items: itemsToCreate, ...issueFields } = reqDto;
@@ -164,7 +158,12 @@ export class InventoryIssuesService {
         .values({ ...issueFields, code, createdBy: userId })
         .returning();
 
-      await this.createIssueItems(tx, inventoryIssue.id, itemsToCreate);
+      await this.createIssueItems(
+        tx,
+        inventoryIssue.id,
+        itemsToCreate,
+        baseUnitByItemId,
+      );
     });
   }
 
@@ -175,7 +174,7 @@ export class InventoryIssuesService {
     await this.ensureIssueDraft(issueId);
 
     this.ensureNotDirectProductionIssue(reqDto.issueType);
-    await this.ensureItemsValid(reqDto.items);
+    const baseUnitByItemId = await this.ensureItemsValid(reqDto.items);
     await this.ensureReferencesValid(reqDto);
 
     const { items: itemsToReplace, ...issueFields } = reqDto;
@@ -186,7 +185,12 @@ export class InventoryIssuesService {
         .set(issueFields)
         .where(eq(inventoryIssues.id, issueId));
 
-      await this.replaceIssueItems(tx, issueId, itemsToReplace);
+      await this.replaceIssueItems(
+        tx,
+        issueId,
+        itemsToReplace,
+        baseUnitByItemId,
+      );
     });
   }
 
@@ -218,7 +222,6 @@ export class InventoryIssuesService {
       if (inventoryIssue.issueType === InventoryIssueType.PRODUCTION) {
         const hasPendingIqc = await hasPendingIqcForItems(tx, {
           itemIds: itemsToPost.map((item) => item.itemId),
-          warehouseId: inventoryIssue.warehouseId,
         });
         if (hasPendingIqc) {
           throw new AppException(ErrorCode.E203, HttpStatus.CONFLICT);
@@ -226,7 +229,6 @@ export class InventoryIssuesService {
       }
 
       await this.inventoryPostingService.postDocument(tx, {
-        warehouseId: inventoryIssue.warehouseId,
         referenceType: InventoryReferenceType.INVENTORY_ISSUE,
         referenceId: issueId,
         transactionDate: inventoryIssue.issueDate,
@@ -292,22 +294,28 @@ export class InventoryIssuesService {
     tx: DbTransaction,
     issueId: string,
     items: InventoryIssueItemReqDto[],
+    baseUnitByItemId: Map<string, string>,
   ): Promise<void> {
-    await tx
-      .insert(inventoryIssueItems)
-      .values(items.map((item) => ({ ...item, issueId })));
+    await tx.insert(inventoryIssueItems).values(
+      items.map((item) => ({
+        ...item,
+        issueId,
+        unitId: item.unitId ?? baseUnitByItemId.get(item.itemId)!,
+      })),
+    );
   }
 
   private async replaceIssueItems(
     tx: DbTransaction,
     issueId: string,
     items: InventoryIssueItemReqDto[],
+    baseUnitByItemId: Map<string, string>,
   ): Promise<void> {
     await tx
       .delete(inventoryIssueItems)
       .where(eq(inventoryIssueItems.issueId, issueId));
 
-    await this.createIssueItems(tx, issueId, items);
+    await this.createIssueItems(tx, issueId, items, baseUnitByItemId);
   }
 
   private async generateIssueCode(
@@ -326,10 +334,11 @@ export class InventoryIssuesService {
 
   /** Mặt hàng của mỗi dòng phải tồn tại (`E100`), và `orderItemId` (nếu có) chỉ hợp lệ trên dòng
    * item FG + phải khớp đúng `itemId` của dòng đơn hàng đó (`E107`). Không kiểm loại kho ↔ loại
-   * hàng — cố ý. */
+   * hàng — cố ý. Trả về `itemId → unitId gốc` để mặc định `unitId` hiển thị khi payload không gửi,
+   * tránh round-trip kiểm tồn tại item lần hai. */
   private async ensureItemsValid(
     itemsToValidate: InventoryIssueItemReqDto[],
-  ): Promise<void> {
+  ): Promise<Map<string, string>> {
     const itemIds = [...new Set(itemsToValidate.map((item) => item.itemId))];
     const orderItemIds = [
       ...new Set(
@@ -341,7 +350,7 @@ export class InventoryIssuesService {
 
     const [foundItems, foundOrderItems] = await Promise.all([
       this.db.query.items.findMany({
-        columns: { id: true, type: true },
+        columns: { id: true, type: true, unitId: true },
         where: and(inArray(items.id, itemIds), isNull(items.deletedAt)),
       }),
       orderItemIds.length
@@ -370,6 +379,8 @@ export class InventoryIssuesService {
         }
       }
     }
+
+    return new Map(foundItems.map((item) => [item.id, item.unitId]));
   }
 
   private async ensureReferencesValid(reqDto: {

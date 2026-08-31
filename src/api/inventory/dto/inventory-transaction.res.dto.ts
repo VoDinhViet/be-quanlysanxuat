@@ -14,17 +14,12 @@ import {
 } from '../../../decorators/field.decorators';
 import { ItemRefResDto } from '../../items/dto/item-ref.res.dto';
 import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
-import { WarehouseRefResDto } from '../../warehouses/dto/warehouse-ref.res.dto';
 
 @Exclude()
 export class InventoryTransactionResDto {
   @Expose()
   @UUIDField()
   id!: string;
-
-  @Expose()
-  @ClassField(() => WarehouseRefResDto)
-  warehouse!: WarehouseRefResDto;
 
   @Expose()
   @ClassField(() => ItemRefResDto)

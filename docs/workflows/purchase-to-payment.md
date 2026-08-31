@@ -24,8 +24,7 @@ Nhánh nhập kho: `docs/workflows/receipt-confirmation.md`, `docs/workflows/sto
    hoặc PO `DRAFT` tự sinh từ `approveQuotation` (`docs/workflows/rfq-approval.md`).
 2. **Sửa PO Draft** — `PATCH` header/dòng, chỉ khi `DRAFT` (`E122`).
 3. **Xác nhận đặt hàng** — `POST /purchase-orders/:id/confirm`: `DRAFT → ORDERED`, chặn thiếu
-   `expectedDate`/`paymentTerm`/giá dòng (`E134`/`E156`/`E135`). `receiptWarehouseId` BE tự gán
-   ngay từ bước 1 (kho RM duy nhất), không phải người dùng điền.
+   `expectedDate`/`paymentTerm`/giá dòng (`E134`/`E156`/`E135`).
 4. **Nhận hàng** — `POST /inventory-receipts` gắn `purchaseOrderId` (validate PO `ORDERED`, dòng
    thuộc đúng PO, SL cộng dồn ≤ SL đặt — `E121`/`E145`/`E123`/`E127`/`E154`) → `confirm` (`DRAFT →
    PENDING_RECEIPT`/`PENDING_IQC`) → `post` (ghi tồn thật).
@@ -57,7 +56,7 @@ duy nhất nằm ở bước 5: `postInventoryReceipt` gọi `PaymentRequestsSer
 ## Failure cases
 
 `E249` (trùng dòng ĐXMH khi lập PO tay), `E125` (dòng không `APPROVED`/đã huỷ), `E019` (NCC không
-tồn tại), `E122` (sửa/huỷ PO không còn `DRAFT`), `E134`/`E155`/`E156`/`E135` (`confirm` PO thiếu điều
+tồn tại), `E122` (sửa/huỷ PO không còn `DRAFT`), `E134`/`E156`/`E135` (`confirm` PO thiếu điều
 kiện), `E124` (huỷ PO đã có phiếu nhập `POSTED`), `E121`/`E145`/`E123`/`E127`/`E154` (validate PO
 lúc lập/sửa/`confirm` phiếu nhập), `E098`/`E153`/`E106` (vòng đời phiếu nhập, xem
 `docs/workflows/receipt-confirmation.md`), `E158` (`mark-paid`/`cancel` YCTT không còn `PENDING`).

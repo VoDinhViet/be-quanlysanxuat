@@ -100,7 +100,6 @@ export class InventoryRequisitionsService {
           desc(inventoryRequisitions.createdAt),
         ],
         with: {
-          warehouse: true,
           department: true,
           productionOrder: { with: { order: true } },
           productionJob: true,
@@ -128,7 +127,6 @@ export class InventoryRequisitionsService {
       await this.db.query.inventoryRequisitions.findFirst({
         where: eq(inventoryRequisitions.id, requisitionId),
         with: {
-          warehouse: true,
           department: true,
           productionOrder: { with: { order: true } },
           productionJob: true,
@@ -147,7 +145,6 @@ export class InventoryRequisitionsService {
 
     const requisitionLines =
       await this.requisitionLinesService.getRequisitionLines(requisitionId, {
-        warehouseId: inventoryRequisition.warehouseId,
         productionJobId: inventoryRequisition.productionJobId,
       });
 
@@ -170,8 +167,7 @@ export class InventoryRequisitionsService {
         ? (reqDto.productionJobId ?? null)
         : null;
 
-    await this.validateRequisitionLines(this.db, {
-      warehouseId: reqDto.warehouseId,
+    const baseUnitByItemId = await this.validateRequisitionLines(this.db, {
       type: reqDto.type,
       productionJobId,
       itemsToValidate: itemsToCreate,
@@ -199,6 +195,7 @@ export class InventoryRequisitionsService {
         tx,
         inventoryRequisition.id,
         itemsToCreate,
+        baseUnitByItemId,
       );
     });
   }
@@ -223,8 +220,7 @@ export class InventoryRequisitionsService {
           : null;
       this.ensureRequisitionTypeValid(type, productionJobId);
 
-      await this.validateRequisitionLines(tx, {
-        warehouseId: existing.warehouseId,
+      const baseUnitByItemId = await this.validateRequisitionLines(tx, {
         type,
         productionJobId,
         itemsToValidate: itemsToReplace,
@@ -235,7 +231,12 @@ export class InventoryRequisitionsService {
         .set({ ...requisitionFields, productionJobId })
         .where(eq(inventoryRequisitions.id, requisitionId));
 
-      await this.replaceRequisitionItems(tx, requisitionId, itemsToReplace);
+      await this.replaceRequisitionItems(
+        tx,
+        requisitionId,
+        itemsToReplace,
+        baseUnitByItemId,
+      );
     });
   }
 
@@ -295,12 +296,10 @@ export class InventoryRequisitionsService {
 
       await getInventoryBalancesForUpdate(
         tx,
-        inventoryRequisition.warehouseId,
         itemsToApprove.map((item) => item.itemId),
       );
 
       await this.validateRequisitionLines(tx, {
-        warehouseId: inventoryRequisition.warehouseId,
         type: inventoryRequisition.type,
         productionJobId: inventoryRequisition.productionJobId,
         itemsToValidate: itemsToApprove,
@@ -374,7 +373,6 @@ export class InventoryRequisitionsService {
 
       const hasPendingIqc = await hasPendingIqcForItems(tx, {
         itemIds: itemsToIssue.map((item) => item.itemId),
-        warehouseId: inventoryRequisition.warehouseId,
       });
       if (hasPendingIqc) {
         throw new AppException(ErrorCode.E203, HttpStatus.CONFLICT);
@@ -391,7 +389,6 @@ export class InventoryRequisitionsService {
         .insert(inventoryIssues)
         .values({
           code: issueCode,
-          warehouseId: inventoryRequisition.warehouseId,
           issueType: InventoryIssueType.PRODUCTION,
           status: InventoryDocumentStatus.POSTED,
           issueDate: inventoryRequisition.requisitionDate,
@@ -409,13 +406,13 @@ export class InventoryRequisitionsService {
         itemsToIssue.map((item) => ({
           issueId: issue.id,
           itemId: item.itemId,
+          unitId: item.unitId,
           quantity: item.quantity,
           note: item.note,
         })),
       );
 
       await this.inventoryPostingService.postDocument(tx, {
-        warehouseId: inventoryRequisition.warehouseId,
         referenceType: InventoryReferenceType.INVENTORY_ISSUE,
         referenceId: issue.id,
         transactionDate: inventoryRequisition.requisitionDate,
@@ -464,12 +461,14 @@ export class InventoryRequisitionsService {
     tx: DbTransaction,
     requisitionId: string,
     itemsToCreate: CreateInventoryRequisitionItemReqDto[],
+    baseUnitByItemId: Map<string, string>,
   ): Promise<void> {
     await tx.insert(inventoryRequisitionItems).values(
       itemsToCreate.map((item, index) => ({
         ...item,
         requisitionId,
         sortOrder: index,
+        unitId: item.unitId ?? baseUnitByItemId.get(item.itemId)!,
       })),
     );
   }
@@ -478,12 +477,18 @@ export class InventoryRequisitionsService {
     tx: DbTransaction,
     requisitionId: string,
     itemsToReplace: CreateInventoryRequisitionItemReqDto[],
+    baseUnitByItemId: Map<string, string>,
   ): Promise<void> {
     await tx
       .delete(inventoryRequisitionItems)
       .where(eq(inventoryRequisitionItems.requisitionId, requisitionId));
 
-    await this.createRequisitionItems(tx, requisitionId, itemsToReplace);
+    await this.createRequisitionItems(
+      tx,
+      requisitionId,
+      itemsToReplace,
+      baseUnitByItemId,
+    );
   }
 
   private ensureRequisitionTypeValid(
@@ -500,16 +505,16 @@ export class InventoryRequisitionsService {
    * `approve` (sau `FOR UPDATE`, chốt thật vì đó mới là mốc giữ chỗ). Bốn bước: không trùng `itemId`
    * (`E228`) → mọi item tồn tại + là RM (`E229`) → (`type = PRODUCTION`) mọi item nằm trong định mức
    * BOM của Job (`E230`) → từng dòng `SL lãnh ≤ Có thể lãnh` (`E231`) và, nếu có Job,
-   * `SL lãnh ≤ SL BOM còn lại` (`E232`). */
+   * `SL lãnh ≤ SL BOM còn lại` (`E232`). Trả về `itemId → unitId gốc`, dùng bởi `create`/`update` để
+   * mặc định `unitId` hiển thị khi payload không gửi. */
   private async validateRequisitionLines(
     db: Database | DbTransaction,
     params: {
-      warehouseId: string;
       type: InventoryRequisitionType;
       productionJobId: string | null;
       itemsToValidate: { itemId: string; quantity: number }[];
     },
-  ): Promise<void> {
+  ): Promise<Map<string, string>> {
     const itemIds = params.itemsToValidate.map((item) => item.itemId);
 
     if (new Set(itemIds).size !== itemIds.length) {
@@ -517,7 +522,7 @@ export class InventoryRequisitionsService {
     }
 
     const foundItems = await db.query.items.findMany({
-      columns: { id: true, type: true },
+      columns: { id: true, type: true, unitId: true },
       where: and(inArray(items.id, itemIds), isNull(items.deletedAt)),
     });
 
@@ -555,15 +560,9 @@ export class InventoryRequisitionsService {
     const [onHandRows, reservedByItemId, issuedByItemId] = await Promise.all([
       db.query.inventoryBalances.findMany({
         columns: { itemId: true, quantity: true },
-        where: and(
-          eq(inventoryBalances.warehouseId, params.warehouseId),
-          inArray(inventoryBalances.itemId, itemIds),
-        ),
+        where: inArray(inventoryBalances.itemId, itemIds),
       }),
-      getReservedQuantities(db, {
-        warehouseId: params.warehouseId,
-        itemIds,
-      }),
+      getReservedQuantities(db, { itemIds }),
       productionJobId
         ? getIssuedQuantities(db, { productionJobId, itemIds })
         : Promise.resolve(new Map<string, number>()),
@@ -592,6 +591,8 @@ export class InventoryRequisitionsService {
         }
       }
     }
+
+    return new Map(foundItems.map((item) => [item.id, item.unitId]));
   }
 
   /** Dùng cho cả mã phiếu lãnh (`MR`) lẫn mã phiếu xuất tự sinh lúc `issue` (`PXK`) — `PXK` phải
@@ -640,7 +641,6 @@ export class InventoryRequisitionsService {
       {
         columns: {
           status: true,
-          warehouseId: true,
           type: true,
           productionJobId: true,
         },

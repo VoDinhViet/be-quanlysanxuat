@@ -18,7 +18,6 @@ import {
 import { inventoryReceipts } from './inventory-receipts';
 import { outsourcingReceipts } from './outsourcing-receipts';
 import { supplierReturnFiles } from './supplier-return-files';
-import { warehouses } from './warehouses';
 import { items } from '../items/items';
 import { purchaseOrders } from '../purchasing/purchase-orders';
 import { qualityInspectionTypeEnum } from '../quality/quality-enums';
@@ -38,12 +37,6 @@ export const supplierReturns = pgTable(
   {
     id: uuid('id').defaultRandom().primaryKey(),
     code: varchar('code', { length: 50 }).notNull().unique(),
-    // Nullable — phiếu sinh từ IQC của OS-IN không có kho: hàng là WIP, chưa từng vào
-    // `inventory_balances` (`docs/decisions/wip-not-stocked.md`), CHECK bên dưới bắt buộc có giá
-    // trị cho mọi nguồn khác.
-    warehouseId: uuid('warehouse_id').references(() => warehouses.id, {
-      onDelete: 'restrict',
-    }),
     supplierId: uuid('supplier_id')
       .notNull()
       .references(() => suppliers.id, { onDelete: 'restrict' }),
@@ -95,7 +88,6 @@ export const supplierReturns = pgTable(
       .$onUpdate(() => new Date()),
   },
   (table) => [
-    index('idx_supplier_returns_warehouse_id').on(table.warehouseId),
     index('idx_supplier_returns_supplier_id').on(table.supplierId),
     index('idx_supplier_returns_item_id').on(table.itemId),
     index('idx_supplier_returns_purchase_order_id').on(table.purchaseOrderId),
@@ -115,10 +107,6 @@ export const supplierReturns = pgTable(
     index('idx_supplier_returns_return_date').on(table.returnDate),
     index('idx_supplier_returns_created_by').on(table.createdBy),
     check('chk_supplier_returns_quantity_positive', sql`quantity > 0`),
-    check(
-      'chk_supplier_returns_warehouse_required',
-      sql`(warehouse_id IS NULL) = (outsourcing_receipt_id IS NOT NULL)`,
-    ),
     // Phiếu trả NCC chỉ sinh từ nhánh IQC.
     check(
       'chk_supplier_returns_qc_inspection_type',
@@ -146,10 +134,6 @@ export const supplierReturns = pgTable(
 export const supplierReturnsRelations = relations(
   supplierReturns,
   ({ one, many }) => ({
-    warehouse: one(warehouses, {
-      fields: [supplierReturns.warehouseId],
-      references: [warehouses.id],
-    }),
     supplier: one(suppliers, {
       fields: [supplierReturns.supplierId],
       references: [suppliers.id],
