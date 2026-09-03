@@ -88,9 +88,9 @@ cho `send` DO.
 
 ### Nhập kho thành phẩm (`InventoryReceiptsService.confirmInventoryReceipt`, nhánh `PRODUCTION`)
 
-Chỉ áp dụng cho phiếu PRODUCTION tạo tay (`InventoryReceiptCreateFromJobForm.tsx`, bắt đầu ở
-`DRAFT`) — phiếu do `closeJobIfQcCovered` tự sinh bỏ qua bước `confirm` này hoàn toàn (đã
-`PENDING_RECEIPT` sẵn, `post` thẳng).
+Chỉ áp dụng cho phiếu PRODUCTION tạo tay (form tạo phiếu nhập kho chung phía FE, `receiptType =
+PRODUCTION`, bắt đầu ở `DRAFT`) — phiếu do `closeJobIfQcCovered` tự sinh bỏ qua bước `confirm` này
+hoàn toàn (đã `PENDING_RECEIPT` sẵn, `post` thẳng).
 
 1. `productionJobId` không có → `E179`. Dòng phiếu lệch `itemId` → `E107`.
 2. `getJobQcCoverage(tx, productionJobId)` — Job ≥1 dòng QC chưa `SCRAP`, không còn dòng nào chưa

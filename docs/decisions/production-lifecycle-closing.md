@@ -111,8 +111,13 @@ gộp hàng vốn xuất phát từ nhiều Job khác nhau. Vì vậy Job đóng
 - Đừng thay `postOutboundOrder` tự sinh phiếu SALES bằng cách quay lại quy trình tạo tay tách rời —
   đó chính là lỗ hổng đã sửa (phiếu tạo tay không gắn `orderItemId`, làm "SL đã giao" sai vĩnh viễn).
 - Đừng bắt kho phải tự tạo phiếu nhập TP đầu tiên của Job bằng tay — `closeJobIfQcCovered` đã tự
-  sinh `DRAFT` đúng lúc Job qua hết QC; nhu cầu tạo tay chỉ còn cho phiếu **thứ hai trở đi** (nhập
-  từng phần).
+  sinh thẳng `PENDING_RECEIPT` đúng lúc Job qua hết QC (không qua `DRAFT`). Tạo tay chỉ còn cần cho:
+  Job đã `WAITING_DELIVERY` từ trước khi tính năng này triển khai (không backfill), nhập lại sau khi
+  phiếu tự sinh bị huỷ (`hasProductionReceiptForJob` không lọc theo status nên không tự sinh lại), và
+  phiếu tạo tay có sẵn từ trước lúc QC đóng coverage (tự sinh bỏ qua, phiếu tay đó vẫn phải tự
+  `confirm`) — **không phải** "phiếu thứ hai trở đi" kiểu nhập từng phần: phiếu tự sinh đã chiếm đủ
+  `job.quantity` ngay từ `PENDING_RECEIPT`, nên một phiếu `PRODUCTION` thứ hai thật sự sẽ đụng `E197`
+  ở `confirm`.
 
 ## Related docs
 
