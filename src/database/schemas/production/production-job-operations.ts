@@ -34,7 +34,7 @@ import { productionJobs } from './production-jobs';
  *   `completedQuantity`/`rejectedQuantity`/`completedDate` sửa được qua hai đường: `PATCH
  *   .../operations/:operationId` (ghi đè, `ProductionJobsService`) hoặc `POST
  *   .../reports` (cộng dồn, `ProductionExecutionService`, ghi thêm một dòng
- *   `production_job_operation_reports`) — cả hai chỉ chạy khi `operationsApprovedAt` đã có (`E250`).
+ *   `production_job_operation_reports`) — cả hai chỉ chạy khi Job `IN_PROGRESS` (`E087`).
  */
 export const productionJobOperations = pgTable(
   'production_job_operations',

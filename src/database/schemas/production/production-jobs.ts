@@ -61,9 +61,10 @@ export const productionJobStatusEnum = pgEnum('production_job_status', [
  * - `completedBy`/`completedAt` khôi phục 2026-08-24 (từng bị xoá cùng đợt rút enum 2026-07-31) —
  *   ghi khi `status → COMPLETED` (`InventoryReceiptsService.postInventoryReceipt`, không có route
  *   tay), xem `docs/decisions/production-lifecycle-closing.md`.
- * - `operationsApprovedBy`/`operationsApprovedAt` thêm 2026-08-25 — ghi bởi
- *   `POST .../approve-operations`, chặn `PATCH .../operations/:operationId` (`E250`) tới khi có.
- *   Xem `docs/domains/production.md`.
+ * - `operationsApprovedBy`/`operationsApprovedAt` thêm 2026-08-25, ghi bởi
+ *   `POST .../approve-operations` — route đó đã xoá 2026-09-03 (bỏ bước duyệt công đoạn riêng,
+ *   `PATCH .../operations/:operationId` mở ngay khi Job `IN_PROGRESS`). Giữ cột lại cho dữ liệu
+ *   cũ, không còn route nào ghi. Xem `docs/domains/production.md`.
  * - Không còn lưu lịch sử thao tác Job từ 2026-07-31 (`production_job_logs` đã xoá hẳn, khác LSX —
  *   `production_order_logs` vẫn còn) — chỉ `startedBy`/`startedAt`/`completedBy`/`completedAt`
  *   (cột thật) còn giữ được.

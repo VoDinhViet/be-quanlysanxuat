@@ -74,7 +74,7 @@ export class ProductionJobDetailResDto {
   @DateFieldOptional({
     nullable: true,
     description:
-      'Thời điểm duyệt công đoạn — null thì PATCH .../operations/:operationId còn bị chặn (E250)',
+      'Thời điểm duyệt công đoạn — route ghi trường này (POST .../approve-operations) đã xoá, giữ lại cho dữ liệu cũ',
   })
   operationsApprovedAt!: Date | null;
 

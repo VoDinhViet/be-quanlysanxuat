@@ -298,10 +298,13 @@ export class ProductionJobsService {
   /** `GET /production-jobs/:jobId/operations` — công đoạn as-used của Job (cả `INHOUSE` lẫn
    * `OUTSOURCE`), nhóm theo BOM item chứa nó; nguồn duy nhất để lấy `operationId` cho
    * `PATCH .../operations/:operationId`. `plannedQuantity` đọc thẳng cột đã đóng băng lúc duyệt LSX
-   * (`copyBomTree`), gắn xuống từng công đoạn của node. Mảng thường, không phân trang — số BOM item
-   * của một Job luôn nhỏ. */
+   * (`copyBomTree`), gắn xuống từng công đoạn của node. `operationId` optional lọc chỉ trả BOM item
+   * nào chứa đúng công đoạn đó — dùng bởi "Thực hiện sản xuất" (`ProductionExecutionService` đọc
+   * qua route này, không có route riêng). Mảng thường, không phân trang — số BOM item của một Job
+   * luôn nhỏ. */
   async getProductionJobOperations(
     jobId: string,
+    operationId?: string,
   ): Promise<ProductionJobBomItemResDto[]> {
     await this.ensureJobExists(jobId);
 
@@ -313,6 +316,9 @@ export class ProductionJobsService {
       ],
       with: {
         operations: {
+          where: operationId
+            ? eq(productionJobOperations.operationId, operationId)
+            : undefined,
           orderBy: [
             asc(productionJobOperations.sortOrder),
             asc(productionJobOperations.createdAt),
@@ -341,8 +347,8 @@ export class ProductionJobsService {
    * `docs/domains/production.md`). Chỉ riêng SL đạt bị trần bởi `plannedQuantity` của node BOM cha
    * (`E256`) — SL NG không giới hạn theo số đó, cho phép báo bù thêm tới khi đạt chạm đủ kế hoạch
    * (BUG-035, trần cũ gộp cả hai số từng làm công đoạn kẹt vĩnh viễn nếu NG chiếm hết chỗ trước).
-   * `completedDate` tự set khi đạt chạm đủ, tự xoá khi sửa xuống dưới. Chỉ chạy khi Job đã qua
-   * `approve-operations` (`E250` nếu chưa). */
+   * `completedDate` tự set khi đạt chạm đủ, tự xoá khi sửa xuống dưới. Chỉ chạy khi Job
+   * `IN_PROGRESS` (`E087`). */
   async updateProductionJobOperation(
     jobId: string,
     operationId: string,
@@ -350,10 +356,6 @@ export class ProductionJobsService {
   ): Promise<ProductionJobOperationResDto> {
     const job = await this.ensureJobExists(jobId);
     this.ensureStatus(job.status, [ProductionJobStatus.IN_PROGRESS]);
-
-    if (!job.operationsApprovedAt) {
-      throw new AppException(ErrorCode.E250, HttpStatus.CONFLICT);
-    }
 
     const operation = await this.db.query.productionJobOperations.findFirst({
       where: and(
@@ -938,26 +940,6 @@ export class ProductionJobsService {
     );
   }
 
-  /** Duyệt công đoạn của cả Job một lần — mở khoá `PATCH .../operations/:operationId` (`E250` tới
-   * khi có). Chỉ chạy khi Job `IN_PROGRESS` (`E087`) và chưa duyệt lần nào (`E251`). Không đổi
-   * `production_jobs.status`. Trình tự đầy đủ: `docs/workflows/production-job-execution.md`. */
-  async approveJobOperations(jobId: string, userId: string): Promise<void> {
-    const job = await this.ensureJobExists(jobId);
-    this.ensureStatus(job.status, [ProductionJobStatus.IN_PROGRESS]);
-
-    if (job.operationsApprovedAt) {
-      throw new AppException(ErrorCode.E251, HttpStatus.CONFLICT);
-    }
-
-    await this.db
-      .update(productionJobs)
-      .set({
-        operationsApprovedBy: userId,
-        operationsApprovedAt: new Date(),
-      })
-      .where(eq(productionJobs.id, jobId));
-  }
-
   /** `PENDING` → `IN_PROGRESS` (`E087` nếu không), ghi `startedBy`/`startedAt`. Cùng transaction:
    * vật tư nào của Job thiếu tồn thì sinh một đề xuất mua hàng cho đúng phần thiếu
    * (`PurchaseRequestsService.createShortageRequest`) — không thiếu gì thì không tạo phiếu.
@@ -1031,7 +1013,6 @@ export class ProductionJobsService {
     quantity: number;
     itemId: string;
     productionOrderId: string;
-    operationsApprovedAt: Date | null;
   }> {
     const job = await this.db.query.productionJobs.findFirst({
       columns: {
@@ -1040,7 +1021,6 @@ export class ProductionJobsService {
         quantity: true,
         itemId: true,
         productionOrderId: true,
-        operationsApprovedAt: true,
       },
       where: eq(productionJobs.id, jobId),
     });

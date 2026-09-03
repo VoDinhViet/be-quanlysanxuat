@@ -230,7 +230,7 @@ export class ProductionExecutionService {
 
   /** `POST .../operations/:jobOperationId/reports` — cộng dồn vào `production_job_operations`,
    * khác `ProductionJobsService.updateProductionJobOperation` (ghi đè). Qua đúng các gate của route
-   * đó (`E087`/`E250`/`E210`/`E256`). Xem `docs/workflows/production-job-execution.md`. */
+   * đó (`E087`/`E210`/`E256`). Xem `docs/workflows/production-job-execution.md`. */
   async createJobOperationReport(
     jobOperationId: string,
     reqDto: CreateJobOperationReportReqDto,
@@ -254,10 +254,6 @@ export class ProductionExecutionService {
 
     if (operation.productionJob.status !== ProductionJobStatus.IN_PROGRESS) {
       throw new AppException(ErrorCode.E087, HttpStatus.CONFLICT);
-    }
-
-    if (!operation.productionJob.operationsApprovedAt) {
-      throw new AppException(ErrorCode.E250, HttpStatus.CONFLICT);
     }
 
     const rejectedQuantityDelta = reqDto.rejectedQuantityDelta ?? 0;

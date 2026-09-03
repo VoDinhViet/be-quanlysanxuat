@@ -35,9 +35,12 @@ song tới hai bảng này.
 **mọi công đoạn khác của Job** đã `completedDate` — neo QC thành phẩm cuối, xem
 `docs/decisions/oqc-per-operation.md`.
 
-**Duyệt công đoạn** (`POST /production-jobs/:jobId/approve-operations`, `production:approve`) —
-điều kiện tiên quyết bắt buộc trước khi `PATCH .../operations/:id` mở (`E250` nếu chưa duyệt, `E251`
-nếu duyệt lại). Không khoá gì thêm về cấu trúc (vốn đã bất biến từ lúc duyệt LSX).
+**Duyệt công đoạn riêng đã bỏ (2026-09-03).** Từng là một bước tiên quyết bắt buộc
+(`POST /production-jobs/:jobId/approve-operations`, `production:approve`) trước khi
+`PATCH .../operations/:id` mở — gộp về đúng một bước: `start` (`PENDING → IN_PROGRESS`) là báo
+tiến độ được ngay, không còn gate trung gian. Cột `production_jobs.operationsApprovedBy`/
+`operationsApprovedAt` vẫn còn (giữ cho dữ liệu cũ), không còn route nào ghi;
+`E250`/`E251` nghỉ hưu cùng đợt. Xem `docs/workflows/production-job-execution.md`.
 
 **Hai đường ghi cùng chạm `production_job_operations`, có thể lệch nhau:**
 - `PATCH .../operations/:id` (quản lý điều chỉnh) — ghi đè cả `completedQuantity`/`rejectedQuantity`,
@@ -46,7 +49,7 @@ nếu duyệt lại). Không khoá gì thêm về cấu trúc (vốn đã bất 
 - `POST /production-execution/operations/:jobOperationId/reports` (xưởng báo cáo) — **cộng dồn**
   (không ghi đè), `completedDate` do người báo **tự chọn**; ghi thêm 1 dòng
   `production_job_operation_reports` (+ ảnh) mỗi lần, không chặn báo cáo rỗng. Qua cùng gate
-  (`E087`/`E250`/`E091`/`E210`/`E256`, thứ tự kiểm).
+  (`E087`/`E091`/`E210`/`E256`, thứ tự kiểm).
 Cả hai chỉ trần riêng `completedQuantity ≤ plannedQuantity` (`E256`) — `rejectedQuantity` không giới
 hạn, cho phép báo bù (làm lại phần hỏng) tới khi SL đạt chạm đủ. Trần cũ (`E252`, gộp cả hai số) đã
 bỏ vì làm công đoạn kẹt vĩnh viễn khi NG chiếm hết chỗ trước khi SL đạt kịp đủ — không khôi phục.
@@ -101,7 +104,7 @@ có) tra ở BOM sản phẩm theo node (`bom_items.drawingFileId`).
 
 **Job** — một chiều, phần lớn tự động:
 ```
-PENDING ──start──> IN_PROGRESS ──approve-operations──> (mở PATCH .../operations/:id)
+PENDING ──start──> IN_PROGRESS (mở PATCH .../operations/:id ngay)
    ──(closeJobIfFinalAssemblyDone: không còn công đoạn nào của node FG dở)──> WAITING_QC
    ──(closeJobIfQcCovered: total>0 && open=0 && không còn công đoạn nào của Job dở)──> WAITING_DELIVERY
    ──(closeJobIfFullyReceived: nhập kho TP đủ job.quantity)──> COMPLETED
@@ -128,10 +131,10 @@ có node thì nhánh code không bao giờ chạy. Giới hạn thật, không p
   lỗi, chỉ không sinh Job nào).
 - Sửa SL sản xuất là partial, chỉ khi `PENDING` (`E084`), chỉ tính lại `fromStockQty` — không refresh
   tồn kho. Một đơn bị từ chối rồi duyệt lại **ghi đè hoàn toàn** LSX cũ.
-- `PATCH .../operations/:id`: hợp lệ khi Job `IN_PROGRESS` (`E087`) và đã `approve-operations`
-  (`E250`); riêng bước Lắp ráp (node Cấp 0) kiểm thêm `E210`; `completedQuantity ≤ plannedQuantity`
-  → `E256`. Thứ tự kiểm đầy đủ: `E087` → `E250` → `E091` (công đoạn tồn tại) → `E210` (riêng Cấp 0)
-  → `E256`.
+- `PATCH .../operations/:id`: hợp lệ khi Job `IN_PROGRESS` (`E087`); riêng bước Lắp ráp (node Cấp
+  0) kiểm thêm `E210`; `completedQuantity ≤ plannedQuantity` → `E256`. Thứ tự kiểm đầy đủ: `E087` →
+  `E091` (công đoạn tồn tại) → `E210` (riêng Cấp 0) → `E256`. Không còn bước duyệt công đoạn riêng
+  (`approve-operations`) — xoá 2026-09-03, `docs/workflows/production-job-execution.md`.
 - Ghi chú Job (`production_job_notes`) append-only, mọi trạng thái. Ghi chú LSX
   (`production_orders.note`) sửa được mọi trạng thái qua `PATCH .../note`, mỗi lần ghi 1 dòng
   `production_order_logs` (`NOTE_UPDATED`).

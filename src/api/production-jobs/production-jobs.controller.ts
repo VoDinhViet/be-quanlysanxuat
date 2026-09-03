@@ -18,6 +18,7 @@ import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
 import { CreateProductionJobNoteReqDto } from './dto/create-production-job-note.req.dto';
 import { GetProductionJobBomReqDto } from './dto/get-production-job-bom.req.dto';
 import { GetProductionJobNotesReqDto } from './dto/get-production-job-notes.req.dto';
+import { GetProductionJobOperationsReqDto } from './dto/get-production-job-operations.req.dto';
 import { GetProductionJobsReqDto } from './dto/get-production-jobs.req.dto';
 import { ProductionJobBomItemResDto } from './dto/production-job-bom-operation.res.dto';
 import { ProductionJobDetailResDto } from './dto/production-job-detail.res.dto';
@@ -80,12 +81,17 @@ export class ProductionJobsController {
     isArray: true,
     summary:
       'Công đoạn as-used của Job (INHOUSE + OUTSOURCE), nhóm theo BOM item — dùng để lấy ' +
-      'operationId cho PATCH .../operations/:operationId',
+      'operationId cho PATCH .../operations/:operationId. `operationId` query optional lọc ' +
+      'chỉ trả BOM item nào chứa đúng công đoạn đó (màn "Thực hiện sản xuất")',
   })
   getProductionJobOperations(
     @UUIDParam('jobId') jobId: string,
+    @Query() reqDto: GetProductionJobOperationsReqDto,
   ): Promise<ProductionJobBomItemResDto[]> {
-    return this.productionJobsService.getProductionJobOperations(jobId);
+    return this.productionJobsService.getProductionJobOperations(
+      jobId,
+      reqDto.operationId,
+    );
   }
 
   @Get(':jobId/notes')
@@ -124,7 +130,7 @@ export class ProductionJobsController {
   @Permissions('production:update')
   @ApiAuth({
     summary:
-      'Start a Job — PENDING → IN_PROGRESS. Tự tạo đề xuất mua vật tư thiếu nếu có',
+      'Start a Job — PENDING → IN_PROGRESS. Tự tạo đề xuất mua vật tư thiếu nếu có. Sau bước này, PATCH .../operations/:operationId mở ngay, không còn bước duyệt công đoạn riêng',
     statusCode: HttpStatus.NO_CONTENT,
   })
   startJob(
@@ -132,23 +138,6 @@ export class ProductionJobsController {
     @CurrentUser() payload: JwtPayloadType,
   ): Promise<void> {
     return this.productionJobsService.startJob(jobId, payload.userId);
-  }
-
-  @Post(':jobId/approve-operations')
-  @Permissions('production:approve')
-  @ApiAuth({
-    summary:
-      'Duyệt công đoạn của cả Job — mở khoá PATCH .../operations/:operationId; không đổi trạng thái Job',
-    statusCode: HttpStatus.NO_CONTENT,
-  })
-  approveJobOperations(
-    @UUIDParam('jobId') jobId: string,
-    @CurrentUser() payload: JwtPayloadType,
-  ): Promise<void> {
-    return this.productionJobsService.approveJobOperations(
-      jobId,
-      payload.userId,
-    );
   }
 
   @Patch(':jobId/operations/:operationId')

@@ -538,10 +538,12 @@ export enum ErrorCode {
   E248 = 'operation.error.in_use',
   // `POST /purchase-orders` khi cùng một `purchaseRequestItemId` xuất hiện ở ≥ 2 dòng trong payload.
   E249 = 'purchase_order.error.duplicate_request_item',
-  // `PATCH .../operations/:operationId` khi `production_jobs.operationsApprovedAt` còn null —
-  // Job phải qua `POST .../approve-operations` trước khi báo tiến độ từng công đoạn (BUG-036/064).
+  // Nghỉ hưu 2026-09-03 — bỏ hẳn bước duyệt công đoạn riêng (`POST .../approve-operations` đã
+  // xoá); Job vào `IN_PROGRESS` (qua `POST .../start`) là báo tiến độ từng công đoạn được ngay.
+  // Giữ comment, không tái sử dụng số.
   E250 = 'production_job.error.operations_not_approved',
-  // `POST .../approve-operations` gọi lần hai — `operationsApprovedAt` đã có giá trị.
+  // Nghỉ hưu 2026-09-03 — cùng lý do E250 ở trên (route `approve-operations` đã xoá). Giữ
+  // comment, không tái sử dụng số.
   E251 = 'production_job.error.operations_already_approved',
   // Nghỉ hưu 2026-08-27 — thay bằng `E256`. Trần "đạt + NG ≤ plannedQuantity" làm công đoạn kẹt
   // vĩnh viễn khi NG chiếm hết chỗ trước khi SL đạt kịp chạm đủ kế hoạch (không còn cách hợp lệ nào
