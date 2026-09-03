@@ -34,6 +34,8 @@ import {
   InventoryTransactionType,
   items,
   productionJobs,
+  ProductionJobLogAction,
+  productionJobLogs,
   ProductionJobStatus,
   productionOrderLogs,
   ProductionOrderLogAction,
@@ -509,7 +511,7 @@ export class InventoryReceiptsService {
       return;
     }
 
-    await tx
+    const [closedJob] = await tx
       .update(productionJobs)
       .set({
         status: ProductionJobStatus.COMPLETED,
@@ -521,7 +523,22 @@ export class InventoryReceiptsService {
           eq(productionJobs.id, productionJobId),
           eq(productionJobs.status, ProductionJobStatus.WAITING_DELIVERY),
         ),
-      );
+      )
+      .returning({ id: productionJobs.id });
+
+    // Guard bắt buộc, không cosmetic — 2 phiếu nhập gần như đồng thời cùng qua được check
+    // `job.status !== WAITING_DELIVERY` ở đầu hàm trước khi UPDATE trên thật sự chốt; thiếu nó,
+    // lượt thua vẫn chạy tiếp và ghi trùng dòng log COMPLETED (cả Job lẫn LSX ở cascade dưới).
+    if (!closedJob) {
+      return;
+    }
+
+    await tx.insert(productionJobLogs).values({
+      productionJobId,
+      action: ProductionJobLogAction.COMPLETED,
+      content: 'Đã nhập kho đủ SL kế hoạch — hoàn thành Job',
+      performedBy: userId,
+    });
 
     // Job vừa đóng ở trên đã COMMIT trong cùng transaction — dòng của chính nó đọc lại đây đã thấy
     // `COMPLETED`, không cần loại trừ riêng.

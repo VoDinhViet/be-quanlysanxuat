@@ -33,7 +33,7 @@ import { productionJobUnits } from './production-job-units';
  *   thể nhiều Job khác) trỏ tới, không được xoá, và tuyệt đối không được `UPDATE`.
  * - `itemId` vẫn là liên kết tham khảo tới item **sống** (`set null` khi bị xoá) — cố ý khác
  *   `productionJobItems.itemId` (`restrict`): ở đây nó là liên kết, ở kia nó là một phần khoá định
- *   danh. `collectMaterialShortages`/`jobIssueDemandSubquery` đọc cột này, tự bỏ qua dòng NULL.
+ *   danh. `collectJobIssueShortages`/`jobIssueDemandSubquery` đọc cột này, tự bỏ qua dòng NULL.
  * - `imageFileId` copy thẳng ảnh vật tư lúc duyệt và **ở lại dòng này**, không lên bảng chiều — ảnh
  *   không nằm trong khoá bộ ba, đưa lên đó sẽ vô định khi hai Job cùng bộ ba mà khác ảnh. `files`
  *   là registry ghi-một-lần nên an toàn giữ dạng liên kết sống.

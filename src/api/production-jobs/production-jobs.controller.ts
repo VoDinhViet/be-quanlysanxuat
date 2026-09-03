@@ -17,12 +17,14 @@ import { Permissions } from '../../decorators/permissions.decorator';
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
 import { CreateProductionJobNoteReqDto } from './dto/create-production-job-note.req.dto';
 import { GetProductionJobBomReqDto } from './dto/get-production-job-bom.req.dto';
+import { GetProductionJobLogsReqDto } from './dto/get-production-job-logs.req.dto';
 import { GetProductionJobNotesReqDto } from './dto/get-production-job-notes.req.dto';
 import { GetProductionJobOperationsReqDto } from './dto/get-production-job-operations.req.dto';
 import { GetProductionJobsReqDto } from './dto/get-production-jobs.req.dto';
 import { ProductionJobBomItemResDto } from './dto/production-job-bom-operation.res.dto';
 import { ProductionJobDetailResDto } from './dto/production-job-detail.res.dto';
 import { ProductionJobIssueResDto } from './dto/production-job-issue.res.dto';
+import { ProductionJobLogResDto } from './dto/production-job-log.res.dto';
 import { ProductionJobNoteResDto } from './dto/production-job-note.res.dto';
 import { ProductionJobOperationResDto } from './dto/production-job-operation.res.dto';
 import { ProductionJobResDto } from './dto/production-job.res.dto';
@@ -106,6 +108,21 @@ export class ProductionJobsController {
     @Query() reqDto: GetProductionJobNotesReqDto,
   ): Promise<OffsetPaginatedDto<ProductionJobNoteResDto>> {
     return this.productionJobsService.getProductionJobNotes(jobId, reqDto);
+  }
+
+  @Get(':jobId/logs')
+  @Permissions('production:read')
+  @ApiAuth({
+    type: ProductionJobLogResDto,
+    summary:
+      'Lịch sử thao tác của Job — thời gian, người thực hiện, hành động, nội dung',
+    isPaginated: true,
+  })
+  getProductionJobLogs(
+    @UUIDParam('jobId') jobId: string,
+    @Query() reqDto: GetProductionJobLogsReqDto,
+  ): Promise<OffsetPaginatedDto<ProductionJobLogResDto>> {
+    return this.productionJobsService.getProductionJobLogs(jobId, reqDto);
   }
 
   @Post(':jobId/notes')

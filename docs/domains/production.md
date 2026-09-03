@@ -93,10 +93,12 @@ luôn trả đủ 5 status kể cả `count = 0`; `startDate`/`endDate` lọc th
 | `production_job_issues` | Vật tư của Job — nội bộ, không route |
 | `production_job_items` / `production_job_units` | Bảng chiều SCD dùng chung, không `UPDATE` |
 | `production_order_logs` | Log thao tác **mức LSX**, append-only |
+| `production_job_logs` | Log thao tác **mức Job**, append-only, 5 hành động = 5 trạng thái |
 | `production_job_notes` | Ghi chú tự do trên Job, append-only, không kiểm `status` |
 
-Job không có log thao tác (chỉ `startedBy`/`startedAt`) và không có tài liệu đính kèm — bản vẽ (nếu
-có) tra ở BOM sản phẩm theo node (`bom_items.drawingFileId`).
+Job có log thao tác (`production_job_logs`, 1 dòng/lần chuyển trạng thái — xem Lifecycle) nhưng
+không có tài liệu đính kèm — bản vẽ (nếu có) tra ở BOM sản phẩm theo node
+(`bom_items.drawingFileId`).
 
 ## Lifecycle
 
@@ -109,14 +111,19 @@ PENDING ──start──> IN_PROGRESS (mở PATCH .../operations/:id ngay)
    ──(closeJobIfQcCovered: total>0 && open=0 && không còn công đoạn nào của Job dở)──> WAITING_DELIVERY
    ──(closeJobIfFullyReceived: nhập kho TP đủ job.quantity)──> COMPLETED
 ```
-5 điểm ghi `production_jobs.status`: `startJob`; `closeJobIfFinalAssemblyDone`
+5 điểm ghi `production_jobs.status` (cộng `createJobs` sinh Job = điểm ghi thứ 6, không đổi status
+nhưng cũng ghi log `CREATED`): `startJob`; `closeJobIfFinalAssemblyDone`
 (`production-jobs.query.ts`, đếm lại công đoạn FG dở, gọi từ `updateProductionJobOperation`
 (`PATCH`)/`createJobOperationReport` (`reports`)/`recomputeOutsourcedOperationProgress` khi OS-IN
 vừa hoàn tất đúng công đoạn FG); `closeJobIfQcCovered` (gọi từ `confirmOqc`/`confirmIqc`/
 `completeIqcAfterSupplierReturn` — chấp nhận cả `IN_PROGRESS`, có thể nhảy thẳng bỏ qua
 `WAITING_QC`, nhưng từ 2026-08-31 còn đòi hết công đoạn dở mới mở khoá,
 `docs/decisions/outsourced-operation-progress-writeback.md`); `closeJobIfFullyReceived` (cũng cascade
-`production_orders.status=COMPLETED`).
+`production_orders.status=COMPLETED`). Mỗi điểm ghi `production_jobs.status` cũng ghi đúng 1 dòng
+`production_job_logs` trong cùng transaction, chỉ khi UPDATE thực sự đổi trạng thái (guard
+`.returning()`, tránh log trùng ở những lần gọi lại sau) — `performedBy` NULL ở `WAITING_QC`/
+`WAITING_DELIVERY` (mốc tự động, không có actor rõ ràng), có giá trị ở `CREATED`/`STARTED`/
+`COMPLETED`. Xem `docs/decisions/production-lifecycle-closing.md`.
 
 **Job không khai routing Cấp 0 (không có node `itemType=FG`) không bao giờ tự chuyển
 `WAITING_QC`** — điều kiện chỉ đếm lại khi thao tác vừa rồi chạm một công đoạn thuộc node đó; không
@@ -183,7 +190,9 @@ có node thì nhánh code không bao giờ chạy. Giới hạn thật, không p
 1. Duyệt LSX không trừ kho — tồn chỉ đổi khi có người lập phiếu tay.
 2. "Đề xuất SX" là snapshot lúc duyệt, không tính lại khi mở lại màn chi tiết.
 3. Job gộp theo sản phẩm — dòng quyết định SX mới là tầng 1-1 với dòng đơn.
-4. Không có log thao tác của Job — chỉ LSX có; Job chỉ có ghi chú tự do.
+4. Log (`production_job_logs`) và ghi chú (`production_job_notes`) là hai bảng khác nhau, đừng
+   lẫn: log tự động, không route ghi tay, đọc `desc(createdAt)` (mới nhất trước); ghi chú do người
+   dùng gõ qua `POST .../notes`, đọc `asc(createdAt)` (đọc xuôi như hội thoại).
 5. `APPROVED` là điểm cuối của LSX, chưa có route đưa về `PENDING`.
 6. Sửa routing/BOM sau khi Job đã duyệt không cập nhật ngược Job — cả hai là bản copy đóng băng.
 7. Chưa có route **sửa** vật tư của Job (`production_job_issues`) — chỉ đọc được qua

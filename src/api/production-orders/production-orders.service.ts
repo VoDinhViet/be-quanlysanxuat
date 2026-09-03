@@ -317,6 +317,7 @@ export class ProductionOrdersService {
         tx,
         productionOrdersId,
         quantityByItem,
+        userId,
       );
 
       const jobCount = quantityByItem.size;

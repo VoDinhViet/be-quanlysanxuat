@@ -9,6 +9,8 @@ import {
   outsourcingReceiptItems,
   outsourcingReceipts,
   productionJobBomItems,
+  ProductionJobLogAction,
+  productionJobLogs,
   productionJobOperations,
   productionJobs,
   ProductionJobStatus,
@@ -42,7 +44,7 @@ export async function closeJobIfFinalAssemblyDone(
     );
 
   if (pendingFinalAssemblyCount === 0) {
-    await tx
+    const [closedJob] = await tx
       .update(productionJobs)
       .set({ status: ProductionJobStatus.WAITING_QC })
       .where(
@@ -50,7 +52,19 @@ export async function closeJobIfFinalAssemblyDone(
           eq(productionJobs.id, productionJobId),
           eq(productionJobs.status, ProductionJobStatus.IN_PROGRESS),
         ),
-      );
+      )
+      .returning({ id: productionJobs.id });
+
+    // `performedBy` NULL: mốc này có 3 đường trigger, một trong đó (post OS-IN) không có actor
+    // người thật — lý lẽ đầy đủ ở doc bảng `production_job_logs`.
+    if (closedJob) {
+      await tx.insert(productionJobLogs).values({
+        productionJobId,
+        action: ProductionJobLogAction.WAITING_QC,
+        content: 'Hoàn thành toàn bộ công đoạn Cấp 0 — chuyển sang chờ QC',
+        performedBy: null,
+      });
+    }
   }
 }
 

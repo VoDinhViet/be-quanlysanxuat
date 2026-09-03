@@ -4,6 +4,8 @@ import type { Database, DbTransaction } from '../../database/database.type';
 import {
   OqcDisposition,
   productionJobBomItems,
+  ProductionJobLogAction,
+  productionJobLogs,
   productionJobOperations,
   productionJobs,
   ProductionJobStatus,
@@ -196,6 +198,14 @@ export async function closeJobIfQcCovered(
     // Hàm này bị gọi lại mỗi lần confirm 1 dòng QC bất kỳ và `coverage` vẫn true sau đó — chỉ
     // UPDATE trên mới khớp đúng một lần trong đời Job, nên phiếu nhập TP không bao giờ trùng.
     if (closedJob) {
+      // `performedBy` NULL: `userId` ở đây là người xác nhận 1 dòng QC, không phải actor trực
+      // tiếp trên Job — lý lẽ đầy đủ ở doc bảng `production_job_logs`.
+      await tx.insert(productionJobLogs).values({
+        productionJobId,
+        action: ProductionJobLogAction.WAITING_DELIVERY,
+        content: 'Đã qua toàn bộ QC — chuyển sang chờ giao hàng',
+        performedBy: null,
+      });
       await createProductionReceiptForJob(tx, productionJobId, userId);
     }
   }

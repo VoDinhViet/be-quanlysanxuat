@@ -2,7 +2,9 @@
 
 **Trạng thái:** còn hiệu lực — đảo một phần quyết định cũ (rút `production_job_status` từ 5 xuống 2
 giá trị, bỏ `COMPLETED`/`CANCELLED`) và khép lại "phase giao hàng 2" từng để ngỏ
-(`docs/decisions/qc-gates-on-stock-moves.md`, mục "Phạm vi cố ý hẹp của gate D2").
+(`docs/decisions/qc-gates-on-stock-moves.md`, mục "Phạm vi cố ý hẹp của gate D2"). 2026-09-03: đảo
+nốt phần còn lại của cùng đợt "simplify Job lifecycle" — khôi phục `production_job_logs` (mục cùng
+tên bên dưới).
 
 ## Bối cảnh
 
@@ -41,10 +43,14 @@ DO:   DRAFT → (send) → PENDING_APPROVAL → (approve) → PENDING_DELIVERY �
 **Nhánh production** (`ProductionJobStatus` thêm `WAITING_QC`/`WAITING_DELIVERY`/`COMPLETED`,
 `ProductionOrderStatus` thêm `COMPLETED`) — tất cả tự động, không route tay:
 
+- `(tạo Job)`/`PENDING → IN_PROGRESS`: `ProductionJobsService.createJobs`/`startJob` — không tự
+  động (route tay `start`), nhưng cùng ghi 1 dòng `production_job_logs` (`CREATED`/`STARTED`) như
+  3 mốc tự động dưới đây, xem mục "`production_job_logs` khôi phục 2026-09-03".
 - `IN_PROGRESS → WAITING_QC`: `ProductionJobsService.updateProductionJobOperation`, khi node Cấp 0
   (FG) **không còn công đoạn nào dở** — đếm lại cả node sau mỗi lần ghi, không suy từ một công đoạn
   vừa báo (node Cấp 0 có thể nhiều bước). `E210` đã đảm bảo mọi công đoạn
-  khác (ngoài Cấp 0) xong trước đó rồi.
+  khác (ngoài Cấp 0) xong trước đó rồi. Ghi 1 dòng `production_job_logs` (`WAITING_QC`) khi UPDATE
+  thực sự đổi trạng thái.
 - `WAITING_QC → WAITING_DELIVERY`: `closeJobIfQcCovered` (`src/api/oqc/oqc.query.ts`), khi
   `getJobQcCoverage` báo `open = 0` — tái dùng đúng gate đã có (`E196`/`E205`), không dựng cơ chế
   mới. `getJobQcCoverage` gộp chung IQC/OQC (`docs/decisions/qc-data-model.md`), nên hàm này được
@@ -56,19 +62,44 @@ DO:   DRAFT → (send) → PENDING_APPROVAL → (approve) → PENDING_DELIVERY �
   có IQC `COMPLETED` (duy nhất dòng QC tồn tại) có thể đẩy nhầm cả Job sang `WAITING_DELIVERY` dù
   công đoạn khác còn dở, xem `docs/decisions/outsourced-operation-progress-writeback.md`. Cùng lượt
   gọi, nếu UPDATE thật sự đổi trạng thái (`.returning()` non-empty — chỉ đúng một lần trong đời Job),
-  `closeJobIfQcCovered` gọi tiếp `createProductionReceiptForJob`
+  `closeJobIfQcCovered` ghi 1 dòng `production_job_logs` (`WAITING_DELIVERY`) rồi gọi tiếp
+  `createProductionReceiptForJob`
   (`src/api/inventory-receipts/inventory-receipts.write.ts`) tự sinh 1 phiếu nhập TP thẳng
   `PENDING_RECEIPT` (không qua `DRAFT`) — bỏ qua im lặng nếu Job đã có phiếu `PRODUCTION` rồi
   (không sinh lại sau khi phiếu tự sinh bị xoá/huỷ). Xem `docs/domains/quality-oqc.md`.
 - `WAITING_DELIVERY → COMPLETED`: `InventoryReceiptsService.postInventoryReceipt`
   (`receiptType = PRODUCTION`), khi tổng SL đã nhập kho (`getConfirmedProductionQuantityByJobId`)
-  đạt `job.quantity` — đúng ngưỡng gate `E197` đã chặn từ trước, giờ dùng luôn để đóng Job.
+  đạt `job.quantity` — đúng ngưỡng gate `E197` đã chặn từ trước, giờ dùng luôn để đóng Job. Cùng
+  `tx`, ghi 1 dòng `production_job_logs` (`COMPLETED`) khi UPDATE thực sự đổi trạng thái.
 - Cascade LSX: Job cuối cùng của LSX đạt `COMPLETED` → LSX tự đóng `COMPLETED`, ghi 1 dòng
   `production_order_logs` (`action = COMPLETED`).
 - Ghi thẳng bằng drizzle ở cả 3 module ngoài (`oqc`, `iqc`, `inventory-receipts`) — không gọi qua
   `ProductionJobsService`/`ProductionOrdersService` để tránh vòng import
   (`production-jobs`/`production-orders` đã import `oqc`/không import các module kia theo chiều
   ngược lại).
+
+### `production_job_logs` khôi phục 2026-09-03
+
+Bảng này từng tồn tại (thêm cùng đợt Job có vòng đời 5 trạng thái lần đầu), bị xoá hẳn ở
+`1ba98fd`/migration `0069` khi "simplify Job lifecycle" rút Job xuống 2 trạng thái — cùng commit đã
+xoá `hold`/`resume`/`report` mà quyết định này (phần trên) không đảo lại. Nay dựng lại đúng khuôn
+`production_order_logs` (LSX): 5 action = 5 mốc chuyển trạng thái của Job
+(`CREATED`/`STARTED`/`WAITING_QC`/`WAITING_DELIVERY`/`COMPLETED`) — 2 tên đầu cố ý khác
+`ProductionJobStatus` (`PENDING`/`IN_PROGRESS`) vì log ghi hành động, không ghi trạng thái đích.
+Ghi trong cùng transaction với
+transition, **chỉ khi UPDATE thực sự đổi trạng thái** (guard `.returning()` non-empty — thiếu guard
+này thì mỗi lần hàm bị gọi lại sau khi Job đã qua mốc đó sẽ ghi trùng dòng, vì các hàm
+`closeJobIf*` được gọi lại nhiều lần trong đời Job, không chỉ đúng một lần).
+
+`performedBy` NULL có chủ đích ở `WAITING_QC`/`WAITING_DELIVERY` — dù `userId` sẵn có ở một trong
+ba điểm gọi `WAITING_QC` (`createJobOperationReport`) và ở điểm gọi `WAITING_DELIVERY`
+(`closeJobIfQcCovered`), vẫn ghi `null` thống nhất: 2 mốc này chính `production_jobs` cũng không có
+cột `*By`/`*At` riêng (chỉ `startedBy`/`startedAt`/`completedBy`/`completedAt` là cột thật), và
+`WAITING_QC` có 3 đường trigger, một trong đó (OS-IN post) không có actor người thật. `CREATED`/
+`STARTED`/`COMPLETED` ghi `performedBy` thật vì có cột `*By` tương ứng làm tiền lệ.
+
+Không backfill — Job đã tồn tại trước khi bảng này khôi phục không có log hồi tố (dữ liệu để tái
+dựng thời điểm `WAITING_QC`/`WAITING_DELIVERY` không còn lưu ở đâu khác).
 
 **Nhánh delivery** (`OutboundOrdersService.postOutboundOrder`, route `POST
 /outbound-orders/:id/deliver`) — `PENDING_DELIVERY → DELIVERED`:
@@ -118,6 +149,12 @@ gộp hàng vốn xuất phát từ nhiều Job khác nhau. Vì vậy Job đóng
   `confirm`) — **không phải** "phiếu thứ hai trở đi" kiểu nhập từng phần: phiếu tự sinh đã chiếm đủ
   `job.quantity` ngay từ `PENDING_RECEIPT`, nên một phiếu `PRODUCTION` thứ hai thật sự sẽ đụng `E197`
   ở `confirm`.
+- Đừng xoá `production_job_logs` lần nữa — lý do "xưởng chưa cần" của `1ba98fd` không còn đúng; đây
+  giờ là dấu vết đọc được **duy nhất** của 2 mốc `WAITING_QC`/`WAITING_DELIVERY` (không có cột
+  `*By`/`*At` nào khác lưu chúng).
+- Đừng thêm `@CurrentUser()` vào `PATCH /production-jobs/:jobId/operations/:operationId` chỉ để có
+  `userId` ghi `performedBy` cho dòng `WAITING_QC` — đã cân nhắc và cố ý bỏ, xem
+  "`production_job_logs` khôi phục 2026-09-03" phía trên.
 
 ## Related docs
 

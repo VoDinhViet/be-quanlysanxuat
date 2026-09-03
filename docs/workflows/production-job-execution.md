@@ -25,6 +25,7 @@ công đoạn, và đừng nhầm hai đường ghi với nhau.
 | `PATCH /production-jobs/:jobId/operations/:operationId` | Nhập SL hoàn thành + SL không đạt (NG) cho một công đoạn | Có (`production_job_operations`) |
 | `GET /production-jobs/:jobId/notes` | Đọc ghi chú | Không |
 | `POST /production-jobs/:jobId/notes` | Đăng một ghi chú | Không |
+| `GET /production-jobs/:jobId/logs` | Đọc lịch sử thao tác — `production_job_logs`, `desc(createdAt)` | Không |
 | `GET /production-execution/operations` | Thẻ chọn công đoạn (màn "Thực hiện sản xuất", bước 1) — một thẻ / công đoạn thật (`operations`), không lọc theo trạng thái Job | Không |
 | `GET /production-execution/jobs` | Danh sách công việc của một công đoạn đang chọn (bước 2) — không lọc trạng thái Job, chỉ lọc theo bộ lọc người dùng chọn | Không |
 | `POST /production-execution/operations/:jobOperationId/reports` | Lưu báo cáo hoàn thành **lần này** cho một Part (bước 3) — cộng dồn, khác `PATCH operations` | Có (`production_job_operations`, cộng dồn) + thêm 1 dòng `production_job_operation_reports` |
@@ -35,8 +36,8 @@ chọn) — không có route riêng, tránh trùng nguồn dữ liệu.
 
 ## Actor
 
-`start`/`PATCH operations`/`POST notes` dùng `production:update`; ba route đọc còn lại
-(`bom`/`operations`/`notes`) dùng `production:read`.
+`start`/`PATCH operations`/`POST notes` dùng `production:update`; bốn route đọc còn lại
+(`bom`/`operations`/`notes`/`logs`) dùng `production:read`.
 
 Hai route đọc của `production-execution` dùng `production:read`; `POST .../reports` dùng
 `production:update` — cùng quyền, khác module, phục vụ đúng người dùng của `start`/`PATCH
@@ -109,10 +110,15 @@ hạn theo số đó) → trong 1 transaction:
 → đọc lại đúng công đoạn đó trả về. Không có input nhận `completedDate` từ client.
 
 `POST notes`: kiểm Job tồn tại → một lệnh `INSERT` (`content`, `createdBy`) → `204`, không trả nội
-dung. `GET notes` đọc qua relational query API (`with: { creator: true }` — `createdBy` trỏ thẳng
+dung. `GET notes` đọc qua relational query API (`with: { creatorBy: true }` — `createdBy` trỏ thẳng
 `users.id`, một chặng, `docs/domains/identity-access.md`), sắp `createdAt` **tăng dần** (cũ trước,
-mới sau) — đọc xuôi như một luồng trao đổi, khác `GET /production-orders/:id/logs` (đọc ngược lịch
-sử).
+mới sau) — đọc xuôi như một luồng trao đổi, khác `GET logs` (đọc ngược lịch sử, xem dưới).
+
+`GET logs`: kiểm Job tồn tại (`ensureJobExists`, `E082`) → đọc `production_job_logs` kèm
+`performerBy` (`with`), sắp `createdAt` **giảm dần** (mới nhất trước) — cùng chiều
+`GET /production-orders/:id/logs`. `production_job_logs` tự ghi tại 5 điểm chuyển trạng thái của
+Job (xem State changes/Side effects dưới và `docs/decisions/production-lifecycle-closing.md`),
+không có route ghi tay nào.
 
 ### Route của `production-execution`
 
@@ -152,7 +158,8 @@ lịch sử, chỉ để truy vết sau này.
 
 `production_jobs.status`: `PENDING → IN_PROGRESS` (`start`) — vẫn là hành động duy nhất đổi trạng
 thái Job, và duy nhất ghi thêm dữ liệu vòng đời (`startedBy`/`startedAt`); cũng là hành động duy
-nhất mở khoá `PATCH operations` (xem Preconditions) — không còn bước duyệt công đoạn riêng.
+nhất mở khoá `PATCH operations` (xem Preconditions) — không còn bước duyệt công đoạn riêng. Cùng
+transaction, ghi thêm 1 dòng `production_job_logs` (`STARTED`).
 
 `purchase_requests`/`purchase_request_items`: `start` **có thể** thêm một phiếu mới (`status =
 DRAFT`) nếu Job thiếu vật tư — xem Side effects. Không phải đổi trạng thái, là tạo mới.
@@ -162,7 +169,10 @@ DRAFT`) nếu Job thiếu vật tư — xem Side effects. Không phải đổi t
 một trường hợp:
 công đoạn Cấp 0 (`itemType = FG`) đạt `completedDate` thì cùng lệnh này đẩy luôn
 `production_jobs.status: IN_PROGRESS → WAITING_QC` — `E210` đã đảm bảo mọi công đoạn khác xong trước
-đó, xem `docs/decisions/production-lifecycle-closing.md`.
+đó, xem `docs/decisions/production-lifecycle-closing.md`. Đúng lúc đó (chỉ khi UPDATE thực sự đổi
+trạng thái — `closeJobIfFinalAssemblyDone` tự guard bằng `.returning()`), ghi thêm 1 dòng
+`production_job_logs` (`WAITING_QC`, `performedBy = NULL` — mốc tự động, xem
+`docs/decisions/production-lifecycle-closing.md`).
 
 `PATCH operations`/`POST .../reports` là hai route duy nhất trong luồng NÀY đổi trạng thái Job xa
 hơn `IN_PROGRESS`; các bước tiếp theo (`WAITING_QC → WAITING_DELIVERY → COMPLETED`) thuộc
@@ -187,10 +197,10 @@ hệ quả kèm theo. `start` vẫn **không** tiêu hao vật tư thật, khôn
 Mọi route còn lại (`bom`/`operations`/`notes`/`PATCH operations`): không có side effect nào ngoài
 chính bảng chúng ghi.
 
-- Không ghi log — Job cố ý không có action log tự động (`docs/domains/production.md`). `POST notes`
-  chỉ thêm một dòng `production_job_notes`; `PATCH operations` chỉ sửa đúng dòng
-  `production_job_operations` đó, cộng thêm đúng một side effect có điều kiện: đẩy
-  `production_jobs.status` khi công đoạn Cấp 0 xong (xem State changes).
+- `POST notes` chỉ thêm một dòng `production_job_notes`, không ghi `production_job_logs`. `PATCH
+  operations` chỉ sửa đúng dòng `production_job_operations` đó, cộng thêm đúng một side effect có
+  điều kiện: đẩy `production_jobs.status` khi công đoạn Cấp 0 xong, kèm 1 dòng
+  `production_job_logs` (xem State changes).
 - Không đẩy trạng thái LSX/đơn hàng trực tiếp từ luồng này — LSX chỉ đóng sau, ở bước nhập kho thành
   phẩm (`docs/workflows/outgoing-qc.md`).
 
@@ -246,7 +256,8 @@ chỉ đọc `inventory_balances`, không ghi) và **ghi** `purchase-requests`
 Bước trước: `docs/workflows/production-order-approval.md`. Bước sau (Job rời `WAITING_QC`):
 `docs/workflows/outgoing-qc.md`.
 
-Code: `ProductionJobsService.startJob`/`collectMaterialShortages`/
+Code: `ProductionJobsService.startJob`/`collectJobIssueShortages`/
 `getProductionJobBom`/`getProductionJobOperations`/`updateProductionJobOperation`/
-`getProductionJobNotes`/`createProductionJobNote`; `UsersService.getUserDepartmentId`;
-`PurchaseRequestsService.createShortageRequest`; `InventoryService.getMaterialStockLevels`.
+`getProductionJobNotes`/`createProductionJobNote`/`getProductionJobLogs`;
+`UsersService.getUserDepartmentId`; `PurchaseRequestsService.createShortageRequest`;
+`InventoryService.getMaterialStockLevels`.

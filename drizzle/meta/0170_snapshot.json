@@ -1,6 +1,6 @@
 {
-  "id": "f044054a-8883-435d-9bfc-9870b766bdef",
-  "prevId": "4423e171-2cff-4225-824a-90c1381d14cd",
+  "id": "50e33eda-483a-4862-9a2a-4015db5338c8",
+  "prevId": "f044054a-8883-435d-9bfc-9870b766bdef",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -12062,6 +12062,116 @@
       },
       "isRLSEnabled": false
     },
+    "public.production_job_logs": {
+      "name": "production_job_logs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "production_job_id": {
+          "name": "production_job_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "action": {
+          "name": "action",
+          "type": "production_job_log_action",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "content": {
+          "name": "content",
+          "type": "varchar(1000)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "performed_by": {
+          "name": "performed_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_production_job_logs_production_job_id": {
+          "name": "idx_production_job_logs_production_job_id",
+          "columns": [
+            {
+              "expression": "production_job_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_production_job_logs_performed_by": {
+          "name": "idx_production_job_logs_performed_by",
+          "columns": [
+            {
+              "expression": "performed_by",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "production_job_logs_production_job_id_production_jobs_id_fk": {
+          "name": "production_job_logs_production_job_id_production_jobs_id_fk",
+          "tableFrom": "production_job_logs",
+          "tableTo": "production_jobs",
+          "columnsFrom": [
+            "production_job_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "production_job_logs_performed_by_users_id_fk": {
+          "name": "production_job_logs_performed_by_users_id_fk",
+          "tableFrom": "production_job_logs",
+          "tableTo": "users",
+          "columnsFrom": [
+            "performed_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.production_job_notes": {
       "name": "production_job_notes",
       "schema": "",
@@ -14431,6 +14541,17 @@
       "values": [
         "PENDING",
         "IN_PROGRESS",
+        "WAITING_QC",
+        "WAITING_DELIVERY",
+        "COMPLETED"
+      ]
+    },
+    "public.production_job_log_action": {
+      "name": "production_job_log_action",
+      "schema": "public",
+      "values": [
+        "CREATED",
+        "STARTED",
         "WAITING_QC",
         "WAITING_DELIVERY",
         "COMPLETED"

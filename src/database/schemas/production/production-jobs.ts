@@ -14,6 +14,7 @@ import {
 import { items } from '../items/items';
 import { productionJobBomItems } from './production-job-bom-items';
 import { productionJobIssues } from './production-job-issues';
+import { productionJobLogs } from './production-job-logs';
 import { productionJobNotes } from './production-job-notes';
 import { productionOrders } from './production-orders';
 import { users } from '../identity-access/users';
@@ -65,9 +66,9 @@ export const productionJobStatusEnum = pgEnum('production_job_status', [
  *   `POST .../approve-operations` — route đó đã xoá 2026-09-03 (bỏ bước duyệt công đoạn riêng,
  *   `PATCH .../operations/:operationId` mở ngay khi Job `IN_PROGRESS`). Giữ cột lại cho dữ liệu
  *   cũ, không còn route nào ghi. Xem `docs/domains/production.md`.
- * - Không còn lưu lịch sử thao tác Job từ 2026-07-31 (`production_job_logs` đã xoá hẳn, khác LSX —
- *   `production_order_logs` vẫn còn) — chỉ `startedBy`/`startedAt`/`completedBy`/`completedAt`
- *   (cột thật) còn giữ được.
+ * - Lịch sử thao tác Job ở `production_job_logs` (bảng riêng, append-only), không ở bảng này —
+ *   chỉ `startedBy`/`startedAt`/`completedBy`/`completedAt` là cột thật; 2 mốc `WAITING_QC`/
+ *   `WAITING_DELIVERY` cố ý không có cột người/thời điểm riêng, xem `docs/domains/production.md`.
  */
 export const productionJobs = pgTable(
   'production_jobs',
@@ -157,6 +158,7 @@ export const productionJobsRelations = relations(
     bomItems: many(productionJobBomItems),
     issues: many(productionJobIssues),
     notes: many(productionJobNotes),
+    logs: many(productionJobLogs),
   }),
 );
 

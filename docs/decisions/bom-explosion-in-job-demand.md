@@ -47,7 +47,7 @@ trực tiếp vẫn đúng và cần thiết cho một màn xem/biên tập cấ
   thấp hơn thực tế.
 - `available` trên `GET /inventory-products`/`GET /inventory-materials` giảm theo, có thể xuống âm —
   hành vi cố ý sẵn có của công thức `onHand − reserved − bomDemand`, không phải lỗi mới.
-- Job đã `IN_PROGRESS` trước migration không tự chạy lại `collectMaterialShortages` — đề xuất mua
+- Job đã `IN_PROGRESS` trước migration không tự chạy lại `collectJobIssueShortages` — đề xuất mua
   hàng tự sinh lúc `startJob` cho các Job đó vẫn giữ số cũ, cần vận hành tự xử lý nếu cần.
 
 ## Đừng hoàn lại

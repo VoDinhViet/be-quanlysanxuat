@@ -39,6 +39,8 @@ import {
   productionJobBomItems,
   productionJobIssues,
   productionJobItems,
+  ProductionJobLogAction,
+  productionJobLogs,
   productionJobNotes,
   productionJobOperations,
   productionJobs,
@@ -61,11 +63,13 @@ import { PurchaseRequestShortageItem } from '../purchase-requests/types/shortage
 import { UsersService } from '../users/users.service';
 import { CreateProductionJobNoteReqDto } from './dto/create-production-job-note.req.dto';
 import { GetProductionJobBomReqDto } from './dto/get-production-job-bom.req.dto';
+import { GetProductionJobLogsReqDto } from './dto/get-production-job-logs.req.dto';
 import { GetProductionJobNotesReqDto } from './dto/get-production-job-notes.req.dto';
 import { GetProductionJobsReqDto } from './dto/get-production-jobs.req.dto';
 import { ProductionJobBomItemResDto } from './dto/production-job-bom-operation.res.dto';
 import { ProductionJobDetailResDto } from './dto/production-job-detail.res.dto';
 import { ProductionJobIssueResDto } from './dto/production-job-issue.res.dto';
+import { ProductionJobLogResDto } from './dto/production-job-log.res.dto';
 import { ProductionJobNoteResDto } from './dto/production-job-note.res.dto';
 import { ProductionJobOperationResDto } from './dto/production-job-operation.res.dto';
 import { ProductionJobResDto } from './dto/production-job.res.dto';
@@ -485,6 +489,32 @@ export class ProductionJobsService {
     );
   }
 
+  async getProductionJobLogs(
+    jobId: string,
+    reqDto: GetProductionJobLogsReqDto,
+  ): Promise<OffsetPaginatedDto<ProductionJobLogResDto>> {
+    await this.ensureJobExists(jobId);
+
+    const where = eq(productionJobLogs.productionJobId, jobId);
+    const [rows, countRows] = await Promise.all([
+      this.db.query.productionJobLogs.findMany({
+        where,
+        with: { performerBy: true },
+        orderBy: desc(productionJobLogs.createdAt),
+        limit: reqDto.limit,
+        offset: reqDto.offset,
+      }),
+      this.db.select({ total: count() }).from(productionJobLogs).where(where),
+    ]);
+
+    return new OffsetPaginatedDto(
+      plainToInstance(ProductionJobLogResDto, rows, {
+        excludeExtraneousValues: true,
+      }),
+      new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
+    );
+  }
+
   /** Sinh Job cho một LSX vừa duyệt — 1 Job/item FG (SL > 0), gộp mọi dòng
    * `production_order_items` cùng `itemId`. Bắt buộc truyền `tx` — chỉ gọi được từ transaction
    * duyệt của `ProductionOrdersService.approveProductionOrder`. Đồng thời nhân bản cây BOM
@@ -494,6 +524,7 @@ export class ProductionJobsService {
     tx: DbTransaction,
     productionOrderId: string,
     quantityByItem: Map<string, number>,
+    userId: string,
   ): Promise<void> {
     if (!quantityByItem.size) {
       return;
@@ -515,6 +546,15 @@ export class ProductionJobsService {
         id: productionJobs.id,
         itemId: productionJobs.itemId,
       });
+
+    await tx.insert(productionJobLogs).values(
+      jobRows.map((job) => ({
+        productionJobId: job.id,
+        action: ProductionJobLogAction.CREATED,
+        content: `Tạo Job từ LSX đã duyệt (SL kế hoạch ${quantityByItem.get(job.itemId)!})`,
+        performedBy: userId,
+      })),
+    );
 
     const jobIdByItemId = new Map(jobRows.map((job) => [job.itemId, job.id]));
     await this.copyBomTree(tx, itemIds, jobIdByItemId, quantityByItem);
@@ -948,7 +988,7 @@ export class ProductionJobsService {
     const job = await this.ensureJobExists(jobId);
     this.ensureStatus(job.status, [ProductionJobStatus.PENDING]);
 
-    const shortages = await this.collectMaterialShortages(jobId);
+    const jobIssueShortages = await this.collectJobIssueShortages(jobId);
 
     await this.db.transaction(async (tx) => {
       await tx
@@ -960,7 +1000,16 @@ export class ProductionJobsService {
         })
         .where(eq(productionJobs.id, jobId));
 
-      if (!shortages.length) {
+      await tx.insert(productionJobLogs).values({
+        productionJobId: jobId,
+        action: ProductionJobLogAction.STARTED,
+        content: jobIssueShortages.length
+          ? `Bắt đầu sản xuất — sinh đề xuất mua ${jobIssueShortages.length} vật tư thiếu`
+          : 'Bắt đầu sản xuất',
+        performedBy: userId,
+      });
+
+      if (!jobIssueShortages.length) {
         return;
       }
 
@@ -969,7 +1018,7 @@ export class ProductionJobsService {
         productionOrderId: job.productionOrderId,
         productionJobId: jobId,
         createdBy: userId,
-        items: shortages,
+        items: jobIssueShortages,
       });
     });
   }
@@ -978,7 +1027,7 @@ export class ProductionJobsService {
    * tồn kho vật tư hiện tại (gộp mọi kho), chỉ giữ phần dương. Dòng `itemId = NULL` (vật tư bị xoá
    * sau khi snapshot) bị bỏ qua — `purchase_request_items.itemId` là `NOT NULL`, không dựng được
    * dòng. */
-  private async collectMaterialShortages(
+  private async collectJobIssueShortages(
     jobId: string,
   ): Promise<PurchaseRequestShortageItem[]> {
     const jobIssues = await this.db.query.productionJobIssues.findMany({
