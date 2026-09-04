@@ -71,8 +71,8 @@ Production.
 - Duyệt/từ chối chỉ hợp lệ từ `PENDING_CONFIRMATION` (`E074`); từ chối bắt buộc lý do.
 - Duyệt đơn đồng thời sinh sẵn hồ sơ LSX, cùng transaction với đổi trạng thái.
 - Sửa được ở mọi trạng thái trừ `COMPLETED`/`CANCELLED` (`E065`) và `PENDING_CONFIRMATION` (`E090`)
-  — riêng đổi `items` bị chặn thêm (`E080`) nếu LSX đã duyệt. Không có route xoá đơn — huỷ dùng
-  `PATCH status = CANCELLED` (`docs/decisions/orders-no-delete.md`).
+  — riêng đổi `items` bị chặn thêm (`E080`) nếu LSX đã duyệt. Huỷ dùng `PATCH status = CANCELLED`;
+  xoá (`DELETE`, mềm) chỉ khi còn `DRAFT` (`E264` nếu khác) — `docs/decisions/orders-no-delete.md`.
 - Huỷ đơn cũng chặn (`E236`) nếu LSX đã `APPROVED` — cùng guard hình dạng với `E080`.
 - `items` trên `PATCH` là replace-all. `code` (`SOxxxx`) tự sinh, bất biến.
 - Mọi route `/orders*` cần bearer token, kể cả đọc.
@@ -115,7 +115,8 @@ Không phải invariant dù dễ tưởng:
 4. `GET /orders/:id` không trả kèm `items` — đọc riêng qua `GET /orders/:id/items`.
 5. `GET /orders/stats`: `expiredTrendCount` vẫn là xấp xỉ; `completedValue` phản ánh đúng "đã giao
    đủ thật" (không còn là proxy) — `docs/decisions/production-lifecycle-closing.md`.
-6. Không có route xoá đơn hàng — huỷ dùng `PATCH status = CANCELLED`.
+6. `DELETE /orders/:id` chỉ xoá được đơn `DRAFT` — trạng thái khác dùng `PATCH status = CANCELLED`
+   để huỷ, không xoá được.
 7. Không sửa được đơn đang chờ duyệt (`PENDING_CONFIRMATION`, `E090`).
 8. `REJECTED` không có route riêng "mở lại" — `PATCH` không kèm `status` tự đưa về `DRAFT`.
 9. Huỷ đơn (`CANCELLED`) không còn tự do tuyệt đối — `E236` chặn nếu LSX đã `APPROVED`.

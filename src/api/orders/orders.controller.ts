@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpStatus,
   Patch,
@@ -166,5 +167,15 @@ export class OrdersController {
     @CurrentUser() payload: JwtPayloadType,
   ): Promise<void> {
     return this.ordersService.rejectOrder(orderId, reqDto, payload.userId);
+  }
+
+  @Delete(':orderId')
+  @Permissions('orders:delete')
+  @ApiAuth({
+    summary: 'Delete an order — only while DRAFT',
+    statusCode: HttpStatus.NO_CONTENT,
+  })
+  deleteOrder(@UUIDParam('orderId') orderId: string): Promise<void> {
+    return this.ordersService.deleteOrder(orderId);
   }
 }

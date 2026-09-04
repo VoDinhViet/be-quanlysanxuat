@@ -6,11 +6,13 @@ import {
   count,
   desc,
   eq,
+  exists,
   getTableColumns,
   gte,
   inArray,
   isNull,
   lte,
+  or,
   sql,
 } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
@@ -76,7 +78,43 @@ export class OrdersService {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
     const where = and(
       isNull(orders.deletedAt),
-      keyword ? unaccentILike(orders.code, keyword) : undefined,
+      // `q` khớp mã đơn, HOẶC tên/mã khách hàng, HOẶC tên/mã sản phẩm nằm trong dòng đơn — 1 ô
+      // tìm kiếm duy nhất, không tách field riêng. `EXISTS` tự correlate qua `clientId`/`orderId`
+      // nên dùng chung được cho cả câu đếm total lẫn câu lấy trang, không cần join `clients`.
+      keyword
+        ? or(
+            unaccentILike(orders.code, keyword),
+            exists(
+              this.db
+                .select({ one: sql`1` })
+                .from(clients)
+                .where(
+                  and(
+                    eq(clients.id, orders.clientId),
+                    or(
+                      unaccentILike(clients.name, keyword),
+                      unaccentILike(clients.code, keyword),
+                    ),
+                  ),
+                ),
+            ),
+            exists(
+              this.db
+                .select({ one: sql`1` })
+                .from(orderItems)
+                .innerJoin(items, eq(items.id, orderItems.itemId))
+                .where(
+                  and(
+                    eq(orderItems.orderId, orders.id),
+                    or(
+                      unaccentILike(items.name, keyword),
+                      unaccentILike(items.code, keyword),
+                    ),
+                  ),
+                ),
+            ),
+          )
+        : undefined,
       reqDto.status ? eq(orders.status, reqDto.status) : undefined,
       reqDto.clientId ? eq(orders.clientId, reqDto.clientId) : undefined,
       reqDto.assignedUserId
@@ -87,21 +125,37 @@ export class OrdersService {
     );
     const orderBy = desc(orders.createdAt);
 
+    // `orders` có 4 FK riêng biệt trỏ `users` — cần alias riêng cho mỗi FK, cùng khuôn `getOrder`.
+    const assignedUserAlias = alias(users, 'assigned_user');
+    const creatorAlias = alias(users, 'creator');
+    const approverAlias = alias(users, 'approver');
+    const rejecterAlias = alias(users, 'rejecter');
+
     const [entities, countRows] = await Promise.all([
-      this.db.query.orders.findMany({
-        where,
-        limit: reqDto.limit,
-        offset: reqDto.offset,
-        orderBy,
-        extras: { expired: this.expiredSql(), totalVnd: this.totalVndSql() },
-        with: {
-          client: true,
-          assignedUser: true,
-          creatorBy: true,
-          approverBy: true,
-          rejecterBy: true,
-        },
-      }),
+      this.db
+        .select({
+          ...getTableColumns(orders),
+          expired: this.expiredSql(),
+          totalVnd: this.totalVndSql(),
+          client: getTableColumns(clients),
+          assignedUser: getTableColumns(assignedUserAlias),
+          creatorBy: getTableColumns(creatorAlias),
+          approverBy: getTableColumns(approverAlias),
+          rejecterBy: getTableColumns(rejecterAlias),
+        })
+        .from(orders)
+        .leftJoin(clients, eq(clients.id, orders.clientId))
+        .leftJoin(
+          assignedUserAlias,
+          eq(assignedUserAlias.id, orders.assignedUserId),
+        )
+        .leftJoin(creatorAlias, eq(creatorAlias.id, orders.createdBy))
+        .leftJoin(approverAlias, eq(approverAlias.id, orders.approvedBy))
+        .leftJoin(rejecterAlias, eq(rejecterAlias.id, orders.rejectedBy))
+        .where(where)
+        .limit(reqDto.limit)
+        .offset(reqDto.offset)
+        .orderBy(orderBy),
       this.db.select({ total: count() }).from(orders).where(where),
     ]);
 
@@ -493,6 +547,16 @@ export class OrdersService {
       .where(eq(orders.id, orderId));
   }
 
+  async deleteOrder(orderId: string): Promise<void> {
+    const existing = await this.ensureOrderExists(orderId);
+    this.ensureOrderDeletable(existing.status);
+
+    await this.db
+      .update(orders)
+      .set({ deletedAt: new Date() })
+      .where(eq(orders.id, orderId));
+  }
+
   /** "Trễ hạn": tính lúc đọc, không lưu — dueDate quá hạn trên đơn chưa tới trạng thái cuối. Không
    * có `dueDate` thì không bao giờ trễ. Tính trong Postgres (`extras`), không lặp lại trong JS. */
   private expiredSql() {
@@ -682,6 +746,14 @@ export class OrdersService {
     }
     if (status === OrderStatus.PENDING_CONFIRMATION) {
       throw new AppException(ErrorCode.E090, HttpStatus.CONFLICT);
+    }
+  }
+
+  /** Chỉ xoá được đơn còn `DRAFT` — hẹp hơn `ensureOrderEditable` (PATCH cho sửa ở nhiều trạng thái
+   * hơn), vì xoá là loại bỏ hẳn khỏi các luồng đang thấy, không phải chỉnh sửa. */
+  private ensureOrderDeletable(status: OrderStatus): void {
+    if (status !== OrderStatus.DRAFT) {
+      throw new AppException(ErrorCode.E264, HttpStatus.CONFLICT);
     }
   }
 

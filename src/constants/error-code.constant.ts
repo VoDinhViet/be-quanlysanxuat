@@ -585,6 +585,9 @@ export enum ErrorCode {
   // Xoá một dòng `item_units` không cần mã lỗi "in_use" riêng — `unitId` của dòng phiếu kho FK
   // thẳng `units`, không FK `item_units` (`docs/decisions/unit-conversion.md`).
   E263 = 'item_unit.error.duplicate_unit',
+  // `DELETE /orders/:orderId` khi status khác `DRAFT` — cùng khuôn `E258` (outbound_order), mint
+  // riêng vì khác resource.
+  E264 = 'order.error.not_deletable',
   V003 = 'common.error.too_many_requests',
   // `GlobalExceptionFilter` bắt chuỗi "No values to set" của drizzle-orm — mọi `PATCH` khi
   // `ValidationPipe` whitelist đã loại sạch field lạ, còn lại payload rỗng cho `.set()`. Trước đây
