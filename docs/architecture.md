@@ -251,11 +251,12 @@ Những sự thật này không nằm trọn trong một `docs/domains/<x>.md` n
   `items` có cả `imageFileId` lẫn bảng `item_files` (đính kèm nhiều file). Chi tiết:
   `docs/decisions/files-registry.md`.
 - **Mọi FK "ai đã làm việc này"** trỏ `users.id`, không phải `credentials.id`.
-- **Mã chứng từ tự sinh của 22 loại chứng từ** đọc số qua bảng đếm dùng chung `document_sequences`
+- **Mã chứng từ tự sinh của 21 loại chứng từ** đọc số qua bảng đếm dùng chung `document_sequences`
   (`generateDocumentSequence`, `src/common/utils/document-sequence.util.ts`) — 1 câu
   `INSERT ... ON CONFLICT DO UPDATE ... RETURNING` atomic theo `(documentType, year)`, bắt buộc gọi
   trong transaction của lượt tạo. `outbound_orders` mượn cột `year` làm khoá reset-theo-ngày, encode
-  YYMMDD thay vì năm thật. `items` là loại duy nhất còn nhận `code` tay nếu gửi kèm.
+  YYMMDD thay vì năm thật. `items` nhận `code` tay tuỳ chọn (bỏ trống mới tự sinh); `clients` **không**
+  đi qua bảng đếm này — `code` do người dùng tự đặt, bắt buộc gửi (`docs/domains/partners.md`).
   Môi trường có dữ liệu cũ (đếm-rồi-cộng) phải chạy
   `pnpm db:seed:document-sequences-bootstrap` trước khi dùng — xem
   `src/database/seeds/document-sequences-bootstrap.seed.ts`.

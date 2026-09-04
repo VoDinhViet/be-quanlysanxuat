@@ -19,9 +19,15 @@ Seven tables carry `deletedAt`: `clients`, `orders`, `suppliers` (deleted via AP
 - MUST delete by `.set({ deletedAt: new Date() })` on a table that has the column. MUST NOT call `db.delete()` on one.
 - MUST filter every read with `isNull(<table>.deletedAt)` — list, detail, existence checks, and FK-validation lookups alike. Forgetting it leaks deleted rows.
 - Uniqueness on these tables is a plain `.unique()` on the column, **not** scoped to live rows — a soft-deleted row keeps holding its `code`, so that code can never be reused. MUST NOT switch it to a partial unique index without asking; that changes behaviour for existing data.
-  **Exception:** `items.code` — a `uniqueIndex(...).where(sql`deleted_at IS NULL`)`` (`uq_items_code_active`), scoped to live rows on purpose, because `code` is also auto-generated (`VTxxxx`/`SPxxxx`) and a permanently-dead code would waste a slot in that sequence for no reason. Asked and approved; don't treat this as the default — every other table in this list still follows the plain-`.unique()` rule above.
+  **Exceptions:** both a `uniqueIndex(...).where(sql`deleted_at IS NULL`)`` scoped to live rows on
+  purpose, asked and approved each time — don't treat either as the default; every other table in
+  this list still follows the plain-`.unique()` rule above.
+  - `items.code` (`uq_items_code_active`) — `code` is auto-generated (`VTxxxx`/`SPxxxx`) and a
+    permanently-dead code would waste a slot in that sequence for no reason.
+  - `clients.code` (`uq_clients_code_active`) — `code` is user-entered (not auto-generated,
+    `docs/domains/partners.md`), so it must be reusable once its client is soft-deleted.
 - MUST NOT add `deletedAt` to a new table unless the module actually needs it — decide explicitly.
-- MUST NOT read a partial index ending in ``.where(sql`deleted_at IS NULL`)`` as enforcing anything **except `uq_items_code_active`** (e.g. `idx_clients_status`, a same-shaped index on a different table, exists for query performance only, not enforcement) — check the index's own name/prefix (`uq_` vs `idx_`) before assuming either way.
+- MUST NOT read a partial index ending in ``.where(sql`deleted_at IS NULL`)`` as enforcing anything **except `uq_items_code_active`/`uq_clients_code_active`** (e.g. `idx_clients_status`, a same-shaped index on a different table, exists for query performance only, not enforcement) — check the index's own name/prefix (`uq_` vs `idx_`) before assuming either way.
 
 ## Seeds
 

@@ -14,18 +14,16 @@ import {
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
-import {
-  DocumentType,
-  generateDocumentSequence,
-} from '../../common/utils/document-sequence.util';
+import { extractPostgresError } from '../../common/utils/postgres-error.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
-import type { Database, DbTransaction } from '../../database/database.type';
+import type { Database } from '../../database/database.type';
 import {
   clientContacts,
   clientGroups,
   clients,
+  ClientSelect,
   ClientStatus,
   orders,
   outboundOrders,
@@ -164,6 +162,7 @@ export class ClientsService {
     reqDto: CreateClientReqDto,
     userId: string,
   ): Promise<void> {
+    await this.validateCodeUniqueness(reqDto.code);
     if (reqDto.taxCode) {
       await this.validateTaxCodeUniqueness(reqDto.taxCode);
     }
@@ -173,20 +172,24 @@ export class ClientsService {
     // the DTO spreads straight onto the row.
     const { contacts, ...clientFields } = reqDto;
 
-    const client = await this.db.transaction(async (tx) => {
-      const code = await this.generateClientCode(tx);
-      const [row] = await tx
+    let client: ClientSelect;
+    try {
+      [client] = await this.db
         .insert(clients)
         .values({
           ...clientFields,
-          code,
           status: reqDto.status ?? ClientStatus.ACTIVE,
           createdBy: userId,
         })
         .returning();
-
-      return row;
-    });
+    } catch (error) {
+      // Mã client tự gửi vẫn còn TOCTOU giữa `validateCodeUniqueness` và `INSERT` — bắt ở đây
+      // thay vì để lỗi Postgres thô 500 lọt ra ngoài.
+      if (extractPostgresError(error)?.code === '23505') {
+        throw new AppException(ErrorCode.E024, HttpStatus.CONFLICT);
+      }
+      throw error;
+    }
 
     if (contacts?.length) {
       await this.replaceContacts(client.id, contacts);
@@ -211,11 +214,20 @@ export class ClientsService {
 
     const { contacts, ...clientFields } = reqDto;
 
-    // `updated_at` is bumped by the column's own `$onUpdate`.
-    await this.db
-      .update(clients)
-      .set(clientFields)
-      .where(eq(clients.id, clientId));
+    try {
+      // `updated_at` is bumped by the column's own `$onUpdate`.
+      await this.db
+        .update(clients)
+        .set(clientFields)
+        .where(eq(clients.id, clientId));
+    } catch (error) {
+      // Mã client tự gửi vẫn còn TOCTOU giữa `validateCodeUniqueness` và `UPDATE` — bắt ở đây
+      // thay vì để lỗi Postgres thô 500 lọt ra ngoài.
+      if (extractPostgresError(error)?.code === '23505') {
+        throw new AppException(ErrorCode.E024, HttpStatus.CONFLICT);
+      }
+      throw error;
+    }
 
     if (contacts) {
       await this.replaceContacts(clientId, contacts);
@@ -294,8 +306,12 @@ export class ClientsService {
     ignoredClientId?: string,
   ): Promise<void> {
     const where = ignoredClientId
-      ? and(eq(clients.code, code), ne(clients.id, ignoredClientId))
-      : eq(clients.code, code);
+      ? and(
+          eq(clients.code, code),
+          ne(clients.id, ignoredClientId),
+          isNull(clients.deletedAt),
+        )
+      : and(eq(clients.code, code), isNull(clients.deletedAt));
 
     const existing = await this.db.query.clients.findFirst({
       columns: { id: true },
@@ -334,11 +350,5 @@ export class ClientsService {
     if (!existing) {
       throw new AppException(ErrorCode.E026, HttpStatus.NOT_FOUND);
     }
-  }
-
-  private async generateClientCode(tx: DbTransaction): Promise<string> {
-    const sequence = await generateDocumentSequence(tx, DocumentType.CLIENT);
-
-    return `KH${String(sequence).padStart(4, '0')}`;
   }
 }

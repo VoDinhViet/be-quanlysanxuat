@@ -11,6 +11,9 @@ import {
 import { ClientContactReqDto } from './client-contact.req.dto';
 
 export class CreateClientReqDto {
+  @StringField({ description: 'Client code', maxLength: 50 })
+  code!: string;
+
   @StringField({ description: 'Client name', maxLength: 255 })
   name!: string;
 

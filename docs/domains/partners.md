@@ -43,7 +43,9 @@ delete qua `deletedAt`, chặn `E248` nếu đang dùng).
 
 ## Business rules
 
-- Mã (`code`) tự sinh nếu không gửi qua `document_sequences` (atomic), bất biến sau khi tạo.
+- **Mã KH do người dùng tự đặt** — `POST /clients` bắt buộc gửi `code`, không đi qua
+  `document_sequences`. **Mã NCC vẫn tự sinh** (`NCC` + số qua `document_sequences`) như mọi
+  chứng từ khác. Cả hai sửa được qua `PATCH`.
 - `taxCode` của NCC duy nhất.
 - Logo/đính kèm qua registry `files` — ngoại lệ duy nhất `countries.logoUrl` (URL trần, tài nguyên
   tĩnh bên thứ ba).
@@ -52,8 +54,9 @@ delete qua `deletedAt`, chặn `E248` nếu đang dùng).
 
 ## Invariants
 
-- Mã của bảng xoá mềm unique toàn bảng (không chỉ dòng sống) — mã đã xoá mềm không bao giờ dùng lại
-  được.
+- `suppliers.code` unique toàn bảng (không chỉ dòng sống) — mã NCC đã xoá mềm không bao giờ dùng
+  lại được. **`clients.code` khác** — unique chỉ trên dòng sống (`uq_clients_code_active`), mã KH
+  đã xoá mềm dùng lại được, vì mã do người dùng tự đặt theo quy ước riêng của họ.
 
 Không phải invariant dù dễ tưởng:
 

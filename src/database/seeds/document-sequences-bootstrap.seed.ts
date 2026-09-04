@@ -37,16 +37,8 @@ async function seedDocumentSequencesBootstrap(
   db: ReturnType<typeof drizzle<typeof schema>>,
 ) {
   await db.transaction(async (tx) => {
-    // Bảy loại đánh số phẳng, không reset theo kỳ — luôn bootstrap `year = 0` (sentinel), kể cả
+    // Sáu loại đánh số phẳng, không reset theo kỳ — luôn bootstrap `year = 0` (sentinel), kể cả
     // 0 dòng khớp (giữ nguyên `currentValue` mặc định 0, vô hại).
-    await tx.execute(sql`
-      INSERT INTO document_sequences (document_type, year, current_value)
-      SELECT 'CLIENT', 0, COALESCE(MAX(substring(code from 3)::int), 0)
-      FROM clients WHERE code ~ '^KH[0-9]+$'
-      ON CONFLICT (document_type, year)
-      DO UPDATE SET current_value = GREATEST(document_sequences.current_value, EXCLUDED.current_value)
-    `);
-
     await tx.execute(sql`
       INSERT INTO document_sequences (document_type, year, current_value)
       SELECT 'USER', 0, COALESCE(MAX(substring(code from 3)::int), 0)
