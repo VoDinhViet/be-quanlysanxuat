@@ -85,4 +85,8 @@ export class PaymentRequestResDto {
   @Expose()
   @DateFieldOptional({ nullable: true })
   cancelledAt!: Date | null;
+
+  @Expose()
+  @StringFieldOptional({ nullable: true })
+  cancellationReason!: string | null;
 }

@@ -27,12 +27,16 @@ Nhánh nhập kho: `docs/workflows/receipt-confirmation.md`, `docs/workflows/sto
    `expectedDate`/`paymentTerm`/giá dòng (`E134`/`E156`/`E135`).
 4. **Nhận hàng** — `POST /inventory-receipts` gắn `purchaseOrderId` (validate PO `ORDERED`, dòng
    thuộc đúng PO, SL cộng dồn ≤ SL đặt — `E121`/`E145`/`E123`/`E127`/`E154`) → `confirm` (`DRAFT →
-   PENDING_RECEIPT`/`PENDING_IQC`) → `post` (ghi tồn thật).
+   PENDING_RECEIPT`/`PENDING_IQC`) → `post` (ghi tồn thật). PO `ORDERED` chỉ được validate lại lúc
+   **tạo/sửa** phiếu — `confirm`/`post` không re-check, nên một phiếu `DRAFT` tạo trước khi PO bị
+   `cancel` vẫn `post` được bình thường sau đó.
 5. **Tự sinh YCTT** — trong cùng transaction `post` (`docs/workflows/stock-movement.md`),
-   `PaymentRequestsService.createIfOrderCompleted(tx, purchaseOrderId)` kiểm `receivedQuantity` vừa
-   chạm `orderedQuantity` (đọc từ mọi phiếu `POSTED` nối `purchaseOrderId`, không riêng phiếu đang
+   `PaymentRequestsService.createIfOrderCompleted(tx, purchaseOrderId)` kiểm PO còn `ORDERED` (bỏ
+   qua nếu đã `CANCELLED` — hệ quả trực tiếp của điểm trên) và `receivedQuantity` vừa chạm
+   `orderedQuantity` (đọc từ mọi phiếu `POSTED` nối `purchaseOrderId`, không riêng phiếu đang
    `post`) — nếu đúng, `INSERT payment_requests` (`PENDING`), `requestValue` snapshot Σ giá trị PO,
-   `dueDate = orderDate + paymentTerm`. Idempotent — PO nhận qua nhiều phiếu không tạo trùng.
+   `dueDate = orderDate + paymentTerm`. Idempotent — PO nhận qua nhiều phiếu không tạo trùng, kể cả
+   khi 2 phiếu `post` gần như đồng thời (DB unique trên `purchaseOrderId` + code bắt `23505`).
 6. **Thanh toán** — `POST /payment-requests/:id/mark-paid` (`PENDING → PAID`) hoặc `.../cancel`
    (`PENDING → CANCELLED`) — cả hai là điểm cuối, không rollback.
 
@@ -62,7 +66,10 @@ lúc lập/sửa/`confirm` phiếu nhập), `E098`/`E153`/`E106` (vòng đời p
 `docs/workflows/receipt-confirmation.md`), `E158` (`mark-paid`/`cancel` YCTT không còn `PENDING`).
 
 Giới hạn đã biết: PO `confirm` trước khi có gate `E156` (thiếu `paymentTerm`) thì
-`createIfOrderCompleted` bỏ qua vĩnh viễn, không có route tạo bù YCTT tay cho các PO cũ này.
+`createIfOrderCompleted` bỏ qua vĩnh viễn, không có route tạo bù YCTT tay cho các PO cũ này. PO bị
+`cancel` trong lúc còn phiếu nhập `DRAFT` treo (chưa `POSTED` nên `E124` không chặn) rồi phiếu đó
+vẫn `post` sau — hàng vẫn vào kho thật, chỉ riêng YCTT bị bỏ qua vì `createIfOrderCompleted` kiểm
+PO còn `ORDERED`; đây là giới hạn có chủ đích ở phía YCTT, không phải chặn việc `post` phiếu.
 
 ## Business rules
 

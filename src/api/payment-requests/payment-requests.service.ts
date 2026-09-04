@@ -18,15 +18,19 @@ import {
   DocumentType,
   generateDocumentSequence,
 } from '../../common/utils/document-sequence.util';
+import { extractPostgresError } from '../../common/utils/postgres-error.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
   InventoryDocumentStatus,
+  PaymentRequestLogAction,
+  paymentRequestLogs,
   PaymentRequestStatus,
   PaymentTerm,
   paymentRequests,
+  PurchaseOrderStatus,
   purchaseOrders,
   suppliers,
 } from '../../database/schemas';
@@ -36,8 +40,11 @@ import {
   orderAggregateSubquery,
   orderReceivedQuantitySubquery,
 } from '../purchase-orders/purchase-orders.query';
+import { CancelPaymentRequestReqDto } from './dto/cancel-payment-request.req.dto';
+import { GetPaymentRequestLogsReqDto } from './dto/get-payment-request-logs.req.dto';
 import { GetPaymentRequestsReqDto } from './dto/get-payment-requests.req.dto';
 import { PagePaymentRequestResDto } from './dto/page-payment-request.res.dto';
+import { PaymentRequestLogResDto } from './dto/payment-request-log.res.dto';
 import { PaymentRequestResDto } from './dto/payment-request.res.dto';
 
 /** Số ngày tính hạn thanh toán từ `orderDate` của PO — `createIfOrderCompleted` là consumer thật
@@ -142,6 +149,7 @@ export class PaymentRequestsService {
         purchaseOrder: {
           with: {
             supplier: true,
+            assignedUser: true,
             items: {
               with: {
                 purchaseRequestItem: {
@@ -207,38 +215,83 @@ export class PaymentRequestsService {
   ): Promise<void> {
     await this.ensurePaymentRequestPending(paymentRequestId);
 
-    await this.db
-      .update(paymentRequests)
-      .set({
-        status: PaymentRequestStatus.PAID,
-        paidBy: userId,
-        paidAt: new Date(),
-      })
-      .where(eq(paymentRequests.id, paymentRequestId));
+    await this.db.transaction(async (tx) => {
+      await tx
+        .update(paymentRequests)
+        .set({
+          status: PaymentRequestStatus.PAID,
+          paidBy: userId,
+          paidAt: new Date(),
+        })
+        .where(eq(paymentRequests.id, paymentRequestId));
+
+      await tx.insert(paymentRequestLogs).values({
+        paymentRequestId,
+        action: PaymentRequestLogAction.PAID,
+        content: 'Đánh dấu đã thanh toán',
+        performedBy: userId,
+      });
+    });
   }
 
   async cancelPaymentRequest(
     paymentRequestId: string,
+    reqDto: CancelPaymentRequestReqDto,
     userId: string,
   ): Promise<void> {
     await this.ensurePaymentRequestPending(paymentRequestId);
 
-    await this.db
-      .update(paymentRequests)
-      .set({
-        status: PaymentRequestStatus.CANCELLED,
-        cancelledBy: userId,
-        cancelledAt: new Date(),
-      })
-      .where(eq(paymentRequests.id, paymentRequestId));
+    await this.db.transaction(async (tx) => {
+      await tx
+        .update(paymentRequests)
+        .set({
+          status: PaymentRequestStatus.CANCELLED,
+          cancelledBy: userId,
+          cancelledAt: new Date(),
+          cancellationReason: reqDto.reason,
+        })
+        .where(eq(paymentRequests.id, paymentRequestId));
+
+      await tx.insert(paymentRequestLogs).values({
+        paymentRequestId,
+        action: PaymentRequestLogAction.CANCELLED,
+        content: `Hủy yêu cầu — lý do: ${reqDto.reason}`,
+        performedBy: userId,
+      });
+    });
   }
 
-  /** Tự sinh một yêu cầu thanh toán khi PO `purchaseOrderId` đạt tiến độ COMPLETED (nhận đủ hàng)
-   * — gọi từ `InventoryReceiptsService.postInventoryReceipt`, cùng transaction, cùng khuôn
-   * `IqcService.createInspectionsFromReceipt`. Vô hại khi gọi lại nhiều lần (idempotent, không
-   * throw) — PO có thể nhận qua nhiều phiếu, mỗi phiếu `post` xong đều gọi lại hàm này.
-   * `paymentTerm` null nghĩa là PO được `confirm` từ trước khi có gate `E156` — bỏ qua, không tạo
-   * bù (giới hạn đã biết, `docs/domains/purchasing.md`). */
+  async getPaymentRequestLogs(
+    paymentRequestId: string,
+    reqDto: GetPaymentRequestLogsReqDto,
+  ): Promise<OffsetPaginatedDto<PaymentRequestLogResDto>> {
+    await this.ensurePaymentRequestExists(paymentRequestId);
+
+    const where = eq(paymentRequestLogs.paymentRequestId, paymentRequestId);
+    const [rows, countRows] = await Promise.all([
+      this.db.query.paymentRequestLogs.findMany({
+        where,
+        with: { performerBy: true },
+        orderBy: desc(paymentRequestLogs.createdAt),
+        limit: reqDto.limit,
+        offset: reqDto.offset,
+      }),
+      this.db.select({ total: count() }).from(paymentRequestLogs).where(where),
+    ]);
+
+    return new OffsetPaginatedDto(
+      plainToInstance(PaymentRequestLogResDto, rows, {
+        excludeExtraneousValues: true,
+      }),
+      new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
+    );
+  }
+
+  /** Tự sinh yêu cầu thanh toán khi PO đạt tiến độ COMPLETED (nhận đủ hàng) — gọi từ
+   * `InventoryReceiptsService.postInventoryReceipt`, cùng transaction. Vô hại khi gọi lại nhiều
+   * lần (kiểm `existing` + bắt `23505` — PO có thể nhận qua nhiều phiếu, kể cả 2 phiếu `post` gần
+   * như đồng thời). Bỏ qua nếu PO đã `CANCELLED`, chưa có `paymentTerm` (gate `E156` cũ), hoặc 0
+   * dòng — chi tiết từng trường hợp: `docs/domains/purchasing.md`, mục "Yêu cầu thanh toán". */
   async createIfOrderCompleted(
     tx: DbTransaction,
     purchaseOrderId: string,
@@ -256,6 +309,8 @@ export class PaymentRequestsService {
       }),
       tx
         .select({
+          code: purchaseOrders.code,
+          status: purchaseOrders.status,
           orderDate: purchaseOrders.orderDate,
           paymentTerm: purchaseOrders.paymentTerm,
           orderedQuantity:
@@ -282,7 +337,12 @@ export class PaymentRequestsService {
     }
 
     const order = orderRows[0];
-    if (!order?.paymentTerm) {
+    // PO còn treo phiếu nhập DRAFT lúc bị huỷ (`cancelPurchaseOrder` chỉ chặn khi đã có phiếu
+    // `POSTED`, `E124`) vẫn có thể `post` sau đó — không sinh YCTT cho PO không còn `ORDERED`.
+    if (order?.status !== PurchaseOrderStatus.ORDERED) {
+      return;
+    }
+    if (!order.paymentTerm) {
       return;
     }
     // PO 0 dòng: received(0) < ordered(0) là false nên lọt qua guard cuối — phải chặn tay riêng.
@@ -299,12 +359,46 @@ export class PaymentRequestsService {
     );
 
     const code = await this.generatePaymentRequestCode(tx);
-    await tx.insert(paymentRequests).values({
-      code,
-      purchaseOrderId,
-      requestValue: order.totalAmount,
-      dueDate,
+    try {
+      const [created] = await tx
+        .insert(paymentRequests)
+        .values({
+          code,
+          purchaseOrderId,
+          requestValue: order.totalAmount,
+          dueDate,
+        })
+        .returning({ id: paymentRequests.id });
+
+      if (created) {
+        await tx.insert(paymentRequestLogs).values({
+          paymentRequestId: created.id,
+          action: PaymentRequestLogAction.CREATED,
+          content: `Tự động sinh yêu cầu thanh toán khi PO ${order.code} nhận đủ hàng`,
+          performedBy: null,
+        });
+      }
+    } catch (error) {
+      // 2 phiếu nhập của cùng PO `post` gần như đồng thời có thể cùng lọt qua check `existing` ở
+      // trên trước khi bên kia commit — `purchase_order_id` unique chặn dòng thứ hai bằng 23505,
+      // coi như đã tồn tại (không throw) thay vì làm rollback cả transaction `postInventoryReceipt`.
+      if (extractPostgresError(error)?.code !== '23505') {
+        throw error;
+      }
+    }
+  }
+
+  private async ensurePaymentRequestExists(
+    paymentRequestId: string,
+  ): Promise<void> {
+    const row = await this.db.query.paymentRequests.findFirst({
+      columns: { id: true },
+      where: eq(paymentRequests.id, paymentRequestId),
     });
+
+    if (!row) {
+      throw new AppException(ErrorCode.E157, HttpStatus.NOT_FOUND);
+    }
   }
 
   private async ensurePaymentRequestPending(

@@ -101,8 +101,11 @@ PENDING ──cancel (purchasing:approve)─────> CANCELLED
 Không có route tạo tay — `createIfOrderCompleted(tx, purchaseOrderId)` gọi từ
 `postInventoryReceipt` cùng transaction, idempotent (chỉ tạo đúng 1 lần khi `receivedQuantity` vừa
 chạm `orderedQuantity`). `requestValue` snapshot Σ giá trị PO lúc tạo; `dueDate = orderDate +
-paymentTerm`. PO `confirm` trước khi có gate `E156` (không `paymentTerm`) thì bỏ qua, không tạo bù
-— giới hạn đã biết.
+paymentTerm`. Bỏ qua, không tạo bù, khi: PO không còn `ORDERED` (đã `CANCELLED` — `cancel` PO chỉ
+chặn khi đã có phiếu nhập `POSTED`, `E124`, nên một phiếu `DRAFT` treo sẵn lúc huỷ vẫn `post` được
+sau đó); hoặc PO `confirm` trước khi có gate `E156` (không `paymentTerm`) — giới hạn đã biết. Race
+2 phiếu nhập cùng PO `post` gần như đồng thời không tạo trùng dòng — DB unique
+(`purchase_order_id`) chặn, code bắt `23505` coi như đã tồn tại.
 
 ## Business rules
 

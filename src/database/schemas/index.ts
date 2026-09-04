@@ -77,3 +77,4 @@ export * from './purchasing/purchase-quotation-item-suppliers';
 export * from './purchasing/purchase-orders';
 export * from './purchasing/purchase-order-items';
 export * from './purchasing/payment-requests';
+export * from './purchasing/payment-request-logs';

@@ -1198,6 +1198,20 @@
       "when": 1788405419070,
       "tag": "0170_friendly_millenium_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 171,
+      "version": "7",
+      "when": 1788428091090,
+      "tag": "0171_gigantic_magneto",
+      "breakpoints": true
+    },
+    {
+      "idx": 172,
+      "version": "7",
+      "when": 1788488996807,
+      "tag": "0172_safe_masked_marvel",
+      "breakpoints": true
     }
   ]
 }

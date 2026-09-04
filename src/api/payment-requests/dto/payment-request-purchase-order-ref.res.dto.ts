@@ -6,5 +6,12 @@ import { PurchaseOrderResDto } from '../../purchase-orders/dto/purchase-order.re
 @Exclude()
 export class PaymentRequestPurchaseOrderRefResDto extends PickType(
   PurchaseOrderResDto,
-  ['id', 'code', 'orderDate'] as const,
+  [
+    'id',
+    'code',
+    'orderDate',
+    'paymentTerm',
+    'expectedDate',
+    'assignedUser',
+  ] as const,
 ) {}

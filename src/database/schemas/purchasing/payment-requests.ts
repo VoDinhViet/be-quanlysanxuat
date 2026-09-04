@@ -61,6 +61,7 @@ export const paymentRequests = pgTable(
       onDelete: 'set null',
     }),
     cancelledAt: timestamp('cancelled_at'),
+    cancellationReason: varchar('cancellation_reason', { length: 1000 }),
     note: varchar('note', { length: 1000 }),
     createdBy: uuid('created_by').references(() => users.id, {
       onDelete: 'set null',
