@@ -25,7 +25,7 @@ relation lúc `GET`.
 `isFinalAssembly` qua `itemType = 'FG'` của node này.
 
 **`quantity` là lot size QC tự nhập** — trần chặn là `operation.completedQuantity` hiện tại (xưởng
-tự báo qua `PATCH .../operations/:operationId`).
+tự báo qua `POST /production-execution/operations/:jobOperationId/reports`).
 
 **Bốn enum, hai quy tắc suy `status`** (`OqcService.resolveOqcStatus`). `result`/`disposition` giữ
 nguyên vocabulary cũ dù cột DB đổi tên (`result`→cột `decision`) — chỉ `status` đổi giá trị thật:
@@ -75,7 +75,7 @@ Route tạo duy nhất: `POST /production-jobs/:jobId/qc` — **cấp Job, khôn
 
 1. Job tồn tại (`E082`).
 2. Job đang `IN_PROGRESS` **hoặc `WAITING_QC`** (`E175`) — đường chạy bình thường luôn tới ở
-   `WAITING_QC` vì `PATCH .../operations/:id` tự đẩy Job sang đó ngay khi công đoạn Cấp 0 xong.
+   `WAITING_QC` vì `POST .../reports` tự đẩy Job sang đó ngay khi công đoạn Cấp 0 xong.
 3. Job có node BOM `itemType='FG'` với ≥1 công đoạn `type ≠ OUTSOURCE` — thiếu → `E213`.
 4. **Mọi** công đoạn `INHOUSE` của node Cấp 0 (không riêng công đoạn `sortOrder` cao nhất) đã
    `completedDate` — một `COUNT` riêng, không tái dùng gate `E210`, vì node Cấp 0 có thể nhiều công

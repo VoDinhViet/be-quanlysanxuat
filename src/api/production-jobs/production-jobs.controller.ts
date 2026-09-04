@@ -1,12 +1,4 @@
-import {
-  Body,
-  Controller,
-  Get,
-  HttpStatus,
-  Patch,
-  Post,
-  Query,
-} from '@nestjs/common';
+import { Body, Controller, Get, HttpStatus, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
@@ -15,6 +7,7 @@ import { ApiAuth } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
+import { OqcService } from '../oqc/oqc.service';
 import { CreateProductionJobNoteReqDto } from './dto/create-production-job-note.req.dto';
 import { GetProductionJobBomReqDto } from './dto/get-production-job-bom.req.dto';
 import { GetProductionJobLogsReqDto } from './dto/get-production-job-logs.req.dto';
@@ -26,15 +19,16 @@ import { ProductionJobDetailResDto } from './dto/production-job-detail.res.dto';
 import { ProductionJobIssueResDto } from './dto/production-job-issue.res.dto';
 import { ProductionJobLogResDto } from './dto/production-job-log.res.dto';
 import { ProductionJobNoteResDto } from './dto/production-job-note.res.dto';
-import { ProductionJobOperationResDto } from './dto/production-job-operation.res.dto';
 import { ProductionJobResDto } from './dto/production-job.res.dto';
-import { UpdateProductionJobOperationReqDto } from './dto/update-production-job-operation.req.dto';
 import { ProductionJobsService } from './production-jobs.service';
 
 @ApiTags('Production Jobs')
 @Controller('production-jobs')
 export class ProductionJobsController {
-  constructor(private readonly productionJobsService: ProductionJobsService) {}
+  constructor(
+    private readonly productionJobsService: ProductionJobsService,
+    private readonly oqcService: OqcService,
+  ) {}
 
   @Get()
   @Permissions('production:read')
@@ -83,8 +77,9 @@ export class ProductionJobsController {
     isArray: true,
     summary:
       'Công đoạn as-used của Job (INHOUSE + OUTSOURCE), nhóm theo BOM item — dùng để lấy ' +
-      'operationId cho PATCH .../operations/:operationId. `operationId` query optional lọc ' +
-      'chỉ trả BOM item nào chứa đúng công đoạn đó (màn "Thực hiện sản xuất")',
+      'jobOperationId cho POST /production-execution/operations/:jobOperationId/reports. ' +
+      '`operationId` query optional lọc chỉ trả BOM item nào chứa đúng công đoạn đó ' +
+      '(màn "Thực hiện sản xuất")',
   })
   getProductionJobOperations(
     @UUIDParam('jobId') jobId: string,
@@ -147,7 +142,7 @@ export class ProductionJobsController {
   @Permissions('production:update')
   @ApiAuth({
     summary:
-      'Start a Job — PENDING → IN_PROGRESS. Tự tạo đề xuất mua vật tư thiếu nếu có. Sau bước này, PATCH .../operations/:operationId mở ngay, không còn bước duyệt công đoạn riêng',
+      'Start a Job — PENDING → IN_PROGRESS. Tự tạo đề xuất mua vật tư thiếu nếu có. Sau bước này, POST /production-execution/operations/:jobOperationId/reports mở ngay, không còn bước duyệt công đoạn riêng',
     statusCode: HttpStatus.NO_CONTENT,
   })
   startJob(
@@ -155,25 +150,6 @@ export class ProductionJobsController {
     @CurrentUser() payload: JwtPayloadType,
   ): Promise<void> {
     return this.productionJobsService.startJob(jobId, payload.userId);
-  }
-
-  @Patch(':jobId/operations/:operationId')
-  @Permissions('production:update')
-  @ApiAuth({
-    type: ProductionJobOperationResDto,
-    summary:
-      'Nhập SL hoàn thành cho một công đoạn của Job (ghi đè, không cộng dồn)',
-  })
-  updateProductionJobOperation(
-    @UUIDParam('jobId') jobId: string,
-    @UUIDParam('operationId') operationId: string,
-    @Body() reqDto: UpdateProductionJobOperationReqDto,
-  ): Promise<ProductionJobOperationResDto> {
-    return this.productionJobsService.updateProductionJobOperation(
-      jobId,
-      operationId,
-      reqDto,
-    );
   }
 
   @Post(':jobId/qc')
@@ -188,6 +164,6 @@ export class ProductionJobsController {
     @UUIDParam('jobId') jobId: string,
     @CurrentUser() payload: JwtPayloadType,
   ): Promise<void> {
-    return this.productionJobsService.requestJobQc(jobId, payload.userId);
+    return this.oqcService.createOqcForJob(jobId, payload.userId);
   }
 }

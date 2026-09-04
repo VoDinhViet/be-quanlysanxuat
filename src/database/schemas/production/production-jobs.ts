@@ -64,8 +64,9 @@ export const productionJobStatusEnum = pgEnum('production_job_status', [
  *   tay), xem `docs/decisions/production-lifecycle-closing.md`.
  * - `operationsApprovedBy`/`operationsApprovedAt` thêm 2026-08-25, ghi bởi
  *   `POST .../approve-operations` — route đó đã xoá 2026-09-03 (bỏ bước duyệt công đoạn riêng,
- *   `PATCH .../operations/:operationId` mở ngay khi Job `IN_PROGRESS`). Giữ cột lại cho dữ liệu
- *   cũ, không còn route nào ghi. Xem `docs/domains/production.md`.
+ *   `POST /production-execution/operations/:jobOperationId/reports` mở ngay khi Job
+ *   `IN_PROGRESS`). Giữ cột lại cho dữ liệu cũ, không còn route nào ghi. Xem
+ *   `docs/domains/production.md`.
  * - Lịch sử thao tác Job ở `production_job_logs` (bảng riêng, append-only), không ở bảng này —
  *   chỉ `startedBy`/`startedAt`/`completedBy`/`completedAt` là cột thật; 2 mốc `WAITING_QC`/
  *   `WAITING_DELIVERY` cố ý không có cột người/thời điểm riêng, xem `docs/domains/production.md`.

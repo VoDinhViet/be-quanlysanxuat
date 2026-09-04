@@ -53,8 +53,7 @@ export class ProductionExecutionController {
   @Permissions('production:update')
   @ApiAuth({
     summary:
-      '"Thực hiện sản xuất" bước 4 — lưu báo cáo hoàn thành lần này cho một Part, cộng dồn ' +
-      '(khác PATCH .../operations/:operationId, ghi đè)',
+      '"Thực hiện sản xuất" bước 4 — lưu báo cáo hoàn thành lần này cho một Part, cộng dồn',
     statusCode: HttpStatus.NO_CONTENT,
   })
   createJobOperationReport(

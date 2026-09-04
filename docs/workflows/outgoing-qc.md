@@ -137,8 +137,10 @@ này).
 transaction sẵn — gate QC chỉ thêm kiểm tra bên trong. `getJobQcCoverage`/`closeJobIfQcCovered`
 là plain function nhận `Database | DbTransaction`, không qua DI —
 `InventoryReceiptsModule`/`OutboundOrdersModule` không import `OqcModule`/`IqcModule`. Riêng
-`ProductionJobsModule` **có** import `OqcModule` — ngoại lệ duy nhất, chỉ để `requestJobQc` gọi
-thẳng `createOqcForJob`. `closeJobIfQcCovered` nay gọi tiếp sang
+`ProductionJobsModule` **có** import `OqcModule` — ngoại lệ duy nhất, chỉ để
+`ProductionJobsController` inject thẳng `OqcService` và route `POST :jobId/qc` (`requestJobQc`)
+gọi thẳng `createOqcForJob`, không qua `ProductionJobsService`. `closeJobIfQcCovered` nay gọi tiếp
+sang
 `createProductionReceiptForJob` (`inventory-receipts.write.ts`) trong CÙNG transaction —
 cùng lý do không qua DI, chiều ngược lại (`InventoryReceiptsModule` gọi sang `OqcModule`) sẽ tạo
 cycle vì `OqcModule` không import `InventoryReceiptsModule`.
@@ -168,7 +170,7 @@ luồng) → `inventory` (đọc để gate nhập kho TP + gửi duyệt DO). B
 (`docs/workflows/stock-movement.md`) hoặc DO tiếp tục qua `approve`/`deliver`
 (`docs/workflows/outbound-delivery.md`).
 
-Code: `OqcService`, `ProductionJobsService.requestJobQc`, `src/api/oqc/oqc.query.ts`
+Code: `OqcService`, `ProductionJobsController.requestJobQc`, `src/api/oqc/oqc.query.ts`
 (`getJobQcCoverage`/`closeJobIfQcCovered`), `src/api/iqc/iqc-aql.query.ts#resolveAqlPlan`,
 `InventoryReceiptsService.confirmInventoryReceipt` (nhánh `PRODUCTION`),
 `OutboundOrdersService.sendOutboundOrder`.

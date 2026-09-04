@@ -174,8 +174,8 @@ export enum ErrorCode {
   // duyệt/từ chối, khoá để tránh đổi dữ liệu ngay trong lúc chờ duyệt. Khác `E074` (ném ở route
   // approve/reject khi đơn *không* ở trạng thái này).
   E090 = 'order.error.locked_pending_confirmation',
-  // `operationId` trên `PATCH /production-jobs/:jobId/operations/:operationId` không tồn tại hoặc
-  // không thuộc đúng `jobId`.
+  // `jobOperationId` trên `POST /production-execution/operations/:jobOperationId/reports` không
+  // tồn tại.
   E091 = 'production_job_operation.error.not_found',
   // E092 (warehouse.error.not_found) stays reserved — bảng `warehouses` bỏ hẳn, hệ thống chỉ 1 kho
   // vật lý duy nhất (`docs/decisions/single-warehouse.md`).
@@ -456,7 +456,7 @@ export enum ErrorCode {
   // SCRAP`) gắn với công đoạn của node đó — tách riêng khỏi `E196` (còn phiếu OQC dở dang) vì đây là
   // lý do khác: chưa từng QC thành phẩm. `docs/decisions/oqc-per-operation.md` mục "Đừng hoàn lại".
   E209 = 'inventory_receipt.error.final_oqc_missing',
-  // `PATCH /production-jobs/:jobId/operations/:operationId` khi công đoạn thuộc node Cấp 0
+  // `POST /production-execution/operations/:jobOperationId/reports` khi công đoạn thuộc node Cấp 0
   // (`itemType = 'FG'`, bước Lắp ráp) mà còn công đoạn của node khác trong cùng Job chưa
   // `completedDate` — "A, B, C đều ✔ mới mở Assembly".
   E210 = 'production_job_operation.error.assembly_not_ready',
@@ -571,8 +571,8 @@ export enum ErrorCode {
   E258 = 'outbound_order.error.not_deletable',
   // `PATCH /outbound-orders/:id` khi DO không còn DRAFT (BUG-090).
   E259 = 'outbound_order.error.not_editable',
-  // `PATCH .../operations/:id` / `POST .../reports` trên công đoạn `OUTSOURCE` — completedQuantity/
-  // completedDate chỉ do OS-IN ghi (`recomputeOutsourcedOperationProgress`), không cho nhập tay
+  // `POST .../reports` trên công đoạn `OUTSOURCE` — completedQuantity/completedDate chỉ do OS-IN
+  // ghi (`recomputeOutsourcedOperationProgress`), không cho nhập tay
   // (`docs/decisions/outsourced-operation-progress-writeback.md`).
   E260 = 'production_job_operation.error.outsource_not_editable',
   // Trùng `itemId` trong cùng payload lập/sửa phiếu điều chỉnh tồn — cùng khuôn `E228` (phiếu

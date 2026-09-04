@@ -35,8 +35,7 @@ thuần export, không qua NestJS DI — cùng khuôn `recomputeOutsourcingOrder
 - `completedQuantity` = Σ `outsourcing_receipt_items.quantity` (mọi OS-IN `POSTED`) trỏ đúng
   `productionJobOperationId` đó.
 - `completedDate` set (`new Date()`) khi `completedQuantity >= productionJobBomItems.plannedQuantity`
-  — đúng ngưỡng nhánh trong nhà (`updateProductionJobOperation`/`createJobOperationReport`) đang
-  dùng; `NULL` nếu chưa đủ.
+  — đúng ngưỡng nhánh trong nhà (`createJobOperationReport`) đang dùng; `NULL` nếu chưa đủ.
 - **`rejectedQuantity` giữ nguyên `0`** — không suy từ disposition IQC. Luật cũ "không nhánh QC nào
   ghi ngược `completedQuantity`/`completedDate`, kể cả `SCRAP`" (`docs/domains/production.md`) vẫn
   đúng; hàng FAIL/SORT/RETURN đã có `supplier_returns` xử lý riêng, suy thêm ở đây sẽ đếm trùng.
@@ -61,11 +60,9 @@ kiện cũ (`coverage.total > 0 && coverage.open === 0`). **Không sửa `getJob
 `InventoryReceiptsService` dùng cho `E209` và `OutboundOrdersService` dùng cho `E205`, đổi shape của
 nó sẽ ảnh hưởng 2 gate không liên quan.
 
-`closeJobIfFinalAssemblyDone` (đếm lại "còn công đoạn FG nào dở") được gom từ 2 khối inline giống hệt
-nhau trước đây nằm ở `ProductionJobsService.updateProductionJobOperation` và
-`ProductionExecutionService.createJobOperationReport` — bắt buộc gom vì
-`recomputeOutsourcedOperationProgress` là điểm gọi thứ 3 cần đúng logic đó, không phải refactor
-ngoài phạm vi.
+`closeJobIfFinalAssemblyDone` (đếm lại "còn công đoạn FG nào dở") được gom về
+`production-jobs.query.ts` vì cả `ProductionExecutionService.createJobOperationReport` lẫn
+`recomputeOutsourcedOperationProgress` đều cần đúng logic đó — không phải refactor ngoài phạm vi.
 
 Job status **không** revert khi huỷ OS-IN — vòng đời 1 chiều, giữ nguyên convention hiện có
 (`production.md`, Lifecycle).

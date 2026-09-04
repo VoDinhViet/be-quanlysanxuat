@@ -17,10 +17,9 @@ import {
 } from '../../database/schemas';
 
 /** Đẩy Job `IN_PROGRESS → WAITING_QC` khi không còn công đoạn nào của node FG dở — cùng luật đang
- * dùng ở `ProductionJobsService.updateProductionJobOperation`/
- * `ProductionExecutionService.createJobOperationReport` (BUG-079,
+ * dùng ở `ProductionExecutionService.createJobOperationReport` (BUG-079,
  * `docs/decisions/production-lifecycle-closing.md`), gom về đây vì `recomputeOutsourcedOperationProgress`
- * là điểm gọi thứ 3. */
+ * cũng cần gọi lại sau khi ghi OS-IN. */
 export async function closeJobIfFinalAssemblyDone(
   tx: DbTransaction,
   productionJobId: string,
@@ -93,9 +92,8 @@ export async function countPendingJobOperations(
 /**
  * Tính lại `completedQuantity`/`completedDate` của một công đoạn `OUTSOURCE` từ Σ SL đã nhận về
  * (OS-IN `POSTED` trỏ đúng công đoạn) — nguồn ghi duy nhất cho 2 cột này ở nhánh gia công ngoài,
- * đối xứng `ProductionExecutionService.createJobOperationReport`/
- * `ProductionJobsService.updateProductionJobOperation` ở nhánh trong nhà. Gọi trong CÙNG `tx` với
- * `create`/`cancel` OS-IN (`OutsourcingReceiptsService`) — xem
+ * đối xứng `ProductionExecutionService.createJobOperationReport` ở nhánh trong nhà. Gọi trong
+ * CÙNG `tx` với `create`/`cancel` OS-IN (`OutsourcingReceiptsService`) — xem
  * `docs/decisions/outsourced-operation-progress-writeback.md`. Không suy `rejectedQuantity` từ IQC
  * — giữ nguyên 0, cùng lý do trong decision doc.
  */

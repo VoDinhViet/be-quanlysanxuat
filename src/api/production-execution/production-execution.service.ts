@@ -46,9 +46,9 @@ import { ProductionExecutionOperationResDto } from './dto/production-execution-o
 import { JobOperationProgress } from './production-execution.constant';
 
 /** Màn "Thực hiện sản xuất" (view của tổ sản xuất, đi từ công đoạn xuống) — đọc thuần snapshot đã
- * có sẵn từ `production-jobs` (không import module đó, không gọi service nào của nó). Đường ghi duy
- * nhất, `createJobOperationReport`, cộng dồn vào `production_job_operations` — khác `PATCH
- * /production-jobs/:jobId/operations/:operationId` (ghi đè). Xem
+ * có sẵn từ `production-jobs` (không import module đó, không gọi service nào của nó).
+ * `createJobOperationReport` là đường ghi duy nhất vào `production_job_operations` — cộng dồn,
+ * kèm nhật ký `production_job_operation_reports`. Xem
  * `docs/workflows/production-job-execution.md`, `docs/domains/production.md`. */
 @Injectable()
 export class ProductionExecutionService {
@@ -228,9 +228,8 @@ export class ProductionExecutionService {
     );
   }
 
-  /** `POST .../operations/:jobOperationId/reports` — cộng dồn vào `production_job_operations`,
-   * khác `ProductionJobsService.updateProductionJobOperation` (ghi đè). Qua đúng các gate của route
-   * đó (`E087`/`E210`/`E256`). Xem `docs/workflows/production-job-execution.md`. */
+  /** `POST .../operations/:jobOperationId/reports` — đường ghi duy nhất vào
+   * `production_job_operations`, cộng dồn (không ghi đè). Xem `docs/workflows/production-job-execution.md`. */
   async createJobOperationReport(
     jobOperationId: string,
     reqDto: CreateJobOperationReportReqDto,
@@ -258,8 +257,8 @@ export class ProductionExecutionService {
 
     const rejectedQuantityDelta = reqDto.rejectedQuantityDelta ?? 0;
 
-    // Bước Lắp ráp (node `itemType = 'FG'`) chỉ mở khi mọi Part khác của Job đã báo hoàn thành đủ —
-    // đúng gate của `PATCH .../operations/:operationId` (`E210`).
+    // Bước Lắp ráp (node `itemType = 'FG'`) chỉ mở khi mọi Part khác của Job đã báo hoàn thành đủ
+    // (`E210`).
     if (operation.bomItem.itemType === ItemType.FG) {
       const pendingCount = await this.countPendingOperations(
         this.db,

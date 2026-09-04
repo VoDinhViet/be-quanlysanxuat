@@ -9,9 +9,7 @@ import {
   getTableColumns,
   gte,
   inArray,
-  isNull,
   lte,
-  ne,
   or,
   sql,
 } from 'drizzle-orm';
@@ -34,7 +32,6 @@ import {
   bomOperations,
   items,
   ItemType,
-  OperationType,
   orders,
   productionJobBomItems,
   productionJobIssues,
@@ -56,8 +53,6 @@ import {
 import { AppException } from '../../exceptions/app.exception';
 import { issuedQuantityByJobItemSubquery } from '../inventory-requisitions/inventory-requisitions.query';
 import { InventoryService } from '../inventory/inventory.service';
-import { OqcService } from '../oqc/oqc.service';
-import { closeJobIfFinalAssemblyDone } from './production-jobs.query';
 import { PurchaseRequestsService } from '../purchase-requests/purchase-requests.service';
 import { PurchaseRequestShortageItem } from '../purchase-requests/types/shortage-request.type';
 import { UsersService } from '../users/users.service';
@@ -71,9 +66,7 @@ import { ProductionJobDetailResDto } from './dto/production-job-detail.res.dto';
 import { ProductionJobIssueResDto } from './dto/production-job-issue.res.dto';
 import { ProductionJobLogResDto } from './dto/production-job-log.res.dto';
 import { ProductionJobNoteResDto } from './dto/production-job-note.res.dto';
-import { ProductionJobOperationResDto } from './dto/production-job-operation.res.dto';
 import { ProductionJobResDto } from './dto/production-job.res.dto';
-import { UpdateProductionJobOperationReqDto } from './dto/update-production-job-operation.req.dto';
 
 /** Khoá nội dung của một dòng snapshot (`copyBomIssues`/`resolveJobItemSnapshots`/
  * `resolveJobUnitSnapshots`) — `JSON.stringify` một tuple, tránh hẳn việc tự bịa dấu phân
@@ -92,7 +85,6 @@ export class ProductionJobsService {
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly inventoryService: InventoryService,
-    private readonly oqcService: OqcService,
     private readonly purchaseRequestsService: PurchaseRequestsService,
     private readonly usersService: UsersService,
   ) {}
@@ -300,8 +292,9 @@ export class ProductionJobsService {
   }
 
   /** `GET /production-jobs/:jobId/operations` — công đoạn as-used của Job (cả `INHOUSE` lẫn
-   * `OUTSOURCE`), nhóm theo BOM item chứa nó; nguồn duy nhất để lấy `operationId` cho
-   * `PATCH .../operations/:operationId`. `plannedQuantity` đọc thẳng cột đã đóng băng lúc duyệt LSX
+   * `OUTSOURCE`), nhóm theo BOM item chứa nó; nguồn duy nhất để lấy id công đoạn
+   * (`production_job_operations.id`) cho `POST
+   * /production-execution/operations/:jobOperationId/reports`. `plannedQuantity` đọc thẳng cột đã đóng băng lúc duyệt LSX
    * (`copyBomTree`), gắn xuống từng công đoạn của node. `operationId` optional lọc chỉ trả BOM item
    * nào chứa đúng công đoạn đó — dùng bởi "Thực hiện sản xuất" (`ProductionExecutionService` đọc
    * qua route này, không có route riêng). Mảng thường, không phân trang — số BOM item của một Job
@@ -344,107 +337,6 @@ export class ProductionJobsService {
     return plainToInstance(ProductionJobBomItemResDto, groups, {
       excludeExtraneousValues: true,
     });
-  }
-
-  /** Đường **điều chỉnh** của quản lý — ghi đè SL đạt + SL NG (không cộng dồn), khác
-   * `ProductionExecutionService.createJobOperationReport` (đường **báo cáo** của xưởng, cộng dồn,
-   * `docs/domains/production.md`). Chỉ riêng SL đạt bị trần bởi `plannedQuantity` của node BOM cha
-   * (`E256`) — SL NG không giới hạn theo số đó, cho phép báo bù thêm tới khi đạt chạm đủ kế hoạch
-   * (BUG-035, trần cũ gộp cả hai số từng làm công đoạn kẹt vĩnh viễn nếu NG chiếm hết chỗ trước).
-   * `completedDate` tự set khi đạt chạm đủ, tự xoá khi sửa xuống dưới. Chỉ chạy khi Job
-   * `IN_PROGRESS` (`E087`). */
-  async updateProductionJobOperation(
-    jobId: string,
-    operationId: string,
-    reqDto: UpdateProductionJobOperationReqDto,
-  ): Promise<ProductionJobOperationResDto> {
-    const job = await this.ensureJobExists(jobId);
-    this.ensureStatus(job.status, [ProductionJobStatus.IN_PROGRESS]);
-
-    const operation = await this.db.query.productionJobOperations.findFirst({
-      where: and(
-        eq(productionJobOperations.id, operationId),
-        eq(productionJobOperations.productionJobId, jobId),
-      ),
-      columns: { id: true, type: true },
-      with: {
-        bomItem: true,
-      },
-    });
-
-    if (!operation) {
-      throw new AppException(ErrorCode.E091, HttpStatus.NOT_FOUND);
-    }
-
-    // completedQuantity/completedDate của công đoạn OUTSOURCE chỉ do OS-IN ghi
-    // (`recomputeOutsourcedOperationProgress`) — không cho ghi đè tay,
-    // `docs/decisions/outsourced-operation-progress-writeback.md`.
-    if (operation.type === OperationType.OUTSOURCE) {
-      throw new AppException(ErrorCode.E260, HttpStatus.CONFLICT);
-    }
-
-    // Bước Lắp ráp (node `itemType = 'FG'`, xem `copyFinalAssemblyRouting`) chỉ mở khi mọi part
-    // khác của Job đã báo hoàn thành đủ — "A, B, C đều ✔ mới mở Assembly".
-    if (operation.bomItem.itemType === ItemType.FG) {
-      const [{ pendingCount }] = await this.db
-        .select({ pendingCount: count() })
-        .from(productionJobOperations)
-        .innerJoin(
-          productionJobBomItems,
-          eq(
-            productionJobBomItems.id,
-            productionJobOperations.productionJobBomItemId,
-          ),
-        )
-        .where(
-          and(
-            eq(productionJobOperations.productionJobId, jobId),
-            ne(productionJobBomItems.itemType, ItemType.FG),
-            isNull(productionJobOperations.completedDate),
-          ),
-        );
-
-      if (pendingCount > 0) {
-        throw new AppException(ErrorCode.E210, HttpStatus.BAD_REQUEST);
-      }
-    }
-
-    const planned = operation.bomItem.plannedQuantity;
-
-    if (reqDto.completedQuantity > planned) {
-      throw new AppException(ErrorCode.E256, HttpStatus.BAD_REQUEST);
-    }
-
-    await this.db.transaction(async (tx) => {
-      await tx
-        .update(productionJobOperations)
-        .set({
-          completedQuantity: reqDto.completedQuantity,
-          rejectedQuantity: reqDto.rejectedQuantity,
-          completedDate:
-            reqDto.completedQuantity >= planned ? new Date() : null,
-        })
-        .where(eq(productionJobOperations.id, operationId));
-
-      // Node FG có thể có nhiều công đoạn Cấp 0 (`copyFinalAssemblyRouting`) — chỉ chuyển
-      // WAITING_QC khi KHÔNG CÒN công đoạn FG nào dở, đếm lại trong `tx` sau khi ghi, không suy
-      // từ mỗi request hiện tại (BUG-079, `docs/decisions/production-lifecycle-closing.md`).
-      if (operation.bomItem.itemType === ItemType.FG) {
-        await closeJobIfFinalAssemblyDone(tx, jobId);
-      }
-    });
-
-    const updated = await this.db.query.productionJobOperations.findFirst({
-      where: eq(productionJobOperations.id, operationId),
-    });
-
-    return plainToInstance(ProductionJobOperationResDto, updated, {
-      excludeExtraneousValues: true,
-    });
-  }
-
-  async requestJobQc(jobId: string, userId: string): Promise<void> {
-    return this.oqcService.createOqcForJob(jobId, userId);
   }
 
   async createProductionJobNote(

@@ -31,10 +31,11 @@ import { productionJobs } from './production-jobs';
  * - Không unique `(productionJobBomItemId, operationId)` — một routing được phép lặp lại cùng
  *   công đoạn (`bom_operations` cũng vậy), ép unique sẽ nuốt mất bước khi copy.
  * - `code`/`name`/`type`/`sortOrder`/`note`/`operationId` vẫn đóng băng lúc duyệt.
- *   `completedQuantity`/`rejectedQuantity`/`completedDate` sửa được qua hai đường: `PATCH
- *   .../operations/:operationId` (ghi đè, `ProductionJobsService`) hoặc `POST
+ *   `completedQuantity`/`rejectedQuantity`/`completedDate` sửa qua đúng một đường tay — `POST
  *   .../reports` (cộng dồn, `ProductionExecutionService`, ghi thêm một dòng
- *   `production_job_operation_reports`) — cả hai chỉ chạy khi Job `IN_PROGRESS` (`E087`).
+ *   `production_job_operation_reports`, chỉ chạy khi Job `IN_PROGRESS`, `E087`) — công đoạn
+ *   `OUTSOURCE` bị chặn ở đường đó (`E260`), tự ghi qua `recomputeOutsourcedOperationProgress`
+ *   khi OS-IN post/cancel thay vì nhập tay (`docs/decisions/outsourced-operation-progress-writeback.md`).
  */
 export const productionJobOperations = pgTable(
   'production_job_operations',

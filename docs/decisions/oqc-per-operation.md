@@ -107,7 +107,8 @@ phẩm thì không cho nhập kho), quyết định cuối **không** làm vậy
 - **Một Job nhiều nhất một node Cấp 0** — `uniqueIndex('uq_production_job_bom_items_final_assembly')
   .on(productionJobId).where(item_type = 'FG')`.
 - Bước Lắp ráp (công đoạn của node Cấp 0) chỉ mở khi **mọi** công đoạn khác của Job đã báo hoàn
-  thành (`completedDate` khác null) — `E210` chặn `PATCH .../operations/:operationId` nếu chưa.
+  thành (`completedDate` khác null) — `E210` chặn
+  `POST /production-execution/operations/:jobOperationId/reports` nếu chưa.
 - OQC gắn vào công đoạn của node Cấp 0 y hệt mọi công đoạn khác — không route/bảng riêng.
   `getJobQcCoverage` (`docs/decisions/qc-data-model.md`) đọc cờ `isFinalAssembly` qua
   `productionJobBomItems.itemType = 'FG'` để tính `E209` tách khỏi `E196`.

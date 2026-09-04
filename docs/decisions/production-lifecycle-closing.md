@@ -46,7 +46,8 @@ DO:   DRAFT → (send) → PENDING_APPROVAL → (approve) → PENDING_DELIVERY �
 - `(tạo Job)`/`PENDING → IN_PROGRESS`: `ProductionJobsService.createJobs`/`startJob` — không tự
   động (route tay `start`), nhưng cùng ghi 1 dòng `production_job_logs` (`CREATED`/`STARTED`) như
   3 mốc tự động dưới đây, xem mục "`production_job_logs` khôi phục 2026-09-03".
-- `IN_PROGRESS → WAITING_QC`: `ProductionJobsService.updateProductionJobOperation`, khi node Cấp 0
+- `IN_PROGRESS → WAITING_QC`: `ProductionExecutionService.createJobOperationReport`
+  (`recomputeOutsourcedOperationProgress` cũng gọi lại cho nhánh OS-IN), khi node Cấp 0
   (FG) **không còn công đoạn nào dở** — đếm lại cả node sau mỗi lần ghi, không suy từ một công đoạn
   vừa báo (node Cấp 0 có thể nhiều bước). `E210` đã đảm bảo mọi công đoạn
   khác (ngoài Cấp 0) xong trước đó rồi. Ghi 1 dòng `production_job_logs` (`WAITING_QC`) khi UPDATE
@@ -92,10 +93,10 @@ này thì mỗi lần hàm bị gọi lại sau khi Job đã qua mốc đó sẽ
 `closeJobIf*` được gọi lại nhiều lần trong đời Job, không chỉ đúng một lần).
 
 `performedBy` NULL có chủ đích ở `WAITING_QC`/`WAITING_DELIVERY` — dù `userId` sẵn có ở một trong
-ba điểm gọi `WAITING_QC` (`createJobOperationReport`) và ở điểm gọi `WAITING_DELIVERY`
+hai điểm gọi `WAITING_QC` (`createJobOperationReport`) và ở điểm gọi `WAITING_DELIVERY`
 (`closeJobIfQcCovered`), vẫn ghi `null` thống nhất: 2 mốc này chính `production_jobs` cũng không có
 cột `*By`/`*At` riêng (chỉ `startedBy`/`startedAt`/`completedBy`/`completedAt` là cột thật), và
-`WAITING_QC` có 3 đường trigger, một trong đó (OS-IN post) không có actor người thật. `CREATED`/
+`WAITING_QC` có 2 đường trigger, một trong đó (OS-IN post) không có actor người thật. `CREATED`/
 `STARTED`/`COMPLETED` ghi `performedBy` thật vì có cột `*By` tương ứng làm tiền lệ.
 
 Không backfill — Job đã tồn tại trước khi bảng này khôi phục không có log hồi tố (dữ liệu để tái
@@ -152,9 +153,10 @@ gộp hàng vốn xuất phát từ nhiều Job khác nhau. Vì vậy Job đóng
 - Đừng xoá `production_job_logs` lần nữa — lý do "xưởng chưa cần" của `1ba98fd` không còn đúng; đây
   giờ là dấu vết đọc được **duy nhất** của 2 mốc `WAITING_QC`/`WAITING_DELIVERY` (không có cột
   `*By`/`*At` nào khác lưu chúng).
-- Đừng thêm `@CurrentUser()` vào `PATCH /production-jobs/:jobId/operations/:operationId` chỉ để có
-  `userId` ghi `performedBy` cho dòng `WAITING_QC` — đã cân nhắc và cố ý bỏ, xem
-  "`production_job_logs` khôi phục 2026-09-03" phía trên.
+- Đừng đổi `performedBy` của dòng `WAITING_QC` từ `null` sang `userId` của
+  `createJobOperationReport` chỉ vì route đó đã có sẵn `@CurrentUser()` — đã cân nhắc và cố ý bỏ,
+  xem "`production_job_logs` khôi phục 2026-09-03" phía trên (nhánh OS-IN vẫn không có actor
+  người thật, giữ `null` thống nhất giữa 2 đường trigger).
 
 ## Related docs
 
