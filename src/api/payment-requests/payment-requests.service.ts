@@ -1,4 +1,4 @@
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, StreamableFile } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import {
   and,
@@ -11,6 +11,7 @@ import {
   or,
   sql,
 } from 'drizzle-orm';
+import { DateTime } from 'luxon';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
@@ -18,6 +19,7 @@ import {
   DocumentType,
   generateDocumentSequence,
 } from '../../common/utils/document-sequence.util';
+import { buildXlsxBuffer, XLSX_MIME } from '../../common/utils/excel.util';
 import { extractPostgresError } from '../../common/utils/postgres-error.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
@@ -33,6 +35,7 @@ import {
   PurchaseOrderStatus,
   purchaseOrders,
   suppliers,
+  users,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import {
@@ -41,11 +44,13 @@ import {
   orderReceivedQuantitySubquery,
 } from '../purchase-orders/purchase-orders.query';
 import { CancelPaymentRequestReqDto } from './dto/cancel-payment-request.req.dto';
+import { ExportPaymentRequestsReqDto } from './dto/export-payment-requests.req.dto';
 import { GetPaymentRequestLogsReqDto } from './dto/get-payment-request-logs.req.dto';
 import { GetPaymentRequestsReqDto } from './dto/get-payment-requests.req.dto';
 import { PagePaymentRequestResDto } from './dto/page-payment-request.res.dto';
 import { PaymentRequestLogResDto } from './dto/payment-request-log.res.dto';
 import { PaymentRequestResDto } from './dto/payment-request.res.dto';
+import { PAYMENT_REQUEST_EXPORT_COLUMNS } from './payment-requests.export';
 
 /** Số ngày tính hạn thanh toán từ `orderDate` của PO — `createIfOrderCompleted` là consumer thật
  * đầu tiên của `purchase_orders.paymentTerm`. */
@@ -58,6 +63,8 @@ const PAYMENT_TERM_DAYS: Record<PaymentTerm, number> = {
 
 @Injectable()
 export class PaymentRequestsService {
+  private static readonly MAX_EXPORT_ROWS = 10_000;
+
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
 
   async getPaymentRequests(
@@ -135,6 +142,79 @@ export class PaymentRequestsService {
       }),
       new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
     );
+  }
+
+  /** Cắt im lặng ở `MAX_EXPORT_ROWS`, không báo lỗi khi vượt trần. Bộ lọc tách riêng khỏi
+   * `getPaymentRequests` dù trông giống nhau — hai route độc lập, sửa filter route nào chỉ route
+   * đó đổi. */
+  async exportPaymentRequests(
+    reqDto: ExportPaymentRequestsReqDto,
+  ): Promise<StreamableFile> {
+    const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
+    const poCodeKeyword = reqDto.poCode ? `%${reqDto.poCode}%` : undefined;
+
+    const where = and(
+      keyword
+        ? or(
+            unaccentILike(paymentRequests.code, keyword),
+            unaccentILike(purchaseOrders.code, keyword),
+          )
+        : undefined,
+      poCodeKeyword
+        ? unaccentILike(purchaseOrders.code, poCodeKeyword)
+        : undefined,
+      reqDto.supplierId
+        ? eq(purchaseOrders.supplierId, reqDto.supplierId)
+        : undefined,
+      reqDto.status ? eq(paymentRequests.status, reqDto.status) : undefined,
+      reqDto.startDate
+        ? gte(paymentRequests.createdAt, reqDto.startDate)
+        : undefined,
+      reqDto.endDate
+        ? lt(
+            paymentRequests.createdAt,
+            new Date(reqDto.endDate.getTime() + 24 * 60 * 60 * 1000),
+          )
+        : undefined,
+    );
+
+    const rows = await this.db
+      .select({
+        code: paymentRequests.code,
+        poCode: purchaseOrders.code,
+        supplierName: suppliers.name,
+        supplierCode: suppliers.code,
+        requestValue: paymentRequests.requestValue,
+        dueDate: paymentRequests.dueDate,
+        status: paymentRequests.status,
+        paidAt: paymentRequests.paidAt,
+        cancellationReason: paymentRequests.cancellationReason,
+        note: paymentRequests.note,
+        creatorName: users.fullName,
+        createdAt: paymentRequests.createdAt,
+      })
+      .from(paymentRequests)
+      .innerJoin(
+        purchaseOrders,
+        eq(purchaseOrders.id, paymentRequests.purchaseOrderId),
+      )
+      .innerJoin(suppliers, eq(suppliers.id, purchaseOrders.supplierId))
+      .leftJoin(users, eq(users.id, paymentRequests.createdBy))
+      .where(where)
+      .orderBy(desc(paymentRequests.createdAt))
+      .limit(PaymentRequestsService.MAX_EXPORT_ROWS);
+
+    const buffer = await buildXlsxBuffer(
+      'Yêu cầu thanh toán',
+      PAYMENT_REQUEST_EXPORT_COLUMNS,
+      rows,
+    );
+    const fileName = `yeu-cau-thanh-toan-${DateTime.now().toFormat('yyyyLLdd-HHmm')}.xlsx`;
+
+    return new StreamableFile(buffer, {
+      type: XLSX_MIME,
+      disposition: `attachment; filename="${fileName}"`,
+    });
   }
 
   /** Giữ relational query (không chuyển `.select()` như `getPaymentRequests` ở trên) —

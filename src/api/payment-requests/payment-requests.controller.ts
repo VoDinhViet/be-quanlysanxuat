@@ -1,13 +1,23 @@
-import { Body, Controller, Get, HttpStatus, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpStatus,
+  Post,
+  Query,
+  StreamableFile,
+} from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
+import { XLSX_MIME } from '../../common/utils/excel.util';
 import { CurrentUser } from '../../decorators/current-user.decorator';
 import { ApiAuth } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
 import { CancelPaymentRequestReqDto } from './dto/cancel-payment-request.req.dto';
+import { ExportPaymentRequestsReqDto } from './dto/export-payment-requests.req.dto';
 import { GetPaymentRequestLogsReqDto } from './dto/get-payment-request-logs.req.dto';
 import { GetPaymentRequestsReqDto } from './dto/get-payment-requests.req.dto';
 import { PagePaymentRequestResDto } from './dto/page-payment-request.res.dto';
@@ -33,6 +43,20 @@ export class PaymentRequestsController {
     @Query() reqDto: GetPaymentRequestsReqDto,
   ): Promise<OffsetPaginatedDto<PagePaymentRequestResDto>> {
     return this.paymentRequestsService.getPaymentRequests(reqDto);
+  }
+
+  // Khai trước ':paymentRequestId' để 'export' không bị bắt nhầm thành id.
+  @Get('export')
+  @Permissions('purchasing:read')
+  @ApiAuth({
+    summary:
+      'Xuất Excel danh sách yêu cầu thanh toán — cùng bộ lọc GET /payment-requests, không phân trang',
+    fileType: XLSX_MIME,
+  })
+  exportPaymentRequests(
+    @Query() reqDto: ExportPaymentRequestsReqDto,
+  ): Promise<StreamableFile> {
+    return this.paymentRequestsService.exportPaymentRequests(reqDto);
   }
 
   @Get(':paymentRequestId')

@@ -120,6 +120,11 @@ sau đó); hoặc PO `confirm` trước khi có gate `E156` (không `paymentTerm
 - `cancel` PO chặn nếu đã có phiếu nhập `POSTED` nối tới (`E124`), hoặc đã `CANCELLED` (`E122`).
 - `confirm` PO chặn thiếu `expectedDate`/`paymentTerm`/giá dòng (`E134`/`E156`/`E135`).
 - Mã (`RFQ-`/`PO-`) bất biến, unique toàn bảng, cấp qua `document_sequences`.
+- `GET /payment-requests/export` xuất Excel cùng bộ lọc `GET /payment-requests`, không phân trang,
+  trần 10.000 dòng cắt im lặng.
+- `GET /purchase-ledger/export` xuất Excel cùng bộ lọc `GET /purchase-ledger`, không phân trang,
+  trần 10.000 dòng cắt im lặng. `status` tính lại bằng cùng CASE SQL với route list, không đọc từ
+  cột lưu sẵn nào.
 
 ## Cross-domain dependencies
 

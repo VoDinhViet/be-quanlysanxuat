@@ -145,6 +145,8 @@ có node thì nhánh code không bao giờ chạy. Giới hạn thật, không p
 - Ghi chú Job (`production_job_notes`) append-only, mọi trạng thái. Ghi chú LSX
   (`production_orders.note`) sửa được mọi trạng thái qua `PATCH .../note`, mỗi lần ghi 1 dòng
   `production_order_logs` (`NOTE_UPDATED`).
+- `GET /production-orders/export` xuất Excel cùng bộ lọc `GET /production-orders`, không phân
+  trang, trần 10.000 dòng cắt im lặng. `code` (Mã LSX) rỗng ở dòng `PENDING` — chỉ có khi đã duyệt.
 
 ## Invariants
 

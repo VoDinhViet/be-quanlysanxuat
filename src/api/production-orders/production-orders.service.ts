@@ -1,4 +1,4 @@
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, StreamableFile } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import {
   and,
@@ -13,6 +13,7 @@ import {
   lte,
   or,
 } from 'drizzle-orm';
+import { DateTime } from 'luxon';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
@@ -20,6 +21,7 @@ import {
   DocumentType,
   generateDocumentSequence,
 } from '../../common/utils/document-sequence.util';
+import { buildXlsxBuffer, XLSX_MIME } from '../../common/utils/excel.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
@@ -36,10 +38,12 @@ import {
   ProductionOrderLogAction,
   productionOrders,
   ProductionOrderStatus,
+  users,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { InventoryService } from '../inventory/inventory.service';
 import { ProductionJobsService } from '../production-jobs/production-jobs.service';
+import { ExportProductionOrdersReqDto } from './dto/export-production-orders.req.dto';
 import { GetProductionOrderLogsReqDto } from './dto/get-production-order-logs.req.dto';
 import { GetProductionOrdersReqDto } from './dto/get-production-orders.req.dto';
 import { ProductionOrderDetailResDto } from './dto/production-order-detail.res.dto';
@@ -47,6 +51,7 @@ import { ProductionOrderLogResDto } from './dto/production-order-log.res.dto';
 import { ProductionOrderResDto } from './dto/production-order.res.dto';
 import { UpdateProductionOrderNoteReqDto } from './dto/update-production-order-note.req.dto';
 import { UpdateProductionOrderReqDto } from './dto/update-production-order.req.dto';
+import { PRODUCTION_ORDER_EXPORT_COLUMNS } from './production-orders.export';
 
 /** Số liệu đã chốt/tính toán của một dòng PO — hình dạng chung cho mọi hàm đọc/ghi bên dưới. */
 interface PlanItem {
@@ -64,6 +69,8 @@ interface PlanItem {
  * ghi log: `docs/domains/production.md`, `docs/workflows/production-order-approval.md`. */
 @Injectable()
 export class ProductionOrdersService {
+  private static readonly MAX_EXPORT_ROWS = 10_000;
+
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly inventoryService: InventoryService,
@@ -129,6 +136,61 @@ export class ProductionOrdersService {
       }),
       new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
     );
+  }
+
+  /** Cắt im lặng ở `MAX_EXPORT_ROWS`, không báo lỗi khi vượt trần. Bộ lọc tách riêng khỏi
+   * `getProductionOrders` dù trông giống nhau — hai route độc lập, sửa filter route nào chỉ route
+   * đó đổi. */
+  async exportProductionOrders(
+    reqDto: ExportProductionOrdersReqDto,
+  ): Promise<StreamableFile> {
+    const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
+    const where = and(
+      isNull(orders.deletedAt),
+      keyword
+        ? or(
+            unaccentILike(orders.code, keyword),
+            unaccentILike(productionOrders.code, keyword),
+          )
+        : undefined,
+      reqDto.clientId ? eq(orders.clientId, reqDto.clientId) : undefined,
+      reqDto.startDate ? gte(orders.dueDate, reqDto.startDate) : undefined,
+      reqDto.endDate ? lte(orders.dueDate, reqDto.endDate) : undefined,
+      reqDto.status ? eq(productionOrders.status, reqDto.status) : undefined,
+    );
+
+    const rows = await this.db
+      .select({
+        code: productionOrders.code,
+        orderCode: orders.code,
+        clientName: clients.name,
+        orderDate: orders.orderDate,
+        dueDate: orders.dueDate,
+        status: productionOrders.status,
+        note: orders.note,
+        productionOrderNote: productionOrders.note,
+        creatorName: users.fullName,
+        createdAt: productionOrders.createdAt,
+      })
+      .from(productionOrders)
+      .innerJoin(orders, eq(orders.id, productionOrders.orderId))
+      .leftJoin(clients, eq(clients.id, orders.clientId))
+      .leftJoin(users, eq(users.id, productionOrders.createdBy))
+      .where(where)
+      .orderBy(asc(orders.dueDate), desc(orders.createdAt))
+      .limit(ProductionOrdersService.MAX_EXPORT_ROWS);
+
+    const buffer = await buildXlsxBuffer(
+      'Lệnh sản xuất',
+      PRODUCTION_ORDER_EXPORT_COLUMNS,
+      rows,
+    );
+    const fileName = `lenh-san-xuat-${DateTime.now().toFormat('yyyyLLdd-HHmm')}.xlsx`;
+
+    return new StreamableFile(buffer, {
+      type: XLSX_MIME,
+      disposition: `attachment; filename="${fileName}"`,
+    });
   }
 
   /** Snapshot dòng quyết định sản xuất đã ghi lúc duyệt PO — query thẳng trên `production_orders`

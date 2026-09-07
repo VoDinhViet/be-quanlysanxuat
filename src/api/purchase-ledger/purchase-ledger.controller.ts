@@ -1,9 +1,11 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Query, StreamableFile } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
+import { XLSX_MIME } from '../../common/utils/excel.util';
 import { ApiAuth } from '../../decorators/http.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
+import { ExportPurchaseLedgerReqDto } from './dto/export-purchase-ledger.req.dto';
 import { GetPurchaseLedgerReqDto } from './dto/get-purchase-ledger.req.dto';
 import { PurchaseLedgerItemResDto } from './dto/purchase-ledger-item.res.dto';
 import { PurchaseLedgerService } from './purchase-ledger.service';
@@ -25,5 +27,18 @@ export class PurchaseLedgerController {
     @Query() reqDto: GetPurchaseLedgerReqDto,
   ): Promise<OffsetPaginatedDto<PurchaseLedgerItemResDto>> {
     return this.purchaseLedgerService.getPurchaseLedgers(reqDto);
+  }
+
+  @Get('export')
+  @Permissions('purchasing:read')
+  @ApiAuth({
+    summary:
+      'Xuất Excel sổ cái mua hàng — cùng bộ lọc GET /purchase-ledger, không phân trang',
+    fileType: XLSX_MIME,
+  })
+  exportPurchaseLedgers(
+    @Query() reqDto: ExportPurchaseLedgerReqDto,
+  ): Promise<StreamableFile> {
+    return this.purchaseLedgerService.exportPurchaseLedgers(reqDto);
   }
 }

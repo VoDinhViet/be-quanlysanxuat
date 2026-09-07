@@ -1,4 +1,4 @@
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, StreamableFile } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import {
   and,
@@ -13,6 +13,7 @@ import {
   lte,
   sql,
 } from 'drizzle-orm';
+import { DateTime } from 'luxon';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
@@ -20,6 +21,7 @@ import {
   DocumentType,
   generateDocumentSequence,
 } from '../../common/utils/document-sequence.util';
+import { buildXlsxBuffer, XLSX_MIME } from '../../common/utils/excel.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
@@ -55,6 +57,7 @@ import {
 import { getJobQcCoverage } from '../oqc/oqc.query';
 import { issuedQuantityByOrderItemIdSubquery } from '../orders/orders.query';
 import { CreateOutboundOrderReqDto } from './dto/create-outbound-order.req.dto';
+import { ExportOutboundOrdersReqDto } from './dto/export-outbound-orders.req.dto';
 import { GetOutboundOrdersReqDto } from './dto/get-outbound-orders.req.dto';
 import { GetUnfulfilledOrderItemsReqDto } from './dto/get-unfulfilled-order-items.req.dto';
 import { OutboundOrderItemResDto } from './dto/outbound-order-item.res.dto';
@@ -64,6 +67,7 @@ import { OutboundOrderItemReqDto } from './dto/outbound-order-item.req.dto';
 import { RejectOutboundOrderReqDto } from './dto/reject-outbound-order.req.dto';
 import { UnfulfilledOrderItemResDto } from './dto/unfulfilled-order-item.res.dto';
 import { UpdateOutboundOrderReqDto } from './dto/update-outbound-order.req.dto';
+import { OUTBOUND_ORDER_EXPORT_COLUMNS } from './outbound-orders.export';
 import {
   getOutboundHeldQuantities,
   outboundHeldQuantityByItemSubquery,
@@ -78,6 +82,8 @@ export class OutboundOrdersService {
     OrderStatus.AWAITING_PRODUCTION,
     OrderStatus.IN_PROGRESS,
   ];
+
+  private static readonly MAX_EXPORT_ROWS = 10_000;
 
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
@@ -135,6 +141,68 @@ export class OutboundOrdersService {
       }),
       new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
     );
+  }
+
+  /** Cắt im lặng ở `MAX_EXPORT_ROWS`, không báo lỗi khi vượt trần. Bộ lọc tách riêng khỏi
+   * `getOutboundOrders` dù trông giống nhau — hai route độc lập, sửa filter route nào chỉ route đó đổi. */
+  async exportOutboundOrders(
+    reqDto: ExportOutboundOrdersReqDto,
+  ): Promise<StreamableFile> {
+    const where = and(
+      reqDto.q
+        ? unaccentILike(outboundOrders.code, `%${reqDto.q}%`)
+        : undefined,
+      reqDto.clientId
+        ? eq(outboundOrders.clientId, reqDto.clientId)
+        : undefined,
+      reqDto.status ? eq(outboundOrders.status, reqDto.status) : undefined,
+      reqDto.fulfillmentType
+        ? eq(outboundOrders.fulfillmentType, reqDto.fulfillmentType)
+        : undefined,
+      reqDto.startDate
+        ? gte(outboundOrders.fulfillmentDate, reqDto.startDate)
+        : undefined,
+      reqDto.endDate
+        ? lte(outboundOrders.fulfillmentDate, reqDto.endDate)
+        : undefined,
+    );
+
+    const summary = outboundOrderSummarySubquery(this.db);
+
+    const rows = await this.db
+      .select({
+        code: outboundOrders.code,
+        clientName: clients.name,
+        clientCode: clients.code,
+        fulfillmentDate: outboundOrders.fulfillmentDate,
+        fulfillmentType: outboundOrders.fulfillmentType,
+        status: outboundOrders.status,
+        orderCodes: sql<string[]>`coalesce(${summary.orderCodes}, '{}')`,
+        totalQuantity:
+          sql<number>`coalesce(${summary.totalQuantity}, 0)`.mapWith(Number),
+        note: outboundOrders.note,
+        creatorName: users.fullName,
+        createdAt: outboundOrders.createdAt,
+      })
+      .from(outboundOrders)
+      .innerJoin(clients, eq(clients.id, outboundOrders.clientId))
+      .leftJoin(users, eq(users.id, outboundOrders.createdBy))
+      .leftJoin(summary, eq(summary.outboundOrderId, outboundOrders.id))
+      .where(where)
+      .orderBy(desc(outboundOrders.createdAt))
+      .limit(OutboundOrdersService.MAX_EXPORT_ROWS);
+
+    const buffer = await buildXlsxBuffer(
+      'Đơn giao hàng',
+      OUTBOUND_ORDER_EXPORT_COLUMNS,
+      rows,
+    );
+    const fileName = `don-giao-hang-${DateTime.now().toFormat('yyyyLLdd-HHmm')}.xlsx`;
+
+    return new StreamableFile(buffer, {
+      type: XLSX_MIME,
+      disposition: `attachment; filename="${fileName}"`,
+    });
   }
 
   async getOutboundOrder(

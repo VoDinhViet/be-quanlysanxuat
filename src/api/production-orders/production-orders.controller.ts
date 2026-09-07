@@ -6,15 +6,18 @@ import {
   Patch,
   Post,
   Query,
+  StreamableFile,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
+import { XLSX_MIME } from '../../common/utils/excel.util';
 import { CurrentUser } from '../../decorators/current-user.decorator';
 import { ApiAuth } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
+import { ExportProductionOrdersReqDto } from './dto/export-production-orders.req.dto';
 import { GetProductionOrderLogsReqDto } from './dto/get-production-order-logs.req.dto';
 import { GetProductionOrdersReqDto } from './dto/get-production-orders.req.dto';
 import { ProductionOrderDetailResDto } from './dto/production-order-detail.res.dto';
@@ -42,6 +45,20 @@ export class ProductionOrdersController {
     @Query() reqDto: GetProductionOrdersReqDto,
   ): Promise<OffsetPaginatedDto<ProductionOrderResDto>> {
     return this.productionOrdersService.getProductionOrders(reqDto);
+  }
+
+  // Khai trước ':productionOrdersId' để 'export' không bị bắt nhầm thành id.
+  @Get('export')
+  @Permissions('production:read')
+  @ApiAuth({
+    summary:
+      'Xuất Excel danh sách lệnh sản xuất (LSX) — cùng bộ lọc GET /production-orders, không phân trang',
+    fileType: XLSX_MIME,
+  })
+  exportProductionOrders(
+    @Query() reqDto: ExportProductionOrdersReqDto,
+  ): Promise<StreamableFile> {
+    return this.productionOrdersService.exportProductionOrders(reqDto);
   }
 
   @Get(':productionOrdersId')

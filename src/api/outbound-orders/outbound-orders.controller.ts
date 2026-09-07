@@ -7,16 +7,19 @@ import {
   Patch,
   Post,
   Query,
+  StreamableFile,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
+import { XLSX_MIME } from '../../common/utils/excel.util';
 import { CurrentUser } from '../../decorators/current-user.decorator';
 import { ApiAuth } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
 import { CreateOutboundOrderReqDto } from './dto/create-outbound-order.req.dto';
+import { ExportOutboundOrdersReqDto } from './dto/export-outbound-orders.req.dto';
 import { GetOutboundOrdersReqDto } from './dto/get-outbound-orders.req.dto';
 import { GetUnfulfilledOrderItemsReqDto } from './dto/get-unfulfilled-order-items.req.dto';
 import { OutboundOrderItemResDto } from './dto/outbound-order-item.res.dto';
@@ -57,6 +60,21 @@ export class OutboundOrdersController {
     @Query() reqDto: GetUnfulfilledOrderItemsReqDto,
   ): Promise<OffsetPaginatedDto<UnfulfilledOrderItemResDto>> {
     return this.outboundOrdersService.getUnfulfilledOrderItems(reqDto);
+  }
+
+  // Khai trước ':outboundOrderId' để 'export' không bị bắt nhầm thành id — cùng lý do
+  // 'unfulfilled-order-items' ở trên.
+  @Get('export')
+  @Permissions('outbound:read')
+  @ApiAuth({
+    summary:
+      'Xuất Excel danh sách phiếu giao hàng (DO) — cùng bộ lọc GET /outbound-orders, không phân trang',
+    fileType: XLSX_MIME,
+  })
+  exportOutboundOrders(
+    @Query() reqDto: ExportOutboundOrdersReqDto,
+  ): Promise<StreamableFile> {
+    return this.outboundOrdersService.exportOutboundOrders(reqDto);
   }
 
   @Get(':outboundOrderId')

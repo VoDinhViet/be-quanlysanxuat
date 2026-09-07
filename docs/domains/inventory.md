@@ -215,6 +215,9 @@ Chi tiết đầy đủ (giữ chỗ FG từ `create`, gate `E194`/`E205`, side 
   (`outsourcing_receipt_items` qua các OS-IN còn `POSTED`) so với SL đã gửi
   (`outsourcing_order_items`) mới biết phiếu còn treo. Định nghĩa: `status=POSTED`,
   `expectedReturnDate` đã qua hôm nay (giờ VN), và SL đã nhận < SL đã gửi.
+- `GET /outbound-orders/export` xuất Excel cùng bộ lọc `GET /outbound-orders`, không phân trang,
+  trần 10.000 dòng cắt im lặng. Cột "Mã đơn hàng nguồn" gộp nhiều `orders.code` (1 DO có thể gộp
+  dòng từ nhiều đơn hàng).
 
 ## Invariants
 
