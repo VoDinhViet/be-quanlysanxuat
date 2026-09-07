@@ -22,7 +22,6 @@ export interface OqcExport {
   result: QualityInspectionDecision | null;
   disposition: OqcDisposition | null;
   status: QualityInspectionStatus;
-  reason: string | null;
   note: string | null;
   creatorName: string | null;
   createdAt: Date;
@@ -82,7 +81,6 @@ export const OQC_EXPORT_COLUMNS: ExcelColumn<OqcExport>[] = [
       row.disposition ? OQC_DISPOSITION_LABELS[row.disposition] : null,
   },
   { header: 'Trạng thái', value: (row) => OQC_STATUS_LABELS[row.status] },
-  { header: 'Lý do', value: (row) => row.reason },
   { header: 'Ghi chú', value: (row) => row.note, width: 30 },
   { header: 'Người tạo', value: (row) => row.creatorName },
   { header: 'Ngày tạo', value: (row) => formatExcelDateTime(row.createdAt) },

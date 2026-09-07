@@ -242,7 +242,6 @@ export class OqcService {
         result: qualityInspections.decision,
         disposition: qualityInspections.disposition,
         status: qualityInspections.status,
-        reason: qualityInspections.reason,
         note: qualityInspections.note,
         creatorName: creatorUsers.fullName,
         createdAt: qualityInspections.createdAt,
