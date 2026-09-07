@@ -1,5 +1,6 @@
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, StreamableFile } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
+import { DateTime } from 'luxon';
 import {
   and,
   asc,
@@ -23,6 +24,7 @@ import {
   DocumentType,
   generateDocumentSequence,
 } from '../../common/utils/document-sequence.util';
+import { buildXlsxBuffer, XLSX_MIME } from '../../common/utils/excel.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
@@ -47,6 +49,7 @@ import { FilesService } from '../files/files.service';
 import { ProductionOrdersService } from '../production-orders/production-orders.service';
 import { CreateOrderPaymentReqDto } from './dto/create-order-payment.req.dto';
 import { CreateOrderReqDto } from './dto/create-order.req.dto';
+import { ExportOrdersReqDto } from './dto/export-orders.req.dto';
 import { GetOrdersReqDto } from './dto/get-orders.req.dto';
 import { OrderItemReqDto } from './dto/order-item.req.dto';
 import { OrderItemResDto } from './dto/order-item.res.dto';
@@ -57,6 +60,7 @@ import { PageOrderResDto } from './dto/page-order.res.dto';
 import { RejectOrderReqDto } from './dto/reject-order.req.dto';
 import { UpdateOrderReqDto } from './dto/update-order.req.dto';
 import { OrderPaymentStatus } from './orders.constant';
+import { ORDER_EXPORT_COLUMNS, OrderExport } from './orders.export';
 import {
   issuedQuantityByOrderItemIdSubquery,
   paidAmountByOrderIdSubquery,
@@ -66,6 +70,8 @@ import {
  * business rule đầy đủ: `docs/domains/orders.md`, `docs/workflows/order-approval.md`. */
 @Injectable()
 export class OrdersService {
+  private static readonly MAX_EXPORT_ROWS = 10_000;
+
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly filesService: FilesService,
@@ -165,6 +171,98 @@ export class OrdersService {
       }),
       new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
     );
+  }
+
+  /** Cắt im lặng ở `MAX_EXPORT_ROWS`, không báo lỗi khi vượt trần. Bộ lọc tách riêng khỏi
+   * `getOrders` dù trông giống nhau — hai route độc lập, sửa filter route nào chỉ route đó đổi. */
+  async exportOrders(reqDto: ExportOrdersReqDto): Promise<StreamableFile> {
+    const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
+    const where = and(
+      isNull(orders.deletedAt),
+      keyword
+        ? or(
+            unaccentILike(orders.code, keyword),
+            exists(
+              this.db
+                .select({ one: sql`1` })
+                .from(clients)
+                .where(
+                  and(
+                    eq(clients.id, orders.clientId),
+                    or(
+                      unaccentILike(clients.name, keyword),
+                      unaccentILike(clients.code, keyword),
+                    ),
+                  ),
+                ),
+            ),
+            exists(
+              this.db
+                .select({ one: sql`1` })
+                .from(orderItems)
+                .innerJoin(items, eq(items.id, orderItems.itemId))
+                .where(
+                  and(
+                    eq(orderItems.orderId, orders.id),
+                    or(
+                      unaccentILike(items.name, keyword),
+                      unaccentILike(items.code, keyword),
+                    ),
+                  ),
+                ),
+            ),
+          )
+        : undefined,
+      reqDto.status ? eq(orders.status, reqDto.status) : undefined,
+      reqDto.clientId ? eq(orders.clientId, reqDto.clientId) : undefined,
+      reqDto.assignedUserId
+        ? eq(orders.assignedUserId, reqDto.assignedUserId)
+        : undefined,
+      reqDto.startDate ? gte(orders.dueDate, reqDto.startDate) : undefined,
+      reqDto.endDate ? lte(orders.dueDate, reqDto.endDate) : undefined,
+    );
+
+    const assignedUserAlias = alias(users, 'assigned_user');
+    const rows: OrderExport[] = await this.db
+      .select({
+        code: orders.code,
+        clientName: clients.name,
+        clientCode: clients.code,
+        assignedUserName: assignedUserAlias.fullName,
+        orderDate: orders.orderDate,
+        dueDate: orders.dueDate,
+        status: orders.status,
+        currency: orders.currency,
+        exchangeRate: orders.exchangeRate,
+        subtotal: orders.subtotal,
+        discountAmount: orders.discountAmount,
+        vatAmount: orders.vatAmount,
+        shippingFee: orders.shippingFee,
+        total: orders.total,
+        totalVnd: this.totalVndSql(),
+        note: orders.note,
+      })
+      .from(orders)
+      .leftJoin(clients, eq(clients.id, orders.clientId))
+      .leftJoin(
+        assignedUserAlias,
+        eq(assignedUserAlias.id, orders.assignedUserId),
+      )
+      .where(where)
+      .orderBy(desc(orders.createdAt))
+      .limit(OrdersService.MAX_EXPORT_ROWS);
+
+    const buffer = await buildXlsxBuffer(
+      'Đơn hàng',
+      ORDER_EXPORT_COLUMNS,
+      rows,
+    );
+    const fileName = `don-hang-${DateTime.now().toFormat('yyyyLLdd-HHmm')}.xlsx`;
+
+    return new StreamableFile(buffer, {
+      type: XLSX_MIME,
+      disposition: `attachment; filename="${fileName}"`,
+    });
   }
 
   /** `expiredTrendCount` so "trễ hạn cách đây 1 tuần" với *trạng thái hôm nay*, không phải trạng

@@ -1,4 +1,4 @@
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, StreamableFile } from '@nestjs/common';
 import { hash } from 'bcryptjs';
 import { plainToInstance } from 'class-transformer';
 import {
@@ -14,6 +14,7 @@ import {
   or,
   sql,
 } from 'drizzle-orm';
+import { DateTime } from 'luxon';
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
@@ -21,6 +22,7 @@ import {
   DocumentType,
   generateDocumentSequence,
 } from '../../common/utils/document-sequence.util';
+import { buildXlsxBuffer, XLSX_MIME } from '../../common/utils/excel.util';
 import { hasFields } from '../../common/utils/object.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import {
@@ -46,16 +48,19 @@ import { CreateCredentialReqDto } from './dto/create-credential.req.dto';
 import { CreateUserReqDto } from './dto/create-user.req.dto';
 import { CurrentPermissionsResDto } from './dto/current-permissions.res.dto';
 import { CurrentUserResDto } from './dto/current-user.res.dto';
+import { ExportUsersReqDto } from './dto/export-users.req.dto';
 import { GetUsersReqDto } from './dto/get-users.req.dto';
 import { PageUserResDto } from './dto/page-user.res.dto';
 import { GetUserOptionsReqDto } from './dto/get-user-options.req.dto';
 import { UpdateUserReqDto } from './dto/update-user.req.dto';
 import { UserRefResDto } from './dto/user-ref.res.dto';
 import { UserResDto } from './dto/user.res.dto';
+import { USER_EXPORT_COLUMNS, type UserExport } from './users.export';
 
 @Injectable()
 export class UsersService {
   private static readonly PASSWORD_SALT_ROUNDS = 10;
+  private static readonly MAX_EXPORT_ROWS = 10_000;
 
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
@@ -112,6 +117,55 @@ export class UsersService {
       }),
       new OffsetPaginationDto(total, reqDto),
     );
+  }
+
+  /** Cắt im lặng ở `MAX_EXPORT_ROWS`, không báo lỗi khi vượt trần. Giữ nguyên 2 điều kiện ẩn dòng
+   * của `getUsers` (soft delete + `credentials.isProtected`) — export không được là đường vòng
+   * nhìn thấy tài khoản bị ẩn. Bộ lọc vẫn tách riêng: hai route độc lập, sửa route nào chỉ route
+   * đó đổi. */
+  async exportUsers(reqDto: ExportUsersReqDto): Promise<StreamableFile> {
+    const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
+    const where = and(
+      isNull(users.deletedAt),
+      keyword
+        ? or(ilike(users.fullName, keyword), ilike(users.code, keyword))
+        : undefined,
+      or(isNull(credentials.isProtected), eq(credentials.isProtected, false)),
+    );
+
+    const rows = await this.db
+      .select({
+        code: users.code,
+        fullName: users.fullName,
+        gender: users.gender,
+        dateOfBirth: users.dateOfBirth,
+        idNumber: users.idNumber,
+        phoneNumber: users.phoneNumber,
+        email: credentials.email,
+        address: users.address,
+        departmentName: departments.name,
+        positionName: positions.name,
+        roleName: roles.name,
+        hireDate: users.hireDate,
+        status: users.status,
+        note: users.note,
+      })
+      .from(users)
+      .innerJoin(departments, eq(departments.id, users.departmentId))
+      .innerJoin(positions, eq(positions.id, users.positionId))
+      .leftJoin(credentials, eq(credentials.userId, users.id))
+      .leftJoin(roles, eq(roles.id, credentials.roleId))
+      .where(where)
+      .orderBy(desc(users.createdAt))
+      .limit(UsersService.MAX_EXPORT_ROWS);
+
+    const buffer = await buildXlsxBuffer('Nhân sự', USER_EXPORT_COLUMNS, rows);
+    const fileName = `nhan-su-${DateTime.now().toFormat('yyyyLLdd-HHmm')}.xlsx`;
+
+    return new StreamableFile(buffer, {
+      type: XLSX_MIME,
+      disposition: `attachment; filename="${fileName}"`,
+    });
   }
 
   // Không đòi permission quản lý nhân sự — mirror WarehousesService.getWarehouseOptions, chỉ

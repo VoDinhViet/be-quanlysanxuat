@@ -61,6 +61,10 @@ xoay `hash`, giữ nguyên `sessionId`. Logout đưa `sessionId` vào blocklist 
 - Route không khai `@Permissions` chỉ cần đăng nhập hợp lệ; khai nhiều mã thì cần đủ tất cả (AND).
 - `roles.isProtected`/`credentials.isProtected` là 2 cờ tách biệt, không suy ra nhau — ẩn khỏi
   `GET /roles`/`GET /users` tương ứng, không chặn thao tác trực tiếp qua id.
+- `GET /users/export` xuất Excel cùng bộ lọc `GET /users` (chỉ `q`) và giữ nguyên 2 điều kiện ẩn
+  dòng của nó — `deletedAt IS NULL` + ẩn `credentials.isProtected` — export không được là đường
+  vòng để nhìn thấy tài khoản bị ẩn. Bỏ phân trang, sort `createdAt DESC`, trần 10.000 dòng cắt im
+  lặng. Gác cùng `users:update`, không có mã quyền riêng.
 
 ## Invariants
 

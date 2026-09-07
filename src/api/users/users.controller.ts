@@ -6,11 +6,13 @@ import {
   Patch,
   Post,
   Query,
+  StreamableFile,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
+import { XLSX_MIME } from '../../common/utils/excel.util';
 import { CurrentUser } from '../../decorators/current-user.decorator';
 import { ApiAuth } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
@@ -19,6 +21,7 @@ import { AssignRoleReqDto } from './dto/assign-role.req.dto';
 import { CreateUserReqDto } from './dto/create-user.req.dto';
 import { CurrentPermissionsResDto } from './dto/current-permissions.res.dto';
 import { CurrentUserResDto } from './dto/current-user.res.dto';
+import { ExportUsersReqDto } from './dto/export-users.req.dto';
 import { GetUserOptionsReqDto } from './dto/get-user-options.req.dto';
 import { GetUsersReqDto } from './dto/get-users.req.dto';
 import { PageUserResDto } from './dto/page-user.res.dto';
@@ -80,6 +83,17 @@ export class UsersController {
     @Query() reqDto: GetUserOptionsReqDto,
   ): Promise<UserRefResDto[]> {
     return this.usersService.getUserOptions(reqDto);
+  }
+
+  @Get('export')
+  @Permissions('users:update')
+  @ApiAuth({
+    summary:
+      'Xuất Excel danh sách nhân sự — cùng bộ lọc GET /users, không phân trang',
+    fileType: XLSX_MIME,
+  })
+  exportUsers(@Query() reqDto: ExportUsersReqDto): Promise<StreamableFile> {
+    return this.usersService.exportUsers(reqDto);
   }
 
   @Get(':userId')

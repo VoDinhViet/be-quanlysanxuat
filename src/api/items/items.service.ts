@@ -1,4 +1,4 @@
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, StreamableFile } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import {
   and,
@@ -12,6 +12,7 @@ import {
   ne,
   or,
 } from 'drizzle-orm';
+import { DateTime } from 'luxon';
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
@@ -19,6 +20,7 @@ import {
   DocumentType,
   generateDocumentSequence,
 } from '../../common/utils/document-sequence.util';
+import { buildXlsxBuffer, XLSX_MIME } from '../../common/utils/excel.util';
 import { extractPostgresError } from '../../common/utils/postgres-error.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
@@ -40,10 +42,12 @@ import {
   suppliers,
   units,
   UnitScope,
+  users,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { FilesService } from '../files/files.service';
 import { CreateItemReqDto } from './dto/create-item.req.dto';
+import { ExportItemsReqDto } from './dto/export-items.req.dto';
 import { GetItemIssuesReqDto } from './dto/get-item-issues.req.dto';
 import { GetItemOptionsReqDto } from './dto/get-item-options.req.dto';
 import { GetItemsReqDto } from './dto/get-items.req.dto';
@@ -52,9 +56,12 @@ import { ItemOptionResDto } from './dto/item-option.res.dto';
 import { ItemResDto } from './dto/item.res.dto';
 import { PageItemResDto } from './dto/page-item.res.dto';
 import { UpdateItemReqDto } from './dto/update-item.req.dto';
+import { ITEM_EXPORT_COLUMNS } from './items.export';
 
 @Injectable()
 export class ItemsService {
+  private static readonly MAX_EXPORT_ROWS = 10_000;
+
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly filesService: FilesService,
@@ -101,6 +108,64 @@ export class ItemsService {
       }),
       new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
     );
+  }
+
+  /** Cắt im lặng ở `MAX_EXPORT_ROWS`, không báo lỗi khi vượt trần. Bộ lọc tách riêng khỏi
+   * `getItems` dù trông giống nhau — hai route độc lập, sửa filter route nào chỉ route đó đổi. */
+  async exportItems(reqDto: ExportItemsReqDto): Promise<StreamableFile> {
+    const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
+    const where = and(
+      isNull(items.deletedAt),
+      keyword
+        ? or(
+            unaccentILike(items.code, keyword),
+            unaccentILike(items.name, keyword),
+          )
+        : undefined,
+      reqDto.type?.length ? inArray(items.type, reqDto.type) : undefined,
+      reqDto.clientId ? eq(items.clientId, reqDto.clientId) : undefined,
+      reqDto.supplierId ? eq(items.supplierId, reqDto.supplierId) : undefined,
+      reqDto.status ? eq(items.status, reqDto.status) : undefined,
+    );
+
+    const rows = await this.db
+      .select({
+        code: items.code,
+        name: items.name,
+        type: items.type,
+        status: items.status,
+        unitName: units.name,
+        clientName: clients.name,
+        supplierName: suppliers.name,
+        minStock: items.minStock,
+        materialGrade: items.materialGrade,
+        technicalStandard: items.technicalStandard,
+        dimensions: items.dimensions,
+        specificWeight: items.specificWeight,
+        colorSurface: items.colorSurface,
+        origin: items.origin,
+        leadTime: items.leadTime,
+        description: items.description,
+        note: items.note,
+        creatorName: users.fullName,
+        createdAt: items.createdAt,
+      })
+      .from(items)
+      .innerJoin(units, eq(units.id, items.unitId))
+      .leftJoin(clients, eq(clients.id, items.clientId))
+      .leftJoin(suppliers, eq(suppliers.id, items.supplierId))
+      .leftJoin(users, eq(users.id, items.createdBy))
+      .where(where)
+      .orderBy(desc(items.createdAt))
+      .limit(ItemsService.MAX_EXPORT_ROWS);
+
+    const buffer = await buildXlsxBuffer('Hàng hoá', ITEM_EXPORT_COLUMNS, rows);
+    const fileName = `hang-hoa-${DateTime.now().toFormat('yyyyLLdd-HHmm')}.xlsx`;
+
+    return new StreamableFile(buffer, {
+      type: XLSX_MIME,
+      disposition: `attachment; filename="${fileName}"`,
+    });
   }
 
   async getItemOptions(

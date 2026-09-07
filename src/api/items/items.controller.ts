@@ -7,16 +7,19 @@ import {
   Patch,
   Post,
   Query,
+  StreamableFile,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
+import { XLSX_MIME } from '../../common/utils/excel.util';
 import { CurrentUser } from '../../decorators/current-user.decorator';
 import { ApiAuth } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
 import { CreateItemReqDto } from './dto/create-item.req.dto';
+import { ExportItemsReqDto } from './dto/export-items.req.dto';
 import { GetItemIssuesReqDto } from './dto/get-item-issues.req.dto';
 import { GetItemOptionsReqDto } from './dto/get-item-options.req.dto';
 import { GetItemsReqDto } from './dto/get-items.req.dto';
@@ -56,6 +59,17 @@ export class ItemsController {
     @Query() reqDto: GetItemOptionsReqDto,
   ): Promise<ItemOptionResDto[]> {
     return this.itemsService.getItemOptions(reqDto);
+  }
+
+  @Get('export')
+  @Permissions('items:read')
+  @ApiAuth({
+    summary:
+      'Xuất Excel danh sách hàng hoá — cùng bộ lọc GET /items, không phân trang',
+    fileType: XLSX_MIME,
+  })
+  exportItems(@Query() reqDto: ExportItemsReqDto): Promise<StreamableFile> {
+    return this.itemsService.exportItems(reqDto);
   }
 
   @Get(':itemId')

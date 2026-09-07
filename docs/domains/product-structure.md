@@ -82,6 +82,10 @@ tham chiếu.
   trên cùng node cha **bị chặn** — `uq_bom_items_bom_item_no_parent` (gốc)/
   `uq_bom_items_bom_parent_item` (có cha) ở DB, cộng `ensureBomItemNotDuplicate` → `E245` ở service.
 - ĐVT của item phải đúng scope theo `type` (`E043`). `POST /items/:itemId/copy` chặn RM (`E110`).
+- `GET /items/export` xuất Excel cùng bộ lọc `GET /items`; `type` là mảng CSV (`?type=FG,WIP` hay
+  `?type=RM`) — cách duy nhất phân biệt xuất thành phẩm (FE trang Sản phẩm) hay vật tư (FE trang
+  Vật tư), cả hai cùng gọi 1 endpoint. Không có cột giá — `items` không lưu giá. Trần 10.000 dòng,
+  vượt trần cắt im lặng.
 
 ## Invariants
 

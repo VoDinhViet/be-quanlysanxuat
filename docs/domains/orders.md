@@ -78,6 +78,10 @@ Production.
 - Mọi route `/orders*` cần bearer token, kể cả đọc.
 - `order_payments` append-only — sai thì `POST` thêm 1 dòng `amount` âm để đảo. Ghi được ở mọi
   trạng thái đơn. `paymentStatus` tính lúc đọc, không tự đổi `orders.status` khi đã `PAID`.
+- `GET /orders/export` xuất Excel cùng hình dạng bộ lọc với `GET /orders` (`q`/`status`/`clientId`/
+  `assignedUserId`/`startDate`/`endDate`), nhưng là 2 route độc lập — sửa filter route nào chỉ
+  route đó đổi. Bỏ phân trang, sort `createdAt DESC`, trần 10.000 dòng — vượt trần bị cắt im lặng.
+  Không xuất `internalNote`.
 
 ## Invariants
 

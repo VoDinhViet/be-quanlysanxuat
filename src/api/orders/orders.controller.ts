@@ -7,17 +7,20 @@ import {
   Patch,
   Post,
   Query,
+  StreamableFile,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
+import { XLSX_MIME } from '../../common/utils/excel.util';
 import { CurrentUser } from '../../decorators/current-user.decorator';
 import { ApiAuth } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
 import { CreateOrderPaymentReqDto } from './dto/create-order-payment.req.dto';
 import { CreateOrderReqDto } from './dto/create-order.req.dto';
+import { ExportOrdersReqDto } from './dto/export-orders.req.dto';
 import { GetOrdersReqDto } from './dto/get-orders.req.dto';
 import { OrderItemResDto } from './dto/order-item.res.dto';
 import { OrderPaymentResDto } from './dto/order-payment.res.dto';
@@ -56,6 +59,17 @@ export class OrdersController {
   })
   getOrderStats(): Promise<OrderStatsResDto> {
     return this.ordersService.getOrderStats();
+  }
+
+  @Get('export')
+  @Permissions('orders:read')
+  @ApiAuth({
+    summary:
+      'Xuất Excel danh sách đơn hàng — cùng bộ lọc GET /orders, không phân trang',
+    fileType: XLSX_MIME,
+  })
+  exportOrders(@Query() reqDto: ExportOrdersReqDto): Promise<StreamableFile> {
+    return this.ordersService.exportOrders(reqDto);
   }
 
   @Get(':orderId')
