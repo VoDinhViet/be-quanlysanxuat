@@ -1,4 +1,4 @@
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, StreamableFile } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import {
   and,
@@ -12,6 +12,7 @@ import {
   ne,
 } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
+import { DateTime } from 'luxon';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
@@ -19,6 +20,7 @@ import {
   DocumentType,
   generateDocumentSequence,
 } from '../../common/utils/document-sequence.util';
+import { buildXlsxBuffer, XLSX_MIME } from '../../common/utils/excel.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
@@ -56,9 +58,11 @@ import { resolveAqlPlan } from '../iqc/iqc-aql.query';
 import { linkQcFiles } from '../iqc/iqc.write';
 import { mapToQualityInspectionStatus } from '../iqc/quality-inspection-status.util';
 import { ConfirmOqcReqDto } from './dto/confirm-oqc.req.dto';
+import { ExportOqcReqDto } from './dto/export-oqc.req.dto';
 import { GetOqcsReqDto } from './dto/get-oqcs.req.dto';
 import { OqcResDto } from './dto/oqc.res.dto';
 import { PageOqcResDto } from './dto/page-oqc.res.dto';
+import { OQC_EXPORT_COLUMNS } from './oqc.export';
 import {
   closeJobIfQcCovered,
   getInspectedQuantityByBomItemId,
@@ -71,6 +75,8 @@ const resolverUsers = alias(users, 'oqc_resolver');
 
 @Injectable()
 export class OqcService {
+  private static readonly MAX_EXPORT_ROWS = 10_000;
+
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly filesService: FilesService,
@@ -178,6 +184,107 @@ export class OqcService {
       plainToInstance(PageOqcResDto, rows, { excludeExtraneousValues: true }),
       new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
     );
+  }
+
+  /** Cắt im lặng ở `MAX_EXPORT_ROWS`, không báo lỗi khi vượt trần. Bộ lọc tách riêng khỏi
+   * `getOqcs` dù trông giống nhau — hai route độc lập, sửa filter route nào chỉ route đó đổi. */
+  async exportOqc(reqDto: ExportOqcReqDto): Promise<StreamableFile> {
+    const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
+
+    const where = and(
+      eq(qualityInspections.inspectionType, QualityInspectionType.OQC),
+      keyword
+        ? unaccentILike(qualityInspections.inspectionNo, keyword)
+        : undefined,
+      reqDto.productionJobId
+        ? eq(qualityInspections.productionJobId, reqDto.productionJobId)
+        : undefined,
+      reqDto.productionJobOperationId
+        ? eq(
+            qualityInspections.productionJobOperationId,
+            reqDto.productionJobOperationId,
+          )
+        : undefined,
+      reqDto.itemId ? eq(qualityInspections.itemId, reqDto.itemId) : undefined,
+      reqDto.result
+        ? eq(
+            qualityInspections.decision,
+            reqDto.result as string as QualityInspectionDecision,
+          )
+        : undefined,
+      reqDto.status ? eq(qualityInspections.status, reqDto.status) : undefined,
+      reqDto.disposition
+        ? eq(qualityInspections.disposition, reqDto.disposition)
+        : undefined,
+      reqDto.startDate
+        ? gte(qualityInspections.requestedAt, reqDto.startDate)
+        : undefined,
+      reqDto.endDate
+        ? lt(
+            qualityInspections.requestedAt,
+            new Date(reqDto.endDate.getTime() + 24 * 60 * 60 * 1000),
+          )
+        : undefined,
+    );
+
+    const rows = await this.db
+      .select({
+        code: qualityInspections.inspectionNo,
+        jobCode: productionJobs.code,
+        orderCode: orders.code,
+        operationCode: productionJobOperations.code,
+        operationName: productionJobOperations.name,
+        bomItemCode: productionJobBomItems.code,
+        bomItemName: productionJobBomItems.name,
+        unitName: units.name,
+        quantity: qualityInspections.quantity,
+        inspectionDate: qualityInspections.requestedAt,
+        result: qualityInspections.decision,
+        disposition: qualityInspections.disposition,
+        status: qualityInspections.status,
+        reason: qualityInspections.reason,
+        note: qualityInspections.note,
+        creatorName: creatorUsers.fullName,
+        createdAt: qualityInspections.createdAt,
+      })
+      .from(qualityInspections)
+      .innerJoin(
+        productionJobs,
+        eq(productionJobs.id, qualityInspections.productionJobId),
+      )
+      .leftJoin(
+        productionOrders,
+        eq(productionOrders.id, productionJobs.productionOrderId),
+      )
+      .leftJoin(orders, eq(orders.id, productionOrders.orderId))
+      .innerJoin(
+        productionJobOperations,
+        eq(
+          productionJobOperations.id,
+          qualityInspections.productionJobOperationId,
+        ),
+      )
+      .innerJoin(
+        productionJobBomItems,
+        eq(
+          productionJobBomItems.id,
+          productionJobOperations.productionJobBomItemId,
+        ),
+      )
+      .innerJoin(items, eq(items.id, qualityInspections.itemId))
+      .innerJoin(units, eq(units.id, items.unitId))
+      .leftJoin(creatorUsers, eq(creatorUsers.id, qualityInspections.createdBy))
+      .where(where)
+      .orderBy(desc(qualityInspections.createdAt))
+      .limit(OqcService.MAX_EXPORT_ROWS);
+
+    const buffer = await buildXlsxBuffer('OQC', OQC_EXPORT_COLUMNS, rows);
+    const fileName = `oqc-${DateTime.now().toFormat('yyyyLLdd-HHmm')}.xlsx`;
+
+    return new StreamableFile(buffer, {
+      type: XLSX_MIME,
+      disposition: `attachment; filename="${fileName}"`,
+    });
   }
 
   async getOqc(oqcId: string): Promise<OqcResDto> {

@@ -7,10 +7,12 @@ import {
   Patch,
   Post,
   Query,
+  StreamableFile,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
+import { XLSX_MIME } from '../../common/utils/excel.util';
 import { CurrentUser } from '../../decorators/current-user.decorator';
 import { ApiAuth } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
@@ -19,6 +21,7 @@ import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
 import { AqlPlanResDto } from './dto/aql-plan.res.dto';
 import { ConfirmIqcReqDto } from './dto/confirm-iqc.req.dto';
 import { CreateIqcReqDto } from './dto/create-iqc.req.dto';
+import { ExportIqcReqDto } from './dto/export-iqc.req.dto';
 import { GetAqlPlanReqDto } from './dto/get-aql-plan.req.dto';
 import { GetIqcsReqDto } from './dto/get-iqcs.req.dto';
 import { IqcResDto } from './dto/iqc.res.dto';
@@ -67,6 +70,18 @@ export class IqcController {
   })
   getAqlPlan(@Query() reqDto: GetAqlPlanReqDto): Promise<AqlPlanResDto> {
     return this.iqcService.getAqlPlan(reqDto);
+  }
+
+  // Khai trước ':iqcId' để 'export' không bị bắt nhầm thành id — cùng lý do 'stats' ở trên.
+  @Get('export')
+  @Permissions('iqc:read')
+  @ApiAuth({
+    summary:
+      'Xuất Excel danh sách IQC — cùng bộ lọc GET /iqc, không phân trang',
+    fileType: XLSX_MIME,
+  })
+  exportIqc(@Query() reqDto: ExportIqcReqDto): Promise<StreamableFile> {
+    return this.iqcService.exportIqc(reqDto);
   }
 
   @Get(':iqcId')

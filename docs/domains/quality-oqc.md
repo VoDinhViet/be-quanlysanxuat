@@ -108,6 +108,10 @@ FAIL, gửi kèm PASS không báo lỗi (tự ép `NULL`).
   attempt, insert-only.
 - "PO" hiển thị trên màn OQC = `orders.code`, tính lúc đọc qua
   `production_jobs → production_orders → orders`, không lưu cột.
+- `GET /oqc/export` xuất Excel cùng bộ lọc `GET /oqc` (`q`/`productionJobId`/`productionJobOperationId`/
+  `itemId`/`result`/`status`/`disposition`/`startDate`/`endDate`), không phân trang, trần 10.000
+  dòng cắt im lặng. Nhãn `disposition`/`status` trong file không tái dùng nhãn của IQC — cùng enum
+  DB nhưng ý nghĩa nghiệp vụ khác (`IN_PROGRESS` = "đang rework", không phải "chờ trả NCC").
 
 ## Invariants
 

@@ -118,6 +118,8 @@ qua `confirm`. Hợp lệ ở mọi status **trừ** `DRAFT` (`E144`) — chủ 
 - `E163` (không suy được kho trả) retired cùng đợt bỏ khái niệm kho
   (`docs/decisions/single-warehouse.md`) — `disposition = SORT`/`RETURN` giờ luôn sinh được
   `supplier_returns`, không còn ca nào bị chặn vì thiếu kho.
+- `GET /iqc/export` xuất Excel cùng bộ lọc `GET /iqc` (`q`/`supplierId`/`clientId`/`result`/
+  `disposition`/`status`), không phân trang, trần 10.000 dòng cắt im lặng.
 
 ## Invariants
 

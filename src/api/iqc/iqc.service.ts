@@ -1,4 +1,4 @@
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, StreamableFile } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import {
   and,
@@ -10,6 +10,7 @@ import {
   sql,
 } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
+import { DateTime } from 'luxon';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
@@ -17,6 +18,7 @@ import {
   DocumentType,
   generateDocumentSequences,
 } from '../../common/utils/document-sequence.util';
+import { buildXlsxBuffer, XLSX_MIME } from '../../common/utils/excel.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
@@ -57,6 +59,7 @@ import { SupplierReturnsService } from '../supplier-returns/supplier-returns.ser
 import { AqlPlanResDto } from './dto/aql-plan.res.dto';
 import { ConfirmIqcReqDto } from './dto/confirm-iqc.req.dto';
 import { CreateIqcReqDto } from './dto/create-iqc.req.dto';
+import { ExportIqcReqDto } from './dto/export-iqc.req.dto';
 import { GetAqlPlanReqDto } from './dto/get-aql-plan.req.dto';
 import { GetIqcsReqDto } from './dto/get-iqcs.req.dto';
 import { IqcResDto } from './dto/iqc.res.dto';
@@ -64,6 +67,7 @@ import { IqcStatsResDto } from './dto/iqc-stats.res.dto';
 import { PageIqcResDto } from './dto/page-iqc.res.dto';
 import { UpdateIqcReqDto } from './dto/update-iqc.req.dto';
 import { resolveAqlPlan } from './iqc-aql.query';
+import { IQC_EXPORT_COLUMNS } from './iqc.export';
 import { linkQcFiles } from './iqc.write';
 import { mapToQualityInspectionStatus } from './quality-inspection-status.util';
 
@@ -90,6 +94,8 @@ const resolverUsers = alias(users, 'iqc_resolver');
 
 @Injectable()
 export class IqcService {
+  private static readonly MAX_EXPORT_ROWS = 10_000;
+
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly filesService: FilesService,
@@ -200,6 +206,71 @@ export class IqcService {
       ),
       new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
     );
+  }
+
+  /** Cắt im lặng ở `MAX_EXPORT_ROWS`, không báo lỗi khi vượt trần. Bộ lọc tách riêng khỏi
+   * `getIqcs` dù trông giống nhau — hai route độc lập, sửa filter route nào chỉ route đó đổi. */
+  async exportIqc(reqDto: ExportIqcReqDto): Promise<StreamableFile> {
+    const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
+
+    const where = and(
+      eq(qualityInspections.inspectionType, QualityInspectionType.IQC),
+      keyword
+        ? unaccentILike(qualityInspections.inspectionNo, keyword)
+        : undefined,
+      reqDto.supplierId
+        ? eq(qualityInspections.supplierId, reqDto.supplierId)
+        : undefined,
+      reqDto.clientId
+        ? eq(qualityInspections.clientId, reqDto.clientId)
+        : undefined,
+      reqDto.result
+        ? eq(
+            qualityInspections.decision,
+            reqDto.result as string as QualityInspectionDecision,
+          )
+        : undefined,
+      reqDto.disposition
+        ? eq(qualityInspections.disposition, reqDto.disposition)
+        : undefined,
+      reqDto.status ? eq(qualityInspections.status, reqDto.status) : undefined,
+    );
+
+    const rows = await this.db
+      .select({
+        code: qualityInspections.inspectionNo,
+        supplierName: suppliers.name,
+        clientName: clients.name,
+        itemCode: items.code,
+        itemName: items.name,
+        unitName: units.name,
+        quantity: qualityInspections.quantity,
+        inspectionDate: qualityInspections.requestedAt,
+        result: qualityInspections.decision,
+        disposition: qualityInspections.disposition,
+        status: qualityInspections.status,
+        reason: qualityInspections.reason,
+        note: qualityInspections.note,
+        creatorName: creatorUsers.fullName,
+        createdAt: qualityInspections.createdAt,
+      })
+      .from(qualityInspections)
+      .innerJoin(items, eq(items.id, qualityInspections.itemId))
+      .innerJoin(units, eq(units.id, items.unitId))
+      .leftJoin(suppliers, eq(suppliers.id, qualityInspections.supplierId))
+      .leftJoin(clients, eq(clients.id, qualityInspections.clientId))
+      .leftJoin(creatorUsers, eq(creatorUsers.id, qualityInspections.createdBy))
+      .where(where)
+      .orderBy(desc(qualityInspections.createdAt))
+      .limit(IqcService.MAX_EXPORT_ROWS);
+
+    const buffer = await buildXlsxBuffer('IQC', IQC_EXPORT_COLUMNS, rows);
+    const fileName = `iqc-${DateTime.now().toFormat('yyyyLLdd-HHmm')}.xlsx`;
+
+    return new StreamableFile(buffer, {
+      type: XLSX_MIME,
+      disposition: `attachment; filename="${fileName}"`,
+    });
   }
 
   async getIqcStats(): Promise<IqcStatsResDto> {

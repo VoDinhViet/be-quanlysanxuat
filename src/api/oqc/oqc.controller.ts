@@ -6,10 +6,12 @@ import {
   HttpStatus,
   Post,
   Query,
+  StreamableFile,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
+import { XLSX_MIME } from '../../common/utils/excel.util';
 import { CurrentUser } from '../../decorators/current-user.decorator';
 import { ApiAuth } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
@@ -18,6 +20,7 @@ import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
 import { AqlPlanResDto } from '../iqc/dto/aql-plan.res.dto';
 import { GetAqlPlanReqDto } from '../iqc/dto/get-aql-plan.req.dto';
 import { ConfirmOqcReqDto } from './dto/confirm-oqc.req.dto';
+import { ExportOqcReqDto } from './dto/export-oqc.req.dto';
 import { GetOqcsReqDto } from './dto/get-oqcs.req.dto';
 import { OqcResDto } from './dto/oqc.res.dto';
 import { PageOqcResDto } from './dto/page-oqc.res.dto';
@@ -49,6 +52,18 @@ export class OqcController {
   })
   getAqlPlan(@Query() reqDto: GetAqlPlanReqDto): Promise<AqlPlanResDto> {
     return this.oqcService.getAqlPlan(reqDto);
+  }
+
+  // Khai trước ':oqcId' để 'export' không bị bắt nhầm thành id — cùng lý do 'aql-plan' ở trên.
+  @Get('export')
+  @Permissions('oqc:read')
+  @ApiAuth({
+    summary:
+      'Xuất Excel danh sách OQC — cùng bộ lọc GET /oqc, không phân trang',
+    fileType: XLSX_MIME,
+  })
+  exportOqc(@Query() reqDto: ExportOqcReqDto): Promise<StreamableFile> {
+    return this.oqcService.exportOqc(reqDto);
   }
 
   @Get(':oqcId')
