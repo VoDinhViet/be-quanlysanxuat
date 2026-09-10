@@ -257,6 +257,14 @@ export class ProductionExecutionService {
 
     const rejectedQuantityDelta = reqDto.rejectedQuantityDelta ?? 0;
 
+    if (reqDto.completedQuantityDelta === 0 && rejectedQuantityDelta === 0) {
+      throw new AppException(
+        ErrorCode.E256,
+        HttpStatus.BAD_REQUEST,
+        'Vui lòng nhập SL đạt hoặc SL không đạt lớn hơn 0.',
+      );
+    }
+
     // Bước Lắp ráp (node `itemType = 'FG'`) chỉ mở khi mọi Part khác của Job đã báo hoàn thành đủ
     // (`E210`).
     if (operation.bomItem.itemType === ItemType.FG) {
@@ -290,8 +298,16 @@ export class ProductionExecutionService {
 
       // Chỉ trần SL đạt — SL NG cộng dồn không giới hạn theo plannedQuantity, cho phép báo bù thêm
       // tới khi đạt chạm đủ kế hoạch (BUG-035, trần cũ gộp cả hai số làm công đoạn kẹt vĩnh viễn).
-      if (newCompletedQuantity > plannedQuantity) {
-        throw new AppException(ErrorCode.E256, HttpStatus.BAD_REQUEST);
+      const roundedNewCompleted =
+        Math.round(newCompletedQuantity * 1000) / 1000;
+      const roundedPlanned = Math.round(plannedQuantity * 1000) / 1000;
+
+      if (roundedNewCompleted > roundedPlanned) {
+        throw new AppException(
+          ErrorCode.E256,
+          HttpStatus.BAD_REQUEST,
+          'SL hoàn thành không được vượt quá SL kế hoạch.',
+        );
       }
 
       const [report] = await tx
@@ -321,7 +337,7 @@ export class ProductionExecutionService {
           completedQuantity: newCompletedQuantity,
           rejectedQuantity: newRejectedQuantity,
           completedDate:
-            newCompletedQuantity >= plannedQuantity
+            roundedNewCompleted >= roundedPlanned
               ? reqDto.completedDate
               : null,
         })
