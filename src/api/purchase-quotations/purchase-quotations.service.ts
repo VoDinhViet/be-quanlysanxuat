@@ -10,6 +10,7 @@ import {
   inArray,
   isNull,
   lt,
+  ne,
   or,
   sql,
 } from 'drizzle-orm';
@@ -294,7 +295,10 @@ export class PurchaseQuotationsService {
     );
 
     const { items: itemsReq, ...quotationFields } = reqDto;
-    const quotationItems = await this.prepareQuotationItems(itemsReq);
+    const quotationItems = await this.prepareQuotationItems(
+      itemsReq,
+      quotationId,
+    );
 
     await this.db.transaction(async (tx) => {
       await tx
@@ -637,13 +641,14 @@ export class PurchaseQuotationsService {
    * `updateQuotation`, cả hai đều cần đúng 3 bước này theo đúng thứ tự trước khi ghi. */
   private async prepareQuotationItems(
     itemsReq: CreateQuotationItemReqDto[],
+    quotationId?: string,
   ): Promise<CreateQuotationItemReqDto[]> {
     const quotationItems = this.mergeItemsByItemId(itemsReq);
 
     await this.ensureSuppliersExist(
       quotationItems.flatMap((item) => item.suppliers.map((s) => s.supplierId)),
     );
-    await this.validateAllocations(quotationItems);
+    await this.validateAllocations(quotationItems, quotationId);
 
     return quotationItems;
   }
@@ -716,8 +721,56 @@ export class PurchaseQuotationsService {
   /** Mỗi vật tư phải có ≥1 phân bổ (E150); không dòng ĐXMH nào lặp trong toàn payload kể cả khác vật
    * tư (E128 — lặp sẽ nhân đôi quotedQuantity ở sổ cái); mọi dòng ĐXMH phải thuộc phiếu APPROVED và
    * chưa hủy tay (E125), và đúng vật tư của dòng báo giá chứa nó (E149). */
+  private async getOtherQuotedQuantities(
+    purchaseRequestItemIds: string[],
+    excludeQuotationId?: string,
+  ): Promise<Map<string, number>> {
+    if (!purchaseRequestItemIds.length) return new Map();
+
+    const whereConditions = [
+      inArray(
+        purchaseQuotationItemAllocations.purchaseRequestItemId,
+        purchaseRequestItemIds,
+      ),
+      ne(purchaseQuotations.status, PurchaseQuotationStatus.CANCELLED),
+    ];
+
+    if (excludeQuotationId) {
+      whereConditions.push(ne(purchaseQuotations.id, excludeQuotationId));
+    }
+
+    const rows = await this.db
+      .select({
+        purchaseRequestItemId:
+          purchaseQuotationItemAllocations.purchaseRequestItemId,
+        totalQuoted: sql<number>`sum(${purchaseQuotationItemAllocations.quantity})`
+          .mapWith(Number),
+      })
+      .from(purchaseQuotationItemAllocations)
+      .innerJoin(
+        purchaseQuotationItems,
+        eq(
+          purchaseQuotationItems.id,
+          purchaseQuotationItemAllocations.quotationItemId,
+        ),
+      )
+      .innerJoin(
+        purchaseQuotations,
+        eq(purchaseQuotations.id, purchaseQuotationItems.quotationId),
+      )
+      .where(and(...whereConditions))
+      .groupBy(purchaseQuotationItemAllocations.purchaseRequestItemId);
+
+    return new Map(rows.map((r) => [r.purchaseRequestItemId, r.totalQuoted]));
+  }
+
+  /** Mỗi vật tư phải có ≥1 phân bổ (E150); không dòng ĐXMH nào lặp trong toàn payload kể cả khác vật
+   * tư (E128 — lặp sẽ nhân đôi quotedQuantity ở sổ cái); mọi dòng ĐXMH phải thuộc phiếu APPROVED và
+   * chưa hủy tay (E125), đúng vật tư của dòng báo giá chứa nó (E149), và SL phân bổ không được
+   * vượt quá SL cần mua còn lại (E265). */
   private async validateAllocations(
     itemsReq: CreateQuotationItemReqDto[],
+    quotationId?: string,
   ): Promise<void> {
     if (itemsReq.some((item) => !item.allocations.length)) {
       throw new AppException(ErrorCode.E150, HttpStatus.BAD_REQUEST);
@@ -735,6 +788,7 @@ export class PurchaseQuotationsService {
       .select({
         id: purchaseRequestItems.id,
         itemId: purchaseRequestItems.itemId,
+        quantity: purchaseRequestItems.quantity,
       })
       .from(purchaseRequestItems)
       .innerJoin(
@@ -753,18 +807,36 @@ export class PurchaseQuotationsService {
       throw new AppException(ErrorCode.E125, HttpStatus.CONFLICT);
     }
 
-    const itemIdByRequestItemId = new Map(
-      requestItemRows.map((row) => [row.id, row.itemId]),
+    const requestItemMap = new Map(
+      requestItemRows.map((row) => [row.id, row]),
     );
     const hasItemMismatch = itemsReq.some((item) =>
       item.allocations.some(
         (allocation) =>
-          itemIdByRequestItemId.get(allocation.purchaseRequestItemId) !==
+          requestItemMap.get(allocation.purchaseRequestItemId)?.itemId !==
           item.itemId,
       ),
     );
     if (hasItemMismatch) {
       throw new AppException(ErrorCode.E149, HttpStatus.CONFLICT);
+    }
+
+    const otherQuotedMap = await this.getOtherQuotedQuantities(
+      uniqueRequestItemIds,
+      quotationId,
+    );
+
+    for (const item of itemsReq) {
+      for (const allocation of item.allocations) {
+        const reqItem = requestItemMap.get(allocation.purchaseRequestItemId);
+        if (!reqItem) continue;
+        const otherQuoted =
+          otherQuotedMap.get(allocation.purchaseRequestItemId) ?? 0;
+        const maxAllowed = reqItem.quantity - otherQuoted;
+        if (allocation.quantity <= 0 || allocation.quantity > maxAllowed) {
+          throw new AppException(ErrorCode.E265, HttpStatus.BAD_REQUEST);
+        }
+      }
     }
   }
 

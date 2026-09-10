@@ -86,6 +86,9 @@ export class PurchaseLedgerService {
       reqDto.status
         ? this.buildStatusCondition(refs, reqDto.status)
         : undefined,
+      reqDto.hasRemainingQuotation
+        ? sql`${refs.quotedQuantity} < ${purchaseRequestItems.quantity}`
+        : undefined,
       reqDto.neededStartDate
         ? gte(purchaseRequests.neededDate, reqDto.neededStartDate)
         : undefined,
@@ -295,7 +298,7 @@ export class PurchaseLedgerService {
       case PurchaseLedgerStatus.QUOTING:
         return sql`(${refs.orderedQuantity} = 0 and ${refs.quotedQuantity} > 0)`;
       case PurchaseLedgerStatus.WAITING_TO_PURCHASE:
-        return sql`(${refs.orderedQuantity} = 0 and ${refs.quotedQuantity} = 0)`;
+        return sql`(${refs.orderedQuantity} = 0 and ${refs.quotedQuantity} < ${purchaseRequestItems.quantity})`;
     }
   }
 

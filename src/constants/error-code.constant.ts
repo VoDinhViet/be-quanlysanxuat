@@ -588,6 +588,8 @@ export enum ErrorCode {
   // `DELETE /orders/:orderId` khi status khác `DRAFT` — cùng khuôn `E258` (outbound_order), mint
   // riêng vì khác resource.
   E264 = 'order.error.not_deletable',
+  // SL báo giá phân bổ cho một dòng ĐXMH vượt quá SL cần mua còn lại.
+  E265 = 'purchase_quotation_item.error.quantity_exceeded',
   V003 = 'common.error.too_many_requests',
   // `GlobalExceptionFilter` bắt chuỗi "No values to set" của drizzle-orm — mọi `PATCH` khi
   // `ValidationPipe` whitelist đã loại sạch field lạ, còn lại payload rỗng cho `.set()`. Trước đây

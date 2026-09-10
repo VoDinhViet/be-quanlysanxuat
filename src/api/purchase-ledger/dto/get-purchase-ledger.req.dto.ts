@@ -1,5 +1,6 @@
 import { PageOptionsDto } from '../../../common/dto/offset-pagination/page-options.dto';
 import {
+  BooleanFieldOptional,
   DateFieldOptional,
   EnumFieldOptional,
   UUIDFieldOptional,
@@ -20,6 +21,11 @@ export class GetPurchaseLedgerReqDto extends PageOptionsDto {
 
   @EnumFieldOptional(() => PurchaseLedgerStatus)
   readonly status?: PurchaseLedgerStatus;
+
+  @BooleanFieldOptional({
+    description: 'Chỉ lấy các dòng còn số lượng cần mua (quotedQuantity < quantity)',
+  })
+  readonly hasRemainingQuotation?: boolean;
 
   @DateFieldOptional({ description: 'Filter: neededDate >= neededStartDate' })
   readonly neededStartDate?: Date;
