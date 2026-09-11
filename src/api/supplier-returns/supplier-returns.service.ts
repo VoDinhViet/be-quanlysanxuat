@@ -32,6 +32,7 @@ import { completeIqcAfterSupplierReturn } from '../iqc/iqc.write';
 import { GetSupplierReturnsReqDto } from './dto/get-supplier-returns.req.dto';
 import { PageSupplierReturnResDto } from './dto/page-supplier-return.res.dto';
 import { PostSupplierReturnReqDto } from './dto/post-supplier-return.req.dto';
+import { UpdateSupplierReturnReqDto } from './dto/update-supplier-return.req.dto';
 import { SupplierReturnResDto } from './dto/supplier-return.res.dto';
 
 @Injectable()
@@ -196,11 +197,46 @@ export class SupplierReturnsService {
         ...supplierReturn,
         iqc: this.toIqcRef(supplierReturn.qualityInspection),
         returnReason:
-          supplierReturn.qualityInspectionResult?.dispositionNote ?? null,
+          supplierReturn.note !== null
+            ? supplierReturn.note
+            : (supplierReturn.qualityInspectionResult?.dispositionNote ?? null),
         files: supplierReturn.files.map((row) => row.file),
       },
       { excludeExtraneousValues: true },
     );
+  }
+
+  async updateSupplierReturn(
+    supplierReturnId: string,
+    reqDto: UpdateSupplierReturnReqDto,
+  ): Promise<SupplierReturnResDto> {
+    const supplierReturn = await this.db.query.supplierReturns.findFirst({
+      where: eq(supplierReturns.id, supplierReturnId),
+    });
+
+    if (!supplierReturn) {
+      throw new AppException(ErrorCode.E137, HttpStatus.NOT_FOUND);
+    }
+
+    if (supplierReturn.status !== InventoryDocumentStatus.DRAFT) {
+      throw new AppException(ErrorCode.E098, HttpStatus.CONFLICT);
+    }
+
+    const note =
+      reqDto.returnReason === undefined
+        ? supplierReturn.note
+        : reqDto.returnReason === null
+          ? ""
+          : reqDto.returnReason.trim();
+
+    await this.db
+      .update(supplierReturns)
+      .set({
+        note,
+      })
+      .where(eq(supplierReturns.id, supplierReturnId));
+
+    return this.getSupplierReturn(supplierReturnId);
   }
 
   /** Tự sinh DRAFT — gọi bởi `IqcService.confirmIqc` khi QC chọn disposition SORT/RETURN, ngay
