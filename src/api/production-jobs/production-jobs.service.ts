@@ -136,7 +136,7 @@ export class ProductionJobsService {
         .innerJoin(items, eq(items.id, productionJobs.itemId))
         .leftJoin(files, eq(files.id, items.imageFileId))
         .where(where)
-        .orderBy(asc(orders.dueDate), desc(productionOrders.approvedAt))
+        .orderBy(desc(productionJobs.createdAt), desc(orders.createdAt))
         .limit(reqDto.limit)
         .offset(reqDto.offset),
       this.db

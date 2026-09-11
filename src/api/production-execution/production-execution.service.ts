@@ -200,7 +200,7 @@ export class ProductionExecutionService {
         )
         .where(where)
         .groupBy(productionJobs.id, orders.id, productionOrders.id, items.id)
-        .orderBy(asc(orders.dueDate), desc(productionOrders.approvedAt))
+        .orderBy(desc(productionJobs.createdAt), desc(orders.createdAt))
         .limit(reqDto.limit)
         .offset(reqDto.offset),
       this.db
