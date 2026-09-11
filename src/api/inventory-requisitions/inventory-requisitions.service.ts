@@ -1,6 +1,6 @@
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
-import { and, desc, count, eq, gte, inArray, isNull, lt } from 'drizzle-orm';
+import { and, desc, count, eq, gte, inArray, isNull, lt, or } from 'drizzle-orm';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
@@ -26,7 +26,10 @@ import {
   inventoryRequisitions,
   items,
   ItemType,
+  orders,
   productionJobIssues,
+  productionJobs,
+  productionOrders,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { hasPendingIqcForItems } from '../iqc/iqc.query';
@@ -65,7 +68,27 @@ export class InventoryRequisitionsService {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
 
     const where = and(
-      keyword ? unaccentILike(inventoryRequisitions.code, keyword) : undefined,
+      keyword
+        ? or(
+            unaccentILike(inventoryRequisitions.code, keyword),
+            unaccentILike(inventoryRequisitions.reason, keyword),
+            inArray(
+              inventoryRequisitions.productionOrderId,
+              this.db
+                .select({ id: productionOrders.id })
+                .from(productionOrders)
+                .innerJoin(orders, eq(orders.id, productionOrders.orderId))
+                .where(unaccentILike(orders.code, keyword)),
+            ),
+            inArray(
+              inventoryRequisitions.productionJobId,
+              this.db
+                .select({ id: productionJobs.id })
+                .from(productionJobs)
+                .where(unaccentILike(productionJobs.code, keyword)),
+            ),
+          )
+        : undefined,
       reqDto.type ? eq(inventoryRequisitions.type, reqDto.type) : undefined,
       reqDto.status
         ? eq(inventoryRequisitions.status, reqDto.status)
