@@ -12,8 +12,7 @@ Không có route tạo LSX: LSX chỉ ra đời từ `docs/workflows/order-appro
 
 ## Actor
 
-Sửa số lượng: `production:update`. Duyệt: `production:approve` — hai quyền tách rời. Seed hiện cấp
-cả hai cho DIRECTOR và PRODUCTION (`credentials.seed.ts`).
+Sửa số lượng: `production:update` (cấp cho PRODUCTION và DIRECTOR). Duyệt: `production:approve` (chỉ cấp cho DIRECTOR) — hai quyền tách rời (`credentials.seed.ts`).
 
 ## Preconditions
 
