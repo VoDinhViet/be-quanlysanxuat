@@ -68,6 +68,7 @@ const WIPE_TABLES = [
   'purchase_orders',
   'purchase_order_items',
   'payment_requests',
+  'payment_request_logs',
   // Inventory
   'inventory_receipts',
   'inventory_receipt_items',
@@ -100,6 +101,7 @@ const WIPE_TABLES = [
   'production_job_operation_report_files',
   'production_job_issues',
   'production_job_notes',
+  'production_job_logs',
   'quality_inspections',
   'quality_inspection_results',
   'quality_inspection_evidences',

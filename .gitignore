@@ -61,3 +61,4 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 # Git worktrees (superpowers:using-git-worktrees)
 /.worktrees/
 .backups/
+deleted-storage-keys.txt
