@@ -20,6 +20,7 @@ import {
   items,
   purchaseOrders,
   QualityInspectionType,
+  qualityInspectionResults,
   qualityInspections,
   supplierReturnFiles,
   supplierReturns,
@@ -225,9 +226,26 @@ export class SupplierReturnsService {
     const note =
       reqDto.returnReason === undefined
         ? supplierReturn.note
-        : reqDto.returnReason === null
-          ? ""
-          : reqDto.returnReason.trim();
+        : reqDto.returnReason?.trim() || null;
+
+    if (supplierReturn.qualityInspectionResultId) {
+      await this.db
+        .update(qualityInspectionResults)
+        .set({ dispositionNote: note })
+        .where(
+          eq(
+            qualityInspectionResults.id,
+            supplierReturn.qualityInspectionResultId,
+          ),
+        );
+    }
+
+    if (supplierReturn.qualityInspectionId) {
+      await this.db
+        .update(qualityInspections)
+        .set({ dispositionNote: note })
+        .where(eq(qualityInspections.id, supplierReturn.qualityInspectionId));
+    }
 
     await this.db
       .update(supplierReturns)
