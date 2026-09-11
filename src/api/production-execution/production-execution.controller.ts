@@ -8,10 +8,12 @@ import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
 import { CreateJobOperationReportReqDto } from './dto/create-job-operation-report.req.dto';
+import { GetJobOperationReportsReqDto } from './dto/get-job-operation-reports.req.dto';
 import { GetProductionExecutionJobsReqDto } from './dto/get-production-execution-jobs.req.dto';
 import { GetProductionExecutionOperationsReqDto } from './dto/get-production-execution-operations.req.dto';
 import { PageProductionExecutionJobResDto } from './dto/page-production-execution-job.res.dto';
 import { ProductionExecutionOperationResDto } from './dto/production-execution-operation.res.dto';
+import { ProductionExecutionReportResDto } from './dto/production-execution-report.res.dto';
 import { ProductionExecutionService } from './production-execution.service';
 
 @ApiTags('Production Execution')
@@ -47,6 +49,23 @@ export class ProductionExecutionController {
     @Query() reqDto: GetProductionExecutionJobsReqDto,
   ): Promise<OffsetPaginatedDto<PageProductionExecutionJobResDto>> {
     return this.productionExecutionService.getJobs(reqDto);
+  }
+
+  @Get('jobs/:productionJobId/reports')
+  @Permissions('production:read')
+  @ApiAuth({
+    type: ProductionExecutionReportResDto,
+    isArray: true,
+    summary: 'Lấy danh sách lịch sử báo cáo sản lượng của một Job',
+  })
+  getJobOperationReports(
+    @UUIDParam('productionJobId') productionJobId: string,
+    @Query() reqDto: GetJobOperationReportsReqDto,
+  ): Promise<ProductionExecutionReportResDto[]> {
+    return this.productionExecutionService.getJobOperationReports(
+      productionJobId,
+      reqDto,
+    );
   }
 
   @Post('operations/:jobOperationId/reports')

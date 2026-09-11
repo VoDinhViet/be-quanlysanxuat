@@ -8,6 +8,7 @@ import {
   eq,
   getTableColumns,
   gte,
+  inArray,
   isNull,
   lte,
   ne,
@@ -41,8 +42,10 @@ import { closeJobIfFinalAssemblyDone } from '../production-jobs/production-jobs.
 import { CreateJobOperationReportReqDto } from './dto/create-job-operation-report.req.dto';
 import { GetProductionExecutionJobsReqDto } from './dto/get-production-execution-jobs.req.dto';
 import { GetProductionExecutionOperationsReqDto } from './dto/get-production-execution-operations.req.dto';
+import { GetJobOperationReportsReqDto } from './dto/get-job-operation-reports.req.dto';
 import { PageProductionExecutionJobResDto } from './dto/page-production-execution-job.res.dto';
 import { ProductionExecutionOperationResDto } from './dto/production-execution-operation.res.dto';
+import { ProductionExecutionReportResDto } from './dto/production-execution-report.res.dto';
 import { JobOperationProgress } from './production-execution.constant';
 
 /** Màn "Thực hiện sản xuất" (view của tổ sản xuất, đi từ công đoạn xuống) — đọc thuần snapshot đã
@@ -225,6 +228,82 @@ export class ProductionExecutionService {
         excludeExtraneousValues: true,
       }),
       new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
+    );
+  }
+
+  /** Lấy danh sách lịch sử báo cáo sản lượng của một Job (có thể lọc theo công đoạn). */
+  async getJobOperationReports(
+    productionJobId: string,
+    reqDto: GetJobOperationReportsReqDto,
+  ): Promise<ProductionExecutionReportResDto[]> {
+    const whereConditions = [
+      eq(productionJobOperations.productionJobId, productionJobId),
+    ];
+
+    if (reqDto.jobOperationId) {
+      whereConditions.push(
+        eq(productionJobOperations.id, reqDto.jobOperationId),
+      );
+    } else if (reqDto.operationId) {
+      whereConditions.push(
+        eq(productionJobOperations.operationId, reqDto.operationId),
+      );
+    }
+
+    const matchedOperations =
+      await this.db.query.productionJobOperations.findMany({
+        where: and(...whereConditions),
+        columns: { id: true },
+      });
+
+    if (matchedOperations.length === 0) {
+      return [];
+    }
+
+    const operationIds = matchedOperations.map((o) => o.id);
+
+    const reports = await this.db.query.productionJobOperationReports.findMany({
+      where: inArray(
+        productionJobOperationReports.productionJobOperationId,
+        operationIds,
+      ),
+      with: {
+        creatorBy: true,
+        files: {
+          with: {
+            file: true,
+          },
+        },
+        productionJobOperation: {
+          with: {
+            bomItem: true,
+          },
+        },
+      },
+      orderBy: [desc(productionJobOperationReports.createdAt)],
+    });
+
+    return reports.map((r) =>
+      plainToInstance(
+        ProductionExecutionReportResDto,
+        {
+          id: r.id,
+          productionJobOperationId: r.productionJobOperationId,
+          operationCode: r.productionJobOperation.code,
+          operationName: r.productionJobOperation.name,
+          bomItemId: r.productionJobOperation.bomItem.id,
+          bomItemCode: r.productionJobOperation.bomItem.code,
+          bomItemName: r.productionJobOperation.bomItem.name,
+          completedQuantityDelta: r.completedQuantityDelta,
+          rejectedQuantityDelta: r.rejectedQuantityDelta,
+          completedDate: r.completedDate,
+          note: r.note,
+          createdAt: r.createdAt,
+          creator: r.creatorBy,
+          files: r.files.map((f) => f.file),
+        },
+        { excludeExtraneousValues: true },
+      ),
     );
   }
 
