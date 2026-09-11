@@ -115,7 +115,7 @@ export class ProductionOrdersService {
         .innerJoin(orders, eq(orders.id, productionOrders.orderId))
         .leftJoin(clients, eq(clients.id, orders.clientId))
         .where(where)
-        .orderBy(asc(orders.dueDate), desc(orders.createdAt))
+        .orderBy(desc(productionOrders.createdAt), desc(orders.createdAt))
         .limit(reqDto.limit)
         .offset(reqDto.offset),
       this.db
@@ -177,7 +177,7 @@ export class ProductionOrdersService {
       .leftJoin(clients, eq(clients.id, orders.clientId))
       .leftJoin(users, eq(users.id, productionOrders.createdBy))
       .where(where)
-      .orderBy(asc(orders.dueDate), desc(orders.createdAt))
+      .orderBy(desc(productionOrders.createdAt), desc(orders.createdAt))
       .limit(ProductionOrdersService.MAX_EXPORT_ROWS);
 
     const buffer = await buildXlsxBuffer(
