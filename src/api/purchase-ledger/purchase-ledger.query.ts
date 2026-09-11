@@ -1,4 +1,4 @@
-import { eq, ne, sql } from 'drizzle-orm';
+import { and, eq, ne, sql } from 'drizzle-orm';
 
 import type { Database } from '../../database/database.type';
 import {
@@ -12,6 +12,7 @@ import {
   purchaseQuotationItemAllocations,
   purchaseQuotationItems,
   purchaseQuotations,
+  supplierReturns,
 } from '../../database/schemas';
 
 /** SL đặt mua theo dòng đề xuất — Σ `quantity` của đơn mua đã `ORDERED`. Không đếm `DRAFT` (đơn
@@ -35,14 +36,15 @@ export function orderedQuantitySubquery(db: Database) {
 }
 
 /** SL đã nhập kho theo dòng đề xuất — chỉ phiếu nhập `POSTED`, nối qua `purchase_order_items` (một
- * dòng phiếu nhập trace về đúng một dòng đơn mua, dòng đơn mua trace về đúng một dòng đề xuất). */
+ * dòng phiếu nhập trace về đúng một dòng đơn mua, dòng đơn mua trace về đúng một dòng đề xuất),
+ * tự động khấu trừ số lượng hàng lỗi đã xuất trả NCC (`supplier_returns` đã `POSTED`). */
 export function receivedQuantitySubquery(db: Database) {
-  return db
+  const receipts = db
     .select({
       purchaseRequestItemId: purchaseOrderItems.purchaseRequestItemId,
-      receivedQuantity: sql<number>`sum(${inventoryReceiptItems.quantity})`
+      receivedQty: sql<number>`coalesce(sum(${inventoryReceiptItems.quantity}), 0)`
         .mapWith(Number)
-        .as('received_quantity'),
+        .as('received_qty'),
     })
     .from(inventoryReceiptItems)
     .innerJoin(
@@ -55,6 +57,43 @@ export function receivedQuantitySubquery(db: Database) {
     )
     .where(eq(inventoryReceipts.status, InventoryDocumentStatus.POSTED))
     .groupBy(purchaseOrderItems.purchaseRequestItemId)
+    .as('pr_receipts');
+
+  const returns = db
+    .select({
+      purchaseRequestItemId: purchaseOrderItems.purchaseRequestItemId,
+      returnedQty: sql<number>`coalesce(sum(${supplierReturns.quantity}), 0)`
+        .mapWith(Number)
+        .as('returned_qty'),
+    })
+    .from(supplierReturns)
+    .innerJoin(
+      inventoryReceiptItems,
+      and(
+        eq(inventoryReceiptItems.receiptId, supplierReturns.inventoryReceiptId),
+        eq(inventoryReceiptItems.itemId, supplierReturns.itemId),
+      ),
+    )
+    .innerJoin(
+      purchaseOrderItems,
+      eq(purchaseOrderItems.id, inventoryReceiptItems.purchaseOrderItemId),
+    )
+    .where(eq(supplierReturns.status, InventoryDocumentStatus.POSTED))
+    .groupBy(purchaseOrderItems.purchaseRequestItemId)
+    .as('pr_returns');
+
+  return db
+    .select({
+      purchaseRequestItemId: receipts.purchaseRequestItemId,
+      receivedQuantity: sql<number>`greatest(coalesce(${receipts.receivedQty}, 0) - coalesce(${returns.returnedQty}, 0), 0)`
+        .mapWith(Number)
+        .as('received_quantity'),
+    })
+    .from(receipts)
+    .leftJoin(
+      returns,
+      eq(returns.purchaseRequestItemId, receipts.purchaseRequestItemId),
+    )
     .as('received_quantity_aggregate');
 }
 

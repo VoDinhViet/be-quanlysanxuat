@@ -26,17 +26,18 @@ Nhánh nhập kho: `docs/workflows/receipt-confirmation.md`, `docs/workflows/sto
 3. **Xác nhận đặt hàng** — `POST /purchase-orders/:id/confirm`: `DRAFT → ORDERED`, chặn thiếu
    `expectedDate`/`paymentTerm`/giá dòng (`E134`/`E156`/`E135`).
 4. **Nhận hàng** — `POST /inventory-receipts` gắn `purchaseOrderId` (validate PO `ORDERED`, dòng
-   thuộc đúng PO, SL cộng dồn ≤ SL đặt — `E121`/`E145`/`E123`/`E127`/`E154`) → `confirm` (`DRAFT →
-   PENDING_RECEIPT`/`PENDING_IQC`) → `post` (ghi tồn thật). PO `ORDERED` chỉ được validate lại lúc
-   **tạo/sửa** phiếu — `confirm`/`post` không re-check, nên một phiếu `DRAFT` tạo trước khi PO bị
-   `cancel` vẫn `post` được bình thường sau đó.
+   thuộc đúng PO, SL cộng dồn thực nhận ≤ SL đặt — `E121`/`E145`/`E123`/`E127`/`E154`) → `confirm` (`DRAFT →
+   PENDING_RECEIPT`/`PENDING_IQC`) → `post` (ghi tồn thật, tự động khấu trừ số lượng đã xuất trả NCC
+   `supplier_returns` đã `POSTED`). SL đã nhận của PO được tính theo số thực nhận ($\sum \text{nhập} - \sum \text{trả NCC}$),
+   cho phép NCC giao bù hàng đạt chuẩn cho phần lỗi đã xuất trả mà không bị chặn bởi `E154`.
 5. **Tự sinh YCTT** — trong cùng transaction `post` (`docs/workflows/stock-movement.md`),
    `PaymentRequestsService.createIfOrderCompleted(tx, purchaseOrderId)` kiểm PO còn `ORDERED` (bỏ
-   qua nếu đã `CANCELLED` — hệ quả trực tiếp của điểm trên) và `receivedQuantity` vừa chạm
+   qua nếu đã `CANCELLED` — hệ quả trực tiếp của điểm trên) và `receivedQuantity` (đã trừ hàng trả NCC) vừa chạm
    `orderedQuantity` (đọc từ mọi phiếu `POSTED` nối `purchaseOrderId`, không riêng phiếu đang
    `post`) — nếu đúng, `INSERT payment_requests` (`PENDING`), `requestValue` snapshot Σ giá trị PO,
    `dueDate = orderDate + paymentTerm`. Idempotent — PO nhận qua nhiều phiếu không tạo trùng, kể cả
-   khi 2 phiếu `post` gần như đồng thời (DB unique trên `purchaseOrderId` + code bắt `23505`).
+   khi 2 phiếu `post` gần như đồng thời (DB unique trên `purchaseOrderId` + code bắt `23505`). Nếu hàng bị trả
+   một phần, YCTT chưa được sinh cho đến khi NCC giao bù đủ số lượng đạt chuẩn.
 6. **Thanh toán** — `POST /payment-requests/:id/mark-paid` (`PENDING → PAID`) hoặc `.../cancel`
    (`PENDING → CANCELLED`) — cả hai là điểm cuối, không rollback.
 

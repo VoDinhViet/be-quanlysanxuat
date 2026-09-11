@@ -63,4 +63,16 @@ export class InventoryReceiptItemResDto {
       'Phần tồn thực tế bị nhu cầu LSX này chiếm = min(onHand, bomDemand)',
   })
   fromStock!: number;
+
+  @Expose()
+  @NumberFieldOptional({
+    description: 'Số lượng đã xuất trả NCC (từ các phiếu trả NCC đã POSTED)',
+  })
+  returnedQuantity?: number;
+
+  @Expose()
+  @NumberFieldOptional({
+    description: 'Số lượng thực nhận vào kho = max(quantity − returnedQuantity, 0)',
+  })
+  actualQuantity?: number;
 }

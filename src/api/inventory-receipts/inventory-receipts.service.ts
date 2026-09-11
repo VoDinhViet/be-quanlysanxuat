@@ -223,28 +223,41 @@ export class InventoryReceiptsService {
     const balance = onHandQuantityByItemSubquery(this.db);
     const demand = jobIssueDemandSubquery(this.db, scope);
 
-    return this.db
-      .select({
-        id: inventoryReceiptItems.id,
-        quantity: inventoryReceiptItems.quantity,
-        unitPrice: inventoryReceiptItems.unitPrice,
-        note: inventoryReceiptItems.note,
-        item: getTableColumns(items),
-        unit: getTableColumns(units),
-        purchaseOrderItem: getTableColumns(purchaseOrderItems),
-        ...itemStockColumns(balance, demand),
-      })
-      .from(inventoryReceiptItems)
-      .innerJoin(items, eq(items.id, inventoryReceiptItems.itemId))
-      .innerJoin(units, eq(units.id, inventoryReceiptItems.unitId))
-      .leftJoin(
-        purchaseOrderItems,
-        eq(purchaseOrderItems.id, inventoryReceiptItems.purchaseOrderItemId),
-      )
-      .leftJoin(balance, eq(balance.itemId, items.id))
-      .leftJoin(demand, eq(demand.itemId, items.id))
-      .where(eq(inventoryReceiptItems.receiptId, receiptId))
-      .orderBy(asc(items.code));
+    const [rows, returnedByItemId] = await Promise.all([
+      this.db
+        .select({
+          id: inventoryReceiptItems.id,
+          quantity: inventoryReceiptItems.quantity,
+          unitPrice: inventoryReceiptItems.unitPrice,
+          note: inventoryReceiptItems.note,
+          item: getTableColumns(items),
+          unit: getTableColumns(units),
+          purchaseOrderItem: getTableColumns(purchaseOrderItems),
+          ...itemStockColumns(balance, demand),
+        })
+        .from(inventoryReceiptItems)
+        .innerJoin(items, eq(items.id, inventoryReceiptItems.itemId))
+        .innerJoin(units, eq(units.id, inventoryReceiptItems.unitId))
+        .leftJoin(
+          purchaseOrderItems,
+          eq(purchaseOrderItems.id, inventoryReceiptItems.purchaseOrderItemId),
+        )
+        .leftJoin(balance, eq(balance.itemId, items.id))
+        .leftJoin(demand, eq(demand.itemId, items.id))
+        .where(eq(inventoryReceiptItems.receiptId, receiptId))
+        .orderBy(asc(items.code)),
+      getReturnedQuantityByReceiptItemId(this.db, receiptId),
+    ]);
+
+    return rows.map((row) => {
+      const returnedQuantity = returnedByItemId.get(row.item.id) ?? 0;
+      const actualQuantity = Math.max(row.quantity - returnedQuantity, 0);
+      return {
+        ...row,
+        returnedQuantity,
+        actualQuantity,
+      };
+    });
   }
 
   async createInventoryReceipt(

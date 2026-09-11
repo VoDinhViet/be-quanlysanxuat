@@ -86,8 +86,10 @@ là bên xác nhận vật lý, khác vai trò với QC.
   Không side effect nào khác ngoài đổi `status` dòng IQC.
 - `post`: có thể **không** sinh bút toán nào (`shouldPostStock` = false) — vẫn hợp lệ, không phải
   lỗi. Luôn hoàn tất dòng IQC liên kết nếu có.
-- `post` phiếu trả **không** đọc/ghi gì thêm về `inventory_receipts` — bù trừ SL diễn ra ở chiều
+- `post` phiếu trả **không** đọc/ghi gì thêm về `inventory_receipts` — bù trừ SL tồn kho diễn ra ở chiều
   ngược lại, khi `postInventoryReceipt` chạy (xem `docs/domains/inventory.md`, "Bù trừ SL đã trả").
+  Đồng thời, tiến độ nhận hàng của PO (`orderReceivedQuantitySubquery`, `getReceivedQuantityByPurchaseOrderItemId`)
+  tự động khấu trừ SL phiếu trả đã `POSTED`, giải phóng hạn mức để NCC có thể giao bù hàng đạt chuẩn mà không bị chặn bởi `E154`.
 
 ## Transaction boundary
 
