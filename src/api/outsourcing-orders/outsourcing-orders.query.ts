@@ -2,6 +2,7 @@ import { and, eq, ne, sql } from 'drizzle-orm';
 
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
+  InventoryDocumentStatus,
   OutsourcingOrderStatus,
   outsourcingOrderItems,
   outsourcingOrders,
@@ -12,6 +13,7 @@ import {
   QualityInspectionStatus,
   QualityInspectionType,
   qualityInspections,
+  supplierReturns,
 } from '../../database/schemas';
 
 /** Σ SL đã gửi theo từng công đoạn Job — dùng cho popup "chọn part cần gia công"
@@ -59,14 +61,16 @@ export function sentQuantityByOrderIdSubquery(db: Database) {
 /** Bản subquery-table Σ SL đã nhận theo từng phiếu OS-OUT (`receivedQuantity`) — gộp mọi dòng OS-IN
  * `POSTED` trỏ tới bất kỳ dòng nào của phiếu, khớp cách lọc `status` của
  * `getReceivedQuantityByOrderItemIds` (`outsourcing-receipts.query.ts`), chỉ khác gom theo phiếu
- * OS-OUT thay vì theo từng dòng. LEFT JOIN thẳng vào `getOutsourcingOrders` (list). */
+ * OS-OUT thay vì theo từng dòng — kể cả khấu trừ SL trả NCC (`supplier_returns` đã `POSTED`, nối
+ * qua `(outsourcingReceiptId, itemId)`). LEFT JOIN thẳng vào `getOutsourcingOrders` (list). */
 export function receivedQuantityByOrderIdSubquery(db: Database) {
-  return db
+  const receipts = db
     .select({
       outsourcingOrderId: outsourcingOrderItems.outsourcingOrderId,
-      receivedQuantity: sql<number>`sum(${outsourcingReceiptItems.quantity})`
-        .mapWith(Number)
-        .as('received_quantity'),
+      receivedQty:
+        sql<number>`coalesce(sum(${outsourcingReceiptItems.quantity}), 0)`
+          .mapWith(Number)
+          .as('received_qty'),
     })
     .from(outsourcingOrderItems)
     .innerJoin(
@@ -87,6 +91,50 @@ export function receivedQuantityByOrderIdSubquery(db: Database) {
       ),
     )
     .groupBy(outsourcingOrderItems.outsourcingOrderId)
+    .as('order_receipts');
+
+  const returns = db
+    .select({
+      outsourcingOrderId: outsourcingOrderItems.outsourcingOrderId,
+      returnedQty: sql<number>`coalesce(sum(${supplierReturns.quantity}), 0)`
+        .mapWith(Number)
+        .as('returned_qty'),
+    })
+    .from(supplierReturns)
+    .innerJoin(
+      outsourcingReceiptItems,
+      and(
+        eq(
+          outsourcingReceiptItems.outsourcingReceiptId,
+          supplierReturns.outsourcingReceiptId,
+        ),
+        eq(outsourcingReceiptItems.itemId, supplierReturns.itemId),
+      ),
+    )
+    .innerJoin(
+      outsourcingOrderItems,
+      eq(
+        outsourcingOrderItems.id,
+        outsourcingReceiptItems.outsourcingOrderItemId,
+      ),
+    )
+    .where(eq(supplierReturns.status, InventoryDocumentStatus.POSTED))
+    .groupBy(outsourcingOrderItems.outsourcingOrderId)
+    .as('order_returns');
+
+  return db
+    .select({
+      outsourcingOrderId: receipts.outsourcingOrderId,
+      receivedQuantity:
+        sql<number>`greatest(coalesce(${receipts.receivedQty}, 0) - coalesce(${returns.returnedQty}, 0), 0)`
+          .mapWith(Number)
+          .as('received_quantity'),
+    })
+    .from(receipts)
+    .leftJoin(
+      returns,
+      eq(returns.outsourcingOrderId, receipts.outsourcingOrderId),
+    )
     .as('received_quantity_by_order');
 }
 
@@ -140,10 +188,13 @@ async function hasPendingIqcForOrder(
 /**
  * Tính lại `status` (= tiến độ nhận hàng) của 1 phiếu OS-OUT từ dữ liệu thật (SL gửi/nhận/IQC còn
  * treo) rồi `UPDATE` — nguồn ghi duy nhất cho 3 giá trị `PARTIAL`/`WAITING_QC`/`COMPLETED`
- * (`docs/decisions/outsourcing-order-status-progress-merge.md`). Gọi từ
- * `OutsourcingReceiptsService.createOutsourcingReceipt`/`cancelOutsourcingReceipt` (SL nhận đổi) và
- * `IqcService.confirmIqc` (IQC treo đổi) — luôn trong cùng `tx` với thao tác vừa gây ra thay đổi đó,
- * không phải cron/job riêng. Bỏ qua nếu phiếu đã `CANCELLED` — không hồi sinh phiếu đã huỷ.
+ * (`docs/decisions/outsourcing-order-status-progress-merge.md`). SL nhận đã trừ hàng QC fail bị trả
+ * NCC (`supplier_returns` `POSTED`) nên phiếu trả về hàng lỗi tự lùi status về `PARTIAL`/`SENT`,
+ * mở lại hạn mức cho NCC giao bù (`docs/workflows/supplier-return.md`, Side effects). Gọi từ
+ * `OutsourcingReceiptsService.createOutsourcingReceipt`/`cancelOutsourcingReceipt` (SL nhận đổi),
+ * `IqcService.confirmIqc` (IQC treo đổi), và `SupplierReturnsService.postSupplierReturn` (SL trả
+ * đổi) — luôn trong cùng `tx` với thao tác vừa gây ra thay đổi đó, không phải cron/job riêng. Bỏ
+ * qua nếu phiếu đã `CANCELLED` — không hồi sinh phiếu đã huỷ.
  */
 export async function recomputeOutsourcingOrderStatus(
   tx: DbTransaction,
@@ -161,9 +212,14 @@ export async function recomputeOutsourcingOrderStatus(
 
   // Không tái dùng sentQuantityByOrderIdSubquery/receivedQuantityByOrderIdSubquery ở trên — 2 hàm đó
   // GROUP BY toàn bộ bảng (khớp shape LEFT JOIN của list/detail), quét cả những phiếu không liên
-  // quan; ở đây chỉ cần đúng 1 phiếu nên lọc WHERE trước khi SUM rẻ hơn. Hai truy vấn độc lập, chạy
-  // song song.
-  const [[{ sentQuantity }], [{ receivedQuantity }]] = await Promise.all([
+  // quan; ở đây chỉ cần đúng 1 phiếu nên lọc WHERE trước khi SUM rẻ hơn. Ba truy vấn độc lập, chạy
+  // song song — trừ luôn SL đã trả NCC (`supplier_returns` `POSTED`, cùng lý do
+  // `receivedQuantityByOrderIdSubquery`) để hàng QC fail bị trả không bị tính là "đã nhận".
+  const [
+    [{ sentQuantity }],
+    [{ receivedQuantity: rawReceivedQuantity }],
+    [{ returnedQuantity }],
+  ] = await Promise.all([
     tx
       .select({
         sentQuantity:
@@ -199,7 +255,40 @@ export async function recomputeOutsourcingOrderStatus(
         ),
       )
       .where(eq(outsourcingOrderItems.outsourcingOrderId, outsourcingOrderId)),
+    tx
+      .select({
+        returnedQuantity:
+          sql<number>`coalesce(sum(${supplierReturns.quantity}), 0)`.mapWith(
+            Number,
+          ),
+      })
+      .from(outsourcingOrderItems)
+      .innerJoin(
+        outsourcingReceiptItems,
+        eq(
+          outsourcingReceiptItems.outsourcingOrderItemId,
+          outsourcingOrderItems.id,
+        ),
+      )
+      .innerJoin(
+        supplierReturns,
+        and(
+          eq(
+            supplierReturns.outsourcingReceiptId,
+            outsourcingReceiptItems.outsourcingReceiptId,
+          ),
+          eq(supplierReturns.itemId, outsourcingReceiptItems.itemId),
+        ),
+      )
+      .where(
+        and(
+          eq(outsourcingOrderItems.outsourcingOrderId, outsourcingOrderId),
+          eq(supplierReturns.status, InventoryDocumentStatus.POSTED),
+        ),
+      ),
   ]);
+
+  const receivedQuantity = Math.max(rawReceivedQuantity - returnedQuantity, 0);
 
   let status: OutsourcingOrderStatus;
   if (receivedQuantity < sentQuantity) {

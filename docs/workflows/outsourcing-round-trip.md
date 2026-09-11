@@ -24,7 +24,8 @@ mặt hàng gửi gia công ngoài luôn là WIP, kho không quản tồn WIP
 - `POST /outsourcing-orders` — lập phiếu gửi gia công ngoài (OS-OUT), nhiều dòng, tay — `POSTED`
   ngay, không đụng tồn kho.
 - `GET /outsourcing-receipts/pending-order-items` — popup "chọn hàng cần nhận": liệt kê dòng OS-OUT
-  thuộc phiếu `POSTED`.
+  thuộc phiếu chưa `CANCELLED`, kèm `receivedQuantity` (Σ OS-IN `POSTED` đã trỏ tới dòng đó, trừ SL
+  đã trả NCC — `docs/workflows/supplier-return.md`, Side effects) để UI tính SL còn được nhận.
 - `POST /outsourcing-receipts` — lập phiếu nhận gia công ngoài (OS-IN), nhiều dòng, mỗi dòng trỏ
   đúng 1 dòng OS-OUT (thuộc phiếu đã `POSTED`), tay. Một dòng OS-OUT nhận được nhiều lần (partial).
   `POSTED` ngay, không đụng tồn kho; nếu `requiresIqc = true`, cùng transaction sinh N dòng
@@ -44,17 +45,17 @@ trở đi.
 
 ## Preconditions
 
-| Điều kiện                                                                        | OS-OUT `create`                                                            | OS-IN `create`                                               |
-| -------------------------------------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| NCC tồn tại, chưa xoá mềm                                                        | `E019`                                                                     | — (đã xác định ở header)                                     |
-| `items[]` không rỗng                                                             | `E182`                                                                     | `E185`                                                       |
-| Không trùng dòng trong payload                                                   | `E183` (`productionJobOperationId`)                                        | `E186` (`outsourcingOrderItemId`)                            |
-| `productionJobOperationId` hợp lệ, `itemId`/`operationCode`/`operationName` khớp | — (client gửi, server không resolve/validate lại)                          | —                                                            |
-| OS-OUT nguồn tồn tại, đang `POSTED`                                              | —                                                                          | `E165`/`E171` (mỗi dòng)                                     |
-| NCC của dòng OS-OUT khớp `supplierId` header                                     | —                                                                          | `E187` (mỗi dòng)                                            |
-| SL nhận (cộng dồn theo dòng OS-OUT) không vượt SL gửi                            | —                                                                          | `E172` (trước khi mở transaction)                            |
-| Còn OS-IN chưa `CANCELLED` (chặn `cancel` OS-OUT)                                | _(xem `cancel`)_                                                           | —                                                            |
-| Đã có IQC trỏ vào (chặn `cancel` OS-IN)                                          | —                                                                          | _(xem `cancel`)_                                             |
+| Điều kiện                                                                        | OS-OUT `create`                                   | OS-IN `create`                    |
+| -------------------------------------------------------------------------------- | ------------------------------------------------- | --------------------------------- |
+| NCC tồn tại, chưa xoá mềm                                                        | `E019`                                            | — (đã xác định ở header)          |
+| `items[]` không rỗng                                                             | `E182`                                            | `E185`                            |
+| Không trùng dòng trong payload                                                   | `E183` (`productionJobOperationId`)               | `E186` (`outsourcingOrderItemId`) |
+| `productionJobOperationId` hợp lệ, `itemId`/`operationCode`/`operationName` khớp | — (client gửi, server không resolve/validate lại) | —                                 |
+| OS-OUT nguồn tồn tại, đang `POSTED`                                              | —                                                 | `E165`/`E171` (mỗi dòng)          |
+| NCC của dòng OS-OUT khớp `supplierId` header                                     | —                                                 | `E187` (mỗi dòng)                 |
+| SL nhận (cộng dồn theo dòng OS-OUT) không vượt SL gửi                            | —                                                 | `E172` (trước khi mở transaction) |
+| Còn OS-IN chưa `CANCELLED` (chặn `cancel` OS-OUT)                                | _(xem `cancel`)_                                  | —                                 |
+| Đã có IQC trỏ vào (chặn `cancel` OS-IN)                                          | —                                                 | _(xem `cancel`)_                  |
 
 ## Flow
 
@@ -78,8 +79,9 @@ trở đi.
 ### Lập + nhận OS-IN (lặp lại nếu nhận nhiều đợt)
 
 3. (Tuỳ chọn) `GET /outsourcing-receipts/pending-order-items` — dựng popup chọn hàng cần nhận: mỗi
-   dòng là một `outsourcing_order_items` thuộc phiếu `POSTED`, kèm `weight`/`area` của dòng gốc làm
-   giá trị mặc định cho form nhập.
+   dòng là một `outsourcing_order_items` thuộc phiếu chưa `CANCELLED`, kèm `weight`/`area` của dòng
+   gốc làm giá trị mặc định cho form nhập, và `receivedQuantity` để UI tính SL còn được nhận (LEFT
+   JOIN `receivedQuantityByOrderItemIdSubquery`, cùng cách `getOrderItems` phía OS-OUT dùng).
 4. `createOutsourcingReceipt` — validate từng dòng **trước** khi mở transaction: OS-OUT nguồn tồn
    tại + `POSTED` (`E165`/`E171`), NCC của dòng khớp `supplierId` header (`E187`), trần SL theo từng
    dòng (`Σ` OS-IN `POSTED` hiện có + SL mới ≤ SL gửi của dòng OS-OUT, `E172`). `itemId` copy từ dòng
@@ -109,16 +111,16 @@ trở đi.
 
 ## State changes
 
-| Entity                                                                 | Trigger                            | Trước       | Sau                                   |
-| ---------------------------------------------------------------------- | ---------------------------------- | ----------- | ------------------------------------- |
-| `outsourcing_orders` + `outsourcing_order_items`                       | `create`                           | _(chưa có)_ | 1 header `POSTED` + N dòng            |
-| `outsourcing_orders.status`                                            | `cancel`                           | `POSTED`    | `CANCELLED`                           |
-| `outsourcing_receipts` + `outsourcing_receipt_items`                   | `create`                           | _(chưa có)_ | 1 header `POSTED` + N dòng            |
-| `quality_inspections` (`inspectionType = IQC`)                  | `create` OS-IN (nếu `requiresIqc`) | _(chưa có)_ | N dòng `DRAFT` (1/dòng phiếu) |
-| `outsourcing_receipts.status`                                          | `cancel`                           | `POSTED`    | `CANCELLED`                           |
-| `production_job_operations.completedQuantity`/`completedDate` (đúng công đoạn `OUTSOURCE`) | `create`/`cancel` OS-IN | Σ SL nhận trước đó | Σ SL nhận mới (`recomputeOutsourcedOperationProgress`) — `completedDate` set/xoá theo ngưỡng `plannedQuantity` |
-| `production_jobs.status`                                               | gián tiếp, khi op vừa hoàn tất thuộc node FG | `IN_PROGRESS`/`WAITING_QC` | `WAITING_QC`/`WAITING_DELIVERY` (có thể) |
-| ...(từ đây giống `docs/workflows/supplier-return.md`, "State changes") |                                    |             |                                       |
+| Entity                                                                                     | Trigger                                      | Trước                      | Sau                                                                                                            |
+| ------------------------------------------------------------------------------------------ | -------------------------------------------- | -------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `outsourcing_orders` + `outsourcing_order_items`                                           | `create`                                     | _(chưa có)_                | 1 header `POSTED` + N dòng                                                                                     |
+| `outsourcing_orders.status`                                                                | `cancel`                                     | `POSTED`                   | `CANCELLED`                                                                                                    |
+| `outsourcing_receipts` + `outsourcing_receipt_items`                                       | `create`                                     | _(chưa có)_                | 1 header `POSTED` + N dòng                                                                                     |
+| `quality_inspections` (`inspectionType = IQC`)                                             | `create` OS-IN (nếu `requiresIqc`)           | _(chưa có)_                | N dòng `DRAFT` (1/dòng phiếu)                                                                                  |
+| `outsourcing_receipts.status`                                                              | `cancel`                                     | `POSTED`                   | `CANCELLED`                                                                                                    |
+| `production_job_operations.completedQuantity`/`completedDate` (đúng công đoạn `OUTSOURCE`) | `create`/`cancel` OS-IN                      | Σ SL nhận trước đó         | Σ SL nhận mới (`recomputeOutsourcedOperationProgress`) — `completedDate` set/xoá theo ngưỡng `plannedQuantity` |
+| `production_jobs.status`                                                                   | gián tiếp, khi op vừa hoàn tất thuộc node FG | `IN_PROGRESS`/`WAITING_QC` | `WAITING_QC`/`WAITING_DELIVERY` (có thể)                                                                       |
+| ...(từ đây giống `docs/workflows/supplier-return.md`, "State changes")                     |                                              |                            |                                                                                                                |
 
 ## Side effects
 

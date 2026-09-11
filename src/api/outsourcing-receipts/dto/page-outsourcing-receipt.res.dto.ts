@@ -7,6 +7,7 @@ import {
   ClassFieldOptional,
   DateField,
   EnumField,
+  NumberField,
   StringField,
   StringFieldOptional,
   UUIDField,
@@ -49,6 +50,10 @@ export class PageOutsourcingReceiptResDto {
   @Expose()
   @ClassFieldOptional(() => UserRefResDto, { nullable: true })
   creatorBy!: UserRefResDto | null;
+
+  @Expose()
+  @NumberField({ description: 'Tổng SL nhận mọi dòng của phiếu' })
+  totalQuantity!: number;
 
   @Expose()
   @DateField()

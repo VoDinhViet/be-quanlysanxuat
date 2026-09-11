@@ -11,7 +11,7 @@ xác nhận đã thật sự xuất hàng trả nhà cung cấp, và IQC gốc �
 - `POST /iqc/:iqcId/confirm` với `result = FAIL` và `disposition = SORT`/`RETURN` — tự sinh một
   dòng `supplier_returns` (`DRAFT`), **không** có route tạo tay riêng.
 - `POST /supplier-returns/:supplierReturnId/post` — kho xác nhận đã thật sự xuất hàng trả NCC
-  *(một lần)*. Nhận `note`/`fileIds` tuỳ chọn (bằng chứng xuất trả) trong body.
+  _(một lần)_. Nhận `note`/`fileIds` tuỳ chọn (bằng chứng xuất trả) trong body.
 
 ## Actor
 
@@ -21,13 +21,13 @@ là bên xác nhận vật lý, khác vai trò với QC.
 
 ## Preconditions
 
-| Điều kiện | Tự sinh (trong `confirm`) | `post` |
-| --- | --- | --- |
-| Dòng IQC tồn tại, đang lưu được | `E138`/`E159` (đã kiểm ở đầu `confirm`) | — |
-| `disposition = SORT` phải có `sortOkQty`/`sortNgQty` hợp lệ | `E160`/`E161`/`E162` (đã kiểm ở `validateDecision`, xem `docs/domains/quality-iqc.md`) | — |
-| Phiếu trả tồn tại | — | `E137` |
-| Đúng trạng thái nguồn (`DRAFT`) | — | `E098` |
-| Dòng IQC liên kết đang `IN_PROGRESS` | — | `E164` |
+| Điều kiện                                                   | Tự sinh (trong `confirm`)                                                              | `post` |
+| ----------------------------------------------------------- | -------------------------------------------------------------------------------------- | ------ |
+| Dòng IQC tồn tại, đang lưu được                             | `E138`/`E159` (đã kiểm ở đầu `confirm`)                                                | —      |
+| `disposition = SORT` phải có `sortOkQty`/`sortNgQty` hợp lệ | `E160`/`E161`/`E162` (đã kiểm ở `validateDecision`, xem `docs/domains/quality-iqc.md`) | —      |
+| Phiếu trả tồn tại                                           | —                                                                                      | `E137` |
+| Đúng trạng thái nguồn (`DRAFT`)                             | —                                                                                      | `E098` |
+| Dòng IQC liên kết đang `IN_PROGRESS`                        | —                                                                                      | `E164` |
 
 ## Flow
 
@@ -72,13 +72,13 @@ là bên xác nhận vật lý, khác vai trò với QC.
 
 ## State changes
 
-| Entity | Trigger | Trước | Sau |
-| --- | --- | --- | --- |
-| `quality_inspections.status` (`inspectionType = IQC`) | `confirm` (disposition SORT/RETURN) | `PENDING`/`DRAFT` | `IN_PROGRESS` |
-| `supplier_returns` | `confirm` (disposition SORT/RETURN) | *(chưa có)* | 1 dòng `DRAFT` |
-| `supplier_returns.status` | `post` | `DRAFT` | `POSTED` |
-| `inventory_balances`/`inventory_transactions` | `post` (nếu `shouldPostStock`) | — | cập nhật (xem `docs/workflows/stock-movement.md`) |
-| `quality_inspections.status` (`inspectionType = IQC`) | `post` (qua `completeIqcAfterSupplierReturn`) | `IN_PROGRESS` | `COMPLETED` |
+| Entity                                                | Trigger                                       | Trước             | Sau                                               |
+| ----------------------------------------------------- | --------------------------------------------- | ----------------- | ------------------------------------------------- |
+| `quality_inspections.status` (`inspectionType = IQC`) | `confirm` (disposition SORT/RETURN)           | `PENDING`/`DRAFT` | `IN_PROGRESS`                                     |
+| `supplier_returns`                                    | `confirm` (disposition SORT/RETURN)           | _(chưa có)_       | 1 dòng `DRAFT`                                    |
+| `supplier_returns.status`                             | `post`                                        | `DRAFT`           | `POSTED`                                          |
+| `inventory_balances`/`inventory_transactions`         | `post` (nếu `shouldPostStock`)                | —                 | cập nhật (xem `docs/workflows/stock-movement.md`) |
+| `quality_inspections.status` (`inspectionType = IQC`) | `post` (qua `completeIqcAfterSupplierReturn`) | `IN_PROGRESS`     | `COMPLETED`                                       |
 
 ## Side effects
 
@@ -90,6 +90,12 @@ là bên xác nhận vật lý, khác vai trò với QC.
   ngược lại, khi `postInventoryReceipt` chạy (xem `docs/domains/inventory.md`, "Bù trừ SL đã trả").
   Đồng thời, tiến độ nhận hàng của PO (`orderReceivedQuantitySubquery`, `getReceivedQuantityByPurchaseOrderItemId`)
   tự động khấu trừ SL phiếu trả đã `POSTED`, giải phóng hạn mức để NCC có thể giao bù hàng đạt chuẩn mà không bị chặn bởi `E154`.
+- Cùng cách trên, tiến độ nhận hàng OS-IN (`getReceivedQuantityByOrderItemIds`,
+  `receivedQuantityByOrderItemIdSubquery` ở `outsourcing-receipts.query.ts`, và
+  `receivedQuantityByOrderIdSubquery` ở `outsourcing-orders.query.ts`) cũng tự động khấu trừ SL
+  phiếu trả đã `POSTED` — nối `supplier_returns` vào `outsourcing_receipt_items` qua
+  `(outsourcingReceiptId, itemId)` vì bảng trả không có FK tới từng dòng OS-IN. Giải phóng hạn mức
+  `E172` để NCC giao bù hàng đạt chuẩn cho đúng dòng OS-OUT đã bị trả một phần/toàn bộ.
 
 ## Transaction boundary
 

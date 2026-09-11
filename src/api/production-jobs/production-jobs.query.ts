@@ -2,6 +2,7 @@ import { and, count, eq, isNull, sql } from 'drizzle-orm';
 
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
+  InventoryDocumentStatus,
   ItemType,
   OperationType,
   OutsourcingReceiptStatus,
@@ -14,6 +15,7 @@ import {
   productionJobOperations,
   productionJobs,
   ProductionJobStatus,
+  supplierReturns,
 } from '../../database/schemas';
 
 /** Đẩy Job `IN_PROGRESS → WAITING_QC` khi không còn công đoạn nào của node FG dở — cùng luật đang
@@ -91,9 +93,11 @@ export async function countPendingJobOperations(
 
 /**
  * Tính lại `completedQuantity`/`completedDate` của một công đoạn `OUTSOURCE` từ Σ SL đã nhận về
- * (OS-IN `POSTED` trỏ đúng công đoạn) — nguồn ghi duy nhất cho 2 cột này ở nhánh gia công ngoài,
- * đối xứng `ProductionExecutionService.createJobOperationReport` ở nhánh trong nhà. Gọi trong
- * CÙNG `tx` với `create`/`cancel` OS-IN (`OutsourcingReceiptsService`) — xem
+ * (OS-IN `POSTED` trỏ đúng công đoạn), trừ SL đã trả NCC (`supplier_returns` `POSTED`, cùng lý do
+ * `receivedQuantityByOrderIdSubquery` ở `outsourcing-orders.query.ts`) — nguồn ghi duy nhất cho 2
+ * cột này ở nhánh gia công ngoài, đối xứng `ProductionExecutionService.createJobOperationReport` ở
+ * nhánh trong nhà. Gọi trong CÙNG `tx` với `create`/`cancel` OS-IN (`OutsourcingReceiptsService`)
+ * và `post` phiếu trả sinh từ OS-IN (`SupplierReturnsService.postSupplierReturn`) — xem
  * `docs/decisions/outsourced-operation-progress-writeback.md`. Không suy `rejectedQuantity` từ IQC
  * — giữ nguyên 0, cùng lý do trong decision doc.
  */
@@ -125,37 +129,76 @@ export async function recomputeOutsourcedOperationProgress(
     return;
   }
 
-  const [{ receivedQuantity }] = await tx
-    .select({
-      receivedQuantity:
-        sql<number>`coalesce(sum(${outsourcingReceiptItems.quantity}), 0)`.mapWith(
-          Number,
+  const [[{ receivedQuantity: rawReceivedQuantity }], [{ returnedQuantity }]] =
+    await Promise.all([
+      tx
+        .select({
+          receivedQuantity:
+            sql<number>`coalesce(sum(${outsourcingReceiptItems.quantity}), 0)`.mapWith(
+              Number,
+            ),
+        })
+        .from(outsourcingOrderItems)
+        .innerJoin(
+          outsourcingReceiptItems,
+          eq(
+            outsourcingReceiptItems.outsourcingOrderItemId,
+            outsourcingOrderItems.id,
+          ),
+        )
+        .innerJoin(
+          outsourcingReceipts,
+          and(
+            eq(
+              outsourcingReceipts.id,
+              outsourcingReceiptItems.outsourcingReceiptId,
+            ),
+            eq(outsourcingReceipts.status, OutsourcingReceiptStatus.POSTED),
+          ),
+        )
+        .where(
+          eq(
+            outsourcingOrderItems.productionJobOperationId,
+            productionJobOperationId,
+          ),
         ),
-    })
-    .from(outsourcingOrderItems)
-    .innerJoin(
-      outsourcingReceiptItems,
-      eq(
-        outsourcingReceiptItems.outsourcingOrderItemId,
-        outsourcingOrderItems.id,
-      ),
-    )
-    .innerJoin(
-      outsourcingReceipts,
-      and(
-        eq(
-          outsourcingReceipts.id,
-          outsourcingReceiptItems.outsourcingReceiptId,
+      tx
+        .select({
+          returnedQuantity:
+            sql<number>`coalesce(sum(${supplierReturns.quantity}), 0)`.mapWith(
+              Number,
+            ),
+        })
+        .from(outsourcingOrderItems)
+        .innerJoin(
+          outsourcingReceiptItems,
+          eq(
+            outsourcingReceiptItems.outsourcingOrderItemId,
+            outsourcingOrderItems.id,
+          ),
+        )
+        .innerJoin(
+          supplierReturns,
+          and(
+            eq(
+              supplierReturns.outsourcingReceiptId,
+              outsourcingReceiptItems.outsourcingReceiptId,
+            ),
+            eq(supplierReturns.itemId, outsourcingReceiptItems.itemId),
+          ),
+        )
+        .where(
+          and(
+            eq(
+              outsourcingOrderItems.productionJobOperationId,
+              productionJobOperationId,
+            ),
+            eq(supplierReturns.status, InventoryDocumentStatus.POSTED),
+          ),
         ),
-        eq(outsourcingReceipts.status, OutsourcingReceiptStatus.POSTED),
-      ),
-    )
-    .where(
-      eq(
-        outsourcingOrderItems.productionJobOperationId,
-        productionJobOperationId,
-      ),
-    );
+    ]);
+
+  const receivedQuantity = Math.max(rawReceivedQuantity - returnedQuantity, 0);
 
   const isCompleted = receivedQuantity >= operation.plannedQuantity;
 

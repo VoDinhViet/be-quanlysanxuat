@@ -18,6 +18,8 @@ import {
   InventoryReferenceType,
   InventoryTransactionType,
   items,
+  outsourcingOrderItems,
+  outsourcingReceiptItems,
   purchaseOrders,
   QualityInspectionType,
   qualityInspectionResults,
@@ -30,6 +32,8 @@ import { AppException } from '../../exceptions/app.exception';
 import { FilesService } from '../files/files.service';
 import { InventoryPostingService } from '../inventory/inventory-posting.service';
 import { completeIqcAfterSupplierReturn } from '../iqc/iqc.write';
+import { recomputeOutsourcingOrderStatus } from '../outsourcing-orders/outsourcing-orders.query';
+import { recomputeOutsourcedOperationProgress } from '../production-jobs/production-jobs.query';
 import { GetSupplierReturnsReqDto } from './dto/get-supplier-returns.req.dto';
 import { PageSupplierReturnResDto } from './dto/page-supplier-return.res.dto';
 import { PostSupplierReturnReqDto } from './dto/post-supplier-return.req.dto';
@@ -296,9 +300,10 @@ export class SupplierReturnsService {
 
   /** `DRAFT → POSTED` — kho xác nhận đã thật sự xuất hàng trả NCC. Trừ tồn qua
    *  `InventoryPostingService` (bỏ qua nếu phiếu nhập gốc chưa `POSTED` hoặc sinh từ OS-IN — xem
-   *  `shouldPostStock`), rồi hoàn tất luôn dòng IQC liên kết (`completeIqcAfterSupplierReturn`)
-   *  trong cùng transaction. `reqDto.note`/`fileIds` tuỳ chọn — bằng chứng xuất trả, không ảnh
-   *  hưởng transition. Xem `docs/workflows/supplier-return.md`. */
+   *  `shouldPostStock`), sinh từ OS-IN thì recompute luôn `status` OS-OUT + tiến độ công đoạn liên
+   *  quan (`recomputeAffectedOutsourcing`), rồi hoàn tất dòng IQC liên kết
+   *  (`completeIqcAfterSupplierReturn`) trong cùng transaction. `reqDto.note`/`fileIds` tuỳ chọn —
+   *  bằng chứng xuất trả, không ảnh hưởng transition. Xem `docs/workflows/supplier-return.md`. */
   async postSupplierReturn(
     supplierReturnId: string,
     reqDto: PostSupplierReturnReqDto,
@@ -354,6 +359,10 @@ export class SupplierReturnsService {
         );
       }
 
+      if (supplierReturn.outsourcingReceiptId) {
+        await this.recomputeAffectedOutsourcing(tx, supplierReturn);
+      }
+
       if (supplierReturn.qualityInspectionId) {
         await completeIqcAfterSupplierReturn(
           tx,
@@ -362,6 +371,65 @@ export class SupplierReturnsService {
         );
       }
     });
+  }
+
+  /** Phiếu trả sinh từ OS-IN vừa `POSTED` — SL nhận của (các) OS-OUT nguồn và tiến độ (các) công
+   *  đoạn `OUTSOURCE` nguồn giờ đã trừ đi SL trả này (`receivedQuantityByOrderIdSubquery`,
+   *  `recomputeOutsourcedOperationProgress`), nên `status` OS-OUT (`outsourcing_orders`) và
+   *  `completedQuantity` công đoạn (`production_job_operations`) đang lưu có thể đã lỗi thời
+   *  (`COMPLETED` dù thật ra vừa lùi về `PARTIAL`/`SENT`). `supplier_returns` không có FK tới từng
+   *  dòng OS-IN nên suy ngược qua `(outsourcingReceiptId, itemId)`, cùng cách khấu trừ ở
+   *  `receivedQuantityByOrderIdSubquery` — có thể trúng nhiều dòng OS-IN cùng `itemId` trong 1
+   *  phiếu, recompute cho từng OS-OUT/công đoạn liên quan (khử trùng, bỏ qua công đoạn đã
+   *  hard-delete — `productionJobOperationId` về NULL). */
+  private async recomputeAffectedOutsourcing(
+    tx: DbTransaction,
+    supplierReturn: Pick<
+      SupplierReturnSelect,
+      'outsourcingReceiptId' | 'itemId'
+    >,
+  ): Promise<void> {
+    const affectedOrderItems = await tx
+      .select({
+        outsourcingOrderId: outsourcingOrderItems.outsourcingOrderId,
+        productionJobOperationId:
+          outsourcingOrderItems.productionJobOperationId,
+      })
+      .from(outsourcingReceiptItems)
+      .innerJoin(
+        outsourcingOrderItems,
+        eq(
+          outsourcingOrderItems.id,
+          outsourcingReceiptItems.outsourcingOrderItemId,
+        ),
+      )
+      .where(
+        and(
+          eq(
+            outsourcingReceiptItems.outsourcingReceiptId,
+            supplierReturn.outsourcingReceiptId!,
+          ),
+          eq(outsourcingReceiptItems.itemId, supplierReturn.itemId),
+        ),
+      );
+
+    const outsourcingOrderIds = [
+      ...new Set(affectedOrderItems.map((row) => row.outsourcingOrderId)),
+    ];
+    for (const outsourcingOrderId of outsourcingOrderIds) {
+      await recomputeOutsourcingOrderStatus(tx, outsourcingOrderId);
+    }
+
+    const productionJobOperationIds = [
+      ...new Set(
+        affectedOrderItems
+          .map((row) => row.productionJobOperationId)
+          .filter((id): id is string => id !== null),
+      ),
+    ];
+    for (const productionJobOperationId of productionJobOperationIds) {
+      await recomputeOutsourcedOperationProgress(tx, productionJobOperationId);
+    }
   }
 
   /** Hai ca bỏ qua trừ tồn, còn lại luôn trừ:

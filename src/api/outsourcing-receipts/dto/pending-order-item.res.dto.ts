@@ -55,6 +55,10 @@ export class PendingOrderItemResDto {
   quantity!: number;
 
   @Expose()
+  @NumberField({ description: 'SL đã nhận (OS-IN POSTED trỏ tới dòng này)' })
+  receivedQuantity!: number;
+
+  @Expose()
   @NumberFieldOptional({
     nullable: true,
     description: 'Trọng lượng (kg) của dòng OS-OUT gốc',

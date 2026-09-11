@@ -40,6 +40,7 @@ import {
   qualityInspections,
   suppliers,
   units,
+  users,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { IqcService } from '../iqc/iqc.service';
@@ -53,7 +54,11 @@ import { OutsourcingReceiptItemResDto } from './dto/outsourcing-receipt-item.res
 import { OutsourcingReceiptResDto } from './dto/outsourcing-receipt.res.dto';
 import { PageOutsourcingReceiptResDto } from './dto/page-outsourcing-receipt.res.dto';
 import { PendingOrderItemResDto } from './dto/pending-order-item.res.dto';
-import { getReceivedQuantityByOrderItemIds } from './outsourcing-receipts.query';
+import {
+  getReceivedQuantityByOrderItemIds,
+  receivedQuantityByOrderItemIdSubquery,
+  totalQuantityByReceiptIdSubquery,
+} from './outsourcing-receipts.query';
 
 type ResolvedReceiptItem = {
   outsourcingOrderItemId: string;
@@ -130,14 +135,33 @@ export class OutsourcingReceiptsService {
         : undefined,
     );
 
+    const totalQuantityByReceipt = totalQuantityByReceiptIdSubquery(this.db);
+
     const [entities, countRows] = await Promise.all([
-      this.db.query.outsourcingReceipts.findMany({
-        where,
-        limit: reqDto.limit,
-        offset: reqDto.offset,
-        orderBy: desc(outsourcingReceipts.createdAt),
-        with: { supplier: true, creatorBy: true },
-      }),
+      this.db
+        .select({
+          ...getTableColumns(outsourcingReceipts),
+          supplier: getTableColumns(suppliers),
+          creatorBy: getTableColumns(users),
+          totalQuantity:
+            sql<number>`coalesce(${totalQuantityByReceipt.totalQuantity}, 0)`.mapWith(
+              Number,
+            ),
+        })
+        .from(outsourcingReceipts)
+        .innerJoin(suppliers, eq(suppliers.id, outsourcingReceipts.supplierId))
+        .leftJoin(users, eq(users.id, outsourcingReceipts.createdBy))
+        .leftJoin(
+          totalQuantityByReceipt,
+          eq(
+            totalQuantityByReceipt.outsourcingReceiptId,
+            outsourcingReceipts.id,
+          ),
+        )
+        .where(where)
+        .orderBy(desc(outsourcingReceipts.createdAt))
+        .limit(reqDto.limit)
+        .offset(reqDto.offset),
       this.db.select({ total: count() }).from(outsourcingReceipts).where(where),
     ]);
 
@@ -229,6 +253,10 @@ export class OutsourcingReceiptsService {
         : undefined,
     );
 
+    const receivedQuantityByItem = receivedQuantityByOrderItemIdSubquery(
+      this.db,
+    );
+
     const [rows, [{ total }]] = await Promise.all([
       this.db
         .select({
@@ -241,6 +269,10 @@ export class OutsourcingReceiptsService {
           operationCode: outsourcingOrderItems.operationCode,
           operationName: outsourcingOrderItems.operationName,
           quantity: outsourcingOrderItems.quantity,
+          receivedQuantity:
+            sql<number>`coalesce(${receivedQuantityByItem.receivedQuantity}, 0)`.mapWith(
+              Number,
+            ),
           weight: outsourcingOrderItems.weight,
           area: outsourcingOrderItems.area,
         })
@@ -256,6 +288,13 @@ export class OutsourcingReceiptsService {
         )
         .innerJoin(items, eq(items.id, outsourcingOrderItems.itemId))
         .innerJoin(units, eq(units.id, items.unitId))
+        .leftJoin(
+          receivedQuantityByItem,
+          eq(
+            receivedQuantityByItem.outsourcingOrderItemId,
+            outsourcingOrderItems.id,
+          ),
+        )
         .where(where)
         .orderBy(desc(outsourcingOrderItems.createdAt))
         .limit(reqDto.limit)
