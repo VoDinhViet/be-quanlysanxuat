@@ -79,6 +79,7 @@ const ROLES = {
       'inventory-requisitions:read',
       'inventory-requisitions:approve',
       'production:read',
+      'production:update',
       'production:approve',
       'purchasing:read',
       'purchasing:approve',

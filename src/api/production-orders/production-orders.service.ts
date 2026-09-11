@@ -230,7 +230,7 @@ export class ProductionOrdersService {
       columns: { id: true, status: true },
       where: eq(productionOrders.id, productionOrdersId),
       with: {
-        order: { columns: { deletedAt: true } },
+        order: { columns: { deletedAt: true, status: true } },
         items: {
           columns: {
             id: true,
@@ -248,6 +248,9 @@ export class ProductionOrdersService {
     const order = productionOrder.order;
     if (order.deletedAt) {
       throw new AppException(ErrorCode.E057, HttpStatus.NOT_FOUND);
+    }
+    if (order.status !== OrderStatus.AWAITING_PRODUCTION) {
+      throw new AppException(ErrorCode.E076, HttpStatus.CONFLICT);
     }
     if (productionOrder.status !== ProductionOrderStatus.PENDING) {
       throw new AppException(ErrorCode.E084, HttpStatus.CONFLICT);
@@ -360,12 +363,18 @@ export class ProductionOrdersService {
       }
     }
 
+    const jobCount = quantityByItem.size;
+    const targetStatus =
+      jobCount > 0
+        ? ProductionOrderStatus.APPROVED
+        : ProductionOrderStatus.COMPLETED;
+
     await this.db.transaction(async (tx) => {
       const code = await this.generateProductionOrderCode(tx);
       await tx
         .update(productionOrders)
         .set({
-          status: ProductionOrderStatus.APPROVED,
+          status: targetStatus,
           code,
           approvedBy: userId,
           approvedAt: new Date(),
@@ -375,22 +384,25 @@ export class ProductionOrdersService {
         .update(orders)
         .set({ status: OrderStatus.IN_PROGRESS })
         .where(eq(orders.id, productionOrder.orderId));
-      await this.productionJobsService.createJobs(
-        tx,
-        productionOrdersId,
-        quantityByItem,
-        userId,
-      );
+      if (jobCount > 0) {
+        await this.productionJobsService.createJobs(
+          tx,
+          productionOrdersId,
+          quantityByItem,
+          userId,
+        );
+      }
 
-      const jobCount = quantityByItem.size;
       const content =
         jobCount > 0
           ? `Duyệt LSX ${code}, sinh ${jobCount} Job`
-          : `Duyệt LSX ${code}`;
+          : `Duyệt LSX ${code} (100% xuất từ kho, tự động hoàn thành LSX)`;
       await this.logAction(
         tx,
         productionOrdersId,
-        ProductionOrderLogAction.APPROVED,
+        jobCount > 0
+          ? ProductionOrderLogAction.APPROVED
+          : ProductionOrderLogAction.COMPLETED,
         content,
         userId,
       );

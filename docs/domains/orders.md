@@ -71,7 +71,7 @@ Production.
 - Duyệt/từ chối chỉ hợp lệ từ `PENDING_CONFIRMATION` (`E074`); từ chối bắt buộc lý do.
 - Duyệt đơn đồng thời sinh sẵn hồ sơ LSX, cùng transaction với đổi trạng thái.
 - Sửa được ở mọi trạng thái trừ `COMPLETED`/`CANCELLED` (`E065`) và `PENDING_CONFIRMATION` (`E090`)
-  — riêng đổi `items` bị chặn thêm (`E080`) nếu LSX đã duyệt. Huỷ dùng `PATCH status = CANCELLED`;
+  — riêng đổi `items` bị chặn thêm (`E080`) nếu đơn đã có hồ sơ LSX (kể cả PENDING hay APPROVED). Huỷ dùng `PATCH status = CANCELLED`;
   xoá (`DELETE`, mềm) chỉ khi còn `DRAFT` (`E264` nếu khác) — `docs/decisions/orders-no-delete.md`.
 - Huỷ đơn cũng chặn (`E236`) nếu LSX đã `APPROVED` — cùng guard hình dạng với `E080`.
 - `items` trên `PATCH` là replace-all. `code` (`SOxxxx`) tự sinh, bất biến.
@@ -99,8 +99,8 @@ Không phải invariant dù dễ tưởng:
 
 - **→ Production**: duyệt đơn seed `production_orders`+`production_order_items` — ranh giới quan
   trọng nhất hệ thống.
-- **← Production**: duyệt LSX đẩy đơn `AWAITING_PRODUCTION → IN_PROGRESS`, khoá sửa `items`/huỷ đơn
-  (`E080`/`E236`). Huỷ đơn khi LSX còn `PENDING` xoá luôn LSX đó.
+- **← Production**: duyệt LSX đẩy đơn `AWAITING_PRODUCTION → IN_PROGRESS`, khoá huỷ đơn
+  (`E236`). Đã có LSX (kể cả PENDING) khoá sửa `items` (`E080`). Huỷ đơn khi LSX còn `PENDING` xoá luôn LSX đó.
 - **← Inventory**: đơn đã duyệt là nguồn `orderDemand` — chảy vào `bomDemand` FG
   (`GET /inventory-products`) và `reserved` của `getStockLevels` (2 đường tiêu thụ khác nhau, xem
   `docs/domains/inventory.md`). Đơn chưa duyệt không tạo nhu cầu này.

@@ -21,7 +21,7 @@ Sửa số lượng: `production:update` (cấp cho PRODUCTION và DIRECTOR). Du
 | LSX tồn tại | `E081` | `E081` |
 | Đơn gốc chưa xoá mềm | `E057` | `E057` |
 | LSX đang `PENDING` | `E084` | `E083` |
-| Đơn gốc đang `AWAITING_PRODUCTION` | *(không kiểm)* | `E076` |
+| Đơn gốc đang `AWAITING_PRODUCTION` | `E076` | `E076` |
 | `orderItemId` gửi lên thuộc đúng LSX này | `E078` | — |
 
 ## Flow
@@ -66,9 +66,9 @@ lượng **không** hỏi lại tồn kho.
 
 | Entity | Trước | Sau |
 | --- | --- | --- |
-| `production_orders` | `PENDING`, `code` NULL | `APPROVED`, có `code` |
+| `production_orders` | `PENDING`, `code` NULL | `APPROVED` (hoặc `COMPLETED` nếu 0 Job), có `code` |
 | `orders` | `AWAITING_PRODUCTION` | `IN_PROGRESS` |
-| `production_jobs` | *(chưa có)* | `PENDING` |
+| `production_jobs` | *(chưa có)* | `PENDING` (0 Job nếu 100% xuất từ tồn) |
 | `production_job_bom_items` | *(chưa có)* | N dòng/Job (nhân bản cây BOM) |
 | `production_job_operations` | *(chưa có)* | N dòng/Job (as-used từng node BOM) |
 | `production_job_items` | *(có thể chưa có)* | 0 dòng mới nếu vật tư đã có snapshot cùng bộ ba nội dung, ngược lại +1 dòng/vật tư mới |
@@ -78,11 +78,11 @@ lượng **không** hỏi lại tồn kho.
 ## Side effects
 
 - N `production_jobs` (N = số sản phẩm phân biệt có SL > 0). Không sản phẩm nào SL > 0 → **không
-  Job nào**, vẫn là duyệt hợp lệ.
+  Job nào**, LSX tự động chuyển sang `COMPLETED`.
 - Mỗi Job kèm theo bản copy cây BOM + công đoạn as-used + vật tư. Sản phẩm không có BOM → Job đó
   không có node/công đoạn/vật tư nào — **không phải lỗi**.
-- 1 `production_order_logs`.
-- **Khoá gián tiếp**: từ giờ `PATCH /orders/:orderId` với `items` bị chặn (`E080`).
+- 1 `production_order_logs` (`APPROVED` hoặc `COMPLETED`).
+- **Khoá gián tiếp**: `PATCH /orders/:orderId` với `items` đã bị chặn từ khi đơn duyệt sinh LSX (`E080`).
 
 **Không** lập phiếu xuất kho cho phần "Lấy từ tồn", **không** kiểm tồn kho tổng hợp trước khi
 duyệt. Hai điểm này ngoài phạm vi có chủ đích — xem `docs/domains/production.md`.

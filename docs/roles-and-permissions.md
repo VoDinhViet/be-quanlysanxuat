@@ -184,7 +184,7 @@ Dưới đây là 7 vai trò chuẩn được thiết lập sẵn trong hệ th�
 | | `inventory-requisitions:approve` | **✓** | **✓** | - | - | - | - | - |
 | | `inventory-requisitions:issue` (Thực xuất) | **✓** | - | - | - | **✓** | - | - |
 | **Sản xuất (Lệnh SX)** | `production:read` | **✓** | **✓** | **✓** | - | - | **✓** | - |
-| | `production:update` | **✓** | - | - | - | - | **✓** | - |
+| | `production:update` | **✓** | **✓** | - | - | - | **✓** | - |
 | | `production:approve` | **✓** | **✓** | - | - | - | - | - |
 | **Gia công ngoài** | `outsourcing:read` | **✓** | **✓** | - | - | **✓** | **✓** | **✓** |
 | | `outsourcing:create`, `update`, `delete` | **✓** | - | - | - | **✓** | **✓** | - |

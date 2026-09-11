@@ -152,7 +152,7 @@ có node thì nhánh code không bao giờ chạy. Giới hạn thật, không p
 
 - 1 đơn = tối đa 1 LSX; 1 sản phẩm = tối đa 1 Job/LSX; Job chỉ sinh từ transaction duyệt LSX.
 - `production_jobs.quantity > 0` (CHECK). LSX `APPROVED` ⟺ có mã + `approvedAt` (CHECK).
-- Có LSX `APPROVED` thì dòng `items` của đơn gốc không sửa được (`E080`).
+- Có hồ sơ LSX (PENDING hoặc APPROVED) thì dòng `items` của đơn gốc không sửa được (`E080`).
 - Cấu trúc `production_job_bom_items`/`production_job_operations` chỉ ghi trong transaction duyệt
   LSX — không route thêm/sửa/xoá node/bước, ngoại lệ duy nhất `completedQuantity`/`rejectedQuantity`/
   `completedDate` (tiến độ, không phải cấu trúc). `production_job_items`/`_units` tuyệt đối không

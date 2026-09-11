@@ -569,13 +569,9 @@ export class OrdersService {
         })
         .where(eq(orders.id, orderId));
 
-      // `ensureItemsNotLockedByProduction`/`ensureProductionOrderNotApproved` ở trên đã đảm bảo LSX
-      // (nếu có) đang PENDING, chưa duyệt — xoá header `production_orders` cascade dọn luôn
-      // `production_order_items`/`production_jobs`. Khi thay `items`, còn để FK `order_item_id`
-      // (restrict) không chặn lệnh xoá của `replaceOrderItems` bên dưới (xem comment schema trên
-      // `productionOrderItems`). Khi huỷ đơn, dọn LSX PENDING để không mồ côi (xem `E236`). `DELETE
-      // WHERE` khớp 0 dòng vốn vô hại nên không cần biết trước có LSX hay không.
-      if (items !== undefined || reqDto.status === OrderStatus.CANCELLED) {
+      // Khi huỷ đơn (status = CANCELLED), nếu LSX còn PENDING thì dọn để không mồ côi (xem E236).
+      // Khi thay items, ensureItemsNotLockedByProduction ở trên đã chặn nếu đã có LSX.
+      if (reqDto.status === OrderStatus.CANCELLED) {
         await tx
           .delete(productionOrders)
           .where(eq(productionOrders.orderId, orderId));
@@ -796,22 +792,18 @@ export class OrdersService {
     }
   }
 
-  /** Chặn sửa `items` khi LSX của đơn này đã `APPROVED` — duyệt LSX là chốt kế hoạch một chiều.
-   * Header `PENDING` không chặn — `updateOrder` tự xoá header đó trước khi replace `items`. Đọc
-   * thẳng `production_orders` thay vì gọi qua `ProductionOrdersService`, cùng cách
-   * `InventoryService.reservedSubquery` đọc thẳng `order_items`. */
+  /** Chặn sửa `items` khi đơn này đã có hồ sơ LSX (kể cả PENDING hay APPROVED) — một khi đơn đã
+   * duyệt sang `AWAITING_PRODUCTION`, cơ cấu mặt hàng đã chốt làm đầu vào sản xuất. Sửa items
+   * lúc này sẽ làm mồ côi hoặc sai lệch kế hoạch sản xuất (E080). */
   private async ensureItemsNotLockedByProduction(
     orderId: string,
   ): Promise<void> {
-    const approved = await this.db.query.productionOrders.findFirst({
+    const existingPo = await this.db.query.productionOrders.findFirst({
       columns: { id: true },
-      where: and(
-        eq(productionOrders.orderId, orderId),
-        eq(productionOrders.status, ProductionOrderStatus.APPROVED),
-      ),
+      where: eq(productionOrders.orderId, orderId),
     });
 
-    if (approved) {
+    if (existingPo) {
       throw new AppException(ErrorCode.E080, HttpStatus.CONFLICT);
     }
   }

@@ -143,9 +143,8 @@ export enum ErrorCode {
   // Dự phòng — gắn với `POST /production-orders/:orderId/issue` đã bỏ 2026-07-30.
   E079 = 'production_order.error.no_items',
   // `PATCH /orders/:orderId` cố replace `items` trên một đơn mà LSX (`production_orders`, header)
-  // đã `APPROVED` — duyệt LSX là chốt kế hoạch, sửa `order_items` sau đó sẽ làm lệch số liệu đã
-  // ghi. Trước 2026-07-30 kiểm tra `ISSUED` (gắn với "Tạo LSX", đã bỏ) — nay kiểm tra `APPROVED`
-  // (gắn với `approveProductionOrder`), sống lại cùng luồng duyệt LSX mới.
+  // đã tồn tại (kể cả `PENDING` hay `APPROVED`) — một khi đã sinh LSX, cơ cấu mặt hàng đã chốt
+  // làm đầu vào sản xuất, sửa `order_items` sẽ làm mồ côi hoặc sai lệch kế hoạch sản xuất.
   E080 = 'order.error.items_locked_by_production',
   // Header `production_orders` không tồn tại cho một PO đang trong phạm vi LSX — về lý thuyết
   // không xảy ra vì `OrdersService.approveOrder` luôn seed header cùng lúc duyệt PO; giữ như một
