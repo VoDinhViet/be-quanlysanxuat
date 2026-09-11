@@ -38,6 +38,7 @@ import {
   orderPayments,
   orders,
   OrderStatus,
+  productionOrderItems,
   productionOrders,
   ProductionOrderStatus,
   items,
@@ -409,10 +410,15 @@ export class OrdersService {
         issuedQty: sql<number>`coalesce(${issuedByItem.issuedQty}, 0)`.mapWith(
           Number,
         ),
-        // Không kẹp sàn 0 — để lộ ra nếu dòng bị xuất vượt SL đặt thay vì giấu đi (chưa bị chặn
-        // ở tầng ghi, xem `docs/domains/inventory.md`).
+        // null nếu đơn chưa duyệt/chưa lên LSX — có LSX thì đây là SL đã chốt (có thể đã sửa tay
+        // khi còn PENDING), khác `quantity` gốc trên đơn — `docs/decisions/
+        // order-target-quantity-follows-lsx.md`.
+        productionQuantity: productionOrderItems.quantity,
+        // Không kẹp sàn 0 — để lộ ra nếu dòng bị xuất vượt SL còn lại thay vì giấu đi (chưa bị
+        // chặn ở tầng ghi, xem `docs/domains/inventory.md`). Ưu tiên SL đã chốt LSX thay vì SL đặt
+        // gốc, cùng lý do trên.
         remainingQty:
-          sql<number>`${orderItems.quantity} - coalesce(${issuedByItem.issuedQty}, 0)`.mapWith(
+          sql<number>`coalesce(${productionOrderItems.quantity}, ${orderItems.quantity}) - coalesce(${issuedByItem.issuedQty}, 0)`.mapWith(
             Number,
           ),
       })
@@ -420,6 +426,10 @@ export class OrdersService {
       .innerJoin(items, eq(items.id, orderItems.itemId))
       .innerJoin(units, eq(units.id, items.unitId))
       .leftJoin(files, eq(files.id, items.imageFileId))
+      .leftJoin(
+        productionOrderItems,
+        eq(productionOrderItems.orderItemId, orderItems.id),
+      )
       .leftJoin(issuedByItem, eq(issuedByItem.orderItemId, orderItems.id))
       .where(eq(orderItems.orderId, orderId))
       .orderBy(asc(orderItems.sortOrder), asc(orderItems.createdAt));

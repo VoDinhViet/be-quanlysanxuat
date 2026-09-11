@@ -5,6 +5,7 @@ import {
   ClassField,
   EnumField,
   NumberField,
+  NumberFieldOptional,
   StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
@@ -30,8 +31,17 @@ export class OrderItemResDto {
   issuedQty!: number;
 
   @Expose()
+  @NumberFieldOptional({
+    nullable: true,
+    description:
+      'SL đã chốt ở LSX (production_order_items.quantity, có thể khác quantity nếu đã sửa tay) — null nếu đơn chưa duyệt/chưa lên LSX',
+  })
+  productionQuantity!: number | null;
+
+  @Expose()
   @NumberField({
-    description: 'quantity - issuedQty; có thể âm nếu bị xuất vượt SL đặt',
+    description:
+      '(productionQuantity ?? quantity) - issuedQty; có thể âm nếu bị xuất vượt SL còn lại',
   })
   remainingQty!: number;
 

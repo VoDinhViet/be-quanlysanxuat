@@ -23,12 +23,12 @@ lẽ loại bỏ.
 
 ## Entities
 
-| Entity | Vai trò |
-| --- | --- |
-| `orders` | Header: khách, NVKD phụ trách, ngày đặt/giao, tiền tệ+tỷ giá, trạng thái, lý do từ chối |
-| `order_items` | Dòng sản phẩm; `sortOrder` client tự quản |
-| `order_files` | Đính kèm qua registry `files` |
-| `order_payments` | Sổ cái thanh toán, append-only; `paymentStatus` tính lúc đọc |
+| Entity           | Vai trò                                                                                 |
+| ---------------- | --------------------------------------------------------------------------------------- |
+| `orders`         | Header: khách, NVKD phụ trách, ngày đặt/giao, tiền tệ+tỷ giá, trạng thái, lý do từ chối |
+| `order_items`    | Dòng sản phẩm; `sortOrder` client tự quản                                               |
+| `order_files`    | Đính kèm qua registry `files`                                                           |
+| `order_payments` | Sổ cái thanh toán, append-only; `paymentStatus` tính lúc đọc                            |
 
 `clientId` tạm thời optional khi tạo — `OrderResDto.client` có thể `null`.
 
@@ -50,7 +50,10 @@ IN_PROGRESS → COMPLETED / CANCELLED       DRAFT
 
 `COMPLETED` đạt được tự động, không chỉ qua `PATCH` tay — `deliver` một DO
 (`docs/workflows/outbound-delivery.md`) sau khi trừ tồn kiểm lại mọi dòng `order_items NORMAL`, đã
-`issuedQty ≥ quantity` hết thì tự đóng `COMPLETED`. Hai đường (tay/tự động) không loại trừ nhau.
+`issuedQty ≥ targetQuantity` hết thì tự đóng `COMPLETED`. `targetQuantity` ưu tiên SL đã chốt ở LSX
+(`production_order_items.quantity`, có thể đã sửa tay), fallback `order_items.quantity` gốc nếu
+chưa có LSX — `docs/decisions/order-target-quantity-follows-lsx.md`. Hai đường (tay/tự động) không
+loại trừ nhau.
 
 **Chốt cứng: `AWAITING_PRODUCTION`/`REJECTED` chỉ đạt qua `POST /orders/:orderId/approve`/`reject`**
 — request tạo/sửa không set thẳng được (`E075`).
@@ -103,7 +106,8 @@ Không phải invariant dù dễ tưởng:
   (`E236`). Đã có LSX (kể cả PENDING) khoá sửa `items` (`E080`). Huỷ đơn khi LSX còn `PENDING` xoá luôn LSX đó.
 - **← Inventory**: đơn đã duyệt là nguồn `orderDemand` — chảy vào `bomDemand` FG
   (`GET /inventory-products`) và `reserved` của `getStockLevels` (2 đường tiêu thụ khác nhau, xem
-  `docs/domains/inventory.md`). Đơn chưa duyệt không tạo nhu cầu này.
+  `docs/domains/inventory.md`). Đơn chưa duyệt không tạo nhu cầu này. `orderDemand` ưu tiên SL đã
+  chốt LSX thay vì SL đặt gốc — `docs/decisions/order-target-quantity-follows-lsx.md`.
 - **→ Inventory**: `GET /orders/:orderId/items` đọc thẳng `inventory_transactions` tính
   `issuedQty`/`remainingQty`, không qua DI.
 - **→ Clients**: `clientId`, liên hệ đọc qua quan hệ.

@@ -5,8 +5,8 @@ tầng và bất biến ở `docs/domains/production.md`.
 
 ## Trigger
 
-- `PATCH /production-orders/:productionOrdersId` — sửa số lượng sản xuất *(tuỳ chọn, lặp lại được)*.
-- `POST /production-orders/:productionOrdersId/approve` — chốt LSX *(một lần, không lùi được)*.
+- `PATCH /production-orders/:productionOrdersId` — sửa số lượng sản xuất _(tuỳ chọn, lặp lại được)_.
+- `POST /production-orders/:productionOrdersId/approve` — chốt LSX _(một lần, không lùi được)_.
 
 Không có route tạo LSX: LSX chỉ ra đời từ `docs/workflows/order-approval.md`.
 
@@ -16,13 +16,13 @@ Sửa số lượng: `production:update` (cấp cho PRODUCTION và DIRECTOR). Du
 
 ## Preconditions
 
-| Điều kiện | Sửa SL | Duyệt |
-| --- | --- | --- |
-| LSX tồn tại | `E081` | `E081` |
-| Đơn gốc chưa xoá mềm | `E057` | `E057` |
-| LSX đang `PENDING` | `E084` | `E083` |
-| Đơn gốc đang `AWAITING_PRODUCTION` | `E076` | `E076` |
-| `orderItemId` gửi lên thuộc đúng LSX này | `E078` | — |
+| Điều kiện                                | Sửa SL | Duyệt  |
+| ---------------------------------------- | ------ | ------ |
+| LSX tồn tại                              | `E081` | `E081` |
+| Đơn gốc chưa xoá mềm                     | `E057` | `E057` |
+| LSX đang `PENDING`                       | `E084` | `E083` |
+| Đơn gốc đang `AWAITING_PRODUCTION`       | `E076` | `E076` |
+| `orderItemId` gửi lên thuộc đúng LSX này | `E078` | —      |
 
 ## Flow
 
@@ -41,6 +41,10 @@ request → lệnh sau thắng.
 **Chỉ `fromStockQty` được tính lại.** `onHandQty`/`availableQty` giữ nguyên snapshot cũ — sửa số
 lượng **không** hỏi lại tồn kho.
 
+Số lượng mới ghi ở đây (`production_order_items.quantity`) lập tức trở thành SL mục tiêu giao/hoàn
+tất cho dòng đơn tương ứng ở phía `orders`/`inventory` (đóng đơn, "Khả dụng" của item cho các đơn
+khác), không phải SL đặt gốc trên đơn — `docs/decisions/order-target-quantity-follows-lsx.md`.
+
 ### Duyệt
 
 1. Đọc LSX join đơn gốc, kiểm bốn precondition.
@@ -56,7 +60,7 @@ lượng **không** hỏi lại tồn kho.
      route sửa. Không có khái niệm Cấp 0 riêng ở tầng Job.
    - Đọc lại `production_job_bom_items` vừa nhân bản (đã nổ cấp — `plannedQuantity`, xem "Chuẩn nổ
      cấp BOM" ở `docs/domains/product-structure.md`), gộp theo vật tư (`SUM(plannedQuantity) GROUP
-     BY itemId`, chỉ node `RM`) thành `requiredQty`, rồi suy `unitQty = requiredQty / SL Job`. Mã/tên
+BY itemId`, chỉ node `RM`) thành `requiredQty`, rồi suy `unitQty = requiredQty / SL Job`. Mã/tên
      vật tư + mã/tên ĐVT không denormalize thẳng lên dòng này — get-or-create trước (theo bộ ba nội
      dung, dùng chung mọi Job/LSX) hai bảng chiều `production_job_items`/`production_job_units`, rồi
      chỉ ghi FK — xem `docs/domains/production.md`.
@@ -64,16 +68,16 @@ lượng **không** hỏi lại tồn kho.
 
 ## State changes
 
-| Entity | Trước | Sau |
-| --- | --- | --- |
-| `production_orders` | `PENDING`, `code` NULL | `APPROVED` (hoặc `COMPLETED` nếu 0 Job), có `code` |
-| `orders` | `AWAITING_PRODUCTION` | `IN_PROGRESS` |
-| `production_jobs` | *(chưa có)* | `PENDING` (0 Job nếu 100% xuất từ tồn) |
-| `production_job_bom_items` | *(chưa có)* | N dòng/Job (nhân bản cây BOM) |
-| `production_job_operations` | *(chưa có)* | N dòng/Job (as-used từng node BOM) |
-| `production_job_items` | *(có thể chưa có)* | 0 dòng mới nếu vật tư đã có snapshot cùng bộ ba nội dung, ngược lại +1 dòng/vật tư mới |
-| `production_job_units` | *(có thể chưa có)* | Cùng cơ chế, theo ĐVT |
-| `production_job_issues` | *(chưa có)* | N dòng/Job (copy BOM × SL Job) |
+| Entity                      | Trước                  | Sau                                                                                    |
+| --------------------------- | ---------------------- | -------------------------------------------------------------------------------------- |
+| `production_orders`         | `PENDING`, `code` NULL | `APPROVED` (hoặc `COMPLETED` nếu 0 Job), có `code`                                     |
+| `orders`                    | `AWAITING_PRODUCTION`  | `IN_PROGRESS`                                                                          |
+| `production_jobs`           | _(chưa có)_            | `PENDING` (0 Job nếu 100% xuất từ tồn)                                                 |
+| `production_job_bom_items`  | _(chưa có)_            | N dòng/Job (nhân bản cây BOM)                                                          |
+| `production_job_operations` | _(chưa có)_            | N dòng/Job (as-used từng node BOM)                                                     |
+| `production_job_items`      | _(có thể chưa có)_     | 0 dòng mới nếu vật tư đã có snapshot cùng bộ ba nội dung, ngược lại +1 dòng/vật tư mới |
+| `production_job_units`      | _(có thể chưa có)_     | Cùng cơ chế, theo ĐVT                                                                  |
+| `production_job_issues`     | _(chưa có)_            | N dòng/Job (copy BOM × SL Job)                                                         |
 
 ## Side effects
 
@@ -102,14 +106,14 @@ Sinh mã (`LSXxxxx`/`JOBxxxx`) nằm **trong** transaction, cấp qua `document_
 
 ## Failure cases
 
-| Tình huống | Mã | Kết quả |
-| --- | --- | --- |
-| LSX không tồn tại | `E081` | 404 |
-| Đơn gốc đã xoá mềm | `E057` | 404 |
-| LSX không còn `PENDING` (đã duyệt) | `E083` | 409 — duyệt hai lần bị chặn ở đây |
-| Đơn gốc không còn `AWAITING_PRODUCTION` | `E076` | 409 |
-| LSX không còn `PENDING` khi sửa SL | `E084` | 409 |
-| `orderItemId` lạ | `E078` | 400, **không dòng nào được ghi** |
+| Tình huống                              | Mã     | Kết quả                           |
+| --------------------------------------- | ------ | --------------------------------- |
+| LSX không tồn tại                       | `E081` | 404                               |
+| Đơn gốc đã xoá mềm                      | `E057` | 404                               |
+| LSX không còn `PENDING` (đã duyệt)      | `E083` | 409 — duyệt hai lần bị chặn ở đây |
+| Đơn gốc không còn `AWAITING_PRODUCTION` | `E076` | 409                               |
+| LSX không còn `PENDING` khi sửa SL      | `E084` | 409                               |
+| `orderItemId` lạ                        | `E078` | 400, **không dòng nào được ghi**  |
 
 Rollback để lại trạng thái nhất quán: hoặc cả LSX+đơn+Job cùng đổi, hoặc không gì đổi.
 

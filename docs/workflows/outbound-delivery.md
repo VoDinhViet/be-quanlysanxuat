@@ -8,16 +8,16 @@ xem `docs/workflows/outgoing-qc.md`.
 
 ## Trigger
 
-| Route | Ý nghĩa |
-| --- | --- |
-| `POST /outbound-orders` | Lập phiếu, `DRAFT` — chốt chặn tồn ngay (`E194`) |
-| `PATCH /outbound-orders/:id` | Sửa, chỉ `DRAFT`, replace-all dòng |
-| `POST /outbound-orders/:id/send` | `DRAFT`/`REJECTED → PENDING_APPROVAL` — gate QC + kiểm lại `E194` |
+| Route                               | Ý nghĩa                                                                |
+| ----------------------------------- | ---------------------------------------------------------------------- |
+| `POST /outbound-orders`             | Lập phiếu, `DRAFT` — chốt chặn tồn ngay (`E194`)                       |
+| `PATCH /outbound-orders/:id`        | Sửa, chỉ `DRAFT`, replace-all dòng                                     |
+| `POST /outbound-orders/:id/send`    | `DRAFT`/`REJECTED → PENDING_APPROVAL` — gate QC + kiểm lại `E194`      |
 | `POST /outbound-orders/:id/approve` | `PENDING_APPROVAL → PENDING_DELIVERY` — kiểm lại `E194`, không gate QC |
-| `POST /outbound-orders/:id/reject` | `PENDING_APPROVAL → REJECTED`, lý do bắt buộc |
-| `POST /outbound-orders/:id/deliver` | `PENDING_DELIVERY → DELIVERED` — trừ tồn thật |
-| `POST /outbound-orders/:id/cancel` | `DRAFT`/`PENDING_APPROVAL`/`PENDING_DELIVERY → CANCELLED` |
-| `DELETE /outbound-orders/:id` | Chỉ `DRAFT`, hard delete |
+| `POST /outbound-orders/:id/reject`  | `PENDING_APPROVAL → REJECTED`, lý do bắt buộc                          |
+| `POST /outbound-orders/:id/deliver` | `PENDING_DELIVERY → DELIVERED` — trừ tồn thật                          |
+| `POST /outbound-orders/:id/cancel`  | `DRAFT`/`PENDING_APPROVAL`/`PENDING_DELIVERY → CANCELLED`              |
+| `DELETE /outbound-orders/:id`       | Chỉ `DRAFT`, hard delete                                               |
 
 ## Actor
 
@@ -26,12 +26,12 @@ xem `docs/workflows/outgoing-qc.md`.
 
 ## Preconditions
 
-| Điều kiện | `create` | `update` | `send` | `approve` | `deliver` | `cancel` | `delete` |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| Phiếu tồn tại | — | `E195` | `E195` | `E195` | `E195` | `E195` | `E195` |
-| Đúng trạng thái nguồn | — | `E259` (`DRAFT`) | `E239` (`DRAFT`/`REJECTED`) | `E240` (`PENDING_APPROVAL`) | `E237` (`PENDING_DELIVERY`) | `E257` | `E258` (`DRAFT`) |
-| Σ SL cùng vật tư ≤ Tồn FG − Đã giữ DO khác | `E194` | `E194` | `E194` | `E194` | — | — | — |
-| Job liên quan đã qua hết QC (`getJobQcCoverage`) | — | — | `E205` | — | — | — | — |
+| Điều kiện                                        | `create` | `update`         | `send`                      | `approve`                   | `deliver`                   | `cancel` | `delete`         |
+| ------------------------------------------------ | -------- | ---------------- | --------------------------- | --------------------------- | --------------------------- | -------- | ---------------- |
+| Phiếu tồn tại                                    | —        | `E195`           | `E195`                      | `E195`                      | `E195`                      | `E195`   | `E195`           |
+| Đúng trạng thái nguồn                            | —        | `E259` (`DRAFT`) | `E239` (`DRAFT`/`REJECTED`) | `E240` (`PENDING_APPROVAL`) | `E237` (`PENDING_DELIVERY`) | `E257`   | `E258` (`DRAFT`) |
+| Σ SL cùng vật tư ≤ Tồn FG − Đã giữ DO khác       | `E194`   | `E194`           | `E194`                      | `E194`                      | —                           | —        | —                |
+| Job liên quan đã qua hết QC (`getJobQcCoverage`) | —        | —                | `E205`                      | —                           | —                           | —        | —                |
 
 `clientId` bắt buộc, bất biến — không route nào sửa lại. `create`/`update` **không** resolve/
 validate cấu trúc dòng phía server — client gửi thẳng `itemId`/`productionJobId` từ popup
@@ -79,8 +79,9 @@ trạng thái + ghi lý do → `REJECTED` (gửi lại được qua `send`).
 `getOutboundOrderForUpdate` → trong **một** transaction: sinh mã `PXK-{năm}-{5}` → `INSERT
 inventory_issues` (`issueType=SALES`, `POSTED` thẳng) + `inventory_issue_items` map 1:1 dòng DO
 (gắn `orderItemId`) → `postDocument` trừ tồn → `outbound_orders.status = DELIVERED` → với mỗi đơn
-hàng bị đụng: mọi dòng `order_items NORMAL` đã `issuedQty ≥ quantity` → `orders.status: IN_PROGRESS
-→ COMPLETED` (`docs/decisions/production-lifecycle-closing.md`).
+hàng bị đụng: mọi dòng `order_items NORMAL` đã `issuedQty ≥ targetQuantity` (ưu tiên SL đã chốt LSX
+— `docs/decisions/order-target-quantity-follows-lsx.md`) → `orders.status: IN_PROGRESS →
+COMPLETED` (`docs/decisions/production-lifecycle-closing.md`).
 
 ### `cancel` / `delete`
 
@@ -90,16 +91,16 @@ cascade.
 
 ## State changes
 
-| Entity | Trigger | Trước | Sau |
-| --- | --- | --- | --- |
-| `outbound_orders` | `create` | *(chưa có)* | `DRAFT` |
-| `outbound_orders.status` | `send` | `DRAFT`/`REJECTED` | `PENDING_APPROVAL` |
-| `outbound_orders.status` | `approve` | `PENDING_APPROVAL` | `PENDING_DELIVERY` |
-| `outbound_orders.status` | `reject` | `PENDING_APPROVAL` | `REJECTED` |
-| `outbound_orders.status` | `deliver` | `PENDING_DELIVERY` | `DELIVERED` |
-| `outbound_orders.status` | `cancel` | `DRAFT`/`PENDING_APPROVAL`/`PENDING_DELIVERY` | `CANCELLED` |
-| `inventory_issues`/`inventory_balances`/`inventory_transactions` | `deliver` | — | +1 phiếu `SALES POSTED`, tồn giảm |
-| `orders.status` | `deliver` (đơn giao đủ) | `IN_PROGRESS` | `COMPLETED` |
+| Entity                                                           | Trigger                 | Trước                                         | Sau                               |
+| ---------------------------------------------------------------- | ----------------------- | --------------------------------------------- | --------------------------------- |
+| `outbound_orders`                                                | `create`                | _(chưa có)_                                   | `DRAFT`                           |
+| `outbound_orders.status`                                         | `send`                  | `DRAFT`/`REJECTED`                            | `PENDING_APPROVAL`                |
+| `outbound_orders.status`                                         | `approve`               | `PENDING_APPROVAL`                            | `PENDING_DELIVERY`                |
+| `outbound_orders.status`                                         | `reject`                | `PENDING_APPROVAL`                            | `REJECTED`                        |
+| `outbound_orders.status`                                         | `deliver`               | `PENDING_DELIVERY`                            | `DELIVERED`                       |
+| `outbound_orders.status`                                         | `cancel`                | `DRAFT`/`PENDING_APPROVAL`/`PENDING_DELIVERY` | `CANCELLED`                       |
+| `inventory_issues`/`inventory_balances`/`inventory_transactions` | `deliver`               | —                                             | +1 phiếu `SALES POSTED`, tồn giảm |
+| `orders.status`                                                  | `deliver` (đơn giao đủ) | `IN_PROGRESS`                                 | `COMPLETED`                       |
 
 ## Side effects
 

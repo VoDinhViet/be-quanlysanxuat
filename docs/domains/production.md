@@ -8,6 +8,7 @@ nhiêu, rồi chốt thành đầu việc cho xưởng theo dõi tiến độ.
 ## Core concepts
 
 **Ba tầng, ba đơn vị đếm:**
+
 ```
 1 đơn hàng đã duyệt  =  1 LSX (production_orders)
    └─ 1 dòng đơn      =  1 dòng quyết định SX (production_order_items, 1-1)
@@ -17,11 +18,11 @@ nhiêu, rồi chốt thành đầu việc cho xưởng theo dõi tiến độ.
 **Job snapshot 3 thứ từ Product Structure lúc duyệt LSX, độc lập hoàn toàn với master data sống
 (denormalize `code`/`name`, FK gốc chỉ còn tham khảo `set null`):**
 
-| Bảng | Nguồn | Sửa sau khi sinh |
-| --- | --- | --- |
-| `production_job_bom_items` (cây BOM) | `bom_items`, id nhân bản mới | Không route nào sửa |
-| `production_job_operations` (công đoạn as-used) | `bom_operations` as-used | `completedQuantity`/`rejectedQuantity`/`completedDate` sửa qua `POST .../reports`; phần còn lại đóng băng |
-| `production_job_issues` (vật tư, gộp theo `itemId` trên node RM) | `production_job_bom_items.plannedQuantity` (đã nổ cấp) | Không route đọc/ghi — nội bộ, chỉ dùng bởi `startJob`/`bomDemand`/`GET .../bom` |
+| Bảng                                                             | Nguồn                                                  | Sửa sau khi sinh                                                                                          |
+| ---------------------------------------------------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| `production_job_bom_items` (cây BOM)                             | `bom_items`, id nhân bản mới                           | Không route nào sửa                                                                                       |
+| `production_job_operations` (công đoạn as-used)                  | `bom_operations` as-used                               | `completedQuantity`/`rejectedQuantity`/`completedDate` sửa qua `POST .../reports`; phần còn lại đóng băng |
+| `production_job_issues` (vật tư, gộp theo `itemId` trên node RM) | `production_job_bom_items.plannedQuantity` (đã nổ cấp) | Không route đọc/ghi — nội bộ, chỉ dùng bởi `startJob`/`bomDemand`/`GET .../bom`                           |
 
 `production_job_items`/`production_job_units` là 2 bảng chiều (SCD) **dùng chung, không thuộc Job
 nào** — khoá bộ ba `(itemId/unitId, code, name)`, get-or-create lúc duyệt LSX, tuyệt đối không
@@ -62,14 +63,21 @@ công đoạn as-used (kể cả `OUTSOURCE` + Cấp 0), nhóm theo BOM item, k�
 Cây cha-con snapshot **không có route đọc trực tiếp**.
 
 **"Đề xuất SX" tính một lần lúc duyệt đơn, đóng băng:**
+
 ```
 Khả dụng   = onHand − reserved (loại trừ chính đơn đang xét, qua excludeOrderId)
 Đề xuất SX = Khả dụng ≥ 0 ? max(0, SL đặt − Khả dụng) : SL đặt
 Lấy từ tồn = max(0, SL đặt − Đề xuất SX)
 ```
+
 `reserved` ở đây là `getStockLevels` (nhu cầu đơn hàng mở) — **khác** `reserved` của
 `GET /inventory-products` (đã có chứng từ giữ), 2 định nghĩa tách biệt cố ý, xem
 `docs/domains/inventory.md`. Đọc lại chi tiết LSX là snapshot, không tính lại.
+
+Đóng băng ở trên chỉ là snapshot **hiển thị** (`orderQty`, "SL đặt" đọc lại trên LSX). Ở tầng hoàn
+tất đơn/nhu cầu mở phía `orders`/`inventory`, `quantity` LSX hiện tại (kể cả đã sửa tay lúc
+`PENDING`) mới là SL mục tiêu được dùng, không phải `orderQty` gốc —
+`docs/decisions/order-target-quantity-follows-lsx.md`.
 
 **jobDueDate** — Job không có cột due date riêng; hạn của Job được coi là `orders.dueDate` của đơn
 hàng gốc (qua `production_orders.orderId`). `ReportAlertsResDto.jobDueDate`
@@ -82,18 +90,18 @@ luôn trả đủ 5 status kể cả `count = 0`; `startDate`/`endDate` lọc th
 
 ## Entities
 
-| Entity | Vai trò |
-| --- | --- |
-| `production_orders` | Header LSX; `orderId` unique (1 đơn = 1 LSX) |
-| `production_order_items` | Quyết định SX từng dòng, 1-1 `order_items` |
-| `production_jobs` | Đầu việc xưởng; unique `(productionOrderId, itemId)` |
-| `production_job_bom_items` / `production_job_operations` | Snapshot cây BOM/công đoạn, đóng băng lúc duyệt LSX |
-| `production_job_operation_reports` / `_report_files` | Nhật ký báo cáo append-only + ảnh |
-| `production_job_issues` | Vật tư của Job — nội bộ, không route |
-| `production_job_items` / `production_job_units` | Bảng chiều SCD dùng chung, không `UPDATE` |
-| `production_order_logs` | Log thao tác **mức LSX**, append-only |
-| `production_job_logs` | Log thao tác **mức Job**, append-only, 5 hành động = 5 trạng thái |
-| `production_job_notes` | Ghi chú tự do trên Job, append-only, không kiểm `status` |
+| Entity                                                   | Vai trò                                                           |
+| -------------------------------------------------------- | ----------------------------------------------------------------- |
+| `production_orders`                                      | Header LSX; `orderId` unique (1 đơn = 1 LSX)                      |
+| `production_order_items`                                 | Quyết định SX từng dòng, 1-1 `order_items`                        |
+| `production_jobs`                                        | Đầu việc xưởng; unique `(productionOrderId, itemId)`              |
+| `production_job_bom_items` / `production_job_operations` | Snapshot cây BOM/công đoạn, đóng băng lúc duyệt LSX               |
+| `production_job_operation_reports` / `_report_files`     | Nhật ký báo cáo append-only + ảnh                                 |
+| `production_job_issues`                                  | Vật tư của Job — nội bộ, không route                              |
+| `production_job_items` / `production_job_units`          | Bảng chiều SCD dùng chung, không `UPDATE`                         |
+| `production_order_logs`                                  | Log thao tác **mức LSX**, append-only                             |
+| `production_job_logs`                                    | Log thao tác **mức Job**, append-only, 5 hành động = 5 trạng thái |
+| `production_job_notes`                                   | Ghi chú tự do trên Job, append-only, không kiểm `status`          |
 
 Job có log thao tác (`production_job_logs`, 1 dòng/lần chuyển trạng thái — xem Lifecycle) nhưng
 không có tài liệu đính kèm — bản vẽ (nếu có) tra ở BOM sản phẩm theo node
@@ -104,12 +112,14 @@ không có tài liệu đính kèm — bản vẽ (nếu có) tra ở BOM sản 
 **LSX** — một chiều: `PENDING →(approve)→ APPROVED →(mọi Job COMPLETED, tự động)→ COMPLETED`.
 
 **Job** — một chiều, phần lớn tự động:
+
 ```
 PENDING ──start──> IN_PROGRESS (mở POST .../reports ngay)
    ──(closeJobIfFinalAssemblyDone: không còn công đoạn nào của node FG dở)──> WAITING_QC
    ──(closeJobIfQcCovered: total>0 && open=0 && không còn công đoạn nào của Job dở)──> WAITING_DELIVERY
    ──(closeJobIfFullyReceived: nhập kho TP đủ job.quantity)──> COMPLETED
 ```
+
 5 điểm ghi `production_jobs.status` (cộng `createJobs` sinh Job = điểm ghi thứ 6, không đổi status
 nhưng cũng ghi log `CREATED`): `startJob`; `closeJobIfFinalAssemblyDone`
 (`production-jobs.query.ts`, đếm lại công đoạn FG dở, gọi từ `createJobOperationReport`
@@ -137,8 +147,7 @@ có node thì nhánh code không bao giờ chạy. Giới hạn thật, không p
   lỗi, chỉ không sinh Job nào).
 - Sửa SL sản xuất là partial, chỉ khi `PENDING` (`E084`), chỉ tính lại `fromStockQty` — không refresh
   tồn kho. Một đơn bị từ chối rồi duyệt lại **ghi đè hoàn toàn** LSX cũ.
-- `POST .../reports`: hợp lệ khi Job `IN_PROGRESS` (`E087`); riêng bước Lắp ráp (node Cấp
-  0) kiểm thêm `E210`; `completedQuantity ≤ plannedQuantity` → `E256`. Thứ tự kiểm đầy đủ: `E091`
+- `POST .../reports`: hợp lệ khi Job `IN_PROGRESS` (`E087`); riêng bước Lắp ráp (node Cấp 0) kiểm thêm `E210`; `completedQuantity ≤ plannedQuantity` → `E256`. Thứ tự kiểm đầy đủ: `E091`
   (công đoạn tồn tại) → `E260` (chặn `OUTSOURCE`) → `E087` → `E210` (riêng Cấp 0) → `E256`. Không
   còn bước duyệt công đoạn riêng (`approve-operations`) — xoá 2026-09-03,
   `docs/workflows/production-job-execution.md`.

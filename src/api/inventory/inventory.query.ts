@@ -9,6 +9,7 @@ import {
   orders,
   OrderItemStatus,
   OrderStatus,
+  productionOrderItems,
 } from '../../database/schemas';
 import { StockStatus } from './inventory.constant';
 
@@ -62,10 +63,12 @@ export function deliveredQuantityByOrderItemSubquery(db: Database) {
 
 /** Với mỗi item, phần nhu cầu đơn đang mở chưa giao. "Mở" nghĩa là đã qua cổng duyệt
  * (`AWAITING_PRODUCTION`/`IN_PROGRESS`) — đơn `DRAFT`/`PENDING_CONFIRMATION` chưa được Giám đốc
- * duyệt nên chưa tính vào đây. `excludeOrderId` loại một đơn khỏi nhu cầu khi tính Khả dụng cho
- * chính đơn đó — đơn này đã tự tính vào nhu cầu nên không loại trừ sẽ bị trừ hai lần; chỉ
- * `ProductionOrdersService` truyền tham số này. Tên hàm cố ý không dùng chữ "reserved" — khác khái
- * niệm "đã có chứng từ giữ" ở `inventory-products.service.ts` (`docs/domains/inventory.md`). */
+ * duyệt nên chưa tính vào đây. Ưu tiên SL đã chốt ở LSX (`production_order_items.quantity`) thay
+ * vì SL đặt gốc đã đóng băng trên đơn — `docs/decisions/order-target-quantity-follows-lsx.md`.
+ * `excludeOrderId` loại một đơn khỏi nhu cầu khi tính Khả dụng cho chính đơn đó — đơn này đã tự
+ * tính vào nhu cầu nên không loại trừ sẽ bị trừ hai lần; chỉ `ProductionOrdersService` truyền tham
+ * số này. Tên hàm cố ý không dùng chữ "reserved" — khác khái niệm "đã có chứng từ giữ" ở
+ * `inventory-products.service.ts` (`docs/domains/inventory.md`). */
 export function openOrderDemandByItemSubquery(
   db: Database,
   excludeOrderId?: string,
@@ -76,12 +79,16 @@ export function openOrderDemandByItemSubquery(
     .select({
       itemId: orderItems.itemId,
       demand:
-        sql<number>`sum(greatest(${orderItems.quantity} - coalesce(${delivered.deliveredQty}, 0), 0))`
+        sql<number>`sum(greatest(coalesce(${productionOrderItems.quantity}, ${orderItems.quantity}) - coalesce(${delivered.deliveredQty}, 0), 0))`
           .mapWith(Number)
           .as('open_order_demand'),
     })
     .from(orderItems)
     .innerJoin(orders, eq(orders.id, orderItems.orderId))
+    .leftJoin(
+      productionOrderItems,
+      eq(productionOrderItems.orderItemId, orderItems.id),
+    )
     .leftJoin(delivered, eq(delivered.orderItemId, orderItems.id))
     .where(
       and(
