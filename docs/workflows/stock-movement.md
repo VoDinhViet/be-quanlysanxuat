@@ -16,16 +16,19 @@ nhập thêm `POST .../confirm` (`DRAFT → PENDING_RECEIPT`/`PENDING_IQC`,
 `docs/workflows/receipt-confirmation.md`). Xem Swagger `/api-docs` cho method/path đầy đủ.
 
 **`POST`/`PATCH /inventory-issues` với `issueType = PRODUCTION` bị chặn ngay từ `create`/`update`**
-(`E234`) — phiếu xuất cho sản xuất chỉ còn một nguồn: `issue` một phiếu lãnh vật tư đã `APPROVED`
-(`docs/workflows/inventory-requisition.md`). `cancel` một `inventory_issues` do phiếu lãnh sinh ra
-cũng bị chặn (`E235`) — huỷ nó mà không đụng phiếu lãnh sẽ để phiếu lãnh kẹt ở `ISSUED` với tồn đã
-hoàn.
+(`E234`) — phiếu xuất cho sản xuất chỉ còn một nguồn: `approve` một phiếu lãnh vật tư tự sinh nó ở
+`DRAFT` (`docs/workflows/inventory-requisition.md`); kho vẫn thao tác `post`/`cancel` ở đây như một
+phiếu xuất bình thường, chỉ khác là hai hành động đó ghi ngược trạng thái sang phiếu lãnh (xem
+Flow). `DELETE` một `inventory_issues` do phiếu lãnh sinh ra bị chặn (`E235`) — huỷ nó phải qua
+`cancel`, không hard-delete (hard-delete sẽ để phiếu lãnh kẹt `APPROVED` không còn PXK đi kèm).
 
 Tất cả do người dùng chủ động gọi, luôn là thao tác tay — không có nghiệp vụ nào khác trong hệ
 thống tự động lập hay `post` phiếu ở giai đoạn này (`docs/decisions/stored-inventory-balances.md`).
-Ngoại lệ: `confirm` phiếu nhập có `requiresIqc = true` tự sinh phiếu IQC; `issue` phiếu lãnh tự sinh
-phiếu xuất `PRODUCTION`; `post` phiếu nhập `PRODUCTION` có thể cascade đóng Job/LSX + tự sinh
-`payment_requests` — cả ba vẫn là hệ quả trực tiếp của một thao tác tay, không phải nghiệp vụ nền.
+Ngoại lệ: `confirm` phiếu nhập có `requiresIqc = true` tự sinh phiếu IQC; `approve` phiếu lãnh tự
+sinh phiếu xuất `PRODUCTION` (`DRAFT`, chưa đụng tồn); `post`/`cancel` phiếu xuất đó ghi ngược
+trạng thái phiếu lãnh (`ISSUED`/`CANCELLED`); `post` phiếu nhập `PRODUCTION` có thể cascade đóng
+Job/LSX + tự sinh `payment_requests` — tất cả vẫn là hệ quả trực tiếp của một thao tác tay, không
+phải nghiệp vụ nền.
 
 ## Actor
 
@@ -74,11 +77,11 @@ hai lệnh `post` gọi trùng lên cùng phiếu không cùng lọt qua và c�
 
 1. Khoá + đọc phiếu, kiểm trạng thái nguồn hợp lệ, khác nhau giữa hai loại phiếu:
    - Phiếu xuất: `status = DRAFT` (`E098` nếu không) — không đổi. Riêng `issueType = PRODUCTION`
-     (đường sống thật duy nhất: `POST /inventory-requisitions/:id/issue`, phiếu tự sinh đã
-     `POSTED` — `create`/`update` tay bị chặn từ trước bởi `E234`, xem Trigger), chạy thêm gate IQC
-     **trước** khi gọi `postDocument`: còn ≥1 phiếu IQC chưa `COMPLETED` của cùng `itemId` với bất
-     kỳ dòng nào của phiếu → `E203` (`hasPendingIqcForItems`, `src/api/iqc/iqc.query.ts`) — vật tư
-     chưa qua IQC (hoặc còn FAIL chưa xử lý) không được xuất cho sản xuất, xem
+     (đường sống thật duy nhất: `approve` một phiếu lãnh vật tư, phiếu tự sinh ở `DRAFT` —
+     `create`/`update` tay bị chặn từ trước bởi `E234`, xem Trigger), chạy thêm gate IQC **trước**
+     khi gọi `postDocument`: còn ≥1 phiếu IQC chưa `COMPLETED` của cùng `itemId` với bất kỳ dòng
+     nào của phiếu → `E203` (`hasPendingIqcForItems`, `src/api/iqc/iqc.query.ts`) — vật tư chưa qua
+     IQC (hoặc còn FAIL chưa xử lý) không được xuất cho sản xuất, xem
      `docs/decisions/qc-gates-on-stock-moves.md`.
    - Phiếu nhập: `status = PENDING_RECEIPT` cho qua thẳng; `status = PENDING_IQC` thì đếm thêm
      `quality_inspections` (`inspectionType = IQC`) gắn với phiếu — còn dòng nào `status !== COMPLETED`
@@ -92,23 +95,35 @@ hai lệnh `post` gọi trùng lên cùng phiếu không cùng lọt qua và c�
    bút toán tương ứng loại phiếu → nếu kết quả `< 0`, ném `E106` và rollback toàn bộ phiếu →
    `INSERT`/`UPDATE` balance → `INSERT` một dòng `inventory_transactions`.
 3. Cập nhật phiếu: `status = POSTED`, `postedBy`, `postedAt`.
-4. **Chỉ phiếu nhập `receiptType = PRODUCTION`**: tính lại tổng đã nhận cho Job, đủ
+4. **Chỉ phiếu xuất do phiếu lãnh vật tư sinh ra** (`inventoryRequisitions.inventoryIssueId` trỏ
+   tới): ghi ngược `inventory_requisitions.status = ISSUED` (`issuedBy`/`issuedAt`) cùng
+   transaction — xem `docs/workflows/inventory-requisition.md`.
+5. **Chỉ phiếu nhập `receiptType = PRODUCTION`**: tính lại tổng đã nhận cho Job, đủ
    `job.quantity` thì cascade đóng `production_jobs`/`production_orders`
    (`docs/workflows/outgoing-qc.md`). **Chỉ phiếu nhập gắn `purchaseOrderId`**: gọi
    `PaymentRequestsService.createIfOrderCompleted(tx, purchaseOrderId)` cùng transaction — tự sinh
    `payment_requests` nếu PO vừa đạt đủ hàng (`docs/domains/purchasing.md`).
-5. `204`, không trả nội dung.
+6. `204`, không trả nội dung.
 
 ### `cancel`
 
-**Transaction** — cùng cách khoá dòng phiếu như `post`:
+**Transaction** — cùng cách khoá dòng phiếu như `post`, nhưng trạng thái nguồn hợp lệ khác nhau
+giữa hai loại phiếu:
 
-1. Khoá + đọc phiếu, kiểm chưa `CANCELLED` (`E098` nếu đã huỷ).
-2. Nếu đang `POSTED`: đọc lại mọi bút toán đã sinh khi `post` (theo `referenceType`+`referenceId`),
-   ghi bút toán **đảo dấu** cho từng dòng (append-only, không xoá bút toán cũ), cộng dồn ngược vào
-   balance (khoá dòng bằng `FOR UPDATE` như lúc `post`). Nếu đang `DRAFT`: bỏ qua bước này — chưa
-   từng post thì chưa có gì để đảo.
+1. Khoá + đọc phiếu, kiểm trạng thái nguồn:
+   - Phiếu xuất: `status = DRAFT` (`E098` nếu không) — `POSTED` bất biến, không có đường huỷ (khác
+     phiếu nhập bên dưới).
+   - Phiếu nhập: mọi trạng thái khác `CANCELLED` (`E098` nếu đã huỷ) — `DRAFT`/`PENDING_IQC`/
+     `PENDING_RECEIPT`/`POSTED` đều huỷ được.
+2. **Chỉ phiếu nhập, khi đang `POSTED`**: đọc lại mọi bút toán đã sinh khi `post` (theo
+   `referenceType`+`referenceId`), ghi bút toán **đảo dấu** cho từng dòng (append-only, không xoá
+   bút toán cũ), cộng dồn ngược vào balance (khoá dòng bằng `FOR UPDATE` như lúc `post`). Phiếu xuất
+   không bao giờ tới bước này (chặn ở bước 1, luôn còn `DRAFT`); phiếu nhập đang ở trạng thái khác
+   `POSTED` cũng bỏ qua — chưa từng post thì chưa có gì để đảo.
 3. Đổi `status = CANCELLED`.
+4. **Chỉ phiếu xuất do phiếu lãnh vật tư sinh ra**: ghi ngược `inventory_requisitions.status =
+   CANCELLED` cùng transaction — không có vòng quay lại `APPROVED`, sản xuất lập phiếu lãnh mới
+   nếu còn cần. Xem `docs/workflows/inventory-requisition.md`.
 
 Không có đường `CANCELLED → *`.
 
@@ -121,9 +136,12 @@ Không có đường `CANCELLED → *`.
 | `quality_inspections` (`inspectionType = IQC`) | `confirm` phiếu nhập (`requiresIqc=true`) | *(chưa có)* | N dòng mới `DRAFT` (N = số dòng phiếu) |
 | `inventory_issues` | `post` | `DRAFT` | `POSTED` |
 | `inventory_receipts` | `post` | `PENDING_RECEIPT` hoặc `PENDING_IQC` (mọi IQC `COMPLETED`) | `POSTED` |
-| `inventory_receipts`/`inventory_issues` | `cancel` | `DRAFT`/`PENDING_IQC`/`PENDING_RECEIPT`/`POSTED` (tuỳ loại phiếu) | `CANCELLED` |
+| `inventory_issues` | `cancel` | `DRAFT` | `CANCELLED` |
+| `inventory_receipts` | `cancel` | `DRAFT`/`PENDING_IQC`/`PENDING_RECEIPT`/`POSTED` | `CANCELLED` |
 | `inventory_balances` | `post` | — | tăng/giảm theo dấu bút toán |
-| `inventory_balances` | `cancel` (từ `POSTED`) | — | đảo ngược đúng phần đã `post` |
+| `inventory_balances` | `cancel` phiếu nhập (từ `POSTED`) | — | đảo ngược đúng phần đã `post` |
+| `inventory_requisitions` (nếu PXK do nó sinh) | `post` PXK | `APPROVED` | `ISSUED` |
+| `inventory_requisitions` (nếu PXK do nó sinh) | `cancel` PXK | `APPROVED` | `CANCELLED` |
 
 `confirm` không đụng `inventory_transactions`/`inventory_balances` — chỉ `post` mới ghi hai bảng đó.
 Ngoại lệ duy nhất: `post` phiếu nhập `receiptType = PRODUCTION` **có thể** cascade đóng
@@ -135,11 +153,13 @@ hàng/LSX/Job.
 ## Side effects
 
 - `post`: N dòng `inventory_transactions` mới (append-only), `inventory_balances` cập nhật.
-- `cancel` từ `POSTED`: thêm N dòng `inventory_transactions` đảo dấu — **không** xoá bút toán cũ.
+- `cancel` phiếu nhập từ `POSTED`: thêm N dòng `inventory_transactions` đảo dấu — **không** xoá bút
+  toán cũ. Phiếu xuất không bao giờ tới nhánh này — `cancel` chỉ nhận từ `DRAFT`.
 - Không log riêng, không thông báo. Phiếu **xuất** và phiếu **nhập** loại khác `PRODUCTION` không
   đụng đơn hàng/LSX/Job qua `orderItemId`/`purchaseOrderId` — chỉ liên kết tham khảo. Ngoại lệ:
   `post` phiếu nhập `receiptType = PRODUCTION` (cascade Job/LSX) và phiếu nhập gắn `purchaseOrderId`
-  (tự sinh `payment_requests`) — xem Flow bước 4.
+  (tự sinh `payment_requests`) — xem Flow bước 5; `post`/`cancel` phiếu xuất do phiếu lãnh vật tư
+  sinh ra ghi ngược `inventory_requisitions.status` — xem Flow bước 4 của mỗi hành động.
 
 "Giao đủ hàng cho một đơn tự đẩy đơn sang `COMPLETED`" nằm ở `OutboundOrdersService.postOutboundOrder`
 (`deliver` DO), ngoài phạm vi luồng nhập/xuất mà file này mô tả — xem
@@ -153,7 +173,9 @@ kể cả bước đọc/kiểm trạng thái phiếu (khác thiết kế cũ đ
 phiếu chặn hai lệnh `post` (hoặc hai lệnh `cancel`) gọi trùng lên cùng phiếu cộng/trừ tồn hai lần.
 Khoá dòng balance tương tự chặn hai phiếu khác nhau `post` song song cùng một mặt hàng — cả hai giới
 hạn race đều là giới hạn đã biết của thiết kế cũ, nay được xử lý (xem
-`docs/decisions/stored-inventory-balances.md`).
+`docs/decisions/stored-inventory-balances.md`). Với phiếu xuất do phiếu lãnh vật tư sinh ra, cùng
+transaction đó ghi thêm 1 `UPDATE inventory_requisitions` (không khoá riêng — đã khoá gián tiếp qua
+dòng phiếu xuất, `inventoryIssueId` là 1-1).
 
 Sinh mã (`PNK`/`PXK`) nằm **trong** transaction lập phiếu (`create`), không dính gì tới `post`, và
 cấp qua bảng đếm dùng chung `document_sequences` (`docs/architecture.md`, mục "Bất biến xuyên
@@ -179,10 +201,11 @@ module") — atomic, hai lượt lập phiếu song song không thể ra cùng m
 | (Phiếu nhập) `post` gọi trên phiếu không phải `PENDING_RECEIPT`/`PENDING_IQC` | `E098` | 409 |
 | (Phiếu nhập) `post` một phiếu `PENDING_IQC` còn phiếu IQC chưa `COMPLETED` (kể cả chưa có phiếu IQC nào) | `E153` | 409 |
 | `cancel` gọi trên phiếu đã `CANCELLED` | `E098` | 409 |
+| (Phiếu xuất) `cancel` gọi trên phiếu không còn `DRAFT` (kể cả `POSTED`) | `E098` | 409 |
 | `post` làm tồn một mặt hàng xuống âm | `E106` | 409 |
-| `cancel` một phiếu `POSTED` mà đảo bút toán làm tồn xuống âm (hàng đã bị tiêu đi sau khi `post`) | `E106` | 409 |
+| (Phiếu nhập) `cancel` một phiếu `POSTED` mà đảo bút toán làm tồn xuống âm (hàng đã bị tiêu đi sau khi `post`) | `E106` | 409 |
 | `POST`/`PATCH /inventory-issues` với `issueType = PRODUCTION` | `E234` | 409 |
-| `cancel` một `inventory_issues` do phiếu lãnh sinh ra | `E235` | 409 |
+| `DELETE /inventory-issues/:id` trên một phiếu do phiếu lãnh sinh ra | `E235` | 409 |
 
 Các mã riêng của nhánh `confirm`/gate OQC (`E151`-`E154`, `E179`, `E196`, `E197`, `E209`, `E253`,
 `E254`): `docs/workflows/receipt-confirmation.md`, `docs/workflows/outgoing-qc.md`.
@@ -216,3 +239,8 @@ Code: `InventoryReceiptsService`/`InventoryIssuesService` (`createInventoryRecei
 Ba module riêng — `inventory` (đọc + `InventoryPostingService`), `inventory-receipts` (import
 `InventoryModule`+`IqcModule`), `inventory-issues` (import `InventoryModule` — gate IQC qua plain
 function, không cần import `IqcModule`).
+
+`inventory-issues` ghi thẳng bảng `inventory_requisitions` (`InventoryRequisitionStatus`) trong
+`postInventoryIssue`/`cancelInventoryIssue`, không qua `InventoryRequisitionsService` — cả hai module
+cùng domain `inventory`, xem `docs/workflows/inventory-requisition.md` cho chiều ngược lại
+(`InventoryRequisitionsService.approveInventoryRequisition` ghi bảng `inventory_issues`).

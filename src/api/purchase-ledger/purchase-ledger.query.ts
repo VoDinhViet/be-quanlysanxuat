@@ -42,9 +42,10 @@ export function receivedQuantitySubquery(db: Database) {
   const receipts = db
     .select({
       purchaseRequestItemId: purchaseOrderItems.purchaseRequestItemId,
-      receivedQty: sql<number>`coalesce(sum(${inventoryReceiptItems.quantity}), 0)`
-        .mapWith(Number)
-        .as('received_qty'),
+      receivedQty:
+        sql<number>`coalesce(sum(${inventoryReceiptItems.quantity}), 0)`
+          .mapWith(Number)
+          .as('received_qty'),
     })
     .from(inventoryReceiptItems)
     .innerJoin(
@@ -85,9 +86,10 @@ export function receivedQuantitySubquery(db: Database) {
   return db
     .select({
       purchaseRequestItemId: receipts.purchaseRequestItemId,
-      receivedQuantity: sql<number>`greatest(coalesce(${receipts.receivedQty}, 0) - coalesce(${returns.returnedQty}, 0), 0)`
-        .mapWith(Number)
-        .as('received_quantity'),
+      receivedQuantity:
+        sql<number>`greatest(coalesce(${receipts.receivedQty}, 0) - coalesce(${returns.returnedQty}, 0), 0)`
+          .mapWith(Number)
+          .as('received_quantity'),
     })
     .from(receipts)
     .leftJoin(

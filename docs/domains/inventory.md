@@ -10,8 +10,9 @@ khái niệm phân kho — `docs/decisions/single-warehouse.md`.
 
 **Ba tầng:** `inventory_receipts`/`inventory_issues`/`inventory_adjustments` (phiếu, có vòng đời) →
 `inventory_transactions` (sổ cái, append-only, **nguồn sự thật**) → `inventory_balances` (tồn hiện
-tại, 1 dòng/mặt hàng, **bản chiếu dựng lại được 100%** từ sổ cái). Chỉ `POSTED` mới đụng tồn kho;
-phiếu `POSTED` bất biến, sai thì `cancel` (đảo dấu, append) rồi lập phiếu mới.
+tại, 1 dòng/mặt hàng, **bản chiếu dựng lại được 100%** từ sổ cái). Chỉ `POSTED` mới đụng tồn kho.
+Phiếu nhập/điều chỉnh `POSTED` sai thì `cancel` (đảo dấu, append) rồi lập phiếu mới. **Phiếu xuất
+là ngoại lệ**: `POSTED` bất biến tuyệt đối, không còn đường `cancel` — `cancel` chỉ nhận từ `DRAFT`.
 
 **Ba loại phiếu, mỗi loại một bảng riêng**, mỗi `receiptType`/`issueType`/`adjustmentType` ánh xạ
 đúng 1 loại bút toán:
@@ -109,8 +110,9 @@ delivery tracking. Chi tiết vòng đời DO: `docs/workflows/outbound-delivery
 
 ## Lifecycle
 
-**Phiếu xuất**: `DRAFT →(post)→ POSTED →(cancel)→ CANCELLED`, hoặc `DRAFT →(cancel)→ CANCELLED`.
-`post` với `issueType=PRODUCTION` chạy gate IQC (`E203`, xem Cross-domain).
+**Phiếu xuất**: `DRAFT →(post)→ POSTED` (điểm cuối, bất biến), hoặc `DRAFT →(cancel)→ CANCELLED`.
+Không có đường huỷ từ `POSTED` — khác phiếu nhập/điều chỉnh bên dưới. `post` với `issueType=PRODUCTION`
+chạy gate IQC (`E203`, xem Cross-domain).
 
 **Phiếu nhập** — có thêm `confirm` xen giữa lập phiếu và `post`:
 ```
@@ -166,15 +168,21 @@ dự phòng). `cancel` OS-OUT chặn `E169` nếu còn OS-IN con chưa `CANCELLE
 
 **Phiếu lãnh vật tư** — vòng đời riêng 6 trạng thái, tách khỏi `inventory_document_status`:
 ```
-DRAFT ──send──> PENDING_APPROVAL ──approve──> APPROVED ──issue──> ISSUED  (điểm cuối)
-  │                   │                            │
-  │                   └──reject──> REJECTED ──send─┘
-  └──cancel───────────┴────────────────────────────┴──> CANCELLED
+DRAFT ──send──> PENDING_APPROVAL ──approve──> APPROVED ──(kho post PXK)──> ISSUED  (điểm cuối)
+  │                   │                            │  │
+  │                   └──reject──> REJECTED ──send─┘  └──(kho cancel PXK)──> CANCELLED
+  └──cancel───────────┴───────────────────────────────┴─────────────────────> CANCELLED
 ```
 Giữ chỗ bắt đầu từ `approve` (không phải `create`) — `create`/`update` chỉ cảnh báo, chặn thật
-(`E231`/`E232`) ở `approve`. `issue` (điểm cuối) sinh 1 `inventory_issues POSTED` + trừ tồn, chạy
-cùng gate IQC (`E203`). `POST`/`PATCH /inventory-issues` với `issueType=PRODUCTION` bị chặn (`E234`);
-`cancel` một `inventory_issues` do phiếu lãnh sinh ra cũng bị chặn (`E235`).
+(`E231`/`E232`) ở `approve`. `approve` cũng tự sinh 1 `inventory_issues DRAFT` (`issueType =
+PRODUCTION`) + gán `inventoryIssueId`, **không** trừ tồn ở bước này. Từ `APPROVED`, phiếu lãnh
+không còn hành động "issue" riêng — nó đổi trạng thái theo đúng PXK đó: kho `post`
+(`InventoryIssuesService.postInventoryIssue`, trừ tồn thật + gate IQC `E203`) đưa cả hai sang
+`ISSUED`/`POSTED`; kho `cancel` PXK đưa cả hai sang `CANCELLED`. `cancel` ngay trên phiếu lãnh
+(từ `APPROVED`) huỷ kèm PXK `DRAFT` đó. `POST`/`PATCH /inventory-issues` với `issueType=PRODUCTION`
+bị chặn (`E234`); `DELETE` một `inventory_issues` do phiếu lãnh sinh ra cũng bị chặn (`E235`) — huỷ
+nó phải qua `cancel`, không hard-delete. Trình tự đầy đủ:
+`docs/workflows/inventory-requisition.md`.
 
 **DO (`outbound_orders`)** — vòng đời riêng 6 trạng thái:
 ```
@@ -235,9 +243,10 @@ Chi tiết đầy đủ (giữ chỗ FG từ `create`, gate `E194`/`E205`, side 
   `getStockLevels` — 2 định nghĩa khác nhau, xem Common mistakes). Một chiều.
 - **→ Orders**: `OrdersService.getOrderItems` đọc thẳng `inventory_transactions`
   (`orderItemId IS NOT NULL`) tính `issuedQty`/`remainingQty`, không qua DI.
-- **← Production**: chỉ đọc qua `getStockLevels`/`getMaterialStockLevels`. Phiếu **xuất** có
-  `inventory_requisitions.issue` (auto-post duy nhất từ Production); phiếu **nhập** tự sinh không
-  đến từ Production mà từ Quality — xem cạnh `← Quality` bên dưới.
+- **← Production**: chỉ đọc qua `getStockLevels`/`getMaterialStockLevels`. Phiếu **xuất**
+  `issueType=PRODUCTION` chỉ tự sinh được từ `inventory_requisitions.approve` (`DRAFT`, kho
+  `inventory-issues post` mới trừ tồn thật); phiếu **nhập** tự sinh không đến từ Production mà từ
+  Quality — xem cạnh `← Quality` bên dưới.
 - **→ Production (ghi)**: `postInventoryReceipt` (`receiptType=PRODUCTION`, đủ SL kế hoạch) gọi
   `closeJobIfFullyReceived` → `production_jobs.status = COMPLETED`, cascade
   `production_orders.status = COMPLETED` nếu mọi Job xong — cùng transaction `post`.
@@ -276,7 +285,7 @@ Chi tiết đầy đủ (giữ chỗ FG từ `create`, gate `E194`/`E205`, side 
    khác nhau, đừng trộn.
 3. Đi tìm route tay lập phiếu nhập TP đầu tiên của một Job — phiếu đó do Quality tự sinh
    (`closeJobIfQcCovered`), không phải Production tự lập cũng không phải kho gõ tay; phiếu
-   **xuất** vẫn qua phiếu lãnh (`issue`) như cũ.
+   **xuất** vẫn qua phiếu lãnh (`approve` tự sinh PXK `DRAFT`, kho `post` mới trừ tồn) như cũ.
 4. Phiếu nhập `DRAFT` không `post` thẳng được nữa — phải `confirm` trước (`E098` nếu còn `DRAFT`).
    Ngoại lệ duy nhất: phiếu TP do `closeJobIfQcCovered` tự sinh đã ở `PENDING_RECEIPT` ngay từ đầu
    (không đi qua `DRAFT`), nên `post` thẳng được — xem mục "Phiếu nhập TP đầu tiên..." ở Lifecycle.
@@ -286,7 +295,7 @@ Chi tiết đầy đủ (giữ chỗ FG từ `create`, gate `E194`/`E205`, side 
 6. `supplier_returns` không có route tạo tay/`cancel`; `postSupplierReturn` không phải lúc nào cũng
    trừ tồn (xem Lifecycle).
 7. `POST /inventory-issues` với `issueType=PRODUCTION` bị chặn (`E234`) — đường duy nhất là
-   `inventory_requisitions.issue`.
+   `approve` một `inventory_requisitions` (tự sinh PXK `DRAFT`).
 8. Phiếu lãnh giữ chỗ từ `APPROVED`, DO giữ chỗ từ `create` — hai module cố tình lệch mốc.
 9. `GET /inventory` (list gộp) đã xoá — tách `GET /inventory-products`/`GET /inventory-materials`;
    `GET /inventory/balances`/`GET /inventory/transactions` không đổi.

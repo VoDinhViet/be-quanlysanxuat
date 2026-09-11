@@ -98,7 +98,7 @@ export class ProductionJobsService {
     const where = and(
       reqDto.orderId ? eq(orders.id, reqDto.orderId) : undefined,
       reqDto.itemId ? eq(productionJobs.itemId, reqDto.itemId) : undefined,
-      reqDto.status ? eq(productionJobs.status, reqDto.status) : undefined,
+      reqDto.statuses?.length ? inArray(productionJobs.status, reqDto.statuses) : reqDto.status ? eq(productionJobs.status, reqDto.status) : undefined,
       reqDto.clientId ? eq(orders.clientId, reqDto.clientId) : undefined,
       reqDto.startDate ? gte(orders.dueDate, reqDto.startDate) : undefined,
       reqDto.endDate ? lte(orders.dueDate, reqDto.endDate) : undefined,

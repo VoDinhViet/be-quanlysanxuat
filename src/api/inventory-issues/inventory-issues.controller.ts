@@ -115,16 +115,10 @@ export class InventoryIssuesController {
   @Permissions('inventory:update')
   @ApiAuth({
     summary:
-      'Cancel an issue — from DRAFT just voids it; from POSTED reverses its transactions first',
+      'Cancel a DRAFT issue — void it before it touches stock; POSTED is immutable',
     statusCode: HttpStatus.NO_CONTENT,
   })
-  cancelInventoryIssue(
-    @UUIDParam('issueId') issueId: string,
-    @CurrentUser() payload: JwtPayloadType,
-  ): Promise<void> {
-    return this.inventoryIssuesService.cancelInventoryIssue(
-      issueId,
-      payload.userId,
-    );
+  cancelInventoryIssue(@UUIDParam('issueId') issueId: string): Promise<void> {
+    return this.inventoryIssuesService.cancelInventoryIssue(issueId);
   }
 }

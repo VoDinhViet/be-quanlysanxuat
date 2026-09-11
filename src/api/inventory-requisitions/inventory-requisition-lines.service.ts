@@ -180,6 +180,8 @@ export class InventoryRequisitionLinesService {
           bomQuantity: null,
           issuedQuantity: null,
           suggestedQuantity: null,
+          remainingBom: null,
+          isFullyIssued: false,
         };
       }
 
@@ -193,6 +195,8 @@ export class InventoryRequisitionLinesService {
           0,
           Math.min(remainingBom, row.issuableQuantity),
         ),
+        remainingBom,
+        isFullyIssued: issuedQuantity >= row.bomQuantity,
       };
     });
 

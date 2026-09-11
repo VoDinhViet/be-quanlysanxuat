@@ -72,7 +72,8 @@ export class InventoryReceiptItemResDto {
 
   @Expose()
   @NumberFieldOptional({
-    description: 'Số lượng thực nhận vào kho = max(quantity − returnedQuantity, 0)',
+    description:
+      'Số lượng thực nhận vào kho = max(quantity − returnedQuantity, 0)',
   })
   actualQuantity?: number;
 }

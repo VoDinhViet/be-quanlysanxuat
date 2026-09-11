@@ -36,9 +36,10 @@ export function orderReceivedQuantitySubquery(db: Database | DbTransaction) {
   const receipts = db
     .select({
       purchaseOrderId: purchaseOrderItems.purchaseOrderId,
-      receivedQty: sql<number>`coalesce(sum(${inventoryReceiptItems.quantity}), 0)`
-        .mapWith(Number)
-        .as('received_qty'),
+      receivedQty:
+        sql<number>`coalesce(sum(${inventoryReceiptItems.quantity}), 0)`
+          .mapWith(Number)
+          .as('received_qty'),
     })
     .from(inventoryReceiptItems)
     .innerJoin(
@@ -73,9 +74,10 @@ export function orderReceivedQuantitySubquery(db: Database | DbTransaction) {
   return db
     .select({
       purchaseOrderId: receipts.purchaseOrderId,
-      receivedQuantity: sql<number>`greatest(coalesce(${receipts.receivedQty}, 0) - coalesce(${returns.returnedQty}, 0), 0)`
-        .mapWith(Number)
-        .as('received_quantity'),
+      receivedQuantity:
+        sql<number>`greatest(coalesce(${receipts.receivedQty}, 0) - coalesce(${returns.returnedQty}, 0), 0)`
+          .mapWith(Number)
+          .as('received_quantity'),
     })
     .from(receipts)
     .leftJoin(returns, eq(returns.purchaseOrderId, receipts.purchaseOrderId))
@@ -101,9 +103,10 @@ export async function getReceivedQuantityByPurchaseOrderItemId(
     db
       .select({
         purchaseOrderItemId: inventoryReceiptItems.purchaseOrderItemId,
-        received: sql<number>`coalesce(sum(${inventoryReceiptItems.quantity}), 0)`
-          .mapWith(Number)
-          .as('received'),
+        received:
+          sql<number>`coalesce(sum(${inventoryReceiptItems.quantity}), 0)`
+            .mapWith(Number)
+            .as('received'),
       })
       .from(inventoryReceiptItems)
       .innerJoin(
@@ -132,7 +135,10 @@ export async function getReceivedQuantityByPurchaseOrderItemId(
       .innerJoin(
         inventoryReceiptItems,
         and(
-          eq(inventoryReceiptItems.receiptId, supplierReturns.inventoryReceiptId),
+          eq(
+            inventoryReceiptItems.receiptId,
+            supplierReturns.inventoryReceiptId,
+          ),
           eq(inventoryReceiptItems.itemId, supplierReturns.itemId),
         ),
       )
@@ -165,11 +171,7 @@ export async function getReceivedQuantityByPurchaseOrderItemId(
       )
       .map((row) => {
         const returned = returnedByPoItemId.get(row.purchaseOrderItemId) ?? 0;
-        return [
-          row.purchaseOrderItemId,
-          Math.max(row.received - returned, 0),
-        ];
+        return [row.purchaseOrderItemId, Math.max(row.received - returned, 0)];
       }),
   );
 }
-

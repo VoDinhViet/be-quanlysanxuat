@@ -146,7 +146,8 @@ export class InventoryRequisitionsController {
   @Permissions('inventory-requisitions:approve')
   @ApiAuth({
     summary:
-      'Duyệt — PENDING_APPROVAL → APPROVED, chốt giữ hàng (không đụng tồn kho)',
+      'Duyệt — PENDING_APPROVAL → APPROVED, chốt giữ hàng, tự sinh phiếu xuất kho DRAFT ' +
+      '(kho post ở /inventory-issues mới trừ tồn)',
     statusCode: HttpStatus.NO_CONTENT,
   })
   approveInventoryRequisition(
@@ -177,28 +178,12 @@ export class InventoryRequisitionsController {
     );
   }
 
-  @Post(':requisitionId/issue')
-  @Permissions('inventory-requisitions:issue')
-  @ApiAuth({
-    summary:
-      'Xuất kho — APPROVED → ISSUED (điểm cuối), tự sinh phiếu xuất kho POSTED + trừ tồn',
-    statusCode: HttpStatus.NO_CONTENT,
-  })
-  issueInventoryRequisition(
-    @UUIDParam('requisitionId') requisitionId: string,
-    @CurrentUser() payload: JwtPayloadType,
-  ): Promise<void> {
-    return this.inventoryRequisitionsService.issueInventoryRequisition(
-      requisitionId,
-      payload.userId,
-    );
-  }
-
   @Post(':requisitionId/cancel')
   @Permissions('inventory-requisitions:update')
   @ApiAuth({
     summary:
-      'Huỷ — DRAFT/PENDING_APPROVAL/APPROVED → CANCELLED, không đảo được từ ISSUED',
+      'Huỷ — DRAFT/PENDING_APPROVAL/APPROVED → CANCELLED, không đảo được từ ISSUED. Huỷ từ ' +
+      'APPROVED kéo theo huỷ luôn phiếu xuất kho DRAFT đã tự sinh lúc duyệt',
     statusCode: HttpStatus.NO_CONTENT,
   })
   cancelInventoryRequisition(

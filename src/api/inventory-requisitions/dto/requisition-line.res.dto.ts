@@ -2,6 +2,7 @@ import { Exclude, Expose } from 'class-transformer';
 
 import {
   NumberField,
+  BooleanField,
   NumberFieldOptional,
 } from '../../../decorators/field.decorators';
 import { ItemUnitField } from '../../items/dto/item-unit.field';
@@ -60,4 +61,19 @@ export class RequisitionLineResDto {
       'SL lãnh gợi ý = max(0, min(SL BOM − Đã lãnh, Có thể lãnh)), null nếu không có Job',
   })
   suggestedQuantity!: number | null;
+
+  @Expose()
+  @NumberFieldOptional({
+    nullable: true,
+    description:
+      'SL BOM còn lại chưa lãnh = max(0, SL BOM − Đã lãnh), null nếu không có Job',
+  })
+  remainingBom!: number | null;
+
+  @Expose()
+  @BooleanField({
+    description:
+      'true nếu vật tư của Job này đã lãnh đủ định mức BOM (issuedQuantity >= bomQuantity)',
+  })
+  isFullyIssued!: boolean;
 }

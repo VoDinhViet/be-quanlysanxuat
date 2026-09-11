@@ -44,9 +44,7 @@ describe('purchase-orders.query', () => {
         { purchaseOrderItemId: 'poi-1', received: 100 },
         { purchaseOrderItemId: 'poi-2', received: 50 },
       ];
-      const returnedRows = [
-        { purchaseOrderItemId: 'poi-1', returned: 30 },
-      ];
+      const returnedRows = [{ purchaseOrderItemId: 'poi-1', returned: 30 }];
 
       let callCount = 0;
       const mockDb = {
@@ -82,12 +80,8 @@ describe('purchase-orders.query', () => {
     });
 
     it('clamps net received quantity to 0 if returned exceeds received', async () => {
-      const receivedRows = [
-        { purchaseOrderItemId: 'poi-1', received: 20 },
-      ];
-      const returnedRows = [
-        { purchaseOrderItemId: 'poi-1', returned: 30 },
-      ];
+      const receivedRows = [{ purchaseOrderItemId: 'poi-1', received: 20 }];
+      const returnedRows = [{ purchaseOrderItemId: 'poi-1', returned: 30 }];
 
       let callCount = 0;
       const mockDb = {

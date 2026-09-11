@@ -49,6 +49,9 @@ export const PERMISSION_CODES = [
   'inventory-requisitions:update',
   'inventory-requisitions:delete',
   'inventory-requisitions:approve',
+  // Nghỉ hưu cùng route `POST /inventory-requisitions/:id/issue` (đã bỏ, `approve` giờ tự sinh
+  // PXK) — giữ lại để `roles.permissions` cũ giữ code này không bị RolesService.onModuleInit cảnh
+  // báo "unknown permission code".
   'inventory-requisitions:issue',
   'production:read',
   'production:create',

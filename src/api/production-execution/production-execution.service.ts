@@ -416,9 +416,7 @@ export class ProductionExecutionService {
           completedQuantity: newCompletedQuantity,
           rejectedQuantity: newRejectedQuantity,
           completedDate:
-            roundedNewCompleted >= roundedPlanned
-              ? reqDto.completedDate
-              : null,
+            roundedNewCompleted >= roundedPlanned ? reqDto.completedDate : null,
         })
         .where(eq(productionJobOperations.id, jobOperationId));
 

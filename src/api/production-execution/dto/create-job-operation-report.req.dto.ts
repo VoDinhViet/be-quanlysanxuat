@@ -19,7 +19,11 @@ export class CreateJobOperationReportReqDto {
   @DateField({ description: 'Ngày hoàn thành' })
   readonly completedDate!: Date;
 
-  @StringFieldOptional({ minLength: 0, maxLength: 1000, description: 'Ghi chú' })
+  @StringFieldOptional({
+    minLength: 0,
+    maxLength: 1000,
+    description: 'Ghi chú',
+  })
   readonly note?: string;
 
   @UUIDFieldOptional({

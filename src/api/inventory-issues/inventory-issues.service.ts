@@ -12,7 +12,6 @@ import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
-import { vnToday } from '../../database/vn-date.util';
 import {
   departments,
   InventoryDocumentStatus,
@@ -21,6 +20,7 @@ import {
   inventoryIssues,
   InventoryReferenceType,
   inventoryRequisitions,
+  InventoryRequisitionStatus,
   InventoryTransactionType,
   items,
   ItemType,
@@ -194,8 +194,20 @@ export class InventoryIssuesService {
     });
   }
 
+  /** Chặn (`E235`) nếu phiếu do `inventoryRequisitions.inventoryIssueId` trỏ tới — hard-delete để
+   * FK `set null` âm thầm gỡ liên kết sẽ để phiếu lãnh kẹt `APPROVED` không còn PXK đi kèm, huỷ
+   * (`InventoryRequisitionsService.cancelInventoryRequisition`) là đường đúng cho trường hợp này. */
   async deleteInventoryIssue(issueId: string): Promise<void> {
     await this.ensureIssueDraft(issueId);
+
+    const [generatingRequisition] = await this.db
+      .select({ id: inventoryRequisitions.id })
+      .from(inventoryRequisitions)
+      .where(eq(inventoryRequisitions.inventoryIssueId, issueId))
+      .limit(1);
+    if (generatingRequisition) {
+      throw new AppException(ErrorCode.E235, HttpStatus.CONFLICT);
+    }
 
     await this.db
       .delete(inventoryIssues)
@@ -206,7 +218,9 @@ export class InventoryIssuesService {
    * bất biến. Đọc trạng thái nằm trong cùng transaction, sau `getInventoryIssueForUpdate`.
    * `issueType = PRODUCTION`
    * kèm gate IQC (`E203`, `docs/decisions/qc-gates-on-stock-moves.md`) — vật tư chưa qua IQC (hoặc
-   * còn FAIL chưa xử lý) không được xuất cho sản xuất. Xem `docs/workflows/stock-movement.md`. */
+   * còn FAIL chưa xử lý) không được xuất cho sản xuất. Nếu phiếu do phiếu lãnh vật tư sinh ra
+   * (`inventoryRequisitions.inventoryIssueId`) thì ghi ngược phiếu lãnh đó sang `ISSUED`. Xem
+   * `docs/workflows/stock-movement.md`, `docs/workflows/inventory-requisition.md`. */
   async postInventoryIssue(issueId: string, userId: string): Promise<void> {
     await this.db.transaction(async (tx) => {
       const inventoryIssue = await this.getInventoryIssueForUpdate(tx, issueId);
@@ -250,43 +264,39 @@ export class InventoryIssuesService {
           postedAt: new Date(),
         })
         .where(eq(inventoryIssues.id, issueId));
+
+      await tx
+        .update(inventoryRequisitions)
+        .set({
+          status: InventoryRequisitionStatus.ISSUED,
+          issuedBy: userId,
+          issuedAt: new Date(),
+        })
+        .where(eq(inventoryRequisitions.inventoryIssueId, issueId));
     });
   }
 
-  /** `DRAFT`/`POSTED → CANCELLED`. Từ `POSTED` thì đảo bút toán trước khi đổi trạng thái — xem
-   * `InventoryPostingService.reverseDocument`. Chặn (`E235`) nếu phiếu do
-   * `inventoryRequisitions.inventoryIssueId` trỏ tới — huỷ ở đây mà không đụng phiếu lãnh sẽ để
-   * phiếu lãnh kẹt ở `ISSUED` với tồn đã hoàn. */
-  async cancelInventoryIssue(issueId: string, userId: string): Promise<void> {
+  /** `DRAFT → CANCELLED` — chỉ huỷ được lúc còn Nháp; `POSTED` bất biến, không có đường đảo bút
+   * toán như `inventory-receipts`/`inventory-adjustments` (`docs/domains/inventory.md`). Nếu phiếu
+   * do phiếu lãnh vật tư sinh ra (`inventoryRequisitions.inventoryIssueId`) thì huỷ luôn phiếu
+   * lãnh đó — ngược chiều với `InventoryRequisitionsService.cancelInventoryRequisition`. */
+  async cancelInventoryIssue(issueId: string): Promise<void> {
     await this.db.transaction(async (tx) => {
       const inventoryIssue = await this.getInventoryIssueForUpdate(tx, issueId);
 
-      if (inventoryIssue.status === InventoryDocumentStatus.CANCELLED) {
+      if (inventoryIssue.status !== InventoryDocumentStatus.DRAFT) {
         throw new AppException(ErrorCode.E098, HttpStatus.CONFLICT);
-      }
-
-      const generatingRequisition =
-        await tx.query.inventoryRequisitions.findFirst({
-          columns: { id: true },
-          where: eq(inventoryRequisitions.inventoryIssueId, issueId),
-        });
-      if (generatingRequisition) {
-        throw new AppException(ErrorCode.E235, HttpStatus.CONFLICT);
-      }
-
-      if (inventoryIssue.status === InventoryDocumentStatus.POSTED) {
-        await this.inventoryPostingService.reverseDocument(tx, {
-          referenceType: InventoryReferenceType.INVENTORY_ISSUE,
-          referenceId: issueId,
-          transactionDate: vnToday(),
-          createdBy: userId,
-        });
       }
 
       await tx
         .update(inventoryIssues)
         .set({ status: InventoryDocumentStatus.CANCELLED })
         .where(eq(inventoryIssues.id, issueId));
+
+      await tx
+        .update(inventoryRequisitions)
+        .set({ status: InventoryRequisitionStatus.CANCELLED })
+        .where(eq(inventoryRequisitions.inventoryIssueId, issueId));
     });
   }
 

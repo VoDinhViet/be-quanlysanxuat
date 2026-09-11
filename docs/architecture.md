@@ -144,13 +144,17 @@ bảng chiều `production_job_items`/`production_job_units`) — cùng một tr
 `PENDING_IQC`): validate ngoài tx → tx: `InventoryPostingService.postDocument` khoá
 `inventory_balances FOR UPDATE`, ghi `inventory_transactions`, update status phiếu. Phiếu nhập gắn
 `purchaseOrderId` gọi thêm `PaymentRequestsService.createIfOrderCompleted(tx, ...)` cùng transaction.
-`cancel` từ `POSTED` gọi `reverseDocument` (đảo dấu, không xoá). Chi tiết:
+Phiếu nhập `cancel` từ `POSTED` gọi `reverseDocument` (đảo dấu, không xoá); phiếu xuất không có
+đường này — `POSTED` bất biến, `cancel` chỉ nhận từ `DRAFT`. Chi tiết:
 `docs/workflows/stock-movement.md`, `docs/workflows/receipt-confirmation.md`.
 
-**Duyệt/Xuất phiếu lãnh** (`docs/workflows/inventory-requisition.md`): `approve` chỉ khoá
-`inventory_balances FOR UPDATE` (không ghi), không đụng module khác. `issue` bắc cầu: tx sinh
-`PXK-{năm}-{5}` → `INSERT inventory_issues` (`POSTED` ngay) + `inventory_issue_items` → `postDocument`
-→ `inventory_requisitions.status = ISSUED`.
+**Duyệt phiếu lãnh** (`docs/workflows/inventory-requisition.md`): `approve` khoá
+`inventory_balances FOR UPDATE` (chốt chặn `E231`/`E232`, không ghi bảng đó) rồi bắc cầu sang module
+`inventory-issues` ngay trong cùng transaction: sinh `PXK-{năm}-{5}` → `INSERT inventory_issues`
+(`DRAFT`, chưa đụng tồn) + `inventory_issue_items` → `UPDATE inventory_requisitions.status =
+APPROVED, inventoryIssueId = <PXK>`. Kho `post` PXK đó (module `inventory-issues`, transaction
+riêng) mới gọi `postDocument` trừ tồn thật và ghi ngược `inventory_requisitions.status = ISSUED`;
+kho `cancel` PXK ghi ngược `CANCELLED`.
 
 **Tạo OS-OUT/OS-IN**: không có nháp — `create` gộp việc của `post` cũ
 (`docs/decisions/outsourcing-no-draft.md`), **không đụng `inventory_balances`** (mặt hàng luôn WIP,

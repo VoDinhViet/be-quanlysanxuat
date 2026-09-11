@@ -743,8 +743,10 @@ export class PurchaseQuotationsService {
       .select({
         purchaseRequestItemId:
           purchaseQuotationItemAllocations.purchaseRequestItemId,
-        totalQuoted: sql<number>`sum(${purchaseQuotationItemAllocations.quantity})`
-          .mapWith(Number),
+        totalQuoted:
+          sql<number>`sum(${purchaseQuotationItemAllocations.quantity})`.mapWith(
+            Number,
+          ),
       })
       .from(purchaseQuotationItemAllocations)
       .innerJoin(
@@ -807,9 +809,7 @@ export class PurchaseQuotationsService {
       throw new AppException(ErrorCode.E125, HttpStatus.CONFLICT);
     }
 
-    const requestItemMap = new Map(
-      requestItemRows.map((row) => [row.id, row]),
-    );
+    const requestItemMap = new Map(requestItemRows.map((row) => [row.id, row]));
     const hasItemMismatch = itemsReq.some((item) =>
       item.allocations.some(
         (allocation) =>

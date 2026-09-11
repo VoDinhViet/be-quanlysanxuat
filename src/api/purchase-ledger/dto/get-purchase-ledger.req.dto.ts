@@ -23,7 +23,8 @@ export class GetPurchaseLedgerReqDto extends PageOptionsDto {
   readonly status?: PurchaseLedgerStatus;
 
   @BooleanFieldOptional({
-    description: 'Chỉ lấy các dòng còn số lượng cần mua (quotedQuantity < quantity)',
+    description:
+      'Chỉ lấy các dòng còn số lượng cần mua (quotedQuantity < quantity)',
   })
   readonly hasRemainingQuotation?: boolean;
 
