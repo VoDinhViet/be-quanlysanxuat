@@ -305,18 +305,26 @@ export class OutboundOrdersService {
   async getUnfulfilledOrderItems(
     reqDto: GetUnfulfilledOrderItemsReqDto,
   ): Promise<OffsetPaginatedDto<UnfulfilledOrderItemResDto>> {
-    const where = and(
-      isNull(orders.deletedAt),
-      inArray(orders.status, OutboundOrdersService.UNFULFILLED_ORDER_STATUSES),
-      eq(orderItems.status, OrderItemStatus.NORMAL),
-      reqDto.clientId ? eq(orders.clientId, reqDto.clientId) : undefined,
-    );
-
     const issuedQty = issuedQuantityByOrderItemIdSubquery(this.db);
     const onHand = onHandQuantityByItemSubquery(this.db);
     const held = outboundHeldQuantityByItemSubquery(
       this.db,
       reqDto.excludeOutboundOrderId,
+    );
+
+    const targetQtySql = sql<number>`coalesce(${productionOrderItems.quantity}, ${orderItems.quantity})`.mapWith(
+      Number,
+    );
+    const issuedQtySql = sql<number>`coalesce(${issuedQty.issuedQty}, 0)`.mapWith(
+      Number,
+    );
+
+    const where = and(
+      isNull(orders.deletedAt),
+      inArray(orders.status, OutboundOrdersService.UNFULFILLED_ORDER_STATUSES),
+      eq(orderItems.status, OrderItemStatus.NORMAL),
+      reqDto.clientId ? eq(orders.clientId, reqDto.clientId) : undefined,
+      sql`${issuedQtySql} < ${targetQtySql}`,
     );
 
     const [rows, [{ total }]] = await Promise.all([
@@ -373,6 +381,11 @@ export class OutboundOrdersService {
         .select({ total: count() })
         .from(orderItems)
         .innerJoin(orders, eq(orders.id, orderItems.orderId))
+        .leftJoin(
+          productionOrderItems,
+          eq(productionOrderItems.orderItemId, orderItems.id),
+        )
+        .leftJoin(issuedQty, eq(issuedQty.orderItemId, orderItems.id))
         .where(where),
     ]);
 
