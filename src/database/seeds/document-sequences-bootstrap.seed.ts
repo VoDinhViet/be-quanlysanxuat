@@ -87,6 +87,14 @@ async function seedDocumentSequencesBootstrap(
       DO UPDATE SET current_value = GREATEST(document_sequences.current_value, EXCLUDED.current_value)
     `);
 
+    await tx.execute(sql`
+      INSERT INTO document_sequences (document_type, year, current_value)
+      SELECT 'UNIT', 0, COALESCE(MAX(substring(code from 4)::int), 0)
+      FROM units WHERE code ~ '^DVT[0-9]+$'
+      ON CONFLICT (document_type, year)
+      DO UPDATE SET current_value = GREATEST(document_sequences.current_value, EXCLUDED.current_value)
+    `);
+
     // Hai loại reset-theo-kỳ — chỉ bootstrap những kỳ thật sự có dữ liệu (group theo kỳ rút ra từ
     // chính mã), kỳ chưa từng dùng thì để `generateDocumentSequence` tự tạo dòng mới lúc cần.
     await tx.execute(sql`

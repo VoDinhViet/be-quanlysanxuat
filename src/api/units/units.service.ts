@@ -2,6 +2,10 @@ import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { and, asc, eq, inArray, isNull, ne, or } from 'drizzle-orm';
 
+import {
+  DocumentType,
+  generateDocumentSequence,
+} from '../../common/utils/document-sequence.util';
 import { extractPostgresError } from '../../common/utils/postgres-error.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
@@ -73,7 +77,6 @@ export class UnitsService {
 
   async createUnit(reqDto: CreateUnitReqDto): Promise<void> {
     this.validateScopesNotEmpty(reqDto.scopes);
-    await this.validateCodeUniqueness(reqDto.code);
 
     const { scopes, ...unitFields } = reqDto;
 
@@ -81,12 +84,15 @@ export class UnitsService {
       // Một unit không có scope là unit chết — chèn `units`/`unit_scopes` phải cùng vào hoặc cùng
       // rollback, cùng lý lẽ `units.seed.ts`.
       await this.db.transaction(async (tx) => {
-        const [unit] = await tx.insert(units).values(unitFields).returning();
+        const code = await this.generateUnitCode(tx);
+        const [unit] = await tx
+          .insert(units)
+          .values({ ...unitFields, code })
+          .returning();
         await this.replaceScopes(tx, unit.id, scopes);
       });
     } catch (error) {
-      // Mã client tự gửi vẫn còn TOCTOU giữa `validateCodeUniqueness` và `INSERT` — bắt ở đây thay
-      // vì để lỗi Postgres thô 500 lọt ra ngoài.
+      // Bắt xung đột unique code nếu có race condition
       if (extractPostgresError(error)?.code === '23505') {
         throw new AppException(ErrorCode.E241, HttpStatus.CONFLICT);
       }
@@ -240,5 +246,11 @@ export class UnitsService {
     await tx
       .insert(unitScopes)
       .values(scopes.map((scope) => ({ unitId, scope })));
+  }
+
+  private async generateUnitCode(tx: DbTransaction): Promise<string> {
+    const sequence = await generateDocumentSequence(tx, DocumentType.UNIT);
+
+    return `DVT${String(sequence).padStart(4, '0')}`;
   }
 }
