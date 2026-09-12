@@ -8,6 +8,7 @@ import {
   eq,
   getTableColumns,
   gte,
+  isNull,
   lt,
   lte,
   or,
@@ -69,6 +70,7 @@ export class PurchaseLedgerService {
 
     const where = and(
       eq(purchaseRequests.status, PurchaseRequestStatus.APPROVED),
+      isNull(purchaseRequestItems.cancelledAt),
       keyword
         ? or(
             unaccentILike(purchaseRequests.code, keyword),
@@ -195,6 +197,7 @@ export class PurchaseLedgerService {
 
     const where = and(
       eq(purchaseRequests.status, PurchaseRequestStatus.APPROVED),
+      isNull(purchaseRequestItems.cancelledAt),
       keyword
         ? or(
             unaccentILike(purchaseRequests.code, keyword),
@@ -284,17 +287,18 @@ export class PurchaseLedgerService {
   }
 
   /** Điều kiện lọc `WHERE` khớp đúng một giá trị `PurchaseLedgerStatus` — mỗi nhánh vừa loại trừ,
-   * vừa gộp đủ (`orderedQuantity > 0` chia COMPLETED/ORDERED; `= 0` chia QUOTING/WAITING), cùng
-   * thứ tự ưu tiên với CASE tính `status` ở `getPurchaseLedgers`. */
+   * vừa gộp đủ, cùng thứ tự ưu tiên với CASE tính `status` ở `getPurchaseLedgers`. COMPLETED đòi đặt
+   * đủ SL đề xuất (`orderedQuantity >= quantity`) rồi mới xét nhận đủ — đặt thiếu rồi nhận hết phần
+   * đã đặt vẫn là ORDERED, không phải COMPLETED. */
   private buildStatusCondition(
     refs: LedgerQuantityRefs,
     status: PurchaseLedgerStatus,
   ): SQL {
     switch (status) {
       case PurchaseLedgerStatus.COMPLETED:
-        return sql`(${refs.orderedQuantity} > 0 and ${refs.receivedQuantity} >= ${refs.orderedQuantity})`;
+        return sql`(${refs.orderedQuantity} >= ${purchaseRequestItems.quantity} and ${refs.receivedQuantity} >= ${refs.orderedQuantity})`;
       case PurchaseLedgerStatus.ORDERED:
-        return sql`(${refs.orderedQuantity} > 0 and ${refs.receivedQuantity} < ${refs.orderedQuantity})`;
+        return sql`(${refs.orderedQuantity} > 0 and (${refs.orderedQuantity} < ${purchaseRequestItems.quantity} or ${refs.receivedQuantity} < ${refs.orderedQuantity}))`;
       case PurchaseLedgerStatus.QUOTING:
         return sql`(${refs.orderedQuantity} = 0 and ${refs.quotedQuantity} > 0)`;
       case PurchaseLedgerStatus.WAITING_TO_PURCHASE:
@@ -327,7 +331,7 @@ export class PurchaseLedgerService {
   ): SQL<PurchaseLedgerStatus> {
     return sql<PurchaseLedgerStatus>`
       case
-        when ${refs.orderedQuantity} > 0
+        when ${refs.orderedQuantity} >= ${purchaseRequestItems.quantity}
           and ${refs.receivedQuantity} >= ${refs.orderedQuantity}
           then ${PurchaseLedgerStatus.COMPLETED}
 

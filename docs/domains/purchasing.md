@@ -46,7 +46,7 @@ trị đã ship, **không có `CANCELLED`**):
 
 | # | Giá trị | Điều kiện |
 | --- | --- | --- |
-| 1 | `COMPLETED` | `orderedQuantity > 0` và `receivedQuantity ≥ orderedQuantity` |
+| 1 | `COMPLETED` | `orderedQuantity ≥ quantity` đề xuất và `receivedQuantity ≥ orderedQuantity` |
 | 2 | `ORDERED` | `orderedQuantity > 0` (còn lại) |
 | 3 | `QUOTING` | `orderedQuantity = 0` và `quotedQuantity > 0` |
 | 4 | `WAITING_TO_PURCHASE` | còn lại |
@@ -54,7 +54,10 @@ trị đã ship, **không có `CANCELLED`**):
 `quotedQuantity` tính cả dòng chưa NCC nào báo giá (khác "đã báo giá" nghĩa hẹp). `orderedQuantity`
 chỉ đếm PO đã `ORDERED` (PO `DRAFT` chưa tính). Ba số response thật sự trả
 (`PurchaseLedgerItemResDto`): `quantity` (SL đề xuất) / `quotedQuantity` / `orderedQuantity`.
-`receivedQuantity` chỉ dùng nội bộ tính `status`, không nằm trong response.
+`receivedQuantity` chỉ dùng nội bộ tính `status`, không nằm trong response. `COMPLETED` phải đặt đủ
+SL đề xuất rồi mới xét nhận đủ — đặt thiếu (`orderedQuantity < quantity`) dù đã nhận hết phần đặt đó
+vẫn dừng ở `ORDERED`, không nhảy thẳng lên `COMPLETED`. Dòng đề xuất đã huỷ (`cancelledAt` khác
+null) không xuất hiện ở cả `GET /purchase-ledger` lẫn route export.
 
 ## Entities
 
@@ -153,6 +156,9 @@ sau đó); hoặc PO `confirm` trước khi có gate `E156` (không `paymentTerm
    (`orderedQuantity > quantity` đề xuất) vẫn hợp lệ — hai chuyện khác nhau.
 10. `progress=ORDERED` nghĩa là chưa nhận gì (`receivedQuantity=0`) — muốn "còn hàng chưa nhập đủ"
     (cả `ORDERED` lẫn nhận dở) dùng `hasRemainingReceipt=true`.
+11. `COMPLETED` của **sổ cái** (so `orderedQuantity` với `quantity` đề xuất) và `COMPLETED` derived
+    của **một PO** (so `receivedQuantity` với `orderedQuantity` của riêng PO đó, kích hoạt tự sinh
+    YCTT) trùng tên nhưng là hai khái niệm khác nhau, không suy ra lẫn nhau.
 
 ## Related docs
 
