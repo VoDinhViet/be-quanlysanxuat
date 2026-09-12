@@ -467,8 +467,11 @@ export class ProductionJobsService {
    * Nhân bản cây `bom_items` (cả node WIP lẫn lá RM) của từng item sang
    * `production_job_bom_items` — id hoàn toàn mới, `code`/`name` snapshot text (độc lập `items`
    * sống) — rồi copy công đoạn as-used của từng node WIP (`bom_operations.bomItemId`) sang
-   * `production_job_operations`, remap `bomItemId` qua id snapshot mới và denormalize luôn
-   * `code`/`name`/`type` của công đoạn. Cùng kỹ thuật remap của `ItemsService.copyBomTree`. Yêu
+   * `production_job_operations`, remap `bomItemId` qua id snapshot mới và denormalize
+   * `code`/`name` của công đoạn danh mục cùng `type` của chính dòng `bom_operations` (Inhouse/
+   * Outsource đã chọn lúc gắn vào BOM — không phải `operations.type`, xem
+   * `docs/decisions/routing-operation-type-per-attachment.md`). Cùng kỹ thuật remap của
+   * `ItemsService.copyBomTree`. Yêu
    * cầu `sourceBomItems` sắp cha-trước-con (`orderBy level`) để id cha luôn có sẵn trong map khi xử
    * lý tới con — cùng tính chất đó cũng cho phép tính `plannedQuantity` (nhân luỹ kế `quantity` ×
    * SL Job từ gốc xuống) ngay trong cùng vòng lặp, không cần đệ quy riêng. Đây là nguồn ghi duy nhất
@@ -563,7 +566,7 @@ export class ProductionJobsService {
           operationId: step.operationId,
           code: step.operation.code,
           name: step.operation.name,
-          type: step.operation.type,
+          type: step.type,
           sortOrder: step.sortOrder,
           note: step.note,
         };
@@ -662,7 +665,7 @@ export class ProductionJobsService {
           operationId: step.operationId,
           code: step.operation.code,
           name: step.operation.name,
-          type: step.operation.type,
+          type: step.type,
           sortOrder: step.sortOrder,
           note: step.note,
         })),

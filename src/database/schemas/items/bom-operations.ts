@@ -9,7 +9,7 @@ import {
 } from 'drizzle-orm/pg-core';
 
 import { bomItems } from './bom-items';
-import { operations } from '../operations';
+import { operations, OperationType, operationTypeEnum } from '../operations';
 import { users } from '../identity-access/users';
 
 /**
@@ -20,6 +20,9 @@ import { users } from '../identity-access/users';
  * - `operationId` bất biến sau khi thêm — đổi công đoạn là xoá dòng rồi thêm lại.
  * - Không unique trên `(bomItemId, operationId)` — một chuỗi được phép lặp lại cùng công đoạn (vd.
  *   Kiểm tra → Gia công → Kiểm tra).
+ * - `type` là quyết định thật cho bước này (Inhouse/Outsource) — độc lập với `operations.type` của
+ *   công đoạn danh mục, chỉ trùng lúc tạo vì FE prefill theo giá trị đó
+ *   (`docs/decisions/routing-operation-type-per-attachment.md`).
  */
 export const bomOperations = pgTable(
   'bom_operations',
@@ -33,6 +36,7 @@ export const bomOperations = pgTable(
     operationId: uuid('operation_id')
       .notNull()
       .references(() => operations.id, { onDelete: 'restrict' }),
+    type: operationTypeEnum('type').notNull().default(OperationType.INHOUSE),
     sortOrder: integer('sort_order').notNull().default(0),
     note: varchar('note', { length: 1000 }),
     createdBy: uuid('created_by').references(() => users.id, {

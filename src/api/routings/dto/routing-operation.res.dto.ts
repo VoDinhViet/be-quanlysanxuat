@@ -1,9 +1,11 @@
 import { Exclude, Expose } from 'class-transformer';
 
+import { OperationType } from '../../../database/schemas';
 import { OperationRefResDto } from '../../operations/dto/operation-ref.res.dto';
 import {
   ClassField,
   DateField,
+  EnumField,
   NumberField,
   StringFieldOptional,
   UUIDField,
@@ -14,6 +16,13 @@ export class RoutingOperationResDto {
   @Expose()
   @UUIDField()
   id!: string;
+
+  @Expose()
+  @EnumField(() => OperationType, {
+    description:
+      'Inhouse/Outsource của chính bước này — không phải operation.type (danh mục)',
+  })
+  type!: OperationType;
 
   @Expose()
   @NumberField({

@@ -67,6 +67,7 @@ export class RoutingsService {
       await tx.insert(routingOperations).values({
         routingId,
         operationId: reqDto.operationId,
+        type: reqDto.type,
         sortOrder: reqDto.sortOrder ?? 0,
         note: reqDto.note,
         createdBy: userId,

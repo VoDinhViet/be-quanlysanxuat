@@ -1,0 +1,2 @@
+ALTER TABLE "bom_operations" ADD COLUMN "type" "operation_type" DEFAULT 'INHOUSE' NOT NULL;--> statement-breakpoint
+ALTER TABLE "routing_operations" ADD COLUMN "type" "operation_type" DEFAULT 'INHOUSE' NOT NULL;

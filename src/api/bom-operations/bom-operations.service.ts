@@ -81,6 +81,7 @@ export class BomOperationsService {
       .values({
         bomItemId,
         operationId: reqDto.operationId,
+        type: reqDto.type,
         sortOrder: reqDto.sortOrder ?? 0,
         note: reqDto.note,
         createdBy: userId,

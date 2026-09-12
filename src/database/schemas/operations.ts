@@ -11,9 +11,11 @@ import {
 import { users } from './identity-access/users';
 
 /** Which lane a công đoạn (operation) runs in: `INHOUSE` is performed on the factory floor,
- * `OUTSOURCE` is sent to a supplier (gia công ngoài) — the master flag the "Gia công ngoài"
- * screen filters on (`GET /operations?type=OUTSOURCE`). No routing/BOM step overrides this value —
- * `routing_operations`/`bom_operations` don't carry their own `type` column. */
+ * `OUTSOURCE` is sent to a supplier (gia công ngoài). The real, load-bearing value lives per
+ * attachment on `routing_operations.type`/`bom_operations.type` (the same catalog operation can be
+ * Inhouse on one routing and Outsource on another) — `operations.type` here is only the default
+ * suggestion pre-filled when attaching, plus the value the "Gia công ngoài" catalog screen filters
+ * on (`GET /operations?type=OUTSOURCE`). See `docs/decisions/routing-operation-type-per-attachment.md`. */
 export enum OperationType {
   INHOUSE = 'INHOUSE',
   OUTSOURCE = 'OUTSOURCE',

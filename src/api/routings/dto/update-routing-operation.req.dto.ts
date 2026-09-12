@@ -1,9 +1,14 @@
+import { OperationType } from '../../../database/schemas';
 import {
+  EnumFieldOptional,
   NumberFieldOptional,
   StringFieldOptional,
 } from '../../../decorators/field.decorators';
 
 export class UpdateRoutingOperationReqDto {
+  @EnumFieldOptional(() => OperationType)
+  readonly type?: OperationType;
+
   @NumberFieldOptional({ int: true, min: 0 })
   readonly sortOrder?: number;
 

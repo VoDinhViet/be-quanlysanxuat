@@ -61,7 +61,11 @@ export class ProductionExecutionService {
   ) {}
 
   /** Một dòng / công đoạn (`operations`, master data) có ít nhất 1 Job khớp bộ lọc — không gộp gì
-   * theo `type`, `operationId` là id thật của `operations`. */
+   * theo `type`, `operationId` là id thật của `operations`. `type` trả về là giá trị danh mục
+   * (`operations.type`, chỉ còn là gợi ý mặc định) — có thể khác `type` thật của từng dòng
+   * `production_job_operations` bên dưới nếu nó đã được chọn khác lúc gắn vào BOM/routing
+   * (`docs/decisions/routing-operation-type-per-attachment.md`); nhóm theo `operations.id` nên
+   * không có cách hiện đúng type từng Job ở đây mà không đổi hẳn cách gộp. */
   async getOperations(
     reqDto: GetProductionExecutionOperationsReqDto,
   ): Promise<ProductionExecutionOperationResDto[]> {

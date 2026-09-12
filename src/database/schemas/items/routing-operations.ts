@@ -8,7 +8,7 @@ import {
   varchar,
 } from 'drizzle-orm/pg-core';
 
-import { operations } from '../operations';
+import { operations, OperationType, operationTypeEnum } from '../operations';
 import { routings } from './routings';
 import { users } from '../identity-access/users';
 
@@ -18,6 +18,9 @@ import { users } from '../identity-access/users';
  * Rules:
  * - No uniqueness on `(routingId, operationId)`: a real routing can revisit the same operation
  *   more than once (e.g. Kiểm tra → Gia công → Kiểm tra).
+ * - `type` là quyết định thật cho bước này (Inhouse/Outsource) — độc lập với `operations.type` của
+ *   công đoạn danh mục, chỉ trùng lúc tạo vì FE prefill theo giá trị đó
+ *   (`docs/decisions/routing-operation-type-per-attachment.md`).
  */
 export const routingOperations = pgTable(
   'routing_operations',
@@ -32,6 +35,7 @@ export const routingOperations = pgTable(
     operationId: uuid('operation_id')
       .notNull()
       .references(() => operations.id, { onDelete: 'restrict' }),
+    type: operationTypeEnum('type').notNull().default(OperationType.INHOUSE),
     // STT chạy — deterministic step ordering, tiebreak by createdAt, mirroring
     // `bom_operations.sortOrder`.
     sortOrder: integer('sort_order').notNull().default(0),
