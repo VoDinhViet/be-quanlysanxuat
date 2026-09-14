@@ -26,6 +26,7 @@ export enum DocumentType {
   SUPPLIER_RETURN = 'SUPPLIER_RETURN',
   PAYMENT_REQUEST = 'PAYMENT_REQUEST',
   UNIT = 'UNIT',
+  OPERATION = 'OPERATION',
 }
 
 /**

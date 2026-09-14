@@ -118,13 +118,14 @@ phân loại (`docs/decisions/items-merge.md`). Hệ thống chỉ một kho v�
 ## Thứ tự ghi của các luồng bắc cầu nhiều module
 
 **Tạo item** (`ItemsService.createItem`): transaction cấp mã (`document_sequences`) + `INSERT items`
-+ `INSERT item_files` nếu gửi `fileIds`. `boms`/`routings` **không** tạo ở bước này — cả hai sinh
-lười (get-or-create) ngay trong transaction ghi dòng đầu tiên: BOM qua
-`POST /items/:itemId/bom/items`, `bom_operations` qua `.../bom/items/:bomItemId/operations` (luôn
-gắn node WIP có sẵn), routing Cấp 0 qua `POST /items/:itemId/operations`. `POST /:id/copy` (chỉ
-FG/WIP, `E110` nếu RM) đọc cả cây `bom_items` + `item_files` gốc rồi ghi lại toàn bộ (kể cả header
-`boms`) trong một transaction, gắn `clonedFromItemId`; **không** clone routing Cấp 0/`bom_operations`.
-Chi tiết: `docs/workflows/product-setup.md`.
+
+- `INSERT item_files` nếu gửi `fileIds`. `boms`/`routings` **không** tạo ở bước này — cả hai sinh
+  lười (get-or-create) ngay trong transaction ghi dòng đầu tiên: BOM qua
+  `POST /items/:itemId/bom/items`, `bom_operations` qua `.../bom/items/:bomItemId/operations` (luôn
+  gắn node WIP có sẵn), routing Cấp 0 qua `POST /items/:itemId/operations`. `POST /:id/copy` (chỉ
+  FG/WIP, `E110` nếu RM) đọc cả cây `bom_items` + `item_files` gốc rồi ghi lại toàn bộ (kể cả header
+  `boms`) trong một transaction, gắn `clonedFromItemId`; **không** clone routing Cấp 0/`bom_operations`.
+  Chi tiết: `docs/workflows/product-setup.md`.
 
 **Duyệt đơn hàng** (`OrdersService.approveOrder`, chỉ từ `PENDING_CONFIRMATION` — `E074`): đọc
 `getStockLevels` (trước tx) → tx: `orders.status = AWAITING_PRODUCTION` →
@@ -255,7 +256,7 @@ Những sự thật này không nằm trọn trong một `docs/domains/<x>.md` n
   `items` có cả `imageFileId` lẫn bảng `item_files` (đính kèm nhiều file). Chi tiết:
   `docs/decisions/files-registry.md`.
 - **Mọi FK "ai đã làm việc này"** trỏ `users.id`, không phải `credentials.id`.
-- **Mã chứng từ tự sinh của 21 loại chứng từ** đọc số qua bảng đếm dùng chung `document_sequences`
+- **Mã chứng từ tự sinh của 22 loại chứng từ** đọc số qua bảng đếm dùng chung `document_sequences`
   (`generateDocumentSequence`, `src/common/utils/document-sequence.util.ts`) — 1 câu
   `INSERT ... ON CONFLICT DO UPDATE ... RETURNING` atomic theo `(documentType, year)`, bắt buộc gọi
   trong transaction của lượt tạo. `outbound_orders` mượn cột `year` làm khoá reset-theo-ngày, encode

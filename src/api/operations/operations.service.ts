@@ -2,12 +2,16 @@ import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { and, asc, eq, isNull, ne } from 'drizzle-orm';
 
+import {
+  DocumentType,
+  generateDocumentSequence,
+} from '../../common/utils/document-sequence.util';
 import { hasFields } from '../../common/utils/object.util';
 import { extractPostgresError } from '../../common/utils/postgres-error.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
-import type { Database } from '../../database/database.type';
+import type { Database, DbTransaction } from '../../database/database.type';
 import {
   bomOperations,
   operations,
@@ -62,13 +66,15 @@ export class OperationsService {
     reqDto: CreateOperationReqDto,
     userId: string,
   ): Promise<void> {
-    await this.validateCodeUniqueness(reqDto.code);
-
     try {
-      await this.db.insert(operations).values({ ...reqDto, createdBy: userId });
+      await this.db.transaction(async (tx) => {
+        const code = await this.generateOperationCode(tx);
+        await tx
+          .insert(operations)
+          .values({ ...reqDto, code, createdBy: userId });
+      });
     } catch (error) {
-      // Mã client tự gửi vẫn còn TOCTOU giữa `validateCodeUniqueness` và `INSERT` — bắt ở đây thay
-      // vì để lỗi Postgres thô 500 lọt ra ngoài.
+      // Chốt chặn unique constraint cho race giữa 2 request cùng lúc cấp trùng số.
       if (extractPostgresError(error)?.code === '23505') {
         throw new AppException(ErrorCode.E047, HttpStatus.CONFLICT);
       }
@@ -159,5 +165,11 @@ export class OperationsService {
     if (usedInRouting || usedInBom) {
       throw new AppException(ErrorCode.E248, HttpStatus.CONFLICT);
     }
+  }
+
+  private async generateOperationCode(tx: DbTransaction): Promise<string> {
+    const sequence = await generateDocumentSequence(tx, DocumentType.OPERATION);
+
+    return `OP${String(sequence).padStart(4, '0')}`;
   }
 }

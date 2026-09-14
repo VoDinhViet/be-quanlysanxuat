@@ -25,11 +25,11 @@ thật, không bảng giá theo thời gian) ở `docs/decisions/purchasing-scop
 
 ## Entities
 
-| Entity | Vai trò | Ai tham chiếu |
-| --- | --- | --- |
-| `clients` (+ `client_contacts`) | Khách hàng và danh bạ liên hệ | `orders.clientId`, `outbound_orders.clientId` |
-| `suppliers` (+ payment info, representatives, files) | Nhà cung cấp | `items.supplierId` (chính, RM); `purchase_orders`/`purchase_quotation_item_suppliers`/`quality_inspections`/`outsourcing_orders`/`supplier_returns`/`inventory_receipts.supplierId` |
-| Danh mục nhỏ (5 chỉ-đọc + `operations`) | Phân loại + cơ cấu tổ chức + công đoạn | `clients`/`suppliers`/`items`/`users`/routing/BOM |
+| Entity                                               | Vai trò                                | Ai tham chiếu                                                                                                                                                                       |
+| ---------------------------------------------------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `clients` (+ `client_contacts`)                      | Khách hàng và danh bạ liên hệ          | `orders.clientId`, `outbound_orders.clientId`                                                                                                                                       |
+| `suppliers` (+ payment info, representatives, files) | Nhà cung cấp                           | `items.supplierId` (chính, RM); `purchase_orders`/`purchase_quotation_item_suppliers`/`quality_inspections`/`outsourcing_orders`/`supplier_returns`/`inventory_receipts.supplierId` |
+| Danh mục nhỏ (5 chỉ-đọc + `operations`)              | Phân loại + cơ cấu tổ chức + công đoạn | `clients`/`suppliers`/`items`/`users`/routing/BOM                                                                                                                                   |
 
 `supplier_payment_info` là 1-1, merge từng phần khi update; `supplier_representatives`/
 `supplier_files` là replace-all.
@@ -46,6 +46,8 @@ delete qua `deletedAt`, chặn `E248` nếu đang dùng).
 - **Mã KH do người dùng tự đặt** — `POST /clients` bắt buộc gửi `code`, không đi qua
   `document_sequences`. **Mã NCC vẫn tự sinh** (`NCC` + số qua `document_sequences`) như mọi
   chứng từ khác. Cả hai sửa được qua `PATCH`.
+- **Mã công đoạn tự sinh** (`OP` + số qua `document_sequences`) — `POST /operations` không nhận
+  `code`; sửa được qua `PATCH`.
 - `taxCode` của NCC duy nhất.
 - Logo/đính kèm qua registry `files` — ngoại lệ duy nhất `countries.logoUrl` (URL trần, tài nguyên
   tĩnh bên thứ ba).
