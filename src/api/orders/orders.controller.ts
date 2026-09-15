@@ -130,13 +130,14 @@ export class OrdersController {
   @Post()
   @Permissions('orders:create')
   @ApiAuth({
+    type: OrderResDto,
     summary: 'Create order',
-    statusCode: HttpStatus.NO_CONTENT,
+    statusCode: HttpStatus.CREATED,
   })
   createOrder(
     @Body() reqDto: CreateOrderReqDto,
     @CurrentUser() payload: JwtPayloadType,
-  ): Promise<void> {
+  ): Promise<OrderResDto> {
     return this.ordersService.createOrder(reqDto, payload.userId);
   }
 

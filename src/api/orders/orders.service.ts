@@ -484,7 +484,10 @@ export class OrdersService {
     }
   }
 
-  async createOrder(reqDto: CreateOrderReqDto, userId: string): Promise<void> {
+  async createOrder(
+    reqDto: CreateOrderReqDto,
+    userId: string,
+  ): Promise<OrderResDto> {
     if (reqDto.clientId) {
       await this.ensureClientExists(reqDto.clientId);
     }
@@ -503,7 +506,7 @@ export class OrdersService {
 
     // Order, dòng, đính kèm và total dẫn xuất từ dòng phải vào cùng lúc — nếu không, insert dòng
     // lỗi sẽ để lại một order đã commit với `total = 0` không bao giờ được tính lại.
-    await this.db.transaction(async (tx) => {
+    const orderId = await this.db.transaction(async (tx) => {
       const code = await this.generateOrderCode(tx);
       const [order] = await tx
         .insert(orders)
@@ -532,7 +535,11 @@ export class OrdersService {
       }
 
       await this.recalculateTotals(tx, order.id);
+
+      return order.id;
     });
+
+    return this.getOrder(orderId);
   }
 
   async updateOrder(orderId: string, reqDto: UpdateOrderReqDto): Promise<void> {

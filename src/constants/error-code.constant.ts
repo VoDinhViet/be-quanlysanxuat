@@ -593,6 +593,14 @@ export enum ErrorCode {
   E264 = 'order.error.not_deletable',
   // SL báo giá phân bổ cho một dòng ĐXMH vượt quá SL cần mua còn lại.
   E265 = 'purchase_quotation_item.error.quantity_exceeded',
+  // `POST /departments`/`PATCH /departments/:id` khi `code` đã tồn tại ở phòng ban khác.
+  E266 = 'department.error.code_exists',
+  // `DELETE /departments/:id` khi còn `positions`/`users` trỏ tới.
+  E267 = 'department.error.in_use',
+  // `POST /positions`/`PATCH /positions/:id` khi `code` đã tồn tại ở chức vụ khác.
+  E268 = 'position.error.code_exists',
+  // `DELETE /positions/:id` khi còn `users` trỏ tới.
+  E269 = 'position.error.in_use',
   V003 = 'common.error.too_many_requests',
   // `GlobalExceptionFilter` bắt chuỗi "No values to set" của drizzle-orm — mọi `PATCH` khi
   // `ValidationPipe` whitelist đã loại sạch field lạ, còn lại payload rỗng cho `.set()`. Trước đây

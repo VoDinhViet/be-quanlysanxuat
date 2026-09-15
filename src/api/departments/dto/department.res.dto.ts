@@ -1,6 +1,11 @@
 import { Exclude, Expose } from 'class-transformer';
 
-import { StringField, UUIDField } from '../../../decorators/field.decorators';
+import {
+  BooleanField,
+  DateField,
+  StringField,
+  UUIDField,
+} from '../../../decorators/field.decorators';
 
 @Exclude()
 export class DepartmentResDto {
@@ -15,4 +20,16 @@ export class DepartmentResDto {
   @Expose()
   @StringField({ description: 'Department name, e.g. Phòng Kỹ thuật' })
   name!: string;
+
+  @Expose()
+  @BooleanField({ description: 'Active status' })
+  isActive!: boolean;
+
+  @Expose()
+  @DateField({ description: 'Created at' })
+  createdAt!: Date;
+
+  @Expose()
+  @DateField({ description: 'Updated at' })
+  updatedAt!: Date;
 }

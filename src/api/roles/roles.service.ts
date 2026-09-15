@@ -24,6 +24,8 @@ import { PermissionsService } from '../auth/permissions.service';
 import { CreateRoleReqDto } from './dto/create-role.req.dto';
 import { GetRolesReqDto } from './dto/get-roles.req.dto';
 import { RoleResDto } from './dto/role.res.dto';
+import { PermissionGroupResDto } from './dto/permission-catalogue.res.dto';
+import { PERMISSION_CATALOGUE_GROUPS } from '../../constants/permission.constant';
 import { UpdateRoleReqDto } from './dto/update-role.req.dto';
 
 @Injectable()
@@ -56,6 +58,14 @@ export class RolesService implements OnModuleInit {
         );
       }
     }
+  }
+
+
+  getPermissionCatalogue(): PermissionGroupResDto[] {
+    return plainToInstance(
+      PermissionGroupResDto,
+      PERMISSION_CATALOGUE_GROUPS,
+    );
   }
 
   async getRoles(reqDto: GetRolesReqDto): Promise<RoleResDto[]> {

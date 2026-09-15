@@ -18,6 +18,7 @@ import { Permissions } from '../../decorators/permissions.decorator';
 import { CreateRoleReqDto } from './dto/create-role.req.dto';
 import { GetRolesReqDto } from './dto/get-roles.req.dto';
 import { RoleResDto } from './dto/role.res.dto';
+import { PermissionGroupResDto } from './dto/permission-catalogue.res.dto';
 import { UpdateRoleReqDto } from './dto/update-role.req.dto';
 import { RolesService } from './roles.service';
 
@@ -35,6 +36,18 @@ export class RolesController {
   })
   getRoles(@Query() reqDto: GetRolesReqDto): Promise<RoleResDto[]> {
     return this.rolesService.getRoles(reqDto);
+  }
+
+
+  @Get('permissions')
+  @Permissions('roles:read')
+  @ApiAuth({
+    type: PermissionGroupResDto,
+    summary: 'Get permission catalogue for role configuration matrix',
+    isArray: true,
+  })
+  getPermissionCatalogue(): PermissionGroupResDto[] {
+    return this.rolesService.getPermissionCatalogue();
   }
 
   @Get(':roleId')
