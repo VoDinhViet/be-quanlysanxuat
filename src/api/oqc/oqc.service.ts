@@ -29,12 +29,12 @@ import {
   IqcInspectionLevel,
   IqcResult,
   items,
-  ItemType,
   OperationType,
   OqcDisposition,
   OqcStatus,
   orders,
   productionJobBomItems,
+  ProductionJobBomItemType,
   productionJobOperations,
   productionJobs,
   productionOrders,
@@ -417,7 +417,7 @@ export class OqcService {
         productionJobBomItems,
         and(
           eq(productionJobBomItems.productionJobId, productionJobs.id),
-          eq(productionJobBomItems.itemType, ItemType.FG),
+          eq(productionJobBomItems.itemType, ProductionJobBomItemType.FG),
         ),
       )
       .leftJoin(
@@ -466,7 +466,7 @@ export class OqcService {
       .where(
         and(
           eq(productionJobBomItems.productionJobId, jobId),
-          eq(productionJobBomItems.itemType, ItemType.FG),
+          eq(productionJobBomItems.itemType, ProductionJobBomItemType.FG),
           ne(productionJobOperations.type, OperationType.OUTSOURCE),
           isNull(productionJobOperations.completedDate),
         ),

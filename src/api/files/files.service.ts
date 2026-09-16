@@ -38,14 +38,50 @@ export class FilesService {
     'image/gif',
   ];
 
-  // Cố ý loại định dạng Office nhị phân cũ (application/msword, application/vnd.ms-excel) —
-  // `file-type` không có magic-byte signature cho container OLE2/CFB cũ, nên .doc/.xls thật không
-  // phân biệt được với file giả mạo đổi tên. Office hiện đại mặc định dùng OOXML bên dưới, phát
-  // hiện được.
+  // Cho phép các định dạng tài liệu văn phòng, trình chiếu, bản vẽ kỹ thuật, biểu mẫu và file nén
+  // phổ biến có magic-bytes được `file-type` nhận diện an toàn.
+  // Cố ý loại định dạng Office nhị phân cũ (.doc, .xls, .ppt OLE2/CFB) vì không phân biệt được với file
+  // giả mạo, và loại bỏ các file macro (.docm, .xlsm, .pptm) nhằm ngăn chặn mã độc / script.
   private static readonly DOCUMENT_MIME_TYPES = [
+    // PDF & Văn bản
     'application/pdf',
+    'application/rtf',
+    'application/epub+zip',
+
+    // Microsoft Office OOXML (Word, Excel, PowerPoint & Templates)
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.template',
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.template',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'application/vnd.openxmlformats-officedocument.presentationml.slideshow',
+    'application/vnd.openxmlformats-officedocument.presentationml.template',
+
+    // OpenDocument (LibreOffice / OpenOffice)
+    'application/vnd.oasis.opendocument.text',
+    'application/vnd.oasis.opendocument.text-template',
+    'application/vnd.oasis.opendocument.spreadsheet',
+    'application/vnd.oasis.opendocument.spreadsheet-template',
+    'application/vnd.oasis.opendocument.presentation',
+    'application/vnd.oasis.opendocument.presentation-template',
+    'application/vnd.oasis.opendocument.graphics',
+
+    // Bản vẽ kỹ thuật & Sơ đồ (AutoCAD, Visio)
+    'image/vnd.dwg',
+    'application/vnd.visio',
+
+    // Apple iWork (Pages, Numbers, Keynote)
+    'application/vnd.apple.pages',
+    'application/vnd.apple.numbers',
+    'application/vnd.apple.keynote',
+
+    // Tệp nén / Lưu trữ (Archives)
+    'application/zip',
+    'application/x-rar-compressed',
+    'application/x-7z-compressed',
+    'application/x-tar',
+    'application/gzip',
+    'application/x-bzip2',
   ];
 
   // `EVIDENCE` = ảnh ∪ tài liệu — bằng chứng IQC vừa có ảnh chụp thực tế vừa có tài liệu đo

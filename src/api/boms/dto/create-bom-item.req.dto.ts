@@ -1,14 +1,38 @@
+import { BomType } from '../../../database/schemas';
 import {
+  EnumField,
   NumberField,
   NumberFieldOptional,
   StringFieldOptional,
-  UUIDField,
   UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
 
 export class CreateBomItemReqDto {
-  @UUIDField({ description: 'Id of the linked item (WIP hoặc RM)' })
-  readonly itemId!: string;
+  @EnumField(() => BomType, {
+    description:
+      'COMPONENT: node cấu trúc con — gửi code + name, không gửi itemId; CONSUMABLE: lá vật tư — gửi itemId, ' +
+      'không gửi code/name. Sai hình dạng → E271',
+  })
+  readonly type!: BomType;
+
+  @UUIDFieldOptional({
+    description:
+      'Id vật tư (type = CONSUMABLE) — phải là item type CONSUMABLE (E270)',
+  })
+  readonly itemId?: string;
+
+  @StringFieldOptional({
+    maxLength: 50,
+    description:
+      'Mã node (type = COMPONENT) — nhập tay, riêng cho vị trí này trong cây',
+  })
+  readonly code?: string;
+
+  @StringFieldOptional({
+    maxLength: 255,
+    description: 'Tên node (type = COMPONENT)',
+  })
+  readonly name?: string;
 
   @UUIDFieldOptional({
     nullable: true,
@@ -20,7 +44,7 @@ export class CreateBomItemReqDto {
   @NumberField({
     isPositive: true,
     description:
-      'SL — nguyên nếu itemId là WIP (E055 nếu lẻ), có thể lẻ nếu itemId là RM',
+      'SL — nguyên nếu type là COMPONENT (E055 nếu lẻ), có thể lẻ nếu type là CONSUMABLE',
   })
   readonly quantity!: number;
 

@@ -5,6 +5,7 @@ import {
   index,
   integer,
   numeric,
+  pgEnum,
   pgTable,
   timestamp,
   uniqueIndex,
@@ -13,26 +14,48 @@ import {
 } from 'drizzle-orm/pg-core';
 
 import { files } from '../files';
-import { itemTypeEnum, items } from '../items/items';
+import { items } from '../items/items';
 import { productionJobOperations } from './production-job-operations';
 import { productionJobs } from './production-jobs';
 
 /**
- * Snapshot cây BOM của một Job — nhân bản `bom_items` (cả node WIP lẫn lá RM) trong transaction
- * duyệt LSX (`ProductionJobsService.createJobs`), id hoàn toàn mới. Đóng băng, không có route sửa —
- * sửa/xoá BOM gốc sau đó không ảnh hưởng Job đã duyệt.
+ * `FG` — node "Cấp 0" đại diện chính thành phẩm (đúng 1 mỗi Job); `COMPONENT`/`CONSUMABLE` — nhân
+ * bản từ `bom_items.type` (`docs/decisions/wip-removal.md`). Enum riêng, không dùng chung
+ * `ItemType`: `items.type` không còn giá trị nào cho node cấu trúc con.
+ */
+export enum ProductionJobBomItemType {
+  FG = 'FG',
+  COMPONENT = 'COMPONENT',
+  CONSUMABLE = 'CONSUMABLE',
+}
+
+export const productionJobBomItemTypeEnum = pgEnum(
+  'production_job_bom_item_type',
+  [
+    ProductionJobBomItemType.FG,
+    ProductionJobBomItemType.COMPONENT,
+    ProductionJobBomItemType.CONSUMABLE,
+  ],
+);
+
+/**
+ * Snapshot cây BOM của một Job — nhân bản `bom_items` (cả node COMPONENT lẫn lá CONSUMABLE) trong
+ * transaction duyệt LSX (`ProductionJobsService.createJobs`), id hoàn toàn mới. Đóng băng, không
+ * có route sửa — sửa/xoá BOM gốc sau đó không ảnh hưởng Job đã duyệt.
  *
  * Rules:
  * - `code`/`name` là **snapshot text**, nguồn hiển thị chính — KHÔNG đọc qua `itemId` lúc render.
  *   `itemId` chỉ còn là liên kết tham khảo tới item gốc (`set null` khi bị xoá), không phải nguồn
- *   dữ liệu.
- * - `itemType` chủ yếu `WIP`/`RM` (nhân bản từ `bom_items`), cộng **đúng một** node `FG` mỗi Job —
+ *   dữ liệu — và luôn NULL với node `COMPONENT` (node đó không phải một item).
+ * - `itemType` chủ yếu `COMPONENT`/`CONSUMABLE` (nhân bản từ `bom_items`), cộng **đúng một** node
+ *   `FG` mỗi Job —
  *   node "Cấp 0" đại diện chính thành phẩm, mang routing lắp ráp/đóng gói của FG
  *   (`ProductionJobsService.copyBomTree`, xem `docs/decisions/oqc-per-operation.md` mục "Đừng hoàn
  *   lại"). Node FG luôn `parentId = null`, `sortOrder` lớn nhất trong Job (đứng cuối bảng "Công
- *   đoạn sản xuất"); phân biệt với node top-level thật (cũng `parentId = null`) bằng `itemType`, chỉ
- *   tạo khi item FG có khai routing Cấp 0 (`routings`/`routing_operations`) — dùng chung enum
- *   `ItemType` với `items.type` thay vì một enum riêng.
+ *   đoạn sản xuất") — snapshot riêng của Job này, không lẫn với node ROOT thật của `bom_items`
+ *   (`docs/decisions/root-bom-item.md`, cây gốc đã có `parentId` cho mọi node khác ROOT nên không
+ *   còn node nào khác trùng `parentId = null` để phân biệt); chỉ tạo khi node ROOT của FG có
+ *   `bom_operations` (routing Cấp 0).
  * - `level` là snapshot copy nguyên từ `bom_items.level` lúc duyệt LSX, cùng quy ước 1-based (node
  *   FG dùng `0`, ngoài quy ước này có chủ ý — không phải một cấp của cây con) — cây Job nhỏ, dựng
  *   trong bộ nhớ lúc đọc qua `parentId` (`ProductionJobsService`, mirror `BomsService`), không cần
@@ -58,7 +81,7 @@ export const productionJobBomItems = pgTable(
       (): AnyPgColumn => productionJobBomItems.id,
       { onDelete: 'cascade' },
     ),
-    itemType: itemTypeEnum('item_type').notNull(),
+    itemType: productionJobBomItemTypeEnum('item_type').notNull(),
     code: varchar('code', { length: 50 }).notNull(),
     name: varchar('name', { length: 255 }).notNull(),
     quantity: numeric('quantity', {
@@ -90,13 +113,14 @@ export const productionJobBomItems = pgTable(
     index('idx_production_job_bom_items_image_file_id').on(table.imageFileId),
     check(
       'chk_production_job_bom_items_item_type',
-      sql`item_type IN ('FG', 'WIP', 'RM')`,
+      sql`item_type IN ('FG', 'COMPONENT', 'CONSUMABLE')`,
     ),
     check('chk_production_job_bom_items_quantity_positive', sql`quantity > 0`),
     // Mỗi Job nhiều nhất một node Cấp 0 (FG) — cắm routing lắp ráp/đóng gói của thành phẩm.
-    // Literal 'FG' (không interpolate `${ItemType.FG}`) — một partial index predicate không được
-    // là bound parameter, `drizzle-kit generate` sẽ sinh ra `$1` không hợp lệ trong DDL đứng một
-    // mình (khác `uq_items_code_active` không dính vấn đề này vì vế nó không có biến).
+    // Literal 'FG' (không interpolate `${ProductionJobBomItemType.FG}`) — một partial index
+    // predicate không được là bound parameter, `drizzle-kit generate` sẽ sinh ra `$1` không hợp lệ
+    // trong DDL đứng một mình (khác `uq_items_code_revision_active` không dính vấn đề này vì vế nó
+    // không có biến).
     uniqueIndex('uq_production_job_bom_items_final_assembly')
       .on(table.productionJobId)
       .where(sql`item_type = 'FG'`),

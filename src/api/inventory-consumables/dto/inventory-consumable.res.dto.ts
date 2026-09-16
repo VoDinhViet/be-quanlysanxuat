@@ -12,10 +12,10 @@ import { SupplierRefResDto } from '../../suppliers/dto/supplier-ref.res.dto';
 import { UnitRefResDto } from '../../units/dto/unit-ref.res.dto';
 
 /** Không trả `status` đã suy diễn — FE tự tính từ `available`/`minStock` (ba ngưỡng
- * NORMAL/WARNING/SHORTAGE, `docs/domains/inventory.md`). `GET /inventory-materials?status=` vẫn
- * lọc được, filter chạy thẳng trên SQL. */
+ * NORMAL/WARNING/SHORTAGE, `docs/domains/inventory.md`). `GET /inventory-consumables?status=`
+ * vẫn lọc được, filter chạy thẳng trên SQL. */
 @Exclude()
-export class InventoryMaterialResDto {
+export class InventoryConsumableResDto {
   @Expose()
   @UUIDField({ description: 'Item id' })
   id!: string;

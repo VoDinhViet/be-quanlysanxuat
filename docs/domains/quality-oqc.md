@@ -20,7 +20,7 @@ relation lúc `GET`.
 
 **Node Cấp 0** (bước lắp ráp/đóng gói cuối) là một công đoạn `INHOUSE` bình thường — mỗi Job có thêm
 đúng 1 node `itemType = 'FG'` (khi item FG có khai routing Cấp 0), đứng cuối cây, mang chính công
-đoạn Cấp 0. OQC gắn vào công đoạn của node này y hệt mọi node WIP khác, không route/bảng riêng
+đoạn Cấp 0. OQC gắn vào công đoạn của node này y hệt mọi node `COMPONENT` khác, không route/bảng riêng
 (`docs/decisions/oqc-per-operation.md`, mục "QC cho Cấp 0"). Gate nhập kho TP (`E209`) đọc cờ
 `isFinalAssembly` qua `itemType = 'FG'` của node này.
 

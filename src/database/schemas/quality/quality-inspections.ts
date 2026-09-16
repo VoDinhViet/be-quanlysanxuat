@@ -73,9 +73,14 @@ export const qualityInspections = pgTable(
       () => productionJobOperations.id,
       { onDelete: 'restrict' },
     ),
-    itemId: uuid('item_id')
-      .notNull()
-      .references(() => items.id, { onDelete: 'restrict' }),
+    // NULL khi lô kiểm là node COMPONENT nhận về từ OS-IN (không phải một item,
+    // `docs/decisions/wip-removal.md`) — khi đó `itemCode`/`itemName` là nguồn hiển thị; các nguồn
+    // khác (kho, tay, OQC) vẫn luôn có `itemId`.
+    itemId: uuid('item_id').references(() => items.id, {
+      onDelete: 'restrict',
+    }),
+    itemCode: varchar('item_code', { length: 50 }),
+    itemName: varchar('item_name', { length: 255 }),
     quantity: numeric('quantity', {
       precision: 18,
       scale: 3,

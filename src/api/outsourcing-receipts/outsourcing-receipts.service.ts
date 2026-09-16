@@ -65,7 +65,9 @@ type ResolvedReceiptItem = {
   // Phiếu OS-OUT chứa dòng nguồn — dùng để gọi `recomputeOutsourcingOrderStatus` sau khi insert
   // (`createOutsourcingReceipt`), không phải cột ghi xuống `outsourcing_receipt_items`.
   outsourcingOrderId: string;
-  itemId: string;
+  itemCode: string;
+  itemName: string;
+  itemId: string | null;
   quantity: number;
   weight: number | null;
   area: number | null;
@@ -222,8 +224,8 @@ export class OutsourcingReceiptsService {
         outsourcingOrders,
         eq(outsourcingOrders.id, outsourcingOrderItems.outsourcingOrderId),
       )
-      .innerJoin(items, eq(items.id, outsourcingReceiptItems.itemId))
-      .innerJoin(units, eq(units.id, items.unitId))
+      .leftJoin(items, eq(items.id, outsourcingReceiptItems.itemId))
+      .leftJoin(units, eq(units.id, items.unitId))
       .where(
         eq(outsourcingReceiptItems.outsourcingReceiptId, outsourcingReceiptId),
       )
@@ -248,6 +250,8 @@ export class OutsourcingReceiptsService {
         ? or(
             unaccentILike(outsourcingOrderItems.operationCode, keyword),
             unaccentILike(outsourcingOrderItems.operationName, keyword),
+            unaccentILike(outsourcingOrderItems.itemCode, keyword),
+            unaccentILike(outsourcingOrderItems.itemName, keyword),
             unaccentILike(outsourcingOrders.code, keyword),
           )
         : undefined,
@@ -264,6 +268,8 @@ export class OutsourcingReceiptsService {
           outsourcingOrder: getTableColumns(outsourcingOrders),
           supplier: getTableColumns(suppliers),
           jobCode: productionJobs.code,
+          itemCode: outsourcingOrderItems.itemCode,
+          itemName: outsourcingOrderItems.itemName,
           item: getTableColumns(items),
           unit: getTableColumns(units),
           operationCode: outsourcingOrderItems.operationCode,
@@ -286,8 +292,8 @@ export class OutsourcingReceiptsService {
           productionJobs,
           eq(productionJobs.id, outsourcingOrderItems.productionJobId),
         )
-        .innerJoin(items, eq(items.id, outsourcingOrderItems.itemId))
-        .innerJoin(units, eq(units.id, items.unitId))
+        .leftJoin(items, eq(items.id, outsourcingOrderItems.itemId))
+        .leftJoin(units, eq(units.id, items.unitId))
         .leftJoin(
           receivedQuantityByItem,
           eq(
@@ -319,8 +325,8 @@ export class OutsourcingReceiptsService {
 
   /** Không còn nháp — tạo là nhận luôn: resolve/validate xong thì `INSERT` header thẳng `POSTED`,
    * sinh IQC nếu `requiresIqc` ngay sau đó, rồi `recomputeOutsourcingOrderStatus` cho từng OS-OUT
-   * nguồn (SL đã nhận vừa đổi). Không đụng `inventory_balances` — hàng nhận về là cùng WIP đã trừ ở
-   * OS-OUT, kho không quản tồn WIP (`docs/decisions/wip-not-stocked.md`). */
+   * nguồn (SL đã nhận vừa đổi). Không đụng `inventory_balances` — hàng nhận về là node COMPONENT của
+   * Job, không phải item, không có tồn (`docs/decisions/wip-not-stocked.md`). */
   async createOutsourcingReceipt(
     reqDto: CreateOutsourcingReceiptReqDto,
     userId: string,
@@ -366,7 +372,7 @@ export class OutsourcingReceiptsService {
         )
         .returning();
 
-      // Hàng đã về nhà máy vật lý (không phải ghi tồn — kho không quản tồn WIP) ngay khi lập phiếu,
+      // Hàng đã về nhà máy vật lý (không phải ghi tồn — node COMPONENT không có tồn) ngay khi lập phiếu,
       // nên sinh IQC ở đây không gate việc `create`, khác nhánh IQC của phiếu nhập mua (`confirm`
       // mới là nơi gate, `.claude/rules/service.md`). `insertedItems`/`resolvedItems` cùng thứ tự —
       // cùng xây từ một `.map()` trên `resolvedItems`, Postgres giữ nguyên thứ tự RETURNING cho
@@ -379,6 +385,8 @@ export class OutsourcingReceiptsService {
           lines: insertedItems.map((item, index) => ({
             outsourcingReceiptItemId: item.id,
             itemId: item.itemId,
+            itemCode: item.itemCode,
+            itemName: item.itemName,
             quantity: item.quantity,
             productionJobId: resolvedItems[index].productionJobId,
             productionJobOperationId:
@@ -534,6 +542,8 @@ export class OutsourcingReceiptsService {
       return {
         outsourcingOrderItemId: item.outsourcingOrderItemId,
         outsourcingOrderId: orderItem.outsourcingOrderId,
+        itemCode: orderItem.itemCode,
+        itemName: orderItem.itemName,
         itemId: orderItem.itemId,
         quantity: item.quantity,
         weight: item.weight ?? orderItem.weight,

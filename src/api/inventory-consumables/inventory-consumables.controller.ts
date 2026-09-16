@@ -4,27 +4,27 @@ import { ApiTags } from '@nestjs/swagger';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { ApiAuth } from '../../decorators/http.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
-import { GetInventoryMaterialsReqDto } from './dto/get-inventory-materials.req.dto';
-import { InventoryMaterialResDto } from './dto/inventory-material.res.dto';
-import { InventoryMaterialsService } from './inventory-materials.service';
+import { GetInventoryConsumablesReqDto } from './dto/get-inventory-consumables.req.dto';
+import { InventoryConsumableResDto } from './dto/inventory-consumable.res.dto';
+import { InventoryConsumablesService } from './inventory-consumables.service';
 
-@ApiTags('Inventory Materials')
-@Controller('inventory-materials')
-export class InventoryMaterialsController {
+@ApiTags('Inventory Consumables')
+@Controller('inventory-consumables')
+export class InventoryConsumablesController {
   constructor(
-    private readonly inventoryMaterialsService: InventoryMaterialsService,
+    private readonly inventoryConsumablesService: InventoryConsumablesService,
   ) {}
 
   @Get()
   @Permissions('inventory:read')
   @ApiAuth({
-    type: InventoryMaterialResDto,
+    type: InventoryConsumableResDto,
     summary: 'Tồn kho vật tư (onHand/reserved/bomDemand/available/status)',
     isPaginated: true,
   })
-  getInventoryMaterials(
-    @Query() reqDto: GetInventoryMaterialsReqDto,
-  ): Promise<OffsetPaginatedDto<InventoryMaterialResDto>> {
-    return this.inventoryMaterialsService.getInventoryMaterials(reqDto);
+  getInventoryConsumables(
+    @Query() reqDto: GetInventoryConsumablesReqDto,
+  ): Promise<OffsetPaginatedDto<InventoryConsumableResDto>> {
+    return this.inventoryConsumablesService.getInventoryConsumables(reqDto);
   }
 }

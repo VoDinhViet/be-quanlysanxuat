@@ -40,6 +40,6 @@ Giai đoạn kế tiếp từng dùng URL ký HMAC-SHA256 + hết hạn (1h) ph�
   tầng ký/verify/TTL — không phải bỏ sót.
 - **Không `useStaticAssets`** — từng là quyết định ở đây, nay **đảo ngược**: đổi hẳn sang
   `ServeStaticModule` phục vụ trực tiếp, không qua `GET /files/:id/download` nữa (route đó đã xoá
-  cùng `FilesService.streamFile`). Đánh đổi: tải tài liệu (PDF/DOCX/XLSX) không còn giữ được tên
+  cùng `FilesService.streamFile`). Đánh đổi: tải tài liệu (PDF/DOCX/XLSX/PPTX/Archives...) không còn giữ được tên
   file gốc tiếng Việt (`Content-Disposition` tự set trước đây), chỉ còn tên storage key thô — chấp
   nhận được vì ưu tiên đơn giản.

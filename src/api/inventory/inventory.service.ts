@@ -20,7 +20,6 @@ import {
   inventoryBalances,
   inventoryTransactions,
   items,
-  ItemType,
 } from '../../database/schemas';
 import { reservedQuantitySubquery } from '../inventory-requisitions/inventory-requisitions.query';
 import { outboundHeldQuantityByItemSubquery } from '../outbound-orders/outbound-orders.query';
@@ -34,14 +33,14 @@ import {
 } from './inventory.query';
 
 /** Đọc tồn thô (kho×item) + sổ cái + tra cứu nội bộ dùng bởi các module khác — list Tồn kho thành
- * phẩm/vật tư nay sống ở `inventory-products`/`inventory-materials`
+ * phẩm/vật tư nay sống ở `inventory-products`/`inventory-consumables`
  * (`docs/domains/inventory.md`). */
 @Injectable()
 export class InventoryService {
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
 
   /** Tồn thô theo mặt hàng. `reservedQuantity` KHÔNG đọc cột cùng tên trên `inventory_balances`
-   * (cột đó đã bỏ) — điền số tính động lúc đọc: phiếu lãnh `APPROVED` (RM) cộng DO
+   * (cột đó đã bỏ) — điền số tính động lúc đọc: phiếu lãnh `APPROVED` (CONSUMABLE) cộng DO
    * `DRAFT`/`PENDING_APPROVAL`/`PENDING_DELIVERY` (FG, giữ từ lúc tạo, BUG-087). Hai nguồn loại trừ
    * lẫn nhau theo `items.type` nên cộng thẳng, không cần điều kiện phân loại. Giữ nguyên hợp đồng
    * API cũ, xem `docs/domains/inventory.md`. */
@@ -51,20 +50,15 @@ export class InventoryService {
     const requisitionHeld = reservedQuantitySubquery(this.db);
     const outboundHeld = outboundHeldQuantityByItemSubquery(this.db);
 
-    const where =
-      // Bỏ trống `itemType` = FG/RM (kho không quản tồn WIP,
-      // `docs/decisions/wip-not-stocked.md`) — gửi tường minh `itemType=WIP` vẫn xem được.
-      inArray(
-        inventoryBalances.itemId,
-        this.db
-          .select({ id: items.id })
-          .from(items)
-          .where(
-            reqDto.itemType
-              ? eq(items.type, reqDto.itemType)
-              : inArray(items.type, [ItemType.FG, ItemType.RM]),
-          ),
-      );
+    const where = reqDto.itemType
+      ? inArray(
+          inventoryBalances.itemId,
+          this.db
+            .select({ id: items.id })
+            .from(items)
+            .where(eq(items.type, reqDto.itemType)),
+        )
+      : undefined;
 
     const rmHeldSql = sql<number>`coalesce(${requisitionHeld.reservedQuantity}, 0)`;
     const fgHeldSql = sql<number>`coalesce(${outboundHeld.heldQuantity}, 0)`;
@@ -200,7 +194,7 @@ export class InventoryService {
   }
 
   /** Per-item on-hand, luôn gộp mọi kho. */
-  async getMaterialStockLevels(
+  async getConsumableStockLevels(
     itemIds: string[],
   ): Promise<Map<string, number>> {
     if (!itemIds.length) {

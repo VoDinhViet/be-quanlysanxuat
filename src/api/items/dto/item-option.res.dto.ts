@@ -7,5 +7,6 @@ import { ItemResDto } from './item.res.dto';
 export class ItemOptionResDto extends PickType(ItemResDto, [
   'id',
   'code',
+  'revision',
   'name',
 ] as const) {}

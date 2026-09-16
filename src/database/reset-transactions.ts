@@ -45,8 +45,6 @@ const KEEP_TABLES = [
   'boms',
   'bom_items',
   'bom_operations',
-  'routings',
-  'routing_operations',
   'qc_aql_rules',
   'qc_aql_plans',
 ] as const;
@@ -109,11 +107,11 @@ const WIPE_TABLES = [
 
 // Loại chứng từ cấp mã cho master data đang giữ — reset counter về 0 sẽ đâm vào mã đang sống
 // ngay lần tạo tiếp theo (`items` dùng partial unique index `uq_items_code_active`, và
-// `document-sequences-bootstrap.seed.ts` không phủ ITEM_RM/ITEM_FG_WIP nên không có đường phục
-// hồi tự động).
+// `document-sequences-bootstrap.seed.ts` không phủ ITEM_CONSUMABLE/ITEM_FG nên không có đường
+// phục hồi tự động).
 const KEEP_DOCUMENT_TYPES = [
-  'ITEM_RM',
-  'ITEM_FG_WIP',
+  'ITEM_CONSUMABLE',
+  'ITEM_FG',
   'CLIENT',
   'SUPPLIER',
   'USER',

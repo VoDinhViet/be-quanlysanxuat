@@ -41,7 +41,7 @@ export class GetPurchaseOrdersReqDto extends PageOptionsDto {
   @StringFieldOptional({
     description: 'Tìm theo tên hoặc mã vật tư trong dòng đơn mua',
   })
-  readonly materialKeyword?: string;
+  readonly consumableKeyword?: string;
 
   @DateFieldOptional({ description: 'Filter: orderDate >= startDate' })
   readonly startDate?: Date;

@@ -72,7 +72,7 @@ PENDING ──start──> IN_PROGRESS (POST .../reports mở khoá ngay)
 ## Flow
 
 `start`: đọc Job → kiểm trạng thái → đọc `production_job_issues` của Job, gọi
-`InventoryService.getMaterialStockLevels` (gộp mọi kho) để so `requiredQty` với `onHand`, giữ lại
+`InventoryService.getConsumableStockLevels` (gộp mọi kho) để so `requiredQty` với `onHand`, giữ lại
 phần thiếu (`> 0`) của từng vật tư — **đọc, chạy ngoài transaction** → **transaction**: `UPDATE`
 (`status`, `startedBy`, `startedAt`); nếu có ít nhất một vật tư thiếu, gọi
 `PurchaseRequestsService.createShortageRequest` ghi thêm một phiếu `purchase_requests` (`status`
@@ -184,7 +184,7 @@ chỉ `SELECT`. `POST .../reports` **có transaction** (`db.transaction`) — kh
 production_job_operation_report_files`, `UPDATE production_job_operations`, và `UPDATE
 production_jobs` (điều kiện, chỉ khi công đoạn Cấp 0 vừa xong) phải cùng đậu hoặc cùng rớt.
 
-`start` giờ **có transaction**: đọc tồn kho (`getMaterialStockLevels`) chạy **trước, ngoài**
+`start` giờ **có transaction**: đọc tồn kho (`getConsumableStockLevels`) chạy **trước, ngoài**
 transaction — chỉ là input để tính phần thiếu, không phải điều kiện chặn nên không cần khoá gì.
 Trong transaction: `UPDATE production_jobs` + (nếu có thiếu) `INSERT purchase_requests` +
 `INSERT purchase_request_items`, bao đúng bằng `db.transaction`
@@ -224,7 +224,7 @@ kiện nào có thể fail độc lập với chính `POST .../reports` (đã qu
 
 Phần lớn `production` thuần — các route đọc chỉ đọc lại dữ liệu đã copy sẵn từ Product Structure lúc
 duyệt LSX, không đọc `bom_operations`/`bom_items` sống; `POST .../reports` cũng chỉ sửa dữ liệu
-snapshot của chính Job. Ngoại lệ là `start`: đọc `inventory` (`InventoryService.getMaterialStockLevels`,
+snapshot của chính Job. Ngoại lệ là `start`: đọc `inventory` (`InventoryService.getConsumableStockLevels`,
 chỉ đọc `inventory_balances`, không ghi) và **ghi** `purchase-requests`
 (`PurchaseRequestsService.createShortageRequest`) — điểm ghi-ngang-domain duy nhất trong luồng này.
 
@@ -235,4 +235,4 @@ Code: `ProductionJobsService.startJob`/`collectJobIssueShortages`/
 `getProductionJobBom`/`getProductionJobOperations`/`getProductionJobNotes`/
 `createProductionJobNote`/`getProductionJobLogs`; `ProductionExecutionService.getOperations`/
 `getJobs`/`createJobOperationReport`; `UsersService.getUserDepartmentId`;
-`PurchaseRequestsService.createShortageRequest`; `InventoryService.getMaterialStockLevels`.
+`PurchaseRequestsService.createShortageRequest`; `InventoryService.getConsumableStockLevels`.

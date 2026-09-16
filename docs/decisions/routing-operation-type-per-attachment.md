@@ -1,6 +1,10 @@
 # `type` (Inhouse/Outsource) là quyết định per-attachment, không phải catalog
 
-**Trạng thái:** còn hiệu lực
+**Trạng thái:** còn hiệu lực — quyết định "`type` là per-attachment, sống trên chính dòng
+routing/BOM" **không đổi**; chỉ tầng lưu trữ của Cấp 0 đổi sau đó: `routing_operations` bị xoá hẳn,
+Cấp 0 giờ dùng chung `bom_operations` như COMPONENT (`docs/decisions/root-bom-item.md`). Đọc mọi chỗ nhắc
+`routing_operations` bên dưới là lịch sử — cột `type` mô tả ở đây nay chỉ còn sống trên
+`bom_operations`.
 
 ## Bối cảnh
 
@@ -62,8 +66,8 @@ hồi tố, cần rà tay Job nào lẽ ra phải Outsource.
 
 ## Đừng hoàn lại
 
-- Đừng gỡ `type` khỏi `routing_operations`/`bom_operations` — đó chính là chỗ dữ liệu cần sống,
-  không phải `operations`.
+- Đừng gỡ `type` khỏi `bom_operations` (trước đó cũng áp dụng cho `routing_operations`, nay đã xoá
+  bảng — xem Trạng thái) — đó chính là chỗ dữ liệu cần sống, không phải `operations`.
 - Đừng đổi `copyBomTree`/`copyFinalAssemblyRouting` về đọc `step.operation.type` — quay lại đúng
   bug này.
 - Đừng xoá `operations.type` — màn danh mục "Gia công ngoài" vẫn lọc theo nó, và nó vẫn là giá trị
@@ -72,3 +76,5 @@ hồi tố, cần rà tay Job nào lẽ ra phải Outsource.
 ## Related docs
 
 `docs/decisions/oqc-per-operation.md`, `docs/domains/production.md`.
+`docs/decisions/root-bom-item.md` — xoá `routing_operations`, Cấp 0 dùng chung `bom_operations`
+(kèm cột `type` mô tả ở đây) như COMPONENT.

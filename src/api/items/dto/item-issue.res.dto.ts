@@ -10,7 +10,7 @@ import {
   UUIDField,
 } from '../../../decorators/field.decorators';
 
-/** Một dòng vật tư (RM) as-used trong cây BOM của một FG/WIP — 1 dòng/vật tư, gộp mọi vị trí xuất
+/** Một dòng vật tư (CONSUMABLE) as-used trong cây BOM của một FG — 1 dòng/vật tư, gộp mọi vị trí xuất
  * hiện trong cây (cùng vật tư có thể nằm dưới nhiều node cha khác nhau). Nguồn là `bom_items`,
  * không phải bảng riêng. */
 @Exclude()
@@ -22,6 +22,10 @@ export class ItemIssueResDto {
   @Expose()
   @StringField({ description: 'Mã vật tư' })
   code!: string;
+
+  @Expose()
+  @StringField({ description: 'Phiên bản; mặc định R01' })
+  revision!: string;
 
   @Expose()
   @StringField({ description: 'Tên vật tư' })

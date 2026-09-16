@@ -24,11 +24,11 @@ import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
   items,
-  ItemType,
   operations,
   OperationType,
   orders,
   productionJobBomItems,
+  ProductionJobBomItemType,
   productionJobOperationReportFiles,
   productionJobOperationReports,
   productionJobOperations,
@@ -350,7 +350,7 @@ export class ProductionExecutionService {
 
     // Bước Lắp ráp (node `itemType = 'FG'`) chỉ mở khi mọi Part khác của Job đã báo hoàn thành đủ
     // (`E210`).
-    if (operation.bomItem.itemType === ItemType.FG) {
+    if (operation.bomItem.itemType === ProductionJobBomItemType.FG) {
       const pendingCount = await this.countPendingOperations(
         this.db,
         operation.productionJobId,
@@ -426,7 +426,7 @@ export class ProductionExecutionService {
 
       // Node FG có thể có nhiều công đoạn Cấp 0 — chỉ chuyển WAITING_QC khi KHÔNG CÒN công đoạn FG
       // nào dở, đếm lại trong `tx` sau khi ghi (BUG-079, `docs/decisions/production-lifecycle-closing.md`).
-      if (operation.bomItem.itemType === ItemType.FG) {
+      if (operation.bomItem.itemType === ProductionJobBomItemType.FG) {
         await closeJobIfFinalAssemblyDone(tx, operation.productionJobId);
       }
     });
@@ -454,8 +454,8 @@ export class ProductionExecutionService {
         and(
           eq(productionJobOperations.productionJobId, jobId),
           isFinalAssembly
-            ? eq(productionJobBomItems.itemType, ItemType.FG)
-            : ne(productionJobBomItems.itemType, ItemType.FG),
+            ? eq(productionJobBomItems.itemType, ProductionJobBomItemType.FG)
+            : ne(productionJobBomItems.itemType, ProductionJobBomItemType.FG),
           isNull(productionJobOperations.completedDate),
         ),
       );

@@ -18,9 +18,29 @@ export class OutsourcingOrderItemReqDto {
   readonly productionJobId!: string;
 
   @UUIDField({
-    description: 'Mặt hàng WIP của công đoạn trên (snapshot từ popup)',
+    description:
+      'Node BOM của Job (production_job_bom_items) — productionJobBomItemId từ popup',
   })
-  readonly itemId!: string;
+  readonly productionJobBomItemId!: string;
+
+  @StringField({
+    maxLength: 50,
+    description: 'Mã part (snapshot bomItem.code từ popup)',
+  })
+  readonly itemCode!: string;
+
+  @StringField({
+    maxLength: 255,
+    description: 'Tên part (snapshot bomItem.name từ popup)',
+  })
+  readonly itemName!: string;
+
+  @UUIDFieldOptional({
+    nullable: true,
+    description:
+      'Vật tư tham khảo — chỉ khi node là CONSUMABLE (itemId từ popup); null với node COMPONENT',
+  })
+  readonly itemId?: string | null;
 
   @UUIDFieldOptional({
     nullable: true,

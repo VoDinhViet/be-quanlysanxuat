@@ -50,7 +50,7 @@ describe('UnitsService', () => {
     await expect(
       service.createUnit({
         name: 'Cuộn',
-        scopes: [UnitScope.MATERIAL],
+        scopes: [UnitScope.CONSUMABLE],
       }),
     ).resolves.toBeUndefined();
 

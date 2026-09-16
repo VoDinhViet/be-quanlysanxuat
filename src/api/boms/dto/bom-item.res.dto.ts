@@ -3,9 +3,8 @@ import { Exclude, Expose } from 'class-transformer';
 import { FileResDto } from '../../files/dto/file.res.dto';
 import { UnitRefResDto } from '../../units/dto/unit-ref.res.dto';
 import { BomOperationResDto } from '../../bom-operations/dto/bom-operation.res.dto';
-import { ItemType } from '../../../database/schemas';
+import { BomType } from '../../../database/schemas';
 import {
-  ClassField,
   ClassFieldOptional,
   EnumField,
   NumberField,
@@ -24,24 +23,46 @@ export class BomItemResDto {
   @Expose()
   @UUIDFieldOptional({
     nullable: true,
-    description: 'null for top-level items',
+    description:
+      'null chỉ với node ROOT ("Cấp 0") — mọi node khác đều có cha thật',
   })
   parentId!: string | null;
 
   @Expose()
-  @UUIDField({ description: 'Id of the linked item (WIP hoặc RM)' })
-  itemId!: string;
+  @EnumField(() => BomType, {
+    description:
+      'COMPONENT (node cấu trúc con, không trỏ item), CONSUMABLE (lá, trỏ vật tư), hoặc ROOT (đúng 1 mỗi cây — chính sản phẩm, "Cấp 0")',
+  })
+  type!: BomType;
 
   @Expose()
-  @EnumField(() => ItemType, { description: 'WIP (node) hoặc RM (lá)' })
-  itemType!: ItemType;
+  @UUIDFieldOptional({
+    nullable: true,
+    description:
+      'Id item liên kết (CONSUMABLE: vật tư; ROOT: chính sản phẩm); null với node COMPONENT',
+  })
+  itemId!: string | null;
 
   @Expose()
-  @StringField({ description: 'Mã bản vẽ (linked item code)' })
+  @StringField({
+    description:
+      'Mã bản vẽ — COMPONENT: nhập tay trên node; CONSUMABLE/ROOT: đọc từ item liên kết',
+  })
   code!: string;
 
   @Expose()
-  @StringField({ description: 'Tên bản vẽ (linked item name)' })
+  @StringFieldOptional({
+    nullable: true,
+    description:
+      'Phiên bản item liên kết (CONSUMABLE/ROOT); null với node COMPONENT',
+  })
+  revision!: string | null;
+
+  @Expose()
+  @StringField({
+    description:
+      'Tên bản vẽ — COMPONENT: nhập tay trên node; CONSUMABLE/ROOT: đọc từ item liên kết',
+  })
   name!: string;
 
   @Expose()
@@ -52,12 +73,17 @@ export class BomItemResDto {
   image!: FileResDto | null;
 
   @Expose()
-  @ClassField(() => UnitRefResDto)
-  unit!: UnitRefResDto;
+  @ClassFieldOptional(() => UnitRefResDto, {
+    nullable: true,
+    description:
+      'ĐVT của item liên kết (CONSUMABLE/ROOT); null với node COMPONENT',
+  })
+  unit!: UnitRefResDto | null;
 
   @Expose()
   @NumberField({
-    description: 'Số lượng — nguyên nếu node là WIP, có thể lẻ nếu là RM',
+    description:
+      'Số lượng — nguyên nếu node là COMPONENT hoặc ROOT (ROOT luôn = 1), có thể lẻ nếu là CONSUMABLE',
   })
   quantity!: number;
 
@@ -68,7 +94,7 @@ export class BomItemResDto {
   @Expose()
   @NumberField({
     int: true,
-    description: 'Độ sâu 1-based — node top-level (parentId null) = 1',
+    description: 'Độ sâu tính từ ROOT — ROOT = 0, con trực tiếp của ROOT = 1',
   })
   level!: number;
 

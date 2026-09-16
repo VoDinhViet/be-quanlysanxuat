@@ -16,6 +16,7 @@ import {
   inventoryDocumentStatusEnum,
 } from './inventory-documents';
 import { inventoryReceipts } from './inventory-receipts';
+import { outsourcingReceiptItems } from './outsourcing-receipt-items';
 import { outsourcingReceipts } from './outsourcing-receipts';
 import { supplierReturnFiles } from './supplier-return-files';
 import { items } from '../items/items';
@@ -40,9 +41,13 @@ export const supplierReturns = pgTable(
     supplierId: uuid('supplier_id')
       .notNull()
       .references(() => suppliers.id, { onDelete: 'restrict' }),
-    itemId: uuid('item_id')
-      .notNull()
-      .references(() => items.id, { onDelete: 'restrict' }),
+    // NULL khi trả node COMPONENT từ OS-IN (không phải một item) — `itemCode`/`itemName` snapshot thay
+    // thế, cùng quy ước `quality_inspections.itemId`.
+    itemId: uuid('item_id').references(() => items.id, {
+      onDelete: 'restrict',
+    }),
+    itemCode: varchar('item_code', { length: 50 }),
+    itemName: varchar('item_name', { length: 255 }),
     quantity: numeric('quantity', {
       precision: 18,
       scale: 3,
@@ -58,6 +63,12 @@ export const supplierReturns = pgTable(
     ),
     outsourcingReceiptId: uuid('outsourcing_receipt_id').references(
       () => outsourcingReceipts.id,
+      { onDelete: 'set null' },
+    ),
+    // Khoá đúng 1 dòng OS-IN — trước suy mờ qua cặp `(outsourcingReceiptId, itemId)`, giờ không còn
+    // `itemId` để suy với node COMPONENT.
+    outsourcingReceiptItemId: uuid('outsourcing_receipt_item_id').references(
+      () => outsourcingReceiptItems.id,
       { onDelete: 'set null' },
     ),
     // Trỏ `quality_inspections` (lô kiểm) + `quality_inspection_results` (lần kiểm) — bảng phẳng
@@ -96,6 +107,9 @@ export const supplierReturns = pgTable(
     ),
     index('idx_supplier_returns_outsourcing_receipt_id').on(
       table.outsourcingReceiptId,
+    ),
+    index('idx_supplier_returns_outsourcing_receipt_item_id').on(
+      table.outsourcingReceiptItemId,
     ),
     index('idx_supplier_returns_quality_inspection_id').on(
       table.qualityInspectionId,
@@ -153,6 +167,10 @@ export const supplierReturnsRelations = relations(
     outsourcingReceipt: one(outsourcingReceipts, {
       fields: [supplierReturns.outsourcingReceiptId],
       references: [outsourcingReceipts.id],
+    }),
+    outsourcingReceiptItem: one(outsourcingReceiptItems, {
+      fields: [supplierReturns.outsourcingReceiptItemId],
+      references: [outsourcingReceiptItems.id],
     }),
     qualityInspection: one(qualityInspections, {
       fields: [supplierReturns.qualityInspectionId],

@@ -13,7 +13,7 @@ import { operations, OperationType, operationTypeEnum } from '../operations';
 import { users } from '../identity-access/users';
 
 /**
- * Công đoạn as-used gắn thẳng vào một node `bom_items` cụ thể (chỉ node WIP — node RM là lá, không
+ * Công đoạn as-used gắn thẳng vào một node `bom_items` cụ thể (chỉ node COMPONENT — node CONSUMABLE là lá, không
  * gắn được). Cùng khuôn `bom_items`.
  *
  * Rules:

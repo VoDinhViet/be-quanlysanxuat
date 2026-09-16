@@ -1,6 +1,10 @@
 # OQC đổi từ gắn theo Job sang gắn theo công đoạn
 
-**Trạng thái:** còn hiệu lực
+**Trạng thái:** còn hiệu lực — các chỗ nhắc `routings`/`routing_operations` bên dưới mô tả đúng bối
+cảnh tại thời điểm quyết định; hai bảng đó đã bị xoá hẳn sau này (Cấp 0 trở thành một dòng
+`bom_items` thật, `docs/decisions/root-bom-item.md`), nhưng quyết định giữ node `FG` riêng trong
+`production_job_bom_items`/`production_job_operations` — không gộp vào node ROOT của `bom_items` —
+**không đổi**.
 
 ## Bối cảnh
 
@@ -15,8 +19,9 @@ công đoạn X của Job Y", chỉ QC được cả Job như một khối.
 
 Hai phương án tầng để gắn OQC được cân nhắc:
 
-1. **`production_job_operations`** — công đoạn as-used của từng node WIP trong cây BOM của Job, đã
-   có snapshot + tiến độ theo Job.
+1. **`production_job_operations`** — công đoạn as-used của từng node cấu trúc con (khi đó gọi là
+   WIP, nay là `COMPONENT` — `docs/decisions/wip-removal.md`) trong cây BOM của Job, đã có snapshot +
+   tiến độ theo Job.
 2. Tầng Cấp 0 của chính FG (`routings`/`routing_operations`) — định nghĩa tĩnh công đoạn của item
    gốc, **không có snapshot theo Job, không có theo dõi tiến độ**.
 
@@ -42,7 +47,11 @@ tầng Cấp 0.**
   trả nested `operation`/`bomItem` (xem `docs/domains/quality-oqc.md`).
 - `itemId` đổi nguồn: từ `job.itemId` (thành phẩm) sang `bomItem.itemId` (part của node BOM chứa
   công đoạn) — đây là thay đổi ngữ nghĩa quan trọng nhất: **`itemId` của một dòng OQC không còn là
-  thành phẩm cuối cùng, mà là part đang được QC ở đúng công đoạn đó** (có thể là WIP trung gian).
+  thành phẩm cuối cùng, mà là part đang được QC ở đúng công đoạn đó**. Trên thực tế OQC chỉ tạo
+  được ở node Cấp 0 (`itemType='FG'`, `createOqcForJob`), nên `bomItem.itemId` ở đây luôn có giá
+  trị (`E199` nếu null, gần như không xảy ra); sau `wip-removal.md`, cột `quality_inspections.itemId`
+  đổi thành nullable là để phục vụ nhánh **IQC** sinh từ phiếu nhận gia công ngoài của node `COMPONENT`
+  (không có `items.id`), không phải nhánh OQC này.
 - Trần chặn SL đổi từ `production_jobs.quantity` (SL kế hoạch FG) sang hai mốc: cột `plannedQuantity`
   (đã đóng băng lúc duyệt LSX) của chính node BOM (`E176`) và `completedQuantity` của chính công
   đoạn (`E198`, mới) — không còn ý nghĩa "so với SL kế hoạch của cả Job" vì đơn vị QC giờ là part,
@@ -92,8 +101,9 @@ kết quả). Hai module cố tình lệch nhau ở điểm này.
 ## QC cho Cấp 0 (bước cuối ra thành phẩm) — đã làm, không phải bảng mới
 
 Mục "Đừng hoàn lại" bản trước từng nói: nếu cần QC riêng cho Cấp 0 thì phải thêm bảng/snapshot riêng
-cho `routings`/`routing_operations` theo Job. Khi thật sự cần (gate `E209` — Job chưa từng QC thành
-phẩm thì không cho nhập kho), quyết định cuối **không** làm vậy — tái dùng thẳng
+cho `routings`/`routing_operations` theo Job (khi đó vẫn là bảng tĩnh định nghĩa Cấp 0 — nay là node
+`ROOT` của `bom_items`, `docs/decisions/root-bom-item.md`). Khi thật sự cần (gate `E209` — Job chưa
+từng QC thành phẩm thì không cho nhập kho), quyết định cuối **không** làm vậy — tái dùng thẳng
 `production_job_bom_items`/`production_job_operations` đã có, không tạo bảng thứ ba:
 
 - `production_job_bom_items` nhận thêm **đúng một** node mỗi Job, `itemType = 'FG'` (dùng chung enum
@@ -138,3 +148,6 @@ bằng cột đó, không bằng bảng khác.
 `docs/decisions/quality-schema-rename.md` (đổi tên `qc_requests`/`kind` → `quality_inspections`/
 `inspectionType`, 2026-08). `docs/domains/production.md`, `docs/domains/inventory.md`,
 `docs/workflows/outgoing-qc.md`.
+`docs/decisions/root-bom-item.md` — Cấp 0 thành node `ROOT` của `bom_items`, xoá
+`routings`/`routing_operations`; `copyFinalAssemblyRouting` đổi nguồn đọc nhưng giữ nguyên vai trò
+mô tả ở tài liệu này.

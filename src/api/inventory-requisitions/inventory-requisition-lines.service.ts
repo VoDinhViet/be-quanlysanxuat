@@ -99,7 +99,7 @@ export class InventoryRequisitionLinesService {
    * định có khoanh vùng theo định mức BOM hay không, không phải hai nguồn dữ liệu khác nhau. Có
    * Job: chỉ trả vật tư nằm trong `production_job_issues` của Job đó (ràng buộc y hệt `E230` phía
    * `InventoryRequisitionsService.validateRequisitionLines`, biểu diễn bằng `inArray` thay vì
-   * driving table riêng để `q` vẫn lọc được ở cả hai nhánh). Không Job: mọi RM chưa xoá tại kho —
+   * driving table riêng để `q` vẫn lọc được ở cả hai nhánh). Không Job: mọi CONSUMABLE chưa xoá tại kho —
    * `bomQuantity`/`issuedQuantity`/`suggestedQuantity` luôn `null`. */
   async getRequisitionPickerLines(
     reqDto: GetRequisitionLinesReqDto,
@@ -111,7 +111,7 @@ export class InventoryRequisitionLinesService {
     const { productionJobId } = reqDto;
 
     const where = and(
-      eq(items.type, ItemType.RM),
+      eq(items.type, ItemType.CONSUMABLE),
       isNull(items.deletedAt),
       keyword
         ? or(

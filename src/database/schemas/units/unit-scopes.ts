@@ -16,20 +16,20 @@ import { units } from './units';
  */
 export enum UnitScope {
   PRODUCT = 'PRODUCT',
-  MATERIAL = 'MATERIAL',
+  CONSUMABLE = 'CONSUMABLE',
   SEMI_FINISHED = 'SEMI_FINISHED',
 }
 
 export const unitScopeEnum = pgEnum('unit_scope', [
   UnitScope.PRODUCT,
-  UnitScope.MATERIAL,
+  UnitScope.CONSUMABLE,
   UnitScope.SEMI_FINISHED,
 ]);
 
 /**
- * One row per (unit, scope): `Tấm` is MATERIAL only, `Cái` is all three. The composite primary key
- * is the uniqueness constraint — no surrogate id needed. Cascades because a scope row is
- * meaningless without its unit (units themselves are held by `restrict` from products/materials).
+ * One row per (unit, scope): `Tấm` is CONSUMABLE only, `Cái` is all three. The composite primary
+ * key is the uniqueness constraint — no surrogate id needed. Cascades because a scope row is
+ * meaningless without its unit (units themselves are held by `restrict` from products/consumables).
  * No `updatedAt` — seeded once, only ever inserted/deleted, never mutated in place (a composite-key
  * row has no non-key column to update anyway).
  */

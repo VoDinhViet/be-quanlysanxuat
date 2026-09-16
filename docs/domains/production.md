@@ -22,7 +22,7 @@ nhiêu, rồi chốt thành đầu việc cho xưởng theo dõi tiến độ.
 | ---------------------------------------------------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
 | `production_job_bom_items` (cây BOM)                             | `bom_items`, id nhân bản mới                           | Không route nào sửa                                                                                       |
 | `production_job_operations` (công đoạn as-used)                  | `bom_operations` as-used                               | `completedQuantity`/`rejectedQuantity`/`completedDate` sửa qua `POST .../reports`; phần còn lại đóng băng |
-| `production_job_issues` (vật tư, gộp theo `itemId` trên node RM) | `production_job_bom_items.plannedQuantity` (đã nổ cấp) | Không route đọc/ghi — nội bộ, chỉ dùng bởi `startJob`/`bomDemand`/`GET .../bom`                           |
+| `production_job_issues` (vật tư, gộp theo `itemId` trên node CONSUMABLE) | `production_job_bom_items.plannedQuantity` (đã nổ cấp) | Không route đọc/ghi — nội bộ, chỉ dùng bởi `startJob`/`bomDemand`/`GET .../bom`                           |
 
 `production_job_items`/`production_job_units` là 2 bảng chiều (SCD) **dùng chung, không thuộc Job
 nào** — khoá bộ ba `(itemId/unitId, code, name)`, get-or-create lúc duyệt LSX, tuyệt đối không
@@ -31,7 +31,7 @@ song tới hai bảng này.
 
 **Node Cấp 0** — mỗi Job có thêm đúng 1 node `itemType='FG'` (nếu FG có khai routing Cấp 0,
 `copyFinalAssemblyRouting`, cùng transaction duyệt LSX; bỏ qua nếu không) — `parentId=null`,
-`level=0`, `plannedQuantity=job.quantity`, công đoạn snapshot y hệt node WIP. Tối đa 1 node/Job
+`level=0`, `plannedQuantity=job.quantity`, công đoạn snapshot y hệt node `COMPONENT` thường. Tối đa 1 node/Job
 (`uq_production_job_bom_items_final_assembly`). Bước Lắp ráp của nó khoá cứng (`E210`) cho tới khi
 **mọi công đoạn khác của Job** đã `completedDate` — neo QC thành phẩm cuối, xem
 `docs/decisions/oqc-per-operation.md`.
@@ -173,7 +173,7 @@ có node thì nhánh code không bao giờ chạy. Giới hạn thật, không p
 
 - **← Orders**: `approveOrder` seed toàn bộ tầng LSX — đường duy nhất tạo LSX.
 - **→ Orders**: duyệt LSX là đường duy nhất đẩy đơn `AWAITING_PRODUCTION → IN_PROGRESS`.
-- **← Inventory**: chỉ đọc qua `getStockLevels`/`getMaterialStockLevels`. Domain này không ghi vào
+- **← Inventory**: chỉ đọc qua `getStockLevels`/`getConsumableStockLevels`. Domain này không ghi vào
   sổ kho.
 - **→ Inventory (ghi, gián tiếp)**: Inventory **ghi ngược** vào `production_jobs.status`/
   `production_orders.status` — xem Lifecycle (`closeJobIfQcCovered`/`closeJobIfFullyReceived`).

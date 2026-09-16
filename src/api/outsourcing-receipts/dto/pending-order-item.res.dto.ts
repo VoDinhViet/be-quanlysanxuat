@@ -2,6 +2,7 @@ import { Exclude, Expose } from 'class-transformer';
 
 import {
   ClassField,
+  ClassFieldOptional,
   NumberField,
   NumberFieldOptional,
   StringField,
@@ -35,12 +36,27 @@ export class PendingOrderItemResDto {
   jobCode!: string | null;
 
   @Expose()
-  @ClassField(() => ItemRefResDto)
-  item!: ItemRefResDto;
+  @StringField({ description: 'Mã part (snapshot từ dòng OS-OUT)' })
+  itemCode!: string;
 
   @Expose()
-  @ClassField(() => UnitRefResDto)
-  unit!: UnitRefResDto;
+  @StringField({ description: 'Tên part (snapshot từ dòng OS-OUT)' })
+  itemName!: string;
+
+  @Expose()
+  @ClassFieldOptional(() => ItemRefResDto, {
+    nullable: true,
+    description:
+      'Vật tư tham khảo — chỉ khi node là CONSUMABLE; null với node COMPONENT',
+  })
+  item!: ItemRefResDto | null;
+
+  @Expose()
+  @ClassFieldOptional(() => UnitRefResDto, {
+    nullable: true,
+    description: 'ĐVT vật tư — chỉ khi node là CONSUMABLE',
+  })
+  unit!: UnitRefResDto | null;
 
   @Expose()
   @StringField({ description: 'Mã công đoạn' })

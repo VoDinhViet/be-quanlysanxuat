@@ -10,6 +10,7 @@ import {
   gte,
   inArray,
   lte,
+  ne,
   or,
   sql,
 } from 'drizzle-orm';
@@ -27,13 +28,14 @@ import type { Database, DbTransaction } from '../../database/database.type';
 import {
   bomItems,
   boms,
+  BomType,
   clients,
   files,
   bomOperations,
   items,
-  ItemType,
   orders,
   productionJobBomItems,
+  ProductionJobBomItemType,
   productionJobIssues,
   productionJobItems,
   ProductionJobLogAction,
@@ -46,8 +48,6 @@ import {
   productionOrders,
   qualityInspections,
   QualityInspectionType,
-  routingOperations,
-  routings,
   units,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
@@ -414,8 +414,8 @@ export class ProductionJobsService {
   /** Sinh Job cho một LSX vừa duyệt — 1 Job/item FG (SL > 0), gộp mọi dòng
    * `production_order_items` cùng `itemId`. Bắt buộc truyền `tx` — chỉ gọi được từ transaction
    * duyệt của `ProductionOrdersService.approveProductionOrder`. Đồng thời nhân bản cây BOM
-   * (`copyBomTree`, cả node WIP lẫn lá RM) và routing Cấp 0 của chính FG (`copyFinalAssemblyRouting`) đúng
-   * một lần mỗi thứ. */
+   * (`copyBomTree`, cả node COMPONENT lẫn lá CONSUMABLE) và routing Cấp 0 của chính FG
+   * (`copyFinalAssemblyRouting`) đúng một lần mỗi thứ. */
   async createJobs(
     tx: DbTransaction,
     productionOrderId: string,
@@ -464,18 +464,18 @@ export class ProductionJobsService {
   }
 
   /**
-   * Nhân bản cây `bom_items` (cả node WIP lẫn lá RM) của từng item sang
-   * `production_job_bom_items` — id hoàn toàn mới, `code`/`name` snapshot text (độc lập `items`
-   * sống) — rồi copy công đoạn as-used của từng node WIP (`bom_operations.bomItemId`) sang
-   * `production_job_operations`, remap `bomItemId` qua id snapshot mới và denormalize
-   * `code`/`name` của công đoạn danh mục cùng `type` của chính dòng `bom_operations` (Inhouse/
-   * Outsource đã chọn lúc gắn vào BOM — không phải `operations.type`, xem
-   * `docs/decisions/routing-operation-type-per-attachment.md`). Cùng kỹ thuật remap của
-   * `ItemsService.copyBomTree`. Yêu
-   * cầu `sourceBomItems` sắp cha-trước-con (`orderBy level`) để id cha luôn có sẵn trong map khi xử
-   * lý tới con — cùng tính chất đó cũng cho phép tính `plannedQuantity` (nhân luỹ kế `quantity` ×
-   * SL Job từ gốc xuống) ngay trong cùng vòng lặp, không cần đệ quy riêng. Đây là nguồn ghi duy nhất
-   * của cột `plannedQuantity` — mọi route đọc chỉ đọc lại, không tính nữa.
+   * Nhân bản cây `bom_items` (cả node COMPONENT lẫn lá CONSUMABLE) của từng item sang
+   * `production_job_bom_items` — id hoàn toàn mới, `code`/`name` snapshot text (COMPONENT: từ
+   * chính dòng; CONSUMABLE: từ `items` sống) — rồi copy công đoạn as-used của từng node COMPONENT
+   * (`bom_operations.bomItemId`) sang `production_job_operations`, remap `bomItemId` qua id
+   * snapshot mới và denormalize `code`/`name` của công đoạn danh mục cùng `type` của chính dòng
+   * `bom_operations` (Inhouse/Outsource đã chọn lúc gắn vào BOM — không phải `operations.type`,
+   * xem `docs/decisions/routing-operation-type-per-attachment.md`). Cùng kỹ thuật remap của
+   * `ItemsService.copyBomTree`. Yêu cầu `sourceBomItems` sắp cha-trước-con (`orderBy level`) để
+   * id cha luôn có sẵn trong map khi xử lý tới con — cùng tính chất đó cũng cho phép tính
+   * `plannedQuantity` (nhân luỹ kế `quantity` × SL Job từ gốc xuống) ngay trong cùng vòng lặp,
+   * không cần đệ quy riêng. Đây là nguồn ghi duy nhất của cột `plannedQuantity` — mọi route đọc
+   * chỉ đọc lại, không tính nữa.
    */
   private async copyBomTree(
     tx: DbTransaction,
@@ -496,7 +496,13 @@ export class ProductionJobsService {
     const itemIdByBomId = new Map(bomRefs.map((bom) => [bom.id, bom.itemId]));
 
     const sourceBomItems = await tx.query.bomItems.findMany({
-      where: inArray(bomItems.bomId, bomIds),
+      // ROOT ("Cấp 0") không snapshot ở đây — `copyFinalAssemblyRouting` xử lý riêng, giữ đúng
+      // quy ước Job snapshot cũ (`itemType = FG` cho Cấp 0, không lẫn COMPONENT/CONSUMABLE —
+      // `docs/decisions/root-bom-item.md`).
+      where: and(
+        inArray(bomItems.bomId, bomIds),
+        ne(bomItems.type, BomType.ROOT),
+      ),
       orderBy: [asc(bomItems.level), asc(bomItems.sortOrder)],
       with: { item: true },
     });
@@ -526,26 +532,32 @@ export class ProductionJobsService {
       const plannedQuantity = parentPlanned * node.quantity;
       plannedByNewId.set(newId, plannedQuantity);
 
+      // Không bao giờ map ra `FG` — `uq_production_job_bom_items_final_assembly` chỉ cho đúng 1
+      // node FG/Job, do `copyFinalAssemblyRouting` tạo.
+      const isConsumable = node.type === BomType.CONSUMABLE;
+
       return {
         id: newId,
         productionJobId,
         parentId: newParentId,
-        itemType: node.item.type,
-        code: node.item.code,
-        name: node.item.name,
+        itemType: isConsumable
+          ? ProductionJobBomItemType.CONSUMABLE
+          : ProductionJobBomItemType.COMPONENT,
+        code: isConsumable ? node.item!.code : node.code!,
+        name: isConsumable ? node.item!.name : node.name!,
         quantity: node.quantity,
         plannedQuantity,
         sortOrder: node.sortOrder,
         level: node.level,
         itemId: node.itemId,
-        imageFileId: node.item.imageFileId,
+        imageFileId: node.item?.imageFileId ?? null,
       };
     });
 
     await tx.insert(productionJobBomItems).values(newItems);
 
-    // As-used routing của từng node nguồn — node RM không có bom_operations (chặn từ lúc ghi),
-    // nên query này tự nhiên chỉ khớp node WIP, không cần lọc riêng.
+    // As-used routing của từng node nguồn — node CONSUMABLE không có bom_operations (chặn từ
+    // lúc ghi), nên query này tự nhiên chỉ khớp node COMPONENT, không cần lọc riêng.
     const sourceBomItemIds = sourceBomItems.map((node) => node.id);
     const asUsedSteps = await tx.query.bomOperations.findMany({
       where: inArray(bomOperations.bomItemId, sourceBomItemIds),
@@ -578,12 +590,15 @@ export class ProductionJobsService {
    * Nhân bản routing Cấp 0 (lắp ráp/đóng gói) của chính FG vào một node `production_job_bom_items`
    * riêng, `itemType = 'FG'` (xem doc comment bảng đó và `docs/decisions/oqc-per-operation.md`
    * mục "Đừng hoàn lại") — để OQC có công đoạn để gắn vào cho bước QC thành phẩm cuối cùng, và
-   * `getProductionJobOperations` hiện được nhóm đó ở cuối tab "Công đoạn sản xuất". Độc lập hoàn
-   * toàn với `copyBomTree` (không qua `boms`/`bom_items`) — chỉ đọc `routings`/`routing_operations`
-   * của chính `itemIds`. Bỏ qua item nào không khai routing Cấp 0 — không tạo node rỗng.
+   * `getProductionJobOperations` hiện được nhóm đó ở cuối tab "Công đoạn sản xuất". Đọc từ node
+   * ROOT của `bom_items` (`docs/decisions/root-bom-item.md` — không còn bảng `routings`/
+   * `routing_operations` riêng) thay vì qua `copyBomTree` ở trên: `copyBomTree` cố tình lọc bỏ
+   * ROOT (xem comment ở đó) để giữ nguyên quy ước Job snapshot Cấp 0 riêng bằng `itemType = FG`,
+   * không lẫn với node COMPONENT/CONSUMABLE. Bỏ qua item nào ROOT không có bước nào — không
+   * tạo node rỗng.
    * `sortOrder` = lớn nhất hiện có của Job + 1, để node FG luôn đứng cuối cây (gọi sau
    * `copyBomTree` trong cùng transaction nên đọc lại `production_job_bom_items` đã thấy đủ node
-   * WIP/RM vừa insert).
+   * COMPONENT/CONSUMABLE vừa insert).
    */
   private async copyFinalAssemblyRouting(
     tx: DbTransaction,
@@ -591,31 +606,41 @@ export class ProductionJobsService {
     jobIdByItemId: Map<string, string>,
     quantityByItem: Map<string, number>,
   ): Promise<void> {
-    const finalAssemblyRoutings = await tx.query.routings.findMany({
-      where: inArray(routings.itemId, itemIds),
-      with: {
-        item: true,
-        operations: {
-          orderBy: [
-            asc(routingOperations.sortOrder),
-            asc(routingOperations.createdAt),
-          ],
-          with: { operation: true },
-        },
-      },
+    const rootBomItems = await tx.query.bomItems.findMany({
+      where: and(
+        inArray(bomItems.itemId, itemIds),
+        eq(bomItems.type, BomType.ROOT),
+      ),
+      with: { item: true },
     });
 
-    const withSteps = finalAssemblyRoutings.filter(
-      (routing) => routing.operations.length > 0,
+    if (!rootBomItems.length) {
+      return;
+    }
+
+    const rootIds = rootBomItems.map((root) => root.id);
+    const rootSteps = await tx.query.bomOperations.findMany({
+      where: inArray(bomOperations.bomItemId, rootIds),
+      with: { operation: true },
+      orderBy: [asc(bomOperations.sortOrder), asc(bomOperations.createdAt)],
+    });
+
+    const stepsByRootId = new Map<string, typeof rootSteps>();
+    for (const step of rootSteps) {
+      const list = stepsByRootId.get(step.bomItemId) ?? [];
+      list.push(step);
+      stepsByRootId.set(step.bomItemId, list);
+    }
+
+    const withSteps = rootBomItems.filter(
+      (root) => (stepsByRootId.get(root.id)?.length ?? 0) > 0,
     );
 
     if (!withSteps.length) {
       return;
     }
 
-    const jobIds = withSteps.map(
-      (routing) => jobIdByItemId.get(routing.itemId)!,
-    );
+    const jobIds = withSteps.map((root) => jobIdByItemId.get(root.itemId!)!);
     const maxSortOrderRows = await tx
       .select({
         productionJobId: productionJobBomItems.productionJobId,
@@ -632,10 +657,11 @@ export class ProductionJobsService {
     );
 
     const newIdByItemId = new Map<string, string>();
-    const finalAssemblyItems = withSteps.map((routing) => {
+    const finalAssemblyItems = withSteps.map((root) => {
+      const itemId = root.itemId!;
       const newId = crypto.randomUUID();
-      newIdByItemId.set(routing.itemId, newId);
-      const productionJobId = jobIdByItemId.get(routing.itemId)!;
+      newIdByItemId.set(itemId, newId);
+      const productionJobId = jobIdByItemId.get(itemId)!;
       const nextSortOrder =
         (maxSortOrderByJobId.get(productionJobId) ?? -1) + 1;
 
@@ -643,38 +669,40 @@ export class ProductionJobsService {
         id: newId,
         productionJobId,
         parentId: null,
-        itemType: ItemType.FG,
-        code: routing.item.code,
-        name: routing.item.name,
+        itemType: ProductionJobBomItemType.FG,
+        code: root.item!.code,
+        name: root.item!.name,
         quantity: 1,
-        plannedQuantity: quantityByItem.get(routing.itemId)!,
+        plannedQuantity: quantityByItem.get(itemId)!,
         sortOrder: nextSortOrder,
         level: 0,
-        itemId: routing.itemId,
-        imageFileId: routing.item.imageFileId,
+        itemId,
+        imageFileId: root.item!.imageFileId,
       };
     });
 
     await tx.insert(productionJobBomItems).values(finalAssemblyItems);
 
     await tx.insert(productionJobOperations).values(
-      withSteps.flatMap((routing) =>
-        routing.operations.map((step) => ({
-          productionJobId: jobIdByItemId.get(routing.itemId)!,
-          productionJobBomItemId: newIdByItemId.get(routing.itemId)!,
+      withSteps.flatMap((root) => {
+        const itemId = root.itemId!;
+        return (stepsByRootId.get(root.id) ?? []).map((step) => ({
+          productionJobId: jobIdByItemId.get(itemId)!,
+          productionJobBomItemId: newIdByItemId.get(itemId)!,
           operationId: step.operationId,
           code: step.operation.code,
           name: step.operation.name,
           type: step.type,
           sortOrder: step.sortOrder,
           note: step.note,
-        })),
-      ),
+        }));
+      }),
     );
   }
 
   /**
-   * Nhu cầu vật tư Job = Σ `plannedQuantity` các node lá RM của cây snapshot (đã nổ đủ cấp) —
+   * Nhu cầu vật tư Job = Σ `plannedQuantity` các node lá CONSUMABLE của cây snapshot (đã nổ đủ
+   * cấp) —
    * BẮT BUỘC gọi sau `copyBomTree` trong cùng transaction, đọc lại `production_job_bom_items` vừa
    * insert thay vì tự tính từ `bom_items`. `unitQty = requiredQty / SL Job`. Mã/tên vật tư và ĐVT
    * không ghi thẳng lên dòng issue — get-or-create hai bảng chiều `productionJobItems`/
@@ -695,7 +723,7 @@ export class ProductionJobsService {
     const rows = await tx
       .select({
         productionJobId: productionJobBomItems.productionJobId,
-        materialItemId: items.id,
+        consumableItemId: items.id,
         requiredQty:
           sql<number>`sum(${productionJobBomItems.plannedQuantity})`.mapWith(
             Number,
@@ -715,7 +743,10 @@ export class ProductionJobsService {
           inArray(productionJobBomItems.productionJobId, [
             ...quantityByJobId.keys(),
           ]),
-          eq(productionJobBomItems.itemType, ItemType.RM),
+          eq(
+            productionJobBomItems.itemType,
+            ProductionJobBomItemType.CONSUMABLE,
+          ),
         ),
       )
       .groupBy(
@@ -749,9 +780,9 @@ export class ProductionJobsService {
     await tx.insert(productionJobIssues).values(
       issuesToCreate.map((row) => ({
         productionJobId: row.productionJobId,
-        itemId: row.materialItemId,
+        itemId: row.consumableItemId,
         productionJobItemId: jobItemIdByKey.get(
-          snapshotKey(row.materialItemId, row.issueCode, row.issueName),
+          snapshotKey(row.consumableItemId, row.issueCode, row.issueName),
         )!,
         productionJobUnitId: jobUnitIdByKey.get(
           snapshotKey(row.unitId, row.unitCode, row.unitName),
@@ -779,13 +810,13 @@ export class ProductionJobsService {
    */
   private async resolveJobItemSnapshots(
     tx: DbTransaction,
-    rows: { materialItemId: string; issueCode: string; issueName: string }[],
+    rows: { consumableItemId: string; issueCode: string; issueName: string }[],
   ): Promise<Map<string, string>> {
     const wanted = new Map(
       rows.map((row) => [
-        snapshotKey(row.materialItemId, row.issueCode, row.issueName),
+        snapshotKey(row.consumableItemId, row.issueCode, row.issueName),
         {
-          itemId: row.materialItemId,
+          itemId: row.consumableItemId,
           code: row.issueCode,
           name: row.issueName,
         },
@@ -817,7 +848,7 @@ export class ProductionJobsService {
       .from(productionJobItems)
       .where(
         inArray(productionJobItems.itemId, [
-          ...new Set(rows.map((row) => row.materialItemId)),
+          ...new Set(rows.map((row) => row.consumableItemId)),
         ]),
       );
 
@@ -943,7 +974,7 @@ export class ProductionJobsService {
     }
 
     const onHandByItem =
-      await this.inventoryService.getMaterialStockLevels(itemIds);
+      await this.inventoryService.getConsumableStockLevels(itemIds);
 
     return jobIssues.flatMap((row) => {
       if (!row.itemId) {

@@ -1,7 +1,6 @@
 import { Exclude, Expose } from 'class-transformer';
 
 import {
-  ClassField,
   ClassFieldOptional,
   NumberField,
   NumberFieldOptional,
@@ -20,12 +19,27 @@ export class OutsourcingOrderItemResDto {
   id!: string;
 
   @Expose()
-  @ClassField(() => ItemRefResDto)
-  item!: ItemRefResDto;
+  @StringField({ description: 'Mã part (snapshot lúc gửi)' })
+  itemCode!: string;
 
   @Expose()
-  @ClassField(() => UnitRefResDto)
-  unit!: UnitRefResDto;
+  @StringField({ description: 'Tên part (snapshot lúc gửi)' })
+  itemName!: string;
+
+  @Expose()
+  @ClassFieldOptional(() => ItemRefResDto, {
+    nullable: true,
+    description:
+      'Vật tư tham khảo — chỉ khi node là CONSUMABLE; null với node COMPONENT',
+  })
+  item!: ItemRefResDto | null;
+
+  @Expose()
+  @ClassFieldOptional(() => UnitRefResDto, {
+    nullable: true,
+    description: 'ĐVT vật tư — chỉ khi node là CONSUMABLE',
+  })
+  unit!: UnitRefResDto | null;
 
   @Expose()
   @ClassFieldOptional(() => ProductionJobRefResDto, { nullable: true })

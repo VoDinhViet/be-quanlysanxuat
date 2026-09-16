@@ -14,14 +14,16 @@ import { outsourcingOrders } from './outsourcing-orders';
 import { outsourcingReceiptItems } from './outsourcing-receipt-items';
 import { items } from '../items/items';
 import { operations } from '../operations';
+import { productionJobBomItems } from '../production/production-job-bom-items';
 import { productionJobOperations } from '../production/production-job-operations';
 import { productionJobs } from '../production/production-jobs';
 
 /**
- * Dòng phiếu gửi gia công ngoài (OS-OUT) — client gửi đủ cột (`itemId`/`productionJobId`/
- * `operationCode`/`operationName`/...) lấy từ popup `GET .../outsourceable-operations`, server
- * không resolve/validate lại — chỉ FK + `.notNull()` ràng buộc
- * (`docs/decisions/outsourcing-no-draft.md`). Xem `docs/workflows/outsourcing-round-trip.md`.
+ * Dòng phiếu gửi gia công ngoài (OS-OUT) — client gửi đủ cột (`productionJobBomItemId`/
+ * `itemCode`/`itemName`/`productionJobId`/`operationCode`/...) lấy từ popup
+ * `GET .../outsourceable-operations`, server không resolve/validate lại — chỉ FK + `.notNull()`
+ * ràng buộc (`docs/decisions/outsourcing-no-draft.md`). Xem
+ * `docs/workflows/outsourcing-round-trip.md`.
  *
  * Không unique trên `(outsourcingOrderId, productionJobOperationId)` (từng có, đã bỏ) — gửi cùng
  * một công đoạn ở nhiều phiếu OS-OUT khác nhau qua nhiều đợt là luồng thật (`sentQuantity` cộng
@@ -55,9 +57,18 @@ export const outsourcingOrderItems = pgTable(
     // `production_job_operations`.
     operationCode: varchar('operation_code', { length: 50 }).notNull(),
     operationName: varchar('operation_name', { length: 255 }).notNull(),
-    itemId: uuid('item_id')
-      .notNull()
-      .references(() => items.id, { onDelete: 'restrict' }),
+    // Node Job cụ thể được gửi đi (`docs/decisions/wip-removal.md`) — `set null` cùng lý do
+    // `productionJobId`; `itemCode`/`itemName` là snapshot bắt buộc thay thế lúc đó.
+    productionJobBomItemId: uuid('production_job_bom_item_id').references(
+      () => productionJobBomItems.id,
+      { onDelete: 'set null' },
+    ),
+    itemCode: varchar('item_code', { length: 50 }).notNull(),
+    itemName: varchar('item_name', { length: 255 }).notNull(),
+    // Chỉ có khi node là CONSUMABLE (tham khảo) — node COMPONENT không phải một item, NULL.
+    itemId: uuid('item_id').references(() => items.id, {
+      onDelete: 'set null',
+    }),
     quantity: numeric('quantity', {
       precision: 18,
       scale: 3,
@@ -78,6 +89,9 @@ export const outsourcingOrderItems = pgTable(
       table.outsourcingOrderId,
     ),
     index('idx_outsourcing_order_items_item_id').on(table.itemId),
+    index('idx_outsourcing_order_items_production_job_bom_item_id').on(
+      table.productionJobBomItemId,
+    ),
     index('idx_outsourcing_order_items_production_job_id').on(
       table.productionJobId,
     ),
@@ -112,6 +126,10 @@ export const outsourcingOrderItemsRelations = relations(
     operation: one(operations, {
       fields: [outsourcingOrderItems.operationId],
       references: [operations.id],
+    }),
+    productionJobBomItem: one(productionJobBomItems, {
+      fields: [outsourcingOrderItems.productionJobBomItemId],
+      references: [productionJobBomItems.id],
     }),
     item: one(items, {
       fields: [outsourcingOrderItems.itemId],

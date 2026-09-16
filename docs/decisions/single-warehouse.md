@@ -7,7 +7,7 @@
 `warehouses` từng là danh mục kho (`code`/`name`/`type`), gắn FK vào 8 bảng
 (`inventory_balances`/`inventory_transactions`/`inventory_receipts`/`inventory_issues`/
 `inventory_requisitions`/`supplier_returns`/`outsourcing_orders`/`purchase_orders`), với seed tạo 3
-kho (`KHO-NVL`/`KHO-BTP`/`KHO-TP`) phân theo `type` (RM/WIP/FG). Nhưng thực tế nhà máy chỉ có
+kho (`KHO-NVL`/`KHO-BTP`/`KHO-TP`) phân theo `type` (RM/WIP/FG lúc đó). Nhưng thực tế nhà máy chỉ có
 **một kho vật lý duy nhất, mở 24/7** — không có khái niệm đóng/mở, không phân khu theo loại hàng.
 
 `warehouses.type` chưa từng ràng buộc loại hàng được nhập/xuất (chỉ là nhãn lọc) — hệ quả là mọi

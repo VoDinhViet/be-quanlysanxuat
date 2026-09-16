@@ -201,11 +201,15 @@ export const PERMISSION_LABELS: Record<PermissionCode, string> = {
   'reports:read': 'Xem báo cáo tổng quan',
 };
 
-
-export const PERMISSION_ITEM_DESCRIPTIONS: Partial<Record<PermissionCode, string>> = {
-  'items:copy': 'Nhân bản nhanh thông tin sản phẩm và định mức vật tư sang mã mới',
-  'items:bom-manage': 'Quản lý công thức định mức nguyên vật liệu (BOM) và công đoạn',
-  'inventory-requisitions:issue': 'Xác nhận thực xuất vật tư khỏi kho theo phiếu đã duyệt',
+export const PERMISSION_ITEM_DESCRIPTIONS: Partial<
+  Record<PermissionCode, string>
+> = {
+  'items:copy':
+    'Nhân bản nhanh thông tin sản phẩm và định mức vật tư sang mã mới',
+  'items:bom-manage':
+    'Quản lý công thức định mức nguyên vật liệu (BOM) và công đoạn',
+  'inventory-requisitions:issue':
+    'Xác nhận thực xuất vật tư khỏi kho theo phiếu đã duyệt',
 };
 
 export type PermissionCatalogueItem = {
@@ -215,33 +219,78 @@ export type PermissionCatalogueItem = {
   description?: string;
 };
 
+/**
+ * Business block a resource group belongs to in the role editor's permission matrix —
+ * the frontend renders one sticky section header per block, in this list's order.
+ */
+export const PERMISSION_BLOCK_KEYS = [
+  'system',
+  'catalog',
+  'sales',
+  'warehouse',
+  'production',
+  'purchasing',
+  'quality',
+  'reports',
+] as const;
+
+export type PermissionBlockKey = (typeof PERMISSION_BLOCK_KEYS)[number];
+
+export const PERMISSION_BLOCK_LABELS: Record<PermissionBlockKey, string> = {
+  system: 'Hệ thống',
+  catalog: 'Danh mục',
+  sales: 'Bán hàng',
+  warehouse: 'Kho',
+  production: 'Sản xuất',
+  purchasing: 'Mua hàng',
+  quality: 'Chất lượng',
+  reports: 'Báo cáo',
+};
+
 export type PermissionCatalogueGroup = {
   resource: string;
+  block: PermissionBlockKey;
+  blockLabel: string;
   label: string;
   description: string;
   codes: PermissionCode[];
   permissions: PermissionCatalogueItem[];
 };
 
+type PermissionGroupDef = {
+  resource: string;
+  block: PermissionBlockKey;
+  label: string;
+  description: string;
+  codes: PermissionCode[];
+};
+
 /**
- * Grouped permission catalogue for role configuration matrix in frontend.
+ * Source rows for the grouped permission catalogue below — one entry per resource, already
+ * ordered by business block so the frontend can bucket consecutive rows sharing the same
+ * `block` without keeping its own resource → block mapping in sync with this file.
  * Excludes superadmin system:manage since it is reserved for system admin only.
  */
-export const PERMISSION_CATALOGUE_GROUPS: PermissionCatalogueGroup[] = [
+const PERMISSION_GROUP_DEFS: PermissionGroupDef[] = [
   {
     resource: 'users',
-    description: 'Quản lý danh sách nhân sự, tài khoản đăng nhập và phân quyền truy cập hệ thống',
+    block: 'system',
+    description:
+      'Quản lý danh sách nhân sự, tài khoản đăng nhập và phân quyền truy cập hệ thống',
     label: 'Nhân sự',
     codes: ['users:create', 'users:update'],
   },
   {
     resource: 'roles',
-    description: 'Thiết lập vai trò, nhóm quyền chức năng và chính sách bảo mật nội bộ',
+    block: 'system',
+    description:
+      'Thiết lập vai trò, nhóm quyền chức năng và chính sách bảo mật nội bộ',
     label: 'Phân quyền',
     codes: ['roles:read', 'roles:create', 'roles:update', 'roles:delete'],
   },
   {
     resource: 'departments',
+    block: 'system',
     description: 'Quản lý cơ cấu phòng ban, sơ đồ tổ chức doanh nghiệp',
     label: 'Phòng ban',
     codes: [
@@ -253,6 +302,7 @@ export const PERMISSION_CATALOGUE_GROUPS: PermissionCatalogueGroup[] = [
   },
   {
     resource: 'positions',
+    block: 'system',
     description: 'Định danh chức danh, vị trí công tác và trách nhiệm nhiệm vụ',
     label: 'Chức vụ',
     codes: [
@@ -264,13 +314,22 @@ export const PERMISSION_CATALOGUE_GROUPS: PermissionCatalogueGroup[] = [
   },
   {
     resource: 'clients',
-    description: 'Quản lý hồ sơ đối tác khách hàng, phân nhóm và thông tin liên hệ',
+    block: 'catalog',
+    description:
+      'Quản lý hồ sơ đối tác khách hàng, phân nhóm và thông tin liên hệ',
     label: 'Khách hàng',
-    codes: ['clients:read', 'clients:create', 'clients:update', 'clients:delete'],
+    codes: [
+      'clients:read',
+      'clients:create',
+      'clients:update',
+      'clients:delete',
+    ],
   },
   {
     resource: 'items',
-    description: 'Danh mục sản phẩm, bán thành phẩm, nguyên vật liệu và định mức kỹ thuật BOM',
+    block: 'catalog',
+    description:
+      'Danh mục sản phẩm, bán thành phẩm, nguyên vật liệu và định mức kỹ thuật BOM',
     label: 'Sản phẩm & vật tư',
     codes: [
       'items:read',
@@ -283,7 +342,9 @@ export const PERMISSION_CATALOGUE_GROUPS: PermissionCatalogueGroup[] = [
   },
   {
     resource: 'operations',
-    description: 'Quy trình công nghệ, các bước công đoạn gia công và định mức thời gian',
+    block: 'catalog',
+    description:
+      'Quy trình công nghệ, các bước công đoạn gia công và định mức thời gian',
     label: 'Công đoạn',
     codes: [
       'operations:read',
@@ -294,7 +355,9 @@ export const PERMISSION_CATALOGUE_GROUPS: PermissionCatalogueGroup[] = [
   },
   {
     resource: 'suppliers',
-    description: 'Danh bạ nhà cung cấp vật tư, thông tin giao dịch và điều khoản mua hàng',
+    block: 'catalog',
+    description:
+      'Danh bạ nhà cung cấp vật tư, thông tin giao dịch và điều khoản mua hàng',
     label: 'Nhà cung cấp',
     codes: [
       'suppliers:read',
@@ -305,7 +368,9 @@ export const PERMISSION_CATALOGUE_GROUPS: PermissionCatalogueGroup[] = [
   },
   {
     resource: 'orders',
-    description: 'Quản lý đơn đặt hàng bán (SO), tiến độ thực hiện và giao nhận hàng',
+    block: 'sales',
+    description:
+      'Quản lý đơn đặt hàng bán (SO), tiến độ thực hiện và giao nhận hàng',
     label: 'Đơn hàng (SO)',
     codes: [
       'orders:read',
@@ -316,8 +381,24 @@ export const PERMISSION_CATALOGUE_GROUPS: PermissionCatalogueGroup[] = [
     ],
   },
   {
+    resource: 'outbound',
+    block: 'sales',
+    description:
+      'Lập phiếu giao hàng (DO), kế hoạch vận chuyển và bàn giao sản phẩm',
+    label: 'Giao hàng (DO)',
+    codes: [
+      'outbound:read',
+      'outbound:create',
+      'outbound:update',
+      'outbound:approve',
+      'outbound:delete',
+    ],
+  },
+  {
     resource: 'inventory',
-    description: 'Theo dõi xuất nhập tồn kho, kiểm kê và điều chuyển nguyên vật liệu',
+    block: 'warehouse',
+    description:
+      'Theo dõi xuất nhập tồn kho, kiểm kê và điều chuyển nguyên vật liệu',
     label: 'Kho (nhập/xuất/tồn)',
     codes: [
       'inventory:read',
@@ -328,7 +409,9 @@ export const PERMISSION_CATALOGUE_GROUPS: PermissionCatalogueGroup[] = [
   },
   {
     resource: 'inventory-requisitions',
-    description: 'Yêu cầu xuất kho nguyên vật liệu phục vụ sản xuất theo kế hoạch',
+    block: 'warehouse',
+    description:
+      'Yêu cầu xuất kho nguyên vật liệu phục vụ sản xuất theo kế hoạch',
     label: 'Lãnh vật tư',
     codes: [
       'inventory-requisitions:read',
@@ -341,7 +424,9 @@ export const PERMISSION_CATALOGUE_GROUPS: PermissionCatalogueGroup[] = [
   },
   {
     resource: 'production',
-    description: 'Lập kế hoạch sản xuất, phát hành lệnh sản xuất và điều độ phân xưởng',
+    block: 'production',
+    description:
+      'Lập kế hoạch sản xuất, phát hành lệnh sản xuất và điều độ phân xưởng',
     label: 'Sản xuất',
     codes: [
       'production:read',
@@ -352,7 +437,9 @@ export const PERMISSION_CATALOGUE_GROUPS: PermissionCatalogueGroup[] = [
   },
   {
     resource: 'purchase-requests',
-    description: 'Đề xuất mua sắm nguyên vật liệu và trang thiết bị từ các bộ phận',
+    block: 'purchasing',
+    description:
+      'Đề xuất mua sắm nguyên vật liệu và trang thiết bị từ các bộ phận',
     label: 'Đề xuất mua hàng',
     codes: [
       'purchase-requests:read',
@@ -364,7 +451,9 @@ export const PERMISSION_CATALOGUE_GROUPS: PermissionCatalogueGroup[] = [
   },
   {
     resource: 'purchasing',
-    description: 'Quản lý quy trình mua hàng, báo giá NCC, đơn đặt mua PO và thanh toán',
+    block: 'purchasing',
+    description:
+      'Quản lý quy trình mua hàng, báo giá NCC, đơn đặt mua PO và thanh toán',
     label: 'Mua hàng (RFQ/PO/thanh toán)',
     codes: [
       'purchasing:read',
@@ -376,13 +465,17 @@ export const PERMISSION_CATALOGUE_GROUPS: PermissionCatalogueGroup[] = [
   },
   {
     resource: 'iqc',
-    description: 'Kiểm tra chất lượng nguyên vật liệu đầu vào từ nhà cung cấp trước khi nhập kho',
+    block: 'quality',
+    description:
+      'Kiểm tra chất lượng nguyên vật liệu đầu vào từ nhà cung cấp trước khi nhập kho',
     label: 'IQC',
     codes: ['iqc:read', 'iqc:create', 'iqc:update', 'iqc:delete'],
   },
   {
     resource: 'outsourcing',
-    description: 'Điều phối gia công bán thành phẩm với các đơn vị gia công ngoài',
+    block: 'quality',
+    description:
+      'Điều phối gia công bán thành phẩm với các đơn vị gia công ngoài',
     label: 'Gia công ngoài',
     codes: [
       'outsourcing:read',
@@ -393,43 +486,57 @@ export const PERMISSION_CATALOGUE_GROUPS: PermissionCatalogueGroup[] = [
   },
   {
     resource: 'oqc',
-    description: 'Kiểm tra chất lượng thành phẩm hoàn thiện trước khi đóng gói xuất xưởng',
+    block: 'quality',
+    description:
+      'Kiểm tra chất lượng thành phẩm hoàn thiện trước khi đóng gói xuất xưởng',
     label: 'OQC',
     codes: ['oqc:read', 'oqc:create', 'oqc:update', 'oqc:delete'],
   },
   {
     resource: 'qc-aql',
-    description: 'Thiết lập tiêu chuẩn kiểm định chất lượng theo phương pháp lấy mẫu AQL',
+    block: 'quality',
+    description:
+      'Thiết lập tiêu chuẩn kiểm định chất lượng theo phương pháp lấy mẫu AQL',
     label: 'AQL lấy mẫu',
     codes: ['qc-aql:read', 'qc-aql:create', 'qc-aql:update'],
   },
   {
-    resource: 'outbound',
-    description: 'Lập phiếu giao hàng (DO), kế hoạch vận chuyển và bàn giao sản phẩm',
-    label: 'Giao hàng (DO)',
-    codes: [
-      'outbound:read',
-      'outbound:create',
-      'outbound:update',
-      'outbound:approve',
-      'outbound:delete',
-    ],
-  },
-  {
     resource: 'reports',
-    description: 'Báo cáo tổng hợp số liệu sản xuất, chi phí, tiến độ và hiệu suất vận hành',
+    block: 'reports',
+    description:
+      'Báo cáo tổng hợp số liệu sản xuất, chi phí, tiến độ và hiệu suất vận hành',
     label: 'Báo cáo',
     codes: ['reports:read'],
   },
-].map((g): PermissionCatalogueGroup => ({
-  resource: g.resource,
-  label: g.label,
-  description: (g as any).description || '',
-  codes: g.codes as PermissionCode[],
-  permissions: (g.codes as PermissionCode[]).map((code) => ({
-    code,
-    action: code.split(':')[1] || '',
-    label: PERMISSION_LABELS[code] || code,
-    description: PERMISSION_ITEM_DESCRIPTIONS[code],
-  })),
-}));
+];
+
+/**
+ * Grouped permission catalogue for the role configuration matrix in the frontend. Sorted by
+ * block — stably, so relative order within a block matches `PERMISSION_GROUP_DEFS` — so groups
+ * sharing a block always come out contiguous. The frontend's `buildPermissionMatrix` buckets
+ * consecutive same-block entries into one section; without this sort that would only hold by
+ * the accident of `PERMISSION_GROUP_DEFS`'s own literal order, silently breaking (splitting one
+ * block into two sections) if a future resource were inserted out of block order above.
+ */
+export const PERMISSION_CATALOGUE_GROUPS: PermissionCatalogueGroup[] = [
+  ...PERMISSION_GROUP_DEFS,
+]
+  .sort(
+    (a, b) =>
+      PERMISSION_BLOCK_KEYS.indexOf(a.block) -
+      PERMISSION_BLOCK_KEYS.indexOf(b.block),
+  )
+  .map((g) => ({
+    resource: g.resource,
+    block: g.block,
+    blockLabel: PERMISSION_BLOCK_LABELS[g.block],
+    label: g.label,
+    description: g.description,
+    codes: g.codes,
+    permissions: g.codes.map((code) => ({
+      code,
+      action: code.split(':')[1] || '',
+      label: PERMISSION_LABELS[code] || code,
+      description: PERMISSION_ITEM_DESCRIPTIONS[code],
+    })),
+  }));

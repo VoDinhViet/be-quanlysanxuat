@@ -30,12 +30,16 @@ export class ItemResDto {
   code!: string;
 
   @Expose()
+  @StringField({ description: 'Phiên bản; mặc định R01' })
+  revision!: string;
+
+  @Expose()
   @StringField({ description: 'Tên hàng hoá' })
   name!: string;
 
   @Expose()
   @EnumField(() => ItemType, {
-    description: 'FG (thành phẩm) / WIP (bán thành phẩm) / RM (vật tư)',
+    description: 'FG (thành phẩm) / CONSUMABLE (vật tư)',
   })
   type!: ItemType;
 
@@ -62,19 +66,19 @@ export class ItemResDto {
   @Expose()
   @ClassFieldOptional(() => SupplierRefResDto, {
     nullable: true,
-    description: 'NCC chính — chỉ có ý nghĩa với RM',
+    description: 'NCC chính — chỉ có ý nghĩa với CONSUMABLE',
   })
   supplier!: SupplierRefResDto | null;
 
   @Expose()
   @NumberField({
-    description: 'Định mức tồn tối thiểu — chỉ có ý nghĩa với RM',
+    description: 'Định mức tồn tối thiểu — chỉ có ý nghĩa với CONSUMABLE',
   })
   minStock!: number;
 
   @Expose()
   @StringFieldOptional({ nullable: true })
-  materialGrade!: string | null;
+  consumableGrade!: string | null;
 
   @Expose()
   @StringFieldOptional({ nullable: true })

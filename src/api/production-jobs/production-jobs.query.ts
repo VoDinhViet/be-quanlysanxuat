@@ -3,13 +3,13 @@ import { and, count, eq, isNull, sql } from 'drizzle-orm';
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
   InventoryDocumentStatus,
-  ItemType,
   OperationType,
   OutsourcingReceiptStatus,
   outsourcingOrderItems,
   outsourcingReceiptItems,
   outsourcingReceipts,
   productionJobBomItems,
+  ProductionJobBomItemType,
   ProductionJobLogAction,
   productionJobLogs,
   productionJobOperations,
@@ -39,7 +39,7 @@ export async function closeJobIfFinalAssemblyDone(
     .where(
       and(
         eq(productionJobOperations.productionJobId, productionJobId),
-        eq(productionJobBomItems.itemType, ItemType.FG),
+        eq(productionJobBomItems.itemType, ProductionJobBomItemType.FG),
         isNull(productionJobOperations.completedDate),
       ),
     );
@@ -179,12 +179,9 @@ export async function recomputeOutsourcedOperationProgress(
         )
         .innerJoin(
           supplierReturns,
-          and(
-            eq(
-              supplierReturns.outsourcingReceiptId,
-              outsourcingReceiptItems.outsourcingReceiptId,
-            ),
-            eq(supplierReturns.itemId, outsourcingReceiptItems.itemId),
+          eq(
+            supplierReturns.outsourcingReceiptItemId,
+            outsourcingReceiptItems.id,
           ),
         )
         .where(
@@ -210,7 +207,7 @@ export async function recomputeOutsourcedOperationProgress(
     })
     .where(eq(productionJobOperations.id, productionJobOperationId));
 
-  if (isCompleted && operation.itemType === ItemType.FG) {
+  if (isCompleted && operation.itemType === ProductionJobBomItemType.FG) {
     await closeJobIfFinalAssemblyDone(tx, operation.productionJobId);
   }
 }

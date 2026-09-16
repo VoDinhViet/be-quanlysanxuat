@@ -12,11 +12,7 @@ import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
-import {
-  bomOperations,
-  operations,
-  routingOperations,
-} from '../../database/schemas';
+import { bomOperations, operations } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { CreateOperationReqDto } from './dto/create-operation.req.dto';
 import { GetOperationsReqDto } from './dto/get-operations.req.dto';
@@ -102,7 +98,7 @@ export class OperationsService {
 
   async deleteOperation(operationId: string): Promise<void> {
     await this.ensureOperationExists(operationId);
-    await this.ensureOperationNotInUse(operationId);
+    await this.ensureOperationIsDeletable(operationId);
 
     await this.db
       .update(operations)
@@ -146,23 +142,17 @@ export class OperationsService {
     }
   }
 
-  /** Chặn xoá khi còn `routing_operations`/`bom_operations` trỏ tới — cả hai FK là `restrict`, xoá
-   * mềm không tự kích hoạt ràng buộc đó nên phải tự kiểm ở tầng service. */
-  private async ensureOperationNotInUse(operationId: string): Promise<void> {
-    const [[usedInRouting], [usedInBom]] = await Promise.all([
-      this.db
-        .select({ id: routingOperations.id })
-        .from(routingOperations)
-        .where(eq(routingOperations.operationId, operationId))
-        .limit(1),
-      this.db
-        .select({ id: bomOperations.id })
-        .from(bomOperations)
-        .where(eq(bomOperations.operationId, operationId))
-        .limit(1),
-    ]);
+  /** Chặn xoá khi còn `bom_operations` trỏ tới (kể cả bước của node ROOT, "Cấp 0" — từ
+   * `docs/decisions/root-bom-item.md` không còn bảng `routing_operations` riêng) — FK là
+   * `restrict`, xoá mềm không tự kích hoạt ràng buộc đó nên phải tự kiểm ở tầng service. */
+  private async ensureOperationIsDeletable(operationId: string): Promise<void> {
+    const [bomOperation] = await this.db
+      .select({ id: bomOperations.id })
+      .from(bomOperations)
+      .where(eq(bomOperations.operationId, operationId))
+      .limit(1);
 
-    if (usedInRouting || usedInBom) {
+    if (bomOperation) {
       throw new AppException(ErrorCode.E248, HttpStatus.CONFLICT);
     }
   }

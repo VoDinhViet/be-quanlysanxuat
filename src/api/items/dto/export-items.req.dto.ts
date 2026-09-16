@@ -17,14 +17,14 @@ export class ExportItemsReqDto {
   @EnumFieldOptional(() => ItemType, {
     each: true,
     description:
-      'Filter by item type, CSV: `FG,WIP` (Sản phẩm) or `RM` (Vật tư)',
+      'Filter by item type, CSV: `FG` (Sản phẩm) or `CONSUMABLE` (Vật tư)',
   })
   readonly type?: ItemType[];
 
   @UUIDFieldOptional({ description: 'Filter by client id' })
   readonly clientId?: string;
 
-  @UUIDFieldOptional({ description: 'Filter by supplier id (RM)' })
+  @UUIDFieldOptional({ description: 'Filter by supplier id (CONSUMABLE)' })
   readonly supplierId?: string;
 
   @EnumFieldOptional(() => ItemStatus)

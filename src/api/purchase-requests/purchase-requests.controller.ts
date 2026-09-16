@@ -60,7 +60,7 @@ export class PurchaseRequestsController {
   @Permissions('purchase-requests:create')
   @ApiAuth({
     summary:
-      'Lập đề xuất mua hàng tay — luôn DRAFT, không gắn LSX/Job, mọi dòng phải là vật tư RM',
+      'Lập đề xuất mua hàng tay — luôn DRAFT, không gắn LSX/Job, mọi dòng phải là vật tư CONSUMABLE',
     statusCode: HttpStatus.NO_CONTENT,
   })
   createPurchaseRequest(

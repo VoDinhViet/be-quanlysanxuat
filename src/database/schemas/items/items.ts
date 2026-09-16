@@ -20,20 +20,18 @@ import { itemFiles } from './item-files';
 import { itemUnits } from './item-units';
 
 /**
- * FG (thành phẩm, gốc cây BOM của chính nó), WIP (bán thành phẩm, chỉ xuất hiện như node con trong
- * `bom_items` của một item khác), RM (vật tư, chỉ xuất hiện như node lá — không có BOM/công đoạn
- * riêng). Xem `docs/decisions/items-merge.md`.
+ * FG (thành phẩm, gốc cây BOM của chính nó), CONSUMABLE (vật tư, chỉ xuất hiện như node lá —
+ * không có BOM/công đoạn riêng). Node cấu trúc con không phải một item — sống trên
+ * `bom_items.type = COMPONENT` (`docs/decisions/wip-removal.md`). Xem `docs/decisions/items-merge.md`.
  */
 export enum ItemType {
   FG = 'FG',
-  WIP = 'WIP',
-  RM = 'RM',
+  CONSUMABLE = 'CONSUMABLE',
 }
 
 export const itemTypeEnum = pgEnum('item_type', [
   ItemType.FG,
-  ItemType.WIP,
-  ItemType.RM,
+  ItemType.CONSUMABLE,
 ]);
 
 export enum ItemStatus {
@@ -47,24 +45,27 @@ export const itemStatusEnum = pgEnum('item_status', [
 ]);
 
 /**
- * Danh mục hàng hoá dùng chung cho cả FG/WIP/RM — gộp `products`+`materials` cũ, một bảng, một
+ * Danh mục hàng hoá dùng chung cho cả FG/CONSUMABLE — gộp `products`+`materials` cũ, một bảng, một
  * module `/items` (`docs/decisions/items-merge.md`).
  *
  * Rules:
- * - `supplierId`/`minStock`/8 cột mở rộng bên dưới chỉ có ý nghĩa với RM — luôn nullable/mặc định
- *   trên FG/WIP, không tách bảng phụ.
+ * - `supplierId`/`minStock`/8 cột mở rộng bên dưới chỉ có ý nghĩa với CONSUMABLE — luôn
+ *   nullable/mặc định trên FG, không tách bảng phụ.
  * - Không còn cột nhóm hàng hoá (`productGroupId`/`materialGroupId` cũ) — `type` là thứ duy nhất
  *   phân loại.
- * - `code` unique theo partial index (chỉ dòng còn sống) chứ không phải `.unique()` toàn bảng —
- *   khác quy ước chung của `.claude/rules/database.md`'s "Soft delete" (cố tình, đã bàn với người
- *   yêu cầu): một mã bị xoá mềm phải dùng lại được, vì `code` còn tự sinh (`VTxxxx`/`SPxxxx`) nên
- *   giữ mã chết vĩnh viễn sẽ làm hụt dải số một cách vô ích.
+ * - Cặp `(code, revision)` unique theo partial index (chỉ dòng còn sống) chứ không phải
+ *   `.unique()` toàn bảng — khác quy ước chung của `.claude/rules/database.md`'s "Soft delete"
+ *   (cố tình, đã bàn với người yêu cầu): một mã bị xoá mềm phải dùng lại được, vì `code` còn tự
+ *   sinh (`VTxxxx`/`SPxxxx`) nên giữ mã chết vĩnh viễn sẽ làm hụt dải số một cách vô ích.
+ *   `revision` cho phép cùng một `code` tồn tại ở nhiều phiên bản
+ *   (`docs/domains/product-structure.md`).
  */
 export const items = pgTable(
   'items',
   {
     id: uuid('id').defaultRandom().primaryKey(),
     code: varchar('code', { length: 50 }).notNull(),
+    revision: varchar('revision', { length: 50 }).notNull().default('R01'),
     name: varchar('name', { length: 255 }).notNull(),
     type: itemTypeEnum('type').notNull().default(ItemType.FG),
     imageFileId: uuid('image_file_id').references(() => files.id, {
@@ -86,7 +87,7 @@ export const items = pgTable(
       .notNull()
       .references(() => units.id, { onDelete: 'restrict' }),
 
-    // Chỉ RM dùng — nullable/mặc định trên FG/WIP.
+    // Chỉ CONSUMABLE dùng — nullable/mặc định trên FG.
     supplierId: uuid('supplier_id').references(() => suppliers.id, {
       onDelete: 'set null',
     }),
@@ -97,7 +98,7 @@ export const items = pgTable(
     })
       .notNull()
       .default(0),
-    materialGrade: varchar('material_grade', { length: 255 }),
+    consumableGrade: varchar('consumable_grade', { length: 255 }),
     technicalStandard: varchar('technical_standard', { length: 255 }),
     dimensions: varchar('dimensions', { length: 255 }),
     specificWeight: numeric('specific_weight', {
@@ -130,9 +131,10 @@ export const items = pgTable(
     index('idx_items_type').on(table.type),
     index('idx_items_status').on(table.status),
     // Partial unique index — thật sự enforce (khác partial index chỉ để tăng tốc,
-    // `.claude/rules/database.md`) — chỉ chặn trùng `code` giữa các dòng còn sống.
-    uniqueIndex('uq_items_code_active')
-      .on(table.code)
+    // `.claude/rules/database.md`) — chặn trùng cặp `(code, revision)` giữa các dòng còn sống,
+    // không phải `code` riêng lẻ (cùng `code` được phép ở nhiều `revision` khác nhau).
+    uniqueIndex('uq_items_code_revision_active')
+      .on(table.code, table.revision)
       .where(sql`deleted_at IS NULL`),
   ],
 );

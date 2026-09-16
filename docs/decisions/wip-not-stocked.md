@@ -1,23 +1,32 @@
-# Kho không quản tồn bán thành phẩm (WIP)
+# Kho không quản tồn node cấu trúc con (trước kia gọi là "bán thành phẩm"/WIP)
 
-**Trạng thái:** còn hiệu lực
+**Trạng thái:** còn hiệu lực — nội dung lịch sử, bất biến thay thế xem "Cập nhật" bên dưới
 
 ## Bối cảnh
 
 `POST /outsourcing-orders` (OS-OUT) từng trừ tồn kho cho mặt hàng suy từ node BOM của công đoạn
-được chọn. Công đoạn chỉ gắn được vào node không phải RM (`E063`) và node không được là FG (`E053`)
+được chọn. Công đoạn chỉ gắn được vào node không phải CONSUMABLE (`E063`) và node không được là FG (`E053`,
+nay đã nghỉ hưu)
 — nên mặt hàng gửi gia công ngoài trên thực tế luôn là WIP. Nhưng không luồng nào trong hệ thống
 nhập WIP vào kho: `startJob` không lập phiếu kho, không có route "hoàn thành Job" sinh phiếu nhập,
-seed chỉ tạo tồn cho RM. Tồn WIP luôn bằng 0, nên mọi `POST /outsourcing-orders` đều trả `409 E106`
+seed chỉ tạo tồn cho CONSUMABLE. Tồn WIP luôn bằng 0, nên mọi `POST /outsourcing-orders` đều trả `409 E106`
 — hệ quả tất yếu của thiết kế cũ, không phải bug ngẫu nhiên.
 
-Nghiệp vụ thật: kho chỉ quản thành phẩm (FG) và vật tư (RM). Bán thành phẩm là hàng dở dang trên
+Nghiệp vụ thật: kho chỉ quản thành phẩm (FG) và vật tư (CONSUMABLE). Bán thành phẩm là hàng dở dang trên
 chuyền hoặc đang ở NCC gia công — không có sổ tồn kho.
+
+## Cập nhật (`docs/decisions/wip-removal.md`)
+
+WIP đã bị xoá hẳn khỏi hệ thống — node cấu trúc con giờ là `bom_items.type = COMPONENT`, không còn
+là một dòng `items` nên **không có `items.id`** để mà vào `inventory_balances`/
+`inventory_transactions`. Bất biến "không quản tồn" giờ đúng theo cấu trúc, không cần enforce ở
+service như trước — nội dung "Quyết định" bên dưới giữ nguyên giá trị lịch sử (giải thích vì sao
+`shouldPostStock`/các route liệt kê tồn kho hành xử như hiện tại) nhưng đọc "WIP" như "node COMPONENT".
 
 ## Quyết định
 
-**WIP không bao giờ đụng `inventory_balances`/`inventory_transactions`, và mặc định không hiện
-trên các route liệt kê tồn kho.**
+**Node cấu trúc con không bao giờ đụng `inventory_balances`/`inventory_transactions`, và mặc định
+không hiện trên các route liệt kê tồn kho** (nay đúng theo cấu trúc — xem "Cập nhật" trên).
 
 - `OutsourcingOrdersService`/`OutsourcingReceiptsService` (`create`/`cancel`) không gọi
   `InventoryPostingService.postDocument`/`reverseDocument`. Gia công ngoài chỉ theo dõi SL gửi/nhận
@@ -26,18 +35,18 @@ trên các route liệt kê tồn kho.**
 - `SupplierReturnsService.shouldPostStock` trả `false` khi phiếu trả sinh từ IQC của OS-IN
   (`outsourcingReceiptId` có giá trị) — hàng đó chưa từng vào tồn nên trừ ra cũng sai, cùng lý do áp
   dụng cho nhánh "phiếu nhập gốc chưa `POSTED`".
-- `GET /inventory-products`/`GET /inventory-materials` (danh mục FG/RM) không nhận `itemType=WIP` —
-  cứng FG/RM theo route. `GET /inventory/balances` giữ hành vi cũ hơn: bỏ trống `itemType` trả FG/RM,
-  gửi tường minh `itemType=WIP` vẫn xem được (luôn rỗng, chỉ để đối chiếu/debug). `GET
-  /inventory/transactions` không đổi — vẫn liệt kê mọi loại.
+- `GET /inventory-products`/`GET /inventory-consumables` cứng FG/CONSUMABLE theo route. `GET
+  /inventory/balances`/`GET /inventory/transactions` không lọc gì đặc biệt nữa — `items.type` giờ
+  chỉ còn `FG`/`CONSUMABLE`, filter "loại trừ WIP" (`inArray(items.type, [FG, CONSUMABLE])`) đã thành no-op và có
+  thể đơn giản hoá.
 
 ## Giữ nguyên, không đổi
 
 - `InventoryReferenceType.OUTSOURCING_ORDER`/`OUTSOURCING_RECEIPT` vẫn còn trong pgEnum (gỡ phải
   migrate cột dùng chung), chỉ không còn nguồn nào phát sinh giá trị mới.
 - `E184`/`E172`, `E169`/`E173` chặn `cancel`.
-- Phiếu nhập/xuất kho lập tay không bị chặn cứng chọn WIP — người dùng vẫn tự chọn được nếu muốn,
-  chỉ là kho không quản tồn đó theo mặc định.
+- Phiếu nhập/xuất kho lập tay chỉ chọn được item thật (FG/CONSUMABLE) — node COMPONENT không phải item nên
+  không thể xuất hiện trong picker chọn hàng của phiếu kho, khác trước kia khi WIP vẫn chọn được.
 
 ## `warehouseId` đã bỏ khỏi toàn hệ thống, không riêng gia công ngoài
 
@@ -50,14 +59,15 @@ không còn cột `warehouseId` để suy, `shouldPostStock` chỉ còn xét `ou
 
 ## Đừng hoàn lại
 
-Nếu sau này thật sự cần quản tồn WIP, thiết kế đúng là thêm **một nguồn nhập WIP** trước (ví dụ
-phiếu nhập từ một bước hoàn thành công đoạn/Job), rồi mới cân nhắc gia công ngoài có nên ghi bút
-toán hay không — không phải bật lại `postDocument` trong `createOutsourcingOrder`/
-`createOutsourcingReceipt` như cũ, vì tồn WIP vẫn sẽ luôn bắt đầu từ 0 và `E106` sẽ quay lại y hệt.
+Nếu sau này thật sự cần quản tồn cấu trúc con, thiết kế đúng giờ đòi hỏi nhiều hơn "bật lại
+`postDocument`" — node COMPONENT không có `items.id`, nên trước tiên phải cấp cho nó một định danh
+item thật (tức là đảo ngược một phần `docs/decisions/wip-removal.md`), rồi mới cân nhắc ghi bút
+toán. Không có đường tắt.
 
 ## Related docs
 
-`docs/decisions/outsourcing-no-draft.md` (quyết định liền trước — không đảo ngược gì ở đó, chỉ bỏ
-tiếp phần ghi bút toán). `docs/decisions/single-warehouse.md` (bỏ hẳn khái niệm kho).
+`docs/decisions/wip-removal.md` (đảo chiều gần nhất — xoá hẳn khái niệm WIP-là-item, giải thích bất
+biến "không có `items.id`" thay thế toàn bộ nội dung Quyết định ở trên). `docs/decisions/outsourcing-no-draft.md`,
+`docs/decisions/single-warehouse.md` (bỏ hẳn khái niệm kho).
 `docs/domains/inventory.md`, `docs/workflows/outsourcing-round-trip.md`,
 `docs/workflows/supplier-return.md`.

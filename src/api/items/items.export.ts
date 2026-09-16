@@ -6,6 +6,7 @@ import { ItemStatus, ItemType } from '../../database/schemas';
 
 export interface ItemExport {
   code: string;
+  revision: string;
   name: string;
   type: ItemType;
   status: ItemStatus;
@@ -13,7 +14,7 @@ export interface ItemExport {
   clientName: string | null;
   supplierName: string | null;
   minStock: number;
-  materialGrade: string | null;
+  consumableGrade: string | null;
   technicalStandard: string | null;
   dimensions: string | null;
   specificWeight: number | null;
@@ -28,8 +29,7 @@ export interface ItemExport {
 
 const ITEM_TYPE_LABELS: Record<ItemType, string> = {
   [ItemType.FG]: 'Thành phẩm',
-  [ItemType.WIP]: 'Bán thành phẩm',
-  [ItemType.RM]: 'Vật tư',
+  [ItemType.CONSUMABLE]: 'Vật tư',
 };
 
 const ITEM_STATUS_LABELS: Record<ItemStatus, string> = {
@@ -39,6 +39,7 @@ const ITEM_STATUS_LABELS: Record<ItemStatus, string> = {
 
 export const ITEM_EXPORT_COLUMNS: ExcelColumn<ItemExport>[] = [
   { header: 'Mã hàng hoá', value: (row) => row.code },
+  { header: 'Phiên bản', value: (row) => row.revision },
   { header: 'Tên hàng hoá', value: (row) => row.name, width: 30 },
   { header: 'Loại', value: (row) => ITEM_TYPE_LABELS[row.type] },
   { header: 'Trạng thái', value: (row) => ITEM_STATUS_LABELS[row.status] },
@@ -50,7 +51,7 @@ export const ITEM_EXPORT_COLUMNS: ExcelColumn<ItemExport>[] = [
     value: (row) => row.minStock,
     numFmt: '#,##0.###',
   },
-  { header: 'Mác vật liệu', value: (row) => row.materialGrade },
+  { header: 'Mác vật tư', value: (row) => row.consumableGrade },
   { header: 'Tiêu chuẩn kỹ thuật', value: (row) => row.technicalStandard },
   { header: 'Quy cách', value: (row) => row.dimensions },
   {

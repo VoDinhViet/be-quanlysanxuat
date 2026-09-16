@@ -5,6 +5,7 @@ import {
   index,
   integer,
   numeric,
+  pgEnum,
   pgTable,
   timestamp,
   uniqueIndex,
@@ -18,14 +19,41 @@ import { items } from './items';
 import { users } from '../identity-access/users';
 
 /**
- * One line of the BOM tree — either a WIP sub-assembly node or a RM leaf (`item.type`, không còn
- * bảng `bom_materials` riêng — xem `docs/decisions/items-merge.md`). The FG root ("Cấp 0") is NOT
- * stored here — top-level items carry `parentId = null` and represent the root's direct children
- * ("Cấp 1"). `level` stores 1-based depth, read straight into the response.
+ * `COMPONENT` — node cấu trúc con (thay cho WIP cũ, `docs/decisions/wip-removal.md`): không trỏ
+ * `items`, mang `code`/`name` nhập trực tiếp trên chính dòng, riêng cho vị trí đó trong cây của
+ * đúng 1 sản phẩm — không tái sử dụng được. `CONSUMABLE` — node lá, trỏ `items.id`
+ * (`type = CONSUMABLE`). `ROOT` — đúng 1 dòng mỗi `bom`, đại diện chính sản phẩm FG ("Cấp 0"); trỏ
+ * `items.id` như CONSUMABLE (cùng cách đọc `code`/`name`/`unit`/`image` qua join) nhưng không phải
+ * lá — nhận COMPONENT/CONSUMABLE làm con trực tiếp và gắn được `bom_operations` như COMPONENT.
+ * Sinh tự động khi tạo `bom` (`BomsService.getOrCreateBomId`), không tạo/xoá được qua API
+ * bom-items thường (xem `docs/decisions/root-bom-item.md`).
+ */
+export enum BomType {
+  COMPONENT = 'COMPONENT',
+  CONSUMABLE = 'CONSUMABLE',
+  ROOT = 'ROOT',
+}
+
+export const bomTypeEnum = pgEnum('bom_node_type', [
+  BomType.COMPONENT,
+  BomType.CONSUMABLE,
+  BomType.ROOT,
+]);
+
+/**
+ * One line of the BOM tree — a `ROOT` node (the FG item itself, "Cấp 0"), a `COMPONENT`
+ * sub-assembly node (private to this tree, no `items` row), or a `CONSUMABLE` leaf (`itemId`,
+ * không còn bảng `bom_materials` riêng — xem `docs/decisions/items-merge.md`). Mọi node khác ROOT
+ * đều có `parentId` trỏ tới một node khác trong cùng `bom` (ROOT là gốc thật của cây — không còn
+ * node nào có `parentId = null` ngoài chính nó, xem `docs/decisions/root-bom-item.md`). `level`
+ * stores 0-based depth from ROOT, read straight into the response.
  *
  * Rules:
- * - Một node RM là lá bắt buộc — không được có con, không được gắn `bom_operations`
+ * - Một node CONSUMABLE là lá bắt buộc — không được có con, không được gắn `bom_operations`
  *   (`BomsService`).
+ * - Đúng 1 trong 3 hình dạng, ép bởi `chk_bom_items_node_shape`: `CONSUMABLE` → `itemId` có,
+ *   `code`/`name` không; `COMPONENT` → ngược lại; `ROOT` → `itemId` có (như CONSUMABLE),
+ *   `code`/`name` không, và `parentId` bắt buộc null.
  */
 export const bomItems = pgTable(
   'bom_items',
@@ -35,14 +63,22 @@ export const bomItems = pgTable(
       .notNull()
       .references(() => boms.id, { onDelete: 'cascade' }),
     // Self-referencing forward reference — same AnyPgColumn thunk as items.clonedFromItemId.
-    // Null = top-level item (direct child of the FG root).
+    // Null only for the one ROOT row of each bom — every other node (including what used to be
+    // "top-level") now points at that ROOT row (see doc comment above,
+    // `docs/decisions/root-bom-item.md`).
     parentId: uuid('parent_id').references((): AnyPgColumn => bomItems.id, {
       onDelete: 'cascade',
     }),
+    type: bomTypeEnum('type').notNull(),
     // `restrict`: một item đang được BOM tham chiếu không thể bị xoá cứng ra khỏi dưới chân nó.
-    itemId: uuid('item_id')
-      .notNull()
-      .references(() => items.id, { onDelete: 'restrict' }),
+    // NULL cho node `COMPONENT` — node đó không phải một item.
+    itemId: uuid('item_id').references(() => items.id, {
+      onDelete: 'restrict',
+    }),
+    // Chỉ node `COMPONENT` dùng — mã/tên nhập tay riêng cho vị trí này, không phải danh mục dùng
+    // chung. NULL cho cả `CONSUMABLE` và `ROOT` (đọc từ `items` join thay vì lưu ở đây).
+    code: varchar('code', { length: 50 }),
+    name: varchar('name', { length: 255 }),
     quantity: numeric('quantity', {
       precision: 12,
       scale: 3,
@@ -54,7 +90,7 @@ export const bomItems = pgTable(
     sortOrder: integer('sort_order').notNull().default(0),
     note: varchar('note', { length: 1000 }),
     // A technical drawing specific to this node — independent of `image`, which is read (not
-    // stored) from the linked item's own `imageFileId`.
+    // stored) from the linked item's own `imageFileId` (node CONSUMABLE only).
     drawingFileId: uuid('drawing_file_id').references(() => files.id, {
       onDelete: 'set null',
     }),
@@ -74,15 +110,28 @@ export const bomItems = pgTable(
     index('idx_bom_items_created_by').on(table.createdBy),
     index('idx_bom_items_drawing_file_id').on(table.drawingFileId),
     check('chk_bom_items_quantity_positive', sql`quantity > 0`),
+    check(
+      'chk_bom_items_node_shape',
+      sql`(type = 'CONSUMABLE' AND item_id IS NOT NULL AND code IS NULL AND name IS NULL)
+        OR (type = 'COMPONENT' AND item_id IS NULL AND code IS NOT NULL AND name IS NOT NULL)
+        OR (type = 'ROOT' AND item_id IS NOT NULL AND code IS NULL AND name IS NULL
+          AND parent_id IS NULL)`,
+    ),
     // Lưới an toàn tầng DB cho `BomsService.ensureBomItemNotDuplicate` — cùng `itemId` không được
-    // xuất hiện hai lần dưới cùng node cha. Tách 2 index vì Postgres coi NULL ≠ NULL: một
-    // `unique(bom_id, parent_id, item_id)` gộp sẽ không chặn được trùng ở cấp top-level.
-    uniqueIndex('uq_bom_items_bom_item_no_parent')
-      .on(table.bomId, table.itemId)
-      .where(sql`parent_id IS NULL`),
-    uniqueIndex('uq_bom_items_bom_parent_item')
-      .on(table.bomId, table.parentId, table.itemId)
-      .where(sql`parent_id IS NOT NULL`),
+    // xuất hiện hai lần dưới cùng node cha. Mọi node khác ROOT nay luôn có `parent_id` (ROOT là
+    // gốc thật của cây — xem doc comment phía trên), nên một index duy nhất trên
+    // `(bom_id, parent_id, item_id)` là đủ, không còn cần tách theo NULL ≠ NULL của Postgres như
+    // trước `docs/decisions/root-bom-item.md`. Node `COMPONENT` (`itemId` luôn NULL) tự động
+    // không bị index này chặn — chỉ còn ý nghĩa cho CONSUMABLE.
+    uniqueIndex('uq_bom_items_bom_parent_item').on(
+      table.bomId,
+      table.parentId,
+      table.itemId,
+    ),
+    // Đúng 1 dòng ROOT mỗi bom.
+    uniqueIndex('uq_bom_items_bom_root')
+      .on(table.bomId)
+      .where(sql`type = 'ROOT'`),
   ],
 );
 

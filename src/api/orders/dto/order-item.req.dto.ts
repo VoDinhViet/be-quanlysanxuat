@@ -8,7 +8,7 @@ import {
 } from '../../../decorators/field.decorators';
 
 export class OrderItemReqDto {
-  @UUIDField({ description: 'Item id (FG hoặc WIP)' })
+  @UUIDField({ description: 'Item id (FG)' })
   readonly itemId!: string;
 
   @NumberField({ isPositive: true, description: 'Số lượng' })

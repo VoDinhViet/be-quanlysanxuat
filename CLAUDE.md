@@ -69,13 +69,13 @@ lỗi validate trả 422. Prefix toàn cục `api`, trừ `GET /`/`GET /health`.
 | `files`                  | —                  | registry file dùng chung — mọi đính kèm trỏ vào đây, không phải URL trần                                                                                                     |
 | `clients`                | partners           | contact là xoá+chèn lại toàn bộ mỗi lần sửa                                                                                                                                  |
 | `client-groups`          | partners           |                                                                                                                                                                                |
-| `items`                  | product-structure  | gộp `products`+`materials` cũ (`type = FG\|WIP\|RM`); full CRUD kể cả `DELETE`; `POST /:id/copy` deep-clone, chỉ FG/WIP                                                      |
-| `boms`                   | product-structure  | mount ở `/items/:itemId/bom`; node BOM là WIP (có con) hoặc RM (lá)                                                                                                          |
+| `items`                  | product-structure  | gộp `products`+`materials` cũ (`type = FG\|CONSUMABLE`); full CRUD kể cả `DELETE`; `POST /:id/copy` deep-clone, chỉ FG                                                       |
+| `boms`                   | product-structure  | mount ở `/items/:itemId/bom`; node BOM là `ROOT`/COMPONENT (có con) hoặc CONSUMABLE (lá)                                                                                     |
 | `bom-operations`         | product-structure  | công đoạn as-used của một node BOM WIP, mount ở `.../bom/items/:bomItemId/operations`                                                                                        |
 | `routings`               | product-structure  | công đoạn Cấp 0 của item gốc (FG/WIP), mount ở `/items/:itemId/operations`                                                                                                   |
 | `suppliers`              | partners           |                                                                                                                                                                                |
 | `supplier-groups`        | partners           |                                                                                                                                                                                |
-| `units`                  | product-structure  | `scope` (`PRODUCT`/`MATERIAL`/`SEMI_FINISHED`); `PATCH` gửi `scopes` thì xoá + chèn lại toàn bộ                                                                              |
+| `units`                  | product-structure  | `scope` (`PRODUCT`/`CONSUMABLE`/`SEMI_FINISHED`); `PATCH` gửi `scopes` thì xoá + chèn lại toàn bộ                                                                              |
 | `item-units`             | product-structure  | mount ở `/items/:itemId/units`; đơn vị phụ + hệ số quy đổi ra đơn vị gốc, riêng theo từng item                                                                               |
 | `departments`            | partners           |                                                                                                                                                                                |
 | `positions`              | partners           |                                                                                                                                                                                |
@@ -84,11 +84,11 @@ lỗi validate trả 422. Prefix toàn cục `api`, trừ `GET /`/`GET /health`.
 | `orders`                 | orders             | **mọi** route cần bearer token, kể cả đọc                                                                                                                                    |
 | `inventory`              | inventory          | chỉ `GET /balances` + `GET /transactions`, không còn route list                                                                                                              |
 | `inventory-products`     | inventory          | Tồn kho thành phẩm — `GET /inventory-products` (FG) + `.../ledger` (thẻ kho)                                                                                                 |
-| `inventory-materials`    | inventory          | Tồn kho vật tư — `GET /inventory-materials` (RM); chưa có thẻ kho riêng                                                                                                      |
+| `inventory-consumables`  | inventory          | Tồn kho vật tư — `GET /inventory-consumables` (CONSUMABLE); chưa có thẻ kho riêng                                                                                            |
 | `inventory-receipts`     | inventory          | phiếu nhập — 5 trạng thái, nhánh IQC tự sinh khi `requiresIqc`; `receiptType=PRODUCTION` gate OQC; `confirmedBy`/`confirmedAt` ghi ở `confirm`                              |
 | `inventory-issues`       | inventory          | phiếu xuất — cùng khuôn `inventory-receipts`; `issueType=PRODUCTION` bị chặn tạo tay (`E234`)                                                                                |
 | `inventory-adjustments`  | inventory          | phiếu điều chỉnh tồn (kiểm kê/hao hụt) — 3 trạng thái, `adjustmentType = INCREASE\|DECREASE`                                                                                 |
-| `inventory-requisitions` | inventory          | Phiếu lãnh vật tư — đường **duy nhất** đưa RM ra khỏi kho cho SX; 6 trạng thái riêng; `approve` tự sinh 1 `inventory_issues DRAFT`, kho `post` bên `inventory-issues` mới trừ tồn |
+| `inventory-requisitions` | inventory          | Phiếu lãnh vật tư — đường **duy nhất** đưa CONSUMABLE ra khỏi kho cho SX; 6 trạng thái riêng; `approve` tự sinh 1 `inventory_issues DRAFT`, kho `post` bên `inventory-issues` mới trừ tồn |
 | `supplier-returns`       | inventory          | phiếu trả NCC — bảng phẳng; tự sinh (`DRAFT`) từ `iqc`; chỉ có `GET` + `POST /:id/post`, chưa có tạo tay/`cancel`                                                            |
 | `outsourcing-orders`     | inventory          | OS-OUT — không có nháp, `POST` là `POSTED` ngay; không đụng tồn kho (mặt hàng luôn WIP)                                                                                      |
 | `outsourcing-receipts`   | inventory          | OS-IN — cùng khuôn OS-OUT; sinh N phiếu IQC nếu `requiresIqc`; 1 phiếu = 1 NCC, gộp nhiều OS-OUT                                                                             |
@@ -129,7 +129,8 @@ Bốn tầng, đọc từ trên xuống khi cần hiểu một vùng nghiệp v�
   `wip-not-stocked`, `oqc-per-operation`, `qc-gates-on-stock-moves`, `qc-data-model`,
   `qc-aql-master-data`, `bom-explosion-in-job-demand`, `production-lifecycle-closing`,
   `report-trends-derived`, `quality-schema-rename`, `outsourcing-order-status-progress-merge`,
-  `outsourced-operation-progress-writeback`, `single-warehouse`, `unit-conversion`.
+  `outsourced-operation-progress-writeback`, `single-warehouse`, `unit-conversion`,
+  `material-to-consumable-rename`.
 
 **Không có tầng doc theo module** — Swagger `/api-docs` sở hữu route/DTO; `ErrorCode` đọc ở
 `src/constants/error-code.constant.ts` + service ném nó.

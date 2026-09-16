@@ -8,53 +8,79 @@ nó đã dùng để tính nhu cầu vật tư.
 
 ## Core concepts
 
-**Một bảng `items` chứa cả FG/WIP/RM** (`docs/decisions/items-merge.md`). Cột riêng của RM
-(`supplierId`, `minStock`, `materialGrade`, `technicalStandard`, ...) luôn NULL/mặc định với FG/WIP.
+**Chỉ còn 2 loại item: `FG` (thành phẩm) và `CONSUMABLE` (vật tư)** — không còn `WIP` (bán thành phẩm),
+xem `docs/decisions/wip-removal.md`. Cột riêng của CONSUMABLE (`supplierId`, `minStock`, `consumableGrade`,
+`technicalStandard`, ...) luôn NULL/mặc định với FG.
 
-**RM luôn là lá — không có BOM/routing riêng.** Chỉ RM bị chặn khỏi làm cha
-(`POST /items/:itemId/bom/items`, `E052`) và khỏi khai routing Cấp 0 (`E111`). Dòng phiếu nhập/xuất
+**Một node BOM giờ có 3 hình dạng, phân biệt bởi `bom_items.type`** (`docs/decisions/
+root-bom-item.md`):
+- **`ROOT`** — đúng 1 dòng mỗi `bom`, đại diện chính item FG gốc ("Cấp 0"). `itemId NOT NULL`
+  (trỏ chính item FG đó), `code`/`name` NULL — đọc từ `items` qua join, cùng đường CONSUMABLE dùng. Không
+  phải lá: nhận COMPONENT/CONSUMABLE làm con trực tiếp, gắn được `bom_operations` như COMPONENT. Sinh tự động cùng
+  lúc với `boms` header, không tạo/xoá được qua API `bom-items` thường; `quantity`/`sortOrder`
+  cố định `1`/`0`.
+- **`COMPONENT`** (cấu trúc con, thay cho WIP cũ) — `itemId = NULL`, mang `code`/`name` nhập **trực
+  tiếp** vào chính dòng đó, riêng cho vị trí đó trong cây của sản phẩm này. KHÔNG phải một dòng
+  `items`, KHÔNG hiện ở màn Sản phẩm/Vật tư, KHÔNG tái sử dụng được ở BOM khác. Vẫn lồng được nhiều
+  cấp (COMPONENT chứa COMPONENT con hoặc CONSUMABLE), vẫn gắn được công đoạn as-used qua `bom_operations`.
+- **`CONSUMABLE`** — `itemId NOT NULL`, trỏ `items.id` (`type = CONSUMABLE`). Luôn là lá: không nhận con
+  (`E052`), không gắn được `bom_operations` (`E063`).
+
+CHECK `chk_bom_items_node_shape` ở tầng DB đảm bảo đúng 1 trong 3 hình dạng trên (không có node vừa
+mang `itemId` vừa mang `code`/`name`, hay thiếu cả hai; ROOT thêm ràng buộc `parentId` NULL).
+
+**CONSUMABLE luôn là lá — không có BOM/routing riêng.** Chỉ CONSUMABLE bị chặn khỏi làm cha
+(`POST /items/:itemId/bom/items`, `E052`) và khỏi gắn công đoạn (`E063`). Dòng phiếu nhập/xuất
 liên kết `orderItemId` chỉ nhận FG (service-enforced).
 
 **`items` mang 3 loại file khác nhau:** ảnh đại diện (`imageFileId`, tối đa 1, đọc ké vào mọi node
-BOM trỏ tới item) — tài liệu đính kèm cấp item (`item_files`, nhiều file/item, replace-all qua
+BOM trỏ tới item CONSUMABLE đó) — tài liệu đính kèm cấp item (`item_files`, nhiều file/item, replace-all qua
 `fileIds`) — bản vẽ kỹ thuật **theo từng node BOM** (`bom_items.drawingFileId`, gắn theo vị trí
-trong cây, không theo item: cùng WIP dùng lại ở 2 vị trí có thể mang 2 bản vẽ khác nhau). Ba khái
-niệm không thay thế nhau.
+trong cây, không theo item — node COMPONENT không có ảnh riêng từ `items`, chỉ có `drawingFileId` này).
+Ba khái niệm không thay thế nhau.
 
-**BOM là cây phẳng, không đệ quy xuống BOM con.** Mỗi item (FG/WIP) tối đa 1 `boms` header, node
-`bom_items` lồng qua `parentId`. Một node trỏ WIP **có thể có BOM riêng**, nhưng đọc cây **không bao
-giờ** đi xuống BOM đó — "nhiều cấp" là người dùng tự dựng sâu trong một cây, không tự bung BOM con.
+**BOM là cây phẳng có gốc thật.** Mỗi FG tối đa 1 `boms` header, đúng 1 node `ROOT` mỗi header,
+mọi node khác lồng qua `parentId` — **không còn dòng nào ngoài ROOT mang `parentId = NULL`**
+(`docs/decisions/root-bom-item.md`). Khác trước kia (khi node có thể là WIP mang định danh dùng
+chung, có BOM riêng ở nơi khác): node COMPONENT **không còn định danh dùng chung**, nên không thể "vừa
+là node con vừa có cây riêng ở nơi khác" — mọi cấu trúc con đều nằm trọn trong đúng 1 cây của đúng
+1 sản phẩm. Chu trình BOM vì vậy **bất khả thi về cấu trúc**, không cần kiểm tra ở service
+(`checkNoCycle`/`MAX_BOM_DEPTH` đã xoá).
 
-**Routing "as-used" thuộc vị trí trong cấu trúc, không thuộc item.** `routings`/`routing_operations`
-là routing Cấp 0 của chính item gốc. As-used của một node sống ở `bom_operations` (`bomItemId` NOT
-NULL, chỉ gắn node WIP, `E063` nếu RM) — cùng một part lắp ở vị trí này thì hàn+2 ốc, vị trí khác
-thì sơn, không cần ốc.
+**Routing "as-used" thuộc vị trí trong cấu trúc, không thuộc item.** Công đoạn Cấp 0 của chính
+item FG gốc gắn thẳng vào node `ROOT` của cây, y hệt cách COMPONENT gắn công đoạn — không còn bảng
+`routings`/`routing_operations` riêng (`docs/decisions/root-bom-item.md`). As-used của một node
+sống ở `bom_operations` (`bomItemId` NOT NULL, gắn được node `ROOT`/`COMPONENT`, `E063` nếu CONSUMABLE) — cùng
+một part lắp ở vị trí này thì hàn+2 ốc, vị trí khác thì sơn, không cần ốc.
 
-**SL node phải nguyên nếu là WIP, được phép lẻ nếu là RM** (`ensureQuantityValid`, `E055`).
+**SL node phải nguyên nếu là `COMPONENT`, được phép lẻ nếu là `CONSUMABLE`** (`ensureQuantityValid`, `E055`).
 
 **ĐVT dùng chung, không thuộc riêng `items`.** `units` — `unit_scopes` map scope theo `type`
-(`MATERIAL`↔RM, `PRODUCT`↔FG/WIP, `E043` sai scope). Một unit không còn scope nào là unit chết — CRUD
-`units` ghi/xoá cả 2 bảng trong 1 transaction. `SEMI_FINISHED` là scope thứ 3, chưa module nào đọc.
+(`CONSUMABLE`↔CONSUMABLE, `PRODUCT`↔FG, `E043` sai scope). Một unit không còn scope nào là unit chết — CRUD
+`units` ghi/xoá cả 2 bảng trong 1 transaction. Node `COMPONENT` không có ĐVT riêng (không phải item).
 
 **`item_units` khai đơn vị phụ + hệ số quy đổi tham khảo ra đơn vị gốc (`items.unitId`) của riêng
 item đó** — mount `/items/:itemId/units`. Dòng phiếu kho chỉ mặc định `unitId` hiển thị từ đây khi
 payload không gửi — hệ số quy đổi thuần thông tin, không module nào đọc lại để tính toán
 (`docs/decisions/unit-conversion.md`).
 
-**Versioning = clone cả item** (`clonedFromItemId` chỉ ghi lineage, không ràng buộc) — không phải
-lịch sử phiên bản, vì sửa BOM/routing sau này không được đổi ngược dữ liệu đã nằm trong đơn cũ.
-Clone chỉ FG/WIP (`E110` nếu RM).
+**Mã không còn là khoá duy nhất — cặp `(code, revision)` mới là.** `revision` là chuỗi tự do
+(`items.revision`, mặc định `R01`).
+
+**Versioning = clone cùng mã, revision khác** (`clonedFromItemId` chỉ ghi lineage, không ràng
+buộc) — không phải lịch sử phiên bản có bảng riêng, vì sửa BOM/routing sau này không được đổi
+ngược dữ liệu đã nằm trong đơn cũ. `POST /items/:id/copy` giữ nguyên `code` của bản gốc, người
+dùng nhập `revision` mới cho bản sao. Clone chỉ FG (`E110` nếu CONSUMABLE).
 
 ## Entities
 
 | Entity | Vai trò |
 | --- | --- |
-| `items` | FG/WIP/RM; `clonedFromItemId` ghi lineage; full CRUD kể cả `DELETE` (soft, `E255` nếu đang dùng) |
+| `items` | FG/CONSUMABLE; `clonedFromItemId` ghi lineage; full CRUD kể cả `DELETE` (soft, `E255` nếu đang dùng) |
 | `item_files` | Nối `items`↔`files`, nhiều dòng/item, replace-all qua `fileIds` |
-| `boms` | Header, 1 dòng/item (unique `itemId`), chỉ FG/WIP |
-| `bom_items` | Node cây, tự lồng `parentId`; `drawingFileId` là bản vẽ riêng của node |
-| `bom_operations` | Công đoạn as-used, `bomItemId` NOT NULL, chỉ gắn node WIP |
-| `routings` / `routing_operations` | Routing Cấp 0 của item gốc, 1 dòng/item |
+| `boms` | Header, 1 dòng/item (unique `itemId`), chỉ FG |
+| `bom_items` | Node cây, tự lồng `parentId`; `type = ROOT \| COMPONENT \| CONSUMABLE`, đúng 1 `ROOT`/bom (Cấp 0); `drawingFileId` là bản vẽ riêng của node |
+| `bom_operations` | Công đoạn as-used, `bomItemId` NOT NULL, gắn node `ROOT`/`COMPONENT` |
 | `operations` | Danh mục công đoạn gốc, full CRUD — `docs/domains/partners.md` |
 | `units` / `unit_scopes` | ĐVT + scope dùng được, ghi/xoá theo cặp |
 | `item_units` | Đơn vị phụ + hệ số quy đổi ra đơn vị gốc, riêng theo từng item |
@@ -64,54 +90,72 @@ Clone chỉ FG/WIP (`E110` nếu RM).
 `ItemStatus = ACTIVE | INACTIVE` — gần như không gác gì, chỉ màn tồn kho lọc theo. Node BOM/dòng đơn
 hàng/sản xuất đều nhận item `INACTIVE`.
 
-`boms`/`routings` sinh lười (get-or-create trong transaction ghi dòng đầu tiên) — `POST /items`
-không tạo. Đọc cây/routing của item chưa có dòng trả mảng rỗng, không phải lỗi.
+`boms` (kèm node `ROOT` của nó) sinh lười (get-or-create trong transaction ghi dòng đầu tiên) —
+`POST /items` không tạo. Đọc cây của item chưa có `boms` trả mảng rỗng, không phải lỗi.
 
 `DELETE /items/:itemId` (soft, `items:delete`) — chặn `E255` nếu item còn được BOM/đơn hàng/LSX
 tham chiếu.
 
 ## Business rules
 
-- Node không được trỏ FG (`E053`). Node WIP `quantity` nguyên dương; RM dương, được phép lẻ (`E055`).
-- Node cha phải cùng BOM với con; cha là RM thì không nhận con (`E052`).
-- `bomItemId` trong route routing phải thuộc đúng item trên URL (`E051`). Gắn `bom_operations` vào
-  node RM bị chặn (`E063`).
-- `operationId` trên một dòng `bom_operations`/`routing_operations` bất biến — đổi công đoạn = xoá
-  bước rồi thêm lại.
-- Một chuỗi routing được lặp lại cùng công đoạn (không unique). Hai node anh em **cùng `itemId`**
-  trên cùng node cha **bị chặn** — `uq_bom_items_bom_item_no_parent` (gốc)/
-  `uq_bom_items_bom_parent_item` (có cha) ở DB, cộng `ensureBomItemNotDuplicate` → `E245` ở service.
-- ĐVT của item phải đúng scope theo `type` (`E043`). `POST /items/:itemId/copy` chặn RM (`E110`).
-- `GET /items/export` xuất Excel cùng bộ lọc `GET /items`; `type` là mảng CSV (`?type=FG,WIP` hay
-  `?type=RM`) — cách duy nhất phân biệt xuất thành phẩm (FE trang Sản phẩm) hay vật tư (FE trang
+- Thêm node `COMPONENT` — bắt buộc `code`/`name`, không có `itemId`; sai shape → `E271`. Thêm node `CONSUMABLE`
+  — bắt buộc `itemId` trỏ đúng item `type=CONSUMABLE` (không phải FG) → sai thì `E270`; SL nguyên dương nếu
+  `COMPONENT`, CONSUMABLE dương được phép lẻ (`E055`).
+- Node cha phải cùng BOM với con; cha là CONSUMABLE thì không nhận con (`E052`). Node `ROOT` không tạo/
+  xoá được qua endpoint `bom-items` thường — sinh tự động cùng `boms`, sửa chỉ nhận `note`/
+  `drawingFileId` (đổi `quantity`/`sortOrder` bị chặn `E271`), xoá bị chặn `E271`.
+- `bomItemId` trong route `bom-operations` phải thuộc đúng item trên URL (`E051`). Gắn
+  `bom_operations` vào node CONSUMABLE bị chặn (`E063`) — ROOT/COMPONENT đều gắn được.
+- `operationId` trên một dòng `bom_operations` bất biến — đổi công đoạn = xoá bước rồi thêm lại.
+- Một chuỗi công đoạn được lặp lại cùng công đoạn (không unique). Hai node anh em **cùng `itemId`**
+  trên cùng node cha **bị chặn**, nhưng chỉ có ý nghĩa với node CONSUMABLE (node COMPONENT/ROOT không có
+  `itemId` phân biệt theo nghĩa này, hoặc luôn đơn nhất) — `uq_bom_items_bom_parent_item` ở DB
+  (`bom_id, parent_id, item_id`, phẳng — mọi node khác ROOT giờ luôn có `parent_id` thật nên không
+  còn cần tách theo NULL ≠ NULL của Postgres như trước `docs/decisions/root-bom-item.md`), cộng
+  `ensureBomItemNotDuplicate` → `E245` ở service (chỉ chạy khi thêm node CONSUMABLE).
+- ĐVT của item phải đúng scope theo `type` (`E043`). `POST /items/:itemId/copy` chặn CONSUMABLE (`E110`).
+- `GET /items/export` xuất Excel cùng bộ lọc `GET /items`; `type` là mảng CSV (`?type=FG` hay
+  `?type=CONSUMABLE`) — cách duy nhất phân biệt xuất thành phẩm (FE trang Sản phẩm) hay vật tư (FE trang
   Vật tư), cả hai cùng gọi 1 endpoint. Không có cột giá — `items` không lưu giá. Trần 10.000 dòng,
   vượt trần cắt im lặng.
 
 ## Invariants
 
-**DB đảm bảo:** 1 BOM + 1 routing/item; `bom_items.itemId` NOT NULL; `quantity > 0`; không có 2
-node anh em cùng `itemId` (`uq_bom_items_bom_item_no_parent`/`uq_bom_items_bom_parent_item`);
-`production_job_bom_items.itemType` nhận cả `FG`/`WIP`/`RM` (CHECK) — kể cả `FG`, vì mỗi Job có 1
-node Cấp 0 `itemType='FG'` (`docs/decisions/oqc-per-operation.md`), khác cây BOM sống chỉ có WIP/RM.
+**DB đảm bảo:** 1 BOM/item; đúng 1 node `ROOT`/bom (`uq_bom_items_bom_root`); `quantity > 0`; cặp
+`(code, revision)` duy nhất giữa các dòng còn sống (`uq_items_code_revision_active`); node
+`bom_items` đúng 1 trong 3 hình dạng (`chk_bom_items_node_shape` — `type=CONSUMABLE` thì `itemId` có/
+`code`+`name` không, `type=COMPONENT` thì ngược lại, `type=ROOT` thì như CONSUMABLE cộng `parentId` NULL);
+không có 2 node anh em cùng `itemId` khi cả hai đều là CONSUMABLE (`uq_bom_items_bom_parent_item`);
+`production_job_bom_items.itemType` nhận `FG`/`COMPONENT`/`CONSUMABLE` (CHECK, enum riêng của bảng này) — kể cả
+`FG`, vì mỗi Job có 1 node Cấp 0 `itemType='FG'` (`docs/decisions/oqc-per-operation.md`), khác cây
+BOM sống dùng `ROOT`/`COMPONENT`/`CONSUMABLE` (tên khác nhau có chủ ý — 2 enum độc lập, xem
+`docs/decisions/root-bom-item.md`).
 
-**Chỉ service đảm bảo:** node thêm không phải FG; node RM không nhận con/không gắn `bom_operations`;
-SL nguyên nếu WIP; cha cùng BOM; không chu trình; độ sâu ≤ 50; item gốc BOM/routing không phải RM;
-node anh em trùng `itemId` (`E245`, cùng DB constraint ở trên — 2 lớp).
+**Chỉ service đảm bảo:** node CONSUMABLE trỏ đúng item `type=CONSUMABLE`; node CONSUMABLE không nhận con/không gắn
+`bom_operations`; SL nguyên nếu `COMPONENT`; cha cùng BOM; item gốc BOM/routing không phải CONSUMABLE; node anh
+em trùng `itemId` (`E245`, cùng DB constraint ở trên — 2 lớp).
 
-**Không ai đảm bảo:** chu trình **xuyên cây** — BOM của A chứa B, BOM riêng của B chứa A thì lọt,
-kiểm chu trình chỉ chạy trong phạm vi một cây.
+**Không cần kiểm nữa (đã bất khả thi về cấu trúc):** chu trình BOM — trước kia phải kiểm vì một
+node WIP mang định danh dùng chung, có thể vừa là con vừa có cây riêng ở nơi khác; node COMPONENT giờ
+không có định danh dùng chung nên không thể tạo chu trình.
 
 ## Cross-domain dependencies
 
-- **→ Production**: đọc đúng 1 lần lúc duyệt LSX — toàn bộ cây `bom_items` + `bom_operations`
-  as-used, nhân bản sang `production_job_bom_items`/`production_job_operations` (id mới, `quantity`
-  giữ nguyên thô). Vật tư Job (`production_job_issues`) là bản **đã nổ cấp** — xem "Chuẩn nổ cấp
-  BOM". Routing Cấp 0 của FG/WIP **không** đọc/snapshot ở bước này. Ngoài thời điểm đó, Production
-  không tham chiếu lại `boms`/`bom_items`/`routings` nữa.
-- **← Inventory**: `GET /inventory-products`/`GET /inventory-materials` chỉ thấy item `ACTIVE`.
+- **→ Production**: đọc đúng 1 lần lúc duyệt LSX — toàn bộ cây `bom_items` (trừ node `ROOT`, cố
+  tình lọc bỏ) + `bom_operations` as-used, nhân bản sang `production_job_bom_items`/
+  `production_job_operations` (id mới, `quantity` giữ nguyên thô). Vật tư Job
+  (`production_job_issues`) là bản **đã nổ cấp** — xem "Chuẩn nổ cấp BOM". Công đoạn Cấp 0 của FG
+  (đọc từ node `ROOT`) snapshot **riêng** thành 1 node `itemType='FG'` của Job
+  (`ProductionJobsService.copyFinalAssemblyRouting`) — không lẫn với node COMPONENT/CONSUMABLE, giữ đúng quy
+  ước Job cũ (`docs/decisions/oqc-per-operation.md`). Ngoài thời điểm đó, Production không tham
+  chiếu lại `boms`/`bom_items` nữa.
+- **← Inventory**: `GET /inventory-products`/`GET /inventory-consumables` chỉ thấy item `ACTIVE`.
 - **← Orders**: dòng đơn tham chiếu `items.id` — **không có kiểm tra nào** ép phải là FG (không
   service-enforced, không DB CHECK; khác `inventory-issues.ensureItemsValid` có kiểm thật cho
   `orderItemId` trên dòng phiếu xuất). Cố ý không snapshot tên/ảnh, luôn đọc qua quan hệ.
+- **→ Gia công ngoài**: node `COMPONENT` không có `items.id` nên không thể vào `inventory_balances` —
+  đây là lý do cấu trúc thay cho quyết định cũ `docs/decisions/wip-not-stocked.md` (nay chỉ còn ý
+  nghĩa lịch sử về mặt service, xem file đó).
 
 ## Chuẩn nổ cấp BOM: SL thô (per-parent) vs SL nổ cấp (exploded)
 
@@ -119,9 +163,9 @@ kiểm chu trình chỉ chạy trong phạm vi một cây.
 `GET /items/:itemId/bom` hiển thị thẳng giá trị này (UI đã có `level`/thụt lề để tự hiểu).
 
 Field nào ngụ ý **tổng cho 1 đơn vị gốc** ("Định mức/1 bộ", "Nhu cầu vật tư") PHẢI là giá trị đã
-**nổ cấp**: nhân luỹ kế `quantity` qua chuỗi node cha, seed=1 tại gốc (hoặc = SL Job), dừng ở RM (lá).
-Cần một số duy nhất/vật tư thì gộp `SUM(...) GROUP BY itemId` sau khi nổ cấp. Hai nơi áp dụng:
-`production_job_issues.requiredQty` (seed=SL Job) và `GET /items/:itemId/issues` (seed=1) —
+**nổ cấp**: nhân luỹ kế `quantity` qua chuỗi node cha, seed=1 tại gốc (hoặc = SL Job), dừng ở node
+CONSUMABLE (lá). Cần một số duy nhất/vật tư thì gộp `SUM(...) GROUP BY itemId` sau khi nổ cấp. Hai nơi áp
+dụng: `production_job_issues.requiredQty` (seed=SL Job) và `GET /items/:itemId/issues` (seed=1) —
 `docs/decisions/bom-explosion-in-job-demand.md` giải thích vì sao đảo từ "không nổ cấp" sang nổ cấp.
 
 `GET /items/:itemId/issues` (tab "Thành phần vật tư") là báo cáo phái sinh chỉ-đọc, 1 dòng/vật tư
@@ -129,24 +173,33 @@ Cần một số duy nhất/vật tư thì gộp `SUM(...) GROUP BY itemId` sau 
 
 ## Common mistakes
 
-1. Đọc BOM không đệ quy xuống BOM của WIP con — lá RM trên cây riêng của WIP con không tự cộng vào
-   cây cha tham chiếu nó.
-2. `boms`/`routings` chưa chắc tồn tại sau khi tạo item — luôn xử lý get-or-create.
-3. Routing không phải thuộc tính của item — as-used sống trên `bom_items.id`, Cấp 0 khai ở
-   `routings.itemId`, hai vị trí độc lập.
-4. Xoá một node giữa cây cascade sạch cả nhánh con + routing as-used, không cảnh báo trước.
-5. Node anh em trùng `itemId` **bị chặn** (`E245` + 2 unique index) — đã có từ đầu, không phải
-   thiếu sót; chu trình xuyên cây thì thật sự chưa có.
-6. Ảnh (`imageFileId`), tài liệu (`item_files`), bản vẽ (`bom_items.drawingFileId`) là 3 khái niệm
-   khác nhau, không thay thế nhau.
-7. Clone không đệ quy — giữ nguyên `itemId` của node tham chiếu, chỉ clone cấu trúc cây của chính
-   cây đó (kèm `item_files`/`drawingFileId`).
-8. Không có bảng `bom_materials` riêng — RM là lá ngay trong `bom_items`.
-9. Một item không tự làm con của chính nó (`E054`).
+1. `boms` chưa chắc tồn tại sau khi tạo item — luôn xử lý get-or-create (kéo theo node `ROOT`,
+   sinh cùng lúc — một `boms` row không bao giờ tồn tại mà thiếu ROOT).
+2. Công đoạn as-used không phải thuộc tính của item — sống trên `bom_items.id`, kể cả Cấp 0 (gắn
+   vào node `ROOT`) — không còn "hai vị trí độc lập" như trước `docs/decisions/root-bom-item.md`.
+3. Xoá một node giữa cây cascade sạch cả nhánh con + công đoạn as-used, không cảnh báo trước. Node
+   `ROOT` không xoá được qua endpoint này (`E271`) — không áp dụng.
+4. Node anh em trùng `itemId` **bị chặn** khi cả hai là CONSUMABLE (`E245` + unique index) — đã có từ
+   đầu, không phải thiếu sót.
+5. Ảnh (`imageFileId`, chỉ CONSUMABLE/ROOT đọc qua `items`), tài liệu (`item_files`), bản vẽ
+   (`bom_items.drawingFileId`) là 3 khái niệm khác nhau, không thay thế nhau.
+6. Clone không đệ quy — clone cấu trúc cây của chính cây đó (giữ nguyên `itemId` của node CONSUMABLE tham
+   chiếu, copy nguyên `code`/`name` của node COMPONENT **và** công đoạn as-used `bom_operations` của
+   từng node, **kể cả node `ROOT`** — copy sản phẩm giờ tự động nhân bản luôn công đoạn Cấp 0),
+   kèm `item_files`/`drawingFileId`.
+7. Không có bảng `bom_materials` riêng — CONSUMABLE là lá ngay trong `bom_items`.
+8. Node `COMPONENT` không phải một item — không tìm nó ở `items`, không tái sử dụng được ở BOM khác,
+   trùng `code`/`name` giữa 2 node COMPONENT ở 2 cây khác nhau là bình thường (không unique).
+9. `GET /items/:itemId/bom` giờ trả cả node `ROOT` (phần tử duy nhất có `parentId = null`) — không
+   còn là "chỉ node con", client tự nhận diện Cấp 0 qua `type='ROOT'`/`level=0` thay vì tự dựng
+   dòng gốc riêng.
 
 ## Related docs
 
 - `docs/workflows/product-setup.md` — thứ tự dựng item → BOM → công đoạn → nhân bản.
 - `docs/architecture.md` — vị trí cụm này trong sơ đồ ER tổng.
+- `docs/decisions/wip-removal.md` — vì sao bỏ WIP, mô hình node COMPONENT/CONSUMABLE.
+- `docs/decisions/root-bom-item.md` — Cấp 0 thành node `ROOT` thật, hợp nhất routing Cấp 0 vào
+  `bom_operations`.
 - `docs/decisions/items-merge.md`, `docs/decisions/bom-explosion-in-job-demand.md`,
   `docs/decisions/unit-conversion.md`.

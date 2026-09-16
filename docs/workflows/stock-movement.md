@@ -235,7 +235,7 @@ Code: `InventoryReceiptsService`/`InventoryIssuesService` (`createInventoryRecei
 `cancelInventoryReceipt`/`cancelInventoryIssue`), `InventoryPostingService.postDocument`/
 `reverseDocument`, `IqcService.createInspectionsFromReceipt` (gọi từ `confirmInventoryReceipt`),
 `hasPendingIqcForItems` (`src/api/iqc/iqc.query.ts`, gọi từ `postInventoryIssue`),
-`InventoryService.getInventory`/`getStockLevels`/`getMaterialStockLevels`.
+`InventoryService.getInventory`/`getStockLevels`/`getConsumableStockLevels`.
 Ba module riêng — `inventory` (đọc + `InventoryPostingService`), `inventory-receipts` (import
 `InventoryModule`+`IqcModule`), `inventory-issues` (import `InventoryModule` — gate IQC qua plain
 function, không cần import `IqcModule`).

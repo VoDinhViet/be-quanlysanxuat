@@ -73,8 +73,8 @@ export class PurchaseOrdersService {
     reqDto: GetPurchaseOrdersReqDto,
   ): Promise<OffsetPaginatedDto<PagePurchaseOrderResDto>> {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
-    const materialKeyword = reqDto.materialKeyword
-      ? `%${reqDto.materialKeyword}%`
+    const consumableKeyword = reqDto.consumableKeyword
+      ? `%${reqDto.consumableKeyword}%`
       : undefined;
 
     const orderedAgg = orderAggregateSubquery(this.db);
@@ -99,7 +99,7 @@ export class PurchaseOrdersService {
             this.buildProgressCondition(refs, PurchaseOrderProgress.RECEIVING),
           )
         : undefined,
-      reqDto.purchaseRequestId || materialKeyword
+      reqDto.purchaseRequestId || consumableKeyword
         ? exists(
             this.db
               .select({ one: sql`1` })
@@ -121,10 +121,10 @@ export class PurchaseOrdersService {
                         reqDto.purchaseRequestId,
                       )
                     : undefined,
-                  materialKeyword
+                  consumableKeyword
                     ? or(
-                        unaccentILike(items.name, materialKeyword),
-                        unaccentILike(items.code, materialKeyword),
+                        unaccentILike(items.name, consumableKeyword),
+                        unaccentILike(items.code, consumableKeyword),
                       )
                     : undefined,
                 ),

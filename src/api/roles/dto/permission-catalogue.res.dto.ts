@@ -22,7 +22,10 @@ export class PermissionItemResDto {
   label!: string;
 
   @Expose()
-  @StringFieldOptional({ nullable: true, description: 'Detailed functional description' })
+  @StringFieldOptional({
+    nullable: true,
+    description: 'Detailed functional description',
+  })
   description?: string;
 }
 
@@ -31,6 +34,18 @@ export class PermissionGroupResDto {
   @Expose()
   @StringField({ description: 'Resource identifier, e.g. orders' })
   resource!: string;
+
+  @Expose()
+  @StringField({
+    description: 'Business block key this resource belongs to, e.g. warehouse',
+  })
+  block!: string;
+
+  @Expose()
+  @StringField({
+    description: 'Business block Vietnamese display label, e.g. Kho',
+  })
+  blockLabel!: string;
 
   @Expose()
   @StringField({

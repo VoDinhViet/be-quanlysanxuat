@@ -11,7 +11,10 @@ export class CreateDepartmentReqDto {
   @StringField({ maxLength: 255, description: 'Department name' })
   name!: string;
 
-  @StringFieldOptional({ maxLength: 500, description: 'Department description' })
+  @StringFieldOptional({
+    maxLength: 500,
+    description: 'Department description',
+  })
   description?: string;
 
   @BooleanFieldOptional({ description: 'Active status' })

@@ -52,8 +52,8 @@ export class SupplierReturnsService {
     reqDto: GetSupplierReturnsReqDto,
   ): Promise<OffsetPaginatedDto<PageSupplierReturnResDto>> {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
-    const materialKeyword = reqDto.materialKeyword
-      ? `%${reqDto.materialKeyword}%`
+    const consumableKeyword = reqDto.consumableKeyword
+      ? `%${reqDto.consumableKeyword}%`
       : undefined;
     const poKeyword = reqDto.poCode ? `%${reqDto.poCode}%` : undefined;
     const nkKeyword = reqDto.nkCode ? `%${reqDto.nkCode}%` : undefined;
@@ -87,20 +87,24 @@ export class SupplierReturnsService {
               ),
           )
         : undefined,
-      materialKeyword
-        ? exists(
-            this.db
-              .select({ one: sql`1` })
-              .from(items)
-              .where(
-                and(
-                  eq(items.id, supplierReturns.itemId),
-                  or(
-                    unaccentILike(items.name, materialKeyword),
-                    unaccentILike(items.code, materialKeyword),
+      consumableKeyword
+        ? or(
+            unaccentILike(supplierReturns.itemCode, consumableKeyword),
+            unaccentILike(supplierReturns.itemName, consumableKeyword),
+            exists(
+              this.db
+                .select({ one: sql`1` })
+                .from(items)
+                .where(
+                  and(
+                    eq(items.id, supplierReturns.itemId),
+                    or(
+                      unaccentILike(items.name, consumableKeyword),
+                      unaccentILike(items.code, consumableKeyword),
+                    ),
                   ),
                 ),
-              ),
+            ),
           )
         : undefined,
       poKeyword
@@ -155,12 +159,26 @@ export class SupplierReturnsService {
         PageSupplierReturnResDto,
         entities.map((entity) => ({
           ...entity,
+          ...this.resolveItemSnapshot(entity),
           iqc: this.toIqcRef(entity.qualityInspection),
         })),
         { excludeExtraneousValues: true },
       ),
       new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
     );
+  }
+
+  /** Cột snapshot chỉ được ghi ở nhánh OS-IN (`createFromIqcDisposition`); phiếu trả từ kho vẫn
+   * đọc mã/tên qua `item` sống — gộp về một cặp field cho FE, cùng quy tắc `IqcService`. */
+  private resolveItemSnapshot(supplierReturn: {
+    itemCode: string | null;
+    itemName: string | null;
+    item: { code: string; name: string } | null;
+  }): { itemCode: string; itemName: string } {
+    return {
+      itemCode: supplierReturn.item?.code ?? supplierReturn.itemCode ?? '',
+      itemName: supplierReturn.item?.name ?? supplierReturn.itemName ?? '',
+    };
   }
 
   /** `SupplierReturnBaseResDto.iqc` giữ tên/field cũ (`{id, code}`, xem `IqcRefResDto`) cho FE dù
@@ -200,6 +218,7 @@ export class SupplierReturnsService {
       SupplierReturnResDto,
       {
         ...supplierReturn,
+        ...this.resolveItemSnapshot(supplierReturn),
         iqc: this.toIqcRef(supplierReturn.qualityInspection),
         returnReason:
           supplierReturn.note !== null
@@ -270,11 +289,14 @@ export class SupplierReturnsService {
       qualityInspectionId: string;
       qualityInspectionResultId: string;
       supplierId: string;
-      itemId: string;
+      itemId: string | null;
+      itemCode: string | null;
+      itemName: string | null;
       quantity: number;
       purchaseOrderId: string | null;
       inventoryReceiptId: string | null;
       outsourcingReceiptId: string | null;
+      outsourcingReceiptItemId: string | null;
       returnDate: Date;
       userId: string;
     },
@@ -285,10 +307,13 @@ export class SupplierReturnsService {
       code,
       supplierId: params.supplierId,
       itemId: params.itemId,
+      itemCode: params.itemCode,
+      itemName: params.itemName,
       quantity: params.quantity,
       purchaseOrderId: params.purchaseOrderId,
       inventoryReceiptId: params.inventoryReceiptId,
       outsourcingReceiptId: params.outsourcingReceiptId,
+      outsourcingReceiptItemId: params.outsourcingReceiptItemId,
       qualityInspectionId: params.qualityInspectionId,
       qualityInspectionResultId: params.qualityInspectionResultId,
       qcInspectionType: QualityInspectionType.IQC,
@@ -331,7 +356,8 @@ export class SupplierReturnsService {
           createdBy: userId,
           lines: [
             {
-              itemId: supplierReturn.itemId,
+              // `shouldPostStock` đã loại nhánh OS-IN (nơi duy nhất `itemId` có thể NULL).
+              itemId: supplierReturn.itemId!,
               // Xuất trả luôn trừ tồn — dấu âm.
               signedQuantity: -supplierReturn.quantity,
               type: InventoryTransactionType.ISSUE,
@@ -359,8 +385,11 @@ export class SupplierReturnsService {
         );
       }
 
-      if (supplierReturn.outsourcingReceiptId) {
-        await this.recomputeAffectedOutsourcing(tx, supplierReturn);
+      if (supplierReturn.outsourcingReceiptItemId) {
+        await this.recomputeAffectedOutsourcing(
+          tx,
+          supplierReturn.outsourcingReceiptItemId,
+        );
       }
 
       if (supplierReturn.qualityInspectionId) {
@@ -377,17 +406,12 @@ export class SupplierReturnsService {
    *  đoạn `OUTSOURCE` nguồn giờ đã trừ đi SL trả này (`receivedQuantityByOrderIdSubquery`,
    *  `recomputeOutsourcedOperationProgress`), nên `status` OS-OUT (`outsourcing_orders`) và
    *  `completedQuantity` công đoạn (`production_job_operations`) đang lưu có thể đã lỗi thời
-   *  (`COMPLETED` dù thật ra vừa lùi về `PARTIAL`/`SENT`). `supplier_returns` không có FK tới từng
-   *  dòng OS-IN nên suy ngược qua `(outsourcingReceiptId, itemId)`, cùng cách khấu trừ ở
-   *  `receivedQuantityByOrderIdSubquery` — có thể trúng nhiều dòng OS-IN cùng `itemId` trong 1
-   *  phiếu, recompute cho từng OS-OUT/công đoạn liên quan (khử trùng, bỏ qua công đoạn đã
-   *  hard-delete — `productionJobOperationId` về NULL). */
+   *  (`COMPLETED` dù thật ra vừa lùi về `PARTIAL`/`SENT`). Khoá đúng 1 dòng OS-IN qua FK
+   *  `outsourcingReceiptItemId`, cùng cách khấu trừ ở `receivedQuantityByOrderIdSubquery`; bỏ qua
+   *  công đoạn đã hard-delete — `productionJobOperationId` về NULL. */
   private async recomputeAffectedOutsourcing(
     tx: DbTransaction,
-    supplierReturn: Pick<
-      SupplierReturnSelect,
-      'outsourcingReceiptId' | 'itemId'
-    >,
+    outsourcingReceiptItemId: string,
   ): Promise<void> {
     const affectedOrderItems = await tx
       .select({
@@ -403,15 +427,7 @@ export class SupplierReturnsService {
           outsourcingReceiptItems.outsourcingOrderItemId,
         ),
       )
-      .where(
-        and(
-          eq(
-            outsourcingReceiptItems.outsourcingReceiptId,
-            supplierReturn.outsourcingReceiptId!,
-          ),
-          eq(outsourcingReceiptItems.itemId, supplierReturn.itemId),
-        ),
-      );
+      .where(eq(outsourcingReceiptItems.id, outsourcingReceiptItemId));
 
     const outsourcingOrderIds = [
       ...new Set(affectedOrderItems.map((row) => row.outsourcingOrderId)),

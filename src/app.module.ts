@@ -31,7 +31,7 @@ import { HealthModule } from './api/health/health.module';
 import { InventoryModule } from './api/inventory/inventory.module';
 import { InventoryAdjustmentsModule } from './api/inventory-adjustments/inventory-adjustments.module';
 import { InventoryIssuesModule } from './api/inventory-issues/inventory-issues.module';
-import { InventoryMaterialsModule } from './api/inventory-materials/inventory-materials.module';
+import { InventoryConsumablesModule } from './api/inventory-consumables/inventory-consumables.module';
 import { InventoryProductsModule } from './api/inventory-products/inventory-products.module';
 import { InventoryReceiptsModule } from './api/inventory-receipts/inventory-receipts.module';
 import { InventoryRequisitionsModule } from './api/inventory-requisitions/inventory-requisitions.module';
@@ -55,7 +55,6 @@ import { PurchaseQuotationsModule } from './api/purchase-quotations/purchase-quo
 import { PurchaseRequestsModule } from './api/purchase-requests/purchase-requests.module';
 import { QcAqlModule } from './api/qc-aql/qc-aql.module';
 import { ReportsModule } from './api/reports/reports.module';
-import { RoutingsModule } from './api/routings/routings.module';
 import { SupplierReturnsModule } from './api/supplier-returns/supplier-returns.module';
 import { UnitsModule } from './api/units/units.module';
 import { UsersModule } from './api/users/users.module';
@@ -101,7 +100,6 @@ import { UsersModule } from './api/users/users.module';
     BomsModule,
     BomOperationsModule,
     OperationsModule,
-    RoutingsModule,
     DepartmentsModule,
     FilesModule,
     PositionsModule,
@@ -111,7 +109,7 @@ import { UsersModule } from './api/users/users.module';
     SupplierGroupsModule,
     InventoryModule,
     InventoryProductsModule,
-    InventoryMaterialsModule,
+    InventoryConsumablesModule,
     InventoryReceiptsModule,
     InventoryIssuesModule,
     InventoryAdjustmentsModule,

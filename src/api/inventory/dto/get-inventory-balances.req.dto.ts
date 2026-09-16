@@ -4,7 +4,7 @@ import { EnumFieldOptional } from '../../../decorators/field.decorators';
 
 export class GetInventoryBalancesReqDto extends PageOptionsDto {
   @EnumFieldOptional(() => ItemType, {
-    description: 'Bỏ trống = FG/RM (kho không quản tồn WIP)',
+    description: 'Bỏ trống = mọi loại (FG/CONSUMABLE)',
   })
   readonly itemType?: ItemType;
 }

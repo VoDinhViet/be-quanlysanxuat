@@ -34,5 +34,7 @@ export async function getReturnedQuantityByReceiptItemId(
     )
     .groupBy(supplierReturns.itemId);
 
-  return new Map(rows.map((row) => [row.itemId, row.returned]));
+  // Phiếu trả từ kho luôn có `itemId` (chỉ nhánh OS-IN mới NULL), `where` trên
+  // `inventoryReceiptId` đã loại nhánh đó.
+  return new Map(rows.map((row) => [row.itemId!, row.returned]));
 }

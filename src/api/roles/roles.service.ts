@@ -60,12 +60,8 @@ export class RolesService implements OnModuleInit {
     }
   }
 
-
   getPermissionCatalogue(): PermissionGroupResDto[] {
-    return plainToInstance(
-      PermissionGroupResDto,
-      PERMISSION_CATALOGUE_GROUPS,
-    );
+    return plainToInstance(PermissionGroupResDto, PERMISSION_CATALOGUE_GROUPS);
   }
 
   async getRoles(reqDto: GetRolesReqDto): Promise<RoleResDto[]> {

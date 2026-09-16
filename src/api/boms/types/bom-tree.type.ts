@@ -2,22 +2,20 @@ import {
   bomItems,
   bomOperations,
   type FileSelect,
-  ItemType,
   type OperationSelect,
   type UnitSelect,
 } from '../../../database/schemas';
 
-/** Shape of one `bom_items` row as `BomsService.getBom`'s SQL query already returns it — node WIP
- * hoặc lá RM, phân biệt qua `itemType` (đọc từ `items.type`, không phải cột trên chính
- * `bom_items`). Lấy nguyên cột `bom_items` cho gọn — vài cột (`bomId`/`drawingFileId`/`createdBy`/
- * `createdAt`/`updatedAt`) thật ra không nằm trong query, chỉ `code`/`name`/`unit`/`image`/
- * `drawing` mới là cột join thêm thật sự dùng. */
-export type BomItem = typeof bomItems.$inferSelect & {
-  itemType: ItemType;
+/** Shape of one `bom_items` row as `BomsService.getBom`'s SQL query already returns it — node
+ * COMPONENT hoặc lá CONSUMABLE theo `type`. `code`/`name` đã coalesce (COMPONENT: cột trên dòng, CONSUMABLE: từ `items`)
+ * nên không còn nullable như cột gốc; `revision`/`unit`/`image` chỉ có với CONSUMABLE (join `items`
+ * là left join). */
+export type BomItem = Omit<typeof bomItems.$inferSelect, 'code' | 'name'> & {
   code: string;
   name: string;
+  revision: string | null;
   image: FileSelect | null;
-  unit: UnitSelect;
+  unit: UnitSelect | null;
   drawing: FileSelect | null;
 };
 

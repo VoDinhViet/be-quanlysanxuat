@@ -11,8 +11,8 @@ import {
 
 /** Σ SL đã nhận theo từng dòng OS-OUT (`outsourcingOrderItemId`) — dùng cho popup "chọn hàng cần
  * nhận", validate `E172` (create OS-IN), và tính tiến độ dòng OS-OUT. Chỉ tính phiếu `POSTED`, tự
- * động khấu trừ SL hàng lỗi đã xuất trả NCC (`supplier_returns` đã `POSTED`, nối qua
- * `(outsourcingReceiptId, itemId)` — `supplier_returns` không có FK tới từng dòng OS-IN), cùng
+ * động khấu trừ SL hàng lỗi đã xuất trả NCC (`supplier_returns` đã `POSTED`, nối qua FK
+ * `supplierReturns.outsourcingReceiptItemId` tới đúng dòng OS-IN), cùng
  * pattern `getReceivedQuantityByPurchaseOrderItemId` (`purchase-orders.query.ts`). */
 export async function getReceivedQuantityByOrderItemIds(
   db: Database | DbTransaction,
@@ -58,12 +58,9 @@ export async function getReceivedQuantityByOrderItemIds(
       .from(supplierReturns)
       .innerJoin(
         outsourcingReceiptItems,
-        and(
-          eq(
-            outsourcingReceiptItems.outsourcingReceiptId,
-            supplierReturns.outsourcingReceiptId,
-          ),
-          eq(outsourcingReceiptItems.itemId, supplierReturns.itemId),
+        eq(
+          outsourcingReceiptItems.id,
+          supplierReturns.outsourcingReceiptItemId,
         ),
       )
       .where(
@@ -124,13 +121,7 @@ export function receivedQuantityByOrderItemIdSubquery(db: Database) {
     .from(supplierReturns)
     .innerJoin(
       outsourcingReceiptItems,
-      and(
-        eq(
-          outsourcingReceiptItems.outsourcingReceiptId,
-          supplierReturns.outsourcingReceiptId,
-        ),
-        eq(outsourcingReceiptItems.itemId, supplierReturns.itemId),
-      ),
+      eq(outsourcingReceiptItems.id, supplierReturns.outsourcingReceiptItemId),
     )
     .where(eq(supplierReturns.status, InventoryDocumentStatus.POSTED))
     .groupBy(outsourcingReceiptItems.outsourcingOrderItemId)

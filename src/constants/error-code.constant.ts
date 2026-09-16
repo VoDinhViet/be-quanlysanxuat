@@ -16,6 +16,8 @@ export enum ErrorCode {
   // (`docs/decisions/items-merge.md`).
   E006 = 'item.error.locked',
   E007 = 'item.error.not_found',
+  // Trùng cặp `(code, revision)`, không phải `code` riêng lẻ — cùng `code` được phép ở nhiều
+  // `revision` khác nhau (`docs/domains/product-structure.md`).
   E008 = 'item.error.code_exists',
   E009 = 'client.error.not_found',
   // E010 (product_group.error.not_found) stays reserved — nhóm hàng hoá (product_groups/
@@ -78,16 +80,25 @@ export enum ErrorCode {
   // BOM của item trên URL — cùng khuôn kiểm tra (`BomsService.ensureBomItemInBom`), dùng chung mã
   // vì cùng resource `bom_items`.
   E051 = 'bom_item.error.parent_not_found',
-  // `bom_items` giờ chứa cả node WIP lẫn lá RM (`docs/decisions/items-merge.md`) — RM là lá bắt
-  // buộc, không được nhận node con. Sống lại từ chỗ reserved khi vật tư còn ở bảng riêng
-  // `bom_materials`.
+  // `bom_items` chứa cả node COMPONENT lẫn lá CONSUMABLE (`docs/decisions/items-merge.md`) —
+  // CONSUMABLE là lá bắt buộc, không được nhận node con. Sống lại từ chỗ reserved khi vật tư còn
+  // ở bảng riêng `bom_materials`.
   E052 = 'bom_item.error.parent_is_leaf',
+  // Nghỉ hưu — khái niệm WIP đã xoá khỏi hệ thống (`docs/decisions/wip-removal.md`), node cấu
+  // trúc con giờ là `bom_items.type = COMPONENT` (không trỏ item). Kiểm tra tương đương cho node
+  // CONSUMABLE là E270.
   E053 = 'bom_item.error.item_not_wip',
+  // Nghỉ hưu — node COMPONENT không còn định danh dùng chung (`itemId` NULL) nên không thể vừa
+  // là node con vừa có BOM riêng ở nơi khác; chu trình BOM bất khả thi về cấu trúc,
+  // `checkNoCycle`/`MAX_BOM_DEPTH` đã xoá khỏi `BomsService`.
   E054 = 'bom_item.error.cycle_detected',
-  // WIP bắt buộc SL nguyên (cấu trúc lắp ráp); RM được phép SL lẻ (định mức vật tư) — validate ở
-  // `BomsService.ensureQuantityValid`, theo `type` của item đang thêm/sửa. Sống lại cùng lý do
-  // E052.
+  // COMPONENT bắt buộc SL nguyên (cấu trúc lắp ráp); CONSUMABLE được phép SL lẻ (định mức vật
+  // tư) — validate ở `BomsService.ensureQuantityValid`, theo `bom_items.type` của node đang
+  // thêm/sửa. Sống lại cùng lý do E052.
   E055 = 'bom_item.error.quantity_not_integer',
+  // Nghỉ hưu — routing Cấp 0 (`routings`/`routing_operations`) không còn tồn tại, dùng chung
+  // `E109` (`bom_operation.error.not_found`) qua `BomOperationsService` cho mọi node kể cả ROOT
+  // (`docs/decisions/root-bom-item.md`). Giữ comment, không tái sử dụng số.
   E056 = 'routing_operation.error.not_found',
   E057 = 'order.error.not_found',
   // Nghỉ hưu — `orders.code` không còn nhận giá trị tay từ client, luôn sinh atomic qua
@@ -100,10 +111,11 @@ export enum ErrorCode {
   E060 = 'order.error.staff_not_found',
   E061 = 'order.error.item_not_found',
   // E062 (routing_operation.error.bom_item_not_found) stays reserved — routing as-used theo node
-  // sống ở `bom_operations` (dùng chung `E051` qua `BomsService.ensureBomItemInBom`); routing Cấp 0
-  // (`routings`/`routing_operations`) không còn ca `bomItemId` để kiểm.
-  // RM là lá — không được gắn `bom_operations`. Khác `E052` (lá không được nhận node **con**): đây
-  // là lá không được gắn **công đoạn**. Sống lại cùng lý do E052.
+  // sống ở `bom_operations` (dùng chung `E051` qua `BomsService.ensureBomItemInBom`), và từ
+  // `docs/decisions/root-bom-item.md` node ROOT ("Cấp 0") cũng là một `bomItemId` thật nên đi
+  // đúng đường kiểm đó — không còn ca nào thiếu `bomItemId` để cần mã riêng.
+  // CONSUMABLE là lá — không được gắn `bom_operations`. Khác `E052` (lá không được nhận node
+  // **con**): đây là lá không được gắn **công đoạn**. Sống lại cùng lý do E052.
   E063 = 'bom_operation.error.leaf_node',
   // `positionId` on a user create/update exists (E015 already passed) but doesn't belong to the
   // effective `departmentId` (the one sent, or the user's current one when only one of the pair
@@ -213,11 +225,11 @@ export enum ErrorCode {
   // `E050` covers "node not found" for both node types now (`docs/decisions/items-merge.md`).
   // `PATCH`/`DELETE` một dòng `bom_operations` không tồn tại đúng node.
   E109 = 'bom_operation.error.not_found',
-  // `POST /items/:itemId/copy` gọi trên item `type=RM` — vật tư không có cây BOM để nhân bản.
-  E110 = 'item.error.cannot_copy_raw_material',
-  // RM không có BOM (`BomsService`) hoặc routing Cấp 0 (`RoutingsService`) — chỉ FG/WIP mới
-  // có cấu trúc/công đoạn của chính nó.
-  E111 = 'item.error.raw_material_not_allowed',
+  // `POST /items/:itemId/copy` gọi trên item `type=CONSUMABLE` — vật tư không có cây BOM để nhân bản.
+  E110 = 'item.error.cannot_copy_consumable',
+  // CONSUMABLE không có BOM (`BomsService`) hoặc routing Cấp 0 (`RoutingsService`) — chỉ FG mới có
+  // cấu trúc/công đoạn của chính nó.
+  E111 = 'item.error.consumable_not_allowed',
   E112 = 'purchase_request.error.not_found',
   E113 = 'purchase_request_item.error.not_found',
   E114 = 'purchase_request.error.not_editable',
@@ -282,8 +294,9 @@ export enum ErrorCode {
   // Hai dòng cùng `itemId` trong một ĐXMH. Khác `E128`: E128 là trùng dòng ĐXMH giữa các dòng
   // của một báo giá.
   E147 = 'purchase_request_item.error.duplicate_item',
-  // Dòng ĐXMH trỏ vật tư không phải RM. Nghịch đảo của `E111`, nơi RM mới là loại bị cấm.
-  E148 = 'purchase_request_item.error.item_not_raw_material',
+  // Dòng ĐXMH trỏ vật tư không phải CONSUMABLE. Nghịch đảo của `E111`, nơi CONSUMABLE mới là loại
+  // bị cấm.
+  E148 = 'purchase_request_item.error.item_not_consumable',
   // Dòng ĐXMH phân bổ vào một vật tư nhưng itemId của nó khác itemId của dòng báo giá chứa nó.
   E149 = 'purchase_quotation_item.error.allocation_item_mismatch',
   // Một dòng vật tư trong payload tạo/sửa báo giá không có phân bổ nào về dòng ĐXMH nguồn.
@@ -500,7 +513,7 @@ export enum ErrorCode {
   // Phiếu lãnh 0 dòng — ném ở `approve` (nơi giờ sinh dòng PXK), trước đây ném ở `issue` đã bỏ.
   E227 = 'inventory_requisition.error.no_items',
   E228 = 'inventory_requisition_item.error.duplicate_item',
-  E229 = 'inventory_requisition_item.error.item_not_raw_material',
+  E229 = 'inventory_requisition_item.error.item_not_consumable',
   E230 = 'inventory_requisition_item.error.not_in_job_bom',
   E231 = 'inventory_requisition_item.error.quantity_exceeds_issuable',
   E232 = 'inventory_requisition_item.error.quantity_exceeds_bom_remaining',
@@ -531,7 +544,8 @@ export enum ErrorCode {
   // from E043 (unit sai scope ngay lúc gán cho item), đây là chặn trước khi unit *trở thành* sai
   // scope cho những item đang gán nó.
   E244 = 'unit.error.scope_in_use',
-  // `POST /items/:itemId/bom/items` thêm cùng `itemId` hai lần dưới cùng một node cha.
+  // `POST /items/:itemId/bom/items` thêm cùng `itemId` hai lần dưới cùng một node cha — chỉ còn
+  // ý nghĩa cho node CONSUMABLE (COMPONENT không có `itemId`).
   E245 = 'bom_item.error.duplicate',
   // `DELETE /clients/:id` khi còn `orders`/`outbound_orders` trỏ tới.
   E246 = 'client.error.in_use',
@@ -601,6 +615,12 @@ export enum ErrorCode {
   E268 = 'position.error.code_exists',
   // `DELETE /positions/:id` khi còn `users` trỏ tới.
   E269 = 'position.error.in_use',
+  // Node `type = CONSUMABLE` nhưng `itemId` trỏ item không phải CONSUMABLE — thay E053 đã nghỉ hưu.
+  E270 = 'bom_item.error.item_not_consumable',
+  // Payload node BOM sai hình dạng: COMPONENT thiếu `code`/`name` (hoặc kèm `itemId`), CONSUMABLE
+  // thiếu `itemId` (hoặc kèm `code`/`name`); cũng dùng khi `PATCH` sửa `code`/`name` trên node
+  // CONSUMABLE.
+  E271 = 'bom_item.error.invalid_node_payload',
   V003 = 'common.error.too_many_requests',
   // `GlobalExceptionFilter` bắt chuỗi "No values to set" của drizzle-orm — mọi `PATCH` khi
   // `ValidationPipe` whitelist đã loại sạch field lạ, còn lại payload rỗng cho `.set()`. Trước đây

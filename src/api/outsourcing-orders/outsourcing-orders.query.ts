@@ -103,13 +103,7 @@ export function receivedQuantityByOrderIdSubquery(db: Database) {
     .from(supplierReturns)
     .innerJoin(
       outsourcingReceiptItems,
-      and(
-        eq(
-          outsourcingReceiptItems.outsourcingReceiptId,
-          supplierReturns.outsourcingReceiptId,
-        ),
-        eq(outsourcingReceiptItems.itemId, supplierReturns.itemId),
-      ),
+      eq(outsourcingReceiptItems.id, supplierReturns.outsourcingReceiptItemId),
     )
     .innerJoin(
       outsourcingOrderItems,
@@ -272,12 +266,9 @@ export async function recomputeOutsourcingOrderStatus(
       )
       .innerJoin(
         supplierReturns,
-        and(
-          eq(
-            supplierReturns.outsourcingReceiptId,
-            outsourcingReceiptItems.outsourcingReceiptId,
-          ),
-          eq(supplierReturns.itemId, outsourcingReceiptItems.itemId),
+        eq(
+          supplierReturns.outsourcingReceiptItemId,
+          outsourcingReceiptItems.id,
         ),
       )
       .where(

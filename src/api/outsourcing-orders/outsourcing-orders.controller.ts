@@ -81,7 +81,7 @@ export class OutsourcingOrdersController {
   @Permissions('outsourcing:create')
   @ApiAuth({
     summary:
-      'Lập phiếu gửi gia công ngoài (OS-OUT), nhiều dòng — POSTED ngay, không đụng tồn kho (mặt hàng gửi luôn là WIP, kho không quản tồn WIP)',
+      'Lập phiếu gửi gia công ngoài (OS-OUT), nhiều dòng — POSTED ngay, không đụng tồn kho (mặt hàng gửi là node COMPONENT của Job, không phải item)',
     statusCode: HttpStatus.NO_CONTENT,
   })
   createOutsourcingOrder(

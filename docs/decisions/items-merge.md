@@ -1,11 +1,18 @@
 # Gộp `products` + `materials` thành `items`
 
-**Trạng thái:** còn hiệu lực
+**Trạng thái:** còn hiệu lực — `type` tại thời điểm quyết định này có 3 giá trị `FG|WIP|RM`; `WIP`
+đã bị xoá hẳn sau đó (`docs/decisions/wip-removal.md`), rồi `RM` đổi tên thành `CONSUMABLE`
+(`docs/decisions/material-to-consumable-rename.md`) — `items.type` giờ chỉ còn `FG|CONSUMABLE`. Nội
+dung bên dưới giữ nguyên giá trị lịch sử của quyết định gộp bảng, đọc "WIP"/"RM" ở đây như một phần
+lịch sử. Tương tự, cặp bảng `routings`/`routing_operations` mô tả bên dưới (khi đó là bước đúng,
+thay `product_operations` phẳng) đã bị xoá hẳn sau đó khi Cấp 0 trở thành một dòng `bom_items` thật
+(`docs/decisions/root-bom-item.md`) — đọc phần nói về `routings`/`routing_operations` ở đây như
+lịch sử, không phải hình dạng bảng hiện tại.
 
 ## Quyết định
 
-`products` (FG/WIP) và `materials` (vật tư) gộp thành một bảng `items` duy nhất, phân biệt bằng
-`type = FG | WIP | RM`. Kéo theo:
+`products` (khi đó gồm cả FG/WIP) và `materials` (vật tư) gộp thành một bảng `items` duy nhất, phân
+biệt bằng `type = FG | WIP | RM` (nay chỉ còn `FG | CONSUMABLE`). Kéo theo:
 
 - **`bom_materials` gộp vào `bom_items`** — vật tư (RM) giờ là lá trong cùng cây BOM với node WIP,
   không còn bảng con riêng. RM là lá bắt buộc: không nhận node con (`E052`), không gắn được
@@ -13,9 +20,10 @@
 - **Mọi bảng từng mang XOR `productId`/`materialId` + `itemType`** (`inventory_balances`,
   `inventory_transactions`, `inventory_receipt_items`, `inventory_issue_items`,
   `production_job_bom_items`) co lại còn một `itemId` — 4 bảng kho drop hẳn cột `itemType`, chỉ
-  `production_job_bom_items` (snapshot đóng băng) giữ `itemType` vì nó thật sự cần phân biệt
-  loại node ở dữ liệu đã đóng băng — **cả 3 giá trị `FG`/`WIP`/`RM`**, không chỉ WIP/RM: mỗi Job có
-  thêm đúng một node `itemType = 'FG'` cho bước lắp ráp Cấp 0 (`docs/decisions/oqc-per-operation.md`).
+  `production_job_bom_items` (snapshot đóng băng) giữ `item_type` vì nó thật sự cần phân biệt
+  loại node ở dữ liệu đã đóng băng — mỗi Job có thêm đúng một node `item_type = 'FG'` cho bước lắp
+  ráp Cấp 0 (`docs/decisions/oqc-per-operation.md`). Sau `wip-removal.md`, cột này dùng enum riêng
+  của chính bảng đó (`FG|COMPONENT|CONSUMABLE`), không còn dùng chung enum của `items.type`.
 - **`product_operations` (routing Cấp 0) đổi thành cặp header/detail `routings` +
   `routing_operations`**, cùng khuôn `boms`/`bom_items` — trước đó là bảng phẳng, không có header.
   Route API không đổi (`/items/:itemId/operations`), chỉ tầng lưu trữ đổi.
@@ -41,16 +49,18 @@ diễn đạt "mặt hàng này hoặc là sản phẩm hoặc là vật tư". G
 
 ## Đừng làm ngược lại
 
-- **Đừng tách vật tư (RM) ra bảng riêng nữa.** `bom_materials` từng bị tách ra khỏi `bom_items`
+- **Đừng tách vật tư (CONSUMABLE) ra bảng riêng nữa.** `bom_materials` từng bị tách ra khỏi `bom_items`
   đúng hai commit trước quyết định này, rồi gộp lại ngay sau đó khi nhìn thấy bức tranh đầy đủ
-  (XOR lặp lại ở cả 5 bảng kho, không chỉ ở BOM). Nếu vật tư cần thêm field không áp dụng cho
-  FG/WIP, để nullable trên `items`, đừng tách bảng.
+  (XOR lặp lại ở cả 5 bảng kho, không chỉ ở BOM). Nếu vật tư cần thêm field không áp dụng cho FG,
+  để nullable trên `items`, đừng tách bảng.
 - **Đừng hồi sinh nhóm hàng hoá bằng cách thêm cột `groupId` lên `items`.** Nếu nghiệp vụ thật sự
   cần phân loại lại, cân nhắc dùng `type` mở rộng hoặc một cơ chế tag rời, không phải một bảng
   nhóm 1-n cứng như cũ.
 - **Đừng coi `routings`/`routing_operations` là dư thừa so với `item_operations` phẳng cũ.** Header
   tồn tại để nhất quán với `boms`/`bom_items` — cả hai đều là "một root, nhiều dòng con", cùng
-  pattern get-or-create lười.
+  pattern get-or-create lười. *(Cập nhật: cặp bảng này sau đó vẫn bị xoá — không phải vì header là
+  dư thừa như lo ngại ở đây, mà vì Cấp 0 trở thành một dòng `bom_items` thật nên không còn cần một
+  root/khuôn song song nữa. Xem `docs/decisions/root-bom-item.md`.)*
 
 ## Phạm vi KHÔNG đổi trong đợt này
 
@@ -68,7 +78,10 @@ thực thi Job là có thay đổi.
 
 ## Liên quan
 
-- `docs/domains/product-structure.md` — mô hình `items`/BOM đầy đủ sau khi gộp.
+- `docs/decisions/wip-removal.md` — đảo chiều gần nhất, xoá hẳn `type = WIP`.
+- `docs/decisions/root-bom-item.md` — xoá hẳn `routings`/`routing_operations` mô tả ở đây, Cấp 0
+  thành một dòng `bom_items` thật.
+- `docs/domains/product-structure.md` — mô hình `items`/BOM đầy đủ hiện tại (chỉ FG/CONSUMABLE).
 - `docs/domains/partners.md` — phần vật tư đã chuyển sang `product-structure.md`.
 - `docs/domains/inventory.md`, `docs/domains/production.md`, `docs/domains/purchase-requests.md` —
   các chỗ từng mô tả XOR/`materialId` đã cập nhật theo `itemId`.

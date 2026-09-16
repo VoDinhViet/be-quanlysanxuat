@@ -312,12 +312,12 @@ export class OutboundOrdersService {
       reqDto.excludeOutboundOrderId,
     );
 
-    const targetQtySql = sql<number>`coalesce(${productionOrderItems.quantity}, ${orderItems.quantity})`.mapWith(
-      Number,
-    );
-    const issuedQtySql = sql<number>`coalesce(${issuedQty.issuedQty}, 0)`.mapWith(
-      Number,
-    );
+    const targetQtySql =
+      sql<number>`coalesce(${productionOrderItems.quantity}, ${orderItems.quantity})`.mapWith(
+        Number,
+      );
+    const issuedQtySql =
+      sql<number>`coalesce(${issuedQty.issuedQty}, 0)`.mapWith(Number);
 
     const where = and(
       isNull(orders.deletedAt),

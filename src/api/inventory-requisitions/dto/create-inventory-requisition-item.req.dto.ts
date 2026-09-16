@@ -6,7 +6,7 @@ import {
 } from '../../../decorators/field.decorators';
 
 export class CreateInventoryRequisitionItemReqDto {
-  @UUIDField({ description: 'Id vật tư — bắt buộc type = RM' })
+  @UUIDField({ description: 'Id vật tư — bắt buộc type = CONSUMABLE' })
   readonly itemId!: string;
 
   @UUIDFieldOptional({

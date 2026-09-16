@@ -16,7 +16,7 @@ import { StockStatus } from './inventory.constant';
 /** Tồn theo item — gộp `inventory_balances` (tồn hiện tại) trừ khi `asOfDate` được truyền, khi đó
  * cộng lại từ `inventory_transactions` với `transactionDate <= asOfDate`. Không tự lọc theo loại
  * item — nơi gọi join/lọc `items` ở tầng ngoài, subquery chỉ gộp theo `itemId`. Dùng chung giữa
- * `InventoryService`, `inventory-products`, `inventory-materials`. */
+ * `InventoryService`, `inventory-products`, `inventory-consumables`. */
 export function balanceByItemSubquery(db: Database, asOfDate?: Date) {
   if (asOfDate) {
     return db

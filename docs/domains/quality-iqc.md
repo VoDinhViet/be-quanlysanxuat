@@ -126,7 +126,7 @@ qua `confirm`. Hợp lệ ở mọi status **trừ** `DRAFT` (`E144`) — chủ 
 - Không có FK mức dòng tới `purchase_order_items`/`inventory_receipt_items` (không có số thứ tự
   dòng ổn định) — chỉ trace mức chứng từ. `originId` khi `originType = OUTSOURCING_RECEIPT_ITEM`
   trace được tới mức dòng.
-- `itemId` không ràng buộc `type = RM` ở DB/service.
+- `itemId` không ràng buộc `type = CONSUMABLE` ở DB/service.
 - CHECK `sample_size > 0`/`defect_qty >= 0`/`aql_level > 0` khi có giá trị;
   `chk_quality_inspections_disposition_requires_fail`; `chk_quality_inspections_sort_qty_pair`/
   `_sort_qty_requires_sort`/`_sort_qty_total`; `chk_quality_inspections_origin_id_pair`

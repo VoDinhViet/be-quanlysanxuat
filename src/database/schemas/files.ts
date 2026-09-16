@@ -34,12 +34,12 @@ export const fileKindEnum = pgEnum('file_kind', [
  * - `FileKind` says which bytes are acceptable (the mime family); `UploadType` says which screen
  *   asked for them, and is the key into `uploadPolicies` (`src/api/files/upload-policy.ts`) that
  *   decides the kind — and, later, the permission required.
- * - Stored so the registry stays auditable ("every material document") without joining anything.
+ * - Stored so the registry stays auditable ("every consumable document") without joining anything.
  */
 export enum UploadType {
   USER_AVATAR = 'USER_AVATAR',
-  MATERIAL_IMAGE = 'MATERIAL_IMAGE',
-  MATERIAL_DOCUMENT = 'MATERIAL_DOCUMENT',
+  CONSUMABLE_IMAGE = 'CONSUMABLE_IMAGE',
+  CONSUMABLE_DOCUMENT = 'CONSUMABLE_DOCUMENT',
   PRODUCT_IMAGE = 'PRODUCT_IMAGE',
   /** Retired 2026-08-27 — thay bằng `ITEM_DOCUMENT`. Tài liệu đính kèm cấp sản phẩm bị bỏ nhầm khi
    * gộp `products`+`materials` thành `items` (04/08), tưởng bản vẽ theo node BOM thay thế được —
@@ -60,7 +60,7 @@ export enum UploadType {
   PRODUCTION_OPERATION_EVIDENCE = 'PRODUCTION_OPERATION_EVIDENCE',
   // File đính kèm khi kho xác nhận xuất trả NCC (`POST /supplier-returns/:id/post`).
   SUPPLIER_RETURN_EVIDENCE = 'SUPPLIER_RETURN_EVIDENCE',
-  // Tài liệu đính kèm cấp item — mọi `type` (FG/WIP/RM), danh sách nhiều file, khác
+  // Tài liệu đính kèm cấp item — mọi `type` (FG/CONSUMABLE), danh sách nhiều file, khác
   // `BOM_ITEM_DRAWING` (tối đa 1 file, gắn theo từng node BOM, không phải theo item). Thay
   // `PRODUCT_DOCUMENT` đã nghỉ hưu (BUG-007, 2026-08-27).
   ITEM_DOCUMENT = 'ITEM_DOCUMENT',
@@ -68,8 +68,8 @@ export enum UploadType {
 
 export const uploadTypeEnum = pgEnum('upload_type', [
   UploadType.USER_AVATAR,
-  UploadType.MATERIAL_IMAGE,
-  UploadType.MATERIAL_DOCUMENT,
+  UploadType.CONSUMABLE_IMAGE,
+  UploadType.CONSUMABLE_DOCUMENT,
   UploadType.PRODUCT_IMAGE,
   UploadType.PRODUCT_DOCUMENT,
   UploadType.SUPPLIER_LOGO,
@@ -95,7 +95,7 @@ export const uploadTypeEnum = pgEnum('upload_type', [
  *   public link, safe to cache/store on the client indefinitely.
  * - `storageDriver` records which driver wrote the file, in case drivers are ever mixed during a
  *   migration to a new one (e.g. S3).
- * - Other entities (`users`, `materials`, ...) reference a row here by `id` instead of
+ * - Other entities (`users`, `items`, ...) reference a row here by `id` instead of
  *   duplicating url/filename/mimetype/size themselves.
  */
 export const files = pgTable(

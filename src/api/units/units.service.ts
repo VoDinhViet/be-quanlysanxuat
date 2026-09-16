@@ -195,8 +195,8 @@ export class UnitsService {
 
   /** Gỡ scope không phá dữ liệu cũ nhưng làm mọi `PATCH /items` sau đó rơi vào `E043`
    * (scope_mismatch) — chặn trước ở đây thay vì để lộ lỗi khó truy đó. Map `UnitScope` sang
-   * `ItemType` tương ứng: `MATERIAL` ↔ RM, `PRODUCT` ↔ FG/WIP. `SEMI_FINISHED` không chặn — chưa
-   * module nào đọc scope này. */
+   * `ItemType` tương ứng: `CONSUMABLE` ↔ CONSUMABLE, `PRODUCT` ↔ FG. `SEMI_FINISHED` không chặn —
+   * chưa module nào đọc scope này. */
   private async ensureRemovedScopesNotInUse(
     unitId: string,
     nextScopes: UnitScope[],
@@ -209,10 +209,10 @@ export class UnitsService {
 
     for (const scope of removedScopes) {
       const itemTypes =
-        scope === UnitScope.MATERIAL
-          ? [ItemType.RM]
+        scope === UnitScope.CONSUMABLE
+          ? [ItemType.CONSUMABLE]
           : scope === UnitScope.PRODUCT
-            ? [ItemType.FG, ItemType.WIP]
+            ? [ItemType.FG]
             : [];
 
       if (itemTypes.length === 0) {

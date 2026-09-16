@@ -21,9 +21,14 @@ export class CreateItemReqDto {
   })
   code?: string;
 
+  @StringFieldOptional({
+    description: 'Phiên bản; mặc định R01',
+    maxLength: 50,
+  })
+  revision?: string;
+
   @EnumFieldOptional(() => ItemType, {
-    description:
-      'FG (thành phẩm) / WIP (bán thành phẩm) / RM (vật tư); mặc định FG',
+    description: 'FG (thành phẩm) / CONSUMABLE (vật tư); mặc định FG',
   })
   type?: ItemType;
 
@@ -44,19 +49,19 @@ export class CreateItemReqDto {
 
   @UUIDFieldOptional({
     nullable: true,
-    description: 'NCC chính — chỉ có ý nghĩa với RM',
+    description: 'NCC chính — chỉ có ý nghĩa với CONSUMABLE',
   })
   supplierId?: string | null;
 
   @NumberFieldOptional({
     min: 0,
     description:
-      'Định mức tồn tối thiểu — chỉ có ý nghĩa với RM, dùng tính trạng thái tồn kho. Mặc định 0',
+      'Định mức tồn tối thiểu — chỉ có ý nghĩa với CONSUMABLE, dùng tính trạng thái tồn kho. Mặc định 0',
   })
   minStock?: number;
 
   @StringFieldOptional({ maxLength: 255, nullable: true })
-  materialGrade?: string | null;
+  consumableGrade?: string | null;
 
   @StringFieldOptional({ maxLength: 255, nullable: true })
   technicalStandard?: string | null;

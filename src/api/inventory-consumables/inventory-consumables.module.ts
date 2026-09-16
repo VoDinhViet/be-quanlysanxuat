@@ -1,12 +1,12 @@
 import { Module } from '@nestjs/common';
 
 import { AuthModule } from '../auth/auth.module';
-import { InventoryMaterialsController } from './inventory-materials.controller';
-import { InventoryMaterialsService } from './inventory-materials.service';
+import { InventoryConsumablesController } from './inventory-consumables.controller';
+import { InventoryConsumablesService } from './inventory-consumables.service';
 
 @Module({
   imports: [AuthModule],
-  controllers: [InventoryMaterialsController],
-  providers: [InventoryMaterialsService],
+  controllers: [InventoryConsumablesController],
+  providers: [InventoryConsumablesService],
 })
-export class InventoryMaterialsModule {}
+export class InventoryConsumablesModule {}

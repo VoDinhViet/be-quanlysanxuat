@@ -18,6 +18,7 @@ import { CurrentUser } from '../../decorators/current-user.decorator';
 import { ApiAuth } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
+import { CopyItemReqDto } from './dto/copy-item.req.dto';
 import { CreateItemReqDto } from './dto/create-item.req.dto';
 import { ExportItemsReqDto } from './dto/export-items.req.dto';
 import { GetItemIssuesReqDto } from './dto/get-item-issues.req.dto';
@@ -39,7 +40,7 @@ export class ItemsController {
   @Permissions('items:read')
   @ApiAuth({
     type: PageItemResDto,
-    summary: 'List items (FG/WIP/RM)',
+    summary: 'List items (FG/CONSUMABLE)',
     isPaginated: true,
   })
   getItems(
@@ -113,7 +114,7 @@ export class ItemsController {
   @ApiAuth({
     type: ItemIssueResDto,
     summary:
-      "Get an item's exploded material demand per RM, gộp theo cây (Thành phần vật tư)",
+      "Get an item's exploded consumable demand per CONSUMABLE, gộp theo cây (Thành phần vật tư)",
     isPaginated: true,
   })
   getItemIssues(
@@ -137,13 +138,14 @@ export class ItemsController {
   @Permissions('items:copy')
   @ApiAuth({
     summary:
-      'Copy (clone) an FG/WIP item, including its BOM tree and routing (Nhân bản)',
+      'Copy (clone) an FG item, keeping its code and taking a new revision (Nhân bản)',
     statusCode: HttpStatus.CREATED,
   })
   copyItem(
     @UUIDParam('itemId') itemId: string,
+    @Body() reqDto: CopyItemReqDto,
     @CurrentUser() payload: JwtPayloadType,
   ): Promise<void> {
-    return this.itemsService.copyItem(itemId, payload.userId);
+    return this.itemsService.copyItem(itemId, reqDto, payload.userId);
   }
 }

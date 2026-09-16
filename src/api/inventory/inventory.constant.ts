@@ -1,8 +1,8 @@
 /**
  * Trạng thái tồn kho — chỉ dùng để lọc (`stockStatusCondition`, tham số `status` của
- * `GET /inventory-products`/`GET /inventory-materials`), không trả trên response: FE tự suy từ
+ * `GET /inventory-products`/`GET /inventory-consumables`), không trả trên response: FE tự suy từ
  * `available`/`minStock` để hiển thị. Không lưu cột nào nên không cần `pgEnum`. Công thức áp dụng
- * cho mọi loại item (FG/WIP/RM) như nhau, không riêng vật tư.
+ * cho mọi loại item (FG/CONSUMABLE) như nhau, không riêng vật tư.
  *
  * Rules:
  * - `SHORTAGE`: `available < 0`.

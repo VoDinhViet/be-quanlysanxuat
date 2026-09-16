@@ -51,9 +51,10 @@ nhập/xuất có vòng đời `DRAFT`/`POSTED`/`CANCELLED`, sổ cái `inventor
   `itemType` + `productId`/`materialId` nullable + CHECK (đúng khuôn `bom_items` lúc đó), sau co lại
   còn một `itemId` khi `products`/`materials` gộp thành `items`, xem
   `docs/decisions/items-merge.md`.
-- **Loại kho không ràng buộc cứng với loại hàng** — `warehouses.type` (`RM`/`FG`/`WIP`) là nhãn
-  phân loại/lọc, không phải constraint; một kho `RM` vẫn nhận được thành phẩm nếu người dùng muốn.
-  Quyết định nghiệp vụ, không phải giới hạn kỹ thuật.
+- **Loại kho không ràng buộc cứng với loại hàng** — `warehouses.type` (`RM`/`FG`/`WIP`, bảng
+  `warehouses` đã xoá hẳn sau đó — `docs/decisions/single-warehouse.md`) là nhãn phân loại/lọc,
+  không phải constraint; một kho `RM` vẫn nhận được thành phẩm nếu người dùng muốn. Quyết định
+  nghiệp vụ, không phải giới hạn kỹ thuật.
 
 ## Ngoài phạm vi đợt này
 

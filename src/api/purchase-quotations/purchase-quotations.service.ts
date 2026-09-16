@@ -64,8 +64,8 @@ export class PurchaseQuotationsService {
     reqDto: GetQuotationsReqDto,
   ): Promise<OffsetPaginatedDto<PageQuotationResDto>> {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
-    const materialKeyword = reqDto.materialKeyword
-      ? `%${reqDto.materialKeyword}%`
+    const consumableKeyword = reqDto.consumableKeyword
+      ? `%${reqDto.consumableKeyword}%`
       : undefined;
 
     const where = and(
@@ -74,7 +74,7 @@ export class PurchaseQuotationsService {
       reqDto.createdBy
         ? eq(purchaseQuotations.createdBy, reqDto.createdBy)
         : undefined,
-      reqDto.purchaseRequestId || reqDto.supplierId || materialKeyword
+      reqDto.purchaseRequestId || reqDto.supplierId || consumableKeyword
         ? exists(
             this.db
               .select({ one: sql`1` })
@@ -83,10 +83,10 @@ export class PurchaseQuotationsService {
               .where(
                 and(
                   eq(purchaseQuotationItems.quotationId, purchaseQuotations.id),
-                  materialKeyword
+                  consumableKeyword
                     ? or(
-                        unaccentILike(items.name, materialKeyword),
-                        unaccentILike(items.code, materialKeyword),
+                        unaccentILike(items.name, consumableKeyword),
+                        unaccentILike(items.code, consumableKeyword),
                       )
                     : undefined,
                   reqDto.purchaseRequestId

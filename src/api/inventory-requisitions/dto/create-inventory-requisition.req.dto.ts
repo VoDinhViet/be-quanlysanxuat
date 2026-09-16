@@ -38,7 +38,8 @@ export class CreateInventoryRequisitionReqDto {
   @ClassField(() => CreateInventoryRequisitionItemReqDto, {
     each: true,
     minItems: 1,
-    description: 'Dòng vật tư — tối thiểu 1 dòng, không trùng itemId, luôn RM',
+    description:
+      'Dòng vật tư — tối thiểu 1 dòng, không trùng itemId, luôn CONSUMABLE',
   })
   readonly items!: CreateInventoryRequisitionItemReqDto[];
 }

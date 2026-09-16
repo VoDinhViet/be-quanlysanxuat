@@ -85,12 +85,19 @@ type IqcSavableInspection = Pick<
   | 'purchaseOrderId'
   | 'supplierId'
   | 'itemId'
+  | 'itemCode'
+  | 'itemName'
   | 'productionJobId'
 >;
 
 const creatorUsers = alias(users, 'iqc_creator');
 const confirmerUsers = alias(users, 'iqc_confirmer');
 const resolverUsers = alias(users, 'iqc_resolver');
+
+// `items` là left join — lô kiểm node COMPONENT (từ OS-IN) không trỏ item, đọc snapshot ghi trên chính
+// dòng `quality_inspections` lúc tạo.
+const inspectedItemCode = sql<string>`coalesce(${items.code}, ${qualityInspections.itemCode})`;
+const inspectedItemName = sql<string>`coalesce(${items.name}, ${qualityInspections.itemName})`;
 
 @Injectable()
 export class IqcService {
@@ -141,6 +148,8 @@ export class IqcService {
           productionJobOperation: getTableColumns(productionJobOperations),
           supplier: getTableColumns(suppliers),
           client: getTableColumns(clients),
+          itemCode: inspectedItemCode,
+          itemName: inspectedItemName,
           item: getTableColumns(items),
           unit: getTableColumns(units),
           quantity: qualityInspections.quantity,
@@ -155,8 +164,8 @@ export class IqcService {
           updatedAt: qualityInspections.updatedAt,
         })
         .from(qualityInspections)
-        .innerJoin(items, eq(items.id, qualityInspections.itemId))
-        .innerJoin(units, eq(units.id, items.unitId))
+        .leftJoin(items, eq(items.id, qualityInspections.itemId))
+        .leftJoin(units, eq(units.id, items.unitId))
         .leftJoin(suppliers, eq(suppliers.id, qualityInspections.supplierId))
         .leftJoin(clients, eq(clients.id, qualityInspections.clientId))
         .leftJoin(
@@ -200,7 +209,7 @@ export class IqcService {
         PageIqcResDto,
         rows.map(({ unit, ...row }) => ({
           ...row,
-          item: { ...row.item, unit },
+          item: row.item ? { ...row.item, unit } : null,
         })),
         { excludeExtraneousValues: true },
       ),
@@ -241,8 +250,8 @@ export class IqcService {
         code: qualityInspections.inspectionNo,
         supplierName: suppliers.name,
         clientName: clients.name,
-        itemCode: items.code,
-        itemName: items.name,
+        itemCode: inspectedItemCode,
+        itemName: inspectedItemName,
         unitName: units.name,
         quantity: qualityInspections.quantity,
         inspectionDate: qualityInspections.requestedAt,
@@ -255,8 +264,8 @@ export class IqcService {
         createdAt: qualityInspections.createdAt,
       })
       .from(qualityInspections)
-      .innerJoin(items, eq(items.id, qualityInspections.itemId))
-      .innerJoin(units, eq(units.id, items.unitId))
+      .leftJoin(items, eq(items.id, qualityInspections.itemId))
+      .leftJoin(units, eq(units.id, items.unitId))
       .leftJoin(suppliers, eq(suppliers.id, qualityInspections.supplierId))
       .leftJoin(clients, eq(clients.id, qualityInspections.clientId))
       .leftJoin(creatorUsers, eq(creatorUsers.id, qualityInspections.createdBy))
@@ -462,7 +471,9 @@ export class IqcService {
       inspectionDate: Date;
       lines: {
         outsourcingReceiptItemId: string;
-        itemId: string;
+        itemId: string | null;
+        itemCode: string;
+        itemName: string;
         quantity: number;
         productionJobId: string | null;
         productionJobOperationId: string | null;
@@ -490,6 +501,8 @@ export class IqcService {
         productionJobOperationId: line.productionJobOperationId,
         supplierId: params.supplierId,
         itemId: line.itemId,
+        itemCode: line.itemCode,
+        itemName: line.itemName,
         quantity: line.quantity,
         requestedAt: params.inspectionDate,
         status: QualityInspectionStatus.DRAFT,
@@ -536,6 +549,8 @@ export class IqcService {
         purchaseOrder: getTableColumns(purchaseOrders),
         supplier: getTableColumns(suppliers),
         client: getTableColumns(clients),
+        itemCode: inspectedItemCode,
+        itemName: inspectedItemName,
         item: getTableColumns(items),
         unit: getTableColumns(units),
         quantity: qualityInspections.quantity,
@@ -566,8 +581,8 @@ export class IqcService {
         updatedAt: qualityInspections.updatedAt,
       })
       .from(qualityInspections)
-      .innerJoin(items, eq(items.id, qualityInspections.itemId))
-      .innerJoin(units, eq(units.id, items.unitId))
+      .leftJoin(items, eq(items.id, qualityInspections.itemId))
+      .leftJoin(units, eq(units.id, items.unitId))
       .leftJoin(suppliers, eq(suppliers.id, qualityInspections.supplierId))
       .leftJoin(clients, eq(clients.id, qualityInspections.clientId))
       .leftJoin(
@@ -653,7 +668,7 @@ export class IqcService {
       IqcResDto,
       {
         ...inspection,
-        item: { ...inspection.item, unit },
+        item: inspection.item ? { ...inspection.item, unit } : null,
         ac: latestAttempt?.acceptanceNumber ?? null,
         re: latestAttempt?.rejectionNumber ?? null,
         qcEvidence: evidences.filter(
@@ -881,29 +896,35 @@ export class IqcService {
           QualityInspectionOriginType.INVENTORY_RECEIPT
             ? inspection.originId
             : null;
+        const outsourcingReceiptItemId =
+          inspection.originType ===
+          QualityInspectionOriginType.OUTSOURCING_RECEIPT_ITEM
+            ? inspection.originId
+            : null;
         // `supplier_returns.outsourcingReceiptId` là FK riêng của bảng đó (không thuộc origin
         // polymorphic của QC) — dòng IQC sinh từ OS-IN chỉ giữ `outsourcingReceiptItemId` qua
         // `originId`, phải suy ngược `outsourcingReceiptId` qua join.
-        const outsourcingReceiptId =
-          inspection.originType ===
-          QualityInspectionOriginType.OUTSOURCING_RECEIPT_ITEM
-            ? ((
-                await tx.query.outsourcingReceiptItems.findFirst({
-                  columns: { outsourcingReceiptId: true },
-                  where: eq(outsourcingReceiptItems.id, inspection.originId!),
-                })
-              )?.outsourcingReceiptId ?? null)
-            : null;
+        const outsourcingReceiptId = outsourcingReceiptItemId
+          ? ((
+              await tx.query.outsourcingReceiptItems.findFirst({
+                columns: { outsourcingReceiptId: true },
+                where: eq(outsourcingReceiptItems.id, outsourcingReceiptItemId),
+              })
+            )?.outsourcingReceiptId ?? null)
+          : null;
 
         await this.supplierReturnsService.createFromIqcDisposition(tx, {
           qualityInspectionId: iqcId,
           qualityInspectionResultId: attempt.id,
           supplierId: inspection.supplierId!,
           itemId: inspection.itemId,
+          itemCode: inspection.itemCode,
+          itemName: inspection.itemName,
           quantity: returnTarget.quantity,
           purchaseOrderId: inspection.purchaseOrderId,
           inventoryReceiptId,
           outsourcingReceiptId,
+          outsourcingReceiptItemId,
           returnDate: vnToday(),
           userId,
         });
@@ -989,6 +1010,8 @@ export class IqcService {
         purchaseOrderId: true,
         supplierId: true,
         itemId: true,
+        itemCode: true,
+        itemName: true,
         productionJobId: true,
       },
       where: and(

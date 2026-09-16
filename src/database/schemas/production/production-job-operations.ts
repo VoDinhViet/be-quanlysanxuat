@@ -20,8 +20,9 @@ import { productionJobs } from './production-jobs';
  * Snapshot công đoạn as-used của từng node BOM trong một Job — copy `bom_operations` (khoá theo
  * `bomItemId`) trong transaction duyệt LSX (`ProductionJobsService.createJobs`). Đóng băng, không
  * có route sửa — sửa routing/`operations` gốc sau đó không ảnh hưởng Job đã duyệt. Công đoạn Cấp 0
- * của chính FG (lắp ráp/đóng gói) **cũng snapshot ở đây** — copy từ `routings`/`routing_operations`
- * của FG, gắn vào node `production_job_bom_items.itemType = 'FG'` (xem doc comment bảng đó và
+ * của chính FG (lắp ráp/đóng gói) **cũng snapshot ở đây** — copy từ đúng `bom_operations` của node
+ * ROOT thuộc FG (`docs/decisions/root-bom-item.md` — không còn bảng `routings`/`routing_operations`
+ * riêng), gắn vào node `production_job_bom_items.itemType = 'FG'` (xem doc comment bảng đó và
  * `docs/decisions/oqc-per-operation.md` mục "Đừng hoàn lại") — không phải một bảng riêng.
  *
  * Rules:

@@ -29,7 +29,9 @@ import type { Database, DbTransaction } from '../../database/database.type';
 import {
   bomItems,
   BomItemSelect,
+  bomOperations,
   boms,
+  BomType,
   clients,
   files,
   itemFiles,
@@ -46,6 +48,7 @@ import {
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { FilesService } from '../files/files.service';
+import { CopyItemReqDto } from './dto/copy-item.req.dto';
 import { CreateItemReqDto } from './dto/create-item.req.dto';
 import { ExportItemsReqDto } from './dto/export-items.req.dto';
 import { GetItemIssuesReqDto } from './dto/get-item-issues.req.dto';
@@ -61,6 +64,7 @@ import { ITEM_EXPORT_COLUMNS } from './items.export';
 @Injectable()
 export class ItemsService {
   private static readonly MAX_EXPORT_ROWS = 10_000;
+  private static readonly DEFAULT_REVISION = 'R01';
 
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
@@ -76,6 +80,7 @@ export class ItemsService {
       keyword
         ? or(
             unaccentILike(items.code, keyword),
+            unaccentILike(items.revision, keyword),
             unaccentILike(items.name, keyword),
           )
         : undefined,
@@ -119,6 +124,7 @@ export class ItemsService {
       keyword
         ? or(
             unaccentILike(items.code, keyword),
+            unaccentILike(items.revision, keyword),
             unaccentILike(items.name, keyword),
           )
         : undefined,
@@ -131,6 +137,7 @@ export class ItemsService {
     const rows = await this.db
       .select({
         code: items.code,
+        revision: items.revision,
         name: items.name,
         type: items.type,
         status: items.status,
@@ -138,7 +145,7 @@ export class ItemsService {
         clientName: clients.name,
         supplierName: suppliers.name,
         minStock: items.minStock,
-        materialGrade: items.materialGrade,
+        consumableGrade: items.consumableGrade,
         technicalStandard: items.technicalStandard,
         dimensions: items.dimensions,
         specificWeight: items.specificWeight,
@@ -180,6 +187,7 @@ export class ItemsService {
         keyword
           ? or(
               unaccentILike(items.code, keyword),
+              unaccentILike(items.revision, keyword),
               unaccentILike(items.name, keyword),
             )
           : undefined,
@@ -224,7 +232,10 @@ export class ItemsService {
     const type = reqDto.type ?? ItemType.FG;
 
     if (reqDto.code) {
-      await this.validateCodeUniqueness(reqDto.code);
+      await this.validateCodeRevisionUniqueness(
+        reqDto.code,
+        reqDto.revision ?? ItemsService.DEFAULT_REVISION,
+      );
     }
 
     await this.ensureUnitExists(reqDto.unitId, type);
@@ -270,8 +281,12 @@ export class ItemsService {
   async updateItem(itemId: string, reqDto: UpdateItemReqDto): Promise<void> {
     const existing = await this.ensureItemExists(itemId);
 
-    if (reqDto.code) {
-      await this.validateCodeUniqueness(reqDto.code, itemId);
+    if (reqDto.code !== undefined || reqDto.revision !== undefined) {
+      await this.validateCodeRevisionUniqueness(
+        reqDto.code ?? existing.code,
+        reqDto.revision ?? existing.revision,
+        itemId,
+      );
     }
     if (reqDto.unitId) {
       await this.ensureUnitExists(reqDto.unitId, reqDto.type ?? existing.type);
@@ -286,19 +301,29 @@ export class ItemsService {
 
     const { fileIds, ...itemFields } = reqDto;
 
-    await this.db.transaction(async (tx) => {
-      // `updated_at` is bumped by the column's own `$onUpdate`. Skip the `UPDATE` entirely when a
-      // request only sends `fileIds` — `UpdateItemReqDto`'s declared-but-unset fields still show up
-      // as own keys (`undefined`) at runtime, so `Object.keys` alone can't tell "nothing sent" from
-      // "every other field sent"; checking for a defined value avoids drizzle's "No values to set".
-      if (Object.values(itemFields).some((value) => value !== undefined)) {
-        await tx.update(items).set(itemFields).where(eq(items.id, itemId));
-      }
+    try {
+      await this.db.transaction(async (tx) => {
+        // `updated_at` is bumped by the column's own `$onUpdate`. Skip the `UPDATE` entirely when a
+        // request only sends `fileIds` — `UpdateItemReqDto`'s declared-but-unset fields still show
+        // up as own keys (`undefined`) at runtime, so `Object.keys` alone can't tell "nothing sent"
+        // from "every other field sent"; checking for a defined value avoids drizzle's "No values
+        // to set".
+        if (Object.values(itemFields).some((value) => value !== undefined)) {
+          await tx.update(items).set(itemFields).where(eq(items.id, itemId));
+        }
 
-      if (fileIds) {
-        await this.replaceFiles(tx, itemId, fileIds);
+        if (fileIds) {
+          await this.replaceFiles(tx, itemId, fileIds);
+        }
+      });
+    } catch (error) {
+      // Cùng backstop TOCTOU với `createItem` — trùng cặp `(code, revision)` sinh ra giữa lúc
+      // kiểm tra và lúc `UPDATE` thật sự chạy.
+      if (extractPostgresError(error)?.code === '23505') {
+        throw new AppException(ErrorCode.E008, HttpStatus.CONFLICT);
       }
-    });
+      throw error;
+    }
   }
 
   async deleteItem(itemId: string): Promise<void> {
@@ -392,15 +417,14 @@ export class ItemsService {
         parentId: bomItems.parentId,
         itemId: bomItems.itemId,
         quantity: bomItems.quantity,
-        itemType: items.type,
+        type: bomItems.type,
       })
       .from(bomItems)
-      .innerJoin(items, eq(bomItems.itemId, items.id))
       .where(eq(bomItems.bomId, bom.id))
       .orderBy(asc(bomItems.level), asc(bomItems.sortOrder));
 
     // multiplier[node] = multiplier[cha] × quantity node, gốc (parentId null) = 1 × quantity —
-    // đi từ gốc xuống đúng N tầng WIP rồi dừng ở RM, không cần xử lý RM có con (bất biến `E052`).
+    // đi từ gốc xuống đúng N tầng COMPONENT rồi dừng ở CONSUMABLE, không cần xử lý CONSUMABLE có con (bất biến `E052`).
     // Làm tròn scale 3 ngay mỗi bước nhân (không chỉ lúc gộp cuối) — khác `copyBomTree`/
     // `copyBomIssues` phía Job, số ở đây không đi qua cột `numeric(18,3)` nào để Postgres tự làm
     // tròn hộ giữa các cấp, nên tự làm tròn để tránh rác dấu phẩy động lọt ra JSON (cùng idiom
@@ -416,12 +440,14 @@ export class ItemsService {
         Math.round(parentMultiplier * node.quantity * 1000) / 1000;
       multiplierById.set(node.id, multiplier);
 
-      if (node.itemType === ItemType.RM) {
+      if (node.type === BomType.CONSUMABLE) {
+        // Lá CONSUMABLE luôn trỏ item (`chk_bom_items_node_shape`).
+        const consumableItemId = node.itemId!;
         const total =
           Math.round(
-            ((totalByItemId.get(node.itemId) ?? 0) + multiplier) * 1000,
+            ((totalByItemId.get(consumableItemId) ?? 0) + multiplier) * 1000,
           ) / 1000;
-        totalByItemId.set(node.itemId, total);
+        totalByItemId.set(consumableItemId, total);
       }
     }
 
@@ -434,6 +460,7 @@ export class ItemsService {
       .select({
         itemId: items.id,
         code: items.code,
+        revision: items.revision,
         name: items.name,
         unit: getTableColumns(units),
         image: getTableColumns(files),
@@ -447,6 +474,7 @@ export class ItemsService {
           keyword
             ? or(
                 unaccentILike(items.code, keyword),
+                unaccentILike(items.revision, keyword),
                 unaccentILike(items.name, keyword),
               )
             : undefined,
@@ -469,14 +497,21 @@ export class ItemsService {
     );
   }
 
-  /** Clone một item (FG/WIP): tạo item mới mang mã tự sinh, giữ `clonedFromItemId` để truy vết,
-   * kèm nhân bản cả cây BOM (node WIP lẫn lá RM). RM không có cây BOM nên bị chặn ở đây (`E110`). */
-  async copyItem(itemId: string, userId: string): Promise<void> {
+  /** Clone một item FG: tạo item mới giữ nguyên `code`, mang `revision` do người dùng nhập
+   * (kiểm trùng cặp trước), giữ `clonedFromItemId` để truy vết, kèm nhân bản cả cây BOM (node
+   * COMPONENT lẫn lá CONSUMABLE). CONSUMABLE không có cây BOM nên bị chặn ở đây (`E110`). */
+  async copyItem(
+    itemId: string,
+    reqDto: CopyItemReqDto,
+    userId: string,
+  ): Promise<void> {
     const item = await this.ensureItemExists(itemId);
 
-    if (item.type === ItemType.RM) {
+    if (item.type === ItemType.CONSUMABLE) {
       throw new AppException(ErrorCode.E110, HttpStatus.BAD_REQUEST);
     }
+
+    await this.validateCodeRevisionUniqueness(item.code, reqDto.revision);
 
     // 1. Đọc BOM + tài liệu đính kèm gốc trước khi mở transaction
     const bom = await this.db.query.boms.findFirst({
@@ -497,43 +532,53 @@ export class ItemsService {
       .where(eq(itemFiles.itemId, itemId));
 
     // 2. Mở transaction để ghi dữ liệu mới
-    await this.db.transaction(async (tx) => {
-      const code = await this.generateItemCode(tx, item.type);
+    try {
+      await this.db.transaction(async (tx) => {
+        const {
+          id: clonedFromItemId,
+          revision: _revision,
+          createdAt,
+          updatedAt,
+          deletedAt,
+          createdBy,
+          ...copyFields
+        } = item;
 
-      const {
-        id: clonedFromItemId,
-        code: _code,
-        createdAt,
-        updatedAt,
-        deletedAt,
-        createdBy,
-        ...copyFields
-      } = item;
+        const [createdItem] = await tx
+          .insert(items)
+          .values({
+            ...copyFields,
+            revision: reqDto.revision,
+            clonedFromItemId,
+            createdBy: userId,
+          })
+          .returning({ id: items.id });
 
-      const [createdItem] = await tx
-        .insert(items)
-        .values({
-          ...copyFields,
-          code,
-          clonedFromItemId,
-          createdBy: userId,
-        })
-        .returning({ id: items.id });
+        if (bom) {
+          await this.copyBomTree(tx, createdItem.id, sourceBomItems, userId);
+        }
 
-      if (bom) {
-        await this.copyBomTree(tx, createdItem.id, sourceBomItems, userId);
+        if (sourceFiles.length) {
+          await this.replaceFiles(
+            tx,
+            createdItem.id,
+            sourceFiles.map((row) => row.fileId),
+          );
+        }
+      });
+    } catch (error) {
+      // Cùng backstop TOCTOU với `createItem`/`updateItem` — trùng cặp `(code, revision)` sinh ra
+      // giữa lúc kiểm tra và lúc `INSERT` thật sự chạy.
+      if (extractPostgresError(error)?.code === '23505') {
+        throw new AppException(ErrorCode.E008, HttpStatus.CONFLICT);
       }
-
-      if (sourceFiles.length) {
-        await this.replaceFiles(
-          tx,
-          createdItem.id,
-          sourceFiles.map((row) => row.fileId),
-        );
-      }
-    });
+      throw error;
+    }
   }
 
+  /** Nhân bản cả công đoạn as-used (`bom_operations`) của từng node, kể cả node ROOT ("Cấp 0" —
+   * `docs/decisions/root-bom-item.md`) — `sourceBomItems` giờ luôn chứa đúng 1 node ROOT, nên
+   * routing Cấp 0 tự nhiên được nhân bản theo cùng một đường, không cần bước riêng nào nữa. */
   private async copyBomTree(
     tx: DbTransaction,
     itemId: string,
@@ -571,8 +616,22 @@ export class ItemsService {
       },
     );
 
-    if (newItems.length) {
-      await tx.insert(bomItems).values(newItems);
+    if (!newItems.length) {
+      return;
+    }
+    await tx.insert(bomItems).values(newItems);
+
+    const sourceOperations = await tx.query.bomOperations.findMany({
+      where: inArray(bomOperations.bomItemId, [...newIdByOldId.keys()]),
+    });
+    if (sourceOperations.length) {
+      await tx.insert(bomOperations).values(
+        sourceOperations.map(({ id, createdAt, updatedAt, ...operation }) => ({
+          ...operation,
+          bomItemId: newIdByOldId.get(operation.bomItemId)!,
+          createdBy: userId,
+        })),
+      );
     }
   }
 
@@ -588,13 +647,17 @@ export class ItemsService {
     return existing;
   }
 
-  private async validateCodeUniqueness(
+  private async validateCodeRevisionUniqueness(
     code: string,
+    revision: string,
     ignoredItemId?: string,
   ): Promise<void> {
-    const where = ignoredItemId
-      ? and(eq(items.code, code), ne(items.id, ignoredItemId))
-      : eq(items.code, code);
+    const where = and(
+      eq(items.code, code),
+      eq(items.revision, revision),
+      isNull(items.deletedAt),
+      ignoredItemId ? ne(items.id, ignoredItemId) : undefined,
+    );
 
     const existing = await this.db.query.items.findFirst({
       columns: { id: true },
@@ -623,7 +686,7 @@ export class ItemsService {
     }
 
     const requiredScope =
-      type === ItemType.RM ? UnitScope.MATERIAL : UnitScope.PRODUCT;
+      type === ItemType.CONSUMABLE ? UnitScope.CONSUMABLE : UnitScope.PRODUCT;
     if (!existing.scopes.some(({ scope }) => scope === requiredScope)) {
       throw new AppException(ErrorCode.E043, HttpStatus.BAD_REQUEST);
     }
@@ -655,9 +718,11 @@ export class ItemsService {
     tx: DbTransaction,
     type: ItemType,
   ): Promise<string> {
-    const prefix = type === ItemType.RM ? 'VT' : 'SP';
+    const prefix = type === ItemType.CONSUMABLE ? 'VT' : 'SP';
     const documentType =
-      type === ItemType.RM ? DocumentType.ITEM_RM : DocumentType.ITEM_FG_WIP;
+      type === ItemType.CONSUMABLE
+        ? DocumentType.ITEM_CONSUMABLE
+        : DocumentType.ITEM_FG;
     const sequence = await generateDocumentSequence(tx, documentType);
 
     return `${prefix}${String(sequence).padStart(4, '0')}`;

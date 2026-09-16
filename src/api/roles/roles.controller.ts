@@ -38,7 +38,6 @@ export class RolesController {
     return this.rolesService.getRoles(reqDto);
   }
 
-
   @Get('permissions')
   @Permissions('roles:read')
   @ApiAuth({

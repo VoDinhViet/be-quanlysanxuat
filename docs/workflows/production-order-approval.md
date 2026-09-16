@@ -54,13 +54,13 @@ khác), không phải SL đặt gốc trên đơn — `docs/decisions/order-targ
    - Sinh mã `LSXxxxx` qua `document_sequences` (atomic), ghi `APPROVED` + `approvedBy`/`approvedAt`.
    - Đẩy đơn gốc `AWAITING_PRODUCTION` → `IN_PROGRESS`.
    - Sinh Job: mỗi sản phẩm một dòng, mã `JOBxxxx` cũng cấp qua `document_sequences`.
-   - Nhân bản toàn bộ cây BOM (cả `WIP` lẫn `RM`) sang `production_job_bom_items` (id mới,
+   - Nhân bản toàn bộ cây BOM (cả node `COMPONENT` lẫn `CONSUMABLE`) sang `production_job_bom_items` (id mới,
      `code`/`name` denormalize), rồi copy routing as-used của từng node sang
      `production_job_operations` (`code`/`name`/`type` công đoạn denormalize) — đóng băng, không
      route sửa. Không có khái niệm Cấp 0 riêng ở tầng Job.
    - Đọc lại `production_job_bom_items` vừa nhân bản (đã nổ cấp — `plannedQuantity`, xem "Chuẩn nổ
      cấp BOM" ở `docs/domains/product-structure.md`), gộp theo vật tư (`SUM(plannedQuantity) GROUP
-BY itemId`, chỉ node `RM`) thành `requiredQty`, rồi suy `unitQty = requiredQty / SL Job`. Mã/tên
+BY itemId`, chỉ node `CONSUMABLE`) thành `requiredQty`, rồi suy `unitQty = requiredQty / SL Job`. Mã/tên
      vật tư + mã/tên ĐVT không denormalize thẳng lên dòng này — get-or-create trước (theo bộ ba nội
      dung, dùng chung mọi Job/LSX) hai bảng chiều `production_job_items`/`production_job_units`, rồi
      chỉ ghi FK — xem `docs/domains/production.md`.

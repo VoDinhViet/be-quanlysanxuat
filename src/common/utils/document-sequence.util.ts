@@ -4,8 +4,8 @@ import type { DbTransaction } from '../../database/database.type';
 import { documentSequences } from '../../database/schemas';
 
 export enum DocumentType {
-  ITEM_RM = 'ITEM_RM',
-  ITEM_FG_WIP = 'ITEM_FG_WIP',
+  ITEM_CONSUMABLE = 'ITEM_CONSUMABLE',
+  ITEM_FG = 'ITEM_FG',
   PURCHASE_REQUEST = 'PURCHASE_REQUEST',
   OQC = 'OQC',
   IQC = 'IQC',

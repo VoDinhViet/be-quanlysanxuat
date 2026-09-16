@@ -191,8 +191,8 @@ export class OutsourcingOrdersService {
           ),
       })
       .from(outsourcingOrderItems)
-      .innerJoin(items, eq(items.id, outsourcingOrderItems.itemId))
-      .innerJoin(units, eq(units.id, items.unitId))
+      .leftJoin(items, eq(items.id, outsourcingOrderItems.itemId))
+      .leftJoin(units, eq(units.id, items.unitId))
       .leftJoin(
         productionJobs,
         eq(productionJobs.id, outsourcingOrderItems.productionJobId),
@@ -245,9 +245,10 @@ export class OutsourcingOrdersService {
       this.db
         .select({
           productionJobOperationId: productionJobOperations.id,
-          // Lấy từ `items.id` (innerJoin ⇒ non-null), KHÔNG lấy `productionJobBomItems.itemId` —
-          // cột đó `set null` nên nullable, trong khi req DTO của dòng OS-OUT bắt buộc `itemId`.
-          itemId: items.id,
+          productionJobBomItemId: productionJobBomItems.id,
+          // Nullable (node COMPONENT không phải item) — chỉ tham khảo; `bomItem.code`/`name` mới là
+          // snapshot client gửi lại.
+          itemId: productionJobBomItems.itemId,
           job: getTableColumns(productionJobs),
           bomItem: getTableColumns(productionJobBomItems),
           operation: getTableColumns(productionJobOperations),
@@ -274,14 +275,14 @@ export class OutsourcingOrdersService {
             productionJobOperations.productionJobBomItemId,
           ),
         )
-        .innerJoin(
+        .leftJoin(
           items,
           and(
             eq(items.id, productionJobBomItems.itemId),
             isNull(items.deletedAt),
           ),
         )
-        .innerJoin(units, eq(units.id, items.unitId))
+        .leftJoin(units, eq(units.id, items.unitId))
         .leftJoin(
           sentQuantityByJobOperation,
           eq(
@@ -311,14 +312,14 @@ export class OutsourcingOrdersService {
             productionJobOperations.productionJobBomItemId,
           ),
         )
-        .innerJoin(
+        .leftJoin(
           items,
           and(
             eq(items.id, productionJobBomItems.itemId),
             isNull(items.deletedAt),
           ),
         )
-        .innerJoin(units, eq(units.id, items.unitId))
+        .leftJoin(units, eq(units.id, items.unitId))
         .where(where),
     ]);
 
@@ -331,9 +332,9 @@ export class OutsourcingOrdersService {
   }
 
   /** Không còn nháp — tạo là gửi luôn: `INSERT` header thẳng `SENT`, không qua bước `DRAFT` trung
-   * gian nào. Không đụng `inventory_balances` — mặt hàng gửi gia công luôn là WIP, kho không quản
-   * tồn WIP (`docs/decisions/wip-not-stocked.md`). Dòng do client gửi đủ cột (không resolve lại từ
-   * `productionJobOperationId`), `docs/decisions/outsourcing-no-draft.md`. */
+   * gian nào. Không đụng `inventory_balances` — mặt hàng gửi gia công là node COMPONENT của Job, không
+   * phải item, không có tồn (`docs/decisions/wip-not-stocked.md`). Dòng do client gửi đủ cột
+   * (không resolve lại từ `productionJobOperationId`), `docs/decisions/outsourcing-no-draft.md`. */
   async createOutsourcingOrder(
     reqDto: CreateOutsourcingOrderReqDto,
     userId: string,

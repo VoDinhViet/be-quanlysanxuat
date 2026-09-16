@@ -5,25 +5,25 @@
 ## Bối cảnh
 
 `ProductionJobsService.copyBomIssues` (nguồn ghi duy nhất của `production_job_issues.requiredQty`)
-từng gộp phẳng mọi lá RM trong cây `bom_items` (`SUM(quantity) GROUP BY itemId`) rồi nhân với SL
-Job — **không nhân qua số lượng của các node WIP cha ở giữa**. Đây từng là giới hạn có chủ đích, ghi
-rõ trong code lẫn `docs/domains/product-structure.md`/`docs/domains/production.md`/
-`docs/domains/inventory.md`.
+từng gộp phẳng mọi lá CONSUMABLE trong cây `bom_items` (`SUM(quantity) GROUP BY itemId`) rồi nhân với SL
+Job — **không nhân qua số lượng của các node cấu trúc con cha ở giữa** (khi đó gọi là WIP, nay là
+`COMPONENT` — `docs/decisions/wip-removal.md`). Đây từng là giới hạn có chủ đích, ghi rõ trong code lẫn
+`docs/domains/product-structure.md`/`docs/domains/production.md`/`docs/domains/inventory.md`.
 
-Đo trực tiếp trên dữ liệu thật: BOM 3 cấp, node cha WIP SL 3, node con RM SL 4 — nhu cầu đúng là 12,
+Đo trực tiếp trên dữ liệu thật: BOM 3 cấp, node cha (WIP khi đó) SL 3, node con CONSUMABLE SL 4 — nhu cầu đúng là 12,
 hệ thống cũ tính 4 (thiếu 67%). Dữ liệu khách hàng dùng BOM đa cấp thật, nên giới hạn "không nổ theo
 cấp" không còn chấp nhận được.
 
 Đáng chú ý: `ProductionJobsService.copyBomTree` (chạy ngay **trước** `copyBomIssues` trong cùng
 transaction) đã tính đúng số nổ cấp từ trước — `production_job_bom_items.plannedQuantity = SL cha
-đã nổ cấp × quantity node`, cho mọi node kể cả lá RM. `copyBomIssues` chỉ đơn giản không tái dùng số
+đã nổ cấp × quantity node`, cho mọi node kể cả lá CONSUMABLE. `copyBomIssues` chỉ đơn giản không tái dùng số
 đó.
 
 ## Quyết định
 
 **Nhu cầu vật tư của Job (`production_job_issues`) và "Thành phần vật tư" của một item
 (`GET /items/:itemId/issues`) đều phải là giá trị đã nổ cấp** — nhân luỹ kế `quantity` qua toàn
-bộ chuỗi node cha, không phải tổng thô theo vật tư. Chuẩn đầy đủ (seed, gộp theo itemId, RM luôn là
+bộ chuỗi node cha, không phải tổng thô theo vật tư. Chuẩn đầy đủ (seed, gộp theo itemId, CONSUMABLE luôn là
 lá) chuyển sang ghi ở `docs/domains/product-structure.md`, mục "Chuẩn nổ cấp BOM" — đây là **quy
 tắc**, không lặp lại ở đây.
 
@@ -45,7 +45,7 @@ trực tiếp vẫn đúng và cần thiết cho một màn xem/biên tập cấ
   nhu cầu thật), không phải hồi quy.
 - Gate `E232` (chặn lãnh vượt `requiredQty`) nới ra cho các phiếu trước đây bị chặn oan vì số nền
   thấp hơn thực tế.
-- `available` trên `GET /inventory-products`/`GET /inventory-materials` giảm theo, có thể xuống âm —
+- `available` trên `GET /inventory-products`/`GET /inventory-consumables` giảm theo, có thể xuống âm —
   hành vi cố ý sẵn có của công thức `onHand − reserved − bomDemand`, không phải lỗi mới.
 - Job đã `IN_PROGRESS` trước migration không tự chạy lại `collectJobIssueShortages` — đề xuất mua
   hàng tự sinh lúc `startJob` cho các Job đó vẫn giữ số cũ, cần vận hành tự xử lý nếu cần.

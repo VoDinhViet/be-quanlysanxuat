@@ -17,7 +17,7 @@ cụ thể; `NULL` là đề xuất chung. `productionJobId` thu hẹp thêm m�
 
 **Hai đường tạo phiếu:**
 - **Tay**: `POST /purchase-requests` — luôn `DRAFT`, `productionOrderId`/`productionJobId` luôn
-  `NULL`, mọi dòng bắt buộc `type = RM`.
+  `NULL`, mọi dòng bắt buộc `type = CONSUMABLE`.
 - **Tự động**: hệ quả của `POST /production-jobs/:jobId/start` — vật tư thiếu tồn tự sinh đề xuất
   cho đúng phần thiếu (`docs/workflows/production-job-execution.md`). Luôn `DRAFT`, gắn cả
   `productionOrderId` lẫn `productionJobId`, SL mỗi dòng = phần thiếu (`requiredQty − onHand` tại
@@ -32,7 +32,7 @@ Sau khi sinh: `PATCH`/`DELETE .../items/:purchaseRequestItemId` sửa/xoá dòng
 | Entity | Vai trò |
 | --- | --- |
 | `purchase_requests` | Header — mã phiếu, ngày cần, bộ phận, LSX (tuỳ chọn), trạng thái |
-| `purchase_request_items` | Dòng — `itemId` (bắt buộc `type=RM`, `E148`) + `quantity` + `note` |
+| `purchase_request_items` | Dòng — `itemId` (bắt buộc `type=CONSUMABLE`, `E148`) + `quantity` + `note` |
 
 ## Lifecycle
 
@@ -57,7 +57,7 @@ chỉ mở ở `DRAFT`/`REJECTED` (không tự đưa `REJECTED` về `DRAFT` tr�
 - `quantity` mỗi dòng phải dương (DB CHECK). Không soft delete cho header — xoá phiếu là hard
   delete, dòng theo `ON DELETE CASCADE`.
 - Xoá dòng phải giữ ≥1 dòng còn lại (`E115`); tạo tay chặn `items` rỗng (`E146`), trùng `itemId`
-  trong payload (`E147`), dòng không `type=RM` (`E148`).
+  trong payload (`E147`), dòng không `type=CONSUMABLE` (`E148`).
 - `send` chỉ hợp lệ từ đúng `DRAFT`. Duyệt/từ chối chỉ hợp lệ từ `PENDING_APPROVAL` (`E116`).
 - `purchase-requests:approve` tách khỏi `:update` — chỉ DIRECTOR. `:create`/`:delete` tách riêng —
   hiện chỉ PURCHASING được cấp cả hai; PRODUCTION/WAREHOUSE chỉ có `:read`.

@@ -51,7 +51,7 @@ import {
 } from './product-ledger.query';
 
 /** Tồn kho thành phẩm — nhánh FG tách khỏi `InventoryService.getInventory` cũ
- * (`docs/domains/inventory.md`). RM sống ở `inventory-materials`, không nhánh nào đọc chéo sang
+ * (`docs/domains/inventory.md`). CONSUMABLE sống ở `inventory-consumables`, không nhánh nào đọc chéo sang
  * nhánh kia. */
 @Injectable()
 export class InventoryProductsService {

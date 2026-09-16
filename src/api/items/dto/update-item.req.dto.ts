@@ -16,6 +16,9 @@ export class UpdateItemReqDto {
   @StringFieldOptional({ description: 'Mã hàng hoá', maxLength: 50 })
   code?: string;
 
+  @StringFieldOptional({ description: 'Phiên bản', maxLength: 50 })
+  revision?: string;
+
   @EnumFieldOptional(() => ItemType)
   type?: ItemType;
 
@@ -36,18 +39,18 @@ export class UpdateItemReqDto {
 
   @UUIDFieldOptional({
     nullable: true,
-    description: 'NCC chính — chỉ có ý nghĩa với RM',
+    description: 'NCC chính — chỉ có ý nghĩa với CONSUMABLE',
   })
   supplierId?: string | null;
 
   @NumberFieldOptional({
     min: 0,
-    description: 'Định mức tồn tối thiểu — chỉ có ý nghĩa với RM',
+    description: 'Định mức tồn tối thiểu — chỉ có ý nghĩa với CONSUMABLE',
   })
   minStock?: number;
 
   @StringFieldOptional({ maxLength: 255, nullable: true })
-  materialGrade?: string | null;
+  consumableGrade?: string | null;
 
   @StringFieldOptional({ maxLength: 255, nullable: true })
   technicalStandard?: string | null;

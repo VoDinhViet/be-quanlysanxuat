@@ -86,8 +86,23 @@ export class IqcResDto {
   client!: ClientRefResDto | null;
 
   @Expose()
-  @ClassField(() => ItemUnitRefResDto)
-  item!: ItemUnitRefResDto;
+  @StringField({
+    description:
+      'Mã vật tư/part — từ item nếu có, không thì snapshot lúc tạo (node COMPONENT từ OS-IN)',
+  })
+  itemCode!: string;
+
+  @Expose()
+  @StringField({ description: 'Tên vật tư/part — cùng quy tắc itemCode' })
+  itemName!: string;
+
+  @Expose()
+  @ClassFieldOptional(() => ItemUnitRefResDto, {
+    nullable: true,
+    description:
+      'null khi lô kiểm là node COMPONENT nhận về từ OS-IN (không phải một item)',
+  })
+  item!: ItemUnitRefResDto | null;
 
   @Expose()
   @NumberField({ description: 'Số lượng kiểm (Lot size)' })

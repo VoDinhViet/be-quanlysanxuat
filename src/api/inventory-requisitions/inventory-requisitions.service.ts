@@ -56,7 +56,7 @@ import {
 } from './inventory-requisitions.query';
 
 /**
- * Phiếu lãnh vật tư — chứng từ duy nhất đưa RM ra khỏi kho cho sản xuất. Đọc (tab chi tiết + 2
+ * Phiếu lãnh vật tư — chứng từ duy nhất đưa CONSUMABLE ra khỏi kho cho sản xuất. Đọc (tab chi tiết + 2
  * popup chọn vật tư) sống ở `InventoryRequisitionLinesService`, tách riêng vì cùng một bộ join
  * tính "6 số" lặp lại ba lần. Xem `docs/domains/inventory.md` mục "Phiếu lãnh vật tư",
  * `docs/workflows/inventory-requisition.md`.
@@ -513,7 +513,7 @@ export class InventoryRequisitionsService {
   /** Chốt chặn dùng chung cho `create`/`update` (chưa khoá dòng tồn, lại chỉ thấy "Đã giữ" của các
    * phiếu đã `APPROVED` nên nhiều phiếu nháp cùng vượt tồn một vật tư vẫn lọt — cảnh báo sớm) và
    * `approve` (sau `FOR UPDATE`, chốt thật vì đó mới là mốc giữ chỗ). Bốn bước: không trùng `itemId`
-   * (`E228`) → mọi item tồn tại + là RM (`E229`) → (`type = PRODUCTION`) mọi item nằm trong định mức
+   * (`E228`) → mọi item tồn tại + là CONSUMABLE (`E229`) → (`type = PRODUCTION`) mọi item nằm trong định mức
    * BOM của Job (`E230`) → từng dòng `SL lãnh ≤ Có thể lãnh` (`E231`) và, nếu có Job,
    * `SL lãnh ≤ SL BOM còn lại` (`E232`). Trả về `itemId → unitId gốc`, dùng bởi `create`/`update` để
    * mặc định `unitId` hiển thị khi payload không gửi. */
@@ -540,7 +540,7 @@ export class InventoryRequisitionsService {
       throw new AppException(ErrorCode.E007, HttpStatus.NOT_FOUND);
     }
 
-    if (foundItems.some((item) => item.type !== ItemType.RM)) {
+    if (foundItems.some((item) => item.type !== ItemType.CONSUMABLE)) {
       throw new AppException(ErrorCode.E229, HttpStatus.BAD_REQUEST);
     }
 

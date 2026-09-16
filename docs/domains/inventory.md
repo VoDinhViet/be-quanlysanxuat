@@ -28,13 +28,14 @@ là ngoại lệ**: `POSTED` bất biến tuyệt đối, không còn đường 
 
 `supplier_returns` (trả NCC) ánh xạ sang `ISSUE` có sẵn, phân biệt qua
 `referenceType = SUPPLIER_RETURN`. Gia công ngoài (`outsourcing_orders`/`outsourcing_receipts`)
-**không ghi bút toán nào** (WIP không quản tồn). `TRANSFER_IN`/`TRANSFER_OUT` có trong enum, chưa
-route nào phát ra — giữ chỗ dù hệ thống chỉ một kho, không có gì để chuyển giữa hai kho.
+**không ghi bút toán nào** — mặt hàng gửi gia công là node `COMPONENT` (`bom_items.type`), không
+phải một item nên không có `items.id` để mà vào tồn kho. `TRANSFER_IN`/`TRANSFER_OUT` có trong enum,
+chưa route nào phát ra — giữ chỗ dù hệ thống chỉ một kho, không có gì để chuyển giữa hai kho.
 
-**Mọi bảng đụng mặt hàng chỉ mang một `itemId` NOT NULL** — loại (FG/WIP/RM) suy từ join `items.type`
-khi cần lọc, không phải cột riêng. **Kho không thật sự quản tồn WIP** — không nguồn nào ghi
-`inventory_balances`/`inventory_transactions` cho WIP, tồn WIP luôn 0
-(`docs/decisions/wip-not-stocked.md`).
+**Mọi bảng đụng mặt hàng chỉ mang một `itemId` NOT NULL** — loại (`FG`/`CONSUMABLE`, `items.type`) suy từ
+join khi cần lọc, không phải cột riêng. **Kho không thật sự quản tồn node cấu trúc con** — không
+nguồn nào ghi `inventory_balances`/`inventory_transactions` cho nó (không có `items.id`)
+(`docs/decisions/wip-not-stocked.md`, `docs/decisions/wip-removal.md`).
 
 **Đơn vị hiển thị trên dòng phiếu** — mỗi dòng `inventory_receipt_items`/`inventory_issue_items`/
 `inventory_adjustment_items`/`inventory_requisition_items` mang `unitId` (mặc định đơn vị gốc của
@@ -44,14 +45,14 @@ vị gốc, mọi bút toán/tồn/so sánh định mức đọc thẳng `quanti
 
 **Công thức tồn — 3 bộ độc lập, đừng trộn:**
 
-1. **`GET /inventory-products` (FG) / `GET /inventory-materials` (RM)** — màn danh mục, chạy trên
+1. **`GET /inventory-products` (FG) / `GET /inventory-consumables` (CONSUMABLE)** — màn danh mục, chạy trên
    mọi item `ACTIVE`, không chỉ item đã từng nhập kho:
    ```
    onHand    = inventory_balances.quantity (mọi item)
    # FG:
    reserved = fgHeld = Σ SL dòng outbound_order_items của DO DRAFT/PENDING_APPROVAL/PENDING_DELIVERY
    bomDemand = max(orderDemand − fgHeld, 0)     orderDemand = phần chưa giao của đơn ĐÃ DUYỆT
-   # RM:
+   # CONSUMABLE:
    rmHeld         = Σ SL dòng inventory_requisition_items của phiếu lãnh APPROVED (mọi type)
    rmHeldForJobs  = rmHeld, lọc productionJobId IS NOT NULL (không phải lọc trực tiếp type=PRODUCTION
                     — trùng nhau trong thực tế vì E233 ép PRODUCTION phải có Job, nhưng OTHER gửi kèm
@@ -83,7 +84,7 @@ balanceAfter = SUM(quantity) OVER (ORDER BY transactionDate, createdAt, id)   --
 ```
 Response **không trả sẵn** "loại giao dịch"/"diễn giải" — FE tự suy từ dấu `quantity` +
 `receiptType`/`issueType` (cố ý, cùng chủ trương với việc bỏ `status` ở công thức #1). Chưa có bản
-RM. `inventory_issues.outboundOrderId` (chỉ `deliver` DO ghi, không backfill dữ liệu cũ) nối dòng
+CONSUMABLE. `inventory_issues.outboundOrderId` (chỉ `deliver` DO ghi, không backfill dữ liệu cũ) nối dòng
 xuất SALES về đúng mã DO.
 
 ## Entities
@@ -99,9 +100,9 @@ xuất SALES về đúng mã DO.
 | `inventory_transactions` | Sổ cái append-only, `quantity` có dấu, ở đơn vị gốc (= `quantity` của dòng phiếu nguồn) |
 | `inventory_balances` | Tồn hiện tại theo item, dựng lại được từ sổ cái |
 | `inventory_requisitions` | Phiếu lãnh — 6 trạng thái riêng; `type=PRODUCTION` bắt buộc `productionJobId` (`E233`) |
-| `inventory_requisition_items` | Dòng — luôn RM, unique `(requisitionId, itemId)` |
+| `inventory_requisition_items` | Dòng — luôn CONSUMABLE, unique `(requisitionId, itemId)` |
 | `supplier_returns` | Trả NCC — bảng phẳng, tự sinh `DRAFT` từ IQC `IN_PROGRESS`; chưa có tạo tay/`cancel` |
-| `outsourcing_orders`/`_items` | OS-OUT — không nháp, `POSTED` ngay; không đụng tồn (WIP) |
+| `outsourcing_orders`/`_items` | OS-OUT — không nháp, `POSTED` ngay; không đụng tồn (mặt hàng là node COMPONENT, không phải item) |
 | `outsourcing_receipts`/`_items` | OS-IN — cùng khuôn OS-OUT; 1 phiếu = 1 NCC, gộp nhiều OS-OUT |
 | `outbound_orders`/`_items` | DO — 6 trạng thái; `clientId` bắt buộc, bất biến 1 phiếu = 1 khách hàng |
 
@@ -243,7 +244,7 @@ Chi tiết đầy đủ (giữ chỗ FG từ `create`, gate `E194`/`E205`, side 
   `getStockLevels` — 2 định nghĩa khác nhau, xem Common mistakes). Một chiều.
 - **→ Orders**: `OrdersService.getOrderItems` đọc thẳng `inventory_transactions`
   (`orderItemId IS NOT NULL`) tính `issuedQty`/`remainingQty`, không qua DI.
-- **← Production**: chỉ đọc qua `getStockLevels`/`getMaterialStockLevels`. Phiếu **xuất**
+- **← Production**: chỉ đọc qua `getStockLevels`/`getConsumableStockLevels`. Phiếu **xuất**
   `issueType=PRODUCTION` chỉ tự sinh được từ `inventory_requisitions.approve` (`DRAFT`, kho
   `inventory-issues post` mới trừ tồn thật); phiếu **nhập** tự sinh không đến từ Production mà từ
   Quality — xem cạnh `← Quality` bên dưới.
@@ -297,7 +298,7 @@ Chi tiết đầy đủ (giữ chỗ FG từ `create`, gate `E194`/`E205`, side 
 7. `POST /inventory-issues` với `issueType=PRODUCTION` bị chặn (`E234`) — đường duy nhất là
    `approve` một `inventory_requisitions` (tự sinh PXK `DRAFT`).
 8. Phiếu lãnh giữ chỗ từ `APPROVED`, DO giữ chỗ từ `create` — hai module cố tình lệch mốc.
-9. `GET /inventory` (list gộp) đã xoá — tách `GET /inventory-products`/`GET /inventory-materials`;
+9. `GET /inventory` (list gộp) đã xoá — tách `GET /inventory-products`/`GET /inventory-consumables`;
    `GET /inventory/balances`/`GET /inventory/transactions` không đổi.
 10. `rmDemand` trừ `rmHeldForJobs` (chỉ phần có `productionJobId`), không phải `rmHeld` toàn bộ —
     trộn chung sẽ khai khống `available` bằng đúng SL các phiếu `type=OTHER` đang `APPROVED`.

@@ -2,6 +2,7 @@ import { Exclude, Expose } from 'class-transformer';
 
 import {
   ClassField,
+  ClassFieldOptional,
   NumberField,
   StringField,
   UUIDField,
@@ -40,9 +41,9 @@ export class OutsourceableOperationSnapshotResDto {
   name!: string;
 }
 
-/** Một dòng popup "chọn part cần gia công" — `productionJobOperationId`/`itemId`/`job.id`/
- * `operation.*` là đúng bộ giá trị client gửi lại khi tạo dòng OS-OUT
- * (`OutsourcingOrderItemReqDto`); `bomItem`/`unit` chỉ để hiển thị. Cùng khuôn popup OQC
+/** Một dòng popup "chọn part cần gia công" — `productionJobOperationId`/`productionJobBomItemId`/
+ * `itemId`/`bomItem.*`/`job.id`/`operation.*` là đúng bộ giá trị client gửi lại khi tạo dòng OS-OUT
+ * (`OutsourcingOrderItemReqDto`); `unit` chỉ để hiển thị. Cùng khuôn popup OQC
  * (`InspectableOperationResDto`) nhưng mốc so sánh khác: đây là SL gửi gia công, không phải tiến
  * độ QC. */
 @Exclude()
@@ -52,8 +53,19 @@ export class OutsourceableOperationResDto {
   productionJobOperationId!: string;
 
   @Expose()
-  @UUIDField({ description: 'Mặt hàng WIP của công đoạn trên' })
-  itemId!: string;
+  @UUIDField({
+    description:
+      'Node BOM của Job (production_job_bom_items) mà công đoạn thuộc về',
+  })
+  productionJobBomItemId!: string;
+
+  @Expose()
+  @UUIDFieldOptional({
+    nullable: true,
+    description:
+      'Vật tư tham khảo — chỉ khi node là CONSUMABLE; null với node COMPONENT',
+  })
+  itemId!: string | null;
 
   @Expose()
   @ClassField(() => ProductionJobRefResDto)
@@ -68,8 +80,11 @@ export class OutsourceableOperationResDto {
   operation!: OutsourceableOperationSnapshotResDto;
 
   @Expose()
-  @ClassField(() => UnitRefResDto)
-  unit!: UnitRefResDto;
+  @ClassFieldOptional(() => UnitRefResDto, {
+    nullable: true,
+    description: 'ĐVT vật tư — chỉ khi node là CONSUMABLE',
+  })
+  unit!: UnitRefResDto | null;
 
   @Expose()
   @NumberField({

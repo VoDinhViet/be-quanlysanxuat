@@ -1,7 +1,8 @@
 # Gia công ngoài: OS-OUT → OS-IN → QC tuỳ chọn
 
-Chặng nối `production` → `inventory` → `quality`: từ lúc lập phiếu gửi vật tư/WIP ra một NCC gia
-công ngoài, tới lúc nhận hàng về, và (tuỳ chọn) kiểm chất lượng hàng nhận về giống hệt cách IQC xử
+Chặng nối `production` → `inventory` → `quality`: từ lúc lập phiếu gửi một part (node cấu trúc con,
+`bom_items.type = COMPONENT`) ra một NCC gia công ngoài, tới lúc nhận hàng về, và (tuỳ chọn) kiểm
+chất lượng hàng nhận về giống hệt cách IQC xử
 lý hàng nhập mua. Mô hình `outsourcing_orders`/`outsourcing_order_items`/`outsourcing_receipts`/
 `outsourcing_receipt_items` ở `docs/domains/inventory.md`, mô hình `production_job_operations`
 (anchor) + cột `plannedQuantity` ở `docs/domains/production.md`, mô hình QC (bảng gộp
@@ -13,8 +14,9 @@ tư, xem lịch sử ở `docs/domains/inventory.md` Common mistakes #19). Một
 đoạn trong cùng một lượt gửi; một OS-IN gộp hàng về từ nhiều OS-OUT khác nhau miễn cùng một NCC.
 **Không có bước nháp** — `create` là gửi/nhận luôn (`docs/decisions/outsourcing-no-draft.md`).
 **Không đụng `inventory_balances`/`inventory_transactions`** ở bất kỳ bước nào trong luồng này —
-mặt hàng gửi gia công ngoài luôn là WIP, kho không quản tồn WIP
-(`docs/decisions/wip-not-stocked.md`).
+mặt hàng gửi gia công ngoài là node `COMPONENT`, không có `items.id` nên không thể vào tồn kho
+(`docs/decisions/wip-not-stocked.md`, `docs/decisions/wip-removal.md`). Chứng từ khoá theo
+`productionJobBomItemId` (không phải `itemId` như trước) + snapshot `itemCode`/`itemName`.
 
 ## Trigger
 
