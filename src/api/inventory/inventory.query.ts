@@ -1,6 +1,6 @@
 import { and, eq, inArray, isNull, lte, ne, sql, type SQL } from 'drizzle-orm';
 
-import type { Database } from '../../database/database.type';
+import type { Database, DbTransaction } from '../../database/database.type';
 import {
   inventoryBalances,
   inventoryTransactions,
@@ -17,7 +17,10 @@ import { StockStatus } from './inventory.constant';
  * cộng lại từ `inventory_transactions` với `transactionDate <= asOfDate`. Không tự lọc theo loại
  * item — nơi gọi join/lọc `items` ở tầng ngoài, subquery chỉ gộp theo `itemId`. Dùng chung giữa
  * `InventoryService`, `inventory-products`, `inventory-consumables`. */
-export function balanceByItemSubquery(db: Database, asOfDate?: Date) {
+export function balanceByItemSubquery(
+  db: Database | DbTransaction,
+  asOfDate?: Date,
+) {
   if (asOfDate) {
     return db
       .select({

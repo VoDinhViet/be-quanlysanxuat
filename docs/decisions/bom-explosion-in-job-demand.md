@@ -4,7 +4,7 @@
 
 ## Bối cảnh
 
-`ProductionJobsService.copyBomIssues` (nguồn ghi duy nhất của `production_job_issues.requiredQty`)
+`createJobIssues` (nguồn ghi duy nhất của `production_job_issues.requiredQty`)
 từng gộp phẳng mọi lá CONSUMABLE trong cây `bom_items` (`SUM(quantity) GROUP BY itemId`) rồi nhân với SL
 Job — **không nhân qua số lượng của các node cấu trúc con cha ở giữa** (khi đó gọi là WIP, nay là
 `COMPONENT` — `docs/decisions/wip-removal.md`). Đây từng là giới hạn có chủ đích, ghi rõ trong code lẫn
@@ -14,9 +14,9 @@ Job — **không nhân qua số lượng của các node cấu trúc con cha ở
 hệ thống cũ tính 4 (thiếu 67%). Dữ liệu khách hàng dùng BOM đa cấp thật, nên giới hạn "không nổ theo
 cấp" không còn chấp nhận được.
 
-Đáng chú ý: `ProductionJobsService.copyBomTree` (chạy ngay **trước** `copyBomIssues` trong cùng
+Đáng chú ý: `createJobBomItems` (chạy ngay **trước** `createJobIssues` trong cùng
 transaction) đã tính đúng số nổ cấp từ trước — `production_job_bom_items.plannedQuantity = SL cha
-đã nổ cấp × quantity node`, cho mọi node kể cả lá CONSUMABLE. `copyBomIssues` chỉ đơn giản không tái dùng số
+đã nổ cấp × quantity node`, cho mọi node kể cả lá CONSUMABLE. `createJobIssues` chỉ đơn giản không tái dùng số
 đó.
 
 ## Quyết định
@@ -27,9 +27,11 @@ bộ chuỗi node cha, không phải tổng thô theo vật tư. Chuẩn đầy 
 lá) chuyển sang ghi ở `docs/domains/product-structure.md`, mục "Chuẩn nổ cấp BOM" — đây là **quy
 tắc**, không lặp lại ở đây.
 
-- `copyBomIssues` đổi nguồn: đọc lại `production_job_bom_items.plannedQuantity` (đã nổ cấp, vừa
-  được `copyBomTree` insert trong cùng `tx`) thay vì tự truy vấn phẳng từ `bom_items`. Bắt buộc chạy
-  **sau** `copyBomTree`.
+- `createJobIssues` đổi nguồn: đọc lại `production_job_bom_items.plannedQuantity` (đã nổ cấp, vừa
+  được `createJobBomItems` insert trong cùng `tx`) thay vì tự truy vấn phẳng từ `bom_items`. Bắt buộc chạy
+  **sau** `createJobBomItems`. Cả hai nay sống trong `production-jobs/production-job-snapshot.query.ts`
+  (`createJobSnapshot`), chạy đúng một lần trong transaction `start`
+  (`docs/decisions/job-snapshot-at-start.md`), không còn ở transaction duyệt LSX.
 - `GET /items/:itemId/issues` đổi từ 1 dòng/1 node `bom_items` sang 1 dòng/1 vật tư (nổ cấp + gộp
   theo `itemId`) — đổi shape DTO, kéo theo sửa FE tab "Thành phần vật tư" (`web-qlsx-start`).
 - Migration data-only backfill lại `production_job_issues.requiredQty`/`unitQty` cho mọi Job đã tồn

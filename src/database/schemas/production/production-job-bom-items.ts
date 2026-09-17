@@ -39,9 +39,11 @@ export const productionJobBomItemTypeEnum = pgEnum(
 );
 
 /**
- * Snapshot cây BOM của một Job — nhân bản `bom_items` (cả node COMPONENT lẫn lá CONSUMABLE) trong
- * transaction duyệt LSX (`ProductionJobsService.createJobs`), id hoàn toàn mới. Đóng băng, không
- * có route sửa — sửa/xoá BOM gốc sau đó không ảnh hưởng Job đã duyệt.
+ * Snapshot cây BOM của một Job — nhân bản `bom_items` (cả node COMPONENT lẫn lá CONSUMABLE), id
+ * hoàn toàn mới. Dựng đúng một lần trong transaction `start` (`ProductionJobsService.startJob` →
+ * `createJobSnapshot`) — Job còn `PENDING` không có dòng nào ở đây, xem
+ * `docs/decisions/job-snapshot-at-start.md`. Đóng băng ngay từ lúc đó, không có route sửa — sửa/xoá
+ * BOM gốc sau đó không ảnh hưởng Job đã `start`.
  *
  * Rules:
  * - `code`/`name` là **snapshot text**, nguồn hiển thị chính — KHÔNG đọc qua `itemId` lúc render.
@@ -50,7 +52,7 @@ export const productionJobBomItemTypeEnum = pgEnum(
  * - `itemType` chủ yếu `COMPONENT`/`CONSUMABLE` (nhân bản từ `bom_items`), cộng **đúng một** node
  *   `FG` mỗi Job —
  *   node "Cấp 0" đại diện chính thành phẩm, mang routing lắp ráp/đóng gói của FG
- *   (`ProductionJobsService.copyBomTree`, xem `docs/decisions/oqc-per-operation.md` mục "Đừng hoàn
+ *   (`createJobBomItems`, xem `docs/decisions/oqc-per-operation.md` mục "Đừng hoàn
  *   lại"). Node FG luôn `parentId = null`, `sortOrder` lớn nhất trong Job (đứng cuối bảng "Công
  *   đoạn sản xuất") — snapshot riêng của Job này, không lẫn với node ROOT thật của `bom_items`
  *   (`docs/decisions/root-bom-item.md`, cây gốc đã có `parentId` cho mọi node khác ROOT nên không
@@ -61,12 +63,12 @@ export const productionJobBomItemTypeEnum = pgEnum(
  *   trong bộ nhớ lúc đọc qua `parentId` (`ProductionJobsService`, mirror `BomsService`), không cần
  *   cột path riêng.
  * - `plannedQuantity` là giá trị **dẫn xuất** (nhân luỹ kế `quantity` theo cây × SL Job), tính một
- *   lần cùng lúc `copyBomTree` và đóng băng — không có CHECK `> 0` vì định mức lẻ nhiều cấp có thể
+ *   lần cùng lúc `createJobBomItems` và đóng băng — không có CHECK `> 0` vì định mức lẻ nhiều cấp có thể
  *   tròn về 0 ở scale 3. Node FG dùng thẳng `quantity = 1`, `plannedQuantity = job.quantity`.
  * - `imageFileId` copy thẳng ảnh item lúc duyệt, cùng lý lẽ `productionJobIssues.imageFileId` —
  *   `files` là registry ghi-một-lần nên giữ dạng liên kết sống (`set null` khi bị xoá) là an toàn,
  *   khác `itemId`/`code`/`name` vốn phải đóng băng.
- * - Không `updatedAt` — append-only lúc `copyBomTree` sinh cây, chưa có route ghi nào khác (kể cả
+ * - Không `updatedAt` — append-only lúc `createJobBomItems` sinh cây, chưa có route ghi nào khác (kể cả
  *   `completedQuantity`/`completedDate` sửa được đều nằm trên `production_job_operations`, không
  *   phải bảng này).
  */

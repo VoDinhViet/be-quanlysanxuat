@@ -18,8 +18,10 @@ import { productionJobs } from './production-jobs';
 
 /**
  * Snapshot công đoạn as-used của từng node BOM trong một Job — copy `bom_operations` (khoá theo
- * `bomItemId`) trong transaction duyệt LSX (`ProductionJobsService.createJobs`). Đóng băng, không
- * có route sửa — sửa routing/`operations` gốc sau đó không ảnh hưởng Job đã duyệt. Công đoạn Cấp 0
+ * `bomItemId`). Dựng đúng một lần trong transaction `start` (`ProductionJobsService.startJob` →
+ * `createJobSnapshot`) — Job còn `PENDING` không có dòng nào ở đây, xem
+ * `docs/decisions/job-snapshot-at-start.md`. Đóng băng ngay từ lúc đó, không có route sửa — sửa
+ * routing/`operations` gốc sau đó không ảnh hưởng Job đã `start`. Công đoạn Cấp 0
  * của chính FG (lắp ráp/đóng gói) **cũng snapshot ở đây** — copy từ đúng `bom_operations` của node
  * ROOT thuộc FG (`docs/decisions/root-bom-item.md` — không còn bảng `routings`/`routing_operations`
  * riêng), gắn vào node `production_job_bom_items.itemType = 'FG'` (xem doc comment bảng đó và

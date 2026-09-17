@@ -15,8 +15,9 @@ nhiêu, rồi chốt thành đầu việc cho xưởng theo dõi tiến độ.
         └─ 1 item FG  =  1 Job (production_jobs) — GỘP theo sản phẩm, không 1-1 với dòng đơn
 ```
 
-**Job snapshot 3 thứ từ Product Structure lúc duyệt LSX, độc lập hoàn toàn với master data sống
-(denormalize `code`/`name`, FK gốc chỉ còn tham khảo `set null`):**
+**Job `PENDING` không có snapshot nào — snapshot 3 thứ từ Product Structure sinh đúng một lần lúc
+`start`** (không phải lúc duyệt LSX, `docs/decisions/job-snapshot-at-start.md`), độc lập hoàn toàn
+với master data sống từ đó (denormalize `code`/`name`, FK gốc chỉ còn tham khảo `set null`):
 
 | Bảng                                                             | Nguồn                                                  | Sửa sau khi sinh                                                                                          |
 | ---------------------------------------------------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
@@ -24,13 +25,17 @@ nhiêu, rồi chốt thành đầu việc cho xưởng theo dõi tiến độ.
 | `production_job_operations` (công đoạn as-used)                  | `bom_operations` as-used                               | `completedQuantity`/`rejectedQuantity`/`completedDate` sửa qua `POST .../reports`; phần còn lại đóng băng |
 | `production_job_issues` (vật tư, gộp theo `itemId` trên node CONSUMABLE) | `production_job_bom_items.plannedQuantity` (đã nổ cấp) | Không route đọc/ghi — nội bộ, chỉ dùng bởi `startJob`/`bomDemand`/`GET .../bom`                           |
 
+Muốn xem cấu trúc/công đoạn của sản phẩm trong lúc Job còn `PENDING` (trước khi có snapshot), đọc
+thẳng `GET /items/:itemId/bom` + `.../bom/items/:bomItemId/operations` — hai route Job tương ứng
+(`GET .../bom`/`.../operations`) chỉ trả rỗng cho tới khi `start`.
+
 `production_job_items`/`production_job_units` là 2 bảng chiều (SCD) **dùng chung, không thuộc Job
-nào** — khoá bộ ba `(itemId/unitId, code, name)`, get-or-create lúc duyệt LSX, tuyệt đối không
+nào** — khoá bộ ba `(itemId/unitId, code, name)`, get-or-create lúc `start`, tuyệt đối không
 `UPDATE` (một dòng có thể đang dùng chung bởi nhiều Job). `production_job_issues` giữ 2 FK song
 song tới hai bảng này.
 
 **Node Cấp 0** — mỗi Job có thêm đúng 1 node `itemType='FG'` (nếu FG có khai routing Cấp 0,
-`copyFinalAssemblyRouting`, cùng transaction duyệt LSX; bỏ qua nếu không) — `parentId=null`,
+`createJobBomItems`, cùng transaction `start`; bỏ qua nếu không) — `parentId=null`,
 `level=0`, `plannedQuantity=job.quantity`, công đoạn snapshot y hệt node `COMPONENT` thường. Tối đa 1 node/Job
 (`uq_production_job_bom_items_final_assembly`). Bước Lắp ráp của nó khoá cứng (`E210`) cho tới khi
 **mọi công đoạn khác của Job** đã `completedDate` — neo QC thành phẩm cuối, xem
@@ -95,7 +100,7 @@ luôn trả đủ 5 status kể cả `count = 0`; `startDate`/`endDate` lọc th
 | `production_orders`                                      | Header LSX; `orderId` unique (1 đơn = 1 LSX)                      |
 | `production_order_items`                                 | Quyết định SX từng dòng, 1-1 `order_items`                        |
 | `production_jobs`                                        | Đầu việc xưởng; unique `(productionOrderId, itemId)`              |
-| `production_job_bom_items` / `production_job_operations` | Snapshot cây BOM/công đoạn, đóng băng lúc duyệt LSX               |
+| `production_job_bom_items` / `production_job_operations` | Snapshot cây BOM/công đoạn, sinh lúc Job `start`, đóng băng ngay từ đó |
 | `production_job_operation_reports` / `_report_files`     | Nhật ký báo cáo append-only + ảnh                                 |
 | `production_job_issues`                                  | Vật tư của Job — nội bộ, không route                              |
 | `production_job_items` / `production_job_units`          | Bảng chiều SCD dùng chung, không `UPDATE`                         |
@@ -104,8 +109,8 @@ luôn trả đủ 5 status kể cả `count = 0`; `startDate`/`endDate` lọc th
 | `production_job_notes`                                   | Ghi chú tự do trên Job, append-only, không kiểm `status`          |
 
 Job có log thao tác (`production_job_logs`, 1 dòng/lần chuyển trạng thái — xem Lifecycle) nhưng
-không có tài liệu đính kèm — bản vẽ (nếu có) tra ở BOM sản phẩm theo node
-(`bom_items.drawingFileId`).
+không có tài liệu đính kèm — tài liệu/ảnh (nếu có) tra ở item (`item_files`) hoặc theo node BOM
+(`bom_items.imageFileId`).
 
 ## Lifecycle
 
@@ -159,13 +164,14 @@ có node thì nhánh code không bao giờ chạy. Giới hạn thật, không p
 
 ## Invariants
 
-- 1 đơn = tối đa 1 LSX; 1 sản phẩm = tối đa 1 Job/LSX; Job chỉ sinh từ transaction duyệt LSX.
+- 1 đơn = tối đa 1 LSX; 1 sản phẩm = tối đa 1 Job/LSX; Job chỉ sinh từ transaction duyệt LSX (nhưng
+  không snapshot gì lúc đó, xem Core concepts).
 - `production_jobs.quantity > 0` (CHECK). LSX `APPROVED` ⟺ có mã + `approvedAt` (CHECK).
 - Có hồ sơ LSX (PENDING hoặc APPROVED) thì dòng `items` của đơn gốc không sửa được (`E080`).
-- Cấu trúc `production_job_bom_items`/`production_job_operations` chỉ ghi trong transaction duyệt
-  LSX — không route thêm/sửa/xoá node/bước, ngoại lệ duy nhất `completedQuantity`/`rejectedQuantity`/
-  `completedDate` (tiến độ, không phải cấu trúc). `production_job_items`/`_units` tuyệt đối không
-  `UPDATE` — đổi nội dung luôn là chèn dòng mới.
+- Cấu trúc `production_job_bom_items`/`production_job_operations` chỉ ghi trong transaction `start`
+  (`createJobSnapshot`) — không route thêm/sửa/xoá node/bước, ngoại lệ duy nhất
+  `completedQuantity`/`rejectedQuantity`/`completedDate` (tiến độ, không phải cấu trúc).
+  `production_job_items`/`_units` tuyệt đối không `UPDATE` — đổi nội dung luôn là chèn dòng mới.
 - Không có chốt chặn tồn kho tổng hợp giữa nhiều đơn cùng sản phẩm — cố ý ngoài phạm vi. Duyệt LSX
   không lập phiếu xuất kho nào.
 
@@ -193,8 +199,10 @@ có node thì nhánh code không bao giờ chạy. Giới hạn thật, không p
   `docs/domains/quality-oqc.md`.
 - **→ Purchase Requests**: `startJob` là domain duy nhất ghi vào `purchase_requests` (thiếu vật tư
   tự sinh đề xuất). Không đi ngược.
-- **← Product Structure**: đọc đúng 1 lần lúc duyệt LSX (cây `bom_items` + `bom_operations`); sửa
-  routing/BOM sau đó không ảnh hưởng Job đã có.
+- **← Product Structure**: đọc đúng 1 lần lúc Job `start` (cây `bom_items` + `bom_operations`,
+  `docs/decisions/job-snapshot-at-start.md`) — không phải lúc duyệt LSX; sửa routing/BOM sau khi Job
+  đã `start` không ảnh hưởng Job đã có. Job còn `PENDING` đọc trực tiếp qua module này
+  (`GET /items/:itemId/bom` + `.../operations`), không qua snapshot.
 
 ## Common mistakes
 
@@ -205,7 +213,9 @@ có node thì nhánh code không bao giờ chạy. Giới hạn thật, không p
    lẫn: log tự động, không route ghi tay, đọc `desc(createdAt)` (mới nhất trước); ghi chú do người
    dùng gõ qua `POST .../notes`, đọc `asc(createdAt)` (đọc xuôi như hội thoại).
 5. `APPROVED` là điểm cuối của LSX, chưa có route đưa về `PENDING`.
-6. Sửa routing/BOM sau khi Job đã duyệt không cập nhật ngược Job — cả hai là bản copy đóng băng.
+6. Job `PENDING` không có snapshot gì — `GET .../bom`/`.../operations` trả rỗng cho tới khi `start`;
+   xem cấu trúc sản phẩm lúc đó thì đọc `GET /items/:id/bom` + `.../operations` (product-structure),
+   không phải một chỗ "cũ nhưng có dữ liệu".
 7. Chưa có route **sửa** vật tư của Job (`production_job_issues`) — chỉ đọc được qua
    `GET /production-jobs/:jobId/bom` (bảng phẳng, **không phải** cây BOM; cây snapshot không có
    route đọc trực tiếp, BOM sống của sản phẩm tra ở `GET /items/:id/bom`).
@@ -222,4 +232,4 @@ có node thì nhánh code không bao giờ chạy. Giới hạn thật, không p
 - `docs/workflows/production-order-approval.md`, `docs/workflows/production-job-execution.md`.
 - `docs/domains/orders.md`, `docs/domains/inventory.md`.
 - `docs/domains/quality-oqc.md`, `docs/decisions/oqc-per-operation.md`,
-  `docs/decisions/production-lifecycle-closing.md`.
+  `docs/decisions/production-lifecycle-closing.md`, `docs/decisions/job-snapshot-at-start.md`.

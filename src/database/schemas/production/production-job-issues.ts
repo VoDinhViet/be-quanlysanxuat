@@ -17,7 +17,9 @@ import { productionJobUnits } from './production-job-units';
 
 /**
  * Danh sách vật tư của một Job — khởi tạo bằng cách gộp `production_job_bom_items.plannedQuantity`
- * (đã nổ cấp) theo vật tư, trong transaction duyệt LSX, sau `copyBomTree`. Không expose route ghi
+ * (đã nổ cấp) theo vật tư, dựng đúng một lần trong transaction `start`
+ * (`ProductionJobsService.startJob` → `createJobSnapshot`, sau `createJobBomItems`) — Job còn `PENDING`
+ * không có dòng nào ở đây, xem `docs/decisions/job-snapshot-at-start.md`. Không expose route ghi
  * nào — chỉ còn là nguồn nội bộ: `startJob` (vật tư thiếu), `bomDemand` của Inventory/Purchase
  * Requests, và `GET /production-jobs/:jobId/bom`. Xem `docs/domains/production.md`,
  * "Chuẩn nổ cấp BOM" ở `docs/domains/product-structure.md`.

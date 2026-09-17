@@ -53,17 +53,11 @@ khác), không phải SL đặt gốc trên đơn — `docs/decisions/order-targ
 3. **Transaction**:
    - Sinh mã `LSXxxxx` qua `document_sequences` (atomic), ghi `APPROVED` + `approvedBy`/`approvedAt`.
    - Đẩy đơn gốc `AWAITING_PRODUCTION` → `IN_PROGRESS`.
-   - Sinh Job: mỗi sản phẩm một dòng, mã `JOBxxxx` cũng cấp qua `document_sequences`.
-   - Nhân bản toàn bộ cây BOM (cả node `COMPONENT` lẫn `CONSUMABLE`) sang `production_job_bom_items` (id mới,
-     `code`/`name` denormalize), rồi copy routing as-used của từng node sang
-     `production_job_operations` (`code`/`name`/`type` công đoạn denormalize) — đóng băng, không
-     route sửa. Không có khái niệm Cấp 0 riêng ở tầng Job.
-   - Đọc lại `production_job_bom_items` vừa nhân bản (đã nổ cấp — `plannedQuantity`, xem "Chuẩn nổ
-     cấp BOM" ở `docs/domains/product-structure.md`), gộp theo vật tư (`SUM(plannedQuantity) GROUP
-BY itemId`, chỉ node `CONSUMABLE`) thành `requiredQty`, rồi suy `unitQty = requiredQty / SL Job`. Mã/tên
-     vật tư + mã/tên ĐVT không denormalize thẳng lên dòng này — get-or-create trước (theo bộ ba nội
-     dung, dùng chung mọi Job/LSX) hai bảng chiều `production_job_items`/`production_job_units`, rồi
-     chỉ ghi FK — xem `docs/domains/production.md`.
+   - Sinh Job: mỗi sản phẩm một dòng, mã `JOBxxxx` cũng cấp qua `document_sequences`, header
+     `production_jobs` (`PENDING`) + 1 dòng log `CREATED`. **Không snapshot gì cả** — Job `PENDING`
+     không có dòng nào ở `production_job_bom_items`/`production_job_operations`/`production_job_issues`;
+     `start` mới là nơi dựng snapshot, xem `docs/decisions/job-snapshot-at-start.md` +
+     `docs/workflows/production-job-execution.md`.
    - 1 dòng log `APPROVED` ghi kèm số Job đã sinh.
 
 ## State changes
@@ -73,18 +67,15 @@ BY itemId`, chỉ node `CONSUMABLE`) thành `requiredQty`, rồi suy `unitQty = 
 | `production_orders`         | `PENDING`, `code` NULL | `APPROVED` (hoặc `COMPLETED` nếu 0 Job), có `code`                                     |
 | `orders`                    | `AWAITING_PRODUCTION`  | `IN_PROGRESS`                                                                          |
 | `production_jobs`           | _(chưa có)_            | `PENDING` (0 Job nếu 100% xuất từ tồn)                                                 |
-| `production_job_bom_items`  | _(chưa có)_            | N dòng/Job (nhân bản cây BOM)                                                          |
-| `production_job_operations` | _(chưa có)_            | N dòng/Job (as-used từng node BOM)                                                     |
-| `production_job_items`      | _(có thể chưa có)_     | 0 dòng mới nếu vật tư đã có snapshot cùng bộ ba nội dung, ngược lại +1 dòng/vật tư mới |
-| `production_job_units`      | _(có thể chưa có)_     | Cùng cơ chế, theo ĐVT                                                                  |
-| `production_job_issues`     | _(chưa có)_            | N dòng/Job (copy BOM × SL Job)                                                         |
 
 ## Side effects
 
 - N `production_jobs` (N = số sản phẩm phân biệt có SL > 0). Không sản phẩm nào SL > 0 → **không
   Job nào**, LSX tự động chuyển sang `COMPLETED`.
-- Mỗi Job kèm theo bản copy cây BOM + công đoạn as-used + vật tư. Sản phẩm không có BOM → Job đó
-  không có node/công đoạn/vật tư nào — **không phải lỗi**.
+- Job sinh ra ở đây **chưa có snapshot gì** — `production_job_bom_items`/`production_job_operations`/
+  `production_job_issues` rỗng cho tới khi `start` (`docs/decisions/job-snapshot-at-start.md`). Muốn
+  xem cấu trúc/công đoạn của sản phẩm trong lúc Job còn `PENDING`, dùng
+  `GET /items/:itemId/bom` + `.../operations`.
 - 1 `production_order_logs` (`APPROVED` hoặc `COMPLETED`).
 - **Khoá gián tiếp**: `PATCH /orders/:orderId` với `items` đã bị chặn từ khi đơn duyệt sinh LSX (`E080`).
 
@@ -93,13 +84,9 @@ duyệt. Hai điểm này ngoài phạm vi có chủ đích — xem `docs/domain
 
 ## Transaction boundary
 
-Cả hai flow mở transaction sau phần đọc. Transaction duyệt bao **tám bảng ở hai domain**
-(`production_orders`, `orders`, `production_jobs`, `production_job_bom_items`,
-`production_job_operations`, `production_job_items`, `production_job_units`,
-`production_job_issues`) — đây là transaction rộng nhất hệ thống, và là lý do `createJobs` bắt buộc
-nhận `tx`. Hệ quả mới: `production_job_items`/`production_job_units` dùng chung nhiều LSX, nên duyệt
-hai LSX song song cùng đụng một vật tư/ĐVT sẽ tranh chấp khoá insert của nhau trong lúc get-or-create
-— trước đây transaction duyệt chỉ đụng dữ liệu riêng của chính LSX đó, không tranh chấp gì.
+Cả hai flow mở transaction sau phần đọc. Transaction duyệt bao 3 bảng (`production_orders`,
+`orders`, `production_jobs`) — `createJobs` chỉ sinh header Job + log, không chạm bảng snapshot nào,
+đó là lý do transaction này gọn hơn nhiều so với trước (`docs/decisions/job-snapshot-at-start.md`).
 
 Sinh mã (`LSXxxxx`/`JOBxxxx`) nằm **trong** transaction, cấp qua `document_sequences` — atomic
 (`INSERT … ON CONFLICT DO UPDATE … RETURNING`), hai lượt duyệt song song không thể ra cùng mã.

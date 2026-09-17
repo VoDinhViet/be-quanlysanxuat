@@ -1,7 +1,9 @@
 # Thực thi Job
 
-Chặng giữa của luồng sản xuất: xưởng bấm `start`, rồi đọc bảng vật tư gộp từ cây BOM snapshot lúc
-duyệt LSX và báo tiến độ hoàn thành/NG theo từng công đoạn — được ngay khi Job `IN_PROGRESS`, không
+Chặng giữa của luồng sản xuất: xưởng bấm `start` — mốc **duy nhất** snapshot cây BOM/công đoạn/vật
+tư của Job từ sản phẩm hiện tại (Job `PENDING` trước đó không có snapshot nào, xem
+`docs/decisions/job-snapshot-at-start.md`) — rồi đọc bảng vật tư gộp từ cây BOM đó và báo tiến độ
+hoàn thành/NG theo từng công đoạn — được ngay khi Job `IN_PROGRESS`, không
 còn bước duyệt công đoạn riêng chặn giữa (`approve-operations` đã xoá 2026-09-03, xem Business
 rules). Job rời `IN_PROGRESS` ngay tại route `POST .../reports` của luồng này (khi công đoạn Cấp 0
 xong), rồi tiếp tục qua QC/nhập kho ở `docs/workflows/outgoing-qc.md` — vòng đời đầy đủ ở
@@ -18,9 +20,9 @@ của Job vẫn chưa có — `production_job_issues` chỉ đọc qua `/bom`, k
 
 | Route | Ý nghĩa | Đổi trạng thái? |
 | --- | --- | --- |
-| `POST /production-jobs/:jobId/start` | Bắt đầu làm — mở khoá `POST .../reports` bên dưới ngay | Có (`production_jobs.status`); có thể kèm sinh đề xuất mua hàng |
-| `GET /production-jobs/:jobId/bom` | Đọc nhu cầu vật tư của Job — `production_job_issues` join hai bảng chiều `production_job_items`/`production_job_units` (phân trang, `q` theo mã/tên vật tư). Không phải cây BOM | Không |
-| `GET /production-jobs/:jobId/operations` | Đọc công đoạn as-used, nhóm theo part chứa nó, mỗi công đoạn kèm `plannedQuantity` — nguồn lấy `operationId` cho route dưới | Không |
+| `POST /production-jobs/:jobId/start` | Bắt đầu làm — dựng snapshot BOM/công đoạn/vật tư của Job lần đầu, mở khoá `POST .../reports` bên dưới ngay | Có (`production_jobs.status`); có thể kèm sinh đề xuất mua hàng |
+| `GET /production-jobs/:jobId/bom` | Đọc nhu cầu vật tư của Job — `production_job_issues` join hai bảng chiều `production_job_items`/`production_job_units` (phân trang, `q` theo mã/tên vật tư). Không phải cây BOM; **rỗng nếu Job còn `PENDING`** (chưa `start`) | Không |
+| `GET /production-jobs/:jobId/operations` | Đọc công đoạn as-used, nhóm theo part chứa nó, mỗi công đoạn kèm `plannedQuantity` — nguồn lấy `operationId` cho route dưới; **rỗng nếu Job còn `PENDING`** | Không |
 | `GET /production-jobs/:jobId/notes` | Đọc ghi chú | Không |
 | `POST /production-jobs/:jobId/notes` | Đăng một ghi chú | Không |
 | `GET /production-jobs/:jobId/logs` | Đọc lịch sử thao tác — `production_job_logs`, `desc(createdAt)` | Không |
@@ -71,10 +73,14 @@ PENDING ──start──> IN_PROGRESS (POST .../reports mở khoá ngay)
 
 ## Flow
 
-`start`: đọc Job → kiểm trạng thái → đọc `production_job_issues` của Job, gọi
-`InventoryService.getConsumableStockLevels` (gộp mọi kho) để so `requiredQty` với `onHand`, giữ lại
-phần thiếu (`> 0`) của từng vật tư — **đọc, chạy ngoài transaction** → **transaction**: `UPDATE`
-(`status`, `startedBy`, `startedAt`); nếu có ít nhất một vật tư thiếu, gọi
+`start`: **transaction** — khoá Job (`SELECT ... FOR UPDATE`) → kiểm trạng thái `PENDING` (`E087`)
+→ `createJobSnapshot` (`production-job-snapshot.query.ts`) dựng snapshot **lần đầu và duy nhất**:
+nhân bản cây BOM sang `production_job_bom_items`, copy routing as-used sang
+`production_job_operations`, gộp nhu cầu CONSUMABLE sang `production_job_issues` — từ đúng BOM/công
+đoạn của sản phẩm tại thời điểm bấm `start` → đọc `production_job_issues` vừa ghi, gọi
+`InventoryService.getConsumableStockLevels` (gộp mọi kho, cùng `tx`) để so `requiredQty` với
+`onHand`, giữ lại phần thiếu (`> 0`) của từng vật tư → `UPDATE` (`status`, `startedBy`,
+`startedAt`) → ghi 1 dòng `production_job_logs STARTED`; nếu có ít nhất một vật tư thiếu, gọi
 `PurchaseRequestsService.createShortageRequest` ghi thêm một phiếu `purchase_requests` (`status`
 mặc định `DRAFT`) + các dòng `purchase_request_items` cho đúng phần thiếu. Không thiếu gì thì
 không tạo phiếu. Trả `204`, không có nội dung — không đọc lại chi tiết Job.
@@ -82,11 +88,13 @@ không tạo phiếu. Trả `204`, không có nội dung — không đọc lại
 `bom`: đọc `production_job_issues` join `production_job_items`/`production_job_units` (hai FK
 `NOT NULL`) — `q` lọc trên `production_job_items.code`/`.name` qua `unaccentILike`, `LIMIT`/`OFFSET`
 bình thường ở SQL. Không đụng cây BOM (`production_job_bom_items`), không tính toán gì thêm — trả
-nguyên `requiredQty` đã tính sẵn lúc duyệt LSX.
+nguyên `requiredQty` đã có sẵn trên snapshot. **Job còn `PENDING` trả mảng rỗng** (chưa `start` thì
+chưa có snapshot) — FE dùng `GET /items/:itemId/bom` để xem cấu trúc sản phẩm lúc đó.
 
 `operations`: đọc `production_job_bom_items` kèm quan hệ `operations` (`with`, 1 lượt query — cột
-`planned_quantity` đã có sẵn trên mỗi node, tính từ lúc duyệt LSX) → gắn `plannedQuantity` của node
-xuống từng công đoạn của nó → lọc bỏ node không có công đoạn. Mảng thường, không phân trang.
+`planned_quantity` đã có sẵn trên mỗi node) → gắn `plannedQuantity` của node xuống từng công đoạn
+của nó → lọc bỏ node không có công đoạn. Mảng thường, không phân trang. **Job còn `PENDING` trả mảng
+rỗng** — cùng lý do trên, FE dùng `GET /items/:itemId/bom/items/:bomItemId/operations`.
 
 `POST notes`: kiểm Job tồn tại → một lệnh `INSERT` (`content`, `createdBy`) → `204`, không trả nội
 dung. `GET notes` đọc qua relational query API (`with: { creatorBy: true }` — `createdBy` trỏ thẳng
@@ -139,7 +147,9 @@ lịch sử, chỉ để truy vết sau này.
 `production_jobs.status`: `PENDING → IN_PROGRESS` (`start`) — vẫn là hành động duy nhất đổi trạng
 thái Job, và duy nhất ghi thêm dữ liệu vòng đời (`startedBy`/`startedAt`); cũng là hành động duy
 nhất mở khoá `POST .../reports` (xem Preconditions) — không còn bước duyệt công đoạn riêng. Cùng
-transaction, ghi thêm 1 dòng `production_job_logs` (`STARTED`).
+transaction: `createJobSnapshot` ghi lần đầu (và duy nhất) 3 bảng
+`production_job_bom_items`/`production_job_operations`/`production_job_issues`
+(`docs/decisions/job-snapshot-at-start.md`), rồi ghi thêm 1 dòng `production_job_logs` (`STARTED`).
 
 `purchase_requests`/`purchase_request_items`: `start` **có thể** thêm một phiếu mới (`status =
 DRAFT`) nếu Job thiếu vật tư — xem Side effects. Không phải đổi trạng thái, là tạo mới.
@@ -184,12 +194,12 @@ chỉ `SELECT`. `POST .../reports` **có transaction** (`db.transaction`) — kh
 production_job_operation_report_files`, `UPDATE production_job_operations`, và `UPDATE
 production_jobs` (điều kiện, chỉ khi công đoạn Cấp 0 vừa xong) phải cùng đậu hoặc cùng rớt.
 
-`start` giờ **có transaction**: đọc tồn kho (`getConsumableStockLevels`) chạy **trước, ngoài**
-transaction — chỉ là input để tính phần thiếu, không phải điều kiện chặn nên không cần khoá gì.
-Trong transaction: `UPDATE production_jobs` + (nếu có thiếu) `INSERT purchase_requests` +
-`INSERT purchase_request_items`, bao đúng bằng `db.transaction`
-(`.claude/rules/transactions.md`) — hoặc cả Job chuyển trạng thái lẫn phiếu cùng vào, hoặc không gì
-cả.
+`start` **có transaction** bao trọn từ đầu: khoá Job (`SELECT ... FOR UPDATE`, chặn 2 lượt `start`
+song song) → `createJobSnapshot` (`INSERT` cả ba bảng snapshot) → đọc `production_job_issues` vừa
+ghi + `getConsumableStockLevels` (cùng `tx`) → `UPDATE production_jobs` + (nếu có thiếu)
+`INSERT purchase_requests` + `INSERT purchase_request_items`, bao đúng bằng `db.transaction`
+(`.claude/rules/transactions.md`) — hoặc snapshot + Job chuyển trạng thái + phiếu đề xuất cùng vào,
+hoặc không gì cả.
 
 ## Failure cases
 
@@ -222,17 +232,20 @@ kiện nào có thể fail độc lập với chính `POST .../reports` (đã qu
 
 ## Related domains
 
-Phần lớn `production` thuần — các route đọc chỉ đọc lại dữ liệu đã copy sẵn từ Product Structure lúc
-duyệt LSX, không đọc `bom_operations`/`bom_items` sống; `POST .../reports` cũng chỉ sửa dữ liệu
-snapshot của chính Job. Ngoại lệ là `start`: đọc `inventory` (`InventoryService.getConsumableStockLevels`,
-chỉ đọc `inventory_balances`, không ghi) và **ghi** `purchase-requests`
-(`PurchaseRequestsService.createShortageRequest`) — điểm ghi-ngang-domain duy nhất trong luồng này.
+Phần lớn `production` thuần — `bom`/`operations` chỉ đọc lại snapshot của chính Job (rỗng nếu còn
+`PENDING`); `POST .../reports` cũng chỉ sửa dữ liệu snapshot của chính Job. `start` chạm hai domain
+khác trong cùng transaction: đọc `product-structure` (gián tiếp qua `createJobSnapshot` — cây
+`bom_items`/`bom_operations` sống của sản phẩm, xem `docs/decisions/job-snapshot-at-start.md`), đọc
+`inventory` (`InventoryService.getConsumableStockLevels`, chỉ đọc `inventory_balances`, không ghi)
+và **ghi** `purchase-requests` (`PurchaseRequestsService.createShortageRequest`).
 
 Bước trước: `docs/workflows/production-order-approval.md`. Bước sau (Job rời `WAITING_QC`):
 `docs/workflows/outgoing-qc.md`.
 
-Code: `ProductionJobsService.startJob`/`collectJobIssueShortages`/
+Code: `ProductionJobsService.startJob`/`getProductionJobForUpdate`/`collectJobIssueShortages`/
 `getProductionJobBom`/`getProductionJobOperations`/`getProductionJobNotes`/
-`createProductionJobNote`/`getProductionJobLogs`; `ProductionExecutionService.getOperations`/
-`getJobs`/`createJobOperationReport`; `UsersService.getUserDepartmentId`;
-`PurchaseRequestsService.createShortageRequest`; `InventoryService.getConsumableStockLevels`.
+`createProductionJobNote`/`getProductionJobLogs`;
+`production-jobs/production-job-snapshot.query.ts` (`createJobSnapshot`);
+`ProductionExecutionService.getOperations`/`getJobs`/`createJobOperationReport`;
+`UsersService.getUserDepartmentId`; `PurchaseRequestsService.createShortageRequest`;
+`InventoryService.getConsumableStockLevels`.
