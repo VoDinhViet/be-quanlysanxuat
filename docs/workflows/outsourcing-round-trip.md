@@ -198,8 +198,10 @@ công đoạn `OUTSOURCE`, `docs/decisions/outsourced-operation-progress-writeba
 `purchasing`/`suppliers` ngoài việc `outsourcing_orders.supplierId`/`outsourcing_receipts.supplierId`
 trỏ `suppliers` (thuần FK, không validate nhóm).
 
-Bước trước: `production_job_operations` snapshot `type = OUTSOURCE` đã có sẵn từ lúc duyệt LSX
-(`docs/domains/production.md`) — không phải bước của luồng này, chỉ là điều kiện cần.
+Bước trước: `production_job_operations` snapshot `type = OUTSOURCE` đã có sẵn — picker
+`GET .../outsourceable-operations` chỉ cho chọn Job `IN_PROGRESS`, mà snapshot chỉ sinh lúc Job
+`start` (`docs/decisions/job-snapshot-at-start.md`, `docs/domains/production.md`) — không phải bước
+của luồng này, chỉ là điều kiện cần.
 Bước sau: nếu có nhánh QC FAIL + SORT/RETURN, tiếp tục đúng
 `docs/workflows/supplier-return.md` từ bước `post` phiếu trả.
 

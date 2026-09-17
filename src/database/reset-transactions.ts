@@ -10,7 +10,7 @@ import postgres from 'postgres';
 /**
  * Wipe chứng từ giao dịch (đơn hàng, LSX, kho, mua hàng, QC) trên một DB đang chạy thật, giữ
  * nguyên toàn bộ master data (items/BOM/routing, clients, suppliers, units, item_units, operations,
- * QC AQL, countries) và toàn bộ tài khoản đăng nhập. Khác `reset-data.ts` (chỉ dùng
+ * countries) và toàn bộ tài khoản đăng nhập. Khác `reset-data.ts` (chỉ dùng
  * cho dev, wipe gần hết trừ 1 admin): công cụ này CHO PHÉP chạy trên `NODE_ENV=production`, nên
  * đổi hẳn cơ chế an toàn — hai danh sách bảng tường minh + fail-closed thay vì suy ra động, và
  * TRUNCATE không CASCADE để Postgres tự chặn nếu thiếu một bảng giao dịch nào đó.
@@ -45,8 +45,6 @@ const KEEP_TABLES = [
   'boms',
   'bom_items',
   'bom_operations',
-  'qc_aql_rules',
-  'qc_aql_plans',
 ] as const;
 
 const WIPE_TABLES = [

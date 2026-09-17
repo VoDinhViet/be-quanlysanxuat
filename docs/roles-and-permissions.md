@@ -142,11 +142,10 @@ Dưới đây là 7 vai trò chuẩn được thiết lập sẵn trong hệ th�
 
 ### 2.7. QC (Phòng Quản lý chất lượng)
 * **Mã Role**: `QC`
-* **Mục đích**: Kiểm tra chất lượng nguyên vật liệu đầu vào (IQC), thành phẩm xuất xưởng (OQC) và quản lý bộ tiêu chuẩn AQL.
+* **Mục đích**: Kiểm tra chất lượng nguyên vật liệu đầu vào (IQC) và thành phẩm xuất xưởng (OQC).
 * **Quyền hạn chính**:
   * **IQC (Đầu vào)**: Toàn quyền lập biên bản kiểm tra vật tư mua về (`iqc:read`, `iqc:create`, `iqc:update`, `iqc:delete`).
   * **OQC (Thành phẩm)**: Kiểm tra và đánh giá chất lượng lô hàng sản xuất xong (`oqc:read`, `oqc:update`).
-  * **Tiêu chuẩn AQL**: Thiết lập và quản lý bảng tiêu chuẩn lấy mẫu kiểm nghiệm (`qc-aql:read`, `qc-aql:create`, `qc-aql:update`).
   * **Tra cứu**: Xem danh mục sản phẩm (`items:read`), xem tiến độ gia công ngoài (`outsourcing:read`), xem báo cáo lỗi chất lượng (`reports:read`).
 
 ---
@@ -193,7 +192,6 @@ Dưới đây là 7 vai trò chuẩn được thiết lập sẵn trong hệ th�
 | **Kiểm tra OQC** | `oqc:read` | **✓** | **✓** | - | - | **✓** | **✓** | **✓** |
 | | `oqc:create` | **✓** | - | - | - | - | **✓** | - |
 | | `oqc:update`, `oqc:delete` | **✓** | - | - | - | - | - | **✓** |
-| **Tiêu chuẩn QC AQL**| `qc-aql:*` (CRUD) | **✓** | **✓** | - | - | - | - | **✓** |
 | **Xuất hàng (Outbound)**| `outbound:read` | **✓** | **✓** | **✓** | - | **✓** | - | - |
 | | `outbound:create`, `update`, `delete` | **✓** | - | **✓** | - | **✓** | - | - |
 | | `outbound:approve` | **✓** | **✓** | - | - | - | - | - |

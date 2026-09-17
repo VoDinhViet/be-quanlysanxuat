@@ -137,11 +137,10 @@ phân loại (`docs/decisions/items-merge.md`, `docs/decisions/wip-removal.md`).
 
 **Duyệt LSX** (`approveProductionOrder`, `PENDING → APPROVED`): gộp `production_order_items` theo
 `itemId` (SL > 0) → tx: sinh `LSXxxxx` → `orders.status = IN_PROGRESS` →
-`ProductionJobsService.createJobs` tạo 1 `production_jobs`/item FG, nhân bản cây `bom_items` sang
-`production_job_bom_items` (`plannedQuantity` nổ cấp), copy routing as-used sang
-`production_job_operations`, gộp CONSUMABLE theo `itemId` sang `production_job_issues` (get-or-create hai
-bảng chiều `production_job_items`/`production_job_units`) — cùng một transaction
-(`docs/domains/production.md`).
+`ProductionJobsService.createJobs` chỉ tạo 1 `production_jobs`/item FG (`PENDING`) + log `CREATED`
+— **không snapshot gì cả**. Job `PENDING` không có dòng nào ở `production_job_bom_items`/
+`production_job_operations`/`production_job_issues` (`docs/decisions/job-snapshot-at-start.md`,
+`docs/domains/production.md`).
 
 **Post/cancel phiếu kho** (`postInventoryReceipt`/`postInventoryIssue`, từ `PENDING_RECEIPT`/
 `PENDING_IQC`): validate ngoài tx → tx: `InventoryPostingService.postDocument` khoá
@@ -174,10 +173,12 @@ chạy lại ở `update`/`send`/`approve`). `deliver` (chỉ từ `PENDING_DELI
 `closeOrdersIfFullyDelivered` (`orders.status = COMPLETED` nếu đơn đã giao hết). Chi tiết:
 `docs/workflows/outbound-delivery.md`.
 
-**Start Job** (`startJob`, chỉ từ `PENDING`): đọc `production_job_issues` + `getConsumableStockLevels`
-(trước tx) → tx: `production_jobs.status = IN_PROGRESS`, thiếu vật tư thì
-`createShortageRequest` ghi thêm `purchase_requests DRAFT` + dòng. Chi tiết:
-`docs/workflows/production-job-execution.md`.
+**Start Job** (`startJob`, chỉ từ `PENDING`): tx — khoá Job `FOR UPDATE` → `createJobSnapshot`
+(`production-job-snapshot.query.ts`) dựng snapshot **lần đầu và duy nhất** từ BOM sản phẩm hiện tại
+→ đọc `production_job_issues` vừa ghi + `getConsumableStockLevels` (cùng `tx`) →
+`production_jobs.status = IN_PROGRESS`, thiếu vật tư thì `createShortageRequest` ghi thêm
+`purchase_requests DRAFT` + dòng. Chi tiết: `docs/workflows/production-job-execution.md`,
+`docs/decisions/job-snapshot-at-start.md`.
 
 **Sổ cái mua hàng** (`GET /purchase-ledger`): thuần đọc — join `purchase_request_items` (`APPROVED`)
 với 3 subquery: SL đặt mua từ `purchase_order_items` (`ORDERED`), SL đã nhập từ
@@ -260,7 +261,8 @@ Những sự thật này không nằm trọn trong một `docs/domains/<x>.md` n
 - **1 PO duyệt = 1 LSX** (`production_orders.orderId` unique). **1 item FG = 1 Job/LSX** (gộp mọi
   dòng `production_order_items` cùng `itemId`).
 - **File đính kèm luôn qua registry `files`** — ngoại lệ duy nhất `countries.logoUrl`. `orders`/
-  `suppliers`/`bom_items` (`drawingFileId`)/`users` (`avatarFileId`) dùng `fileIds`/`*FileId`;
+  `suppliers`/`bom_items` (`imageFileId`, chỉ node COMPONENT)/`users` (`avatarFileId`) dùng
+  `fileIds`/`*FileId`;
   `items` có cả `imageFileId` lẫn bảng `item_files` (đính kèm nhiều file). Chi tiết:
   `docs/decisions/files-registry.md`.
 - **Mọi FK "ai đã làm việc này"** trỏ `users.id`, không phải `credentials.id`.

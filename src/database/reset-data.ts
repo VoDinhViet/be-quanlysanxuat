@@ -8,9 +8,10 @@ dotenv.config();
 import postgres from 'postgres';
 
 /**
- * Wipe toàn bộ dữ liệu ở DB dev, chỉ giữ lại đúng một tài khoản đăng nhập (mặc định `admin`) cùng
- * role/department/position của nó và toàn bộ `countries`. Công cụ vận hành một lần, không phải
- * seed (`.claude/rules/seeds.md` chỉ áp cho `src/database/seeds/`).
+ * Wipe dữ liệu nghiệp vụ ở DB dev (orders, production, inventory, QC, purchasing...), giữ lại một
+ * tài khoản đăng nhập (mặc định `admin`) cùng role/department/position của nó, và toàn bộ master
+ * data (`items`, `units`, `operations`, `suppliers`, `clients`, `qc_aql_plans`...). Công cụ vận
+ * hành một lần, không phải seed (`.claude/rules/seeds.md` chỉ áp cho `src/database/seeds/`).
  *
  * Mặc định dry-run — chỉ in ra sẽ xoá gì, không ghi. Cần `--yes` để chạy thật.
  */
@@ -22,6 +23,22 @@ const KEEP_TABLES = [
   'positions',
   'countries',
   'files',
+  'items',
+  'item_files',
+  'item_units',
+  'units',
+  'unit_scopes',
+  'operations',
+  'suppliers',
+  'supplier_groups',
+  'supplier_representatives',
+  'supplier_payment_info',
+  'supplier_files',
+  'clients',
+  'client_groups',
+  'client_contacts',
+  'qc_aql_plans',
+  'qc_aql_rules',
 ] as const;
 
 const ADMIN_USERNAME = process.env.RESET_ADMIN_USERNAME || 'admin';
