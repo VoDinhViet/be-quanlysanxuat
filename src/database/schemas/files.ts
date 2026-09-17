@@ -48,6 +48,8 @@ export enum UploadType {
   PRODUCT_DOCUMENT = 'PRODUCT_DOCUMENT',
   SUPPLIER_LOGO = 'SUPPLIER_LOGO',
   SUPPLIER_DOCUMENT = 'SUPPLIER_DOCUMENT',
+  /** Retired 2026-09-17 — cột `bom_items.drawing_file_id` đã bỏ (migration 0185); bản vẽ theo node
+   * BOM không còn. Giữ value, không tái sử dụng. */
   BOM_ITEM_DRAWING = 'BOM_ITEM_DRAWING',
   ORDER_DOCUMENT = 'ORDER_DOCUMENT',
   // Trang chi tiết IQC/OQC — 2 bộ bằng chứng riêng mỗi trang, xem `qc_files.kind`.
@@ -60,10 +62,12 @@ export enum UploadType {
   PRODUCTION_OPERATION_EVIDENCE = 'PRODUCTION_OPERATION_EVIDENCE',
   // File đính kèm khi kho xác nhận xuất trả NCC (`POST /supplier-returns/:id/post`).
   SUPPLIER_RETURN_EVIDENCE = 'SUPPLIER_RETURN_EVIDENCE',
-  // Tài liệu đính kèm cấp item — mọi `type` (FG/CONSUMABLE), danh sách nhiều file, khác
-  // `BOM_ITEM_DRAWING` (tối đa 1 file, gắn theo từng node BOM, không phải theo item). Thay
+  // Tài liệu đính kèm cấp item — mọi `type` (FG/CONSUMABLE), danh sách nhiều file. Thay
   // `PRODUCT_DOCUMENT` đã nghỉ hưu (BUG-007, 2026-08-27).
   ITEM_DOCUMENT = 'ITEM_DOCUMENT',
+  // Ảnh riêng của một node BOM `COMPONENT` (`bom_items.image_file_id`, tối đa 1) — khác
+  // `PRODUCT_IMAGE` là ảnh của chính item.
+  BOM_ITEM_IMAGE = 'BOM_ITEM_IMAGE',
 }
 
 export const uploadTypeEnum = pgEnum('upload_type', [
@@ -83,6 +87,7 @@ export const uploadTypeEnum = pgEnum('upload_type', [
   UploadType.PRODUCTION_OPERATION_EVIDENCE,
   UploadType.SUPPLIER_RETURN_EVIDENCE,
   UploadType.ITEM_DOCUMENT,
+  UploadType.BOM_ITEM_IMAGE,
 ]);
 
 /**

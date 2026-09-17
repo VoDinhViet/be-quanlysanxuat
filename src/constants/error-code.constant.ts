@@ -431,9 +431,9 @@ export enum ErrorCode {
   // Node BOM chứa công đoạn đã mất `itemId` (item gốc bị xoá, `set null`) — không có gì để
   // snapshot vào `qc_requests.itemId` (NOT NULL) khi tạo OQC.
   E199 = 'oqc_inspection.error.item_not_resolvable',
-  // `GET /oqc/aql-plan` không tra được plan (lot size/inspection level/AQL rơi vào ô bảng chuẩn
-  // chưa điền — xem `iqc-aql.constant.ts`); hoặc `confirmOqc` không có cả `result` gửi lên lẫn
-  // `resultAuto` tự suy để dùng làm mặc định.
+  // Nghỉ hưu — toàn bộ tính năng AQL đã bị xoá (`docs/decisions/aql-removed.md`), `result` trên OQC
+  // nay bắt buộc ở tầng DTO, không còn nhánh "thiếu cả result lẫn resultAuto". Giữ comment, không
+  // tái sử dụng số.
   E200 = 'oqc_inspection.error.aql_plan_not_found',
   // Nghỉ hưu — `confirmOqc` không còn bắt buộc `resultNote` khi `result` lệch `resultAuto`; AQL chỉ
   // là gợi ý hiển thị, QC toàn quyền quyết định `result`. Giữ comment, không tái sử dụng số.
@@ -464,7 +464,7 @@ export enum ErrorCode {
   // `chk_order_payments_amount_nonzero` là chốt chặn thật, mã này chỉ để trả lỗi rõ ràng.
   E208 = 'order_payment.error.amount_zero',
   // `POST /inventory-receipts/:receiptId/confirm` (`receiptType = PRODUCTION`) khi Job có node
-  // Cấp 0 (`copyFinalAssemblyRouting`) mà chưa có phiếu OQC nào `COMPLETED` (trừ `disposition =
+  // Cấp 0 (`createJobOperations`) mà chưa có phiếu OQC nào `COMPLETED` (trừ `disposition =
   // SCRAP`) gắn với công đoạn của node đó — tách riêng khỏi `E196` (còn phiếu OQC dở dang) vì đây là
   // lý do khác: chưa từng QC thành phẩm. `docs/decisions/oqc-per-operation.md` mục "Đừng hoàn lại".
   E209 = 'inventory_receipt.error.final_oqc_missing',
@@ -493,16 +493,19 @@ export enum ErrorCode {
   // Nghỉ hưu — `confirmOqc` không còn bắt buộc `dispositionNote` khi `disposition ∈ {ACCEPT, SCRAP}`;
   // QC toàn quyền quyết định phương án xử lý. Giữ comment, không tái sử dụng số.
   E215 = 'oqc_inspection.error.disposition_reason_required',
+  // Nghỉ hưu — module `qc-aql` (master data phương án lấy mẫu AQL) đã bị xoá hoàn toàn cùng toàn
+  // bộ tính năng AQL (`docs/decisions/aql-removed.md`). Giữ comment, không tái sử dụng số.
   E216 = 'qc_aql_plan.error.not_found',
+  // Nghỉ hưu — cùng đợt E216.
   E217 = 'qc_aql_plan.error.code_exists',
-  // Hai rule của cùng plan có dải `[lotSizeMin, lotSizeMax]` giao nhau — DB không chặn được overlap
-  // (cần `EXCLUDE USING gist`, drizzle-orm chưa có builder), service là chốt chặn duy nhất.
+  // Nghỉ hưu — cùng đợt E216.
   E218 = 'qc_aql_rule.error.lot_size_overlap',
-  // `GET /iqc/aql-plan` không tra được plan (lot size/inspection level/AQL rơi vào ô bảng chưa có
-  // rule) — mint riêng, không dùng `E200` vì mã đó namespace `oqc_inspection.error.*`.
+  // Nghỉ hưu — cùng đợt E216.
   E219 = 'iqc_inspection.error.aql_plan_not_found',
   E220 = 'file.error.linked_to_qc_evidence',
+  // Nghỉ hưu — cùng đợt E216.
   E221 = 'qc_aql_plan.error.level_aql_exists',
+  // Nghỉ hưu — cùng đợt E216.
   E222 = 'qc_aql_rule.error.rejection_not_greater_than_acceptance',
   E223 = 'inventory_requisition.error.not_found',
   E224 = 'inventory_requisition.error.not_editable',
@@ -618,9 +621,13 @@ export enum ErrorCode {
   // Node `type = CONSUMABLE` nhưng `itemId` trỏ item không phải CONSUMABLE — thay E053 đã nghỉ hưu.
   E270 = 'bom_item.error.item_not_consumable',
   // Payload node BOM sai hình dạng: COMPONENT thiếu `code`/`name` (hoặc kèm `itemId`), CONSUMABLE
-  // thiếu `itemId` (hoặc kèm `code`/`name`); cũng dùng khi `PATCH` sửa `code`/`name` trên node
-  // CONSUMABLE.
+  // thiếu `itemId` (hoặc kèm `code`/`name`); cũng dùng khi `PATCH` sửa `code`/`name`/`unitId`/
+  // `imageFileId` trên node không cho phép (CONSUMABLE/ROOT không nhận `unitId`/`imageFileId` —
+  // ĐVT/ảnh chỉ COMPONENT được gán riêng).
   E271 = 'bom_item.error.invalid_node_payload',
+  // Node cha đã có con COMPONENT (là node cấu trúc, không phải lá) — vật tư chỉ gắn vào node lá để
+  // nổ cấp không cộng trùng nhu cầu. Khác `E052` (cha là lá CONSUMABLE nên không nhận con nào cả).
+  E273 = 'bom_item.error.parent_not_leaf',
   V003 = 'common.error.too_many_requests',
   // `GlobalExceptionFilter` bắt chuỗi "No values to set" của drizzle-orm — mọi `PATCH` khi
   // `ValidationPipe` whitelist đã loại sạch field lạ, còn lại payload rỗng cho `.set()`. Trước đây

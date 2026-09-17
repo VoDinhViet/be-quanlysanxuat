@@ -28,8 +28,9 @@ Các route `GET` của mọi module trong nhóm này đều `@ApiAuth()` — đ�
   (`ROOT` không tạo được qua route này — sinh tự động, xem bước 2):
   - `COMPONENT` (cấu trúc con) — bắt buộc `code`/`name`, không gửi `itemId`; sai shape → `E271`.
   - `CONSUMABLE` — bắt buộc `itemId` trỏ đúng item `type = CONSUMABLE` (không phải FG); sai → `E270`.
-  Node cha (nếu có) phải cùng cây và không phải lá CONSUMABLE (`E052`); `quantity` phải nguyên dương nếu
-  node là `COMPONENT`, được phép lẻ nếu là `CONSUMABLE` (`E055`).
+  Node cha (nếu có) phải cùng cây và không phải lá CONSUMABLE (`E052`); thêm `CONSUMABLE` thì node cha
+  (kể cả `ROOT` khi không gửi `parentId`) chưa được có con `COMPONENT` (`E273`); `quantity` phải nguyên
+  dương nếu node là `COMPONENT`, được phép lẻ nếu là `CONSUMABLE` (`E055`).
 - Thêm công đoạn cho node: node phải thuộc đúng item trên URL (`E051`); node đó không được là `CONSUMABLE`
   (`E063`) — CONSUMABLE là lá, không có công đoạn as-used; `ROOT`/`COMPONENT` đều gắn được.
 - Thêm công đoạn Cấp 0: item gốc không được là CONSUMABLE (`E111`).
@@ -47,7 +48,9 @@ Các route `GET` của mọi module trong nhóm này đều `@ApiAuth()` — đ�
 3. **Dựng cây.** `ROOT` là node duy nhất mang `parentId = null`; "không gửi `parentId`" khi tạo
    node nghĩa là "con trực tiếp của `ROOT`", được dịch thành `parentId = <id ROOT>` trước khi ghi
    — không còn dòng nào khác (ngoài chính `ROOT`) mang `parentId = null`. Một node `COMPONENT` (hoặc
-   `ROOT`) có thể có con (kể cả lá CONSUMABLE); một node `CONSUMABLE` luôn là lá.
+   `ROOT`) có thể có con; một node `CONSUMABLE` luôn là lá. **Dựng cấu trúc trước, khai vật tư sau**:
+   vật tư chỉ khai được ở node chưa có con `COMPONENT`, và thêm `COMPONENT` vào node đang có vật tư
+   sẽ xoá ngầm số vật tư đó (lý do ở `docs/domains/product-structure.md`).
 4. **Gắn công đoạn — cùng khuôn as-used, cùng một route cho mọi cấp:**
    `POST .../bom/items/:bomItemId/operations`, ghi vào `bom_operations`, khoá theo `bomItemId`.
    Công đoạn của **chính item gốc (Cấp 0)** dùng `bomItemId` = id dòng `ROOT`; công đoạn của
@@ -74,15 +77,17 @@ theo nó; BOM, đơn hàng và sản xuất đều nhận item `INACTIVE`.
 
 - Node BOM đầu tiên kéo theo việc tạo header `boms` **và** dòng `ROOT` — bước ẩn duy nhất của
   workflow này (không còn header `routings` riêng để sinh lười).
+- Thêm node `COMPONENT` vào một node đang có lá CONSUMABLE **xoá ngầm toàn bộ CONSUMABLE cùng cha**
+  trong cùng transaction, không cảnh báo.
 - Xoá một node giữa cây **cascade sạch cả nhánh con (kể cả lá CONSUMABLE) và công đoạn as-used
   (`bom_operations`) của chúng**, không cảnh báo, không đếm trước. Dòng `ROOT` không xoá được qua
   route này (`E271` — xem Failure cases): sống/chết theo header `boms`.
 - Nhân bản clone **cấu trúc cây (gồm `ROOT`) + công đoạn as-used (`bom_operations`) của mọi node +
   `item_files`**: các item CONSUMABLE được node lá tham chiếu giữ nguyên id, không được clone theo; node
   `COMPONENT`/`ROOT` là dữ liệu riêng của cây nên clone thật (bản sao mới, `ROOT` mới trỏ `itemId` sang
-  item mới). Bản sao và bản gốc trỏ chung các dòng `files` (bản vẽ node lẫn tài liệu cấp item),
-  đúng ý nghĩa registry — chỉ dòng `item_files`/`bom_items.drawingFileId` là bản ghi riêng, `files`
-  không nhân đôi.
+  item mới). Bản sao và bản gốc trỏ chung các dòng `files` (ảnh node COMPONENT lẫn tài liệu cấp
+  item), đúng ý nghĩa registry — chỉ dòng `item_files`/`bom_items.imageFileId` là bản ghi riêng,
+  `files` không nhân đôi.
 
 ## Transaction boundary
 
@@ -104,6 +109,7 @@ theo nó; BOM, đơn hàng và sản xuất đều nhận item `INACTIVE`.
 | Node CONSUMABLE trỏ tới item không phải CONSUMABLE (kể cả FG) | `E270` |
 | Node COMPONENT sai shape (thiếu `code`/`name`, hoặc kèm `itemId`) | `E271` |
 | Node cha là lá CONSUMABLE (không nhận con) | `E052` |
+| Thêm CONSUMABLE vào node đã có con COMPONENT | `E273` |
 | SL node COMPONENT không nguyên | `E055` |
 | Node không thuộc item trên URL — công đoạn | `E051` |
 | Gắn công đoạn vào node CONSUMABLE | `E063` |
@@ -121,9 +127,9 @@ Node anh em trùng nhau hợp lệ, trừ khi cả hai là CONSUMABLE cùng `ite
 - Vì sao versioning là clone chứ không phải bảng lịch sử phiên bản → cùng file.
 - Vì sao chu trình BOM không còn cần kiểm (bất khả thi về cấu trúc từ khi bỏ WIP) →
   `docs/decisions/wip-removal.md`.
-- Item có hai loại file khác nhau — tài liệu đính kèm cấp item (`item_files`, replace-all) và bản vẽ
-  kỹ thuật theo từng node BOM (`bom_items.drawingFileId`) — không thứ nào thay được thứ kia → cùng
-  file.
+- Cấu trúc sản phẩm có ba loại file khác nhau — ảnh item (`items.imageFileId`), tài liệu đính kèm
+  cấp item (`item_files`, replace-all) và ảnh riêng theo từng node BOM COMPONENT
+  (`bom_items.imageFileId`) — không thứ nào thay được thứ kia → cùng file.
 
 ## Related domains
 

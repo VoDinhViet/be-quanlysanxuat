@@ -31,8 +31,8 @@ export class BomsController {
     summary: "Get an item's BOM structure tree (Cấu trúc sản phẩm)",
     isArray: true,
   })
-  getBom(@UUIDParam('itemId') itemId: string): Promise<BomItemResDto[]> {
-    return this.bomsService.getBom(itemId);
+  getBomItem(@UUIDParam('itemId') itemId: string): Promise<BomItemResDto[]> {
+    return this.bomsService.getBomItem(itemId);
   }
 
   @Post('items')

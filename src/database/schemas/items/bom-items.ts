@@ -16,6 +16,7 @@ import {
 import { boms } from './boms';
 import { files } from '../files';
 import { items } from './items';
+import { units } from '../units/units';
 import { users } from '../identity-access/users';
 
 /**
@@ -52,8 +53,9 @@ export const bomTypeEnum = pgEnum('bom_node_type', [
  * - Một node CONSUMABLE là lá bắt buộc — không được có con, không được gắn `bom_operations`
  *   (`BomsService`).
  * - Đúng 1 trong 3 hình dạng, ép bởi `chk_bom_items_node_shape`: `CONSUMABLE` → `itemId` có,
- *   `code`/`name` không; `COMPONENT` → ngược lại; `ROOT` → `itemId` có (như CONSUMABLE),
- *   `code`/`name` không, và `parentId` bắt buộc null.
+ *   `code`/`name`/`unitId`/`imageFileId` không; `COMPONENT` → ngược lại, `unitId` (ĐVT riêng,
+ *   không validate theo `unit_scopes`) và `imageFileId` (ảnh riêng) tuỳ chọn; `ROOT` → `itemId`
+ *   có (như CONSUMABLE), `code`/`name`/`unitId`/`imageFileId` không, và `parentId` bắt buộc null.
  */
 export const bomItems = pgTable(
   'bom_items',
@@ -79,6 +81,16 @@ export const bomItems = pgTable(
     // chung. NULL cho cả `CONSUMABLE` và `ROOT` (đọc từ `items` join thay vì lưu ở đây).
     code: varchar('code', { length: 50 }),
     name: varchar('name', { length: 255 }),
+    // Chỉ node `COMPONENT` dùng (không gắn `items` nên không có unit để join) — chọn tự do, không
+    // validate theo `unit_scopes`. NULL bắt buộc ở `CONSUMABLE`/`ROOT` (đọc `unit` qua join item).
+    unitId: uuid('unit_id').references(() => units.id, {
+      onDelete: 'restrict',
+    }),
+    // Ảnh riêng — chỉ node `COMPONENT` (không trỏ `items` nên không có ảnh để join). NULL bắt buộc
+    // ở `CONSUMABLE`/`ROOT` (đọc `image` qua join item).
+    imageFileId: uuid('image_file_id').references(() => files.id, {
+      onDelete: 'set null',
+    }),
     quantity: numeric('quantity', {
       precision: 12,
       scale: 3,
@@ -89,11 +101,6 @@ export const bomItems = pgTable(
     // from tree position + this.
     sortOrder: integer('sort_order').notNull().default(0),
     note: varchar('note', { length: 1000 }),
-    // A technical drawing specific to this node — independent of `image`, which is read (not
-    // stored) from the linked item's own `imageFileId` (node CONSUMABLE only).
-    drawingFileId: uuid('drawing_file_id').references(() => files.id, {
-      onDelete: 'set null',
-    }),
     createdBy: uuid('created_by').references(() => users.id, {
       onDelete: 'set null',
     }),
@@ -108,14 +115,16 @@ export const bomItems = pgTable(
     index('idx_bom_items_parent_id').on(table.parentId),
     index('idx_bom_items_item_id').on(table.itemId),
     index('idx_bom_items_created_by').on(table.createdBy),
-    index('idx_bom_items_drawing_file_id').on(table.drawingFileId),
+    index('idx_bom_items_unit_id').on(table.unitId),
+    index('idx_bom_items_image_file_id').on(table.imageFileId),
     check('chk_bom_items_quantity_positive', sql`quantity > 0`),
     check(
       'chk_bom_items_node_shape',
-      sql`(type = 'CONSUMABLE' AND item_id IS NOT NULL AND code IS NULL AND name IS NULL)
+      sql`(type = 'CONSUMABLE' AND item_id IS NOT NULL AND code IS NULL AND name IS NULL
+          AND unit_id IS NULL AND image_file_id IS NULL)
         OR (type = 'COMPONENT' AND item_id IS NULL AND code IS NOT NULL AND name IS NOT NULL)
         OR (type = 'ROOT' AND item_id IS NOT NULL AND code IS NULL AND name IS NULL
-          AND parent_id IS NULL)`,
+          AND parent_id IS NULL AND unit_id IS NULL AND image_file_id IS NULL)`,
     ),
     // Lưới an toàn tầng DB cho `BomsService.ensureBomItemNotDuplicate` — cùng `itemId` không được
     // xuất hiện hai lần dưới cùng node cha. Mọi node khác ROOT nay luôn có `parent_id` (ROOT là
@@ -146,8 +155,12 @@ export const bomItemsRelations = relations(bomItems, ({ one }) => ({
     fields: [bomItems.itemId],
     references: [items.id],
   }),
-  drawingFile: one(files, {
-    fields: [bomItems.drawingFileId],
+  unit: one(units, {
+    fields: [bomItems.unitId],
+    references: [units.id],
+  }),
+  imageFile: one(files, {
+    fields: [bomItems.imageFileId],
     references: [files.id],
   }),
   creatorBy: one(users, {

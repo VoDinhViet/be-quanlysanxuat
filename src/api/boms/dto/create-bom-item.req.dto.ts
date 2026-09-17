@@ -10,8 +10,9 @@ import {
 export class CreateBomItemReqDto {
   @EnumField(() => BomType, {
     description:
-      'COMPONENT: node cấu trúc con — gửi code + name, không gửi itemId; CONSUMABLE: lá vật tư — gửi itemId, ' +
-      'không gửi code/name. Sai hình dạng → E271',
+      'COMPONENT: node cấu trúc con — gửi code + name, không gửi itemId; thêm vào node đang có vật tư thì ' +
+      'toàn bộ CONSUMABLE cùng cha bị xoá ngầm. CONSUMABLE: lá vật tư — gửi itemId, không gửi code/name; ' +
+      'chỉ gắn được vào node chưa có con COMPONENT (E273). Sai hình dạng → E271',
   })
   readonly type!: BomType;
 
@@ -35,9 +36,23 @@ export class CreateBomItemReqDto {
   readonly name?: string;
 
   @UUIDFieldOptional({
+    description:
+      'ĐVT riêng của node (type = COMPONENT) — chọn tự do, không giới hạn theo unit scope. Gửi cho CONSUMABLE/ROOT → E271',
+  })
+  readonly unitId?: string;
+
+  @UUIDFieldOptional({
     nullable: true,
     description:
-      'Parent bom_items id; omit/null for a top-level item (child of the FG root)',
+      'Ảnh riêng của node (type = COMPONENT, từ POST /files?type=BOM_ITEM_IMAGE). Gửi cho CONSUMABLE/ROOT → E271',
+  })
+  readonly imageFileId?: string | null;
+
+  @UUIDFieldOptional({
+    nullable: true,
+    description:
+      'Parent bom_items id; omit/null for a top-level item (child of the FG root). Cha là CONSUMABLE → E052; ' +
+      'cha đã có con COMPONENT mà thêm CONSUMABLE → E273',
   })
   readonly parentId?: string | null;
 
@@ -57,11 +72,4 @@ export class CreateBomItemReqDto {
 
   @StringFieldOptional({ nullable: true, maxLength: 1000 })
   readonly note?: string | null;
-
-  @UUIDFieldOptional({
-    nullable: true,
-    description:
-      'Drawing (bản vẽ) file id, specific to this node (from POST /files?type=BOM_ITEM_DRAWING)',
-  })
-  readonly drawingFileId?: string | null;
 }

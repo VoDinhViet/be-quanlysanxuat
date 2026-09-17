@@ -9,7 +9,6 @@ import {
   isNull,
   sql,
 } from 'drizzle-orm';
-import { alias } from 'drizzle-orm/pg-core';
 
 import { hasFields } from '../../common/utils/object.util';
 import { ErrorCode } from '../../constants/error-code.constant';
@@ -23,20 +22,15 @@ import {
   files,
   items,
   ItemType,
-  operations,
   units,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { FilesService } from '../files/files.service';
+import { UnitsService } from '../units/units.service';
+import { BomOperationResDto } from '../bom-operations/dto/bom-operation.res.dto';
 import { BomItemResDto } from './dto/bom-item.res.dto';
 import { CreateBomItemReqDto } from './dto/create-bom-item.req.dto';
 import { UpdateBomItemReqDto } from './dto/update-bom-item.req.dto';
-import type { BomItem, BomOperation } from './types/bom-tree.type';
-
-// Hai join riêng biệt vào cùng bảng `files` (ảnh item + bản vẽ riêng của node) cần alias để
-// không đụng nhau trong cùng một query.
-const imageFiles = alias(files, 'image_files');
-const bomItemDrawingFiles = alias(files, 'bom_item_drawing_files');
 
 // Hai hình dạng node hợp lệ (`chk_bom_items_node_shape`): CONSUMABLE chỉ có `itemId`, COMPONENT
 // chỉ có `code`+`name` — `ensureNodePayloadValid` thu hẹp DTO về đúng một trong hai.
@@ -53,7 +47,6 @@ type BomNodePayload =
 // `ensureBomItemExists` trả về đúng shape này.
 type BomItemShapeCheck = {
   id: string;
-  drawingFileId: string | null;
   type: BomType;
 };
 
@@ -61,23 +54,24 @@ type BomItemShapeCheck = {
  * Cây BOM một item FG — `bom_items` chứa node COMPONENT (cấu trúc con, `code`/`name` riêng,
  * không trỏ item) lẫn lá CONSUMABLE (trỏ `items`), xem `docs/decisions/wip-removal.md`.
  * CONSUMABLE luôn là lá: không được nhận con (`E052`) và không được gắn `bom_operations`
- * (`E063`). Xem `docs/domains/product-structure.md`.
+ * (`E063`); ngược lại, CONSUMABLE chỉ được gắn vào node chưa có con COMPONENT (`E273`).
+ * Xem `docs/domains/product-structure.md`.
  */
 @Injectable()
 export class BomsService {
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly filesService: FilesService,
+    private readonly unitsService: UnitsService,
   ) {}
 
-  async getBom(itemId: string): Promise<BomItemResDto[]> {
+  async getBomItem(itemId: string): Promise<BomItemResDto[]> {
     await this.ensureItemExists(itemId);
 
     // Join thẳng qua `boms` — item chưa có BOM (hoặc BOM chưa có node) đều tự nhiên ra mảng
-    // rỗng, không cần early-return riêng. Khai kiểu ngay trên biến — Drizzle suy sai kiểu
-    // `unit`/`drawing`/`image` sau khi schema có thêm nhiều quan hệ trỏ `users`; contextual type ở
-    // đây đủ để TS ép đúng, không cần `as BomItem[]` rải rác bên dưới.
-    const rows: BomItem[] = await this.db
+    // rỗng, không cần early-return riêng. Sắp theo (level, sortOrder, createdAt) — không phải
+    // depth-first theo từng nhánh, FE tự dựng lại thứ tự hiển thị (`buildBomRows`).
+    const rows = await this.db
       .select({
         ...getTableColumns(bomItems),
         // Node COMPONENT mang `code`/`name` trên chính dòng; node CONSUMABLE đọc từ item được
@@ -85,18 +79,26 @@ export class BomsService {
         code: sql<string>`coalesce(${bomItems.code}, ${items.code})`,
         name: sql<string>`coalesce(${bomItems.name}, ${items.name})`,
         revision: items.revision,
-        image: getTableColumns(imageFiles),
+        image: getTableColumns(files),
         unit: getTableColumns(units),
-        drawing: getTableColumns(bomItemDrawingFiles),
       })
       .from(bomItems)
       .innerJoin(boms, eq(bomItems.bomId, boms.id))
       .leftJoin(items, eq(bomItems.itemId, items.id))
-      .leftJoin(units, eq(units.id, items.unitId))
-      .leftJoin(imageFiles, eq(imageFiles.id, items.imageFileId))
+      // COMPONENT không join `items` nên tự lấy `unit` qua `bomItems.unitId` riêng — coalesce đủ
+      // vì CONSUMABLE/ROOT luôn có `unitId` (cột) là NULL (`chk_bom_items_node_shape`).
       .leftJoin(
-        bomItemDrawingFiles,
-        eq(bomItems.drawingFileId, bomItemDrawingFiles.id),
+        units,
+        eq(units.id, sql`coalesce(${items.unitId}, ${bomItems.unitId})`),
+      )
+      // Cùng lý do với `unit`: ảnh của CONSUMABLE/ROOT đọc từ item liên kết, COMPONENT đọc
+      // `bomItems.imageFileId` riêng.
+      .leftJoin(
+        files,
+        eq(
+          files.id,
+          sql`coalesce(${items.imageFileId}, ${bomItems.imageFileId})`,
+        ),
       )
       .where(eq(boms.itemId, itemId))
       .orderBy(
@@ -105,13 +107,37 @@ export class BomsService {
         asc(bomItems.createdAt),
       );
 
-    const operationsByBomItem = await this.loadOperationsByBomItem(rows);
+    // Một query `IN (...)` cho cả cây thay vì N+1 theo từng node — FE hiện chuỗi công đoạn ngay
+    // trên bảng cây (cột "CÔNG ĐOẠN"), CONSUMABLE tự nhiên không khớp id nào nên ra mảng rỗng.
+    const bomItemIds = rows.map((row) => row.id);
+    const operationRows =
+      bomItemIds.length === 0
+        ? []
+        : await this.db.query.bomOperations.findMany({
+            where: inArray(bomOperations.bomItemId, bomItemIds),
+            with: { operation: true },
+            orderBy: [
+              asc(bomOperations.sortOrder),
+              asc(bomOperations.createdAt),
+            ],
+          });
+
+    const operationsByBomItemId = new Map<string, typeof operationRows>();
+    for (const operationRow of operationRows) {
+      const group = operationsByBomItemId.get(operationRow.bomItemId) ?? [];
+      group.push(operationRow);
+      operationsByBomItemId.set(operationRow.bomItemId, group);
+    }
 
     return plainToInstance(
       BomItemResDto,
       rows.map((row) => ({
         ...row,
-        operations: operationsByBomItem.get(row.id) ?? [],
+        operations: plainToInstance(
+          BomOperationResDto,
+          operationsByBomItemId.get(row.id) ?? [],
+          { excludeExtraneousValues: true },
+        ),
       })),
       { excludeExtraneousValues: true },
     );
@@ -131,6 +157,10 @@ export class BomsService {
     if (reqDto.type === BomType.CONSUMABLE) {
       await this.ensureConsumableItemValid(reqDto.itemId);
     }
+    this.ensureComponentOnlyFields(reqDto.type, reqDto);
+    if (reqDto.unitId) {
+      await this.unitsService.ensureUnitExists(reqDto.unitId);
+    }
     this.ensureQuantityValid(reqDto.type, reqDto.quantity);
 
     const existingBom = await this.db.query.boms.findFirst({
@@ -147,8 +177,8 @@ export class BomsService {
       await this.ensureBomItemCanHaveChildren(reqDto.parentId);
     }
 
-    if (reqDto.drawingFileId) {
-      await this.filesService.linkFiles([reqDto.drawingFileId]);
+    if (reqDto.imageFileId) {
+      await this.filesService.linkFiles([reqDto.imageFileId]);
     }
 
     await this.db.transaction(async (tx) => {
@@ -164,12 +194,15 @@ export class BomsService {
       const parentId = reqDto.parentId ?? rootBomItemId;
 
       if (reqDto.type === BomType.CONSUMABLE) {
+        await this.ensureBomItemIsLeaf(tx, parentId);
         await this.ensureBomItemNotDuplicate(
           tx,
           bomId,
           parentId,
           reqDto.itemId,
         );
+      } else {
+        await this.deleteConsumableChildren(tx, parentId);
       }
 
       const [parentItem] = await tx
@@ -187,14 +220,13 @@ export class BomsService {
         name: reqDto.name ?? null,
         level: (parentItem?.level ?? 0) + 1,
         sortOrder: reqDto.sortOrder ?? 0,
-        drawingFileId: reqDto.drawingFileId ?? null,
         createdBy: userId,
       });
     });
   }
 
-  /** Chỉ sửa SL/note/drawing (+ `code`/`name` của node COMPONENT) — `type`/`itemId`/`parentId` bất
-   * biến, đổi thì xoá + thêm lại. */
+  /** Chỉ sửa SL/note (+ `code`/`name`/`unitId`/`imageFileId` của node COMPONENT) —
+   * `type`/`itemId`/`parentId` bất biến, đổi thì xoá + thêm lại. */
   async updateBomItem(
     itemId: string,
     bomItemId: string,
@@ -212,7 +244,7 @@ export class BomsService {
       throw new AppException(ErrorCode.E271, HttpStatus.BAD_REQUEST);
     }
     // ROOT ("Cấp 0") sinh tự động, `quantity`/`sortOrder` cố định (1/0 —
-    // `docs/decisions/root-bom-item.md`); `note`/`drawingFileId` vẫn sửa được như COMPONENT.
+    // `docs/decisions/root-bom-item.md`); `note` vẫn sửa được như COMPONENT.
     if (
       bomItem.type === BomType.ROOT &&
       (reqDto.quantity !== undefined || reqDto.sortOrder !== undefined)
@@ -222,9 +254,12 @@ export class BomsService {
     if (reqDto.quantity !== undefined) {
       this.ensureQuantityValid(bomItem.type, reqDto.quantity);
     }
-
-    if (reqDto.drawingFileId) {
-      await this.filesService.linkFiles([reqDto.drawingFileId]);
+    this.ensureComponentOnlyFields(bomItem.type, reqDto);
+    if (reqDto.unitId) {
+      await this.unitsService.ensureUnitExists(reqDto.unitId);
+    }
+    if (reqDto.imageFileId) {
+      await this.filesService.linkFiles([reqDto.imageFileId]);
     }
 
     if (hasFields(reqDto)) {
@@ -232,17 +267,6 @@ export class BomsService {
         .update(bomItems)
         .set(reqDto)
         .where(and(eq(bomItems.id, bomItemId), eq(bomItems.bomId, bom.id)));
-    }
-
-    // Chỉ xoá file cũ sau khi con trỏ mới đã commit — xoá trước có thể mất cả hai nếu write sau
-    // đó lỗi. Xoá lỗi ở đây chỉ để lại rác (đánh đổi giống `FilesService.linkFiles`), nên không
-    // gộp transaction với update ở trên.
-    if (
-      reqDto.drawingFileId !== undefined &&
-      bomItem.drawingFileId &&
-      bomItem.drawingFileId !== reqDto.drawingFileId
-    ) {
-      await this.filesService.deleteFileById(bomItem.drawingFileId);
     }
   }
 
@@ -261,40 +285,6 @@ export class BomsService {
     await this.db
       .delete(bomItems)
       .where(and(eq(bomItems.id, bomItemId), eq(bomItems.bomId, bom.id)));
-  }
-
-  /** Fetch gộp công đoạn as-used cho một lượt đọc BOM: một query cho mọi node, gom vào `Map` để
-   * gắn theo node. Node CONSUMABLE tự nhiên không có dòng nào ở đây (chặn từ lúc ghi, `E063`). */
-  private async loadOperationsByBomItem(
-    rows: BomItem[],
-  ): Promise<Map<string, BomOperation[]>> {
-    const grouped = new Map<string, BomOperation[]>();
-    if (!rows.length) {
-      return grouped;
-    }
-
-    const bomOperationRows = await this.db
-      .select({
-        ...getTableColumns(bomOperations),
-        operation: getTableColumns(operations),
-      })
-      .from(bomOperations)
-      .innerJoin(operations, eq(bomOperations.operationId, operations.id))
-      .where(
-        inArray(
-          bomOperations.bomItemId,
-          rows.map((row) => row.id),
-        ),
-      )
-      .orderBy(asc(bomOperations.sortOrder), asc(bomOperations.createdAt));
-
-    for (const row of bomOperationRows) {
-      const nodeOperations = grouped.get(row.bomItemId) ?? [];
-      nodeOperations.push(row);
-      grouped.set(row.bomItemId, nodeOperations);
-    }
-
-    return grouped;
   }
 
   /** Dùng chung với `BomOperationsService` (`BomOperationsModule` import `BomsModule`). */
@@ -344,6 +334,20 @@ export class BomsService {
     }
   }
 
+  /** ĐVT/ảnh riêng chỉ COMPONENT được gán — CONSUMABLE/ROOT đã có cả hai qua join item
+   * (`chk_bom_items_node_shape` chặn ở tầng DB, đây là kiểm sớm để trả 400 thay vì 500). */
+  private ensureComponentOnlyFields(
+    type: BomType,
+    reqDto: Pick<UpdateBomItemReqDto, 'unitId' | 'imageFileId'>,
+  ): void {
+    if (
+      type !== BomType.COMPONENT &&
+      (reqDto.unitId !== undefined || reqDto.imageFileId !== undefined)
+    ) {
+      throw new AppException(ErrorCode.E271, HttpStatus.BAD_REQUEST);
+    }
+  }
+
   /** COMPONENT bắt buộc SL nguyên (cấu trúc lắp ráp); CONSUMABLE được phép SL lẻ (định mức
    * vật tư). */
   private ensureQuantityValid(type: BomType, quantity: number): void {
@@ -363,6 +367,44 @@ export class BomsService {
     if (bomItem?.type === BomType.CONSUMABLE) {
       throw new AppException(ErrorCode.E052, HttpStatus.BAD_REQUEST);
     }
+  }
+
+  /** Vật tư chỉ gắn vào node chưa có con COMPONENT. Chạy trong `tx` của `createBomItem` — cùng lý do
+   * với `ensureBomItemNotDuplicate`: `parentId` chỉ chắc chắn có sau `getOrCreateBom`. */
+  private async ensureBomItemIsLeaf(
+    tx: DbTransaction,
+    bomItemId: string,
+  ): Promise<void> {
+    const [componentChild] = await tx
+      .select({ id: bomItems.id })
+      .from(bomItems)
+      .where(
+        and(
+          eq(bomItems.parentId, bomItemId),
+          eq(bomItems.type, BomType.COMPONENT),
+        ),
+      )
+      .limit(1);
+
+    if (componentChild) {
+      throw new AppException(ErrorCode.E273, HttpStatus.BAD_REQUEST);
+    }
+  }
+
+  /** Side-effect của `createBomItem` khi thêm COMPONENT: node cha vừa thành node cấu trúc nên vật tư
+   * đang khai trực tiếp trên nó bị xoá ngầm (`docs/domains/product-structure.md`). */
+  private async deleteConsumableChildren(
+    tx: DbTransaction,
+    bomItemId: string,
+  ): Promise<void> {
+    await tx
+      .delete(bomItems)
+      .where(
+        and(
+          eq(bomItems.parentId, bomItemId),
+          eq(bomItems.type, BomType.CONSUMABLE),
+        ),
+      );
   }
 
   /** Chặn thêm cùng `itemId` hai lần dưới cùng node cha — nổ BOM sẽ cộng trùng nhu cầu nếu lọt.
@@ -454,7 +496,6 @@ export class BomsService {
     const [bomItem] = await this.db
       .select({
         id: bomItems.id,
-        drawingFileId: bomItems.drawingFileId,
         type: bomItems.type,
       })
       .from(bomItems)

@@ -425,8 +425,8 @@ export class ItemsService {
 
     // multiplier[node] = multiplier[cha] × quantity node, gốc (parentId null) = 1 × quantity —
     // đi từ gốc xuống đúng N tầng COMPONENT rồi dừng ở CONSUMABLE, không cần xử lý CONSUMABLE có con (bất biến `E052`).
-    // Làm tròn scale 3 ngay mỗi bước nhân (không chỉ lúc gộp cuối) — khác `copyBomTree`/
-    // `copyBomIssues` phía Job, số ở đây không đi qua cột `numeric(18,3)` nào để Postgres tự làm
+    // Làm tròn scale 3 ngay mỗi bước nhân (không chỉ lúc gộp cuối) — khác `createJobBomItems`/
+    // `createJobIssues` phía Job, số ở đây không đi qua cột `numeric(18,3)` nào để Postgres tự làm
     // tròn hộ giữa các cấp, nên tự làm tròn để tránh rác dấu phẩy động lọt ra JSON (cùng idiom
     // `IqcService.validateDecision`'s `scale`).
     const multiplierById = new Map<string, number>();

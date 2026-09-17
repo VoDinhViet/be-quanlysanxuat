@@ -14,7 +14,7 @@ Giai đoạn kế tiếp từng dùng URL ký HMAC-SHA256 + hết hạn (1h) ph�
 ## Quyết định
 
 1. **Một bảng `files` duy nhất.** Mọi đính kèm trỏ vào nó bằng `fileId` (hoặc `imageFileId`,
-   `logoFileId`, `drawingFileId`, `avatarFileId`), **không bao giờ là URL trần**.
+   `logoFileId`, `avatarFileId`), **không bao giờ là URL trần**.
 2. **Bytes phục vụ tĩnh, công khai, vĩnh viễn.** `ServeStaticModule` (`app.module.ts`) serve thẳng
    `upload.dir` ở domain root — `FileResDto.url` = `/<storageKey>` (vd
    `/2026/07/20/<uuid>.png`), không qua controller, không auth, không ký, không hết hạn. Ranh giới

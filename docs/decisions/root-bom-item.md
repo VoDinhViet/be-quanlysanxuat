@@ -28,8 +28,7 @@ thứ 3 `ROOT`, mirror cách CONSUMABLE trỏ `itemId` (đọc `code`/`name`/`un
 không lưu trực tiếp trên dòng) nhưng không phải lá — nhận COMPONENT/CONSUMABLE làm con trực tiếp và gắn được
 `bom_operations` như COMPONENT. Sinh tự động cùng lúc với `boms` header (`BomsService.getOrCreateBom`)
 — một `boms` row không bao giờ tồn tại mà thiếu ROOT. Không tạo/sửa-tự-do/xoá được qua API
-`bom-items` thường (`type`/`quantity`/`sortOrder` cố định `ROOT`/`1`/`0`; chỉ `note`/
-`drawingFileId` sửa được).
+`bom-items` thường (`type`/`quantity`/`sortOrder` cố định `ROOT`/`1`/`0`; chỉ `note` sửa được).
 
 - Mọi node khác ROOT giờ **luôn có `parentId` thật** — không còn dòng nào (ngoài chính ROOT)
   mang `parentId = null`. Top-level COMPONENT/CONSUMABLE cũ được repoint vào `parentId = <id ROOT>` (migration
@@ -39,11 +38,11 @@ không lưu trực tiếp trên dòng) nhưng không phải lá — nhận COMPO
   đã dùng, với `bomItemId` = id dòng ROOT — **module `bom-operations` không cần sửa gì**.
 - `ensureBomItemNotDuplicate` không còn cần nhánh `parentId = null` riêng (Postgres NULL ≠ NULL) —
   một index `(bom_id, parent_id, item_id)` phẳng là đủ.
-- `production-jobs` (`copyBomTree`/`copyFinalAssemblyRouting`): `copyBomTree`'s snapshot
+- `production-jobs` (`createJobBomItems`): snapshot
   (`production_job_bom_items`) **cố tình lọc bỏ ROOT** — Job vẫn giữ quy ước cũ, một node
-  `itemType = FG` riêng do `copyFinalAssemblyRouting` tạo (xem
+  `itemType = FG` riêng do cùng hàm đó tạo (xem
   `docs/decisions/oqc-per-operation.md` mục "Đừng hoàn lại"), không lẫn với COMPONENT/CONSUMABLE.
-  `copyFinalAssemblyRouting` đổi nguồn đọc từ `routings`/`routing_operations` sang node ROOT của
+  Node FG đổi nguồn đọc từ `routings`/`routing_operations` sang node ROOT của
   `bom_items` + `bom_operations`, giữ nguyên cấu trúc/output hàm.
 - Item clone (`ItemsService.copyBomTree`) hưởng lợi phụ: đã clone mọi dòng `sourceBomItems` kèm
   `bom_operations` qua map `newIdByOldId` một cách tổng quát — ROOT giờ nằm trong đó nên copy sản

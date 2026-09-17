@@ -42,4 +42,5 @@ export const uploadPolicies: Record<UploadType, UploadPolicy> = {
   // OQC_EVIDENCE/IQC_DISPOSITION_EVIDENCE nhận cả hai.
   [UploadType.SUPPLIER_RETURN_EVIDENCE]: { kind: FileKind.EVIDENCE },
   [UploadType.ITEM_DOCUMENT]: { kind: FileKind.DOCUMENT },
+  [UploadType.BOM_ITEM_IMAGE]: { kind: FileKind.IMAGE },
 };

@@ -6,6 +6,7 @@ import { ServeStaticModule } from '@nestjs/serve-static';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AllConfigType } from './config/config.type';
+import { BomConsumablesModule } from './api/bom-consumables/bom-consumables.module';
 import { BomOperationsModule } from './api/bom-operations/bom-operations.module';
 import { BomsModule } from './api/boms/boms.module';
 import { JwtAuthGuard } from './api/auth/guards/jwt-auth.guard';
@@ -53,7 +54,6 @@ import { PurchaseLedgerModule } from './api/purchase-ledger/purchase-ledger.modu
 import { PurchaseOrdersModule } from './api/purchase-orders/purchase-orders.module';
 import { PurchaseQuotationsModule } from './api/purchase-quotations/purchase-quotations.module';
 import { PurchaseRequestsModule } from './api/purchase-requests/purchase-requests.module';
-import { QcAqlModule } from './api/qc-aql/qc-aql.module';
 import { ReportsModule } from './api/reports/reports.module';
 import { SupplierReturnsModule } from './api/supplier-returns/supplier-returns.module';
 import { UnitsModule } from './api/units/units.module';
@@ -99,6 +99,7 @@ import { UsersModule } from './api/users/users.module';
     ItemUnitsModule,
     BomsModule,
     BomOperationsModule,
+    BomConsumablesModule,
     OperationsModule,
     DepartmentsModule,
     FilesModule,
@@ -118,7 +119,6 @@ import { UsersModule } from './api/users/users.module';
     OutsourcingOrdersModule,
     OutsourcingReceiptsModule,
     OutboundOrdersModule,
-    QcAqlModule,
     IqcModule,
     OqcModule,
     ProductionExecutionModule,

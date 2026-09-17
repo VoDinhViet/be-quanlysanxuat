@@ -5,6 +5,7 @@ import { UnitRefResDto } from '../../units/dto/unit-ref.res.dto';
 import { BomOperationResDto } from '../../bom-operations/dto/bom-operation.res.dto';
 import { BomType } from '../../../database/schemas';
 import {
+  ClassField,
   ClassFieldOptional,
   EnumField,
   NumberField,
@@ -68,7 +69,8 @@ export class BomItemResDto {
   @Expose()
   @ClassFieldOptional(() => FileResDto, {
     nullable: true,
-    description: 'Cột Hình',
+    description:
+      'CONSUMABLE/ROOT: ảnh item liên kết; COMPONENT: ảnh riêng gán trên node (null nếu chưa gán)',
   })
   image!: FileResDto | null;
 
@@ -76,7 +78,7 @@ export class BomItemResDto {
   @ClassFieldOptional(() => UnitRefResDto, {
     nullable: true,
     description:
-      'ĐVT của item liên kết (CONSUMABLE/ROOT); null với node COMPONENT',
+      'CONSUMABLE/ROOT: ĐVT của item liên kết; COMPONENT: ĐVT riêng gán trên node (null nếu chưa gán)',
   })
   unit!: UnitRefResDto | null;
 
@@ -103,13 +105,10 @@ export class BomItemResDto {
   note!: string | null;
 
   @Expose()
-  @ClassFieldOptional(() => FileResDto, {
-    nullable: true,
-    description: 'Bản vẽ kỹ thuật riêng của node này',
+  @ClassField(() => BomOperationResDto, {
+    each: true,
+    description:
+      'Chuỗi công đoạn gắn trên node này, đã sắp theo sortOrder — CONSUMABLE luôn rỗng (không gắn được công đoạn)',
   })
-  drawing!: FileResDto | null;
-
-  @Expose()
-  @ClassFieldOptional(() => BomOperationResDto, { each: true })
   operations!: BomOperationResDto[];
 }

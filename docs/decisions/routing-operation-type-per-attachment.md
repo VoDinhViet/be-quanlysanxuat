@@ -18,8 +18,8 @@ sẵn Select chọn Inhouse/Outsource lúc gắn công đoạn vào routing/BOM,
 `whitelist: true` âm thầm loại bỏ nó. Dòng vừa thêm hiện `operation.type` (danh mục), luôn mặc định
 `INHOUSE` vì không có UI nào tạo được công đoạn danh mục kiểu `OUTSOURCE`.
 
-Bug này còn cháy lan xuống sản xuất thật: `ProductionJobsService.copyBomTree`/
-`copyFinalAssemblyRouting` (lúc duyệt LSX) copy `type` cho `production_job_operations` từ
+Bug này còn cháy lan xuống sản xuất thật: `createJobOperations` (nay ở
+`production-job-snapshot.query.ts`, lúc `start`) copy `type` cho `production_job_operations` từ
 `step.operation.type` (danh mục, luôn INHOUSE) thay vì từ chính dòng `bom_operations`/
 `routing_operations` — nghĩa là **mọi Job sinh ra trước bản vá này đều có công đoạn `INHOUSE`, kể
 cả khi routing/BOM đã ghi rõ `OUTSOURCE`** — ảnh hưởng trực tiếp `OutsourcingOrdersService
@@ -44,7 +44,7 @@ routing này, Outsource ở BOM node khác. `operations.type` (danh mục) **v�
 | `CreateRoutingOperationReqDto`/`CreateBomOperationReqDto`      | Không nhận `type`                      | Nhận `type?` optional, default DB nếu bỏ trống                                                                                    |
 | `UpdateRoutingOperationReqDto`/`UpdateBomOperationReqDto`      | Không nhận `type`                      | Nhận `type?`                                                                                                                      |
 | `RoutingOperationResDto`/`BomOperationResDto`                  | Không trả `type` riêng                 | Trả `type` ở top-level (của chính bước), tách khỏi `operation.type` (danh mục, vẫn còn trong `OperationRefResDto` lồng bên trong) |
-| `ProductionJobsService.copyBomTree`/`copyFinalAssemblyRouting` | `type: step.operation.type` (danh mục) | `type: step.type` (chính dòng `bom_operations`/`routing_operations`)                                                              |
+| `createJobOperations` (`toJobOperation`)                       | `type: step.operation.type` (danh mục) | `type: step.type` (chính dòng `bom_operations`/`routing_operations`)                                                              |
 
 **Không đụng**: `operations.type`/`operations.service.ts` (danh mục CRUD + filter, vẫn đúng vai
 trò); `production_job_operations.type` (đã đúng thiết kế từ trước — chỉ nguồn copy sai, đã sửa);
@@ -68,7 +68,7 @@ hồi tố, cần rà tay Job nào lẽ ra phải Outsource.
 
 - Đừng gỡ `type` khỏi `bom_operations` (trước đó cũng áp dụng cho `routing_operations`, nay đã xoá
   bảng — xem Trạng thái) — đó chính là chỗ dữ liệu cần sống, không phải `operations`.
-- Đừng đổi `copyBomTree`/`copyFinalAssemblyRouting` về đọc `step.operation.type` — quay lại đúng
+- Đừng đổi `toJobOperation` về đọc `step.operation.type` — quay lại đúng
   bug này.
 - Đừng xoá `operations.type` — màn danh mục "Gia công ngoài" vẫn lọc theo nó, và nó vẫn là giá trị
   mặc định hợp lý lúc gắn mới.
