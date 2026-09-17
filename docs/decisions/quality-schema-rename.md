@@ -125,8 +125,9 @@ ngược về `IqcStatus`/`OqcStatus` cũ. Xem "Cập nhật 2026-08-29" ở D5.
   `inspectionDate`, `confirmedAt`, `resolverBy`...), mọi route, mọi `ErrorCode`, mọi permission vẫn
   giữ nguyên — phần còn lại của D5 vẫn đúng. FE tương ứng (`web-qlsx-start`) đổi cùng đợt — xem
   `src/lib/types/iqc.type.ts`/`oqc.type.ts`/`report.type.ts` bên đó.
-- **D6**: `qc_aql_plans`/`qc_aql_rules` không đổi — AQL đã tối giản từ trước
-  (`docs/decisions/qc-aql-master-data.md`), không có lý do đổi thêm.
+- **D6**: `qc_aql_plans`/`qc_aql_rules` không đổi lúc đó — AQL đã tối giản từ trước
+  (`docs/decisions/qc-aql-master-data.md`). Đảo ngược sau: 2 bảng này bị xoá hẳn cùng toàn bộ tính
+  năng AQL, xem `docs/decisions/aql-removed.md`.
 - **D7**: Không thêm khái niệm lot/`unit_id` — ngoài phạm vi đợt này.
 
 ## Phát hiện quan trọng — `origin_type`/`origin_id` chỉ thay được 3/8 cột FK nullable cũ

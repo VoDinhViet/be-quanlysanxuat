@@ -81,13 +81,16 @@ thái + trần kế hoạch**:
 `E180` giữ số, đánh dấu dự phòng trong `error-code.constant.ts` — không tái sử dụng cho một kiểm tra
 khác.
 
-## `result` tự suy từ Ac/Re — chỉ áp cho OQC
+## `result` tự suy từ Ac/Re — chỉ áp cho OQC (đã bỏ, xem `docs/decisions/aql-removed.md`)
 
-Cùng đợt đổi model, thêm `resultAuto` (server tự suy từ `defectQty` so `ac` của plan AQL) và cho QC
-toàn quyền ghi đè, không cần lý do (`E201` từng bắt buộc kèm lý do khi lệch, đã nghỉ hưu — AQL chỉ
-còn là gợi ý hiển thị, `docs/domains/quality-oqc.md`). **Chỉ áp cho OQC** — IQC giữ nguyên hành vi cũ
-(QC tự chọn `result` hoàn toàn, bảng AQL chỉ tính `ac`/`re` tham khảo, không ảnh hưởng khả năng lưu
-kết quả). Hai module cố tình lệch nhau ở điểm này.
+Cùng đợt đổi model, từng thêm `resultAuto` (server tự suy từ `defectQty` so `ac` của plan AQL) và cho
+QC toàn quyền ghi đè, không cần lý do (`E201` từng bắt buộc kèm lý do khi lệch, đã nghỉ hưu — AQL chỉ
+còn là gợi ý hiển thị). **Chỉ áp cho OQC** — IQC giữ nguyên hành vi cũ (QC tự chọn `result` hoàn
+toàn). Hai module cố tình lệch nhau ở điểm này.
+
+Toàn bộ khối AQL (bảng `qc_aql_plans`/`qc_aql_rules`, `resolveAqlPlan()`, `resultAuto`) đã bị xoá —
+`result` trên OQC nay **bắt buộc** giống IQC, không còn fallback. Xem
+`docs/decisions/aql-removed.md`.
 
 ## Giữ nguyên, không đổi
 
@@ -110,8 +113,7 @@ từng QC thành phẩm thì không cho nhập kho), quyết định cuối **kh
   `ItemType` sẵn có, không phải enum riêng), `parentId = NULL`, `level = 0` (ngoài quy ước 1-based
   của cây BOM — cố ý, không phải một cấp con), `sortOrder` lớn nhất Job (đứng cuối), `quantity = 1`,
   `plannedQuantity = job.quantity`. Chỉ tạo khi item FG có khai routing Cấp 0
-  (`ProductionJobsService.copyFinalAssemblyRouting`, gọi ngay sau `copyBomTree` trong transaction
-  duyệt LSX) — bỏ qua, không tạo node rỗng, nếu item không khai routing Cấp 0.
+  (`createJobBomItems`, trong transaction `start`) — bỏ qua, không tạo node rỗng, nếu item không khai routing Cấp 0.
 - `production_job_operations` snapshot công đoạn của node đó y hệt cách snapshot node WIP thường —
   không nhánh code riêng.
 - **Một Job nhiều nhất một node Cấp 0** — `uniqueIndex('uq_production_job_bom_items_final_assembly')
@@ -149,5 +151,5 @@ bằng cột đó, không bằng bảng khác.
 `inspectionType`, 2026-08). `docs/domains/production.md`, `docs/domains/inventory.md`,
 `docs/workflows/outgoing-qc.md`.
 `docs/decisions/root-bom-item.md` — Cấp 0 thành node `ROOT` của `bom_items`, xoá
-`routings`/`routing_operations`; `copyFinalAssemblyRouting` đổi nguồn đọc nhưng giữ nguyên vai trò
+`routings`/`routing_operations`; node FG (`createJobBomItems`) đổi nguồn đọc nhưng giữ nguyên vai trò
 mô tả ở tài liệu này.

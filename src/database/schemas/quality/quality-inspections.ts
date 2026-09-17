@@ -11,7 +11,6 @@ import {
   varchar,
 } from 'drizzle-orm/pg-core';
 
-import { departments } from '../departments';
 import { items } from '../items/items';
 import { productionJobOperations } from '../production/production-job-operations';
 import { productionJobs } from '../production/production-jobs';
@@ -22,7 +21,6 @@ import { users } from '../identity-access/users';
 import {
   IqcDisposition,
   OqcDisposition,
-  qcInspectionLevelEnum,
   qualityDispositionEnum,
   qualityInspectionDecisionEnum,
   qualityInspectionOriginTypeEnum,
@@ -87,10 +85,6 @@ export const qualityInspections = pgTable(
       mode: 'number',
     }).notNull(),
     requestedAt: timestamp('requested_at').notNull(),
-    inspectionLevel: qcInspectionLevelEnum('inspection_level'),
-    aqlLevel: numeric('aql_level', { precision: 4, scale: 2, mode: 'number' }),
-    sampleSize: integer('sample_size'),
-    defectQty: integer('defect_qty'),
     decision: qualityInspectionDecisionEnum('decision'),
     disposition: qualityDispositionEnum('disposition').$type<
       IqcDisposition | OqcDisposition
@@ -102,9 +96,6 @@ export const qualityInspections = pgTable(
     note: varchar('note', { length: 1000 }),
     decisionNote: varchar('decision_note', { length: 500 }),
     dispositionNote: varchar('disposition_note', { length: 500 }),
-    inspectionStandard: varchar('inspection_standard', { length: 100 }),
-    inspectorName: varchar('inspector_name', { length: 100 }),
-    measuringTools: varchar('measuring_tools', { length: 255 }),
     inspectedBy: uuid('inspected_by').references(() => users.id, {
       onDelete: 'set null',
     }),
@@ -115,9 +106,6 @@ export const qualityInspections = pgTable(
     approvedAt: timestamp('approved_at'),
     // Để dành — chưa có đường ghi đợt này, giữ vì có trong thiết kế gốc.
     completedAt: timestamp('completed_at'),
-    qcDepartmentId: uuid('qc_department_id').references(() => departments.id, {
-      onDelete: 'set null',
-    }),
     sortOkQty: numeric('sort_ok_qty', {
       precision: 18,
       scale: 3,
@@ -161,7 +149,6 @@ export const qualityInspections = pgTable(
     index('idx_quality_inspections_disposition').on(table.disposition),
     index('idx_quality_inspections_requested_at').on(table.requestedAt),
     index('idx_quality_inspections_created_by').on(table.createdBy),
-    index('idx_quality_inspections_qc_department_id').on(table.qcDepartmentId),
     index('idx_quality_inspections_inspected_by').on(table.inspectedBy),
     index('idx_quality_inspections_approved_by').on(table.approvedBy),
     // (id, inspection_type) — composite FK từ supplier_returns.qualityInspectionId.
@@ -177,18 +164,6 @@ export const qualityInspections = pgTable(
       table.quantity,
     ),
     check('chk_quality_inspections_quantity_positive', sql`quantity > 0`),
-    check(
-      'chk_quality_inspections_sample_size_positive',
-      sql`sample_size IS NULL OR sample_size > 0`,
-    ),
-    check(
-      'chk_quality_inspections_defect_qty_non_negative',
-      sql`defect_qty IS NULL OR defect_qty >= 0`,
-    ),
-    check(
-      'chk_quality_inspections_aql_level_positive',
-      sql`aql_level IS NULL OR aql_level > 0`,
-    ),
     check(
       'chk_quality_inspections_disposition_requires_fail',
       sql`disposition IS NULL OR decision = 'FAIL'`,
@@ -226,9 +201,7 @@ export const qualityInspections = pgTable(
     check(
       'chk_quality_inspections_oqc_no_iqc_fields',
       sql`inspection_type <> 'OQC' OR (
-        reason IS NULL AND inspection_standard IS NULL AND inspector_name IS NULL
-        AND measuring_tools IS NULL AND qc_department_id IS NULL
-        AND sort_ok_qty IS NULL AND sort_ng_qty IS NULL
+        reason IS NULL AND sort_ok_qty IS NULL AND sort_ng_qty IS NULL
       )`,
     ),
     check(

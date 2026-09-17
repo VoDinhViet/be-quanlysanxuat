@@ -1,20 +1,5 @@
 import { pgEnum } from 'drizzle-orm/pg-core';
 
-// Chuyển từ `qc-requests.ts` sang đây — không đổi tên Postgres type (`qc_inspection_level`),
-// thuần tổ chức lại chỗ khai báo cho migration schema QC (`quality_inspections`/
-// `quality_inspection_results` dùng chung enum này với `qc_aql_plans`/`qc_aql_rules`).
-export enum IqcInspectionLevel {
-  I = 'I',
-  II = 'II',
-  III = 'III',
-}
-
-export const qcInspectionLevelEnum = pgEnum('qc_inspection_level', [
-  IqcInspectionLevel.I,
-  IqcInspectionLevel.II,
-  IqcInspectionLevel.III,
-]);
-
 export enum QualityInspectionType {
   IQC = 'IQC',
   OQC = 'OQC',

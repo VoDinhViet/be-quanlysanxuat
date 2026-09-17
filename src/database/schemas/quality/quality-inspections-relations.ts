@@ -1,6 +1,5 @@
 import { relations } from 'drizzle-orm';
 
-import { departments } from '../departments';
 import { items } from '../items/items';
 import { productionJobOperations } from '../production/production-job-operations';
 import { productionJobs } from '../production/production-jobs';
@@ -47,10 +46,6 @@ export const qualityInspectionsRelations = relations(
     item: one(items, {
       fields: [qualityInspections.itemId],
       references: [items.id],
-    }),
-    qcDepartment: one(departments, {
-      fields: [qualityInspections.qcDepartmentId],
-      references: [departments.id],
     }),
     creatorBy: one(users, {
       fields: [qualityInspections.createdBy],

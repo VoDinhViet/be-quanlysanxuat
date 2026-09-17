@@ -17,8 +17,6 @@ import { ApiAuth } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
-import { AqlPlanResDto } from '../iqc/dto/aql-plan.res.dto';
-import { GetAqlPlanReqDto } from '../iqc/dto/get-aql-plan.req.dto';
 import { ConfirmOqcReqDto } from './dto/confirm-oqc.req.dto';
 import { ExportOqcReqDto } from './dto/export-oqc.req.dto';
 import { GetOqcsReqDto } from './dto/get-oqcs.req.dto';
@@ -44,17 +42,7 @@ export class OqcController {
     return this.oqcService.getOqcs(reqDto);
   }
 
-  @Get('aql-plan')
-  @Permissions('oqc:read')
-  @ApiAuth({
-    type: AqlPlanResDto,
-    summary: 'Tra cỡ mẫu (n) + Ac/Re từ bảng AQL — auto-suggest lúc confirm',
-  })
-  getAqlPlan(@Query() reqDto: GetAqlPlanReqDto): Promise<AqlPlanResDto> {
-    return this.oqcService.getAqlPlan(reqDto);
-  }
-
-  // Khai trước ':oqcId' để 'export' không bị bắt nhầm thành id — cùng lý do 'aql-plan' ở trên.
+  // Khai trước ':oqcId' để 'export' không bị bắt nhầm thành id — cùng khuôn `iqc.controller.ts`.
   @Get('export')
   @Permissions('oqc:read')
   @ApiAuth({

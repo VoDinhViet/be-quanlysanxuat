@@ -17,8 +17,7 @@ từ dòng nhập kho; `originType`/`originId`/`purchaseOrderId` chỉ để tra
 **`quality_inspections` là mirror của attempt mới nhất trong `quality_inspection_results`.** Mỗi lần
 `POST /iqc/:iqcId/confirm` insert **một dòng attempt mới** (không `UPDATE` đè), rồi copy kết quả lên
 `quality_inspections` cùng transaction — giữ lại toàn bộ lịch sử các lần sửa/REWORK. `attemptCount`
-đếm số attempt; các cột chỉ tồn tại ở tầng attempt (`ac`/`re`/`codeLetter` — snapshot AQL lúc kiểm)
-đọc từ attempt mới nhất khi `GET`.
+đếm số attempt.
 
 **Ba đường tạo** (đều ra dòng `inspectionType = IQC`, `status = DRAFT`):
 1. `POST /iqc` tay.
@@ -69,13 +68,10 @@ status       DRAFT | PENDING | IN_PROGRESS | COMPLETED   — cùng giá trị tr
 ## Entities
 
 - `quality_inspections` — case row, dùng chung IQC/OQC, phân biệt bằng `inspectionType`.
-- `quality_inspection_results` — 1 attempt/lần `confirm`, append-only, snapshot Ac/Re/`codeLetter`.
+- `quality_inspection_results` — 1 attempt/lần `confirm`, append-only.
 - `quality_inspection_evidences` — bằng chứng, discriminator `kind` (`QC_EVIDENCE`/
   `DISPOSITION_EVIDENCE`, enum `QualityEvidenceKind` — khác `inspectionType` của
   `quality_inspections`), `qualityInspectionResultId` trỏ **attempt**, insert-only.
-- `qc_aql_plans`/`qc_aql_rules` — master data phương án lấy mẫu AQL (thay hardcode cũ), CRUD ở
-  module `qc-aql`; `resolveAqlPlan()` (`src/api/iqc/iqc-aql.query.ts`) là điểm tra dùng chung với
-  OQC. Seed một lần từ bảng giấy mẫu — sửa qua `PATCH /qc-aql/plans/:planId`, không cần deploy.
 
 ## Lifecycle
 
@@ -90,10 +86,9 @@ tiếp **duy nhất một lần** sang `COMPLETED` qua `completeIqcAfterSupplier
 bằng `SELECT … FOR UPDATE` trong tx (`E159` lần nữa) — khoá thật là lớp trong, tránh 2 request confirm
 song song cùng tính `attemptNo`.
 
-`PATCH /iqc/:iqcId` chỉ sửa 4 field ngữ cảnh (`inspectionStandard`/`inspectorName`/
-`measuringTools`/`inspectionDate`) — không đụng `result`/`disposition`/AQL, những field đó sửa lại
-qua `confirm`. Hợp lệ ở mọi status **trừ** `DRAFT` (`E144`) — chủ yếu dùng khi đã `IN_PROGRESS`
-(nơi `confirm` bị khoá nhưng vẫn cần sửa lỗi chính tả).
+`PATCH /iqc/:iqcId` chỉ sửa `inspectionDate` — không đụng `result`/`disposition`, những field đó
+sửa lại qua `confirm`. Hợp lệ ở mọi status **trừ** `DRAFT` (`E144`) — chủ yếu dùng khi đã
+`IN_PROGRESS` (nơi `confirm` bị khoá nhưng vẫn cần sửa lại ngày kiểm).
 
 `DELETE /iqc/:iqcId` chỉ khi `DRAFT` (`E206`).
 
@@ -102,8 +97,7 @@ qua `confirm`. Hợp lệ ở mọi status **trừ** `DRAFT` (`E144`) — chủ 
 - `code` (cột DB `inspectionNo`) bất biến, unique toàn bảng `quality_inspections` (không riêng theo
   `inspectionType`), luôn tự sinh `IQC-{năm}-{5 số}` qua `document_sequences` — không route nào
   nhận `code` từ client.
-- QC tự chọn `result`/`disposition` hoàn toàn; AQL (`inspectionLevel`/`aqlLevel` → `ac`/`re` snapshot
-  qua `resolveAqlPlan()`) chỉ là gợi ý hiển thị, tra hụt không chặn `confirm`. `E139` (disposition
+- QC tự chọn `result`/`disposition` hoàn toàn. `E139` (disposition
   yêu cầu FAIL) chỉ còn validate ở `POST /iqc` tạo tay; `confirm` không chặn nữa, tự ép
   `disposition`/`sortOkQty`/`sortNgQty`/`dispositionNote` về `NULL` khi PASS trước khi ghi.
 - `disposition = SORT` bắt buộc `sortOkQty`+`sortNgQty` (thiếu → `E162`) cộng đúng `quantity`
@@ -127,8 +121,7 @@ qua `confirm`. Hợp lệ ở mọi status **trừ** `DRAFT` (`E144`) — chủ 
   dòng ổn định) — chỉ trace mức chứng từ. `originId` khi `originType = OUTSOURCING_RECEIPT_ITEM`
   trace được tới mức dòng.
 - `itemId` không ràng buộc `type = CONSUMABLE` ở DB/service.
-- CHECK `sample_size > 0`/`defect_qty >= 0`/`aql_level > 0` khi có giá trị;
-  `chk_quality_inspections_disposition_requires_fail`; `chk_quality_inspections_sort_qty_pair`/
+- CHECK `chk_quality_inspections_disposition_requires_fail`; `chk_quality_inspections_sort_qty_pair`/
   `_sort_qty_requires_sort`/`_sort_qty_total`; `chk_quality_inspections_origin_id_pair`
   (`originType = MANUAL` ⟺ `originId IS NULL`).
 - `chk_quality_inspections_supplier_client_exclusive` — `supplierId`/`clientId` loại trừ lẫn nhau
@@ -153,7 +146,6 @@ qua `confirm`. Hợp lệ ở mọi status **trừ** `DRAFT` (`E144`) — chủ 
 - **→ Partners**: `supplierId`/`clientId` trỏ `suppliers`/`clients` (loại trừ lẫn nhau, có thể cùng
   null — xem Invariants).
 - **→ Product Structure**: `itemId` bắt buộc.
-- **→ Identity/Access**: `qcDepartmentId` tuỳ chọn.
 - **→ Files**: `quality_inspection_evidences.fileId`.
 
 ## Common mistakes
@@ -162,25 +154,23 @@ qua `confirm`. Hợp lệ ở mọi status **trừ** `DRAFT` (`E144`) — chủ 
 2. Đi tìm `POST /iqc/:iqcId/resolve` — đã gộp vào `confirm`.
 3. Đi tìm bảng dòng nhiều-vật-tư — không có, `quality_inspection_results` là **lần kiểm**, không
    phải dòng vật tư.
-4. Tưởng `confirm` tự tính `result` từ Ac/Re — QC tự chọn hoàn toàn, AQL chỉ tham khảo.
-5. Tưởng chỉ có 2 đường tạo — có 3 (xem Core concepts).
-6. Tưởng `iqc_inspections`/`oqc_inspections` là 2 bảng riêng — đã gộp `quality_inspections`+
+4. Tưởng chỉ có 2 đường tạo — có 3 (xem Core concepts).
+5. Tưởng `iqc_inspections`/`oqc_inspections` là 2 bảng riêng — đã gộp `quality_inspections`+
    `inspectionType`.
-7. Tưởng `confirm` lại ghi đè mất lần kiểm trước — mỗi lần là 1 attempt mới, không mất lịch sử.
-8. Tưởng `GET /iqc/:iqcId` trả danh sách attempt — trả case row hiện hành (mirror) + `ac`/`re`/
-   `codeLetter` của attempt mới nhất; chưa có DTO trả mảng lịch sử.
-9. Đi tìm cột `qc_requests.inventoryReceiptId`/`outsourcingReceiptId`/`outsourcingReceiptItemId` —
+6. Tưởng `confirm` lại ghi đè mất lần kiểm trước — mỗi lần là 1 attempt mới, không mất lịch sử.
+7. Tưởng `GET /iqc/:iqcId` trả danh sách attempt — trả case row hiện hành (mirror) của attempt mới
+   nhất; chưa có DTO trả mảng lịch sử.
+8. Đi tìm cột `qc_requests.inventoryReceiptId`/`outsourcingReceiptId`/`outsourcingReceiptItemId` —
    đã gộp thành `originType`/`originId` polymorphic, xem Core concepts.
-10. Đi tìm `status = NOT_INSPECTED`/`WAITING_RETURN` trên response API — từ 2026-08-29, `status` trả
-    thẳng vocabulary DB (`DRAFT`/`IN_PROGRESS`), không còn dịch ngược
-    (`docs/decisions/quality-schema-rename.md`, D5 cập nhật).
+9. Đi tìm `status = NOT_INSPECTED`/`WAITING_RETURN` trên response API — từ 2026-08-29, `status` trả
+   thẳng vocabulary DB (`DRAFT`/`IN_PROGRESS`), không còn dịch ngược
+   (`docs/decisions/quality-schema-rename.md`, D5 cập nhật).
 
 ## Related docs
 
 - `docs/decisions/qc-data-model.md` — vì sao gộp bảng theo `inspectionType`, vì sao tách case
   row/attempt.
 - `docs/decisions/quality-schema-rename.md` — bảng đổi tên cột/bảng đầy đủ, lớp dịch `status`.
-- `docs/decisions/qc-aql-master-data.md` — AQL là master data, nơi snapshot Ac/Re/`codeLetter`.
 - `docs/domains/quality-oqc.md` — OQC, `getJobQcCoverage`/`closeJobIfQcCovered` hợp nhất 2 nhánh.
 - `docs/domains/inventory.md` — `supplier_returns`, gate xuất kho sản xuất.
 - `docs/workflows/supplier-return.md`, `docs/workflows/outsourcing-round-trip.md`.

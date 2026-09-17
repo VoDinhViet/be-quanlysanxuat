@@ -18,11 +18,9 @@ import { ApiAuth } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
-import { AqlPlanResDto } from './dto/aql-plan.res.dto';
 import { ConfirmIqcReqDto } from './dto/confirm-iqc.req.dto';
 import { CreateIqcReqDto } from './dto/create-iqc.req.dto';
 import { ExportIqcReqDto } from './dto/export-iqc.req.dto';
-import { GetAqlPlanReqDto } from './dto/get-aql-plan.req.dto';
 import { GetIqcsReqDto } from './dto/get-iqcs.req.dto';
 import { IqcResDto } from './dto/iqc.res.dto';
 import { IqcStatsResDto } from './dto/iqc-stats.res.dto';
@@ -58,18 +56,6 @@ export class IqcController {
   })
   getIqcStats(): Promise<IqcStatsResDto> {
     return this.iqcService.getIqcStats();
-  }
-
-  // Khai trước ':iqcId' để 'aql-plan' không bị bắt nhầm thành id — cùng lý do 'stats' ở trên.
-  @Get('aql-plan')
-  @Permissions('iqc:read')
-  @ApiAuth({
-    type: AqlPlanResDto,
-    summary:
-      'Tra cỡ mẫu (n) + Ac/Re từ bảng AQL — gợi ý hiển thị trước khi confirm',
-  })
-  getAqlPlan(@Query() reqDto: GetAqlPlanReqDto): Promise<AqlPlanResDto> {
-    return this.iqcService.getAqlPlan(reqDto);
   }
 
   // Khai trước ':iqcId' để 'export' không bị bắt nhầm thành id — cùng lý do 'stats' ở trên.

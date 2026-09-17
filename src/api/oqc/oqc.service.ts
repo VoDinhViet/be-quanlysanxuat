@@ -26,7 +26,6 @@ import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
-  IqcInspectionLevel,
   IqcResult,
   items,
   OperationType,
@@ -50,11 +49,6 @@ import {
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { FilesService } from '../files/files.service';
-import { AqlPlanResDto } from '../iqc/dto/aql-plan.res.dto';
-import { GetAqlPlanReqDto } from '../iqc/dto/get-aql-plan.req.dto';
-import type { AqlPlan } from '../iqc/iqc-aql.constant';
-import { resolveAqlResult } from '../iqc/iqc-aql.constant';
-import { resolveAqlPlan } from '../iqc/iqc-aql.query';
 import { linkQcFiles } from '../iqc/iqc.write';
 import { mapToQualityInspectionStatus } from '../iqc/quality-inspection-status.util';
 import { ConfirmOqcReqDto } from './dto/confirm-oqc.req.dto';
@@ -297,10 +291,6 @@ export class OqcService {
         code: qualityInspections.inspectionNo,
         quantity: qualityInspections.quantity,
         inspectionDate: qualityInspections.requestedAt,
-        inspectionLevel: qualityInspections.inspectionLevel,
-        aqlLevel: qualityInspections.aqlLevel,
-        sampleSize: qualityInspections.sampleSize,
-        defectQty: qualityInspections.defectQty,
         result: qualityInspections.decision,
         status: qualityInspections.status,
         resultNote: qualityInspections.decisionNote,
@@ -524,23 +514,6 @@ export class OqcService {
     });
   }
 
-  async getAqlPlan(reqDto: GetAqlPlanReqDto): Promise<AqlPlanResDto> {
-    const plan = await resolveAqlPlan(
-      this.db,
-      reqDto.quantity,
-      reqDto.inspectionLevel,
-      reqDto.aqlLevel,
-    );
-
-    if (!plan) {
-      throw new AppException(ErrorCode.E200, HttpStatus.NOT_FOUND);
-    }
-
-    return plainToInstance(AqlPlanResDto, plan, {
-      excludeExtraneousValues: true,
-    });
-  }
-
   /** Nút "Lưu" duy nhất của trang chi tiết OQC — mỗi lần gọi ghi 3 nơi trong 1 transaction: 1 dòng
    * attempt mới (`quality_inspection_results`), mirror trên `quality_inspections`, và đính kèm.
    * `linkFiles` chạy trước khi mở transaction (`.claude/rules/transactions.md`) nên
@@ -553,13 +526,13 @@ export class OqcService {
   ): Promise<void> {
     const oqcInspection = await this.ensureOqcConfirmable(oqcId);
 
-    const plan = await resolveAqlPlan(
-      this.db,
-      oqcInspection.quantity,
-      reqDto.inspectionLevel,
-      reqDto.aqlLevel,
-    );
-    const decision = this.buildOqcDecision(reqDto, plan);
+    const isPass = reqDto.result === IqcResult.PASS;
+    const decision = {
+      decision: reqDto.result,
+      decisionNote: reqDto.resultNote ?? null,
+      disposition: isPass ? null : (reqDto.disposition ?? null),
+      dispositionNote: isPass ? null : (reqDto.dispositionNote ?? null),
+    };
     const status = this.resolveOqcStatus(decision.decision, reqDto.disposition);
     const dbStatus = mapToQualityInspectionStatus(status);
     // `IqcResult` (PASS/FAIL) là API vocabulary cũ, `decision` cột mới union rộng hơn
@@ -627,44 +600,6 @@ export class OqcService {
         );
       }
     });
-  }
-
-  /** `result` vắng thì lấy `resultAuto` (suy từ Ac/Re) — cả hai đều vắng thì `E200`, ném ngay ở
-   * đây trước khi có bất kỳ ghi nào. `resultAuto` chỉ dùng cục bộ để suy `decision`, không lưu
-   * xuống DB — không có route/query nào đọc lại nó (khác `ac`/`re` mà IQC vẫn đọc lại cho dòng
-   * IQC của nó, xem `IqcService.getIqc`), nên không có snapshot nào để giữ. */
-  private buildOqcDecision(
-    reqDto: ConfirmOqcReqDto,
-    plan: AqlPlan | undefined,
-  ): {
-    inspectionLevel: IqcInspectionLevel;
-    aqlLevel: number;
-    sampleSize: number | null;
-    defectQty: number;
-    decision: IqcResult;
-    decisionNote: string | null;
-    disposition: OqcDisposition | null;
-    dispositionNote: string | null;
-  } {
-    const resultAuto = plan ? resolveAqlResult(plan, reqDto.defectQty) : null;
-    const result = reqDto.result ?? resultAuto;
-
-    if (!result) {
-      throw new AppException(ErrorCode.E200, HttpStatus.BAD_REQUEST);
-    }
-
-    const isPass = result === IqcResult.PASS;
-
-    return {
-      inspectionLevel: reqDto.inspectionLevel,
-      aqlLevel: reqDto.aqlLevel,
-      sampleSize: reqDto.sampleSize ?? null,
-      defectQty: reqDto.defectQty,
-      decision: result,
-      decisionNote: reqDto.resultNote ?? null,
-      disposition: isPass ? null : (reqDto.disposition ?? null),
-      dispositionNote: isPass ? null : (reqDto.dispositionNote ?? null),
-    };
   }
 
   /** Khoá dòng để cấp `attemptNo` tuần tự — không có lock, hai lần confirm song song có thể tính

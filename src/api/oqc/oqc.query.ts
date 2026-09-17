@@ -105,7 +105,7 @@ export async function getInspectedQuantityByBomItemId(
  * nào) đóng góp `(0, 0)`, không tự nó chặn `E196` (đúng semantics gốc trước khi có nhánh gia công
  * ngoài — `docs/decisions/oqc-per-operation.md`, nên không cần mã lỗi riêng cho ca này nữa, khác
  * `E212` cũ). `finalCompleted`/`hasFinalAssembly` — riêng cho `E209`: đếm dòng `COMPLETED` gắn với
- * công đoạn thuộc node Cấp 0 (`itemType = 'FG'`, bước Lắp ráp, `copyFinalAssemblyRouting`); `E205`
+ * công đoạn thuộc node Cấp 0 (`itemType = 'FG'`, bước Lắp ráp, `createJobOperations`); `E205`
  * không dùng hai field này.
  *
  * `total`/`finalCompleted` loại trừ dòng `disposition = SCRAP` (cùng điều kiện `notScrapped` ở

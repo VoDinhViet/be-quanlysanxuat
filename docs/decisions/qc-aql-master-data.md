@@ -1,6 +1,7 @@
 # Bảng AQL chuyển từ hardcode sang master data (`qc_aql_plans`/`qc_aql_rules`)
 
-**Trạng thái:** còn hiệu lực
+**Trạng thái:** đã thay thế — toàn bộ tính năng AQL mô tả trong tài liệu này đã bị xoá, xem
+`docs/decisions/aql-removed.md`.
 
 ## Bối cảnh
 

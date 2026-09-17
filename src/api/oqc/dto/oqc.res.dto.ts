@@ -1,7 +1,6 @@
 import { Exclude, Expose } from 'class-transformer';
 
 import {
-  IqcInspectionLevel,
   IqcResult,
   OqcDisposition,
   QualityInspectionStatus,
@@ -14,7 +13,6 @@ import {
   EnumField,
   EnumFieldOptional,
   NumberField,
-  NumberFieldOptional,
   StringField,
   StringFieldOptional,
   UUIDField,
@@ -80,34 +78,7 @@ export class OqcResDto {
   inspectionDate!: Date;
 
   @Expose()
-  @EnumFieldOptional(() => IqcInspectionLevel, { nullable: true })
-  inspectionLevel!: IqcInspectionLevel | null;
-
-  @Expose()
-  @NumberFieldOptional({ nullable: true, description: 'Mức AQL (%)' })
-  aqlLevel!: number | null;
-
-  @Expose()
-  @NumberFieldOptional({
-    int: true,
-    nullable: true,
-    description: 'Cỡ mẫu đã lưu',
-  })
-  sampleSize!: number | null;
-
-  @Expose()
-  @NumberFieldOptional({
-    int: true,
-    nullable: true,
-    description: 'Số lượng lỗi đếm được trong mẫu',
-  })
-  defectQty!: number | null;
-
-  @Expose()
-  @EnumFieldOptional(() => IqcResult, {
-    nullable: true,
-    description: 'Kết quả QC — lấy theo resultAuto nếu QC không ghi đè',
-  })
+  @EnumFieldOptional(() => IqcResult, { nullable: true })
   result!: IqcResult | null;
 
   @Expose()
@@ -117,7 +88,7 @@ export class OqcResDto {
   @Expose()
   @StringFieldOptional({
     nullable: true,
-    description: 'Ghi chú kết quả — bắt buộc khi result ghi đè resultAuto',
+    description: 'Ghi chú kết quả',
   })
   resultNote!: string | null;
 

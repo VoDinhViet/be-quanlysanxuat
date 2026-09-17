@@ -12,15 +12,11 @@ import {
   varchar,
 } from 'drizzle-orm/pg-core';
 
-import { departments } from '../departments';
 import { users } from '../identity-access/users';
-import { qcAqlPlans } from './qc-aql-plans';
-import { qcAqlRules } from './qc-aql-rules';
 import { qualityInspectionEvidences } from './quality-inspection-evidences';
 import {
   IqcDisposition,
   OqcDisposition,
-  qcInspectionLevelEnum,
   qualityDispositionEnum,
   qualityInspectionDecisionEnum,
   qualityInspectionStatusEnum,
@@ -32,8 +28,8 @@ import { qualityInspections } from './quality-inspections';
  * Rename của `qc_inspections` (attempt append-only) — đổi `qcRequestId→qualityInspectionId`,
  * `kind→inspectionType`, `inspectionDate→inspectedAt`, `result→decision`, `confirmedBy→inspectedBy`.
  * `disposition` giữ nguyên là cột enum (không FK — xem `quality-inspections.ts`). Mọi bất biến khác
- * (composite FK 3 cột mirror cha, snapshot AQL lúc tạo không tính lại lúc đọc, `resultingStatus`
- * thuần audit) kế thừa nguyên văn từ `qc-inspections.ts`.
+ * (composite FK 3 cột mirror cha, `resultingStatus` thuần audit) kế thừa nguyên văn từ
+ * `qc-inspections.ts`.
  */
 export const qualityInspectionResults = pgTable(
   'quality_inspection_results',
@@ -52,20 +48,6 @@ export const qualityInspectionResults = pgTable(
     attemptNo: integer('attempt_no').notNull(),
     inspectedAt: timestamp('inspected_at').notNull(),
 
-    inspectionLevel: qcInspectionLevelEnum('inspection_level'),
-    aqlLevel: numeric('aql_level', { precision: 4, scale: 2, mode: 'number' }),
-    aqlPlanId: uuid('aql_plan_id').references(() => qcAqlPlans.id, {
-      onDelete: 'set null',
-    }),
-    aqlRuleId: uuid('aql_rule_id').references(() => qcAqlRules.id, {
-      onDelete: 'set null',
-    }),
-    codeLetter: varchar('code_letter', { length: 2 }),
-    sampleSize: integer('sample_size'),
-    acceptanceNumber: integer('acceptance_number'),
-    rejectionNumber: integer('rejection_number'),
-    defectQty: integer('defect_qty'),
-
     decision: qualityInspectionDecisionEnum('decision').notNull(),
     decisionNote: varchar('decision_note', { length: 500 }),
 
@@ -82,13 +64,6 @@ export const qualityInspectionResults = pgTable(
       precision: 18,
       scale: 3,
       mode: 'number',
-    }),
-
-    inspectionStandard: varchar('inspection_standard', { length: 100 }),
-    inspectorName: varchar('inspector_name', { length: 100 }),
-    measuringTools: varchar('measuring_tools', { length: 255 }),
-    qcDepartmentId: uuid('qc_department_id').references(() => departments.id, {
-      onDelete: 'set null',
     }),
 
     // `status` mà quality_inspections nhận NGAY SAU attempt này — thuần audit, không phải nguồn cho
@@ -129,11 +104,6 @@ export const qualityInspectionResults = pgTable(
     index('idx_quality_inspection_results_decision').on(table.decision),
     index('idx_quality_inspection_results_disposition').on(table.disposition),
     index('idx_quality_inspection_results_inspected_by').on(table.inspectedBy),
-    index('idx_quality_inspection_results_aql_rule_id').on(table.aqlRuleId),
-    index('idx_quality_inspection_results_aql_plan_id').on(table.aqlPlanId),
-    index('idx_quality_inspection_results_qc_department_id').on(
-      table.qcDepartmentId,
-    ),
     index('idx_quality_inspection_results_created_at').on(table.createdAt),
 
     check(
@@ -143,26 +113,6 @@ export const qualityInspectionResults = pgTable(
     check(
       'chk_quality_inspection_results_quantity_positive',
       sql`quantity > 0`,
-    ),
-    check(
-      'chk_quality_inspection_results_sample_size_positive',
-      sql`sample_size IS NULL OR sample_size > 0`,
-    ),
-    check(
-      'chk_quality_inspection_results_defect_qty_non_negative',
-      sql`defect_qty IS NULL OR defect_qty >= 0`,
-    ),
-    check(
-      'chk_quality_inspection_results_aql_level_positive',
-      sql`aql_level IS NULL OR aql_level > 0`,
-    ),
-    check(
-      'chk_quality_inspection_results_ac_re_pair',
-      sql`(acceptance_number IS NULL) = (rejection_number IS NULL)`,
-    ),
-    check(
-      'chk_quality_inspection_results_ac_re_order',
-      sql`acceptance_number IS NULL OR rejection_number > acceptance_number`,
     ),
     check(
       'chk_quality_inspection_results_disposition_requires_fail',
@@ -199,18 +149,6 @@ export const qualityInspectionResultsRelations = relations(
       references: [qualityInspections.id],
     }),
     evidences: many(qualityInspectionEvidences),
-    aqlPlan: one(qcAqlPlans, {
-      fields: [qualityInspectionResults.aqlPlanId],
-      references: [qcAqlPlans.id],
-    }),
-    aqlRule: one(qcAqlRules, {
-      fields: [qualityInspectionResults.aqlRuleId],
-      references: [qcAqlRules.id],
-    }),
-    qcDepartment: one(departments, {
-      fields: [qualityInspectionResults.qcDepartmentId],
-      references: [departments.id],
-    }),
     inspectorBy: one(users, {
       fields: [qualityInspectionResults.inspectedBy],
       references: [users.id],

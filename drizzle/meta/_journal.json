@@ -1289,6 +1289,55 @@
       "when": 1789554192526,
       "tag": "0183_rich_dragon_man",
       "breakpoints": true
+    },
+    {
+      "idx": 184,
+      "version": "7",
+      "when": 1789608851120,
+      "tag": "0184_groovy_penance",
+      "breakpoints": true
+    },
+    {
+      "idx": 185,
+      "version": "7",
+      "when": 1789611860346,
+      "tag": "0185_flashy_alex_power",
+      "breakpoints": true
+    },
+    {
+      "idx": 186,
+      "version": "7",
+      "when": 1789612495745,
+      "tag": "0186_previous_nuke",
+      "breakpoints": true
+    },
+    {
+      "idx": 187,
+      "version": "7",
+      "when": 1789615621310,
+      "tag": "0187_drop_consumables_under_parent_nodes",
+      "breakpoints": true
+    },
+    {
+      "idx": 188,
+      "version": "7",
+      "when": 1789630622364,
+      "tag": "0188_numerous_red_shift",
+      "breakpoints": true
+    },
+    {
+      "idx": 189,
+      "version": "7",
+      "when": 1789631069981,
+      "tag": "0189_glossy_jamie_braddock",
+      "breakpoints": true
+    },
+    {
+      "idx": 190,
+      "version": "7",
+      "when": 1789633051795,
+      "tag": "0190_black_nighthawk",
+      "breakpoints": true
     }
   ]
 }

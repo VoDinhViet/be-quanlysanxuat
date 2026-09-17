@@ -1,66 +1,19 @@
-import {
-  IqcDisposition,
-  IqcInspectionLevel,
-  IqcResult,
-} from '../../../database/schemas';
+import { IqcDisposition, IqcResult } from '../../../database/schemas';
 import {
   DateFieldOptional,
   EnumField,
   EnumFieldOptional,
-  NumberField,
   NumberFieldOptional,
   StringFieldOptional,
   UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
-import { AQL_LEVELS } from '../iqc-aql.constant';
 
 /**
  * Nút "Lưu" duy nhất của trang chi tiết IQC — ghi đè toàn bộ quyết định QC mỗi lần gọi (không
- * phải patch một phần): field vắng mặt nghĩa là xoá, không phải giữ nguyên. QC tự chọn `result`;
- * bảng AQL chỉ còn là gợi ý hiển thị (`IqcService.getIqc` tính `ac`/`re` tham khảo), không còn
- * chặn được `confirm` (xem `docs/domains/quality-iqc.md`).
+ * phải patch một phần): field vắng mặt nghĩa là xoá, không phải giữ nguyên. QC tự chọn `result`
+ * hoàn toàn.
  */
 export class ConfirmIqcReqDto {
-  @EnumField(() => IqcInspectionLevel, {
-    description: 'Mức kiểm tra (Inspection Level)',
-  })
-  readonly inspectionLevel!: IqcInspectionLevel;
-
-  @NumberField({ isIn: AQL_LEVELS, description: 'Mức AQL (%)' })
-  readonly aqlLevel!: number;
-
-  @NumberField({
-    int: true,
-    isPositive: true,
-    description: 'Cỡ mẫu — auto tính từ bảng AQL, cho sửa tay',
-  })
-  readonly sampleSize!: number;
-
-  @NumberField({
-    int: true,
-    min: 0,
-    description: 'Số lượng lỗi đếm được trong mẫu',
-  })
-  readonly defectQty!: number;
-
-  @StringFieldOptional({
-    maxLength: 100,
-    description: 'Tiêu chuẩn kiểm — vd VT-0152 Rev.02',
-  })
-  readonly inspectionStandard?: string;
-
-  @StringFieldOptional({
-    maxLength: 100,
-    description: 'Tên người kiểm thực tế',
-  })
-  readonly inspectorName?: string;
-
-  @StringFieldOptional({
-    maxLength: 255,
-    description: 'Dụng cụ đo đã dùng',
-  })
-  readonly measuringTools?: string;
-
   @DateFieldOptional({
     description:
       'Thời điểm kiểm thực tế — bỏ trống là giữ nguyên ngày kiểm lúc tạo',
@@ -68,7 +21,7 @@ export class ConfirmIqcReqDto {
   readonly inspectionDate?: Date;
 
   @EnumField(() => IqcResult, {
-    description: 'Kết quả QC — QC tự chọn, không suy từ bảng AQL',
+    description: 'Kết quả QC — QC tự chọn',
   })
   readonly result!: IqcResult;
 
@@ -80,9 +33,6 @@ export class ConfirmIqcReqDto {
     description: 'File bằng chứng kiểm tra (QC) — thay toàn bộ mỗi lần gọi',
   })
   readonly qcEvidenceFileIds?: string[];
-
-  @UUIDFieldOptional({ description: 'Bộ phận QC đã kiểm' })
-  readonly qcDepartmentId?: string;
 
   @EnumFieldOptional(() => IqcDisposition, {
     description:

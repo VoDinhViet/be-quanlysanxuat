@@ -1,14 +1,13 @@
 # OQC — kiểm chất lượng công đoạn đến nhập kho / giao hàng
 
 Chặng nối `production` → `quality-oqc` → `inventory`: từ lúc production "Yêu cầu QC" cho cả Job khi
-mọi công đoạn đã hoàn thành, tới lúc QC xác nhận (auto-suggest từ AQL, cho ghi đè), tới lúc kho được
-phép nhập lô thành phẩm và DO được phép gửi duyệt. Mô hình QC:
+mọi công đoạn đã hoàn thành, tới lúc QC xác nhận, tới lúc kho được phép nhập lô thành phẩm và DO
+được phép gửi duyệt. Mô hình QC:
 `docs/domains/quality-oqc.md`. Vòng đời DO đầy đủ: `docs/workflows/outbound-delivery.md`.
 
 ## Trigger
 
 - `POST /production-jobs/:jobId/qc` — "Yêu cầu QC" cho cả Job, không nhận body.
-- `GET /oqc/aql-plan` — gợi ý `sampleSize`/`ac`/`re` trước khi QC nhập `defectQty`.
 - `POST /oqc/:oqcId/confirm` — QC lưu kết quả, gọi lại được nhiều lần tới khi `COMPLETED`.
 - `DELETE /oqc/:oqcId` — gỡ phiếu tạo nhầm, chỉ khi `DRAFT`.
 - `POST /inventory-receipts/:receiptId/confirm` (`receiptType=PRODUCTION`) — đọc lại QC coverage
@@ -19,7 +18,7 @@ phép nhập lô thành phẩm và DO được phép gửi duyệt. Mô hình QC
 ## Actor
 
 `oqc:create` cho `POST /production-jobs/:jobId/qc`. `oqc:delete` cho `DELETE /oqc/:oqcId` (khác
-`:create` — permission tách theo hành động, không theo actor). `oqc:read` cho AQL-plan/list/detail.
+`:create` — permission tách theo hành động, không theo actor). `oqc:read` cho list/detail.
 `oqc:update` cho `confirm`. `inventory:update` cho `confirm`/`post` phiếu nhập. `outbound:update`
 cho `send` DO.
 
@@ -35,7 +34,6 @@ cho `send` DO.
 | Σ SL đã xin QC của cả node + lô mới ≤ SL kế hoạch node | `E176` | — | — | — |
 | Σ SL đã xin QC riêng công đoạn Cấp 0 phải bằng 0 | `E198` | — | — | — |
 | Phiếu OQC tồn tại, đang lưu được (`status ≠ COMPLETED`) | — | `E174`/`E177` | — | — |
-| Có `result` hoặc `resultAuto` để dùng | — | `E200` | — | — |
 | `productionJobId` có trên phiếu nhập | — | — | `E179` | — |
 | Mọi dòng phiếu nhập cùng `itemId = job.itemId` | — | — | `E107` | — |
 | Job có ≥1 dòng QC chưa `SCRAP`, không còn dòng nào chưa `COMPLETED` | — | — | `E196` | `E205` |
@@ -52,7 +50,7 @@ cho `send` DO.
 2. Không có dòng → `E082`. `jobStatus ∉ {IN_PROGRESS, WAITING_QC}` → `E175`. `operationId=null` →
    `E213`.
 3. **`completedDate` của công đoạn `sortOrder` cao nhất không đại diện được cho cả node** — node
-   Cấp 0 có thể nhiều công đoạn (`copyFinalAssemblyRouting`). Readiness chạy một `COUNT` **riêng**:
+   Cấp 0 có thể nhiều công đoạn (`createJobOperations`). Readiness chạy một `COUNT` **riêng**:
    còn công đoạn `INHOUSE` nào của node Cấp 0 chưa `completedDate` → `E214`. `itemId=null`
    (node mất snapshot) → `E199`.
 4. Hai câu tính SL đã xin QC song song: Σ `quantity` mọi OQC (trừ `SCRAP`) của mọi công đoạn
@@ -65,19 +63,17 @@ cho `send` DO.
 ### Xác nhận (`OqcService.confirmOqc`)
 
 1. Load phiếu — không thấy → `E174`; `status=COMPLETED` → `E177` (khoá cứng, khác IQC).
-2. `resolveAqlPlan(quantity, inspectionLevel, aqlLevel)` → nếu có, suy `resultAuto`. **`sampleSize`
-   không được server tự điền từ plan** — chỉ ghi khi client gửi.
-3. `result = reqDto.result ?? resultAuto` — cả hai vắng → `E200`. QC toàn quyền quyết định
-   `result`/`disposition`, không validate chéo (`E201`/`E202`/`E215` đã nghỉ hưu).
-4. `resolveOqcStatus`: `PASS→COMPLETED`; `FAIL`+không disposition→`PENDING`; `FAIL`+`ACCEPT`/
+2. `result` bắt buộc — QC toàn quyền quyết định `result`/`disposition`, không validate chéo
+   (`E201`/`E202`/`E215` đã nghỉ hưu).
+3. `resolveOqcStatus`: `PASS→COMPLETED`; `FAIL`+không disposition→`PENDING`; `FAIL`+`ACCEPT`/
    `SCRAP`→`COMPLETED`; `FAIL`+`REWORK`→`REWORK` (DB `IN_PROGRESS`, vẫn mở).
-5. Trong 1 transaction: khoá `quality_inspections` (`FOR UPDATE`), tính `attemptNo`, insert 1 dòng
+4. Trong 1 transaction: khoá `quality_inspections` (`FOR UPDATE`), tính `attemptNo`, insert 1 dòng
    `quality_inspection_results` (attempt) rồi cập nhật `quality_inspections` (mirror). `linkFiles`
    chạy **ngoài** transaction trước đó (stamp `linkedAt`, `E042`), `linkOqcEvidence` insert
    `quality_inspection_evidences` trong tx.
-6. `PENDING`/`REWORK` → QC gọi lại chính phiếu tới khi `COMPLETED`. Không nhánh nào ghi ngược
+5. `PENDING`/`REWORK` → QC gọi lại chính phiếu tới khi `COMPLETED`. Không nhánh nào ghi ngược
    `completedQuantity`.
-7. Sau khi ghi mirror, nếu vào `COMPLETED`, gọi `closeJobIfQcCovered` (`total>0 && open=0`) →
+6. Sau khi ghi mirror, nếu vào `COMPLETED`, gọi `closeJobIfQcCovered` (`total>0 && open=0`) →
    `production_jobs.status: {IN_PROGRESS, WAITING_QC} → WAITING_DELIVERY` (ghi thẳng, không qua
    `ProductionJobsService`). Cùng hàm này được gọi từ `confirmIqc`/`completeIqcAfterSupplierReturn`
    — xem `docs/domains/quality-iqc.md`. Nếu UPDATE thật sự đổi trạng thái (`.returning()`
@@ -148,9 +144,9 @@ cycle vì `OqcModule` không import `InventoryReceiptsModule`.
 ## Failure cases
 
 `E082`, `E175` (Job không `IN_PROGRESS`/`WAITING_QC`), `E213`, `E214` (đếm lại mọi công đoạn Cấp 0),
-`E199`, `E176`, `E198`, `E174`, `E177`, `E200`, `E178` (xoá phiếu không `DRAFT`),
-`E179`, `E107`, `E196`, `E209`, `E197`, `E205` (gate duy nhất ở `send` DO). `E201`/`E202`/`E211`/
-`E212`/`E215` đã nghỉ hưu.
+`E199`, `E176`, `E198`, `E174`, `E177`, `E178` (xoá phiếu không `DRAFT`),
+`E179`, `E107`, `E196`, `E209`, `E197`, `E205` (gate duy nhất ở `send` DO). `E200`/`E201`/`E202`/
+`E211`/`E212`/`E215` đã nghỉ hưu.
 
 ## Business rules
 
@@ -171,6 +167,6 @@ luồng) → `inventory` (đọc để gate nhập kho TP + gửi duyệt DO). B
 (`docs/workflows/outbound-delivery.md`).
 
 Code: `OqcService`, `ProductionJobsController.requestJobQc`, `src/api/oqc/oqc.query.ts`
-(`getJobQcCoverage`/`closeJobIfQcCovered`), `src/api/iqc/iqc-aql.query.ts#resolveAqlPlan`,
+(`getJobQcCoverage`/`closeJobIfQcCovered`),
 `InventoryReceiptsService.confirmInventoryReceipt` (nhánh `PRODUCTION`),
 `OutboundOrdersService.sendOutboundOrder`.

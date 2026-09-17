@@ -40,8 +40,6 @@ export * from './inventory/inventory-requisitions';
 export * from './inventory/inventory-requisition-items';
 export * from './inventory/inventory-transactions';
 export * from './inventory/inventory-balances';
-export * from './quality/qc-aql-rules';
-export * from './quality/qc-aql-plans';
 export * from './quality/quality-enums';
 export * from './quality/quality-inspections';
 export * from './quality/quality-inspection-results';

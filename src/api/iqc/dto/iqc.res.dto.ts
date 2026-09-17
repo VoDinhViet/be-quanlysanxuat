@@ -2,7 +2,6 @@ import { Exclude, Expose } from 'class-transformer';
 
 import {
   IqcDisposition,
-  IqcInspectionLevel,
   IqcResult,
   QualityInspectionStatus,
 } from '../../../database/schemas';
@@ -20,7 +19,6 @@ import {
   UUIDField,
 } from '../../../decorators/field.decorators';
 import { ClientRefResDto } from '../../clients/dto/client-ref.res.dto';
-import { DepartmentResDto } from '../../departments/dto/department.res.dto';
 import { InventoryReceiptRefResDto } from '../../inventory-receipts/dto/inventory-receipt-ref.res.dto';
 import { ItemUnitRefResDto } from '../../items/dto/item-unit-ref.res.dto';
 import { OutsourcingReceiptRefResDto } from '../../outsourcing-receipts/dto/outsourcing-receipt-ref.res.dto';
@@ -152,10 +150,6 @@ export class IqcResDto {
   sortNgQty!: number | null;
 
   @Expose()
-  @ClassFieldOptional(() => DepartmentResDto, { nullable: true })
-  qcDepartment!: DepartmentResDto | null;
-
-  @Expose()
   @ClassField(() => QcFileResDto, { each: true })
   qcEvidence!: QcFileResDto[];
 
@@ -170,66 +164,6 @@ export class IqcResDto {
       'Phiếu trả NCC tự sinh khi disposition SORT/RETURN — null nếu chưa/không có',
   })
   supplierReturn!: SupplierReturnRefResDto | null;
-
-  @Expose()
-  @EnumFieldOptional(() => IqcInspectionLevel, {
-    nullable: true,
-    description: 'Mức kiểm tra (Inspection Level) đã dùng lúc xác nhận QC',
-  })
-  inspectionLevel!: IqcInspectionLevel | null;
-
-  @Expose()
-  @NumberFieldOptional({
-    nullable: true,
-    description: 'Mức AQL (%) đã dùng lúc xác nhận QC',
-  })
-  aqlLevel!: number | null;
-
-  @Expose()
-  @NumberFieldOptional({ int: true, nullable: true, description: 'Cỡ mẫu' })
-  sampleSize!: number | null;
-
-  @Expose()
-  @NumberFieldOptional({
-    int: true,
-    nullable: true,
-    description: 'Số lượng lỗi đếm được trong mẫu',
-  })
-  defectQty!: number | null;
-
-  @Expose()
-  @StringFieldOptional({
-    nullable: true,
-    description: 'Tiêu chuẩn kiểm — vd VT-0152 Rev.02',
-  })
-  inspectionStandard!: string | null;
-
-  @Expose()
-  @StringFieldOptional({
-    nullable: true,
-    description: 'Tên người kiểm thực tế',
-  })
-  inspectorName!: string | null;
-
-  @Expose()
-  @StringFieldOptional({ nullable: true, description: 'Dụng cụ đo đã dùng' })
-  measuringTools!: string | null;
-
-  @Expose()
-  @NumberFieldOptional({
-    int: true,
-    nullable: true,
-    description: 'Số lỗi chấp nhận (Ac) — tra từ bảng AQL, không lưu cột riêng',
-  })
-  ac!: number | null;
-
-  @Expose()
-  @NumberFieldOptional({
-    int: true,
-    nullable: true,
-    description: 'Số lỗi từ chối (Re) — tra từ bảng AQL, không lưu cột riêng',
-  })
-  re!: number | null;
 
   @Expose()
   @ClassFieldOptional(() => UserRefResDto, { nullable: true })

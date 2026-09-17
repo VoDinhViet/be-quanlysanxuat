@@ -1,50 +1,20 @@
-import {
-  IqcInspectionLevel,
-  IqcResult,
-  OqcDisposition,
-} from '../../../database/schemas';
+import { IqcResult, OqcDisposition } from '../../../database/schemas';
 import {
   EnumField,
   EnumFieldOptional,
-  NumberField,
-  NumberFieldOptional,
   StringFieldOptional,
   UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
-import { AQL_LEVELS } from '../../iqc/iqc-aql.constant';
 
 export class ConfirmOqcReqDto {
-  @EnumField(() => IqcInspectionLevel, {
-    description: 'Mức kiểm tra (Inspection Level)',
+  @EnumField(() => IqcResult, {
+    description: 'Kết quả QC — QC tự chọn',
   })
-  readonly inspectionLevel!: IqcInspectionLevel;
-
-  @NumberField({ isIn: AQL_LEVELS, description: 'Mức AQL (%)' })
-  readonly aqlLevel!: number;
-
-  @NumberFieldOptional({
-    int: true,
-    isPositive: true,
-    description: 'Cỡ mẫu — QC nhập tay',
-  })
-  readonly sampleSize?: number;
-
-  @NumberField({
-    int: true,
-    min: 0,
-    description: 'Số lượng lỗi đếm được trong mẫu',
-  })
-  readonly defectQty!: number;
-
-  @EnumFieldOptional(() => IqcResult, {
-    description:
-      'Kết quả QC — vắng thì lấy theo Ac/Re tự suy (resultAuto); QC toàn quyền ghi đè, không cần lý do',
-  })
-  readonly result?: IqcResult;
+  readonly result!: IqcResult;
 
   @StringFieldOptional({
     maxLength: 500,
-    description: 'Ghi chú kết quả — bắt buộc khi result ghi đè resultAuto',
+    description: 'Ghi chú kết quả',
   })
   readonly resultNote?: string;
 

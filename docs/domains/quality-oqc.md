@@ -36,8 +36,7 @@ nhật). Business logic nội bộ (`resolveOqcStatus`) vẫn tính theo `OqcSta
 đường đọc/filter ra ngoài đổi:
 
 ```
-result       PASS | FAIL                — nullable
-resultAuto   PASS | FAIL                — server tự suy từ Ac/Re, chỉ để tham khảo
+result       PASS | FAIL                — bắt buộc, QC tự chọn
 disposition  ACCEPT | REWORK | SCRAP    — chỉ có nghĩa khi result = FAIL (khác OqcStatus.REWORK cũ
                                            — status không còn giá trị này, chỉ disposition còn)
 status       DRAFT | PENDING | IN_PROGRESS | COMPLETED   — cùng giá trị trên API lẫn DB
@@ -54,7 +53,7 @@ status       DRAFT | PENDING | IN_PROGRESS | COMPLETED   — cùng giá trị tr
 `IN_PROGRESS` không tự phân biệt "đang REWORK" với IQC's `IN_PROGRESS` (chờ trả NCC) — chỉ suy
 được qua ngữ cảnh đang ở module `oqc`, xem `docs/domains/quality-iqc.md`.
 
-`result` QC gửi lên thắng nếu có, vắng thì lấy `resultAuto`. Không nhánh nào ghi ngược
+`result` QC gửi lên là bắt buộc, không có suy tự động. Không nhánh nào ghi ngược
 `production_job_operations.completedQuantity` — kể cả `SCRAP` (giải phóng quota bằng cách không
 tính vào Σ đã xin QC, không phải trừ `completedQuantity`).
 
@@ -64,8 +63,8 @@ dòng SCRAP không tính là "đã QC xong") — cùng điều kiện loại tr�
 
 ## Entities
 
-Dùng chung `quality_inspections`/`quality_inspection_results`/`quality_inspection_evidences`/
-`qc_aql_plans`/`qc_aql_rules` với IQC — xem `docs/domains/quality-iqc.md`, Entities. `OqcDisposition`
+Dùng chung `quality_inspections`/`quality_inspection_results`/`quality_inspection_evidences` với
+IQC — xem `docs/domains/quality-iqc.md`, Entities. `OqcDisposition`
 (`ACCEPT`/`REWORK`/`SCRAP`) là enum **riêng**, không dùng chung `IqcDisposition`.
 
 ## Lifecycle
@@ -87,17 +86,15 @@ Route tạo duy nhất: `POST /production-jobs/:jobId/qc` — **cấp Job, khôn
 8. Tạo — `quantity = completedQuantity` hiện tại, `requestedAt = new Date()`.
 
 `confirm` (`POST /oqc/:oqcId/confirm`): chặn nếu đã `COMPLETED` (`E177`); mọi status khác confirm
-lại được nhiều lần, mỗi lần 1 attempt mới. `inspectionLevel!`/`aqlLevel!`/`defectQty!` bắt buộc;
-`result?` tuỳ chọn (fallback `resultAuto`, cả hai vắng → `E200`); **`sampleSize` không được server
-tự điền từ plan AQL** — chỉ ghi khi client gửi. `disposition`/`dispositionNote` chỉ có ý nghĩa khi
-FAIL, gửi kèm PASS không báo lỗi (tự ép `NULL`).
+lại được nhiều lần, mỗi lần 1 attempt mới. `result!` bắt buộc. `disposition`/`dispositionNote` chỉ
+có ý nghĩa khi FAIL, gửi kèm PASS không báo lỗi (tự ép `NULL`).
 
 `DELETE /oqc/:oqcId` chỉ khi `DRAFT` (`E178`), hard delete. `IN_PROGRESS` (đang REWORK) không xoá
 được, chỉ tiếp tục sửa qua `confirm`.
 
 ## Business rules
 
-- QC toàn quyền quyết định `result`/`disposition` — AQL/Ac-Re/`resultAuto` chỉ gợi ý.
+- QC toàn quyền quyết định `result`/`disposition`.
   `E201`/`E202`/`E215` (validate chéo PASS+disposition, `dispositionNote` bắt buộc) đã nghỉ hưu,
   không throw site. DB CHECK (`chk_quality_inspections_disposition_requires_fail`) vẫn là chốt chặn
   cuối cho ghi trực tiếp qua SQL.
@@ -164,7 +161,6 @@ FAIL, gửi kèm PASS không báo lỗi (tự ép `NULL`).
 - `docs/domains/quality-iqc.md` — bảng dùng chung, `qc-data-model`.
 - `docs/decisions/quality-schema-rename.md` — bảng đổi tên cột/bảng đầy đủ, lớp dịch `status`.
 - `docs/decisions/oqc-per-operation.md` — vì sao gắn công đoạn, node Cấp 0.
-- `docs/decisions/qc-aql-master-data.md`.
 - `docs/domains/production.md` — máy trạng thái Job, node Cấp 0.
 - `docs/workflows/outgoing-qc.md` — luồng đầy đủ: "Yêu cầu QC" → confirm → 2 gate.
 - `docs/decisions/qc-gates-on-stock-moves.md`.
