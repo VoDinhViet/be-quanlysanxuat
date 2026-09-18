@@ -81,6 +81,14 @@ export class ProductionJobBomOperationResDto {
   completedDate!: Date | null;
 
   @Expose()
+  @DateFieldOptional({
+    nullable: true,
+    description:
+      'Hạn cần hoàn thành công đoạn — kế hoạch, đặt/sửa tay qua PATCH .../due-date',
+  })
+  dueDate!: Date | null;
+
+  @Expose()
   @DateField()
   createdAt!: Date;
 }

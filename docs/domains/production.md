@@ -22,7 +22,7 @@ với master data sống từ đó (denormalize `code`/`name`, FK gốc chỉ c�
 | Bảng                                                             | Nguồn                                                  | Sửa sau khi sinh                                                                                          |
 | ---------------------------------------------------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
 | `production_job_bom_items` (cây BOM)                             | `bom_items`, id nhân bản mới                           | Không route nào sửa                                                                                       |
-| `production_job_operations` (công đoạn as-used)                  | `bom_operations` as-used                               | `completedQuantity`/`rejectedQuantity`/`completedDate` sửa qua `POST .../reports`; phần còn lại đóng băng |
+| `production_job_operations` (công đoạn as-used)                  | `bom_operations` as-used                               | `completedQuantity`/`rejectedQuantity`/`completedDate` sửa qua `POST .../reports`; `dueDate` (hạn kế hoạch) sửa qua `PATCH .../due-date`; phần còn lại đóng băng |
 | `production_job_issues` (vật tư, gộp theo `itemId` trên node CONSUMABLE) | `production_job_bom_items.plannedQuantity` (đã nổ cấp) | Không route đọc/ghi — nội bộ, chỉ dùng bởi `startJob`/`bomDemand`/`GET .../bom`                           |
 
 Muốn xem cấu trúc/công đoạn của sản phẩm trong lúc Job còn `PENDING` (trước khi có snapshot), đọc
@@ -48,18 +48,21 @@ tiến độ được ngay, không còn gate trung gian. Cột `production_jobs.
 `operationsApprovedAt` vẫn còn (giữ cho dữ liệu cũ), không còn route nào ghi;
 `E250`/`E251` nghỉ hưu cùng đợt. Xem `docs/workflows/production-job-execution.md`.
 
-**Một đường ghi duy nhất chạm `production_job_operations` bằng tay** —
-`POST /production-execution/operations/:jobOperationId/reports` (xưởng báo cáo) — **cộng dồn**
-(không ghi đè), `completedDate` do người báo **tự chọn**; ghi thêm 1 dòng
-`production_job_operation_reports` (+ ảnh) mỗi lần, không chặn báo cáo rỗng. Chỉ trần riêng
-`completedQuantity ≤ plannedQuantity` (`E256`) — `rejectedQuantity` không giới hạn, cho phép báo
-bù (làm lại phần hỏng) tới khi SL đạt chạm đủ. Trần cũ (`E252`, gộp cả hai số) đã bỏ vì làm công
-đoạn kẹt vĩnh viễn khi NG chiếm hết chỗ trước khi SL đạt kịp đủ — không khôi phục. `SUM(reports)`
-luôn khớp cột chính thức trên `production_job_operations` — bảng report chỉ là nhật ký, không
-phải nguồn tính lại (một đường ghi duy nhất nên không còn khả năng lệch nhau như trước).
-Công đoạn `OUTSOURCE` không đi qua đường này — riêng nó chỉ ghi tự động qua
-`recomputeOutsourcedOperationProgress` khi OS-IN post/cancel, xem
-`docs/decisions/outsourced-operation-progress-writeback.md`.
+**Hai đường ghi tay chạm `production_job_operations`:**
+
+1. `POST /production-execution/operations/:jobOperationId/reports` (xưởng báo cáo tiến độ) —
+   **cộng dồn** (không ghi đè), `completedDate` do người báo **tự chọn**; ghi thêm 1 dòng
+   `production_job_operation_reports` (+ ảnh) mỗi lần, không chặn báo cáo rỗng. Chỉ trần riêng
+   `completedQuantity ≤ plannedQuantity` (`E256`) — `rejectedQuantity` không giới hạn, cho phép báo
+   bù (làm lại phần hỏng) tới khi SL đạt chạm đủ. Trần cũ (`E252`, gộp cả hai số) đã bỏ vì làm công
+   đoạn kẹt vĩnh viễn khi NG chiếm hết chỗ trước khi SL đạt kịp đủ — không khôi phục. `SUM(reports)`
+   luôn khớp cột chính thức trên `production_job_operations` — bảng report chỉ là nhật ký, không
+   phải nguồn tính lại. Công đoạn `OUTSOURCE` không đi qua đường này — riêng nó chỉ ghi tự động qua
+   `recomputeOutsourcedOperationProgress` khi OS-IN post/cancel, xem
+   `docs/decisions/outsourced-operation-progress-writeback.md`.
+2. `PATCH /production-jobs/:jobId/operations/:jobOperationId/due-date` (đặt/sửa hạn kế hoạch) —
+   ghi đè thẳng `dueDate`, không cộng dồn, không ghi nhật ký riêng. Không phân biệt `OUTSOURCE` —
+   hạn là kế hoạch điều độ, không phải số liệu OS-IN tự ghi.
 
 `GET /production-jobs/:jobId/bom` trả **bảng vật tư phẳng** (không phải cây), mỗi dòng kèm
 `requiredQty` (đã nổ cấp) + `issuedQuantity`/`remainingQuantity` (đọc hàm thuần từ

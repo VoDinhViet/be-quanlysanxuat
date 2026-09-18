@@ -15,6 +15,7 @@ export * from './items/item-units';
 export * from './items/boms';
 export * from './items/bom-items';
 export * from './items/bom-operations';
+export * from './items/routing-operations';
 export * from './departments';
 export * from './positions';
 export * from './countries';

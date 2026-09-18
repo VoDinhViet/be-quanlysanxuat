@@ -37,22 +37,22 @@ export class CreateBomItemReqDto {
 
   @UUIDFieldOptional({
     description:
-      'ĐVT riêng của node (type = COMPONENT) — chọn tự do, không giới hạn theo unit scope. Gửi cho CONSUMABLE/ROOT → E271',
+      'ĐVT riêng của node (type = COMPONENT) — chọn tự do, không giới hạn theo unit scope. Gửi cho CONSUMABLE → E271',
   })
   readonly unitId?: string;
 
   @UUIDFieldOptional({
     nullable: true,
     description:
-      'Ảnh riêng của node (type = COMPONENT, từ POST /files?type=BOM_ITEM_IMAGE). Gửi cho CONSUMABLE/ROOT → E271',
+      'Ảnh riêng của node (type = COMPONENT, từ POST /files?type=BOM_ITEM_IMAGE). Gửi cho CONSUMABLE → E271',
   })
   readonly imageFileId?: string | null;
 
   @UUIDFieldOptional({
     nullable: true,
     description:
-      'Parent bom_items id; omit/null for a top-level item (child of the FG root). Cha là CONSUMABLE → E052; ' +
-      'cha đã có con COMPONENT mà thêm CONSUMABLE → E273',
+      'Id node cha (bom_items); omit/null nghĩa là con trực tiếp của Cấp 0. Cha là CONSUMABLE → ' +
+      'E052; cha đã có con COMPONENT mà thêm CONSUMABLE → E273',
   })
   readonly parentId?: string | null;
 

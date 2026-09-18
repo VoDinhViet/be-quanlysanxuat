@@ -55,6 +55,7 @@ import { PurchaseOrdersModule } from './api/purchase-orders/purchase-orders.modu
 import { PurchaseQuotationsModule } from './api/purchase-quotations/purchase-quotations.module';
 import { PurchaseRequestsModule } from './api/purchase-requests/purchase-requests.module';
 import { ReportsModule } from './api/reports/reports.module';
+import { RoutingsModule } from './api/routings/routings.module';
 import { SupplierReturnsModule } from './api/supplier-returns/supplier-returns.module';
 import { UnitsModule } from './api/units/units.module';
 import { UsersModule } from './api/users/users.module';
@@ -100,6 +101,7 @@ import { UsersModule } from './api/users/users.module';
     BomsModule,
     BomOperationsModule,
     BomConsumablesModule,
+    RoutingsModule,
     OperationsModule,
     DepartmentsModule,
     FilesModule,

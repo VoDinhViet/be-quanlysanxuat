@@ -20,8 +20,10 @@ import { productionJobs } from './production-jobs';
  * Snapshot công đoạn as-used của từng node BOM trong một Job — copy `bom_operations` (khoá theo
  * `bomItemId`). Dựng đúng một lần trong transaction `start` (`ProductionJobsService.startJob` →
  * `createJobSnapshot`) — Job còn `PENDING` không có dòng nào ở đây, xem
- * `docs/decisions/job-snapshot-at-start.md`. Đóng băng ngay từ lúc đó, không có route sửa — sửa
- * routing/`operations` gốc sau đó không ảnh hưởng Job đã `start`. Công đoạn Cấp 0
+ * `docs/decisions/job-snapshot-at-start.md`. Đóng băng ngay từ lúc đó — sửa
+ * routing/`operations` gốc sau đó không ảnh hưởng Job đã `start`. `dueDate` là ngoại lệ duy nhất:
+ * cột kế hoạch, sửa tay qua `PATCH /production-jobs/:jobId/operations/:jobOperationId/due-date`.
+ * Công đoạn Cấp 0
  * của chính FG (lắp ráp/đóng gói) **cũng snapshot ở đây** — copy từ đúng `bom_operations` của node
  * ROOT thuộc FG (`docs/decisions/root-bom-item.md` — không còn bảng `routings`/`routing_operations`
  * riêng), gắn vào node `production_job_bom_items.itemType = 'FG'` (xem doc comment bảng đó và
@@ -39,6 +41,9 @@ import { productionJobs } from './production-jobs';
  *   `production_job_operation_reports`, chỉ chạy khi Job `IN_PROGRESS`, `E087`) — công đoạn
  *   `OUTSOURCE` bị chặn ở đường đó (`E260`), tự ghi qua `recomputeOutsourcedOperationProgress`
  *   khi OS-IN post/cancel thay vì nhập tay (`docs/decisions/outsourced-operation-progress-writeback.md`).
+ * - `dueDate` sửa qua `PATCH .../operations/:jobOperationId/due-date` (`ProductionJobsService`) —
+ *   ghi đè thẳng (không cộng dồn), chỉ chạy khi Job `IN_PROGRESS` (`E087`), không phân biệt
+ *   `OUTSOURCE` (hạn là kế hoạch điều độ, không phải số liệu OS-IN tự ghi như tiến độ).
  */
 export const productionJobOperations = pgTable(
   'production_job_operations',
@@ -73,6 +78,7 @@ export const productionJobOperations = pgTable(
       .notNull()
       .default(0),
     completedDate: date('completed_date', { mode: 'date' }),
+    dueDate: date('due_date', { mode: 'date' }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at')
       .defaultNow()

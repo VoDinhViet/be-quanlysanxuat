@@ -1,0 +1,1 @@
+ALTER TABLE "production_job_operations" ADD COLUMN "due_date" date;

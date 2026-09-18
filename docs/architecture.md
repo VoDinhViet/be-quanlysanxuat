@@ -21,8 +21,7 @@ erDiagram
     BOM_ITEMS }o--o| ITEMS : "node CONSUMABLE (lá, itemId NOT NULL); node COMPONENT không trỏ items"
     BOM_ITEMS ||--o{ BOM_OPERATIONS : "công đoạn as-used của node COMPONENT"
     BOM_OPERATIONS }o--|| OPERATIONS : "công đoạn"
-    ITEMS ||--o| ROUTINGS : "1 routing Cấp 0/item (FG)"
-    ROUTINGS ||--o{ ROUTING_OPERATIONS : "các bước"
+    BOMS ||--o{ ROUTING_OPERATIONS : "công đoạn Cấp 0 (chính item FG, không phải node bom_items)"
     ROUTING_OPERATIONS }o--|| OPERATIONS : "công đoạn"
 
     CLIENTS ||--o{ ORDERS : đặt
@@ -119,15 +118,15 @@ phân loại (`docs/decisions/items-merge.md`, `docs/decisions/wip-removal.md`).
 
 **Tạo item** (`ItemsService.createItem`): transaction cấp mã (`document_sequences`) + `INSERT items`
 
-- `INSERT item_files` nếu gửi `fileIds`. `boms` (kèm node `ROOT` của nó) **không** tạo ở bước
-  này — sinh lười (get-or-create) ngay trong transaction ghi dòng đầu tiên: BOM qua
-  `POST /items/:itemId/bom/items`, `bom_operations` qua `.../bom/items/:bomItemId/operations`
-  (gắn node `ROOT`/`COMPONENT`) — công đoạn Cấp 0 giờ đi qua đúng route này với `bomItemId` = id node
-  `ROOT`; route `POST /items/:itemId/operations`/`RoutingsModule` cũ đã **xoá hẳn**, không giữ
-  alias (`docs/decisions/root-bom-item.md`). `POST /:id/copy` (chỉ FG, `E110` nếu CONSUMABLE) đọc cả cây
-  `bom_items` (kể cả `ROOT`) + `item_files` gốc rồi ghi lại toàn bộ (kể cả header `boms`) trong
-  một transaction, gắn `clonedFromItemId` — nhân bản luôn `bom_operations` của mọi node, kể cả
-  `ROOT`. Chi tiết: `docs/workflows/product-setup.md`.
+- `INSERT item_files` nếu gửi `fileIds`. `boms` **không** tạo ở bước này — sinh lười
+  (get-or-create) ngay trong transaction ghi dòng đầu tiên: BOM qua `POST /items/:itemId/bom/items`,
+  `bom_operations` của node COMPONENT qua `.../bom/items/:bomItemId/operations`, công đoạn Cấp 0
+  (chính item FG, không phải một node `bom_items`) qua route riêng `POST /items/:itemId/operations`
+  (`RoutingsModule`, ghi bảng `routing_operations`) — xem
+  `docs/decisions/routing-operations-table.md`. `POST /:id/copy` (chỉ FG, `E110` nếu CONSUMABLE)
+  đọc cả cây `bom_items` + `item_files` gốc rồi ghi lại toàn bộ (kể cả header `boms`) trong một
+  transaction, gắn `clonedFromItemId` — nhân bản luôn `bom_operations` của mọi node COMPONENT lẫn
+  `routing_operations` của Cấp 0. Chi tiết: `docs/workflows/product-setup.md`.
 
 **Duyệt đơn hàng** (`OrdersService.approveOrder`, chỉ từ `PENDING_CONFIRMATION` — `E074`): đọc
 `getStockLevels` (trước tx) → tx: `orders.status = AWAITING_PRODUCTION` →
@@ -211,9 +210,10 @@ không tồn tại (`PurchaseRequestsModule`/`OqcModule` chỉ export service đ
 
 `BomsModule` không import `ItemsModule` — đọc `items`/`boms`/`bom_items`/`operations` thẳng qua
 `DRIZZLE`. `BomsModule` import `FilesModule` (file bản vẽ node). `BomOperationsModule` import
-`BomsModule` (dùng chung `ensureItemExists`/`ensureBomItemInBom`/
-`ensureBomItemCanHaveOperations`) — module duy nhất ghi công đoạn as-used, kể cả Cấp 0 (node
-`ROOT`); `RoutingsModule` cũ đã xoá hẳn (`docs/decisions/root-bom-item.md`).
+`BomsModule` (dùng chung `ensureItemExists`/`ensureBomItemInBom`/`ensureBomItemCanHaveOperations`)
+— ghi công đoạn as-used của node COMPONENT. `RoutingsModule` (công đoạn Cấp 0, bảng riêng
+`routing_operations`) cũng import `BomsModule` (dùng `ensureItemExists`/`getOrCreateBomId`) —
+`docs/decisions/routing-operations-table.md`.
 
 `PurchaseQuotationsModule → PurchaseOrdersModule` (cho `approveQuotation`/`recallQuotation`). Chiều
 ngược lại không tồn tại.
@@ -248,13 +248,16 @@ Những sự thật này không nằm trọn trong một `docs/domains/<x>.md` n
 - **`products`/`materials` gộp thành `items`** (`type = FG|WIP|RM` lúc đó, `WIP` xoá hẳn sau
   (`docs/decisions/wip-removal.md`), `RM` đổi tên thành `CONSUMABLE` sau nữa
   (`docs/decisions/material-to-consumable-rename.md`)) — `docs/decisions/items-merge.md`.
-- **Routing Cấp 0 gắn vào node `ROOT`** — đúng 1 dòng `bom_items` mỗi `boms`, sinh cùng lúc với
-  header (`docs/decisions/root-bom-item.md`). Routing as-used của một node sống ở `bom_operations`
-  (`bomItemId` NOT NULL, gắn node `ROOT`/`COMPONENT`) — cùng node ở 2 vị trí cha khác nhau có thể mang
-  routing khác nhau.
-- **`bom_items` chứa node `ROOT` (Cấp 0, đúng 1/bom), `COMPONENT` (cấu trúc con, `itemId NULL`,
-  `code`/`name` riêng) lẫn lá `CONSUMABLE`** — loại node đọc thẳng cột `type`, không còn suy qua
-  `items.type` (node COMPONENT không có item).
+- **Công đoạn Cấp 0 sống ở bảng riêng `routing_operations`** (`bomId NOT NULL` → `boms.id`), tách
+  khỏi `bom_operations` (`bomItemId NOT NULL` → node COMPONENT thật) —
+  `docs/decisions/routing-operations-table.md`. Cùng node COMPONENT ở 2 vị trí cha khác nhau có thể
+  mang routing khác nhau.
+- **`bom_items` chỉ chứa `COMPONENT` (cấu trúc con, `itemId NULL`, `code`/`name` riêng) lẫn lá
+  `CONSUMABLE`** — loại node đọc thẳng cột `type`, không còn suy qua `items.type` (node COMPONENT
+  không có item). **Cấp 0 (chính item FG) không nằm trong `bom_items` và không xuất hiện trong
+  `GET /items/:itemId/bom`** — đọc qua `GET /items/:itemId` (thông tin) +
+  `GET /items/:itemId/operations` (công đoạn), xem
+  `docs/decisions/bom-header-as-level-0-anchor.md`.
 - **Mọi bảng kho** chỉ còn một `itemId` NOT NULL, không còn discriminator `itemType`.
 - **`inventory_balances` là bản chiếu dựng lại được từ `inventory_transactions`** — chỉ
   `InventoryPostingService.postDocument`/`reverseDocument` ghi vào cả hai bảng.

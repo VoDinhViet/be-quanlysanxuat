@@ -24,6 +24,7 @@ import { ProductionOrderDetailResDto } from './dto/production-order-detail.res.d
 import { ProductionOrderLogResDto } from './dto/production-order-log.res.dto';
 import { ProductionOrderResDto } from './dto/production-order.res.dto';
 import { UpdateProductionOrderNoteReqDto } from './dto/update-production-order-note.req.dto';
+import { UpdateProductionOrderSignedFileReqDto } from './dto/update-production-order-signed-file.req.dto';
 import { UpdateProductionOrderReqDto } from './dto/update-production-order.req.dto';
 import { ProductionOrdersService } from './production-orders.service';
 
@@ -106,6 +107,25 @@ export class ProductionOrdersController {
     @CurrentUser() payload: JwtPayloadType,
   ): Promise<void> {
     return this.productionOrdersService.updateProductionOrderNote(
+      productionOrdersId,
+      reqDto,
+      payload.userId,
+    );
+  }
+
+
+  @Patch(':productionOrdersId/signed-file')
+  @Permissions('production:update')
+  @ApiAuth({
+    type: ProductionOrderDetailResDto,
+    summary: 'Update file LSX đã ký (scan/PDF) — cho phép ở mọi trạng thái',
+  })
+  updateProductionOrderSignedFile(
+    @UUIDParam('productionOrdersId') productionOrdersId: string,
+    @Body() reqDto: UpdateProductionOrderSignedFileReqDto,
+    @CurrentUser() payload: JwtPayloadType,
+  ): Promise<ProductionOrderDetailResDto> {
+    return this.productionOrdersService.updateProductionOrderSignedFile(
       productionOrdersId,
       reqDto,
       payload.userId,

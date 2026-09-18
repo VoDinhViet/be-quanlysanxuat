@@ -1,4 +1,12 @@
-import { Body, Controller, Get, HttpStatus, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpStatus,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
@@ -20,6 +28,7 @@ import { ProductionJobIssueResDto } from './dto/production-job-issue.res.dto';
 import { ProductionJobLogResDto } from './dto/production-job-log.res.dto';
 import { ProductionJobNoteResDto } from './dto/production-job-note.res.dto';
 import { ProductionJobResDto } from './dto/production-job.res.dto';
+import { UpdateProductionJobOperationDueDateReqDto } from './dto/update-production-job-operation-due-date.req.dto';
 import { ProductionJobsService } from './production-jobs.service';
 
 @ApiTags('Production Jobs')
@@ -150,6 +159,25 @@ export class ProductionJobsController {
     @CurrentUser() payload: JwtPayloadType,
   ): Promise<void> {
     return this.productionJobsService.startJob(jobId, payload.userId);
+  }
+
+  @Patch(':jobId/operations/:jobOperationId/due-date')
+  @Permissions('production:update')
+  @ApiAuth({
+    summary:
+      'Đặt/sửa hạn cần hoàn thành của một công đoạn trong Job — chỉ khi Job IN_PROGRESS',
+    statusCode: HttpStatus.NO_CONTENT,
+  })
+  updateProductionJobOperationDueDate(
+    @UUIDParam('jobId') jobId: string,
+    @UUIDParam('jobOperationId') jobOperationId: string,
+    @Body() reqDto: UpdateProductionJobOperationDueDateReqDto,
+  ): Promise<void> {
+    return this.productionJobsService.updateProductionJobOperationDueDate(
+      jobId,
+      jobOperationId,
+      reqDto,
+    );
   }
 
   @Post(':jobId/qc')

@@ -16,6 +16,7 @@ import {
   productionJobOperations,
   ProductionJobSelect,
   productionJobUnits,
+  routingOperations,
   units,
   UnitSelect,
 } from '../../database/schemas';
@@ -39,7 +40,7 @@ export async function createJobSnapshot(
   }
 
   const jobBomItemIdByBaseId = await snapshotJobBomItems(tx, job, bomId);
-  await snapshotJobBomOperations(tx, job.id, jobBomItemIdByBaseId);
+  await snapshotJobBomOperations(tx, job.id, bomId, jobBomItemIdByBaseId);
   await snapshotJobIssues(tx, job);
 }
 
@@ -57,11 +58,126 @@ async function getBomId(
 }
 
 /**
- * Nhân bản cây `bom_items` (node ROOT/COMPONENT/CONSUMABLE) sang `production_job_bom_items`, nổ
- * cấp số lượng `plannedQuantity` — nguồn ghi duy nhất của cột này, mọi route đọc chỉ đọc lại. Node
- * ROOT ("Cấp 0") không snapshot trực tiếp mà thành một node `FG` riêng đứng cuối cây, chỉ khi ROOT
- * có công đoạn (`docs/decisions/root-bom-item.md`). Trả map `bom_items.id` nguồn → id snapshot mới
- * (gồm cả entry của ROOT nếu có tạo FG) để `snapshotJobBomOperations` gắn đúng công đoạn.
+ * Nhân bản cây `bom_items` (node COMPONENT/CONSUMABLE) sang `production_job_bom_items`, nổ cấp số
+ * lượng `plannedQuantity` — nguồn ghi duy nhất của cột này, mọi route đọc chỉ đọc lại. Cấp 0 (chính
+ * FG, không phải một node `bom_items` — `docs/decisions/bom-header-as-level-0-anchor.md`) không
+ * snapshot từ `bomItems` mà thành một node `FG` riêng đứng cuối cây, đọc thẳng từ `items`, chỉ khi
+ * Cấp 0 có công đoạn. Trả map nguồn → id snapshot mới, khoá theo `bom_items.id` cho node thường và
+ * theo `bomId` cho entry FG (không có `bom_items.id` nguồn) để `snapshotJobBomOperations` gắn
+ * đúng công đoạn.
+ */
+type BaseBomItem = typeof bomItems.$inferSelect & {
+  item: typeof items.$inferSelect | null;
+};
+
+/**
+ * Tính số lượng kế hoạch (`plannedQuantity`) luỹ kế theo cây cha-con:
+ * - Với node Cấp 1 (không có cha, `parentId === null`): định mức nhân trực tiếp với số lượng Job (`jobQuantity`).
+ * - Với node con (`parentId !== null`): định mức nhân với số lượng kế hoạch đã nổ của node cha.
+ *
+ * Yêu cầu: Danh sách BOM item nguồn phải được duyệt theo thứ tự `level` tăng dần (cha trước con).
+ */
+function resolvePlannedQuantity(
+  parentId: string | null,
+  quantity: number,
+  jobQuantity: number,
+  plannedQtyByBaseId: Map<string, number>,
+): number {
+  const parentPlannedQty = parentId
+    ? (plannedQtyByBaseId.get(parentId) ?? jobQuantity)
+    : jobQuantity;
+  return parentPlannedQty * quantity;
+}
+
+/**
+ * Chuyển đổi một node `baseBomItem` sang bản ghi snapshot `production_job_bom_items`:
+ * Tận dụng fallback `??`: CONSUMABLE tự lấy từ bảng `items` join sang, COMPONENT lấy từ `bom_items`.
+ */
+function buildJobBomItem(
+  baseBomItem: BaseBomItem,
+  jobId: string,
+  jobBomItemId: string,
+  jobParentId: string | null,
+  plannedQuantity: number,
+): typeof productionJobBomItems.$inferInsert {
+  return {
+    id: jobBomItemId,
+    productionJobId: jobId,
+    parentId: jobParentId,
+    itemType:
+      baseBomItem.type === BomType.CONSUMABLE
+        ? ProductionJobBomItemType.CONSUMABLE
+        : ProductionJobBomItemType.COMPONENT,
+    code: (baseBomItem.item?.code ?? baseBomItem.code)!,
+    name: (baseBomItem.item?.name ?? baseBomItem.name)!,
+    quantity: baseBomItem.quantity,
+    plannedQuantity,
+    sortOrder: baseBomItem.sortOrder,
+    level: baseBomItem.level,
+    itemId: baseBomItem.itemId,
+    imageFileId:
+      baseBomItem.item?.imageFileId ?? baseBomItem.imageFileId ?? null,
+  };
+}
+
+/**
+ * Dựng node Cấp 0 (FG - thành phẩm chính) ở cuối cây BOM khi sản phẩm có công đoạn lắp ráp Cấp 0
+ * (`routing_operations.bomId`). Xem `docs/decisions/bom-header-as-level-0-anchor.md`.
+ */
+async function buildFgBomItem(
+  tx: DbTransaction,
+  job: SnapshotJob,
+  bomId: string,
+  sortOrder: number,
+): Promise<{
+  fgItemId: string;
+  item: typeof productionJobBomItems.$inferInsert;
+} | null> {
+  const [fgStep] = await tx
+    .select({ id: routingOperations.id })
+    .from(routingOperations)
+    .where(eq(routingOperations.bomId, bomId))
+    .limit(1);
+
+  if (!fgStep) {
+    return null;
+  }
+
+  const [fgItem] = await tx
+    .select({ ...getTableColumns(items) })
+    .from(items)
+    .where(eq(items.id, job.itemId))
+    .limit(1);
+
+  const fgItemId = crypto.randomUUID();
+
+  return {
+    fgItemId,
+    item: {
+      id: fgItemId,
+      productionJobId: job.id,
+      parentId: null,
+      itemType: ProductionJobBomItemType.FG,
+      code: fgItem.code,
+      name: fgItem.name,
+      quantity: 1,
+      plannedQuantity: job.quantity,
+      sortOrder,
+      level: 0,
+      itemId: job.itemId,
+      imageFileId: fgItem.imageFileId,
+    },
+  };
+}
+
+/**
+ * Nhân bản cây `bom_items` (node COMPONENT/CONSUMABLE) sang `production_job_bom_items`, nổ cấp số
+ * lượng `plannedQuantity` — nguồn ghi duy nhất của cột này, mọi route đọc chỉ đọc lại. Cấp 0 (chính
+ * FG, không phải một node `bom_items` — `docs/decisions/bom-header-as-level-0-anchor.md`) không
+ * snapshot từ `bomItems` mà thành một node `FG` riêng đứng cuối cây, đọc thẳng từ `items`, chỉ khi
+ * Cấp 0 có công đoạn. Trả map nguồn → id snapshot mới, khoá theo `bom_items.id` cho node thường và
+ * theo `bomId` cho entry FG (không có `bom_items.id` nguồn) để `snapshotJobBomOperations` gắn
+ * đúng công đoạn.
  */
 async function snapshotJobBomItems(
   tx: DbTransaction,
@@ -75,84 +191,51 @@ async function snapshotJobBomItems(
     .where(eq(bomItems.bomId, bomId))
     .orderBy(asc(bomItems.level), asc(bomItems.sortOrder));
 
-  const root = baseBomItems.find(
-    (baseBomItem) => baseBomItem.type === BomType.ROOT,
-  );
-  const nodes = baseBomItems.filter(
-    (baseBomItem) => baseBomItem.type !== BomType.ROOT,
-  );
-
   const jobBomItemIdByBaseId = new Map<string, string>();
   const plannedQtyByBaseId = new Map<string, number>();
   const itemsToCreate: (typeof productionJobBomItems.$inferInsert)[] = [];
 
   let maxSortOrder = -1;
 
-  // Yêu cầu `nodes` sắp cha-trước-con (`orderBy level`) — id cha luôn có sẵn trong map khi tới
-  // con, cùng tính chất đó cho phép nhân luỹ kế `plannedQuantity` ngay trong một vòng lặp.
-  for (const baseBomItem of nodes) {
+  // Yêu cầu `baseBomItems` sắp cha-trước-con (`orderBy level`) — id cha luôn có sẵn trong map khi
+  // tới con, cho phép tính luỹ kế `plannedQuantity` trong đúng một vòng lặp.
+  for (const baseBomItem of baseBomItems) {
     const jobBomItemId = crypto.randomUUID();
     jobBomItemIdByBaseId.set(baseBomItem.id, jobBomItemId);
 
-    if (baseBomItem.sortOrder > maxSortOrder) {
-      maxSortOrder = baseBomItem.sortOrder;
-    }
+    maxSortOrder = Math.max(maxSortOrder, baseBomItem.sortOrder);
 
-    const jobParentId = baseBomItem.parentId
-      ? (jobBomItemIdByBaseId.get(baseBomItem.parentId) ?? null)
-      : null;
-    const parentPlannedQty = baseBomItem.parentId
-      ? (plannedQtyByBaseId.get(baseBomItem.parentId) ?? job.quantity)
-      : job.quantity;
-    const plannedQuantity = parentPlannedQty * baseBomItem.quantity;
+    const jobParentId =
+      (baseBomItem.parentId &&
+        jobBomItemIdByBaseId.get(baseBomItem.parentId)) ??
+      null;
+
+    const plannedQuantity = resolvePlannedQuantity(
+      baseBomItem.parentId,
+      baseBomItem.quantity,
+      job.quantity,
+      plannedQtyByBaseId,
+    );
     plannedQtyByBaseId.set(baseBomItem.id, plannedQuantity);
 
-    const isConsumable = baseBomItem.type === BomType.CONSUMABLE;
-
-    itemsToCreate.push({
-      id: jobBomItemId,
-      productionJobId: job.id,
-      parentId: jobParentId,
-      itemType: isConsumable
-        ? ProductionJobBomItemType.CONSUMABLE
-        : ProductionJobBomItemType.COMPONENT,
-      code: isConsumable ? baseBomItem.item!.code : baseBomItem.code!,
-      name: isConsumable ? baseBomItem.item!.name : baseBomItem.name!,
-      quantity: baseBomItem.quantity,
-      plannedQuantity,
-      sortOrder: baseBomItem.sortOrder,
-      level: baseBomItem.level,
-      itemId: baseBomItem.itemId,
-      imageFileId: baseBomItem.item?.imageFileId ?? null,
-    });
+    itemsToCreate.push(
+      buildJobBomItem(
+        baseBomItem,
+        job.id,
+        jobBomItemId,
+        jobParentId,
+        plannedQuantity,
+      ),
+    );
   }
 
-  if (root) {
-    const [rootStep] = await tx
-      .select({ id: bomOperations.id })
-      .from(bomOperations)
-      .where(eq(bomOperations.bomItemId, root.id))
-      .limit(1);
-
-    if (rootStep) {
-      const finalAssemblyId = crypto.randomUUID();
-      jobBomItemIdByBaseId.set(root.id, finalAssemblyId);
-
-      itemsToCreate.push({
-        id: finalAssemblyId,
-        productionJobId: job.id,
-        parentId: null,
-        itemType: ProductionJobBomItemType.FG,
-        code: root.item!.code,
-        name: root.item!.name,
-        quantity: 1,
-        plannedQuantity: job.quantity,
-        sortOrder: maxSortOrder + 1,
-        level: 0,
-        itemId: root.itemId,
-        imageFileId: root.item!.imageFileId,
-      });
-    }
+  // Node Cấp 0 (FG) — bổ sung cuối cây nếu Cấp 0 có định nghĩa công đoạn
+  const fgNode = await buildFgBomItem(tx, job, bomId, maxSortOrder + 1);
+  if (fgNode) {
+    // Không có `bom_items.id` nguồn cho Cấp 0 — dùng `bomId` làm khoá map để
+    // `snapshotJobBomOperations` gắn đúng công đoạn Cấp 0 (`routing_operations.bomId`).
+    jobBomItemIdByBaseId.set(bomId, fgNode.fgItemId);
+    itemsToCreate.push(fgNode.item);
   }
 
   if (itemsToCreate.length) {
@@ -163,36 +246,70 @@ async function snapshotJobBomItems(
 }
 
 /**
- * Copy công đoạn as-used (`bom_operations`) sang `production_job_operations` cho mọi node vừa
- * snapshot (kể cả node FG) — đọc đúng tập `bom_items.id` nguồn trong `jobBomItemIdByBaseId`, không
- * cần đọc lại `bom_items`. Node CONSUMABLE không có `bom_operations` (chặn từ lúc ghi) nên tự nhiên
- * không sinh dòng nào, không cần lọc riêng.
+ * Copy công đoạn as-used sang `production_job_operations` cho mọi node vừa snapshot lẫn node FG —
+ * 2 nguồn đọc khác nhau vì khác bảng lưu: `bom_operations` (node COMPONENT, khoá `bomItemId`) và
+ * `routing_operations` (Cấp 0, khoá `bomId` —
+ * `docs/decisions/routing-operations-table.md`), gộp trước khi insert. Node CONSUMABLE không có
+ * `bom_operations` (chặn từ lúc ghi) nên tự nhiên không sinh dòng nào, không cần lọc riêng.
  */
 async function snapshotJobBomOperations(
   tx: DbTransaction,
   productionJobId: string,
+  bomId: string,
   jobBomItemIdByBaseId: Map<string, string>,
 ): Promise<void> {
-  const baseSteps = await tx
-    .select({
-      ...getTableColumns(bomOperations),
-      operation: getTableColumns(operations),
-    })
-    .from(bomOperations)
-    .innerJoin(operations, eq(operations.id, bomOperations.operationId))
-    .where(inArray(bomOperations.bomItemId, [...jobBomItemIdByBaseId.keys()]))
-    .orderBy(asc(bomOperations.sortOrder), asc(bomOperations.createdAt));
+  const baseBomItemIds = [...jobBomItemIdByBaseId.keys()].filter(
+    (id) => id !== bomId,
+  );
 
-  const operationsToCreate = baseSteps.map((step) => ({
-    productionJobId,
-    productionJobBomItemId: jobBomItemIdByBaseId.get(step.bomItemId)!,
-    operationId: step.operationId,
-    code: step.operation.code,
-    name: step.operation.name,
-    type: step.type,
-    sortOrder: step.sortOrder,
-    note: step.note,
-  }));
+  const [nodeSteps, fgSteps] = await Promise.all([
+    baseBomItemIds.length
+      ? tx
+          .select({
+            ...getTableColumns(bomOperations),
+            operation: getTableColumns(operations),
+          })
+          .from(bomOperations)
+          .innerJoin(operations, eq(operations.id, bomOperations.operationId))
+          .where(inArray(bomOperations.bomItemId, baseBomItemIds))
+          .orderBy(asc(bomOperations.sortOrder), asc(bomOperations.createdAt))
+      : Promise.resolve([]),
+    tx
+      .select({
+        ...getTableColumns(routingOperations),
+        operation: getTableColumns(operations),
+      })
+      .from(routingOperations)
+      .innerJoin(operations, eq(operations.id, routingOperations.operationId))
+      .where(eq(routingOperations.bomId, bomId))
+      .orderBy(
+        asc(routingOperations.sortOrder),
+        asc(routingOperations.createdAt),
+      ),
+  ]);
+
+  const operationsToCreate = [
+    ...nodeSteps.map((step) => ({
+      productionJobId,
+      productionJobBomItemId: jobBomItemIdByBaseId.get(step.bomItemId)!,
+      operationId: step.operationId,
+      code: step.operation.code,
+      name: step.operation.name,
+      type: step.type,
+      sortOrder: step.sortOrder,
+      note: step.note,
+    })),
+    ...fgSteps.map((step) => ({
+      productionJobId,
+      productionJobBomItemId: jobBomItemIdByBaseId.get(bomId)!,
+      operationId: step.operationId,
+      code: step.operation.code,
+      name: step.operation.name,
+      type: step.type,
+      sortOrder: step.sortOrder,
+      note: step.note,
+    })),
+  ];
 
   if (operationsToCreate.length) {
     await tx.insert(productionJobOperations).values(operationsToCreate);

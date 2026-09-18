@@ -41,6 +41,7 @@ import {
   orderItems,
   productionJobs,
   productionOrderItems,
+  routingOperations,
   suppliers,
   units,
   UnitScope,
@@ -402,10 +403,11 @@ export class ItemsService {
   ): Promise<OffsetPaginatedDto<ItemIssueResDto>> {
     await this.ensureItemExists(itemId);
 
-    const bom = await this.db.query.boms.findFirst({
-      columns: { id: true },
-      where: eq(boms.itemId, itemId),
-    });
+    const [bom] = await this.db
+      .select({ id: boms.id })
+      .from(boms)
+      .where(eq(boms.itemId, itemId))
+      .limit(1);
 
     if (!bom) {
       return new OffsetPaginatedDto([], new OffsetPaginationDto(0, reqDto));
@@ -514,10 +516,11 @@ export class ItemsService {
     await this.validateCodeRevisionUniqueness(item.code, reqDto.revision);
 
     // 1. Đọc BOM + tài liệu đính kèm gốc trước khi mở transaction
-    const bom = await this.db.query.boms.findFirst({
-      columns: { id: true },
-      where: eq(boms.itemId, itemId),
-    });
+    const [bom] = await this.db
+      .select({ id: boms.id })
+      .from(boms)
+      .where(eq(boms.itemId, itemId))
+      .limit(1);
 
     const sourceBomItems = bom
       ? await this.db.query.bomItems.findMany({
@@ -555,7 +558,13 @@ export class ItemsService {
           .returning({ id: items.id });
 
         if (bom) {
-          await this.copyBomTree(tx, createdItem.id, sourceBomItems, userId);
+          await this.copyBomTree(
+            tx,
+            createdItem.id,
+            bom,
+            sourceBomItems,
+            userId,
+          );
         }
 
         if (sourceFiles.length) {
@@ -576,12 +585,13 @@ export class ItemsService {
     }
   }
 
-  /** Nhân bản cả công đoạn as-used (`bom_operations`) của từng node, kể cả node ROOT ("Cấp 0" —
-   * `docs/decisions/root-bom-item.md`) — `sourceBomItems` giờ luôn chứa đúng 1 node ROOT, nên
-   * routing Cấp 0 tự nhiên được nhân bản theo cùng một đường, không cần bước riêng nào nữa. */
+  /** Nhân bản cây `bom_items` + công đoạn as-used (`bom_operations`) của từng node COMPONENT, cộng
+   * công đoạn Cấp 0 (`routing_operations`, neo `bomId` — không phải một node `bom_items`, xem
+   * `docs/decisions/routing-operations-table.md`) — bảng riêng nên copy 2 bước độc lập. */
   private async copyBomTree(
     tx: DbTransaction,
     itemId: string,
+    sourceBom: { id: string },
     sourceBomItems: BomItemSelect[],
     userId: string,
   ): Promise<void> {
@@ -616,21 +626,37 @@ export class ItemsService {
       },
     );
 
-    if (!newItems.length) {
-      return;
-    }
-    await tx.insert(bomItems).values(newItems);
+    if (newItems.length) {
+      await tx.insert(bomItems).values(newItems);
 
-    const sourceOperations = await tx.query.bomOperations.findMany({
-      where: inArray(bomOperations.bomItemId, [...newIdByOldId.keys()]),
+      const sourceOperations = await tx.query.bomOperations.findMany({
+        where: inArray(bomOperations.bomItemId, [...newIdByOldId.keys()]),
+      });
+      if (sourceOperations.length) {
+        await tx.insert(bomOperations).values(
+          sourceOperations.map(
+            ({ id, createdAt, updatedAt, ...operation }) => ({
+              ...operation,
+              bomItemId: newIdByOldId.get(operation.bomItemId)!,
+              createdBy: userId,
+            }),
+          ),
+        );
+      }
+    }
+
+    const sourceRoutingOperations = await tx.query.routingOperations.findMany({
+      where: eq(routingOperations.bomId, sourceBom.id),
     });
-    if (sourceOperations.length) {
-      await tx.insert(bomOperations).values(
-        sourceOperations.map(({ id, createdAt, updatedAt, ...operation }) => ({
-          ...operation,
-          bomItemId: newIdByOldId.get(operation.bomItemId)!,
-          createdBy: userId,
-        })),
+    if (sourceRoutingOperations.length) {
+      await tx.insert(routingOperations).values(
+        sourceRoutingOperations.map(
+          ({ id, createdAt, updatedAt, ...operation }) => ({
+            ...operation,
+            bomId: newBom.id,
+            createdBy: userId,
+          }),
+        ),
       );
     }
   }

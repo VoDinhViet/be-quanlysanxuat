@@ -1,9 +1,10 @@
 # Cấp 0 (ROOT) thành một dòng `bom_items` thật
 
-**Trạng thái:** còn hiệu lực. Tên `PART`/`RM` dùng trong file này lúc quyết định đã đổi thành
-`COMPONENT`/`CONSUMABLE` sau đó (`docs/decisions/material-to-consumable-rename.md`, 2026-09) — bản
-thân quyết định "Cấp 0 là một dòng `bom_items` thật" ở đây **không đổi**, chỉ đổi tên vật lý; file
-này dùng tên **sau** đợt đổi đó.
+**Trạng thái:** đã bị thay thế bởi `docs/decisions/bom-header-as-level-0-anchor.md` — Cấp 0 không
+còn là một dòng `bom_items`. File này **vẫn còn hiệu lực** ở phần "Đừng hoàn lại": đừng dựng lại
+bảng `routings`/`routing_operations` song song — lý lẽ và bài học ở phần Bối cảnh dưới đây vẫn
+đúng nguyên vẹn cho quyết định thay thế. Tên `PART`/`RM` dùng trong file này lúc quyết định đã đổi
+thành `COMPONENT`/`CONSUMABLE` sau đó (`docs/decisions/material-to-consumable-rename.md`, 2026-09).
 
 ## Bối cảnh
 

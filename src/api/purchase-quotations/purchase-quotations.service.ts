@@ -10,7 +10,6 @@ import {
   inArray,
   isNull,
   lt,
-  ne,
   or,
   sql,
 } from 'drizzle-orm';
@@ -718,58 +717,11 @@ export class PurchaseQuotationsService {
     return [...bySupplierId.values()];
   }
 
-  /** Mỗi vật tư phải có ≥1 phân bổ (E150); không dòng ĐXMH nào lặp trong toàn payload kể cả khác vật
-   * tư (E128 — lặp sẽ nhân đôi quotedQuantity ở sổ cái); mọi dòng ĐXMH phải thuộc phiếu APPROVED và
-   * chưa hủy tay (E125), và đúng vật tư của dòng báo giá chứa nó (E149). */
-  private async getOtherQuotedQuantities(
-    purchaseRequestItemIds: string[],
-    excludeQuotationId?: string,
-  ): Promise<Map<string, number>> {
-    if (!purchaseRequestItemIds.length) return new Map();
-
-    const whereConditions = [
-      inArray(
-        purchaseQuotationItemAllocations.purchaseRequestItemId,
-        purchaseRequestItemIds,
-      ),
-      ne(purchaseQuotations.status, PurchaseQuotationStatus.CANCELLED),
-    ];
-
-    if (excludeQuotationId) {
-      whereConditions.push(ne(purchaseQuotations.id, excludeQuotationId));
-    }
-
-    const rows = await this.db
-      .select({
-        purchaseRequestItemId:
-          purchaseQuotationItemAllocations.purchaseRequestItemId,
-        totalQuoted:
-          sql<number>`sum(${purchaseQuotationItemAllocations.quantity})`.mapWith(
-            Number,
-          ),
-      })
-      .from(purchaseQuotationItemAllocations)
-      .innerJoin(
-        purchaseQuotationItems,
-        eq(
-          purchaseQuotationItems.id,
-          purchaseQuotationItemAllocations.quotationItemId,
-        ),
-      )
-      .innerJoin(
-        purchaseQuotations,
-        eq(purchaseQuotations.id, purchaseQuotationItems.quotationId),
-      )
-      .where(and(...whereConditions))
-      .groupBy(purchaseQuotationItemAllocations.purchaseRequestItemId);
-
-    return new Map(rows.map((r) => [r.purchaseRequestItemId, r.totalQuoted]));
-  }
 
   /** Mỗi vật tư phải có ≥1 phân bổ (E150); không dòng ĐXMH nào lặp trong toàn payload kể cả khác vật
    * tư (E128 — lặp sẽ nhân đôi quotedQuantity ở sổ cái); mọi dòng ĐXMH phải thuộc phiếu APPROVED và
-   * chưa hủy tay (E125), đúng vật tư của dòng báo giá chứa nó (E149), và SL phân bổ không được
-   * vượt quá SL cần mua còn lại (E265). */
+   * chưa hủy tay (E125), đúng vật tư của dòng báo giá chứa nó (E149). SL phân bổ chỉ cần > 0,
+   * không giới hạn trên so với SL đề xuất mua. */
   private async validateAllocations(
     itemsReq: CreateQuotationItemReqDto[],
     quotationId?: string,
@@ -821,22 +773,12 @@ export class PurchaseQuotationsService {
       throw new AppException(ErrorCode.E149, HttpStatus.CONFLICT);
     }
 
-    const otherQuotedMap = await this.getOtherQuotedQuantities(
-      uniqueRequestItemIds,
-      quotationId,
+    // SL phân bổ chỉ cần > 0 — không giới hạn trên, cho phép vượt SL đề xuất.
+    const hasInvalidQuantity = itemsReq.some((item) =>
+      item.allocations.some((allocation) => allocation.quantity <= 0),
     );
-
-    for (const item of itemsReq) {
-      for (const allocation of item.allocations) {
-        const reqItem = requestItemMap.get(allocation.purchaseRequestItemId);
-        if (!reqItem) continue;
-        const otherQuoted =
-          otherQuotedMap.get(allocation.purchaseRequestItemId) ?? 0;
-        const maxAllowed = reqItem.quantity - otherQuoted;
-        if (allocation.quantity <= 0 || allocation.quantity > maxAllowed) {
-          throw new AppException(ErrorCode.E265, HttpStatus.BAD_REQUEST);
-        }
-      }
+    if (hasInvalidQuantity) {
+      throw new AppException(ErrorCode.E265, HttpStatus.BAD_REQUEST);
     }
   }
 

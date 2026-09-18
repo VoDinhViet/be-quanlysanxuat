@@ -43,4 +43,5 @@ export const uploadPolicies: Record<UploadType, UploadPolicy> = {
   [UploadType.SUPPLIER_RETURN_EVIDENCE]: { kind: FileKind.EVIDENCE },
   [UploadType.ITEM_DOCUMENT]: { kind: FileKind.DOCUMENT },
   [UploadType.BOM_ITEM_IMAGE]: { kind: FileKind.IMAGE },
+  [UploadType.PRODUCTION_ORDER_SIGNED_DOCUMENT]: { kind: FileKind.EVIDENCE },
 };

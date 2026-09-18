@@ -13,8 +13,9 @@ import { operations, OperationType, operationTypeEnum } from '../operations';
 import { users } from '../identity-access/users';
 
 /**
- * Công đoạn as-used gắn thẳng vào một node `bom_items` cụ thể (chỉ node COMPONENT — node CONSUMABLE là lá, không
- * gắn được). Cùng khuôn `bom_items`.
+ * Công đoạn as-used gắn thẳng vào một node `bom_items` COMPONENT (node CONSUMABLE là lá, không
+ * gắn được). Công đoạn Cấp 0 (chính sản phẩm gốc) sống ở bảng riêng `routing_operations`, neo
+ * `boms.id` — xem `docs/decisions/routing-operations-table.md`.
  *
  * Rules:
  * - `operationId` bất biến sau khi thêm — đổi công đoạn là xoá dòng rồi thêm lại.

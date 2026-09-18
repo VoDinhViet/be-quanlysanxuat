@@ -2,7 +2,8 @@ import { Exclude, Expose } from 'class-transformer';
 
 import { ProductionJobStatus } from '../../../database/schemas';
 import { ClientBaseResDto } from '../../clients/dto/client-base.res.dto';
-import { ItemRefResDto } from '../../items/dto/item-ref.res.dto';
+import { ItemUnitField } from '../../items/dto/item-unit.field';
+import { ItemUnitRefResDto } from '../../items/dto/item-unit-ref.res.dto';
 import { OrderBaseResDto } from '../../orders/dto/order-base.res.dto';
 import {
   BooleanField,
@@ -44,8 +45,8 @@ export class ProductionJobDetailResDto {
   itemId!: string;
 
   @Expose()
-  @ClassField(() => ItemRefResDto, { description: 'Sản phẩm (FG)' })
-  item!: ItemRefResDto;
+  @ItemUnitField()
+  item!: ItemUnitRefResDto;
 
   @Expose()
   @NumberField({ description: 'SL cần sản xuất — đã gộp theo sản phẩm' })

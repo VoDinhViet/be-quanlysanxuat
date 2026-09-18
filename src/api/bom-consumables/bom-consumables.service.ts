@@ -24,7 +24,6 @@ export class BomConsumablesService {
     bomItemId: string,
     reqDto: GetBomConsumablesReqDto,
   ): Promise<OffsetPaginatedDto<BomConsumableResDto>> {
-    await this.bomsService.ensureItemExists(itemId);
     await this.bomsService.ensureBomItemInBom(itemId, bomItemId);
 
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;

@@ -24,30 +24,29 @@ export class BomItemResDto {
   @Expose()
   @UUIDFieldOptional({
     nullable: true,
-    description:
-      'null chỉ với node ROOT ("Cấp 0") — mọi node khác đều có cha thật',
+    description: 'null nghĩa là con trực tiếp của Cấp 0 — không có cha thật',
   })
   parentId!: string | null;
 
   @Expose()
   @EnumField(() => BomType, {
     description:
-      'COMPONENT (node cấu trúc con, không trỏ item), CONSUMABLE (lá, trỏ vật tư), hoặc ROOT (đúng 1 mỗi cây — chính sản phẩm, "Cấp 0")',
+      'COMPONENT (node cấu trúc con, không trỏ item) hoặc CONSUMABLE (lá, trỏ vật tư) — Cấp 0 ' +
+      '(chính sản phẩm) không nằm trong mảng này, đọc qua GET /items/:itemId',
   })
   type!: BomType;
 
   @Expose()
   @UUIDFieldOptional({
     nullable: true,
-    description:
-      'Id item liên kết (CONSUMABLE: vật tư; ROOT: chính sản phẩm); null với node COMPONENT',
+    description: 'Id vật tư liên kết (CONSUMABLE); null với node COMPONENT',
   })
   itemId!: string | null;
 
   @Expose()
   @StringField({
     description:
-      'Mã bản vẽ — COMPONENT: nhập tay trên node; CONSUMABLE/ROOT: đọc từ item liên kết',
+      'Mã bản vẽ — COMPONENT: nhập tay trên node; CONSUMABLE: đọc từ item liên kết',
   })
   code!: string;
 
@@ -55,14 +54,14 @@ export class BomItemResDto {
   @StringFieldOptional({
     nullable: true,
     description:
-      'Phiên bản item liên kết (CONSUMABLE/ROOT); null với node COMPONENT',
+      'Phiên bản item liên kết (CONSUMABLE); null với node COMPONENT',
   })
   revision!: string | null;
 
   @Expose()
   @StringField({
     description:
-      'Tên bản vẽ — COMPONENT: nhập tay trên node; CONSUMABLE/ROOT: đọc từ item liên kết',
+      'Tên bản vẽ — COMPONENT: nhập tay trên node; CONSUMABLE: đọc từ item liên kết',
   })
   name!: string;
 
@@ -70,7 +69,7 @@ export class BomItemResDto {
   @ClassFieldOptional(() => FileResDto, {
     nullable: true,
     description:
-      'CONSUMABLE/ROOT: ảnh item liên kết; COMPONENT: ảnh riêng gán trên node (null nếu chưa gán)',
+      'CONSUMABLE: ảnh item liên kết; COMPONENT: ảnh riêng gán trên node (null nếu chưa gán)',
   })
   image!: FileResDto | null;
 
@@ -78,14 +77,13 @@ export class BomItemResDto {
   @ClassFieldOptional(() => UnitRefResDto, {
     nullable: true,
     description:
-      'CONSUMABLE/ROOT: ĐVT của item liên kết; COMPONENT: ĐVT riêng gán trên node (null nếu chưa gán)',
+      'CONSUMABLE: ĐVT của item liên kết; COMPONENT: ĐVT riêng gán trên node (null nếu chưa gán)',
   })
   unit!: UnitRefResDto | null;
 
   @Expose()
   @NumberField({
-    description:
-      'Số lượng — nguyên nếu node là COMPONENT hoặc ROOT (ROOT luôn = 1), có thể lẻ nếu là CONSUMABLE',
+    description: 'Số lượng — nguyên nếu COMPONENT, có thể lẻ nếu CONSUMABLE',
   })
   quantity!: number;
 
@@ -96,13 +94,26 @@ export class BomItemResDto {
   @Expose()
   @NumberField({
     int: true,
-    description: 'Độ sâu tính từ ROOT — ROOT = 0, con trực tiếp của ROOT = 1',
+    description: 'Độ sâu — con trực tiếp của Cấp 0 = 1',
   })
   level!: number;
 
   @Expose()
   @StringFieldOptional({ nullable: true })
   note!: string | null;
+
+  @Expose()
+  @NumberField({
+    int: true,
+    each: true,
+    isArray: true,
+    description:
+      'Vị trí trong cây, dạng mảng rank anh em từng cấp — con trực tiếp của Cấp 0 bắt đầu từ ' +
+      '[1], ví dụ [1,2] nghĩa là con thứ 1 của Cấp 0 rồi con thứ 2 của node đó. Đã tính sẵn ' +
+      'trong BomsService.getBomItem — mảng trả về đã đúng thứ tự depth-first, FE không cần tự ' +
+      'dựng lại cây nữa.',
+  })
+  path!: number[];
 
   @Expose()
   @ClassField(() => BomOperationResDto, {

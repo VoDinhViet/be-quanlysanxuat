@@ -41,6 +41,7 @@ import {
   productionJobUnits,
   productionOrders,
   qualityInspections,
+  units,
   QualityInspectionType,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
@@ -60,6 +61,7 @@ import { ProductionJobIssueResDto } from './dto/production-job-issue.res.dto';
 import { ProductionJobLogResDto } from './dto/production-job-log.res.dto';
 import { ProductionJobNoteResDto } from './dto/production-job-note.res.dto';
 import { ProductionJobResDto } from './dto/production-job.res.dto';
+import { UpdateProductionJobOperationDueDateReqDto } from './dto/update-production-job-operation-due-date.req.dto';
 import { createJobSnapshot } from './production-job-snapshot.query';
 
 /** Job sản xuất — 1 sản phẩm (FG) = 1 Job trong một LSX. Chỉ tạo được qua `createJobs`, gọi từ
@@ -169,6 +171,7 @@ export class ProductionJobsService {
         createdAt: productionJobs.createdAt,
         updatedAt: productionJobs.updatedAt,
         item: getTableColumns(items),
+        unit: getTableColumns(units),
       })
       .from(productionJobs)
       .innerJoin(
@@ -178,6 +181,7 @@ export class ProductionJobsService {
       .innerJoin(orders, eq(orders.id, productionOrders.orderId))
       .leftJoin(clients, eq(clients.id, orders.clientId))
       .innerJoin(items, eq(items.id, productionJobs.itemId))
+      .leftJoin(units, eq(units.id, items.unitId))
       .where(eq(productionJobs.id, jobId));
 
     if (!job) {
@@ -345,6 +349,35 @@ export class ProductionJobsService {
       content: reqDto.content,
       createdBy: userId,
     });
+  }
+
+  /** Đặt/sửa hạn công đoạn — cột kế hoạch duy nhất sửa được trên snapshot đã đóng băng; không
+   * chạm tiến độ (`completedQuantity`/`completedDate` vẫn chỉ đi qua `POST .../reports`). Cho
+   * phép cả công đoạn OUTSOURCE (khác `createJobOperationReport` chặn E260) — hạn là kế hoạch,
+   * không phải số liệu tự ghi từ OS-IN. */
+  async updateProductionJobOperationDueDate(
+    jobId: string,
+    jobOperationId: string,
+    reqDto: UpdateProductionJobOperationDueDateReqDto,
+  ): Promise<void> {
+    const job = await this.ensureJobExists(jobId);
+
+    this.ensureStatus(job.status, [ProductionJobStatus.IN_PROGRESS]);
+
+    const result = await this.db
+      .update(productionJobOperations)
+      .set({ dueDate: reqDto.dueDate })
+      .where(
+        and(
+          eq(productionJobOperations.id, jobOperationId),
+          eq(productionJobOperations.productionJobId, jobId),
+        ),
+      )
+      .returning({ id: productionJobOperations.id });
+
+    if (result.length === 0) {
+      throw new AppException(ErrorCode.E091, HttpStatus.NOT_FOUND);
+    }
   }
 
   /** Sắp `asc(createdAt)` — đọc xuôi như luồng trao đổi, khác `getProductionOrderLogs` (đọc ngược

@@ -29,6 +29,7 @@ của Job vẫn chưa có — `production_job_issues` chỉ đọc qua `/bom`, k
 | `GET /production-execution/operations` | Thẻ chọn công đoạn (màn "Thực hiện sản xuất", bước 1) — một thẻ / công đoạn thật (`operations`), không lọc theo trạng thái Job | Không |
 | `GET /production-execution/jobs` | Danh sách công việc của một công đoạn đang chọn (bước 2) — không lọc trạng thái Job, chỉ lọc theo bộ lọc người dùng chọn | Không |
 | `POST /production-execution/operations/:jobOperationId/reports` | Lưu báo cáo hoàn thành **lần này** cho một Part (bước 3) — cộng dồn | Có (`production_job_operations`, cộng dồn) + thêm 1 dòng `production_job_operation_reports` |
+| `PATCH /production-jobs/:jobId/operations/:jobOperationId/due-date` | Đặt/sửa hạn kế hoạch (`dueDate`) của một công đoạn — ghi đè thẳng, không cộng dồn, không phân biệt `OUTSOURCE` | Có (`production_job_operations.dueDate`, ghi đè) |
 
 Bước 3 của màn "Thực hiện sản xuất" (danh sách Part của Job) đọc lại đúng
 `GET /production-jobs/:jobId/operations` **có sẵn** ở trên (lọc phía FE theo `operationId` đang
@@ -36,7 +37,7 @@ chọn) — không có route riêng, tránh trùng nguồn dữ liệu.
 
 ## Actor
 
-`start`/`POST notes` dùng `production:update`; bốn route đọc còn lại
+`start`/`POST notes`/`PATCH .../due-date` dùng `production:update`; bốn route đọc còn lại
 (`bom`/`operations`/`notes`/`logs`) dùng `production:read`.
 
 Hai route đọc của `production-execution` dùng `production:read`; `POST .../reports` dùng
@@ -54,6 +55,11 @@ không phải Giám đốc/Quản lý. Seed hiện cấp cả hai cho PRODUCTION
   ít nhất một công đoạn khớp bộ lọc, kể cả Job chưa `start` hay đã `COMPLETED` (tổ trưởng cần đối
   chiếu số cũ). `status` (nếu gửi) lọc đúng `production_jobs.status` người dùng chọn, không phải một
   gate cứng.
+- `PATCH /production-jobs/:jobId/operations/:jobOperationId/due-date`: Job phải tồn tại (`E082`) và
+  đang `IN_PROGRESS` (`E087`) — Job `PENDING` chưa có dòng công đoạn nào, Job đã qua `IN_PROGRESS`
+  không còn sửa kế hoạch. `jobOperationId` phải tồn tại **và** thuộc đúng `jobId` trên URL, nếu
+  không `E091`. Không phân biệt `OUTSOURCE` — hạn là kế hoạch điều độ, không phải số liệu OS-IN tự
+  ghi.
 - `POST /production-execution/operations/:jobOperationId/reports`: `jobOperationId` phải tồn tại
   (`E091`); công đoạn `OUTSOURCE` bị chặn hẳn (`E260` — chỉ OS-IN mới được ghi số của nó). Job chứa
   nó phải `IN_PROGRESS` (`E087`) — chưa `start` thì chưa có gì để báo tiến độ. Node Cấp 0
@@ -106,6 +112,11 @@ mới sau) — đọc xuôi như một luồng trao đổi, khác `GET logs` (đ
 `GET /production-orders/:id/logs`. `production_job_logs` tự ghi tại 5 điểm chuyển trạng thái của
 Job (xem State changes/Side effects dưới và `docs/decisions/production-lifecycle-closing.md`),
 không có route ghi tay nào.
+
+`PATCH .../due-date`: kiểm Job tồn tại (`ensureJobExists`, `E082`) → kiểm trạng thái `IN_PROGRESS`
+(`E087`) → một lệnh `UPDATE production_job_operations SET due_date = ...` khoá thêm điều kiện
+`production_job_id = :jobId` (`.returning()` rỗng → `E091`) → `204`, không trả nội dung. Không
+transaction (một câu update một cột, không đọc-rồi-ghi), không ghi `production_job_logs`.
 
 ### Route của `production-execution`
 
@@ -208,7 +219,8 @@ hoặc không gì cả.
 | Job không tồn tại | `E082` | 404 |
 | `start` gọi khi Job không còn `PENDING` | `E087` | 409 |
 | `POST .../reports` gọi khi Job chưa `IN_PROGRESS` | `E087` | 409 |
-| `jobOperationId` không tồn tại | `E091` | 404 |
+| `PATCH .../due-date` gọi khi Job chưa/không còn `IN_PROGRESS` | `E087` | 409 |
+| `jobOperationId` không tồn tại (hoặc không thuộc `jobId` trên URL, `PATCH .../due-date`) | `E091` | 404 |
 | `POST .../reports` trên công đoạn `OUTSOURCE` (chỉ OS-IN mới ghi được) | `E260` | 409 |
 | `POST .../reports` trên công đoạn Cấp 0 khi còn part khác chưa `completedDate` | `E210` | 400 |
 | `completedQuantity` (sau cộng dồn) vượt `plannedQuantity` của node BOM cha (`rejectedQuantity` không giới hạn) | `E256` | 400 |

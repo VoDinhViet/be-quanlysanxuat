@@ -1,10 +1,13 @@
 # OQC đổi từ gắn theo Job sang gắn theo công đoạn
 
 **Trạng thái:** còn hiệu lực — các chỗ nhắc `routings`/`routing_operations` bên dưới mô tả đúng bối
-cảnh tại thời điểm quyết định; hai bảng đó đã bị xoá hẳn sau này (Cấp 0 trở thành một dòng
-`bom_items` thật, `docs/decisions/root-bom-item.md`), nhưng quyết định giữ node `FG` riêng trong
-`production_job_bom_items`/`production_job_operations` — không gộp vào node ROOT của `bom_items` —
-**không đổi**.
+cảnh tại thời điểm quyết định; hai bảng đó đã bị xoá hẳn sau này (rồi `routing_operations` dựng lại
+ở dạng khác, `docs/decisions/routing-operations-table.md`). Cấp 0 từng là một dòng `bom_items` thật
+(`docs/decisions/root-bom-item.md`), rồi thành dòng ảo neo qua `boms` header
+(`docs/decisions/bom-header-as-level-0-anchor.md`), rồi bỏ hẳn dòng ảo đó khỏi `GET /bom`
+(`docs/decisions/level-0-outside-bom-tree-response.md`) — nhưng quyết định giữ node `FG` riêng
+trong `production_job_bom_items`/`production_job_operations`, tách khỏi COMPONENT/CONSUMABLE,
+**không đổi** qua cả ba lần đó.
 
 ## Bối cảnh
 
@@ -104,10 +107,10 @@ Toàn bộ khối AQL (bảng `qc_aql_plans`/`qc_aql_rules`, `resolveAqlPlan()`,
 ## QC cho Cấp 0 (bước cuối ra thành phẩm) — đã làm, không phải bảng mới
 
 Mục "Đừng hoàn lại" bản trước từng nói: nếu cần QC riêng cho Cấp 0 thì phải thêm bảng/snapshot riêng
-cho `routings`/`routing_operations` theo Job (khi đó vẫn là bảng tĩnh định nghĩa Cấp 0 — nay là node
-`ROOT` của `bom_items`, `docs/decisions/root-bom-item.md`). Khi thật sự cần (gate `E209` — Job chưa
-từng QC thành phẩm thì không cho nhập kho), quyết định cuối **không** làm vậy — tái dùng thẳng
-`production_job_bom_items`/`production_job_operations` đã có, không tạo bảng thứ ba:
+cho `routings`/`routing_operations` theo Job (khi đó vẫn là bảng tĩnh định nghĩa Cấp 0 — nay là dòng
+ảo neo qua `boms` header, `docs/decisions/bom-header-as-level-0-anchor.md`). Khi thật sự cần (gate
+`E209` — Job chưa từng QC thành phẩm thì không cho nhập kho), quyết định cuối **không** làm vậy —
+tái dùng thẳng `production_job_bom_items`/`production_job_operations` đã có, không tạo bảng thứ ba:
 
 - `production_job_bom_items` nhận thêm **đúng một** node mỗi Job, `itemType = 'FG'` (dùng chung enum
   `ItemType` sẵn có, không phải enum riêng), `parentId = NULL`, `level = 0` (ngoài quy ước 1-based
@@ -150,6 +153,9 @@ bằng cột đó, không bằng bảng khác.
 `docs/decisions/quality-schema-rename.md` (đổi tên `qc_requests`/`kind` → `quality_inspections`/
 `inspectionType`, 2026-08). `docs/domains/production.md`, `docs/domains/inventory.md`,
 `docs/workflows/outgoing-qc.md`.
-`docs/decisions/root-bom-item.md` — Cấp 0 thành node `ROOT` của `bom_items`, xoá
-`routings`/`routing_operations`; node FG (`createJobBomItems`) đổi nguồn đọc nhưng giữ nguyên vai trò
-mô tả ở tài liệu này.
+`docs/decisions/root-bom-item.md` (đã bị thay thế) — Cấp 0 từng thành node `ROOT` của `bom_items`,
+xoá `routings`/`routing_operations`. `docs/decisions/bom-header-as-level-0-anchor.md`,
+`docs/decisions/routing-operations-table.md`, `docs/decisions/level-0-outside-bom-tree-response.md`
+(hiện hành) — Cấp 0 không còn nằm trong `bom_items` lẫn không nằm trong response `GET /bom`; node
+FG (`snapshotJobBomItems`) đổi nguồn đọc theo mỗi lần nhưng giữ nguyên vai trò mô tả ở tài liệu
+này.

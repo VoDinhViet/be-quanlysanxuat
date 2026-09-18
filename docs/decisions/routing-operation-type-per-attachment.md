@@ -1,10 +1,12 @@
 # `type` (Inhouse/Outsource) là quyết định per-attachment, không phải catalog
 
 **Trạng thái:** còn hiệu lực — quyết định "`type` là per-attachment, sống trên chính dòng
-routing/BOM" **không đổi**; chỉ tầng lưu trữ của Cấp 0 đổi sau đó: `routing_operations` bị xoá hẳn,
-Cấp 0 giờ dùng chung `bom_operations` như COMPONENT (`docs/decisions/root-bom-item.md`). Đọc mọi chỗ nhắc
-`routing_operations` bên dưới là lịch sử — cột `type` mô tả ở đây nay chỉ còn sống trên
-`bom_operations`.
+routing/BOM" **không đổi** qua mọi lần đổi tầng lưu trữ của Cấp 0: `routing_operations` gốc bị xoá
+(`docs/decisions/root-bom-item.md`), Cấp 0 dùng chung `bom_operations` một thời gian rồi qua
+`bom_operations.bomId` (`docs/decisions/bom-header-as-level-0-anchor.md`), rồi tách lại thành bảng
+`routing_operations` riêng — lần này không có header `routings` (`boms` đóng vai trò đó,
+`docs/decisions/routing-operations-table.md`). Dù tên bảng đổi qua lại, `type` luôn sống trên chính
+dòng công đoạn (`bom_operations`/`routing_operations`), không phải trên danh mục `operations`.
 
 ## Bối cảnh
 

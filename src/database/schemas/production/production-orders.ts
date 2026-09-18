@@ -14,6 +14,7 @@ import { productionJobs } from './production-jobs';
 import { productionOrderItems } from './production-order-items';
 import { productionOrderLogs } from './production-order-logs';
 import { users } from '../identity-access/users';
+import { files } from '../files';
 
 /** "Chờ duyệt" (kế hoạch, sửa số lượng tự do qua `updateProductionOrder`) vs "Đã duyệt" (chốt
  * LSX, không sửa được nữa) vs "Hoàn thành" (mọi Job đã `COMPLETED`, tự động đóng — không có route
@@ -66,6 +67,9 @@ export const productionOrders = pgTable(
       onDelete: 'set null',
     }),
     approvedAt: timestamp('approved_at'),
+    signedFileId: uuid('signed_file_id').references(() => files.id, {
+      onDelete: 'set null',
+    }),
     // Ghi chú của chính LSX — khác `orders.note` (ghi chú đơn hàng gốc), hai cột độc lập.
     note: varchar('note', { length: 1000 }),
     createdBy: uuid('created_by').references(() => users.id, {
@@ -80,6 +84,7 @@ export const productionOrders = pgTable(
   (table) => [
     index('idx_production_orders_approved_by').on(table.approvedBy),
     index('idx_production_orders_created_by').on(table.createdBy),
+    index('idx_production_orders_signed_file_id').on(table.signedFileId),
     check(
       'chk_production_orders_status_fields',
       sql`(status = 'PENDING' AND code IS NULL AND approved_at IS NULL)
@@ -99,6 +104,10 @@ export const productionOrdersRelations = relations(
     approverBy: one(users, {
       fields: [productionOrders.approvedBy],
       references: [users.id],
+    }),
+    signedFile: one(files, {
+      fields: [productionOrders.signedFileId],
+      references: [files.id],
     }),
     creatorBy: one(users, {
       fields: [productionOrders.createdBy],

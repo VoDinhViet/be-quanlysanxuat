@@ -51,6 +51,8 @@ import { ProductionOrderLogResDto } from './dto/production-order-log.res.dto';
 import { ProductionOrderResDto } from './dto/production-order.res.dto';
 import { UpdateProductionOrderNoteReqDto } from './dto/update-production-order-note.req.dto';
 import { UpdateProductionOrderReqDto } from './dto/update-production-order.req.dto';
+import { UpdateProductionOrderSignedFileReqDto } from './dto/update-production-order-signed-file.req.dto';
+import { FilesService } from '../files/files.service';
 import { PRODUCTION_ORDER_EXPORT_COLUMNS } from './production-orders.export';
 
 /** Số liệu đã chốt/tính toán của một dòng PO — hình dạng chung cho mọi hàm đọc/ghi bên dưới. */
@@ -75,6 +77,7 @@ export class ProductionOrdersService {
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly inventoryService: InventoryService,
     private readonly productionJobsService: ProductionJobsService,
+    private readonly filesService: FilesService,
   ) {}
 
   async getProductionOrders(
@@ -203,8 +206,9 @@ export class ProductionOrdersService {
       with: {
         order: { with: { client: true } },
         items: {
-          with: { item: { with: { unit: true, imageFile: true } } },
+          with: { item: { with: { unit: true, imageFile: true, files: { with: { file: true } } } } },
         },
+        signedFile: true,
       },
     });
     if (!productionOrder) {
@@ -558,6 +562,47 @@ export class ProductionOrdersService {
 
   /** Sửa được ở mọi trạng thái LSX — khác `updateProductionOrder` (chỉ `PENDING`, `E084`), vì đây
    * chỉ là annotation nội bộ, không đụng số liệu sản xuất đã chốt. */
+
+  /** Cập nhật hoặc xóa file LSX đã ký (scan/PDF) — cho phép ở mọi trạng thái của LSX. */
+  async updateProductionOrderSignedFile(
+    productionOrdersId: string,
+    reqDto: UpdateProductionOrderSignedFileReqDto,
+    userId: string,
+  ): Promise<ProductionOrderDetailResDto> {
+    const productionOrder = await this.db.query.productionOrders.findFirst({
+      columns: { id: true, code: true },
+      where: eq(productionOrders.id, productionOrdersId),
+    });
+    if (!productionOrder) {
+      throw new AppException(ErrorCode.E081, HttpStatus.NOT_FOUND);
+    }
+
+    if (reqDto.signedFileId) {
+      await this.filesService.linkFiles([reqDto.signedFileId]);
+    }
+
+    await this.db.transaction(async (tx) => {
+      await tx
+        .update(productionOrders)
+        .set({ signedFileId: reqDto.signedFileId ?? null })
+        .where(eq(productionOrders.id, productionOrdersId));
+
+      const logContent = reqDto.signedFileId
+        ? "Đã tải lên và lưu file LSX đã ký"
+        : "Đã xóa file LSX đã ký";
+
+      await this.logAction(
+        tx,
+        productionOrdersId,
+        ProductionOrderLogAction.SIGNED_FILE_UPDATED,
+        logContent,
+        userId,
+      );
+    });
+
+    return this.getProductionOrdersById(productionOrdersId);
+  }
+
   async updateProductionOrderNote(
     productionOrdersId: string,
     reqDto: UpdateProductionOrderNoteReqDto,

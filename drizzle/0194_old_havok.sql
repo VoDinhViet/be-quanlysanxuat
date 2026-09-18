@@ -1,0 +1,1 @@
+ALTER TABLE "boms" DROP COLUMN "note";
