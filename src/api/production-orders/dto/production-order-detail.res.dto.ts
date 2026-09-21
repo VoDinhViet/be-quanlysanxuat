@@ -43,7 +43,10 @@ export class ProductionOrderDetailResDto {
   order!: OrderBaseResDto;
 
   @Expose()
-  @ClassFieldOptional(() => FileResDto, { nullable: true, description: 'File LSX đã ký (scan/PDF)' })
+  @ClassFieldOptional(() => FileResDto, {
+    nullable: true,
+    description: 'File LSX đã ký (scan/PDF)',
+  })
   signedFile!: FileResDto | null;
 
   @Expose()

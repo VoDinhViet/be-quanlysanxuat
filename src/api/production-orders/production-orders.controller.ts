@@ -113,7 +113,6 @@ export class ProductionOrdersController {
     );
   }
 
-
   @Patch(':productionOrdersId/signed-file')
   @Permissions('production:update')
   @ApiAuth({

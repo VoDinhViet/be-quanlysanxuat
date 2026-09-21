@@ -206,7 +206,15 @@ export class ProductionOrdersService {
       with: {
         order: { with: { client: true } },
         items: {
-          with: { item: { with: { unit: true, imageFile: true, files: { with: { file: true } } } } },
+          with: {
+            item: {
+              with: {
+                unit: true,
+                imageFile: true,
+                files: { with: { file: true } },
+              },
+            },
+          },
         },
         signedFile: true,
       },
@@ -588,8 +596,8 @@ export class ProductionOrdersService {
         .where(eq(productionOrders.id, productionOrdersId));
 
       const logContent = reqDto.signedFileId
-        ? "Đã tải lên và lưu file LSX đã ký"
-        : "Đã xóa file LSX đã ký";
+        ? 'Đã tải lên và lưu file LSX đã ký'
+        : 'Đã xóa file LSX đã ký';
 
       await this.logAction(
         tx,

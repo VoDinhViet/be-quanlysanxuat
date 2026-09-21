@@ -717,7 +717,6 @@ export class PurchaseQuotationsService {
     return [...bySupplierId.values()];
   }
 
-
   /** Mỗi vật tư phải có ≥1 phân bổ (E150); không dòng ĐXMH nào lặp trong toàn payload kể cả khác vật
    * tư (E128 — lặp sẽ nhân đôi quotedQuantity ở sổ cái); mọi dòng ĐXMH phải thuộc phiếu APPROVED và
    * chưa hủy tay (E125), đúng vật tư của dòng báo giá chứa nó (E149). SL phân bổ chỉ cần > 0,
