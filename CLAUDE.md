@@ -99,10 +99,11 @@ lỗi validate trả 422. Prefix toàn cục `api`, trừ `GET /`/`GET /health`.
 | `production-orders`      | production         | 1 PO duyệt = 1 LSX                                                                                                                                                            |
 | `production-jobs`        | production         | 1 item FG = 1 Job/LSX; `POST :jobId/qc` gọi `OqcService.createOqcForJob`                                                                                                     |
 | `production-execution`   | production         | Màn "Thực hiện sản xuất" — `GET operations`→`GET jobs`→`POST .../reports` (cộng dồn); khác `PATCH .../operations/:id` (điều chỉnh ghi đè của quản lý)                        |
-| `purchase-requests`      | purchase-requests  | Đề xuất mua — lập tay hoặc tự sinh khi Job thiếu vật tư; `send`/`approve`/`reject`; chưa sửa được header                                                                     |
+| `purchase-requests`      | purchase-requests  | Đề xuất mua — lập tay hoặc tự sinh khi Job thiếu vật tư; `send`/`approve`/`reject`; header chỉ sửa được `note` (`PATCH .../note`, mọi trạng thái), các field khác chưa sửa được |
 | `purchase-ledger`        | purchasing         | Sổ cái mua hàng — chỉ `GET /purchase-ledger`                                                                                                                                  |
 | `purchase-quotations`    | purchasing         | RFQ — `GET`/CRUD tay + `send`/`approve` (tự sinh PO Draft)/`reject`/`recall`                                                                                                 |
 | `purchase-orders`        | purchasing         | PO — `GET`/`POST` tay/`PATCH`/`POST :id/confirm` (`DRAFT→ORDERED`)/`POST :id/cancel`; PO cũng sinh tự động từ duyệt RFQ                                                      |
+| `purchase-notes`         | —                  | Không sở hữu nghiệp vụ, không controller riêng — đọc gộp `note` xuyên ĐXMH/Báo giá/PO/Kho, route con `GET :id/related-notes` gắn ở 4 module đó (`docs/decisions/purchase-chain-notes.md`) |
 | `payment-requests`       | purchasing         | **không có `POST` tay** — tự sinh khi PO `COMPLETED` (từ `inventory-receipts` lúc `post`); `mark-paid`/`cancel`                                                              |
 | `reports`                | —                  | `GET /reports/stats` (KPI), `.../alerts` (cảnh báo), `.../production-progress` (donut Job theo status) |
 

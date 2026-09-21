@@ -16,12 +16,15 @@ import { ApiAuth } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
+import { PurchaseChainNotesResDto } from '../purchase-notes/dto/purchase-chain-notes.res.dto';
+import { PurchaseNotesService } from '../purchase-notes/purchase-notes.service';
 import { CreatePurchaseRequestReqDto } from './dto/create-purchase-request.req.dto';
 import { GetPurchaseRequestsReqDto } from './dto/get-purchase-requests.req.dto';
 import { PagePurchaseRequestResDto } from './dto/page-purchase-request.res.dto';
 import { PurchaseRequestResDto } from './dto/purchase-request.res.dto';
 import { RejectPurchaseRequestReqDto } from './dto/reject-purchase-request.req.dto';
 import { UpdatePurchaseRequestItemReqDto } from './dto/update-purchase-request-item.req.dto';
+import { UpdatePurchaseRequestNoteReqDto } from './dto/update-purchase-request-note.req.dto';
 import { PurchaseRequestsService } from './purchase-requests.service';
 
 @ApiTags('Purchase Requests')
@@ -29,6 +32,7 @@ import { PurchaseRequestsService } from './purchase-requests.service';
 export class PurchaseRequestsController {
   constructor(
     private readonly purchaseRequestsService: PurchaseRequestsService,
+    private readonly purchaseNotesService: PurchaseNotesService,
   ) {}
 
   @Get()
@@ -172,6 +176,37 @@ export class PurchaseRequestsController {
     return this.purchaseRequestsService.deletePurchaseRequestItem(
       purchaseRequestId,
       purchaseRequestItemId,
+    );
+  }
+
+  @Patch(':purchaseRequestId/note')
+  @Permissions('purchase-requests:update')
+  @ApiAuth({
+    summary: 'Update ghi chú chung của phiếu — sửa được ở mọi trạng thái',
+    statusCode: HttpStatus.NO_CONTENT,
+  })
+  updatePurchaseRequestNote(
+    @UUIDParam('purchaseRequestId') purchaseRequestId: string,
+    @Body() reqDto: UpdatePurchaseRequestNoteReqDto,
+  ): Promise<void> {
+    return this.purchaseRequestsService.updatePurchaseRequestNote(
+      purchaseRequestId,
+      reqDto,
+    );
+  }
+
+  @Get(':purchaseRequestId/related-notes')
+  @Permissions('purchase-requests:read')
+  @ApiAuth({
+    type: PurchaseChainNotesResDto,
+    summary:
+      'Ghi chú gộp của toàn bộ chứng từ liên quan trong chuỗi mua hàng (Báo giá/Đơn mua/Kho)',
+  })
+  getRelatedNotes(
+    @UUIDParam('purchaseRequestId') purchaseRequestId: string,
+  ): Promise<PurchaseChainNotesResDto> {
+    return this.purchaseNotesService.getChainNotesFromRequest(
+      purchaseRequestId,
     );
   }
 }

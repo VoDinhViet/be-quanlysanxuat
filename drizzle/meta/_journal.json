@@ -1380,6 +1380,13 @@
       "when": 1789727037914,
       "tag": "0196_faulty_thunderball",
       "breakpoints": true
+    },
+    {
+      "idx": 197,
+      "version": "7",
+      "when": 1789959802530,
+      "tag": "0197_classy_speed",
+      "breakpoints": true
     }
   ]
 }

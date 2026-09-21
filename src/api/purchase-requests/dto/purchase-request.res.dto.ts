@@ -37,6 +37,13 @@ export class PurchaseRequestResDto {
   status!: PurchaseRequestStatus;
 
   @Expose()
+  @StringFieldOptional({
+    nullable: true,
+    description: 'Ghi chú chung của phiếu',
+  })
+  note!: string | null;
+
+  @Expose()
   @DateField({ description: 'Ngày tạo phiếu' })
   createdAt!: Date;
 

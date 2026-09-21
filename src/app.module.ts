@@ -51,6 +51,7 @@ import { ProductionExecutionModule } from './api/production-execution/production
 import { ProductionJobsModule } from './api/production-jobs/production-jobs.module';
 import { ProductionOrdersModule } from './api/production-orders/production-orders.module';
 import { PurchaseLedgerModule } from './api/purchase-ledger/purchase-ledger.module';
+import { PurchaseNotesModule } from './api/purchase-notes/purchase-notes.module';
 import { PurchaseOrdersModule } from './api/purchase-orders/purchase-orders.module';
 import { PurchaseQuotationsModule } from './api/purchase-quotations/purchase-quotations.module';
 import { PurchaseRequestsModule } from './api/purchase-requests/purchase-requests.module';
@@ -131,6 +132,7 @@ import { UsersModule } from './api/users/users.module';
     PurchaseLedgerModule,
     PurchaseQuotationsModule,
     PurchaseOrdersModule,
+    PurchaseNotesModule,
     PaymentRequestsModule,
     ReportsModule,
   ],

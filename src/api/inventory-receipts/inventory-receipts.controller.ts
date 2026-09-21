@@ -16,6 +16,8 @@ import { ApiAuth } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
+import { PurchaseChainNotesResDto } from '../purchase-notes/dto/purchase-chain-notes.res.dto';
+import { PurchaseNotesService } from '../purchase-notes/purchase-notes.service';
 import { CreateInventoryReceiptReqDto } from './dto/create-inventory-receipt.req.dto';
 import { GetInventoryReceiptsReqDto } from './dto/get-inventory-receipts.req.dto';
 import { InventoryReceiptResDto } from './dto/inventory-receipt.res.dto';
@@ -28,6 +30,7 @@ import { InventoryReceiptsService } from './inventory-receipts.service';
 export class InventoryReceiptsController {
   constructor(
     private readonly inventoryReceiptsService: InventoryReceiptsService,
+    private readonly purchaseNotesService: PurchaseNotesService,
   ) {}
 
   @Get()
@@ -149,5 +152,18 @@ export class InventoryReceiptsController {
       receiptId,
       payload.userId,
     );
+  }
+
+  @Get(':receiptId/related-notes')
+  @Permissions('inventory:read')
+  @ApiAuth({
+    type: PurchaseChainNotesResDto,
+    summary:
+      'Ghi chú gộp của toàn bộ chứng từ liên quan trong chuỗi mua hàng (ĐXMH/Báo giá/Đơn mua)',
+  })
+  getRelatedNotes(
+    @UUIDParam('receiptId') receiptId: string,
+  ): Promise<PurchaseChainNotesResDto> {
+    return this.purchaseNotesService.getChainNotesFromReceipt(receiptId);
   }
 }

@@ -31,8 +31,11 @@ Sau khi sinh: `PATCH`/`DELETE .../items/:purchaseRequestItemId` sửa/xoá dòng
 
 | Entity | Vai trò |
 | --- | --- |
-| `purchase_requests` | Header — mã phiếu, ngày cần, bộ phận, LSX (tuỳ chọn), trạng thái |
+| `purchase_requests` | Header — mã phiếu, ngày cần, bộ phận, LSX (tuỳ chọn), trạng thái, `note` |
 | `purchase_request_items` | Dòng — `itemId` (bắt buộc `type=CONSUMABLE`, `E148`) + `quantity` + `note` |
+
+`purchase_requests.note` (header, tuỳ chọn) là 1 trong 4 cột `note` đọc gộp xuyên chuỗi mua hàng —
+xem `docs/decisions/purchase-chain-notes.md`.
 
 ## Lifecycle
 

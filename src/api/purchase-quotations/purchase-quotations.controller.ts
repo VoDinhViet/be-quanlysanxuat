@@ -16,6 +16,8 @@ import { ApiAuth } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
+import { PurchaseChainNotesResDto } from '../purchase-notes/dto/purchase-chain-notes.res.dto';
+import { PurchaseNotesService } from '../purchase-notes/purchase-notes.service';
 import { ApproveQuotationReqDto } from './dto/approve-quotation.req.dto';
 import { CreateQuotationReqDto } from './dto/create-quotation.req.dto';
 import { GetQuotationsReqDto } from './dto/get-quotations.req.dto';
@@ -30,6 +32,7 @@ import { PurchaseQuotationsService } from './purchase-quotations.service';
 export class PurchaseQuotationsController {
   constructor(
     private readonly purchaseQuotationsService: PurchaseQuotationsService,
+    private readonly purchaseNotesService: PurchaseNotesService,
   ) {}
 
   @Get()
@@ -163,5 +166,18 @@ export class PurchaseQuotationsController {
     @UUIDParam('quotationId') quotationId: string,
   ): Promise<void> {
     return this.purchaseQuotationsService.recallQuotation(quotationId);
+  }
+
+  @Get(':quotationId/related-notes')
+  @Permissions('purchasing:read')
+  @ApiAuth({
+    type: PurchaseChainNotesResDto,
+    summary:
+      'Ghi chú gộp của toàn bộ chứng từ liên quan trong chuỗi mua hàng (ĐXMH/Đơn mua/Kho)',
+  })
+  getRelatedNotes(
+    @UUIDParam('quotationId') quotationId: string,
+  ): Promise<PurchaseChainNotesResDto> {
+    return this.purchaseNotesService.getChainNotesFromQuotation(quotationId);
   }
 }

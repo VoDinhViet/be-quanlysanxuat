@@ -52,6 +52,7 @@ import { PagePurchaseRequestResDto } from './dto/page-purchase-request.res.dto';
 import { PurchaseRequestResDto } from './dto/purchase-request.res.dto';
 import { RejectPurchaseRequestReqDto } from './dto/reject-purchase-request.req.dto';
 import { UpdatePurchaseRequestItemReqDto } from './dto/update-purchase-request-item.req.dto';
+import { UpdatePurchaseRequestNoteReqDto } from './dto/update-purchase-request-note.req.dto';
 import { CreateShortageRequestInput } from './types/shortage-request.type';
 
 @Injectable()
@@ -296,6 +297,24 @@ export class PurchaseRequestsService {
 
     await this.db
       .delete(purchaseRequests)
+      .where(eq(purchaseRequests.id, purchaseRequestId));
+  }
+
+  async updatePurchaseRequestNote(
+    purchaseRequestId: string,
+    reqDto: UpdatePurchaseRequestNoteReqDto,
+  ): Promise<void> {
+    const purchaseRequest = await this.db.query.purchaseRequests.findFirst({
+      columns: { id: true },
+      where: eq(purchaseRequests.id, purchaseRequestId),
+    });
+    if (!purchaseRequest) {
+      throw new AppException(ErrorCode.E112, HttpStatus.NOT_FOUND);
+    }
+
+    await this.db
+      .update(purchaseRequests)
+      .set({ note: reqDto.note })
       .where(eq(purchaseRequests.id, purchaseRequestId));
   }
 

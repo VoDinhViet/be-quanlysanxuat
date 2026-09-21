@@ -15,6 +15,8 @@ import { ApiAuth } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
+import { PurchaseChainNotesResDto } from '../purchase-notes/dto/purchase-chain-notes.res.dto';
+import { PurchaseNotesService } from '../purchase-notes/purchase-notes.service';
 import { CancelPurchaseOrderReqDto } from './dto/cancel-purchase-order.req.dto';
 import { CreatePurchaseOrderReqDto } from './dto/create-purchase-order.req.dto';
 import { GetPurchaseOrdersReqDto } from './dto/get-purchase-orders.req.dto';
@@ -27,7 +29,10 @@ import { PurchaseOrdersService } from './purchase-orders.service';
 @ApiTags('Purchase Orders')
 @Controller('purchase-orders')
 export class PurchaseOrdersController {
-  constructor(private readonly purchaseOrdersService: PurchaseOrdersService) {}
+  constructor(
+    private readonly purchaseOrdersService: PurchaseOrdersService,
+    private readonly purchaseNotesService: PurchaseNotesService,
+  ) {}
 
   @Get()
   @Permissions('purchasing:read')
@@ -137,5 +142,18 @@ export class PurchaseOrdersController {
       reqDto,
       payload.userId,
     );
+  }
+
+  @Get(':purchaseOrderId/related-notes')
+  @Permissions('purchasing:read')
+  @ApiAuth({
+    type: PurchaseChainNotesResDto,
+    summary:
+      'Ghi chú gộp của toàn bộ chứng từ liên quan trong chuỗi mua hàng (ĐXMH/Báo giá/Kho)',
+  })
+  getRelatedNotes(
+    @UUIDParam('purchaseOrderId') purchaseOrderId: string,
+  ): Promise<PurchaseChainNotesResDto> {
+    return this.purchaseNotesService.getChainNotesFromOrder(purchaseOrderId);
   }
 }

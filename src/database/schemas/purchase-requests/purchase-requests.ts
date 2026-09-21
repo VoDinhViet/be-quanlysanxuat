@@ -56,6 +56,7 @@ export const purchaseRequests = pgTable(
     status: purchaseRequestStatusEnum('status')
       .notNull()
       .default(PurchaseRequestStatus.DRAFT),
+    note: varchar('note', { length: 1000 }),
     createdBy: uuid('created_by').references(() => users.id, {
       onDelete: 'set null',
     }),
