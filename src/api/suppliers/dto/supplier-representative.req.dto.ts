@@ -1,14 +1,14 @@
 import {
   BooleanFieldOptional,
+  PhoneFieldOptional,
   StringField,
-  StringFieldOptional,
 } from '../../../decorators/field.decorators';
 
 export class SupplierRepresentativeReqDto {
   @StringField({ description: 'Representative full name', maxLength: 255 })
   name!: string;
 
-  @StringFieldOptional({
+  @PhoneFieldOptional({
     description: 'Representative phone number',
     nullable: true,
     maxLength: 30,

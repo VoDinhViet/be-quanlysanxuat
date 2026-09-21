@@ -13,16 +13,25 @@ import {
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
+import {
+  DocumentType,
+  generateDocumentSequence,
+} from '../../common/utils/document-sequence.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
   countries,
-  supplierAttachments,
+  outsourcingOrders,
+  outsourcingReceipts,
+  purchaseOrders,
+  purchaseQuotationItemSuppliers,
+  supplierFiles,
   supplierGroups,
   supplierPaymentInfo,
   supplierRepresentatives,
+  supplierReturns,
   suppliers,
   SupplierStatus,
 } from '../../database/schemas';
@@ -30,6 +39,7 @@ import { AppException } from '../../exceptions/app.exception';
 import { FilesService } from '../files/files.service';
 import { CreateSupplierReqDto } from './dto/create-supplier.req.dto';
 import { GetSuppliersReqDto } from './dto/get-suppliers.req.dto';
+import { PageSupplierResDto } from './dto/page-supplier.res.dto';
 import { SupplierResDto } from './dto/supplier.res.dto';
 import { SupplierStatsResDto } from './dto/supplier-stats.res.dto';
 import { UpdateSupplierReqDto } from './dto/update-supplier.req.dto';
@@ -43,7 +53,7 @@ export class SuppliersService {
 
   async getSuppliers(
     reqDto: GetSuppliersReqDto,
-  ): Promise<OffsetPaginatedDto<SupplierResDto>> {
+  ): Promise<OffsetPaginatedDto<PageSupplierResDto>> {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
     const where = and(
       isNull(suppliers.deletedAt),
@@ -77,8 +87,8 @@ export class SuppliersService {
         orderBy,
         with: {
           group: true,
-          creator: true,
-          attachments: { with: { file: true } },
+          creatorBy: true,
+          files: { with: { file: true } },
           logoFile: true,
           representatives: true,
           country: true,
@@ -89,7 +99,7 @@ export class SuppliersService {
     ]);
 
     return new OffsetPaginatedDto(
-      plainToInstance(SupplierResDto, entities, {
+      plainToInstance(PageSupplierResDto, entities, {
         excludeExtraneousValues: true,
       }),
       new OffsetPaginationDto(count[0]?.total ?? 0, reqDto),
@@ -119,13 +129,13 @@ export class SuppliersService {
     );
   }
 
-  async getSupplierDetail(supplierId: string): Promise<SupplierResDto> {
+  async getSupplier(supplierId: string): Promise<SupplierResDto> {
     const supplier = await this.db.query.suppliers.findFirst({
       where: and(eq(suppliers.id, supplierId), isNull(suppliers.deletedAt)),
       with: {
         group: true,
-        creator: true,
-        attachments: { with: { file: true } },
+        creatorBy: true,
+        files: { with: { file: true } },
         logoFile: true,
         representatives: true,
         country: true,
@@ -146,13 +156,6 @@ export class SuppliersService {
     reqDto: CreateSupplierReqDto,
     userId: string,
   ): Promise<SupplierResDto> {
-    let code = reqDto.code;
-    if (code) {
-      await this.validateCodeUniqueness(code);
-    } else {
-      code = await this.generateSupplierCode();
-    }
-
     await this.validateTaxCodeUniqueness(reqDto.taxCode);
     await this.ensureSupplierGroupExists(reqDto.supplierGroupId);
     if (reqDto.countryId) {
@@ -160,12 +163,12 @@ export class SuppliersService {
     }
     await this.linkSuppliedFiles(reqDto);
 
-    // `payment` / `representatives` / `attachmentFileIds` live in their own tables — peel them off
+    // `payment` / `representatives` / `fileIds` live in their own tables — peel them off
     // so the rest of the DTO spreads straight onto the `suppliers` row.
-    const { payment, representatives, attachmentFileIds, ...supplierFields } =
-      reqDto;
+    const { payment, representatives, fileIds, ...supplierFields } = reqDto;
 
     const supplierId = await this.db.transaction(async (tx) => {
+      const code = await this.generateSupplierCode(tx);
       const [supplier] = await tx
         .insert(suppliers)
         .values({
@@ -181,8 +184,8 @@ export class SuppliersService {
         .insert(supplierPaymentInfo)
         .values({ supplierId: supplier.id, ...payment });
 
-      if (attachmentFileIds?.length) {
-        await this.replaceAttachments(tx, supplier.id, attachmentFileIds);
+      if (fileIds?.length) {
+        await this.replaceFiles(tx, supplier.id, fileIds);
       }
 
       if (representatives?.length) {
@@ -192,7 +195,7 @@ export class SuppliersService {
       return supplier.id;
     });
 
-    return this.getSupplierDetail(supplierId);
+    return this.getSupplier(supplierId);
   }
 
   async updateSupplier(
@@ -215,8 +218,7 @@ export class SuppliersService {
     }
     await this.linkSuppliedFiles(reqDto);
 
-    const { payment, representatives, attachmentFileIds, ...supplierFields } =
-      reqDto;
+    const { payment, representatives, fileIds, ...supplierFields } = reqDto;
 
     await this.db.transaction(async (tx) => {
       // `updated_at` is bumped by the column's own `$onUpdate`.
@@ -234,8 +236,8 @@ export class SuppliersService {
           .where(eq(supplierPaymentInfo.supplierId, supplierId));
       }
 
-      if (attachmentFileIds) {
-        await this.replaceAttachments(tx, supplierId, attachmentFileIds);
+      if (fileIds) {
+        await this.replaceFiles(tx, supplierId, fileIds);
       }
 
       if (representatives) {
@@ -243,16 +245,43 @@ export class SuppliersService {
       }
     });
 
-    return this.getSupplierDetail(supplierId);
+    return this.getSupplier(supplierId);
   }
 
   async deleteSupplier(supplierId: string): Promise<void> {
     await this.ensureSupplierExists(supplierId);
+    await this.ensureSupplierNotInUse(supplierId);
 
     await this.db
       .update(suppliers)
       .set({ deletedAt: new Date() })
       .where(eq(suppliers.id, supplierId));
+  }
+
+  /** Chặn xoá khi còn chứng từ mua hàng/gia công trỏ tới — cả 5 bảng dưới đều FK `restrict`, xoá
+   * mềm không tự kích hoạt ràng buộc đó nên phải tự kiểm ở tầng service. */
+  private async ensureSupplierNotInUse(supplierId: string): Promise<void> {
+    const referencingTables = [
+      purchaseOrders,
+      purchaseQuotationItemSuppliers,
+      outsourcingOrders,
+      outsourcingReceipts,
+      supplierReturns,
+    ];
+
+    const references = await Promise.all(
+      referencingTables.map((table) =>
+        this.db
+          .select({ id: table.id })
+          .from(table)
+          .where(eq(table.supplierId, supplierId))
+          .limit(1),
+      ),
+    );
+
+    if (references.some((rows) => rows.length > 0)) {
+      throw new AppException(ErrorCode.E247, HttpStatus.CONFLICT);
+    }
   }
 
   /**
@@ -262,28 +291,27 @@ export class SuppliersService {
   private async linkSuppliedFiles(
     reqDto: CreateSupplierReqDto | UpdateSupplierReqDto,
   ): Promise<void> {
-    const fileIds = [
-      reqDto.logoFileId,
-      ...(reqDto.attachmentFileIds ?? []),
-    ].filter((id): id is string => Boolean(id));
+    const fileIds = [reqDto.logoFileId, ...(reqDto.fileIds ?? [])].filter(
+      (id): id is string => Boolean(id),
+    );
 
     await this.filesService.linkFiles(fileIds);
   }
 
   /** Replace-all. `tx` is required so a caller cannot accidentally write outside the transaction. */
-  private async replaceAttachments(
+  private async replaceFiles(
     tx: DbTransaction,
     supplierId: string,
-    attachmentFileIds: string[],
+    fileIds: string[],
   ): Promise<void> {
     await tx
-      .delete(supplierAttachments)
-      .where(eq(supplierAttachments.supplierId, supplierId));
+      .delete(supplierFiles)
+      .where(eq(supplierFiles.supplierId, supplierId));
 
-    if (attachmentFileIds.length) {
+    if (fileIds.length) {
       await tx
-        .insert(supplierAttachments)
-        .values(attachmentFileIds.map((fileId) => ({ supplierId, fileId })));
+        .insert(supplierFiles)
+        .values(fileIds.map((fileId) => ({ supplierId, fileId })));
     }
   }
 
@@ -380,10 +408,9 @@ export class SuppliersService {
     }
   }
 
-  private async generateSupplierCode(): Promise<string> {
-    const [totalRows] = await this.db
-      .select({ total: drizzleCount() })
-      .from(suppliers);
-    return `NCC${String((totalRows?.total ?? 0) + 1).padStart(4, '0')}`;
+  private async generateSupplierCode(tx: DbTransaction): Promise<string> {
+    const sequence = await generateDocumentSequence(tx, DocumentType.SUPPLIER);
+
+    return `NCC${String(sequence).padStart(4, '0')}`;
   }
 }

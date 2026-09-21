@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "uq_production_job_bom_items_final_assembly" ON "production_job_bom_items" USING btree ("production_job_id") WHERE item_type = 'FG';

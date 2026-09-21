@@ -1,4 +1,5 @@
 import {
+  BooleanFieldOptional,
   EmailField,
   PasswordField,
   StringField,
@@ -6,7 +7,11 @@ import {
 } from '../../../decorators/field.decorators';
 
 export class CreateCredentialReqDto {
-  @StringField({ description: 'Login username', maxLength: 100 })
+  @StringField({
+    description: 'Login username',
+    maxLength: 100,
+    toLowerCase: true,
+  })
   username!: string;
 
   @EmailField({ description: 'Login email' })
@@ -17,4 +22,10 @@ export class CreateCredentialReqDto {
 
   @UUIDFieldOptional({ description: 'Role id to assign to this credential' })
   roleId?: string;
+
+  @BooleanFieldOptional({
+    description: 'Enable credential for login',
+    nullable: true,
+  })
+  credentialEnabled?: boolean;
 }

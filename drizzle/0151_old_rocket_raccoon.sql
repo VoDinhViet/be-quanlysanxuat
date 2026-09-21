@@ -1,0 +1,2 @@
+CREATE UNIQUE INDEX "uq_bom_items_bom_item_no_parent" ON "bom_items" USING btree ("bom_id","item_id") WHERE parent_id IS NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX "uq_bom_items_bom_parent_item" ON "bom_items" USING btree ("bom_id","parent_id","item_id") WHERE parent_id IS NOT NULL;

@@ -2,9 +2,11 @@ import { Exclude, Expose } from 'class-transformer';
 
 import { ProductionJobStatus } from '../../../database/schemas';
 import { ClientBaseResDto } from '../../clients/dto/client-base.res.dto';
+import { ItemUnitField } from '../../items/dto/item-unit.field';
+import { ItemUnitRefResDto } from '../../items/dto/item-unit-ref.res.dto';
 import { OrderBaseResDto } from '../../orders/dto/order-base.res.dto';
-import { ProductRefResDto } from '../../products/dto/product-ref.res.dto';
 import {
+  BooleanField,
   ClassField,
   ClassFieldOptional,
   DateField,
@@ -40,11 +42,11 @@ export class ProductionJobDetailResDto {
 
   @Expose()
   @UUIDField({ description: 'Id sản phẩm (FG)' })
-  productId!: string;
+  itemId!: string;
 
   @Expose()
-  @ClassField(() => ProductRefResDto, { description: 'Sản phẩm (FG)' })
-  product!: ProductRefResDto;
+  @ItemUnitField()
+  item!: ItemUnitRefResDto;
 
   @Expose()
   @NumberField({ description: 'SL cần sản xuất — đã gộp theo sản phẩm' })
@@ -64,6 +66,25 @@ export class ProductionJobDetailResDto {
     description: 'Thời điểm bắt đầu sản xuất',
   })
   startedAt!: Date | null;
+
+  @Expose()
+  @UUIDFieldOptional({ nullable: true, description: 'Ai duyệt công đoạn' })
+  operationsApprovedBy!: string | null;
+
+  @Expose()
+  @DateFieldOptional({
+    nullable: true,
+    description:
+      'Thời điểm duyệt công đoạn — route ghi trường này (POST .../approve-operations) đã xoá, giữ lại cho dữ liệu cũ',
+  })
+  operationsApprovedAt!: Date | null;
+
+  @Expose()
+  @BooleanField({
+    description:
+      'Job này đã có phiếu OQC (Cấp 0) hay chưa — true thì nút "Yêu cầu OQC" khoá lại',
+  })
+  oqcRequested!: boolean;
 
   @Expose()
   @DateField({ description: 'Thời điểm tạo Job' })

@@ -10,6 +10,7 @@ import {
   ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiProduces,
   ApiResponse,
   ApiSecurity,
 } from '@nestjs/swagger';
@@ -31,12 +32,44 @@ interface IApiOptions<T extends Type<any>> {
   isPaginated?: boolean;
   isArray?: boolean;
   paginationType?: PaginationType;
+  /** Route trả file nhị phân (vd. Excel) thay vì JSON — mime type đăng ký ở Swagger, response
+   * schema chuyển thành `string($binary)` thay vì `type`. */
+  fileType?: string;
 }
 
 type IApiPublicOptions = IApiOptions<Type<any>>;
 
 interface IApiAuthOptions extends IApiOptions<Type<any>> {
   auths?: ApiAuthType[];
+}
+
+/** Chọn đúng 1 response decorator theo `options` — dùng chung cho `ApiPublic`/`ApiAuth` vì cả hai
+ * cần đúng logic này. File nhị phân (`fileType`) thắng trước, kể cả khi `isPaginated`/`statusCode`
+ * cũng được truyền. */
+function buildResponseDecorators(options: IApiOptions<Type<any>>) {
+  const ok = {
+    type: options.type as Type<any>,
+    description: options?.description ?? 'OK',
+    isArray: options.isArray || false,
+    paginationType: options.paginationType || 'offset',
+  };
+
+  if (options.fileType) {
+    return [
+      ApiOkResponse({
+        description: ok.description,
+        schema: { type: 'string', format: 'binary' },
+      }),
+      ApiProduces(options.fileType),
+    ];
+  }
+  if (options.isPaginated) {
+    return [ApiPaginatedResponse(ok)];
+  }
+  if (options.statusCode === HttpStatus.CREATED) {
+    return [ApiCreatedResponse(ok)];
+  }
+  return [ApiOkResponse(ok)];
 }
 
 export const ApiPublic = (options: IApiPublicOptions = {}): MethodDecorator => {
@@ -48,13 +81,6 @@ export const ApiPublic = (options: IApiPublicOptions = {}): MethodDecorator => {
     HttpStatus.UNPROCESSABLE_ENTITY,
     HttpStatus.INTERNAL_SERVER_ERROR,
   ];
-  const isPaginated = options.isPaginated || false;
-  const ok = {
-    type: options.type as Type<any>,
-    description: options?.description ?? 'OK',
-    isArray: options.isArray || false,
-    paginationType: options.paginationType || 'offset',
-  };
 
   const errorResponses = (options.errorResponses || defaultErrorResponses)?.map(
     (statusCode) =>
@@ -69,11 +95,7 @@ export const ApiPublic = (options: IApiPublicOptions = {}): MethodDecorator => {
     Public(),
     ApiOperation({ summary: options?.summary }),
     HttpCode(options.statusCode || defaultStatusCode),
-    isPaginated
-      ? ApiPaginatedResponse(ok)
-      : options.statusCode === 201
-        ? ApiCreatedResponse(ok)
-        : ApiOkResponse(ok),
+    ...buildResponseDecorators(options),
     ...errorResponses,
   );
 };
@@ -88,13 +110,6 @@ export const ApiAuth = (options: IApiAuthOptions = {}): MethodDecorator => {
     HttpStatus.UNPROCESSABLE_ENTITY,
     HttpStatus.INTERNAL_SERVER_ERROR,
   ];
-  const isPaginated = options.isPaginated || false;
-  const ok = {
-    type: options.type as Type<any>,
-    description: options?.description ?? 'OK',
-    isArray: options.isArray || false,
-    paginationType: options.paginationType || 'offset',
-  };
   const auths = options.auths || ['jwt'];
 
   const errorResponses = (options.errorResponses || defaultErrorResponses)?.map(
@@ -120,11 +135,7 @@ export const ApiAuth = (options: IApiAuthOptions = {}): MethodDecorator => {
   return applyDecorators(
     ApiOperation({ summary: options?.summary }),
     HttpCode(options.statusCode || defaultStatusCode),
-    isPaginated
-      ? ApiPaginatedResponse(ok)
-      : options.statusCode === 201
-        ? ApiCreatedResponse(ok)
-        : ApiOkResponse(ok),
+    ...buildResponseDecorators(options),
     ...authDecorators,
     ...errorResponses,
   );

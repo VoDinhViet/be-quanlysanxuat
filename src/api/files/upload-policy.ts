@@ -21,14 +21,27 @@ type UploadPolicy = {
  *   would assume they are protected.
  * - To turn enforcement on: add the field, add a guard reading `?type=`, and use OR semantics.
  */
-export const UPLOAD_POLICIES: Record<UploadType, UploadPolicy> = {
+export const uploadPolicies: Record<UploadType, UploadPolicy> = {
   [UploadType.USER_AVATAR]: { kind: FileKind.IMAGE },
-  [UploadType.MATERIAL_IMAGE]: { kind: FileKind.IMAGE },
-  [UploadType.MATERIAL_DOCUMENT]: { kind: FileKind.DOCUMENT },
+  [UploadType.CONSUMABLE_IMAGE]: { kind: FileKind.IMAGE },
+  [UploadType.CONSUMABLE_DOCUMENT]: { kind: FileKind.DOCUMENT },
   [UploadType.PRODUCT_IMAGE]: { kind: FileKind.IMAGE },
   [UploadType.PRODUCT_DOCUMENT]: { kind: FileKind.DOCUMENT },
   [UploadType.SUPPLIER_LOGO]: { kind: FileKind.IMAGE },
   [UploadType.SUPPLIER_DOCUMENT]: { kind: FileKind.DOCUMENT },
   [UploadType.BOM_ITEM_DRAWING]: { kind: FileKind.DOCUMENT },
   [UploadType.ORDER_DOCUMENT]: { kind: FileKind.DOCUMENT },
+  [UploadType.IQC_EVIDENCE]: { kind: FileKind.EVIDENCE },
+  [UploadType.IQC_DISPOSITION_EVIDENCE]: { kind: FileKind.EVIDENCE },
+  [UploadType.OQC_EVIDENCE]: { kind: FileKind.EVIDENCE },
+  [UploadType.OQC_DISPOSITION_EVIDENCE]: { kind: FileKind.EVIDENCE },
+  // Chỉ nhận ảnh (khác OQC_EVIDENCE nhận cả tài liệu) — form "Thực hiện sản xuất" chỉ có dropzone
+  // ảnh, không có ô tài liệu.
+  [UploadType.PRODUCTION_OPERATION_EVIDENCE]: { kind: FileKind.IMAGE },
+  // Ảnh + tài liệu — "xuất trả" gần với bàn giao chứng từ vật lý hơn ảnh báo cáo xưởng, cùng lý do
+  // OQC_EVIDENCE/IQC_DISPOSITION_EVIDENCE nhận cả hai.
+  [UploadType.SUPPLIER_RETURN_EVIDENCE]: { kind: FileKind.EVIDENCE },
+  [UploadType.ITEM_DOCUMENT]: { kind: FileKind.DOCUMENT },
+  [UploadType.BOM_ITEM_IMAGE]: { kind: FileKind.IMAGE },
+  [UploadType.PRODUCTION_ORDER_SIGNED_DOCUMENT]: { kind: FileKind.EVIDENCE },
 };

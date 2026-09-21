@@ -4,21 +4,11 @@ import {
   DateField,
   EnumField,
   StringFieldOptional,
-  UUIDField,
   UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
 import { InventoryIssueItemReqDto } from './inventory-issue-item.req.dto';
 
 export class CreateInventoryIssueReqDto {
-  @StringFieldOptional({
-    maxLength: 50,
-    description: 'Mã phiếu; tự sinh (PXK-{năm}-xxxxx) nếu không truyền',
-  })
-  readonly code?: string;
-
-  @UUIDField({ description: 'Kho xuất' })
-  readonly warehouseId!: string;
-
   @EnumField(() => InventoryIssueType)
   readonly issueType!: InventoryIssueType;
 
@@ -40,6 +30,6 @@ export class CreateInventoryIssueReqDto {
   @StringFieldOptional({ maxLength: 1000, nullable: true })
   readonly note?: string | null;
 
-  @ClassField(() => InventoryIssueItemReqDto, { each: true })
+  @ClassField(() => InventoryIssueItemReqDto, { each: true, minItems: 1 })
   readonly items!: InventoryIssueItemReqDto[];
 }

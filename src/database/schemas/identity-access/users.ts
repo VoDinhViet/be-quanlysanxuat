@@ -47,11 +47,13 @@ export const users = pgTable(
     dateOfBirth: date('date_of_birth', { mode: 'date' }),
     idNumber: varchar('id_number', { length: 20 }).unique(),
     phoneNumber: varchar('phone_number', { length: 30 }),
-    email: varchar('email', { length: 255 }),
     address: varchar('address', { length: 500 }),
-    avatarFileId: uuid('avatar_file_id').references(() => files.id, {
-      onDelete: 'set null',
-    }),
+    avatarFileId: uuid('avatar_file_id').references(
+      (): AnyPgColumn => files.id,
+      {
+        onDelete: 'set null',
+      },
+    ),
     departmentId: uuid('department_id')
       .notNull()
       .references(() => departments.id, { onDelete: 'restrict' }),
@@ -90,7 +92,7 @@ export const usersRelations = relations(users, ({ one }) => ({
     fields: [users.positionId],
     references: [positions.id],
   }),
-  creator: one(users, {
+  creatorBy: one(users, {
     fields: [users.createdBy],
     references: [users.id],
   }),
@@ -106,3 +108,5 @@ export const usersRelations = relations(users, ({ one }) => ({
     references: [credentials.userId],
   }),
 }));
+
+export type UserSelect = typeof users.$inferSelect;

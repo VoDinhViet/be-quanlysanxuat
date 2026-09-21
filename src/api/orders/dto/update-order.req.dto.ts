@@ -7,7 +7,6 @@ import {
 import {
   ClassFieldOptional,
   DateFieldOptional,
-  EmailFieldOptional,
   EnumFieldOptional,
   NumberFieldOptional,
   StringFieldOptional,
@@ -19,20 +18,11 @@ export class UpdateOrderReqDto {
   @UUIDFieldOptional({ description: 'Client (khách hàng) id' })
   readonly clientId?: string;
 
-  @StringFieldOptional({ maxLength: 255, nullable: true })
-  readonly contactName?: string | null;
-
-  @StringFieldOptional({ maxLength: 30, nullable: true })
-  readonly contactPhone?: string | null;
-
-  @EmailFieldOptional({ nullable: true })
-  readonly contactEmail?: string | null;
-
   @UUIDFieldOptional({
     nullable: true,
     description: 'Nhân viên kinh doanh (users.id) id',
   })
-  readonly staffId?: string | null;
+  readonly assignedUserId?: string | null;
 
   @DateFieldOptional({ description: 'Ngày đặt hàng' })
   readonly orderDate?: Date;
@@ -40,8 +30,13 @@ export class UpdateOrderReqDto {
   @DateFieldOptional({ description: 'Ngày giao hàng yêu cầu' })
   readonly dueDate?: Date;
 
-  @StringFieldOptional({ maxLength: 500, nullable: true })
-  readonly deliveryAddress?: string | null;
+  @StringFieldOptional({
+    maxLength: 500,
+    nullable: true,
+    description:
+      'Địa chỉ người nhận hàng — có thể khác khách hàng đặt đơn (đại lý/đối tác)',
+  })
+  readonly consigneeAddress?: string | null;
 
   @EnumFieldOptional(() => PaymentTerm, { nullable: true })
   readonly paymentTerm?: PaymentTerm | null;
@@ -83,7 +78,7 @@ export class UpdateOrderReqDto {
   @UUIDFieldOptional({
     each: true,
     description:
-      'Attachment file ids (from POST /files, type=ORDER_DOCUMENT); replaces the full set',
+      'File ids (from POST /files, type=ORDER_DOCUMENT); replaces the full set',
   })
-  readonly attachmentFileIds?: string[];
+  readonly fileIds?: string[];
 }

@@ -39,11 +39,6 @@ export async function bootstrap(): Promise<Express> {
 
   const configService = app.get(ConfigService<AllConfigType>);
 
-  // No `useStaticAssets` for the upload dir, deliberately. Static middleware is registered on the
-  // raw Express adapter, so the global JwtAuthGuard/PermissionsGuard never see those requests —
-  // mounting `uploads/` here would publish every stored file to anyone who can guess a URL. Bytes
-  // are served only by `GET /files/:id/download`, behind a signed URL. Do not re-add this.
-
   app.enableCors({
     origin: configService.getOrThrow('app.corsOrigin', { infer: true }),
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',

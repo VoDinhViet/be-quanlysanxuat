@@ -6,21 +6,27 @@ import {
   Patch,
   Post,
   Query,
+  StreamableFile,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
+import { XLSX_MIME } from '../../common/utils/excel.util';
 import { CurrentUser } from '../../decorators/current-user.decorator';
 import { ApiAuth } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
 import { AssignRoleReqDto } from './dto/assign-role.req.dto';
 import { CreateUserReqDto } from './dto/create-user.req.dto';
+import { CurrentPermissionsResDto } from './dto/current-permissions.res.dto';
 import { CurrentUserResDto } from './dto/current-user.res.dto';
+import { ExportUsersReqDto } from './dto/export-users.req.dto';
+import { GetUserOptionsReqDto } from './dto/get-user-options.req.dto';
 import { GetUsersReqDto } from './dto/get-users.req.dto';
+import { PageUserResDto } from './dto/page-user.res.dto';
 import { UpdateUserReqDto } from './dto/update-user.req.dto';
-import { UserDetailResDto } from './dto/user-detail.res.dto';
+import { UserRefResDto } from './dto/user-ref.res.dto';
 import { UserResDto } from './dto/user.res.dto';
 import { UsersService } from './users.service';
 
@@ -40,70 +46,104 @@ export class UsersController {
     return this.usersService.getCurrentUser(payload.sub);
   }
 
+  // Split out from `GET /users/me` so a permission-only read (the sidebar, route guards) never
+  // pays for the profile join (users/credentials/files) it doesn't need.
+  @Get('me/permissions')
+  @ApiAuth({
+    type: CurrentPermissionsResDto,
+    summary: 'Get my effective permissions',
+  })
+  getCurrentPermissions(
+    @CurrentUser() payload: JwtPayloadType,
+  ): Promise<CurrentPermissionsResDto> {
+    return this.usersService.getCurrentPermissions(payload.sub);
+  }
+
   @Get()
   @Permissions('users:update')
   @ApiAuth({
-    type: UserResDto,
+    type: PageUserResDto,
     summary: 'List users',
     isPaginated: true,
   })
   getUsers(
     @Query() reqDto: GetUsersReqDto,
-  ): Promise<OffsetPaginatedDto<UserResDto>> {
+  ): Promise<OffsetPaginatedDto<PageUserResDto>> {
     return this.usersService.getUsers(reqDto);
+  }
+
+  @Get('options')
+  @ApiAuth({
+    type: UserRefResDto,
+    summary:
+      'List users for dropdown (max 100, đang làm việc, search theo code/tên) — không đòi permission quản lý nhân sự, chỉ cần đăng nhập, để nhân viên các phòng ban khác chọn được đồng nghiệp (vd. người phụ trách một đơn mua hàng)',
+    isArray: true,
+  })
+  getUserOptions(
+    @Query() reqDto: GetUserOptionsReqDto,
+  ): Promise<UserRefResDto[]> {
+    return this.usersService.getUserOptions(reqDto);
+  }
+
+  @Get('export')
+  @Permissions('users:update')
+  @ApiAuth({
+    summary:
+      'Xuất Excel danh sách nhân sự — cùng bộ lọc GET /users, không phân trang',
+    fileType: XLSX_MIME,
+  })
+  exportUsers(@Query() reqDto: ExportUsersReqDto): Promise<StreamableFile> {
+    return this.usersService.exportUsers(reqDto);
   }
 
   @Get(':userId')
   @Permissions('users:update')
   @ApiAuth({
-    type: UserDetailResDto,
+    type: UserResDto,
     summary: 'Get user detail',
   })
-  getUserDetail(
-    @UUIDParam('userId') userId: string,
-  ): Promise<UserDetailResDto> {
-    return this.usersService.getUserDetail(userId);
+  getUser(@UUIDParam('userId') userId: string): Promise<UserResDto> {
+    return this.usersService.getUser(userId);
   }
 
   @Post()
   @Permissions('users:create')
   @ApiAuth({
-    type: UserDetailResDto,
     summary: 'Create user (user + optional ERP credential, with optional role)',
-    statusCode: HttpStatus.CREATED,
+    statusCode: HttpStatus.NO_CONTENT,
   })
   createUser(
     @Body() reqDto: CreateUserReqDto,
     @CurrentUser() payload: JwtPayloadType,
-  ): Promise<UserDetailResDto> {
+  ): Promise<void> {
     return this.usersService.createUser(reqDto, payload.sub, payload.userId);
   }
 
   @Patch(':userId')
   @Permissions('users:update')
   @ApiAuth({
-    type: UserDetailResDto,
     summary: 'Update user profile (and optionally their role)',
+    statusCode: HttpStatus.NO_CONTENT,
   })
   updateUser(
     @UUIDParam('userId') userId: string,
     @Body() reqDto: UpdateUserReqDto,
     @CurrentUser() payload: JwtPayloadType,
-  ): Promise<UserDetailResDto> {
+  ): Promise<void> {
     return this.usersService.updateUser(userId, reqDto, payload.sub);
   }
 
   @Patch(':userId/role')
   @Permissions('roles:update')
   @ApiAuth({
-    type: UserDetailResDto,
     summary: 'Assign a role to a user',
+    statusCode: HttpStatus.NO_CONTENT,
   })
   assignRole(
     @UUIDParam('userId') userId: string,
     @Body() reqDto: AssignRoleReqDto,
     @CurrentUser() payload: JwtPayloadType,
-  ): Promise<UserDetailResDto> {
+  ): Promise<void> {
     return this.usersService.assignRole(userId, reqDto, payload.sub);
   }
 

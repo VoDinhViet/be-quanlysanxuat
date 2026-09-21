@@ -30,11 +30,9 @@ export const purchaseRequestStatusEnum = pgEnum('purchase_request_status', [
 ]);
 
 /**
- * Đề xuất mua hàng — phiếu xin duyệt nội bộ, không phải procurement
- * (`docs/domains/purchase-requests.md`, `docs/decisions/no-procurement.md`). Chưa có route
- * tạo/duyệt/từ chối — đường ghi duy nhất là `PurchaseRequestsService.createShortageRequest`, gọi
- * từ `ProductionJobsService.startJob`. `status` đủ 4 giá trị cho vòng đời sau nhưng chưa route nào
- * chuyển trạng thái sau khi sinh.
+ * Đề xuất mua hàng — phiếu xin duyệt nội bộ, không phải procurement. Hai đường sinh (lập tay
+ * `POST /purchase-requests`, tự động từ `startJob`), vòng đời và quyền: xem
+ * `docs/domains/purchase-requests.md` + `docs/decisions/purchasing-scope-limits.md`.
  */
 export const purchaseRequests = pgTable(
   'purchase_requests',
@@ -58,9 +56,23 @@ export const purchaseRequests = pgTable(
     status: purchaseRequestStatusEnum('status')
       .notNull()
       .default(PurchaseRequestStatus.DRAFT),
+    note: varchar('note', { length: 1000 }),
     createdBy: uuid('created_by').references(() => users.id, {
       onDelete: 'set null',
     }),
+    sentBy: uuid('sent_by').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    sentAt: timestamp('sent_at'),
+    approvedBy: uuid('approved_by').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    approvedAt: timestamp('approved_at'),
+    rejectedBy: uuid('rejected_by').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    rejectedAt: timestamp('rejected_at'),
+    rejectionReason: varchar('rejection_reason', { length: 1000 }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at')
       .defaultNow()
@@ -76,6 +88,9 @@ export const purchaseRequests = pgTable(
     index('idx_purchase_requests_created_by').on(table.createdBy),
     index('idx_purchase_requests_status').on(table.status),
     index('idx_purchase_requests_needed_date').on(table.neededDate),
+    index('idx_purchase_requests_sent_by').on(table.sentBy),
+    index('idx_purchase_requests_approved_by').on(table.approvedBy),
+    index('idx_purchase_requests_rejected_by').on(table.rejectedBy),
   ],
 );
 
@@ -94,10 +109,24 @@ export const purchaseRequestsRelations = relations(
       fields: [purchaseRequests.productionJobId],
       references: [productionJobs.id],
     }),
-    requester: one(users, {
+    requesterBy: one(users, {
       fields: [purchaseRequests.createdBy],
+      references: [users.id],
+    }),
+    senderBy: one(users, {
+      fields: [purchaseRequests.sentBy],
+      references: [users.id],
+    }),
+    approverBy: one(users, {
+      fields: [purchaseRequests.approvedBy],
+      references: [users.id],
+    }),
+    rejecterBy: one(users, {
+      fields: [purchaseRequests.rejectedBy],
       references: [users.id],
     }),
     items: many(purchaseRequestItems),
   }),
 );
+
+export type PurchaseRequestSelect = typeof purchaseRequests.$inferSelect;

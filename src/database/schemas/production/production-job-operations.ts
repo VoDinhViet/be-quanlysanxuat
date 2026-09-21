@@ -13,24 +13,37 @@ import {
 
 import { operationTypeEnum, operations } from '../operations';
 import { productionJobBomItems } from './production-job-bom-items';
+import { productionJobOperationReports } from './production-job-operation-reports';
 import { productionJobs } from './production-jobs';
 
 /**
- * Snapshot công đoạn as-used của từng node BOM trong một Job — copy `routing_steps` (khoá theo
- * `bomItemId`) trong transaction duyệt LSX (`ProductionJobsService.createJobs`). Đóng băng, không
- * có route sửa — sửa routing/`operations` gốc sau đó không ảnh hưởng Job đã duyệt. Không có khái
- * niệm Cấp 0 riêng ở tầng Job — công đoạn của chính FG đọc qua `job.productId`, không snapshot ở
- * đây.
+ * Snapshot công đoạn as-used của từng node BOM trong một Job — copy `bom_operations` (khoá theo
+ * `bomItemId`). Dựng đúng một lần trong transaction `start` (`ProductionJobsService.startJob` →
+ * `createJobSnapshot`) — Job còn `PENDING` không có dòng nào ở đây, xem
+ * `docs/decisions/job-snapshot-at-start.md`. Đóng băng ngay từ lúc đó — sửa
+ * routing/`operations` gốc sau đó không ảnh hưởng Job đã `start`. `dueDate` là ngoại lệ duy nhất:
+ * cột kế hoạch, sửa tay qua `PATCH /production-jobs/:jobId/operations/:jobOperationId/due-date`.
+ * Công đoạn Cấp 0
+ * của chính FG (lắp ráp/đóng gói) **cũng snapshot ở đây** — copy từ đúng `bom_operations` của node
+ * ROOT thuộc FG (`docs/decisions/root-bom-item.md` — không còn bảng `routings`/`routing_operations`
+ * riêng), gắn vào node `production_job_bom_items.itemType = 'FG'` (xem doc comment bảng đó và
+ * `docs/decisions/oqc-per-operation.md` mục "Đừng hoàn lại") — không phải một bảng riêng.
  *
  * Rules:
  * - `code`/`name`/`type` (của công đoạn) là **snapshot text**, nguồn hiển thị chính — đóng băng
  *   lúc duyệt, độc lập `operations` sống. `operationId` chỉ còn là liên kết tham khảo (`set null`
  *   khi bị xoá).
  * - Không unique `(productionJobBomItemId, operationId)` — một routing được phép lặp lại cùng
- *   công đoạn (`routing_steps` cũng vậy), ép unique sẽ nuốt mất bước khi copy.
- * - `code`/`name`/`type`/`sortOrder`/`note`/`operationId` vẫn đóng băng lúc duyệt. `completedQuantity`/
- *   `completedDate` là 2 cột duy nhất sửa được sau đó, qua
- *   `ProductionJobsService.updateProductionJobOperation` (`PATCH .../operations/:operationId`).
+ *   công đoạn (`bom_operations` cũng vậy), ép unique sẽ nuốt mất bước khi copy.
+ * - `code`/`name`/`type`/`sortOrder`/`note`/`operationId` vẫn đóng băng lúc duyệt.
+ *   `completedQuantity`/`rejectedQuantity`/`completedDate` sửa qua đúng một đường tay — `POST
+ *   .../reports` (cộng dồn, `ProductionExecutionService`, ghi thêm một dòng
+ *   `production_job_operation_reports`, chỉ chạy khi Job `IN_PROGRESS`, `E087`) — công đoạn
+ *   `OUTSOURCE` bị chặn ở đường đó (`E260`), tự ghi qua `recomputeOutsourcedOperationProgress`
+ *   khi OS-IN post/cancel thay vì nhập tay (`docs/decisions/outsourced-operation-progress-writeback.md`).
+ * - `dueDate` sửa qua `PATCH .../operations/:jobOperationId/due-date` (`ProductionJobsService`) —
+ *   ghi đè thẳng (không cộng dồn), chỉ chạy khi Job `IN_PROGRESS` (`E087`), không phân biệt
+ *   `OUTSOURCE` (hạn là kế hoạch điều độ, không phải số liệu OS-IN tự ghi như tiến độ).
  */
 export const productionJobOperations = pgTable(
   'production_job_operations',
@@ -57,7 +70,15 @@ export const productionJobOperations = pgTable(
     })
       .notNull()
       .default(0),
+    rejectedQuantity: numeric('rejected_quantity', {
+      precision: 12,
+      scale: 3,
+      mode: 'number',
+    })
+      .notNull()
+      .default(0),
     completedDate: date('completed_date', { mode: 'date' }),
+    dueDate: date('due_date', { mode: 'date' }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at')
       .defaultNow()
@@ -76,12 +97,16 @@ export const productionJobOperations = pgTable(
       'chk_production_job_operations_completed_quantity_non_negative',
       sql`completed_quantity >= 0`,
     ),
+    check(
+      'chk_production_job_operations_rejected_quantity_non_negative',
+      sql`rejected_quantity >= 0`,
+    ),
   ],
 );
 
 export const productionJobOperationsRelations = relations(
   productionJobOperations,
-  ({ one }) => ({
+  ({ one, many }) => ({
     productionJob: one(productionJobs, {
       fields: [productionJobOperations.productionJobId],
       references: [productionJobs.id],
@@ -90,5 +115,9 @@ export const productionJobOperationsRelations = relations(
       fields: [productionJobOperations.productionJobBomItemId],
       references: [productionJobBomItems.id],
     }),
+    reports: many(productionJobOperationReports),
   }),
 );
+
+export type ProductionJobOperationSelect =
+  typeof productionJobOperations.$inferSelect;

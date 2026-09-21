@@ -1,103 +1,70 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { HttpStatus } from '@nestjs/common';
 
-import { DRIZZLE } from '../../database/database.module';
+import { DocumentType } from '../../common/utils/document-sequence.util';
+import { ErrorCode } from '../../constants/error-code.constant';
+import type { Database } from '../../database/database.type';
 import { UnitScope } from '../../database/schemas';
-import {
-  chainableMock,
-  QueryMockArgs,
-} from '../../test-utils/chainable-mock.util';
-import { GetUnitsReqDto } from './dto/get-units.req.dto';
+import { AppException } from '../../exceptions/app.exception';
 import { UnitsService } from './units.service';
 
 describe('UnitsService', () => {
   let service: UnitsService;
-  let mockDb: {
-    query: { units: { findMany: jest.Mock<any, [QueryMockArgs]> } };
-    select: jest.Mock;
-  };
+  let mockDb: Record<string, unknown>;
 
-  const buildReqDto = (
-    overrides: Partial<GetUnitsReqDto> = {},
-  ): GetUnitsReqDto => Object.assign(new GetUnitsReqDto(), overrides);
-
-  beforeEach(async () => {
+  beforeEach(() => {
     mockDb = {
+      transaction: jest.fn(
+        async (cb: (tx: Record<string, unknown>) => Promise<unknown>) => {
+          const tx: Record<string, unknown> = {
+            insert: jest.fn().mockReturnValue({
+              values: jest.fn().mockReturnValue({
+                returning: jest
+                  .fn()
+                  .mockResolvedValue([
+                    { id: 'unit-id-1', code: 'DVT0001', name: 'Cuộn' },
+                  ]),
+                onConflictDoUpdate: jest.fn().mockReturnValue({
+                  returning: jest.fn().mockResolvedValue([{ currentValue: 1 }]),
+                }),
+              }),
+            }),
+            delete: jest.fn().mockReturnValue({
+              where: jest.fn().mockResolvedValue([]),
+            }),
+          };
+          return await cb(tx);
+        },
+      ),
       query: {
         units: {
-          findMany: jest.fn<any, [QueryMockArgs]>().mockResolvedValue([]),
+          findFirst: jest.fn(),
+          findMany: jest.fn(),
         },
       },
-      // Still needed: the `scope` filter builds a subquery with `db.select(...)`.
-      select: chainableMock([]),
     };
 
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [UnitsService, { provide: DRIZZLE, useValue: mockDb }],
-    }).compile();
-
-    service = module.get<UnitsService>(UnitsService);
+    service = new UnitsService(mockDb as unknown as Database);
   });
 
-  afterEach(() => {
-    jest.clearAllMocks();
+  it('should create unit with auto-generated code DVT0001 and not require code in reqDto', async () => {
+    await expect(
+      service.createUnit({
+        name: 'Cuộn',
+        scopes: [UnitScope.CONSUMABLE],
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(
+      (mockDb.transaction as jest.Mock<Promise<unknown>>).mock.calls.length,
+    ).toBe(1);
   });
 
-  it('should be defined', () => {
-    expect(service).toBeDefined();
-  });
-
-  describe('getUnits', () => {
-    it('returns the whole catalogue as a bare array, unfiltered and unpaginated', async () => {
-      mockDb.query.units.findMany.mockResolvedValue([
-        { id: '1', code: 'KG', name: 'Kilogram', secret: 'dropped' },
-      ]);
-
-      const result = await service.getUnits(buildReqDto());
-
-      const callArgs = mockDb.query.units.findMany.mock.calls[0][0];
-      expect(callArgs.where).toBeUndefined();
-      expect(callArgs.limit).toBeUndefined();
-      expect(callArgs.offset).toBeUndefined();
-      expect(Array.isArray(result)).toBe(true);
-      expect(result).toHaveLength(1);
-      expect(result[0]).toMatchObject({ code: 'KG', name: 'Kilogram' });
-      expect(result[0]).not.toHaveProperty('secret');
-    });
-
-    it('never runs a count query', async () => {
-      await service.getUnits(buildReqDto());
-
-      expect(mockDb.select).not.toHaveBeenCalled();
-    });
-
-    it('orders alphabetically by name for the dropdown', async () => {
-      await service.getUnits(buildReqDto());
-
-      expect(
-        mockDb.query.units.findMany.mock.calls[0][0].orderBy,
-      ).toBeDefined();
-    });
-
-    it('builds a keyword search filter when q is provided', async () => {
-      await service.getUnits(buildReqDto({ q: 'kilo' }));
-
-      expect(mockDb.query.units.findMany.mock.calls[0][0].where).toBeDefined();
-    });
-
-    it('narrows to the requested scope with a unit_scopes subquery', async () => {
-      await service.getUnits(buildReqDto({ scope: UnitScope.PRODUCT }));
-
-      expect(mockDb.query.units.findMany.mock.calls[0][0].where).toBeDefined();
-      // The scope filter is a subquery over unit_scopes, not a column on units.
-      expect(mockDb.select).toHaveBeenCalled();
-    });
-
-    it('does not filter by scope when none is requested', async () => {
-      await service.getUnits(buildReqDto());
-
-      expect(
-        mockDb.query.units.findMany.mock.calls[0][0].where,
-      ).toBeUndefined();
-    });
+  it('should throw E243 if scopes array is empty', async () => {
+    await expect(
+      service.createUnit({
+        name: 'Cuộn',
+        scopes: [],
+      }),
+    ).rejects.toThrow(new AppException(ErrorCode.E243, HttpStatus.BAD_REQUEST));
   });
 });

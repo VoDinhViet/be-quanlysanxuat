@@ -1,17 +1,30 @@
-import { Body, Controller, Get, Patch, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpStatus,
+  Patch,
+  Post,
+  Query,
+  StreamableFile,
+} from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
+import { XLSX_MIME } from '../../common/utils/excel.util';
 import { CurrentUser } from '../../decorators/current-user.decorator';
 import { ApiAuth } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
+import { ExportProductionOrdersReqDto } from './dto/export-production-orders.req.dto';
 import { GetProductionOrderLogsReqDto } from './dto/get-production-order-logs.req.dto';
 import { GetProductionOrdersReqDto } from './dto/get-production-orders.req.dto';
 import { ProductionOrderDetailResDto } from './dto/production-order-detail.res.dto';
 import { ProductionOrderLogResDto } from './dto/production-order-log.res.dto';
 import { ProductionOrderResDto } from './dto/production-order.res.dto';
+import { UpdateProductionOrderNoteReqDto } from './dto/update-production-order-note.req.dto';
+import { UpdateProductionOrderSignedFileReqDto } from './dto/update-production-order-signed-file.req.dto';
 import { UpdateProductionOrderReqDto } from './dto/update-production-order.req.dto';
 import { ProductionOrdersService } from './production-orders.service';
 
@@ -33,6 +46,20 @@ export class ProductionOrdersController {
     @Query() reqDto: GetProductionOrdersReqDto,
   ): Promise<OffsetPaginatedDto<ProductionOrderResDto>> {
     return this.productionOrdersService.getProductionOrders(reqDto);
+  }
+
+  // Khai trước ':productionOrdersId' để 'export' không bị bắt nhầm thành id.
+  @Get('export')
+  @Permissions('production:read')
+  @ApiAuth({
+    summary:
+      'Xuất Excel danh sách lệnh sản xuất (LSX) — cùng bộ lọc GET /production-orders, không phân trang',
+    fileType: XLSX_MIME,
+  })
+  exportProductionOrders(
+    @Query() reqDto: ExportProductionOrdersReqDto,
+  ): Promise<StreamableFile> {
+    return this.productionOrdersService.exportProductionOrders(reqDto);
   }
 
   @Get(':productionOrdersId')
@@ -62,6 +89,42 @@ export class ProductionOrdersController {
     @CurrentUser() payload: JwtPayloadType,
   ): Promise<ProductionOrderDetailResDto> {
     return this.productionOrdersService.updateProductionOrder(
+      productionOrdersId,
+      reqDto,
+      payload.userId,
+    );
+  }
+
+  @Patch(':productionOrdersId/note')
+  @Permissions('production:update')
+  @ApiAuth({
+    summary: 'Update ghi chú riêng của LSX — sửa được ở mọi trạng thái',
+    statusCode: HttpStatus.NO_CONTENT,
+  })
+  updateProductionOrderNote(
+    @UUIDParam('productionOrdersId') productionOrdersId: string,
+    @Body() reqDto: UpdateProductionOrderNoteReqDto,
+    @CurrentUser() payload: JwtPayloadType,
+  ): Promise<void> {
+    return this.productionOrdersService.updateProductionOrderNote(
+      productionOrdersId,
+      reqDto,
+      payload.userId,
+    );
+  }
+
+  @Patch(':productionOrdersId/signed-file')
+  @Permissions('production:update')
+  @ApiAuth({
+    type: ProductionOrderDetailResDto,
+    summary: 'Update file LSX đã ký (scan/PDF) — cho phép ở mọi trạng thái',
+  })
+  updateProductionOrderSignedFile(
+    @UUIDParam('productionOrdersId') productionOrdersId: string,
+    @Body() reqDto: UpdateProductionOrderSignedFileReqDto,
+    @CurrentUser() payload: JwtPayloadType,
+  ): Promise<ProductionOrderDetailResDto> {
+    return this.productionOrdersService.updateProductionOrderSignedFile(
       productionOrdersId,
       reqDto,
       payload.userId,

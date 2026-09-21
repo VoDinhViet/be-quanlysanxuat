@@ -2,93 +2,102 @@
 
 ## Purpose
 
-Trả lời hai câu hỏi tách biệt: **"ai đang gọi API này"** (xác thực) và **"họ được phép làm gì"** (phân quyền). Đồng thời giữ hồ sơ nhân sự (phòng ban, chức vụ) — nhưng đó là dữ liệu tổ chức, không phải dữ liệu đăng nhập.
+Trả lời hai câu hỏi tách biệt: "ai đang gọi API này" (xác thực) và "họ được phép làm gì" (phân
+quyền). Đồng thời giữ hồ sơ nhân sự (phòng ban, chức vụ) — dữ liệu tổ chức, không phải dữ liệu
+đăng nhập.
 
 ## Core concepts
 
-**Credential ≠ User.** Đây là khái niệm quan trọng nhất của domain này, và là nguồn nhầm lẫn lớn nhất trong repo.
+**Credential ≠ User** — nguồn nhầm lẫn lớn nhất trong repo.
+- `users` = con người trong tổ chức — mã nhân viên, họ tên, phòng ban, chức vụ, ...
+- `credentials` = tài khoản đăng nhập — `username`/`email`/`password` và **`roleId`**. Phân quyền
+  neo ở đây, không ở `users`.
 
-- **`users`** = *con người trong tổ chức* — bảng định danh chính. Giữ mã nhân viên, họ tên, giới tính, ngày sinh, phòng ban, chức vụ, ngày vào làm, ảnh đại diện.
-- **`credentials`** = *tài khoản đăng nhập*. Giữ `username`/`email`/`password` và — quan trọng — `roleId`. **Phân quyền neo ở đây**, không ở `users`.
+Nối qua `credentials.userId` (NOT NULL, unique) — mọi credential phải gắn đúng một user thật. Chiều
+ngược lại tuỳ chọn: một user chưa có credential vẫn hợp lệ (không gán role/đăng nhập được).
 
-Hai bên nối nhau qua `credentials.userId` (NOT NULL, unique). Chiều bắt buộc chỉ một hướng: **mọi
-credential phải gắn đúng một user thật** (đảo lại 2026-08-01 — trước đó là `users.credentialId`
-nullable, cho phép "admin-only login"; giờ khái niệm đó không còn tồn tại). Chiều ngược lại vẫn tuỳ
-chọn: một user chưa có credential vẫn hợp lệ (nhưng không gán role được, không đăng nhập được).
+**Permission là hằng số trong code, không phải dữ liệu.** `PERMISSION_CODES`
+(`src/constants/permission.constant.ts`) là danh sách đóng `resource:action`, không có bảng
+`permissions`. Role chỉ tham chiếu mã đó qua cột `jsonb` — thêm năng lực mới luôn cần deploy.
 
-**Permission là hằng số trong code, không phải dữ liệu.** `PERMISSION_CODES` (`src/constants/permission.constant.ts`) là danh sách đóng dạng `resource:action`. Không có bảng `permissions`. Một role chỉ **tham chiếu** các mã đó qua cột `jsonb`. Hệ quả: thêm một năng lực mới luôn cần deploy, không chỉ sửa dữ liệu.
-
-**`system:manage` là quyền tuyệt đối** — đi tắt qua mọi kiểm tra, ở cả tầng guard lẫn tầng service (cố ý nhân đôi để Super Admin không bị chính logic nghiệp vụ chặn).
+**`system:manage` là quyền tuyệt đối** — đi tắt qua mọi kiểm tra, ở cả guard lẫn service (cố ý
+nhân đôi để Super Admin không bị chính logic nghiệp vụ chặn).
 
 ## Entities
 
 | Entity | Vai trò | Ghi chú quan hệ |
 | --- | --- | --- |
-| `users` | Hồ sơ nhân sự — bảng định danh chính | `departmentId`/`positionId` NOT NULL, `restrict`; **mọi FK "ai đã thao tác"** (`createdBy`, `approvedBy`, `startedBy`, ...) trong toàn hệ thống trỏ vào đây, kể cả `users.createdBy` (self-reference) |
-| `credentials` | Tài khoản đăng nhập | `roleId` → `roles`; `userId` → `users` (NOT NULL, unique — mỗi credential đúng một chủ) |
-| `roles` | Nhóm quyền | `permissions` là mảng `jsonb` chứa mã từ `PERMISSION_CODES`; `isSystem` đánh dấu role được seed |
+| `users` | Hồ sơ nhân sự | `departmentId`/`positionId` NOT NULL restrict; mọi FK "ai đã thao tác" toàn hệ thống trỏ vào đây |
+| `credentials` | Tài khoản đăng nhập | `roleId`→`roles`; `userId`→`users` NOT NULL unique |
+| `roles` | Nhóm quyền — full CRUD | `permissions` mảng `jsonb` chứa mã `PERMISSION_CODES`; `isSystem` bảo vệ khỏi sửa/xoá |
 | `departments` / `positions` | Cơ cấu tổ chức | Một chức vụ thuộc đúng một phòng ban |
 
 ## Lifecycle
 
-`credentials` **không có** cột trạng thái — cố ý. Trạng thái duy nhất của domain là `users.status`:
+`users.status`: `WORKING (mặc định) → RESIGNED`. Cổng chặn login/refresh có 2 lớp độc lập: (1) user
+`RESIGNED` (`E018`), (2) `credentials.credentialEnabled = false` (cùng `E018`, kiểm riêng, không
+suy từ `users.status`). Không có `INACTIVE` trên `users`.
 
-```
-WORKING (mặc định) ──> RESIGNED
-```
+**Thu hồi quyền là lười** — `status = RESIGNED` không giết token đang sống, chỉ chặn ở lần
+login/refresh kế tiếp.
 
-Cổng chặn: chỉ khi user liên kết ở `RESIGNED` thì login/refresh mới bị từ chối (`E018`). Không có trạng thái `INACTIVE`.
+Login phát cặp access+refresh token (2 secret khác nhau), phiên lưu Redis theo `sessionId`. Refresh
+xoay `hash`, giữ nguyên `sessionId`. Logout đưa `sessionId` vào blocklist trong TTL access token.
 
-**Thu hồi quyền là lười, không tức thời.** Đặt `status = RESIGNED` **không** giết token đang sống — access token vẫn dùng được tới khi hết hạn (mặc định 7 ngày). Chặn chỉ xảy ra ở lần login/refresh kế tiếp.
-
-Phiên đăng nhập: login phát một cặp access + refresh token (hai secret khác nhau), trạng thái phiên lưu ở Redis theo `sessionId`. Refresh xoay `hash` nhưng **giữ nguyên `sessionId`**. Logout đưa `sessionId` vào blocklist trong đúng TTL của access token.
+`roles` full CRUD (`GET`/`POST`/`PATCH`/`DELETE`, `roles:read/create/update/delete`). `isSystem`
+(ADMIN) từ chối `PATCH`/`DELETE` (`E030`); xoá role còn credential trỏ tới bị chặn (`E029`); cấp
+`system:manage` cho role đi qua chống-leo-thang `E034`.
 
 ## Business rules
 
-- **Không leo thang đặc quyền**: muốn gán một role có `system:manage` thì bản thân người gán phải đang có `system:manage` (`E034`).
-- **Gán role là quyền riêng**: chỉ ai có `roles:update` (hoặc `system:manage`) mới ghi được role lên một credential — kể cả khi đang gọi `POST /users`/`PATCH /users/:id` (vốn chỉ cần `users:create`/`users:update`).
-- **Role chỉ gán được cho user đã có credential** (`E032`) — vì role sống trên credential.
-- **Chức vụ phải thuộc đúng phòng ban của user** (`E064`). Kiểm ở tầng service, không phải DB. Khi update, kiểm lại theo *cặp hiệu lực* (giá trị mới nếu được gửi, nếu không thì giá trị hiện có) — nên đổi mỗi phòng ban mà không đổi chức vụ luôn báo lỗi, đúng thiết kế.
-- **Route không khai `@Permissions` chỉ cần đăng nhập hợp lệ**; khai nhiều mã thì phải có **đủ tất cả** (AND, không phải OR).
+- Không leo thang đặc quyền: gán role có `system:manage` đòi người gán cũng có `system:manage`
+  (`E034`).
+- Gán role là quyền riêng — chỉ ai có `roles:update` (hoặc `system:manage`) mới ghi được role lên
+  credential, kể cả gọi qua `POST`/`PATCH /users`.
+- Role chỉ gán được cho user đã có credential (`E032`) — chỉ đúng cho `PATCH /users/:userId/role`;
+  `PATCH /users/:userId` (gửi `credential.roleId`) tự tạo credential nếu chưa có.
+- Chức vụ phải thuộc đúng phòng ban của user (`E064`, service-check) — khi update kiểm theo cặp
+  hiệu lực (giá trị mới nếu gửi, không thì giá trị hiện có).
+- Route không khai `@Permissions` chỉ cần đăng nhập hợp lệ; khai nhiều mã thì cần đủ tất cả (AND).
+- `roles.isProtected`/`credentials.isProtected` là 2 cờ tách biệt, không suy ra nhau — ẩn khỏi
+  `GET /roles`/`GET /users` tương ứng, không chặn thao tác trực tiếp qua id.
+- `GET /users/export` xuất Excel cùng bộ lọc `GET /users` (chỉ `q`) và giữ nguyên 2 điều kiện ẩn
+  dòng của nó — `deletedAt IS NULL` + ẩn `credentials.isProtected` — export không được là đường
+  vòng để nhìn thấy tài khoản bị ẩn. Bỏ phân trang, sort `createdAt DESC`, trần 10.000 dòng cắt im
+  lặng. Gác cùng `users:update`, không có mã quyền riêng.
 
 ## Invariants
 
-- `credentials.userId` **NOT NULL + unique** — mỗi credential đúng một chủ, DB enforce thật (khác
-  hẳn liên kết cũ, chỉ là quy ước ở tầng code).
-- `payload.sub` trong JWT **luôn** là `credentials.id` — không đổi. `payload.userId` là field
-  **mới**, tách biệt, luôn là `users.id`; xem Common mistakes #1 để tránh nhầm hai field này.
-- Một mã permission không nằm trong `PERMISSION_CODES` **không bao giờ có thể bị *yêu cầu*** — decorator `@Permissions` được type theo hằng số đó.
-- `system:manage` bao hàm mọi quyền khác, ở mọi tầng kiểm tra.
-
-Hai điều **không** phải invariant dù trông có vẻ:
-
-- **Mã permission rác vẫn có thể được *cấp*.** `roles.permissions` là `jsonb`, và không có đường ghi role nào ở runtime để validate. `isPermissionCode`/`PERMISSION_CODE_SET` tồn tại nhưng **không được gọi ở đâu cả**.
-- **Role hiện không sửa được qua API.** `roles` chỉ có `GET /roles`; `roles:create`/`roles:delete` không gắn với route nào. Role sinh ra từ seed. Doc comment trong schema nói admin tự tạo role được ở runtime — đó là **dự định, chưa phải sự thật**.
+- `credentials.userId` NOT NULL + unique — DB enforce thật.
+- `payload.sub` JWT luôn là `credentials.id`; `payload.userId` (field riêng) luôn là `users.id`.
+- Mã permission ngoài `PERMISSION_CODES` không thể bị yêu cầu (`@Permissions` type theo hằng số đó).
+- `system:manage` bao hàm mọi quyền, mọi tầng.
+- `POST`/`PATCH /roles` chặn mã lạ (`E031`, `validatePermissionCodes`) — không phải invariant DB
+  (`roles.permissions` là `jsonb`, sửa thẳng DB né được); `RolesService.onModuleInit` chỉ cảnh báo,
+  không tự sửa.
 
 ## Cross-domain dependencies
 
-- **Mọi domain** đều phụ thuộc vào domain này: cột `createdBy`/`approvedBy`/`startedBy`/... khắp hệ
-  thống trỏ `users.id` (đảo lại 2026-08-01 — trước đó trỏ `credentials.id`, `orders.staffId` từng là
-  ngoại lệ duy nhất; giờ không còn ngoại lệ nào, mọi cột audit cùng một quy ước), và `PermissionsGuard`
-  gác mọi route không `@Public()` (dựa trên `credentials.roleId`, không đổi).
-- **Master data** `departments`/`positions` phục vụ hồ sơ nhân sự — xem `docs/domains/partners.md`.
+- **Mọi domain**: `createdBy`/`approvedBy`/`startedBy`/... trỏ `users.id`; `PermissionsGuard` gác
+  mọi route không `@Public()` dựa trên `credentials.roleId`.
+- **Master data**: `departments`/`positions` phục vụ hồ sơ nhân sự — `docs/domains/partners.md`.
 
 ## Common mistakes
 
-1. **Nhầm `payload.sub` với `payload.userId`.** Cả hai cùng có trong JWT nhưng khác bảng: `sub` là
-   credential id (`GET /users/me` nhận giá trị này), `userId` là user id (mọi write-site "ai đã thao
-   tác" dùng giá trị này). Dùng nhầm field thì lặng lẽ 404 hoặc ghi sai FK, không phải lỗi rõ ràng.
-   `LoginResDto.userId` nay trả đúng `users.id` (đã sửa 2026-08-01 — trước đó trả nhầm credential id
-   dù tên field nói khác).
-2. **Tưởng `@Permissions` trên route `@ApiPublic` có tác dụng.** Không — cả hai guard `return true` trước khi đọc metadata quyền. Khoảng 14 route (`clients`, `products`, `suppliers`, `boms`, `routing`, `operations`) đang xếp chồng như vậy và **hoàn toàn không xác thực**. Muốn siết thì phải bỏ `@ApiPublic()`, và đó là breaking change với client đang gọi.
-3. **Thêm permission mới mà chỉ sửa một chỗ.** Cần đủ ba: thêm vào `PERMISSION_CODES`, gắn `@Permissions()` lên route, và cấp cho role trong `credentials.seed.ts`. Tệ hơn: **chạy lại seed không cập nhật role đã tồn tại** — hàm seed thoát sớm nếu thấy mã role đã có, nên môi trường cũ phải `UPDATE` tay.
-4. **Quên invalidate cache khi đổi phân quyền.** Quyền được cache Redis hai tầng, TTL 5 phút. `invalidateRole()` hiện **không được gọi ở đâu** (an toàn vì chưa có đường sửa role) — nếu sau này thêm chức năng sửa role mà quên gọi, quyền cũ còn hiệu lực tới 5 phút.
-5. **Tưởng `users` có lọc xoá mềm.** Cột `users.deletedAt` tồn tại nhưng **không nơi nào đọc** — user đã "xoá" vẫn hiện trong `GET /users` và vẫn gán được. (`roles.deletedAt` thì có lọc thật.)
-6. **Tưởng `GET /users` cần quyền đọc.** Nó gác bằng `users:update` — không hề có mã `users:read` hay `users:delete`.
-7. **Tưởng dữ liệu cơ cấu tổ chức được bảo vệ.** `GET /departments` và `GET /positions` là public hoàn toàn.
+1. Nhầm `payload.sub` (credential id) với `payload.userId` (user id) — dùng nhầm field lặng lẽ
+   404 hoặc ghi sai FK.
+2. Thêm permission mới mà chỉ sửa một chỗ — cần đủ ba: `PERMISSION_CODES`, `@Permissions()` trên
+   route, cấp cho role trong `credentials.seed.ts`. Seed thoát sớm nếu role đã tồn tại, môi trường
+   cũ phải `UPDATE` tay.
+3. Tưởng quyền còn cache — đã bỏ hẳn, giờ là query join thẳng `credentials → roles`, luôn tươi.
+4. Tưởng `GET /users` cần quyền đọc — nó gác bằng `users:update`, không có `users:read`/`:delete`.
+5. Tưởng dữ liệu cơ cấu tổ chức được bảo vệ — `GET /departments`/`GET /positions` public hoàn toàn.
+6. Tưởng `users` có cột `email` riêng — không, luôn qua `credentials.email` (field lồng
+   `credential.email` trên request).
+7. Tưởng `PATCH /users/:userId` luôn đụng credential — `credential` là object lồng optional, không
+   gửi thì không đụng `credentials` chút nào (không `E032`).
+8. Tưởng `GET /users/me` trả `permissions` — đã bỏ, đọc riêng qua `GET /users/me/permissions`.
 
 ## Related docs
 
-- `.claude/skills/new-api-module/SKILL.md` — nơi một permission mới phải được khai báo và cấp.
-- `docs/domains/orders.md` — nơi dùng `staffId`.
-- `.claude/rules/service.md` — quy tắc khai `@Permissions` khi viết route mới.
+- `docs/domains/orders.md` — nơi dùng `assignedUserId`.

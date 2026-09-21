@@ -11,14 +11,14 @@ export class GetOrdersReqDto extends PageOptionsDto {
   readonly clientId?: string;
 
   @UUIDFieldOptional({ description: 'Filter by sales staff (users) id' })
-  readonly staffId?: string;
+  readonly assignedUserId?: string;
 
   @EnumFieldOptional(() => OrderStatus)
   readonly status?: OrderStatus;
 
-  @DateFieldOptional({ description: 'Filter: dueDate >= fromDate' })
-  readonly fromDate?: Date;
+  @DateFieldOptional({ description: 'Filter: dueDate >= startDate' })
+  readonly startDate?: Date;
 
-  @DateFieldOptional({ description: 'Filter: dueDate <= toDate' })
-  readonly toDate?: Date;
+  @DateFieldOptional({ description: 'Filter: dueDate <= endDate' })
+  readonly endDate?: Date;
 }

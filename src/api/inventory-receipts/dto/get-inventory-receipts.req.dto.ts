@@ -10,9 +10,6 @@ import {
 } from '../../../decorators/field.decorators';
 
 export class GetInventoryReceiptsReqDto extends PageOptionsDto {
-  @UUIDFieldOptional()
-  readonly warehouseId?: string;
-
   @EnumFieldOptional(() => InventoryReceiptType)
   readonly receiptType?: InventoryReceiptType;
 
@@ -23,11 +20,20 @@ export class GetInventoryReceiptsReqDto extends PageOptionsDto {
   readonly supplierId?: string;
 
   @UUIDFieldOptional()
+  readonly clientId?: string;
+
+  @UUIDFieldOptional()
   readonly productionOrderId?: string;
 
-  @DateFieldOptional({ description: 'Filter: receiptDate >= fromDate' })
-  readonly fromDate?: Date;
+  @UUIDFieldOptional()
+  readonly productionJobId?: string;
 
-  @DateFieldOptional({ description: 'Filter: receiptDate <= toDate' })
-  readonly toDate?: Date;
+  @UUIDFieldOptional({ description: 'Filter theo đơn mua hàng' })
+  readonly purchaseOrderId?: string;
+
+  @DateFieldOptional({ description: 'Filter: receiptDate >= startDate' })
+  readonly startDate?: Date;
+
+  @DateFieldOptional({ description: 'Filter: receiptDate <= endDate' })
+  readonly endDate?: Date;
 }

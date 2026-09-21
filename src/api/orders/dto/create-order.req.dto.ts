@@ -7,7 +7,6 @@ import {
 import {
   ClassFieldOptional,
   DateField,
-  EmailFieldOptional,
   EnumFieldOptional,
   NumberFieldOptional,
   StringFieldOptional,
@@ -16,32 +15,17 @@ import {
 import { OrderItemReqDto } from './order-item.req.dto';
 
 export class CreateOrderReqDto {
-  @StringFieldOptional({
-    maxLength: 50,
-    description: 'Order code; auto-generated (SOxxxx) if omitted',
-  })
-  readonly code?: string;
-
   @UUIDFieldOptional({
     nullable: true,
     description: 'Client (khách hàng) id — optional temporarily',
   })
   readonly clientId?: string | null;
 
-  @StringFieldOptional({ maxLength: 255, nullable: true })
-  readonly contactName?: string | null;
-
-  @StringFieldOptional({ maxLength: 30, nullable: true })
-  readonly contactPhone?: string | null;
-
-  @EmailFieldOptional({ nullable: true })
-  readonly contactEmail?: string | null;
-
   @UUIDFieldOptional({
     nullable: true,
     description: 'Nhân viên kinh doanh (users.id) id',
   })
-  readonly staffId?: string | null;
+  readonly assignedUserId?: string | null;
 
   @DateField({ description: 'Ngày đặt hàng' })
   readonly orderDate!: Date;
@@ -49,8 +33,13 @@ export class CreateOrderReqDto {
   @DateField({ description: 'Ngày giao hàng yêu cầu' })
   readonly dueDate!: Date;
 
-  @StringFieldOptional({ maxLength: 500, nullable: true })
-  readonly deliveryAddress?: string | null;
+  @StringFieldOptional({
+    maxLength: 500,
+    nullable: true,
+    description:
+      'Địa chỉ người nhận hàng — có thể khác khách hàng đặt đơn (đại lý/đối tác)',
+  })
+  readonly consigneeAddress?: string | null;
 
   @EnumFieldOptional(() => PaymentTerm, { nullable: true })
   readonly paymentTerm?: PaymentTerm | null;
@@ -91,7 +80,8 @@ export class CreateOrderReqDto {
   readonly shippingFee?: number;
 
   @EnumFieldOptional(() => OrderStatus, {
-    description: 'Defaults to DRAFT. Cannot be set to AWAITING_PRODUCTION.',
+    description:
+      'Defaults to DRAFT. Cannot be set to AWAITING_PRODUCTION or REJECTED.',
   })
   readonly status?: OrderStatus;
 
@@ -106,7 +96,7 @@ export class CreateOrderReqDto {
 
   @UUIDFieldOptional({
     each: true,
-    description: 'Attachment file ids (from POST /files, type=ORDER_DOCUMENT)',
+    description: 'File ids (from POST /files, type=ORDER_DOCUMENT)',
   })
-  readonly attachmentFileIds?: string[];
+  readonly fileIds?: string[];
 }

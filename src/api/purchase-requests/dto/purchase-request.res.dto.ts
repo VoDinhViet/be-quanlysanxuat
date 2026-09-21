@@ -5,14 +5,18 @@ import {
   ClassField,
   ClassFieldOptional,
   DateField,
+  DateFieldOptional,
   EnumField,
   StringField,
+  StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
 import { DepartmentResDto } from '../../departments/dto/department.res.dto';
+import { InventoryReceiptRefResDto } from '../../inventory-receipts/dto/inventory-receipt-ref.res.dto';
 import { ProductionJobRefResDto } from '../../production-jobs/dto/production-job-ref.res.dto';
 import { ProductionOrderRefResDto } from '../../production-orders/dto/production-order-ref.res.dto';
 import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
+import { PurchaseRequestItemResDto } from './purchase-request-item.res.dto';
 
 @Exclude()
 export class PurchaseRequestResDto {
@@ -33,6 +37,13 @@ export class PurchaseRequestResDto {
   status!: PurchaseRequestStatus;
 
   @Expose()
+  @StringFieldOptional({
+    nullable: true,
+    description: 'Ghi chú chung của phiếu',
+  })
+  note!: string | null;
+
+  @Expose()
   @DateField({ description: 'Ngày tạo phiếu' })
   createdAt!: Date;
 
@@ -42,7 +53,35 @@ export class PurchaseRequestResDto {
 
   @Expose()
   @ClassFieldOptional(() => UserRefResDto, { nullable: true })
-  requester!: UserRefResDto | null;
+  requesterBy!: UserRefResDto | null;
+
+  @Expose()
+  @ClassFieldOptional(() => UserRefResDto, { nullable: true })
+  senderBy!: UserRefResDto | null;
+
+  @Expose()
+  @DateFieldOptional({ nullable: true })
+  sentAt!: Date | null;
+
+  @Expose()
+  @ClassFieldOptional(() => UserRefResDto, { nullable: true })
+  approverBy!: UserRefResDto | null;
+
+  @Expose()
+  @DateFieldOptional({ nullable: true })
+  approvedAt!: Date | null;
+
+  @Expose()
+  @ClassFieldOptional(() => UserRefResDto, { nullable: true })
+  rejecterBy!: UserRefResDto | null;
+
+  @Expose()
+  @DateFieldOptional({ nullable: true })
+  rejectedAt!: Date | null;
+
+  @Expose()
+  @StringFieldOptional({ nullable: true })
+  rejectionReason!: string | null;
 
   @Expose()
   @ClassFieldOptional(() => ProductionOrderRefResDto, { nullable: true })
@@ -51,4 +90,15 @@ export class PurchaseRequestResDto {
   @Expose()
   @ClassFieldOptional(() => ProductionJobRefResDto, { nullable: true })
   productionJob!: ProductionJobRefResDto | null;
+
+  @Expose()
+  @ClassFieldOptional(() => PurchaseRequestItemResDto, { each: true })
+  items!: PurchaseRequestItemResDto[];
+
+  @Expose()
+  @ClassFieldOptional(() => InventoryReceiptRefResDto, {
+    each: true,
+    description: 'Phiếu nhập kho đã trỏ vào đề xuất này',
+  })
+  receipts!: InventoryReceiptRefResDto[];
 }

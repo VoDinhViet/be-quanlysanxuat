@@ -10,7 +10,9 @@ import {
 
 import { clients } from './clients';
 
-/** 1-many with clients: a client can have multiple contacts, replace-all on update. */
+/** 1-many with clients: a client can have multiple contacts, replace-all on update — no
+ * `updatedAt`, a row is deleted and reinserted rather than mutated (cited as precedent by
+ * `production_order_logs`). */
 export const clientContacts = pgTable(
   'client_contacts',
   {
@@ -35,3 +37,5 @@ export const clientContactsRelations = relations(clientContacts, ({ one }) => ({
     references: [clients.id],
   }),
 }));
+
+export type ClientContactSelect = typeof clientContacts.$inferSelect;

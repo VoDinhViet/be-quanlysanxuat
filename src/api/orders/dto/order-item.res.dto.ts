@@ -5,10 +5,14 @@ import {
   ClassField,
   EnumField,
   NumberField,
+  NumberFieldOptional,
   StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
-import { OrderItemProductRefResDto } from './order-item-product-ref.res.dto';
+import { FileField } from '../../files/dto/file.field';
+import { FileResDto } from '../../files/dto/file.res.dto';
+import { ItemRefResDto } from '../../items/dto/item-ref.res.dto';
+import { UnitRefResDto } from '../../units/dto/unit-ref.res.dto';
 
 @Exclude()
 export class OrderItemResDto {
@@ -19,6 +23,27 @@ export class OrderItemResDto {
   @Expose()
   @NumberField({ description: 'Số lượng' })
   quantity!: number;
+
+  @Expose()
+  @NumberField({
+    description: 'SL đã xuất/giao thật (từ inventory_transactions.orderItemId)',
+  })
+  issuedQty!: number;
+
+  @Expose()
+  @NumberFieldOptional({
+    nullable: true,
+    description:
+      'SL đã chốt ở LSX (production_order_items.quantity, có thể khác quantity nếu đã sửa tay) — null nếu đơn chưa duyệt/chưa lên LSX',
+  })
+  productionQuantity!: number | null;
+
+  @Expose()
+  @NumberField({
+    description:
+      '(productionQuantity ?? quantity) - issuedQty; có thể âm nếu bị xuất vượt SL còn lại',
+  })
+  remainingQty!: number;
 
   @Expose()
   @NumberField({ description: 'Đơn giá' })
@@ -48,6 +73,14 @@ export class OrderItemResDto {
   sortOrder!: number;
 
   @Expose()
-  @ClassField(() => OrderItemProductRefResDto)
-  product!: OrderItemProductRefResDto;
+  @ClassField(() => ItemRefResDto)
+  item!: ItemRefResDto;
+
+  @Expose()
+  @ClassField(() => UnitRefResDto)
+  unit!: UnitRefResDto;
+
+  @Expose()
+  @FileField('imageFile', 'Item image')
+  image!: FileResDto | null;
 }

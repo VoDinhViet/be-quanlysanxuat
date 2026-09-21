@@ -5,6 +5,7 @@ import {
   EnumField,
   EnumFieldOptional,
   NumberFieldOptional,
+  PhoneField,
   StringField,
   StringFieldOptional,
   UUIDField,
@@ -26,17 +27,11 @@ export class CreateSupplierReqDto {
   @StringField({ description: 'Tax code (Mã số thuế)', maxLength: 50 })
   taxCode!: string;
 
-  @StringField({ description: 'Phone number', maxLength: 30 })
+  @PhoneField({ description: 'Phone number', maxLength: 30 })
   phoneNumber!: string;
 
   @StringField({ description: 'Address', maxLength: 500 })
   address!: string;
-
-  @StringFieldOptional({
-    description: 'Supplier code; auto-generated if omitted',
-    maxLength: 50,
-  })
-  code?: string;
 
   @EmailFieldOptional({ description: 'Email', nullable: true })
   email?: string | null;
@@ -77,10 +72,9 @@ export class CreateSupplierReqDto {
 
   @UUIDFieldOptional({
     each: true,
-    description:
-      'Attachment file ids (from POST /files?type=SUPPLIER_DOCUMENT)',
+    description: 'File ids (from POST /files?type=SUPPLIER_DOCUMENT)',
   })
-  attachmentFileIds?: string[];
+  fileIds?: string[];
 
   @ClassFieldOptional(() => SupplierRepresentativeReqDto, { each: true })
   representatives?: SupplierRepresentativeReqDto[];

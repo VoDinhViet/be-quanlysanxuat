@@ -55,4 +55,11 @@ export class ProductionOrderResDto {
   @Expose()
   @StringFieldOptional({ nullable: true, description: 'orders.note' })
   note!: string | null;
+
+  @Expose()
+  @StringFieldOptional({
+    nullable: true,
+    description: 'Ghi chú của chính LSX — khác `note` (ghi chú đơn hàng gốc)',
+  })
+  productionOrderNote!: string | null;
 }

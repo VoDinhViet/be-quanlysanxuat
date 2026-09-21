@@ -11,7 +11,7 @@ export class GetPurchaseRequestsReqDto extends PageOptionsDto {
   @StringFieldOptional({
     description: 'Tìm theo tên hoặc mã vật tư có trong các dòng của đề xuất',
   })
-  readonly materialKeyword?: string;
+  readonly consumableKeyword?: string;
 
   @UUIDFieldOptional({
     description: 'Filter theo LSX (production order) liên quan',
@@ -33,9 +33,9 @@ export class GetPurchaseRequestsReqDto extends PageOptionsDto {
   @DateFieldOptional({ description: 'Filter: neededDate = ngày này' })
   readonly neededDate?: Date;
 
-  @DateFieldOptional({ description: 'Filter: createdAt >= fromDate' })
-  readonly fromDate?: Date;
+  @DateFieldOptional({ description: 'Filter: createdAt >= createdStartDate' })
+  readonly createdStartDate?: Date;
 
-  @DateFieldOptional({ description: 'Filter: createdAt <= toDate' })
-  readonly toDate?: Date;
+  @DateFieldOptional({ description: 'Filter: createdAt <= createdEndDate' })
+  readonly createdEndDate?: Date;
 }

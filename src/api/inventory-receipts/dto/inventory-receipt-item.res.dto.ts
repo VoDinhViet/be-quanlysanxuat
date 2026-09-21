@@ -1,16 +1,16 @@
 import { Exclude, Expose } from 'class-transformer';
 
-import { InventoryItemType } from '../../../database/schemas';
 import {
+  ClassField,
   ClassFieldOptional,
-  EnumField,
   NumberField,
   NumberFieldOptional,
   StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
-import { MaterialRefResDto } from '../../materials/dto/material-ref.res.dto';
-import { ProductRefResDto } from '../../products/dto/product-ref.res.dto';
+import { ItemRefResDto } from '../../items/dto/item-ref.res.dto';
+import { PurchaseOrderItemRefResDto } from '../../purchase-orders/dto/purchase-order-item-ref.res.dto';
+import { UnitRefResDto } from '../../units/dto/unit-ref.res.dto';
 
 @Exclude()
 export class InventoryReceiptItemResDto {
@@ -19,16 +19,12 @@ export class InventoryReceiptItemResDto {
   id!: string;
 
   @Expose()
-  @EnumField(() => InventoryItemType)
-  itemType!: InventoryItemType;
+  @ClassField(() => ItemRefResDto)
+  item!: ItemRefResDto;
 
   @Expose()
-  @ClassFieldOptional(() => ProductRefResDto, { nullable: true })
-  product!: ProductRefResDto | null;
-
-  @Expose()
-  @ClassFieldOptional(() => MaterialRefResDto, { nullable: true })
-  material!: MaterialRefResDto | null;
+  @ClassField(() => UnitRefResDto)
+  unit!: UnitRefResDto;
 
   @Expose()
   @NumberField({ description: 'Số lượng' })
@@ -41,4 +37,43 @@ export class InventoryReceiptItemResDto {
   @Expose()
   @StringFieldOptional({ nullable: true })
   note!: string | null;
+
+  @Expose()
+  @ClassFieldOptional(() => PurchaseOrderItemRefResDto, { nullable: true })
+  purchaseOrderItem!: PurchaseOrderItemRefResDto | null;
+
+  @Expose()
+  @NumberField({ description: 'Tồn thực tế (gộp mọi kho), đọc lúc gọi API' })
+  onHand!: number;
+
+  @Expose()
+  @NumberField({
+    description:
+      'Nhu cầu BOM — tổng requiredQty của Job liên quan, hoặc mọi Job của LSX nếu không có Job cụ thể',
+  })
+  bomDemand!: number;
+
+  @Expose()
+  @NumberField({ description: 'Tồn khả dụng = onHand − bomDemand, có thể âm' })
+  available!: number;
+
+  @Expose()
+  @NumberField({
+    description:
+      'Phần tồn thực tế bị nhu cầu LSX này chiếm = min(onHand, bomDemand)',
+  })
+  fromStock!: number;
+
+  @Expose()
+  @NumberFieldOptional({
+    description: 'Số lượng đã xuất trả NCC (từ các phiếu trả NCC đã POSTED)',
+  })
+  returnedQuantity?: number;
+
+  @Expose()
+  @NumberFieldOptional({
+    description:
+      'Số lượng thực nhận vào kho = max(quantity − returnedQuantity, 0)',
+  })
+  actualQuantity?: number;
 }

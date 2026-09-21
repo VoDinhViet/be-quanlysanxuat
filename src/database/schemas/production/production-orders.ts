@@ -1,6 +1,7 @@
 import { relations, sql } from 'drizzle-orm';
 import {
   check,
+  index,
   pgEnum,
   pgTable,
   timestamp,
@@ -13,18 +14,22 @@ import { productionJobs } from './production-jobs';
 import { productionOrderItems } from './production-order-items';
 import { productionOrderLogs } from './production-order-logs';
 import { users } from '../identity-access/users';
+import { files } from '../files';
 
 /** "Chờ duyệt" (kế hoạch, sửa số lượng tự do qua `updateProductionOrder`) vs "Đã duyệt" (chốt
- * LSX, không sửa được nữa). Chỉ 2 giá trị — chưa có trạng thái huỷ riêng (xem doc trên
- * `productionOrders`). */
+ * LSX, không sửa được nữa) vs "Hoàn thành" (mọi Job đã `COMPLETED`, tự động đóng — không có route
+ * tay, xem `docs/decisions/production-lifecycle-closing.md`). Chưa có trạng thái huỷ riêng (xem
+ * doc trên `productionOrders`). */
 export enum ProductionOrderStatus {
   PENDING = 'PENDING',
   APPROVED = 'APPROVED',
+  COMPLETED = 'COMPLETED',
 }
 
 export const productionOrderStatusEnum = pgEnum('production_order_status', [
   ProductionOrderStatus.PENDING,
   ProductionOrderStatus.APPROVED,
+  ProductionOrderStatus.COMPLETED,
 ]);
 
 /**
@@ -43,6 +48,8 @@ export const productionOrderStatusEnum = pgEnum('production_order_status', [
  * - `orderId` unique — mỗi PO chỉ có đúng một LSX tại một thời điểm; duyệt lại sau khi huỷ (bằng
  *   một PO khác, hoặc `OrdersService.approveOrder` seed lại) ghi đè hoàn toàn header + dòng quyết
  *   định cũ (`seedPlan`, replace-all theo `orderId`).
+ * - `COMPLETED` tự động khi mọi `productionJobs` của LSX đạt `COMPLETED` — không có route tay, xem
+ *   `docs/decisions/production-lifecycle-closing.md`.
  */
 export const productionOrders = pgTable(
   'production_orders',
@@ -60,6 +67,11 @@ export const productionOrders = pgTable(
       onDelete: 'set null',
     }),
     approvedAt: timestamp('approved_at'),
+    signedFileId: uuid('signed_file_id').references(() => files.id, {
+      onDelete: 'set null',
+    }),
+    // Ghi chú của chính LSX — khác `orders.note` (ghi chú đơn hàng gốc), hai cột độc lập.
+    note: varchar('note', { length: 1000 }),
     createdBy: uuid('created_by').references(() => users.id, {
       onDelete: 'set null',
     }),
@@ -69,11 +81,15 @@ export const productionOrders = pgTable(
       .notNull()
       .$onUpdate(() => new Date()),
   },
-  () => [
+  (table) => [
+    index('idx_production_orders_approved_by').on(table.approvedBy),
+    index('idx_production_orders_created_by').on(table.createdBy),
+    index('idx_production_orders_signed_file_id').on(table.signedFileId),
     check(
       'chk_production_orders_status_fields',
       sql`(status = 'PENDING' AND code IS NULL AND approved_at IS NULL)
-          OR (status = 'APPROVED' AND code IS NOT NULL AND approved_at IS NOT NULL)`,
+          OR (status = 'APPROVED' AND code IS NOT NULL AND approved_at IS NOT NULL)
+          OR (status = 'COMPLETED' AND code IS NOT NULL AND approved_at IS NOT NULL)`,
     ),
   ],
 );
@@ -85,11 +101,15 @@ export const productionOrdersRelations = relations(
       fields: [productionOrders.orderId],
       references: [orders.id],
     }),
-    approver: one(users, {
+    approverBy: one(users, {
       fields: [productionOrders.approvedBy],
       references: [users.id],
     }),
-    creator: one(users, {
+    signedFile: one(files, {
+      fields: [productionOrders.signedFileId],
+      references: [files.id],
+    }),
+    creatorBy: one(users, {
       fields: [productionOrders.createdBy],
       references: [users.id],
     }),
@@ -98,3 +118,5 @@ export const productionOrdersRelations = relations(
     logs: many(productionOrderLogs),
   }),
 );
+
+export type ProductionOrderSelect = typeof productionOrders.$inferSelect;

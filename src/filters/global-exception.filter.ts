@@ -12,18 +12,14 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { STATUS_CODES } from 'http';
+import postgres from 'postgres';
 import { ErrorDetailDto } from '../common/dto/error-detail.dto';
 import { ErrorDto } from '../common/dto/error.dto';
+import { extractPostgresError } from '../common/utils/postgres-error.util';
 import { AllConfigType } from '../config/config.type';
 import { ErrorCode } from '../constants/error-code.constant';
 import { AppException } from '../exceptions/app.exception';
 import { Environment } from '../constants/app.constant';
-
-export interface PostgresError extends Error {
-  code: string;
-  detail?: string;
-  constraint?: string;
-}
 
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
@@ -42,6 +38,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       Environment.PRODUCTION;
 
     let error: ErrorDto;
+    const pgError = extractPostgresError(exception);
 
     if (exception instanceof AppException) {
       error = this.handleAppException(exception);
@@ -56,21 +53,18 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       error = this.handlePayloadTooLargeException(exception);
     } else if (exception instanceof HttpException) {
       error = this.handleHttpException(exception);
-    } else if (
-      exception &&
-      typeof exception === 'object' &&
-      'code' in exception
-    ) {
-      // Handling Postgres database errors naturally for Drizzle + pg
-      error = this.handleDatabaseError(exception as PostgresError);
+    } else if (pgError) {
+      error = this.handleDatabaseError(pgError);
     } else {
       error = this.handleError(exception as Error);
     }
 
     if (this.debug) {
-      error.stack = exception instanceof Error ? exception.stack : undefined;
-      error.trace = exception;
-      this.logger.debug(error);
+      this.logger.debug({
+        ...error,
+        stack: exception instanceof Error ? exception.stack : undefined,
+        trace: exception,
+      });
     }
 
     response.status(error.statusCode).json(error);
@@ -136,12 +130,23 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       timestamp: new Date().toISOString(),
       statusCode,
       error: STATUS_CODES[statusCode] || 'Error',
-      message:
+      message: this.scrubFilePathLeak(
         typeof r === 'string' ? r : (r.message as string) || exception.message,
+      ),
     };
 
     this.logger.debug(exception);
     return errorRes;
+  }
+
+  /** `express.static` (`ServeStaticModule`) ném lỗi kèm nguyên văn đường dẫn đĩa khi thiếu file
+   * (`ENOENT: ... open '/...'`) — lưới an toàn thứ hai, phòng khi thư viện đổi cách ném lỗi. Chặn
+   * chính là `serveStaticOptions` ở `app.module.ts`, buộc lỗi đi qua filter này. */
+  private scrubFilePathLeak(message: string): string {
+    if (/ENOENT|no such file or directory/i.test(message)) {
+      return 'Không tìm thấy tệp.';
+    }
+    return message;
   }
 
   private handlePayloadTooLargeException(
@@ -161,7 +166,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     return errorRes;
   }
 
-  private handleDatabaseError(error: PostgresError): ErrorDto {
+  private handleDatabaseError(error: postgres.PostgresError): ErrorDto {
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
     let message = 'Internal database error';
 
@@ -187,13 +192,33 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     return errorRes;
   }
 
+  /** drizzle-orm ném `Error('No values to set')` (nguyên văn, không có `errorCode`/status riêng)
+   * khi `.set({})` nhận payload rỗng — xảy ra khi `ValidationPipe` whitelist đã loại sạch field lạ
+   * của một `PATCH`. Không phải lỗi máy chủ, nên trả 400 thay vì rơi xuống 500 mặc định. */
+  private isEmptyUpdatePayloadError(error: Error): boolean {
+    return error?.message === 'No values to set';
+  }
+
   private handleError(error: Error): ErrorDto {
+    if (this.isEmptyUpdatePayloadError(error)) {
+      const statusCode = HttpStatus.BAD_REQUEST;
+      return {
+        timestamp: new Date().toISOString(),
+        statusCode,
+        error: STATUS_CODES[statusCode] || 'Bad Request',
+        errorCode: ErrorCode.V004,
+        message: 'Không có trường hợp lệ nào để cập nhật.',
+      };
+    }
+
     const statusCode = HttpStatus.INTERNAL_SERVER_ERROR;
     const errorRes: ErrorDto = {
       timestamp: new Date().toISOString(),
       statusCode,
       error: STATUS_CODES[statusCode] || 'Internal Server Error',
-      message: error?.message || 'An unexpected error occurred',
+      message: this.scrubFilePathLeak(
+        error?.message || 'An unexpected error occurred',
+      ),
     };
 
     this.logger.error(error);

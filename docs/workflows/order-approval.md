@@ -13,11 +13,7 @@ Không có trigger tự động, không có job nền, không có hạn duyệt.
 ## Actor
 
 Cả hai route đòi `orders:approve` — permission **riêng**, tách khỏi `orders:update` để người sửa đơn
-không tự duyệt được đơn của mình.
-
-⚠️ Trong `credentials.seed.ts` hiện **không role nào được cấp `orders:approve`** (kể cả `DIRECTOR`).
-Chỉ `ADMIN` chạy được, nhờ `system:manage` vượt mọi kiểm tra. Xem
-`docs/domains/identity-access.md`.
+không tự duyệt được đơn của mình. Seed hiện cấp cho DIRECTOR (`credentials.seed.ts`).
 
 ## Preconditions
 
@@ -36,26 +32,34 @@ Bước đưa đơn tới `PENDING_CONFIRMATION` là một `PATCH /orders/:order
 2. **Ngoài transaction** — dựng kế hoạch sản xuất ban đầu:
    - Lấy mọi dòng đơn `status = NORMAL` (dòng `CANCELLED` không cần sản xuất). Không có dòng nào →
      kế hoạch rỗng, thoát sớm, không gọi tới kho.
-   - Gom `productId` duy nhất, hỏi kho **một lần** cho cả lô, truyền `excludeOrderId` = chính đơn
+   - Gom `itemId` duy nhất, hỏi kho **một lần** cho cả lô, truyền `excludeOrderId` = chính đơn
      này.
    - Với mỗi dòng, tính Đề xuất SX / Lấy từ tồn theo công thức ở `docs/domains/production.md`.
 3. **Mở transaction**:
    - Đơn → `AWAITING_PRODUCTION`, ghi `approvedBy`/`approvedAt`.
    - Xoá LSX cũ của đơn (nếu có) rồi ghi LSX mới `PENDING` + các dòng quyết định sản xuất +
      1 dòng log `CREATED`.
-4. Commit, đọc lại chi tiết đơn để trả về.
+4. Commit, không trả body (204).
 
 ### Từ chối
 
-Một `UPDATE` duy nhất: đơn về `DRAFT`, ghi `rejectedBy`/`rejectedAt`/`rejectionReason`. Không đụng
-gì tới sản xuất — tại thời điểm này LSX chưa tồn tại.
+Một `UPDATE` duy nhất: đơn sang `REJECTED`, ghi `rejectedBy`/`rejectedAt`/`rejectionReason`. Không
+đụng gì tới sản xuất — tại thời điểm này LSX chưa tồn tại.
+
+Từ `REJECTED`, có hai đường tiếp theo, cả hai đều qua `PATCH /orders/:orderId` bình thường (quyền
+`orders:update`), không phải route riêng của workflow này:
+- Gửi kèm `status = PENDING_CONFIRMATION` → gửi duyệt lại ngay, không cần sửa gì.
+- Không gửi `status` (sửa field khác) → tự động về `DRAFT`, giữ nguyên `rejectedBy`/`rejectedAt`/
+  `rejectionReason` làm lịch sử — `OrdersService.updateOrder`, chi tiết ở `docs/domains/orders.md`.
 
 ## State changes
 
 | Entity | Trước | Sau |
 | --- | --- | --- |
 | `orders` (duyệt) | `PENDING_CONFIRMATION` | `AWAITING_PRODUCTION` |
-| `orders` (từ chối) | `PENDING_CONFIRMATION` | `DRAFT` |
+| `orders` (từ chối) | `PENDING_CONFIRMATION` | `REJECTED` |
+| `orders` (gửi duyệt lại) | `REJECTED` | `PENDING_CONFIRMATION` |
+| `orders` (sửa không kèm status) | `REJECTED` | `DRAFT` |
 | `production_orders` | *(chưa có)* | `PENDING`, `code` NULL |
 
 ## Side effects

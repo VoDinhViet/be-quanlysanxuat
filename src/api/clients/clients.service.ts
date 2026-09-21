@@ -14,6 +14,7 @@ import {
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
+import { extractPostgresError } from '../../common/utils/postgres-error.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
@@ -22,7 +23,10 @@ import {
   clientContacts,
   clientGroups,
   clients,
+  ClientSelect,
   ClientStatus,
+  orders,
+  outboundOrders,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { ClientContactResDto } from './dto/client-contact.res.dto';
@@ -31,6 +35,7 @@ import { ClientResDto } from './dto/client.res.dto';
 import { CreateClientReqDto } from './dto/create-client.req.dto';
 import { GetClientOptionsReqDto } from './dto/get-client-options.req.dto';
 import { GetClientsReqDto } from './dto/get-clients.req.dto';
+import { PageClientResDto } from './dto/page-client.res.dto';
 import { UpdateClientReqDto } from './dto/update-client.req.dto';
 
 @Injectable()
@@ -43,7 +48,7 @@ export class ClientsService {
 
   async getClients(
     reqDto: GetClientsReqDto,
-  ): Promise<OffsetPaginatedDto<ClientResDto>> {
+  ): Promise<OffsetPaginatedDto<PageClientResDto>> {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
     const where = and(
       isNull(clients.deletedAt),
@@ -78,7 +83,7 @@ export class ClientsService {
         orderBy,
         with: {
           group: true,
-          creator: true,
+          creatorBy: true,
           contacts: true,
         },
       }),
@@ -86,7 +91,7 @@ export class ClientsService {
     ]);
 
     return new OffsetPaginatedDto(
-      plainToInstance(ClientResDto, entities, {
+      plainToInstance(PageClientResDto, entities, {
         excludeExtraneousValues: true,
       }),
       new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
@@ -120,12 +125,12 @@ export class ClientsService {
     });
   }
 
-  async getClientDetail(clientId: string): Promise<ClientResDto> {
+  async getClient(clientId: string): Promise<ClientResDto> {
     const client = await this.db.query.clients.findFirst({
       where: and(eq(clients.id, clientId), isNull(clients.deletedAt)),
       with: {
         group: true,
-        creator: true,
+        creatorBy: true,
         contacts: true,
       },
     });
@@ -156,14 +161,8 @@ export class ClientsService {
   async createClient(
     reqDto: CreateClientReqDto,
     userId: string,
-  ): Promise<ClientResDto> {
-    let code = reqDto.code;
-    if (code) {
-      await this.validateCodeUniqueness(code);
-    } else {
-      code = await this.generateClientCode();
-    }
-
+  ): Promise<void> {
+    await this.validateCodeUniqueness(reqDto.code);
     if (reqDto.taxCode) {
       await this.validateTaxCodeUniqueness(reqDto.taxCode);
     }
@@ -173,27 +172,34 @@ export class ClientsService {
     // the DTO spreads straight onto the row.
     const { contacts, ...clientFields } = reqDto;
 
-    const [client] = await this.db
-      .insert(clients)
-      .values({
-        ...clientFields,
-        code,
-        status: reqDto.status ?? ClientStatus.ACTIVE,
-        createdBy: userId,
-      })
-      .returning();
+    let client: ClientSelect;
+    try {
+      [client] = await this.db
+        .insert(clients)
+        .values({
+          ...clientFields,
+          status: reqDto.status ?? ClientStatus.ACTIVE,
+          createdBy: userId,
+        })
+        .returning();
+    } catch (error) {
+      // Mã client tự gửi vẫn còn TOCTOU giữa `validateCodeUniqueness` và `INSERT` — bắt ở đây
+      // thay vì để lỗi Postgres thô 500 lọt ra ngoài.
+      if (extractPostgresError(error)?.code === '23505') {
+        throw new AppException(ErrorCode.E024, HttpStatus.CONFLICT);
+      }
+      throw error;
+    }
 
     if (contacts?.length) {
       await this.replaceContacts(client.id, contacts);
     }
-
-    return this.getClientDetail(client.id);
   }
 
   async updateClient(
     clientId: string,
     reqDto: UpdateClientReqDto,
-  ): Promise<ClientResDto> {
+  ): Promise<void> {
     await this.ensureClientExists(clientId);
 
     if (reqDto.code) {
@@ -208,26 +214,56 @@ export class ClientsService {
 
     const { contacts, ...clientFields } = reqDto;
 
-    // `updated_at` is bumped by the column's own `$onUpdate`.
-    await this.db
-      .update(clients)
-      .set(clientFields)
-      .where(eq(clients.id, clientId));
+    try {
+      // `updated_at` is bumped by the column's own `$onUpdate`.
+      await this.db
+        .update(clients)
+        .set(clientFields)
+        .where(eq(clients.id, clientId));
+    } catch (error) {
+      // Mã client tự gửi vẫn còn TOCTOU giữa `validateCodeUniqueness` và `UPDATE` — bắt ở đây
+      // thay vì để lỗi Postgres thô 500 lọt ra ngoài.
+      if (extractPostgresError(error)?.code === '23505') {
+        throw new AppException(ErrorCode.E024, HttpStatus.CONFLICT);
+      }
+      throw error;
+    }
 
     if (contacts) {
       await this.replaceContacts(clientId, contacts);
     }
-
-    return this.getClientDetail(clientId);
   }
 
   async deleteClient(clientId: string): Promise<void> {
     await this.ensureClientExists(clientId);
+    await this.ensureClientNotInUse(clientId);
 
     await this.db
       .update(clients)
       .set({ deletedAt: new Date() })
       .where(eq(clients.id, clientId));
+  }
+
+  /** Chặn xoá khi còn `orders`/`outbound_orders` trỏ tới — cả hai FK là `restrict`, xoá mềm không
+   * tự kích hoạt ràng buộc đó nên phải tự kiểm ở tầng service. Cố ý không lọc
+   * `isNull(orders.deletedAt)`: đơn đã xoá mềm vẫn là dòng thật đang giữ FK. */
+  private async ensureClientNotInUse(clientId: string): Promise<void> {
+    const [[order], [outboundOrder]] = await Promise.all([
+      this.db
+        .select({ id: orders.id })
+        .from(orders)
+        .where(eq(orders.clientId, clientId))
+        .limit(1),
+      this.db
+        .select({ id: outboundOrders.id })
+        .from(outboundOrders)
+        .where(eq(outboundOrders.clientId, clientId))
+        .limit(1),
+    ]);
+
+    if (order || outboundOrder) {
+      throw new AppException(ErrorCode.E246, HttpStatus.CONFLICT);
+    }
   }
 
   private async replaceContacts(
@@ -270,8 +306,12 @@ export class ClientsService {
     ignoredClientId?: string,
   ): Promise<void> {
     const where = ignoredClientId
-      ? and(eq(clients.code, code), ne(clients.id, ignoredClientId))
-      : eq(clients.code, code);
+      ? and(
+          eq(clients.code, code),
+          ne(clients.id, ignoredClientId),
+          isNull(clients.deletedAt),
+        )
+      : and(eq(clients.code, code), isNull(clients.deletedAt));
 
     const existing = await this.db.query.clients.findFirst({
       columns: { id: true },
@@ -310,10 +350,5 @@ export class ClientsService {
     if (!existing) {
       throw new AppException(ErrorCode.E026, HttpStatus.NOT_FOUND);
     }
-  }
-
-  private async generateClientCode(): Promise<string> {
-    const [totalRows] = await this.db.select({ total: count() }).from(clients);
-    return `KH${String((totalRows?.total ?? 0) + 1).padStart(4, '0')}`;
   }
 }

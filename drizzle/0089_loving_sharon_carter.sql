@@ -1,0 +1,1 @@
+ALTER TABLE "credentials" ADD COLUMN "credential_enabled" boolean DEFAULT true NOT NULL;

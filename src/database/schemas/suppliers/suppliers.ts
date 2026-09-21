@@ -11,7 +11,7 @@ import {
 
 import { countries } from '../countries';
 import { files } from '../files';
-import { supplierAttachments } from './supplier-attachments';
+import { supplierFiles } from './supplier-files';
 import { supplierGroups } from './supplier-groups';
 import { supplierPaymentInfo } from './supplier-payment-info';
 import { supplierRepresentatives } from './supplier-representatives';
@@ -100,7 +100,7 @@ export const suppliersRelations = relations(suppliers, ({ one, many }) => ({
     fields: [suppliers.countryId],
     references: [countries.id],
   }),
-  creator: one(users, {
+  creatorBy: one(users, {
     fields: [suppliers.createdBy],
     references: [users.id],
   }),
@@ -108,10 +108,12 @@ export const suppliersRelations = relations(suppliers, ({ one, many }) => ({
     fields: [suppliers.logoFileId],
     references: [files.id],
   }),
-  attachments: many(supplierAttachments),
+  files: many(supplierFiles),
   representatives: many(supplierRepresentatives),
   payment: one(supplierPaymentInfo, {
     fields: [suppliers.id],
     references: [supplierPaymentInfo.supplierId],
   }),
 }));
+
+export type SupplierSelect = typeof suppliers.$inferSelect;

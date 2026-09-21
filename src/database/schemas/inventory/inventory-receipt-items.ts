@@ -9,14 +9,16 @@ import {
   varchar,
 } from 'drizzle-orm/pg-core';
 
-import { inventoryItemTypeEnum } from './inventory-documents';
 import { inventoryReceipts } from './inventory-receipts';
-import { materials } from '../materials/materials';
-import { products } from '../products/products';
+import { items } from '../items/items';
+import { purchaseOrderItems } from '../purchasing/purchase-order-items';
+import { units } from '../units/units';
 
 /** Một dòng phiếu nhập. `quantity` luôn dương — dấu chỉ xuất hiện ở bút toán sinh ra lúc `post`,
- * không ở đây. Đúng một trong `productId`/`materialId` được set, khớp `itemType` (DB CHECK, cùng
- * khuôn `chk_bom_items_item_type_target`). */
+ * không ở đây. `purchaseOrderItemId` là nguồn duy nhất để sổ cái mua hàng tính "SL đã nhập kho"
+ * theo từng dòng vật tư (`docs/domains/purchasing.md`) — chỉ đọc khi phiếu `POSTED`. `unitId` chỉ
+ * để hiển thị (`docs/decisions/unit-conversion.md`) — không quy đổi, mọi bút toán/so sánh định mức
+ * đọc thẳng `quantity`. */
 export const inventoryReceiptItems = pgTable(
   'inventory_receipt_items',
   {
@@ -24,13 +26,16 @@ export const inventoryReceiptItems = pgTable(
     receiptId: uuid('receipt_id')
       .notNull()
       .references(() => inventoryReceipts.id, { onDelete: 'cascade' }),
-    itemType: inventoryItemTypeEnum('item_type').notNull(),
-    productId: uuid('product_id').references(() => products.id, {
-      onDelete: 'restrict',
-    }),
-    materialId: uuid('material_id').references(() => materials.id, {
-      onDelete: 'restrict',
-    }),
+    itemId: uuid('item_id')
+      .notNull()
+      .references(() => items.id, { onDelete: 'restrict' }),
+    purchaseOrderItemId: uuid('purchase_order_item_id').references(
+      () => purchaseOrderItems.id,
+      { onDelete: 'set null' },
+    ),
+    unitId: uuid('unit_id')
+      .notNull()
+      .references(() => units.id, { onDelete: 'restrict' }),
     quantity: numeric('quantity', {
       precision: 18,
       scale: 3,
@@ -50,16 +55,15 @@ export const inventoryReceiptItems = pgTable(
   },
   (table) => [
     index('idx_inventory_receipt_items_receipt_id').on(table.receiptId),
-    index('idx_inventory_receipt_items_product_id').on(table.productId),
-    index('idx_inventory_receipt_items_material_id').on(table.materialId),
+    index('idx_inventory_receipt_items_item_id').on(table.itemId),
+    index('idx_inventory_receipt_items_purchase_order_item_id').on(
+      table.purchaseOrderItemId,
+    ),
+    index('idx_inventory_receipt_items_unit_id').on(table.unitId),
     check('chk_inventory_receipt_items_quantity_positive', sql`quantity > 0`),
     check(
       'chk_inventory_receipt_items_unit_price',
       sql`unit_price IS NULL OR unit_price >= 0`,
-    ),
-    check(
-      'chk_inventory_receipt_items_target',
-      sql`(item_type = 'PRODUCT' AND product_id IS NOT NULL AND material_id IS NULL) OR (item_type = 'MATERIAL' AND material_id IS NOT NULL AND product_id IS NULL)`,
     ),
   ],
 );
@@ -71,13 +75,20 @@ export const inventoryReceiptItemsRelations = relations(
       fields: [inventoryReceiptItems.receiptId],
       references: [inventoryReceipts.id],
     }),
-    product: one(products, {
-      fields: [inventoryReceiptItems.productId],
-      references: [products.id],
+    item: one(items, {
+      fields: [inventoryReceiptItems.itemId],
+      references: [items.id],
     }),
-    material: one(materials, {
-      fields: [inventoryReceiptItems.materialId],
-      references: [materials.id],
+    purchaseOrderItem: one(purchaseOrderItems, {
+      fields: [inventoryReceiptItems.purchaseOrderItemId],
+      references: [purchaseOrderItems.id],
+    }),
+    unit: one(units, {
+      fields: [inventoryReceiptItems.unitId],
+      references: [units.id],
     }),
   }),
 );
+
+export type InventoryReceiptItemSelect =
+  typeof inventoryReceiptItems.$inferSelect;

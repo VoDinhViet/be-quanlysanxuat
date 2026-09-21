@@ -1,6 +1,9 @@
 # Tồn kho chuyển sang lưu trữ (đảo `docs/domains/inventory.md`)
 
-**Trạng thái:** còn hiệu lực — đảo ngược một quyết định kiến trúc trung tâm trước đó
+**Trạng thái:** còn hiệu lực — đảo ngược một quyết định kiến trúc trung tâm trước đó. **Phần khoá
+theo `(warehouseId, itemId)` mô tả dưới đây đã bị `docs/decisions/single-warehouse.md` thay thế
+bằng khoá theo `itemId` — giữ nguyên phần còn lại của quyết định này (lưu trữ thay vì tính lại) làm
+sử liệu, không tự sửa lại các đoạn nhắc `warehouseId` bên dưới.**
 
 ## Bối cảnh
 
@@ -19,7 +22,7 @@ nhập/xuất có vòng đời `DRAFT`/`POSTED`/`CANCELLED`, sổ cái `inventor
 
 - `inventory_transactions` (sổ cái, append-only) là **nguồn sự thật**. `inventory_balances` là
   **bản chiếu** của sổ cái — dựng lại được 100% bằng cách cộng dồn mọi bút toán theo
-  `(warehouseId, productId|materialId)`, nên không mất khả năng phục hồi nếu số dư bị lệch.
+  `(warehouseId, itemId)`, nên không mất khả năng phục hồi nếu số dư bị lệch.
 - `stock_receipts`/`stock_receipt_items` — hai bảng phiếu cũ gánh cả nhập lẫn xuất qua cặp
   `subject`+`type`+`reason` — bị **xoá hẳn**, cùng 5 route `/stock-receipts` và 9 `ErrorCode`
   (`E067`–`E073`, `E085`, `E086`, xem `src/constants/error-code.constant.ts`).
@@ -44,25 +47,38 @@ nhập/xuất có vòng đời `DRAFT`/`POSTED`/`CANCELLED`, sổ cái `inventor
   constraint DB nào chặn được điều này (tồn là số tính lại, không phải cột) — giới hạn đã biết,
   chưa xử lý"*; thiết kế mới xử lý được nhờ `SELECT … FOR UPDATE` khoá đúng dòng balance trong
   transaction `post`, không còn race hai phiếu xuất song song cùng vượt tồn.
-- **`itemType` + `productId`/`materialId` nullable + CHECK** — đúng khuôn `bom_items`
-  (`chk_bom_items_item_type_target`), nay áp dụng cho cả ledger lẫn balances.
-- **Loại kho không ràng buộc cứng với loại hàng** — `warehouses.type` (`MATERIAL`/`FINISHED_GOODS`/
-  `WIP`) là nhãn phân loại/lọc, không phải constraint; một kho `MATERIAL` vẫn nhận được thành phẩm
-  nếu người dùng muốn. Quyết định nghiệp vụ, không phải giới hạn kỹ thuật.
+- **Một `itemId` NOT NULL duy nhất** trên cả ledger lẫn balances — ban đầu đợt này dùng cặp
+  `itemType` + `productId`/`materialId` nullable + CHECK (đúng khuôn `bom_items` lúc đó), sau co lại
+  còn một `itemId` khi `products`/`materials` gộp thành `items`, xem
+  `docs/decisions/items-merge.md`.
+- **Loại kho không ràng buộc cứng với loại hàng** — `warehouses.type` (`RM`/`FG`/`WIP`, bảng
+  `warehouses` đã xoá hẳn sau đó — `docs/decisions/single-warehouse.md`) là nhãn phân loại/lọc,
+  không phải constraint; một kho `RM` vẫn nhận được thành phẩm nếu người dùng muốn. Quyết định
+  nghiệp vụ, không phải giới hạn kỹ thuật.
 
 ## Ngoài phạm vi đợt này
 
 - Auto-post kho từ sản xuất (`ProductionJobsService.startJob` xuất vật tư, Job hoàn thành nhập
-  thành phẩm) — chặn kỹ thuật: `ProductionJobStatus` chưa có trạng thái hoàn thành
-  (`docs/domains/production.md`). Phiếu nhập/xuất vẫn có cột liên kết `productionOrderId`/
-  `productionJobId`, chỉ chưa ai tự động lập phiếu.
+  thành phẩm) — vẫn ngoài phạm vi, dù chặn kỹ thuật gốc (`ProductionJobStatus` chưa có trạng thái
+  hoàn thành) đã được gỡ (`docs/decisions/production-lifecycle-closing.md`). Job `COMPLETED` giờ
+  suy ra **từ** phiếu nhập TP đã `post` đủ SL — chưa đảo ngược lại thành "Job xong tự lập phiếu".
+  Phiếu nhập/xuất vẫn có cột liên kết `productionOrderId`/`productionJobId`.
 - Chuyển kho (`TRANSFER_IN`/`TRANSFER_OUT` có trong enum nhưng chưa route nào phát ra), quản lý lô/
-  vị trí (không `locationId`/`batchId`), `reservedQuantity` thành số thật (cột có, luôn `0` —
-  `reserved` của thành phẩm vẫn tính động từ `order_items` như trước).
+  vị trí (không `locationId`/`batchId`). `reservedQuantity` thành cột thật vẫn ngoài phạm vi — cột
+  `inventory_balances.reserved_quantity` luôn `0` dưới DB — nhưng **đã đảo một phần**:
+  `GET /inventory/balances.reservedQuantity` giờ trả số tính động thay vì literal `0`, và `reserved`
+  của thành phẩm trên `GET /inventory-products` không còn tính thuần từ `order_items` — giờ là
+  chứng từ giữ (DO `PENDING_APPROVAL`/`PENDING_DELIVERY`). Xem `docs/domains/inventory.md`.
+- **Chưa phân biệt chủ sở hữu** — khoá dòng vẫn đúng một cặp `(warehouseId, itemId)`, không có
+  chiều thứ ba. Hàng khách gửi (`inventory_receipts.clientId`, `receiptType = RETURN`) và hàng công
+  ty mua cùng item/kho cộng chung vào một số `quantity` — biết đây là giới hạn thật (xác nhận có dữ
+  liệu dev bị gộp), cân nhắc tách theo `clientId` rồi quyết định **chưa làm** vì đụng toàn bộ luồng
+  ghi/đọc tồn (posting engine, gate IQC, lãnh vật tư, các màn tồn kho). Traceability hiện chỉ ở mức
+  chứng từ, không ở mức số tồn — xem `docs/domains/inventory.md`.
 
 ## Không nhầm với
 
-`docs/decisions/no-procurement.md` — đợt này **nới** một phần quyết định đó: phiếu nhập giờ có
+`docs/decisions/purchasing-scope-limits.md` — đợt này **nới** một phần quyết định đó: phiếu nhập giờ có
 `unitPrice` (nullable) và `purchaseRequestId`, nhưng vẫn không có đơn mua hàng thật, không có bảng
 giá NCC, không có công nợ. Xem cross-link ở file đó.
 
@@ -71,3 +87,5 @@ giá NCC, không có công nợ. Xem cross-link ở file đó.
 - `docs/domains/inventory.md` — mô hình mới đầy đủ.
 - `docs/workflows/stock-movement.md` — trình tự lập/post/cancel phiếu.
 - `docs/architecture.md` — vị trí các bảng mới trong sơ đồ ER.
+- `docs/decisions/single-warehouse.md` — bỏ hẳn `warehouses`, khoá `inventory_balances` còn lại
+  `itemId`.

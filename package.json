@@ -5,13 +5,17 @@
   "author": "",
   "private": true,
   "license": "UNLICENSED",
+  "packageManager": "pnpm@11.4.0",
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
-    "start:prod": "node dist/main",
+    "start:prod": "node dist/src/main",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest",
     "test:watch": "jest --watch",
@@ -19,20 +23,10 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "db:generate": "drizzle-kit generate",
-    "db:seed:credentials": "ts-node src/database/seeds/credentials.seed.ts",
-    "db:seed:client-groups": "ts-node src/database/seeds/client-groups.seed.ts",
-    "db:seed:clients": "ts-node src/database/seeds/clients.seed.ts",
-    "db:seed:countries": "ts-node src/database/seeds/countries.seed.ts",
-    "db:seed:units": "ts-node src/database/seeds/units.seed.ts",
-    "db:seed:material-groups": "ts-node src/database/seeds/material-groups.seed.ts",
-    "db:seed:materials": "ts-node src/database/seeds/materials.seed.ts",
-    "db:seed:supplier-groups": "ts-node src/database/seeds/supplier-groups.seed.ts",
-    "db:seed:suppliers": "ts-node src/database/seeds/suppliers.seed.ts",
-    "db:seed:product-groups": "ts-node src/database/seeds/product-groups.seed.ts",
-    "db:seed:products": "ts-node src/database/seeds/products.seed.ts",
-    "db:seed:operations": "ts-node src/database/seeds/operations.seed.ts",
-    "db:seed:warehouses": "ts-node src/database/seeds/warehouses.seed.ts",
     "db:migrate": "drizzle-kit migrate",
+    "db:check-drift": "ts-node src/database/check-migration-drift.ts",
+    "db:reset": "ts-node src/database/reset-data.ts",
+    "db:reset:transactions": "ts-node src/database/reset-transactions.ts",
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
@@ -45,6 +39,7 @@
     "@nestjs/jwt": "^11.0.2",
     "@nestjs/platform-express": "^11.1.19",
     "@nestjs/schedule": "^6.1.3",
+    "@nestjs/serve-static": "^5.0.5",
     "@nestjs/swagger": "^11.4.2",
     "@nestjs/terminus": "^11.1.1",
     "@types/compression": "^1.8.1",
@@ -57,10 +52,12 @@
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
     "drizzle-seed": "^0.3.1",
+    "exceljs": "^4.4.0",
     "file-type": "^22.0.1",
     "helmet": "^8.1.0",
     "ioredis": "^5.10.1",
     "lodash": "^4.18.1",
+    "luxon": "^3.7.2",
     "ms": "^2.1.3",
     "multer": "^2.2.0",
     "postgres": "^3.4.9",
@@ -80,6 +77,7 @@
     "@types/express": "^5.0.6",
     "@types/jest": "^30.0.0",
     "@types/lodash": "^4.17.24",
+    "@types/luxon": "^3.7.5",
     "@types/ms": "^2.1.0",
     "@types/multer": "^2.1.0",
     "@types/node": "^24.12.4",
@@ -115,9 +113,6 @@
       "**/*.(t|j)s"
     ],
     "coverageDirectory": "../coverage",
-    "testEnvironment": "node",
-    "setupFiles": [
-      "<rootDir>/test-utils/jest-setup.ts"
-    ]
+    "testEnvironment": "node"
   }
 }

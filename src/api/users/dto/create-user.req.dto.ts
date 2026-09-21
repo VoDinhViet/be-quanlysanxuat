@@ -3,9 +3,9 @@ import {
   ClassFieldOptional,
   DateField,
   DateFieldOptional,
-  EmailFieldOptional,
   EnumField,
   EnumFieldOptional,
+  PhoneFieldOptional,
   StringField,
   StringFieldOptional,
   UUIDField,
@@ -30,11 +30,8 @@ export class CreateUserReqDto {
   })
   idNumber?: string | null;
 
-  @StringFieldOptional({ nullable: true, maxLength: 30 })
+  @PhoneFieldOptional({ nullable: true, maxLength: 30 })
   phoneNumber?: string | null;
-
-  @EmailFieldOptional({ description: 'Personal email', nullable: true })
-  email?: string | null;
 
   @StringFieldOptional({
     description: 'Permanent address',

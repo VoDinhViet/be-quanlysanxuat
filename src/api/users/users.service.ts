@@ -1,8 +1,9 @@
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, StreamableFile } from '@nestjs/common';
 import { hash } from 'bcryptjs';
 import { plainToInstance } from 'class-transformer';
 import {
   and,
+  asc,
   count,
   desc,
   eq,
@@ -11,10 +12,18 @@ import {
   isNull,
   ne,
   or,
+  sql,
 } from 'drizzle-orm';
+import { DateTime } from 'luxon';
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
+import {
+  DocumentType,
+  generateDocumentSequence,
+} from '../../common/utils/document-sequence.util';
+import { buildXlsxBuffer, XLSX_MIME } from '../../common/utils/excel.util';
+import { hasFields } from '../../common/utils/object.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import {
   type PermissionCode,
@@ -37,15 +46,21 @@ import { FilesService } from '../files/files.service';
 import { AssignRoleReqDto } from './dto/assign-role.req.dto';
 import { CreateCredentialReqDto } from './dto/create-credential.req.dto';
 import { CreateUserReqDto } from './dto/create-user.req.dto';
+import { CurrentPermissionsResDto } from './dto/current-permissions.res.dto';
 import { CurrentUserResDto } from './dto/current-user.res.dto';
+import { ExportUsersReqDto } from './dto/export-users.req.dto';
 import { GetUsersReqDto } from './dto/get-users.req.dto';
+import { PageUserResDto } from './dto/page-user.res.dto';
+import { GetUserOptionsReqDto } from './dto/get-user-options.req.dto';
 import { UpdateUserReqDto } from './dto/update-user.req.dto';
-import { UserDetailResDto } from './dto/user-detail.res.dto';
+import { UserRefResDto } from './dto/user-ref.res.dto';
 import { UserResDto } from './dto/user.res.dto';
+import { USER_EXPORT_COLUMNS, type UserExport } from './users.export';
 
 @Injectable()
 export class UsersService {
   private static readonly PASSWORD_SALT_ROUNDS = 10;
+  private static readonly MAX_EXPORT_ROWS = 10_000;
 
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
@@ -55,34 +70,125 @@ export class UsersService {
 
   async getUsers(
     reqDto: GetUsersReqDto,
-  ): Promise<OffsetPaginatedDto<UserResDto>> {
+  ): Promise<OffsetPaginatedDto<PageUserResDto>> {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
-    const where = keyword
-      ? or(ilike(users.fullName, keyword), ilike(users.code, keyword))
-      : undefined;
+    // `credentials.isProtected` (hiện chỉ tài khoản admin) ẩn khỏi danh sách — cờ riêng trên
+    // credential, không suy từ role, nên đổi role của tài khoản không tự ý làm nó hiện/ẩn lại.
+    // `isNull` bắt buộc vì `LEFT JOIN credentials` để NULL khi user chưa có credential nào.
+    const baseFilter = and(
+      isNull(users.deletedAt),
+      keyword
+        ? or(ilike(users.fullName, keyword), ilike(users.code, keyword))
+        : undefined,
+      or(isNull(credentials.isProtected), eq(credentials.isProtected, false)),
+    );
     const orderBy = desc(users.createdAt);
 
-    const [entities, countRows] = await Promise.all([
-      this.db.query.users.findMany({
-        where,
-        limit: reqDto.limit,
-        offset: reqDto.offset,
-        orderBy,
-        with: {
-          department: true,
-          position: true,
-          avatarFile: true,
-        },
-      }),
-      this.db.select({ total: count() }).from(users).where(where),
+    const [entities, [{ total }]] = await Promise.all([
+      this.db
+        .select({
+          ...getTableColumns(users),
+          department: getTableColumns(departments),
+          position: getTableColumns(positions),
+          avatarFile: getTableColumns(files),
+          email: credentials.email,
+          role: getTableColumns(roles),
+        })
+        .from(users)
+        .innerJoin(departments, eq(departments.id, users.departmentId))
+        .innerJoin(positions, eq(positions.id, users.positionId))
+        .leftJoin(files, eq(files.id, users.avatarFileId))
+        .leftJoin(credentials, eq(credentials.userId, users.id))
+        .leftJoin(roles, eq(roles.id, credentials.roleId))
+        .where(baseFilter)
+        .orderBy(orderBy)
+        .limit(reqDto.limit)
+        .offset(reqDto.offset),
+      this.db
+        .select({ total: count() })
+        .from(users)
+        .leftJoin(credentials, eq(credentials.userId, users.id))
+        .where(baseFilter),
     ]);
 
     return new OffsetPaginatedDto(
-      plainToInstance(UserResDto, entities, {
+      plainToInstance(PageUserResDto, entities, {
         excludeExtraneousValues: true,
       }),
-      new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
+      new OffsetPaginationDto(total, reqDto),
     );
+  }
+
+  /** Cắt im lặng ở `MAX_EXPORT_ROWS`, không báo lỗi khi vượt trần. Giữ nguyên 2 điều kiện ẩn dòng
+   * của `getUsers` (soft delete + `credentials.isProtected`) — export không được là đường vòng
+   * nhìn thấy tài khoản bị ẩn. Bộ lọc vẫn tách riêng: hai route độc lập, sửa route nào chỉ route
+   * đó đổi. */
+  async exportUsers(reqDto: ExportUsersReqDto): Promise<StreamableFile> {
+    const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
+    const where = and(
+      isNull(users.deletedAt),
+      keyword
+        ? or(ilike(users.fullName, keyword), ilike(users.code, keyword))
+        : undefined,
+      or(isNull(credentials.isProtected), eq(credentials.isProtected, false)),
+    );
+
+    const rows = await this.db
+      .select({
+        code: users.code,
+        fullName: users.fullName,
+        gender: users.gender,
+        dateOfBirth: users.dateOfBirth,
+        idNumber: users.idNumber,
+        phoneNumber: users.phoneNumber,
+        email: credentials.email,
+        address: users.address,
+        departmentName: departments.name,
+        positionName: positions.name,
+        roleName: roles.name,
+        hireDate: users.hireDate,
+        status: users.status,
+        note: users.note,
+      })
+      .from(users)
+      .innerJoin(departments, eq(departments.id, users.departmentId))
+      .innerJoin(positions, eq(positions.id, users.positionId))
+      .leftJoin(credentials, eq(credentials.userId, users.id))
+      .leftJoin(roles, eq(roles.id, credentials.roleId))
+      .where(where)
+      .orderBy(desc(users.createdAt))
+      .limit(UsersService.MAX_EXPORT_ROWS);
+
+    const buffer = await buildXlsxBuffer('Nhân sự', USER_EXPORT_COLUMNS, rows);
+    const fileName = `nhan-su-${DateTime.now().toFormat('yyyyLLdd-HHmm')}.xlsx`;
+
+    return new StreamableFile(buffer, {
+      type: XLSX_MIME,
+      disposition: `attachment; filename="${fileName}"`,
+    });
+  }
+
+  // Không đòi permission quản lý nhân sự — mirror WarehousesService.getWarehouseOptions, chỉ
+  // để các màn khác (vd. "Người phụ trách" trên PO) chọn được đồng nghiệp đang làm việc. `q`
+  // search theo code/fullName giống getUsers ở trên (ilike, không unaccent — cùng khuôn với
+  // list chính của chính service này).
+  async getUserOptions(reqDto: GetUserOptionsReqDto): Promise<UserRefResDto[]> {
+    const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
+
+    const entities = await this.db.query.users.findMany({
+      where: and(
+        eq(users.status, UserStatus.WORKING),
+        keyword
+          ? or(ilike(users.fullName, keyword), ilike(users.code, keyword))
+          : undefined,
+      ),
+      orderBy: asc(users.fullName),
+      limit: 100,
+    });
+
+    return plainToInstance(UserRefResDto, entities, {
+      excludeExtraneousValues: true,
+    });
   }
 
   async getCurrentUser(credentialId: string): Promise<CurrentUserResDto> {
@@ -110,21 +216,23 @@ export class UsersService {
       throw new AppException(ErrorCode.E002, HttpStatus.NOT_FOUND);
     }
 
-    // Effective permissions come from the cached resolver (the ADMIN role carries
-    // `system:manage`), so the FE can drive permission-based UI.
+    return plainToInstance(CurrentUserResDto, row, {
+      excludeExtraneousValues: true,
+    });
+  }
+
+  /** Split out from `getCurrentUser` — no `credentials`/`users`/`files` join, just the effective
+   * permission set, for callers (the sidebar, route guards) that don't need the rest of the
+   * profile. */
+  async getCurrentPermissions(
+    credentialId: string,
+  ): Promise<CurrentPermissionsResDto> {
     const permissions =
       await this.permissionsService.getPermissionCodes(credentialId);
 
     return plainToInstance(
-      CurrentUserResDto,
-      // A left-joined miss surfaces as an all-null object, not `null` — collapse `role`/`avatarFile`
-      // so the DTO renders `null` instead of a ref/file full of null fields.
-      {
-        ...row,
-        role: row.role?.id ? row.role : null,
-        avatarFile: row.avatarFile?.id ? row.avatarFile : null,
-        permissions,
-      },
+      CurrentPermissionsResDto,
+      { permissions },
       { excludeExtraneousValues: true },
     );
   }
@@ -138,7 +246,7 @@ export class UsersService {
     reqDto: CreateUserReqDto,
     actorCredentialId: string,
     actorUserId: string,
-  ): Promise<UserDetailResDto> {
+  ): Promise<void> {
     // `credential` is a nested object, not a column on `users` — peel it off so the spread below
     // only carries real columns.
     const { credential, ...userFields } = reqDto;
@@ -158,15 +266,14 @@ export class UsersService {
       await this.resolveRoleForAssignment(credential.roleId, actorCredentialId);
     }
     if (credential) {
-      await Promise.all([
-        this.validateCredentialUsernameUniqueness(credential.username),
-        this.validateCredentialEmailUniqueness(credential.email),
-      ]);
+      // Tuần tự, không Promise.all — trùng cả hai cùng lúc thì thứ tự báo lỗi phải xác định
+      // (username trước), không phụ thuộc query nào chạy xong trước.
+      await this.validateCredentialUsernameUniqueness(credential.username);
+      await this.validateCredentialEmailUniqueness(credential.email);
     }
 
-    const code = await this.generateUserCode();
-
-    const userId = await this.db.transaction(async (tx) => {
+    await this.db.transaction(async (tx) => {
+      const code = await this.generateUserCode(tx);
       const [user] = await tx
         .insert(users)
         .values({
@@ -180,18 +287,14 @@ export class UsersService {
       if (credential) {
         await this.createCredential(tx, credential, user.id);
       }
-
-      return user.id;
     });
-
-    return this.getUserDetail(userId);
   }
 
   async updateUser(
     userId: string,
     reqDto: UpdateUserReqDto,
     actorCredentialId: string,
-  ): Promise<UserDetailResDto> {
+  ): Promise<void> {
     const existing = await this.ensureUserExists(userId);
 
     // Re-validate the (department, position) pair whenever either side changes — including when
@@ -214,30 +317,84 @@ export class UsersService {
     if (reqDto.avatarFileId) {
       await this.filesService.linkFiles([reqDto.avatarFileId]);
     }
-    // Role assignment rides along on the profile update, but the role itself lives on the login
-    // credential — a user with no credential has nothing to assign to (E032). Same rules as the
-    // dedicated `PATCH /users/:userId/role`; both go through `resolveRoleForAssignment`.
-    const linkedCredential = reqDto.roleId
-      ? await this.findCredentialByUserId(userId)
-      : undefined;
-    if (reqDto.roleId) {
-      if (!linkedCredential) {
-        throw new AppException(ErrorCode.E032, HttpStatus.BAD_REQUEST);
+
+    // `credential` không có cột trên `users` — peel ra khỏi spread trước khi ghi hồ sơ. Không
+    // gửi `credential` thì không đụng bảng `credentials` chút nào — user chưa có tài khoản đăng
+    // nhập vẫn sửa được hồ sơ bình thường (trước đây `credentialEnabled` bắt buộc trên DTO nên
+    // mọi lần PATCH đều đòi có credential sẵn, E032, kể cả khi chỉ sửa `note`).
+    const { credential, ...userFields } = reqDto;
+
+    const linkedCredential = credential
+      ? await this.db.query.credentials.findFirst({
+          where: eq(credentials.userId, userId),
+          columns: { id: true },
+        })
+      : null;
+
+    if (credential) {
+      // Chưa có credential thì đây là tạo mới — mật khẩu bắt buộc (E207), khác nhánh sửa
+      // credential sẵn có (bỏ trống = giữ mật khẩu cũ).
+      if (!linkedCredential && !credential.password) {
+        throw new AppException(ErrorCode.E207, HttpStatus.BAD_REQUEST);
       }
-      await this.resolveRoleForAssignment(reqDto.roleId, actorCredentialId);
+      if (credential.roleId) {
+        await this.resolveRoleForAssignment(
+          credential.roleId,
+          actorCredentialId,
+        );
+      }
+      // Tuần tự, không Promise.all — cùng lý do ở createUser (thứ tự báo lỗi phải xác định).
+      await this.validateCredentialUsernameUniqueness(
+        credential.username,
+        linkedCredential?.id,
+      );
+      await this.validateCredentialEmailUniqueness(
+        credential.email,
+        linkedCredential?.id,
+      );
     }
 
-    // `roleId` has no column on `users` — peel it off before the spread.
-    const { roleId, ...userFields } = reqDto;
-
-    // `updated_at` is bumped by the column's own `$onUpdate`.
-    await this.db.update(users).set(userFields).where(eq(users.id, userId));
-
-    if (roleId && linkedCredential) {
-      await this.applyRoleToCredential(linkedCredential.id, roleId);
+    // `updated_at` do `$onUpdate` của chính cột bump, không set tay.
+    if (hasFields(userFields)) {
+      await this.db.update(users).set(userFields).where(eq(users.id, userId));
     }
 
-    return this.getUserDetail(userId);
+    if (!credential) {
+      return;
+    }
+
+    if (linkedCredential) {
+      await this.db
+        .update(credentials)
+        .set({
+          username: credential.username,
+          email: credential.email,
+          roleId: credential.roleId,
+          credentialEnabled: credential.credentialEnabled,
+          ...(credential.password
+            ? {
+                password: await hash(
+                  credential.password,
+                  UsersService.PASSWORD_SALT_ROUNDS,
+                ),
+              }
+            : {}),
+        })
+        .where(eq(credentials.id, linkedCredential.id));
+
+      return;
+    }
+
+    // Nhánh này chỉ chạy khi `linkedCredential` là null — mật khẩu đã được đảm bảo tồn tại ở
+    // kiểm tra E207 phía trên; destructure lại ở đây chỉ để TS thu hẹp kiểu `string | undefined`
+    // về `string` mà không cần `!`.
+    const { password, ...credentialFields } = credential;
+    if (!password) {
+      throw new AppException(ErrorCode.E207, HttpStatus.BAD_REQUEST);
+    }
+    await this.db.transaction((tx) =>
+      this.createCredential(tx, { ...credentialFields, password }, userId),
+    );
   }
 
   /**
@@ -245,7 +402,6 @@ export class UsersService {
    * so the user must have a linked credential (E032).
    *
    * Rules:
-   * - Clears the credential's cached permissions so the change takes effect on the next request.
    * - Privilege escalation guard: assigning a role that grants the god-mode `system:manage` code
    *   (e.g. the seeded ADMIN role) is only allowed if the actor already holds `system:manage` —
    *   otherwise a `roles:update` holder could grant themselves full control (E034).
@@ -254,7 +410,7 @@ export class UsersService {
     userId: string,
     reqDto: AssignRoleReqDto,
     actorCredentialId: string,
-  ): Promise<UserDetailResDto> {
+  ): Promise<void> {
     const user = await this.db.query.users.findFirst({
       columns: { id: true },
       where: eq(users.id, userId),
@@ -264,17 +420,11 @@ export class UsersService {
       throw new AppException(ErrorCode.E012, HttpStatus.NOT_FOUND);
     }
 
-    const linkedCredential = await this.findCredentialByUserId(userId);
-
-    if (!linkedCredential) {
-      throw new AppException(ErrorCode.E032, HttpStatus.BAD_REQUEST);
-    }
+    const linkedCredential = await this.ensureCredentialLinked(userId);
 
     await this.resolveRoleForAssignment(reqDto.roleId, actorCredentialId);
 
     await this.applyRoleToCredential(linkedCredential.id, reqDto.roleId);
-
-    return this.getUserDetail(userId);
   }
 
   /**
@@ -320,19 +470,23 @@ export class UsersService {
     }
   }
 
-  /** `users` không còn giữ `credentialId` — tra ngược qua `credentials.userId` (unique) mỗi khi
-   * cần biết user này có credential hay không. */
-  private async findCredentialByUserId(
+  /** `users` không còn giữ `credentialId` — tra ngược qua `credentials.userId` (unique); ném E032
+   * nếu user chưa có credential, vì mọi nơi gọi hàm này đều cần ghi thẳng xuống credential đó. */
+  private async ensureCredentialLinked(
     userId: string,
-  ): Promise<{ id: string } | undefined> {
-    return this.db.query.credentials.findFirst({
+  ): Promise<{ id: string }> {
+    const credential = await this.db.query.credentials.findFirst({
       where: eq(credentials.userId, userId),
       columns: { id: true },
     });
+
+    if (!credential) {
+      throw new AppException(ErrorCode.E032, HttpStatus.BAD_REQUEST);
+    }
+
+    return credential;
   }
 
-  /** Writes the role onto the credential and drops its cached role→permissions mapping, so the
-   * change takes effect on that identity's next request instead of after the cache TTL. */
   private async applyRoleToCredential(
     credentialId: string,
     roleId: string,
@@ -341,8 +495,6 @@ export class UsersService {
       .update(credentials)
       .set({ roleId })
       .where(eq(credentials.id, credentialId));
-
-    await this.permissionsService.invalidateCredential(credentialId);
   }
 
   private async ensureActorMayAssign(
@@ -387,10 +539,15 @@ export class UsersService {
       UsersService.PASSWORD_SALT_ROUNDS,
     );
 
-    await tx.insert(credentials).values({ ...credential, userId, password });
+    await tx.insert(credentials).values({
+      ...credential,
+      userId,
+      password,
+      credentialEnabled: credential.credentialEnabled ?? true,
+    });
   }
 
-  async getUserDetail(userId: string): Promise<UserDetailResDto> {
+  async getUser(userId: string): Promise<UserResDto> {
     const user = await this.db.query.users.findFirst({
       where: eq(users.id, userId),
       with: {
@@ -405,7 +562,7 @@ export class UsersService {
       throw new AppException(ErrorCode.E012, HttpStatus.NOT_FOUND);
     }
 
-    return plainToInstance(UserDetailResDto, user, {
+    return plainToInstance(UserResDto, user, {
       excludeExtraneousValues: true,
     });
   }
@@ -503,11 +660,20 @@ export class UsersService {
 
   private async validateCredentialUsernameUniqueness(
     username: string,
+    ignoredCredentialId?: string,
   ): Promise<void> {
-    const existing = await this.db.query.credentials.findFirst({
-      columns: { id: true },
-      where: eq(credentials.username, username),
-    });
+    const [existing] = await this.db
+      .select({ id: credentials.id })
+      .from(credentials)
+      .where(
+        ignoredCredentialId
+          ? and(
+              eq(sql`lower(${credentials.username})`, username.toLowerCase()),
+              ne(credentials.id, ignoredCredentialId),
+            )
+          : eq(sql`lower(${credentials.username})`, username.toLowerCase()),
+      )
+      .limit(1);
 
     if (existing) {
       throw new AppException(ErrorCode.E001, HttpStatus.CONFLICT);
@@ -516,19 +682,29 @@ export class UsersService {
 
   private async validateCredentialEmailUniqueness(
     email: string,
+    ignoredCredentialId?: string,
   ): Promise<void> {
-    const existing = await this.db.query.credentials.findFirst({
-      columns: { id: true },
-      where: eq(credentials.email, email),
-    });
+    const [existing] = await this.db
+      .select({ id: credentials.id })
+      .from(credentials)
+      .where(
+        ignoredCredentialId
+          ? and(
+              eq(credentials.email, email),
+              ne(credentials.id, ignoredCredentialId),
+            )
+          : eq(credentials.email, email),
+      )
+      .limit(1);
 
     if (existing) {
       throw new AppException(ErrorCode.E003, HttpStatus.CONFLICT);
     }
   }
 
-  private async generateUserCode(): Promise<string> {
-    const [totalRows] = await this.db.select({ total: count() }).from(users);
-    return `NV${String((totalRows?.total ?? 0) + 1).padStart(4, '0')}`;
+  private async generateUserCode(tx: DbTransaction): Promise<string> {
+    const sequence = await generateDocumentSequence(tx, DocumentType.USER);
+
+    return `NV${String(sequence).padStart(4, '0')}`;
   }
 }

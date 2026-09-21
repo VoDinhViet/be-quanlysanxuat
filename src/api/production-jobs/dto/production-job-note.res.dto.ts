@@ -23,7 +23,7 @@ export class ProductionJobNoteResDto {
     nullable: true,
     description: 'Người viết',
   })
-  creator!: UserRefResDto | null;
+  creatorBy!: UserRefResDto | null;
 
   @Expose()
   @DateField({ description: 'Thời điểm viết' })

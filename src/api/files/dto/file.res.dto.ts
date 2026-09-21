@@ -1,6 +1,5 @@
-import { Exclude, Expose, Transform } from 'class-transformer';
+import { Exclude, Expose } from 'class-transformer';
 
-import { resolveFileUrl } from '../file-url-resolver';
 import { FileKind, UploadType } from '../../../database/schemas';
 import {
   DateField,
@@ -9,6 +8,7 @@ import {
   StringField,
   UUIDField,
 } from '../../../decorators/field.decorators';
+import { FileUrlField } from './file-url.field';
 
 @Exclude()
 export class FileResDto {
@@ -17,15 +17,7 @@ export class FileResDto {
   id!: string;
 
   @Expose()
-  @Transform(({ obj }: { obj: { id?: string } }) =>
-    obj.id ? resolveFileUrl(obj.id) : null,
-  )
-  @StringField({
-    description:
-      'Signed, expiring download URL, e.g. /api/files/<id>/download?exp=...&sig=... — usable ' +
-      'directly as an <img src>. Do not cache or persist it: it stops working after ' +
-      'UPLOAD_URL_TTL seconds, re-read the owning entity to get a fresh one.',
-  })
+  @FileUrlField()
   url!: string;
 
   @Expose()

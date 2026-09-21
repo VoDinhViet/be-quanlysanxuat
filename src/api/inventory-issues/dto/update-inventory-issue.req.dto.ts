@@ -1,6 +1,6 @@
 import { InventoryIssueType } from '../../../database/schemas';
 import {
-  ClassFieldOptional,
+  ClassField,
   DateFieldOptional,
   EnumFieldOptional,
   StringFieldOptional,
@@ -8,7 +8,7 @@ import {
 } from '../../../decorators/field.decorators';
 import { InventoryIssueItemReqDto } from './inventory-issue-item.req.dto';
 
-/** Chỉ hợp lệ khi phiếu còn `DRAFT` (`E098`). `warehouseId` bất biến — đổi kho là lập phiếu mới. */
+/** Chỉ hợp lệ khi phiếu còn `DRAFT` (`E098`). */
 export class UpdateInventoryIssueReqDto {
   @EnumFieldOptional(() => InventoryIssueType)
   readonly issueType?: InventoryIssueType;
@@ -31,6 +31,6 @@ export class UpdateInventoryIssueReqDto {
   @StringFieldOptional({ maxLength: 1000, nullable: true })
   readonly note?: string | null;
 
-  @ClassFieldOptional(() => InventoryIssueItemReqDto, { each: true })
-  readonly items?: InventoryIssueItemReqDto[];
+  @ClassField(() => InventoryIssueItemReqDto, { each: true, minItems: 1 })
+  readonly items!: InventoryIssueItemReqDto[];
 }

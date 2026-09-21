@@ -11,9 +11,12 @@ import {
 import { users } from './identity-access/users';
 
 /** Which lane a công đoạn (operation) runs in: `INHOUSE` is performed on the factory floor,
- * `OUTSOURCE` is sent to a supplier (gia công ngoài) — the master flag the "Gia công ngoài"
- * screen filters on (`GET /operations?type=OUTSOURCE`). A routing step defaults to this value
- * but may override it per step. */
+ * `OUTSOURCE` is sent to a supplier (gia công ngoài). The real, load-bearing value lives per
+ * attachment on `bom_operations.type` (the same catalog operation can be Inhouse on one BOM node
+ * and Outsource on another — including the ROOT node, "Cấp 0", since `docs/decisions/
+ * root-bom-item.md`) — `operations.type` here is only the default suggestion pre-filled when
+ * attaching, plus the value the "Gia công ngoài" catalog screen filters on (`GET
+ * /operations?type=OUTSOURCE`). See `docs/decisions/routing-operation-type-per-attachment.md`. */
 export enum OperationType {
   INHOUSE = 'INHOUSE',
   OUTSOURCE = 'OUTSOURCE',
@@ -35,9 +38,11 @@ export const operationStatusEnum = pgEnum('operation_status', [
 ]);
 
 /** Master data for công đoạn (production operations/steps), e.g. Cắt laser, Hàn, Sơn tĩnh điện.
- * Referenced by routing (`routing_steps`, keyed by a root product OR a specific BOM node) to
- * sequence the steps a product/node goes through. Soft-deleted, not hard-deleted, because routing
- * holds a foreign key to a row here. */
+ * Referenced by `bom_operations`, keyed by a specific BOM node (COMPONENT, or the ROOT node
+ * representing "Cấp 0" — `docs/decisions/root-bom-item.md`), to sequence the steps a node goes
+ * through. Soft-deleted, not hard-deleted — `bom_operations` uses `onDelete: 'restrict'`, and
+ * since a restrict FK never fires against a `deletedAt` update, `OperationsService.
+ * deleteOperation` checks it itself. */
 export const operations = pgTable(
   'operations',
   {
@@ -59,12 +64,18 @@ export const operations = pgTable(
       .$onUpdate(() => new Date()),
     deletedAt: timestamp('deleted_at'),
   },
-  (table) => [index('idx_operations_created_by').on(table.createdBy)],
+  (table) => [
+    index('idx_operations_created_by').on(table.createdBy),
+    index('idx_operations_type').on(table.type),
+    index('idx_operations_status').on(table.status),
+  ],
 );
 
 export const operationsRelations = relations(operations, ({ one }) => ({
-  creator: one(users, {
+  creatorBy: one(users, {
     fields: [operations.createdBy],
     references: [users.id],
   }),
 }));
+
+export type OperationSelect = typeof operations.$inferSelect;

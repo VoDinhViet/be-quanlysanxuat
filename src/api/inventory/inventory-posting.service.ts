@@ -5,7 +5,6 @@ import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
-  InventoryItemType,
   inventoryBalances,
   InventoryReferenceType,
   inventoryTransactions,
@@ -14,9 +13,7 @@ import {
 import { AppException } from '../../exceptions/app.exception';
 
 export interface InventoryPostingLine {
-  itemType: InventoryItemType;
-  productId: string | null;
-  materialId: string | null;
+  itemId: string;
   /** Có dấu — dương cộng tồn, âm trừ tồn. Nơi gọi (`InventoryReceiptsService`/
    * `InventoryIssuesService`) chịu trách nhiệm gắn dấu theo loại phiếu. */
   signedQuantity: number;
@@ -24,10 +21,24 @@ export interface InventoryPostingLine {
   orderItemId?: string | null;
 }
 
+/** Ngữ cảnh chứng từ đang ghi bút toán — dùng chung giữa `postDocument`/`applyLine`. */
+export interface InventoryPostingContext {
+  referenceType: InventoryReferenceType;
+  referenceId: string;
+  transactionDate: Date;
+  createdBy: string;
+}
+
+export interface PostDocumentInput extends InventoryPostingContext {
+  lines: InventoryPostingLine[];
+}
+
+export type ReverseDocumentInput = InventoryPostingContext;
+
 /** Nơi duy nhất ghi `inventory_transactions`/`inventory_balances` — cả phiếu nhập lẫn phiếu xuất
- * đều đi qua đây lúc `post`/`cancel`, tránh chép công thức tồn ra hai chỗ (bug đã có ở thiết kế cũ:
- * `InventoryService.materialStockSubquery` và `StockReceiptsService.ensureSufficientStock` từng
- * lệch nhau). Xem `docs/domains/inventory.md`, `docs/workflows/stock-movement.md`. */
+ * đều đi qua đây lúc `post`/`cancel`, tránh chép công thức tồn ra hai chỗ (bug đã có ở thiết kế
+ * cũ: `InventoryConsumablesService` và `StockReceiptsService.ensureSufficientStock` từng lệch
+ * nhau). Xem `docs/domains/inventory.md`, `docs/workflows/stock-movement.md`. */
 @Injectable()
 export class InventoryPostingService {
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
@@ -36,22 +47,14 @@ export class InventoryPostingService {
    * `inventory_balances` bằng `FOR UPDATE` trước khi cộng/trừ, chặn tồn âm bằng `E106`. */
   async postDocument(
     tx: DbTransaction,
-    input: {
-      warehouseId: string;
-      referenceType: InventoryReferenceType;
-      referenceId: string;
-      transactionDate: Date;
-      createdBy: string;
-      lines: InventoryPostingLine[];
-    },
+    document: PostDocumentInput,
   ): Promise<void> {
-    for (const line of input.lines) {
+    for (const line of document.lines) {
       await this.applyLine(tx, {
-        warehouseId: input.warehouseId,
-        referenceType: input.referenceType,
-        referenceId: input.referenceId,
-        transactionDate: input.transactionDate,
-        createdBy: input.createdBy,
+        referenceType: document.referenceType,
+        referenceId: document.referenceId,
+        transactionDate: document.transactionDate,
+        createdBy: document.createdBy,
         ...line,
       });
     }
@@ -63,66 +66,41 @@ export class InventoryPostingService {
    * điều chỉnh, không phải một lượt nhập/xuất/sản xuất thật lần hai. */
   async reverseDocument(
     tx: DbTransaction,
-    input: {
-      referenceType: InventoryReferenceType;
-      referenceId: string;
-      transactionDate: Date;
-      createdBy: string;
-    },
+    document: ReverseDocumentInput,
   ): Promise<void> {
-    const original = await tx.query.inventoryTransactions.findMany({
+    const originalTransactions = await tx.query.inventoryTransactions.findMany({
       where: and(
-        eq(inventoryTransactions.referenceType, input.referenceType),
-        eq(inventoryTransactions.referenceId, input.referenceId),
+        eq(inventoryTransactions.referenceType, document.referenceType),
+        eq(inventoryTransactions.referenceId, document.referenceId),
       ),
     });
 
-    for (const line of original) {
-      const signedQuantity = -line.quantity;
+    for (const originalTransaction of originalTransactions) {
+      const signedQuantity = -originalTransaction.quantity;
       await this.applyLine(tx, {
-        warehouseId: line.warehouseId,
-        referenceType: input.referenceType,
-        referenceId: input.referenceId,
-        transactionDate: input.transactionDate,
-        createdBy: input.createdBy,
-        itemType: line.itemType,
-        productId: line.productId,
-        materialId: line.materialId,
+        referenceType: document.referenceType,
+        referenceId: document.referenceId,
+        transactionDate: document.transactionDate,
+        createdBy: document.createdBy,
+        itemId: originalTransaction.itemId,
         signedQuantity,
         type:
           signedQuantity > 0
             ? InventoryTransactionType.ADJUSTMENT_IN
             : InventoryTransactionType.ADJUSTMENT_OUT,
-        orderItemId: line.orderItemId,
+        orderItemId: originalTransaction.orderItemId,
       });
     }
   }
 
   private async applyLine(
     tx: DbTransaction,
-    line: InventoryPostingLine & {
-      warehouseId: string;
-      referenceType: InventoryReferenceType;
-      referenceId: string;
-      transactionDate: Date;
-      createdBy: string;
-    },
+    line: InventoryPostingLine & InventoryPostingContext,
   ): Promise<void> {
-    const balanceWhere =
-      line.itemType === InventoryItemType.PRODUCT
-        ? and(
-            eq(inventoryBalances.warehouseId, line.warehouseId),
-            eq(inventoryBalances.productId, line.productId as string),
-          )
-        : and(
-            eq(inventoryBalances.warehouseId, line.warehouseId),
-            eq(inventoryBalances.materialId, line.materialId as string),
-          );
-
     const [existing] = await tx
       .select()
       .from(inventoryBalances)
-      .where(balanceWhere)
+      .where(eq(inventoryBalances.itemId, line.itemId))
       .for('update');
 
     const newQuantity = (existing?.quantity ?? 0) + line.signedQuantity;
@@ -137,19 +115,13 @@ export class InventoryPostingService {
         .where(eq(inventoryBalances.id, existing.id));
     } else {
       await tx.insert(inventoryBalances).values({
-        warehouseId: line.warehouseId,
-        itemType: line.itemType,
-        productId: line.productId,
-        materialId: line.materialId,
+        itemId: line.itemId,
         quantity: newQuantity,
       });
     }
 
     await tx.insert(inventoryTransactions).values({
-      warehouseId: line.warehouseId,
-      itemType: line.itemType,
-      productId: line.productId,
-      materialId: line.materialId,
+      itemId: line.itemId,
       type: line.type,
       quantity: line.signedQuantity,
       referenceType: line.referenceType,

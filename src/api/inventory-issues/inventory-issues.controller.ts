@@ -19,6 +19,7 @@ import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
 import { CreateInventoryIssueReqDto } from './dto/create-inventory-issue.req.dto';
 import { GetInventoryIssuesReqDto } from './dto/get-inventory-issues.req.dto';
 import { InventoryIssueResDto } from './dto/inventory-issue.res.dto';
+import { PageInventoryIssueResDto } from './dto/page-inventory-issue.res.dto';
 import { UpdateInventoryIssueReqDto } from './dto/update-inventory-issue.req.dto';
 import { InventoryIssuesService } from './inventory-issues.service';
 
@@ -32,13 +33,13 @@ export class InventoryIssuesController {
   @Get()
   @Permissions('inventory:read')
   @ApiAuth({
-    type: InventoryIssueResDto,
+    type: PageInventoryIssueResDto,
     summary: 'List inventory issues (phiếu xuất kho)',
     isPaginated: true,
   })
   getInventoryIssues(
     @Query() reqDto: GetInventoryIssuesReqDto,
-  ): Promise<OffsetPaginatedDto<InventoryIssueResDto>> {
+  ): Promise<OffsetPaginatedDto<PageInventoryIssueResDto>> {
     return this.inventoryIssuesService.getInventoryIssues(reqDto);
   }
 
@@ -48,23 +49,22 @@ export class InventoryIssuesController {
     type: InventoryIssueResDto,
     summary: 'Get inventory issue detail',
   })
-  getInventoryIssueDetail(
+  getInventoryIssue(
     @UUIDParam('issueId') issueId: string,
   ): Promise<InventoryIssueResDto> {
-    return this.inventoryIssuesService.getInventoryIssueDetail(issueId);
+    return this.inventoryIssuesService.getInventoryIssue(issueId);
   }
 
   @Post()
   @Permissions('inventory:create')
   @ApiAuth({
-    type: InventoryIssueResDto,
     summary: 'Create an inventory issue — always DRAFT, does not touch stock',
-    statusCode: HttpStatus.CREATED,
+    statusCode: HttpStatus.NO_CONTENT,
   })
   createInventoryIssue(
     @Body() reqDto: CreateInventoryIssueReqDto,
     @CurrentUser() payload: JwtPayloadType,
-  ): Promise<InventoryIssueResDto> {
+  ): Promise<void> {
     return this.inventoryIssuesService.createInventoryIssue(
       reqDto,
       payload.userId,
@@ -74,13 +74,13 @@ export class InventoryIssuesController {
   @Patch(':issueId')
   @Permissions('inventory:update')
   @ApiAuth({
-    type: InventoryIssueResDto,
     summary: 'Update an inventory issue — only while DRAFT',
+    statusCode: HttpStatus.NO_CONTENT,
   })
   updateInventoryIssue(
     @UUIDParam('issueId') issueId: string,
     @Body() reqDto: UpdateInventoryIssueReqDto,
-  ): Promise<InventoryIssueResDto> {
+  ): Promise<void> {
     return this.inventoryIssuesService.updateInventoryIssue(issueId, reqDto);
   }
 
@@ -115,16 +115,10 @@ export class InventoryIssuesController {
   @Permissions('inventory:update')
   @ApiAuth({
     summary:
-      'Cancel an issue — from DRAFT just voids it; from POSTED reverses its transactions first',
+      'Cancel a DRAFT issue — void it before it touches stock; POSTED is immutable',
     statusCode: HttpStatus.NO_CONTENT,
   })
-  cancelInventoryIssue(
-    @UUIDParam('issueId') issueId: string,
-    @CurrentUser() payload: JwtPayloadType,
-  ): Promise<void> {
-    return this.inventoryIssuesService.cancelInventoryIssue(
-      issueId,
-      payload.userId,
-    );
+  cancelInventoryIssue(@UUIDParam('issueId') issueId: string): Promise<void> {
+    return this.inventoryIssuesService.cancelInventoryIssue(issueId);
   }
 }

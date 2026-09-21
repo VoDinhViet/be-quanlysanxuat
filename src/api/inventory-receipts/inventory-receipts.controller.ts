@@ -16,9 +16,12 @@ import { ApiAuth } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
+import { PurchaseChainNotesResDto } from '../purchase-notes/dto/purchase-chain-notes.res.dto';
+import { PurchaseNotesService } from '../purchase-notes/purchase-notes.service';
 import { CreateInventoryReceiptReqDto } from './dto/create-inventory-receipt.req.dto';
 import { GetInventoryReceiptsReqDto } from './dto/get-inventory-receipts.req.dto';
 import { InventoryReceiptResDto } from './dto/inventory-receipt.res.dto';
+import { PageInventoryReceiptResDto } from './dto/page-inventory-receipt.res.dto';
 import { UpdateInventoryReceiptReqDto } from './dto/update-inventory-receipt.req.dto';
 import { InventoryReceiptsService } from './inventory-receipts.service';
 
@@ -27,18 +30,19 @@ import { InventoryReceiptsService } from './inventory-receipts.service';
 export class InventoryReceiptsController {
   constructor(
     private readonly inventoryReceiptsService: InventoryReceiptsService,
+    private readonly purchaseNotesService: PurchaseNotesService,
   ) {}
 
   @Get()
   @Permissions('inventory:read')
   @ApiAuth({
-    type: InventoryReceiptResDto,
+    type: PageInventoryReceiptResDto,
     summary: 'List inventory receipts (phiếu nhập kho)',
     isPaginated: true,
   })
   getInventoryReceipts(
     @Query() reqDto: GetInventoryReceiptsReqDto,
-  ): Promise<OffsetPaginatedDto<InventoryReceiptResDto>> {
+  ): Promise<OffsetPaginatedDto<PageInventoryReceiptResDto>> {
     return this.inventoryReceiptsService.getInventoryReceipts(reqDto);
   }
 
@@ -48,10 +52,10 @@ export class InventoryReceiptsController {
     type: InventoryReceiptResDto,
     summary: 'Get inventory receipt detail',
   })
-  getInventoryReceiptDetail(
+  getInventoryReceipt(
     @UUIDParam('receiptId') receiptId: string,
   ): Promise<InventoryReceiptResDto> {
-    return this.inventoryReceiptsService.getInventoryReceiptDetail(receiptId);
+    return this.inventoryReceiptsService.getInventoryReceipt(receiptId);
   }
 
   @Post()
@@ -99,11 +103,28 @@ export class InventoryReceiptsController {
     return this.inventoryReceiptsService.deleteInventoryReceipt(receiptId);
   }
 
+  @Post(':receiptId/confirm')
+  @Permissions('inventory:update')
+  @ApiAuth({
+    summary:
+      'Confirm a DRAFT receipt — DRAFT → PENDING_RECEIPT/PENDING_IQC, sinh phiếu IQC nếu requiresIqc',
+    statusCode: HttpStatus.NO_CONTENT,
+  })
+  confirmInventoryReceipt(
+    @UUIDParam('receiptId') receiptId: string,
+    @CurrentUser() payload: JwtPayloadType,
+  ): Promise<void> {
+    return this.inventoryReceiptsService.confirmInventoryReceipt(
+      receiptId,
+      payload.userId,
+    );
+  }
+
   @Post(':receiptId/post')
   @Permissions('inventory:update')
   @ApiAuth({
     summary:
-      'Post a DRAFT receipt — sinh bút toán + cập nhật tồn, sau đó phiếu bất biến',
+      'Post a receipt — PENDING_RECEIPT hoặc PENDING_IQC (mọi IQC đã COMPLETED) → POSTED, sinh bút toán + cập nhật tồn, sau đó phiếu bất biến',
     statusCode: HttpStatus.NO_CONTENT,
   })
   postInventoryReceipt(
@@ -131,5 +152,18 @@ export class InventoryReceiptsController {
       receiptId,
       payload.userId,
     );
+  }
+
+  @Get(':receiptId/related-notes')
+  @Permissions('inventory:read')
+  @ApiAuth({
+    type: PurchaseChainNotesResDto,
+    summary:
+      'Ghi chú gộp của toàn bộ chứng từ liên quan trong chuỗi mua hàng (ĐXMH/Báo giá/Đơn mua)',
+  })
+  getRelatedNotes(
+    @UUIDParam('receiptId') receiptId: string,
+  ): Promise<PurchaseChainNotesResDto> {
+    return this.purchaseNotesService.getChainNotesFromReceipt(receiptId);
   }
 }

@@ -1,0 +1,2 @@
+ALTER TABLE "supplier_payment_info" ALTER COLUMN "credit_limit" SET DATA TYPE numeric(18, 2);--> statement-breakpoint
+ALTER TABLE "supplier_payment_info" ADD CONSTRAINT "chk_supplier_payment_info_credit_limit_non_negative" CHECK (credit_limit IS NULL OR credit_limit >= 0);

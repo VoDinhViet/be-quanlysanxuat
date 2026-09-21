@@ -1,24 +1,27 @@
-import { HttpStatus, Inject, Injectable, StreamableFile } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { plainToInstance } from 'class-transformer';
 import { createHash, randomUUID } from 'crypto';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
-import type { Response } from 'express';
 
 import { AllConfigType } from '../../config/config.type';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { SUPER_PERMISSION } from '../../constants/permission.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database } from '../../database/database.type';
-import { files, FileKind, UploadType } from '../../database/schemas';
+import {
+  files,
+  FileKind,
+  FileSelect,
+  qualityInspectionEvidences,
+  UploadType,
+} from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { STORAGE_PROVIDER } from '../../storage/storage.constants';
 import type { StorageProvider } from '../../storage/storage-provider.interface';
 import { PermissionsService } from '../auth/permissions.service';
-import { DownloadFileReqDto } from './dto/download-file.req.dto';
 import { FileResDto } from './dto/file.res.dto';
-import { UPLOAD_POLICIES } from './upload-policy';
-import { secondsUntil } from './util/file-url.util';
+import { uploadPolicies } from './upload-policy';
 import { detectFileType } from './util/file-type.util';
 
 type UploadOptions = {
@@ -35,15 +38,73 @@ export class FilesService {
     'image/gif',
   ];
 
-  // Cố ý loại định dạng Office nhị phân cũ (application/msword, application/vnd.ms-excel) —
-  // `file-type` không có magic-byte signature cho container OLE2/CFB cũ, nên .doc/.xls thật không
-  // phân biệt được với file giả mạo đổi tên. Office hiện đại mặc định dùng OOXML bên dưới, phát
-  // hiện được.
+  // Cho phép các định dạng tài liệu văn phòng, trình chiếu, bản vẽ kỹ thuật, biểu mẫu và file nén
+  // phổ biến có magic-bytes được `file-type` nhận diện an toàn.
+  // Cố ý loại định dạng Office nhị phân cũ (.doc, .xls, .ppt OLE2/CFB) vì không phân biệt được với file
+  // giả mạo, và loại bỏ các file macro (.docm, .xlsm, .pptm) nhằm ngăn chặn mã độc / script.
   private static readonly DOCUMENT_MIME_TYPES = [
+    // PDF & Văn bản
     'application/pdf',
+    'application/rtf',
+    'application/epub+zip',
+
+    // Microsoft Office OOXML (Word, Excel, PowerPoint & Templates)
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.template',
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.template',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'application/vnd.openxmlformats-officedocument.presentationml.slideshow',
+    'application/vnd.openxmlformats-officedocument.presentationml.template',
+
+    // OpenDocument (LibreOffice / OpenOffice)
+    'application/vnd.oasis.opendocument.text',
+    'application/vnd.oasis.opendocument.text-template',
+    'application/vnd.oasis.opendocument.spreadsheet',
+    'application/vnd.oasis.opendocument.spreadsheet-template',
+    'application/vnd.oasis.opendocument.presentation',
+    'application/vnd.oasis.opendocument.presentation-template',
+    'application/vnd.oasis.opendocument.graphics',
+
+    // Bản vẽ kỹ thuật & Sơ đồ (AutoCAD, Visio)
+    'image/vnd.dwg',
+    'application/vnd.visio',
+
+    // Apple iWork (Pages, Numbers, Keynote)
+    'application/vnd.apple.pages',
+    'application/vnd.apple.numbers',
+    'application/vnd.apple.keynote',
+
+    // Tệp nén / Lưu trữ (Archives)
+    'application/zip',
+    'application/x-rar-compressed',
+    'application/x-7z-compressed',
+    'application/x-tar',
+    'application/gzip',
+    'application/x-bzip2',
   ];
+
+  // `EVIDENCE` = ảnh ∪ tài liệu — bằng chứng IQC vừa có ảnh chụp thực tế vừa có tài liệu đo
+  // lường, không thuộc gọn về 1 trong 2 loại còn lại.
+  private static readonly MIME_TYPES_BY_KIND: Record<FileKind, string[]> = {
+    [FileKind.IMAGE]: FilesService.IMAGE_MIME_TYPES,
+    [FileKind.DOCUMENT]: FilesService.DOCUMENT_MIME_TYPES,
+    [FileKind.EVIDENCE]: [
+      ...FilesService.IMAGE_MIME_TYPES,
+      ...FilesService.DOCUMENT_MIME_TYPES,
+    ],
+  };
+
+  // `EVIDENCE` cap theo `maxDocumentSize` — luôn ≥ `maxImageSize`, nên dùng chung cap tài liệu
+  // không thu hẹp giới hạn ảnh so với upload ảnh thuần.
+  private static readonly MAX_SIZE_CONFIG_KEY: Record<
+    FileKind,
+    'upload.maxImageSize' | 'upload.maxDocumentSize'
+  > = {
+    [FileKind.IMAGE]: 'upload.maxImageSize',
+    [FileKind.DOCUMENT]: 'upload.maxDocumentSize',
+    [FileKind.EVIDENCE]: 'upload.maxDocumentSize',
+  };
 
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
@@ -65,17 +126,12 @@ export class FilesService {
 
     // `kind` đến từ policy, không bao giờ từ client — nếu không, caller có thể xin USER_AVATAR
     // nhưng khai DOCUMENT để lách allowlist ảnh bằng một PDF.
-    const { kind } = UPLOAD_POLICIES[options.type];
-    const allowedMimeTypes =
-      kind === FileKind.IMAGE
-        ? FilesService.IMAGE_MIME_TYPES
-        : FilesService.DOCUMENT_MIME_TYPES;
-    const maxSize =
-      kind === FileKind.IMAGE
-        ? this.configService.getOrThrow('upload.maxImageSize', { infer: true })
-        : this.configService.getOrThrow('upload.maxDocumentSize', {
-            infer: true,
-          });
+    const { kind } = uploadPolicies[options.type];
+    const allowedMimeTypes = FilesService.MIME_TYPES_BY_KIND[kind];
+    const maxSize = this.configService.getOrThrow(
+      FilesService.MAX_SIZE_CONFIG_KEY[kind],
+      { infer: true },
+    );
 
     if (file.size > maxSize) {
       throw new AppException(ErrorCode.E017, HttpStatus.PAYLOAD_TOO_LARGE);
@@ -119,32 +175,6 @@ export class FilesService {
     return this.toResDto(file);
   }
 
-  /** Stream thay vì buffer toàn bộ: một tài liệu 10MB nhân N lượt tải đồng thời sẽ nằm hết trong
-   * RAM cùng lúc nếu buffer. Request đã qua `FileSignatureGuard` xác minh chữ ký. */
-  async streamFile(
-    fileId: string,
-    reqDto: DownloadFileReqDto,
-    res: Response,
-  ): Promise<StreamableFile> {
-    const file = await this.ensureFileExists(fileId);
-
-    res.set({
-      'Content-Type': file.mimetype,
-      'Content-Length': String(file.size),
-      'Content-Disposition': this.buildContentDisposition(
-        file.kind,
-        file.originalName,
-      ),
-      // Giới hạn theo đúng vòng đời chữ ký — cache quá `exp` chỉ cache một URL đã hết hạn.
-      // `private` vì URL là một capability, không phải nội dung công khai.
-      'Cache-Control': `private, max-age=${secondsUntil(reqDto.exp)}`,
-    });
-
-    return new StreamableFile(
-      this.storageProvider.createReadStream(file.storageKey),
-    );
-  }
-
   /** Chỉ người tải lên hoặc người có `system:manage` được xoá — nếu không, bất kỳ user đăng nhập
    * nào cũng xoá được mọi file trong registry, không có đường lùi. `uploadedBy` so `users.id`
    * (`actorUserId`); quyền `system:manage` vẫn kiểm qua `credentials.roleId` nên cần thêm
@@ -165,6 +195,8 @@ export class FilesService {
       }
     }
 
+    await this.ensureFileNotLinkedToQcEvidence(fileId);
+
     await this.storageProvider.delete(file.storageKey);
     await this.db.delete(files).where(eq(files.id, fileId));
   }
@@ -175,11 +207,13 @@ export class FilesService {
   async deleteFileById(fileId: string): Promise<void> {
     const file = await this.ensureFileExists(fileId);
 
+    await this.ensureFileNotLinkedToQcEvidence(fileId);
+
     await this.storageProvider.delete(file.storageKey);
     await this.db.delete(files).where(eq(files.id, fileId));
   }
 
-  /** Gọi bởi service tiêu thụ (users/materials/products...) trước khi ghi một `*FileId` — kiểm tồn
+  /** Gọi bởi service tiêu thụ (users/items...) trước khi ghi một `*FileId` — kiểm tồn
    * tại (`E042`) và đánh dấu `linkedAt` để `FilesCleanupService` bỏ qua. Bắt buộc gọi trước write,
    * kể cả trước khi mở transaction — đảo thứ tự có thể để lại row sống trỏ file chưa link, bị
    * sweeper xoá sau (ảnh vỡ trên dữ liệu thật). */
@@ -217,19 +251,17 @@ export class FilesService {
     return file;
   }
 
-  /** Ảnh `inline` để `<img src>` dùng được; tài liệu `attachment` để tải xuống. Tên file phát hai
-   * lần cố ý: `filename=` là fallback ASCII cho client cũ, RFC 5987 `filename*=` mang giá trị thật
-   * — tên gốc ở đây là tiếng Việt, `filename=` thường sẽ làm hỏng mọi dấu. */
-  private buildContentDisposition(
-    kind: FileKind,
-    originalName: string,
-  ): string {
-    const disposition = kind === FileKind.IMAGE ? 'inline' : 'attachment';
-    const asciiFallback = originalName
-      .replace(/[^\x20-\x7E]/g, '_')
-      .replace(/["\\]/g, '_');
+  /** `quality_inspection_evidences.fileId` là `restrict`, không `cascade` — xoá file đã gắn bằng
+   * chứng QC sẽ vỡ FK thô (23503) nếu không chặn sớm ở đây. */
+  private async ensureFileNotLinkedToQcEvidence(fileId: string): Promise<void> {
+    const linked = await this.db.query.qualityInspectionEvidences.findFirst({
+      columns: { id: true },
+      where: eq(qualityInspectionEvidences.fileId, fileId),
+    });
 
-    return `${disposition}; filename="${asciiFallback}"; filename*=UTF-8''${encodeURIComponent(originalName)}`;
+    if (linked) {
+      throw new AppException(ErrorCode.E220, HttpStatus.CONFLICT);
+    }
   }
 
   private buildStorageKey(ext: string): string {
@@ -241,7 +273,7 @@ export class FilesService {
     return `${year}/${month}/${day}/${randomUUID()}.${ext}`;
   }
 
-  private toResDto(file: typeof files.$inferSelect): FileResDto {
+  private toResDto(file: FileSelect): FileResDto {
     return plainToInstance(FileResDto, file, { excludeExtraneousValues: true });
   }
 }

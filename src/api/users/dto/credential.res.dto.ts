@@ -1,6 +1,7 @@
 import { Exclude, Expose } from 'class-transformer';
 
 import {
+  BooleanField,
   ClassFieldOptional,
   EmailField,
   StringField,
@@ -35,6 +36,10 @@ export class CredentialResDto {
   @Expose()
   @EmailField()
   email!: string;
+
+  @Expose()
+  @BooleanField({ description: 'Credential enabled status' })
+  credentialEnabled!: boolean;
 
   @Expose()
   @ClassFieldOptional(() => RoleRefResDto, {

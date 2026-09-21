@@ -1,0 +1,1 @@
+ALTER TYPE "public"."bom_node_type" ADD VALUE 'ROOT';

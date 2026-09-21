@@ -29,7 +29,7 @@ export class ProductionOrderLogResDto {
     nullable: true,
     description: 'Người thực hiện',
   })
-  performer!: UserRefResDto | null;
+  performerBy!: UserRefResDto | null;
 
   @Expose()
   @DateField({ description: 'Thời điểm thực hiện' })

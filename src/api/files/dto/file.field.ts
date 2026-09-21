@@ -1,9 +1,22 @@
 import { applyDecorators } from '@nestjs/common';
-import { Transform } from 'class-transformer';
+import { plainToInstance, Transform } from 'class-transformer';
 
 import { ClassFieldOptional } from '../../../decorators/field.decorators';
 import { FileResDto } from './file.res.dto';
-import { toFileResDto } from './to-file-res.dto.util';
+
+/** Bắt buộc vì property có `@Transform` riêng sẽ bỏ qua `@Type(() => FileResDto)` của
+ * `ClassFieldOptional` bên dưới — trả thẳng row Drizzle sẽ thiếu `url` (ảnh 404 âm thầm) và lộ
+ * `storageKey`/`checksum`/`uploadedBy`. `.select()`+`leftJoin` (khác relational query API) trả
+ * object toàn NULL khi miss, không phải `null`/`undefined` — check `id` thay vì truthiness. */
+function toFileResDto(relation: unknown): FileResDto | null {
+  if (!(relation as { id?: unknown } | null | undefined)?.id) {
+    return null;
+  }
+
+  return plainToInstance(FileResDto, relation, {
+    excludeExtraneousValues: true,
+  });
+}
 
 /** Đặt ở đây, không phải `field.decorators.ts`, vì `FileResDto` đã import từ đó — tránh vòng lặp
  * import. `toClassOnly` bắt buộc: `ClassSerializerInterceptor` serialize DTO thêm một lần, lúc đó

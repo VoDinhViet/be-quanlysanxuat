@@ -4,6 +4,7 @@ import {
   EmailFieldOptional,
   EnumFieldOptional,
   NumberFieldOptional,
+  PhoneFieldOptional,
   StringFieldOptional,
   UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
@@ -23,7 +24,7 @@ export class UpdateSupplierReqDto {
   @StringFieldOptional({ description: 'Tax code (Mã số thuế)', maxLength: 50 })
   taxCode?: string;
 
-  @StringFieldOptional({ description: 'Phone number', maxLength: 30 })
+  @PhoneFieldOptional({ description: 'Phone number', maxLength: 30 })
   phoneNumber?: string;
 
   @StringFieldOptional({ description: 'Address', maxLength: 500 })
@@ -71,10 +72,9 @@ export class UpdateSupplierReqDto {
 
   @UUIDFieldOptional({
     each: true,
-    description:
-      'Attachment file ids (from POST /files?type=SUPPLIER_DOCUMENT)',
+    description: 'File ids (from POST /files?type=SUPPLIER_DOCUMENT)',
   })
-  attachmentFileIds?: string[];
+  fileIds?: string[];
 
   @ClassFieldOptional(() => SupplierRepresentativeReqDto, { each: true })
   representatives?: SupplierRepresentativeReqDto[];

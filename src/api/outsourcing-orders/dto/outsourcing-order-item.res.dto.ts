@@ -1,0 +1,75 @@
+import { Exclude, Expose } from 'class-transformer';
+
+import {
+  ClassFieldOptional,
+  NumberField,
+  NumberFieldOptional,
+  StringField,
+  StringFieldOptional,
+  UUIDField,
+} from '../../../decorators/field.decorators';
+import { ItemRefResDto } from '../../items/dto/item-ref.res.dto';
+import { ProductionJobRefResDto } from '../../production-jobs/dto/production-job-ref.res.dto';
+import { UnitRefResDto } from '../../units/dto/unit-ref.res.dto';
+
+@Exclude()
+export class OutsourcingOrderItemResDto {
+  @Expose()
+  @UUIDField()
+  id!: string;
+
+  @Expose()
+  @StringField({ description: 'Mã part (snapshot lúc gửi)' })
+  itemCode!: string;
+
+  @Expose()
+  @StringField({ description: 'Tên part (snapshot lúc gửi)' })
+  itemName!: string;
+
+  @Expose()
+  @ClassFieldOptional(() => ItemRefResDto, {
+    nullable: true,
+    description:
+      'Vật tư tham khảo — chỉ khi node là CONSUMABLE; null với node COMPONENT',
+  })
+  item!: ItemRefResDto | null;
+
+  @Expose()
+  @ClassFieldOptional(() => UnitRefResDto, {
+    nullable: true,
+    description: 'ĐVT vật tư — chỉ khi node là CONSUMABLE',
+  })
+  unit!: UnitRefResDto | null;
+
+  @Expose()
+  @ClassFieldOptional(() => ProductionJobRefResDto, { nullable: true })
+  productionJob!: ProductionJobRefResDto | null;
+
+  @Expose()
+  @StringField({ description: 'Mã công đoạn (snapshot lúc gửi)' })
+  operationCode!: string;
+
+  @Expose()
+  @StringField({ description: 'Tên công đoạn (snapshot lúc gửi)' })
+  operationName!: string;
+
+  @Expose()
+  @NumberField({ description: 'SL gửi' })
+  quantity!: number;
+
+  @Expose()
+  @NumberField({ description: 'SL đã nhận (OS-IN POSTED trỏ tới dòng này)' })
+  receivedQuantity!: number;
+
+  @Expose()
+  @NumberFieldOptional({ nullable: true, description: 'Trọng lượng (kg)' })
+  weight!: number | null;
+
+  @Expose()
+  @NumberFieldOptional({ nullable: true, description: 'Diện tích (m²)' })
+  area!: number | null;
+
+  @Expose()
+  @StringFieldOptional({ nullable: true, description: 'Ghi chú dòng' })
+  note!: string | null;
+}

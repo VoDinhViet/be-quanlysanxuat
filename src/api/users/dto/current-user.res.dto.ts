@@ -1,8 +1,7 @@
 import { Exclude, Expose } from 'class-transformer';
 
-import type { PermissionCode } from '../../../constants/permission.constant';
 import {
-  ClassField,
+  ClassFieldOptional,
   DateField,
   EmailFieldOptional,
   StringField,
@@ -39,19 +38,11 @@ export class CurrentUserResDto {
   avatar!: FileResDto | null;
 
   @Expose()
-  @ClassField(() => RoleRefResDto, {
+  @ClassFieldOptional(() => RoleRefResDto, {
     nullable: true,
     description: 'Role assigned to this login identity, or null if none',
   })
   role!: RoleRefResDto | null;
-
-  @Expose()
-  @StringField({
-    each: true,
-    description:
-      'Effective permission codes (includes system:manage for the ADMIN role)',
-  })
-  permissions!: PermissionCode[];
 
   @Expose()
   @DateField()

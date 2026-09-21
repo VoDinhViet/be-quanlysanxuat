@@ -1,0 +1,134 @@
+import { Exclude, Expose } from 'class-transformer';
+
+import {
+  IqcDisposition,
+  IqcResult,
+  QualityInspectionStatus,
+} from '../../../database/schemas';
+import {
+  ClassFieldOptional,
+  DateField,
+  EnumField,
+  EnumFieldOptional,
+  NumberField,
+  StringField,
+  StringFieldOptional,
+  UUIDField,
+} from '../../../decorators/field.decorators';
+import { ClientRefResDto } from '../../clients/dto/client-ref.res.dto';
+import { InventoryReceiptRefResDto } from '../../inventory-receipts/dto/inventory-receipt-ref.res.dto';
+import { ItemUnitRefResDto } from '../../items/dto/item-unit-ref.res.dto';
+import { ProductionJobOperationRefResDto } from '../../production-jobs/dto/production-job-operation-ref.res.dto';
+import { ProductionJobRefResDto } from '../../production-jobs/dto/production-job-ref.res.dto';
+import { PurchaseOrderRefResDto } from '../../purchase-orders/dto/purchase-order-ref.res.dto';
+import { SupplierRefResDto } from '../../suppliers/dto/supplier-ref.res.dto';
+import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
+
+@Exclude()
+export class PageIqcResDto {
+  @Expose()
+  @UUIDField()
+  id!: string;
+
+  @Expose()
+  @StringField({ description: 'Mã IQC' })
+  code!: string;
+
+  @Expose()
+  @ClassFieldOptional(() => InventoryReceiptRefResDto, { nullable: true })
+  inventoryReceipt!: InventoryReceiptRefResDto | null;
+
+  @Expose()
+  @ClassFieldOptional(() => PurchaseOrderRefResDto, { nullable: true })
+  purchaseOrder!: PurchaseOrderRefResDto | null;
+
+  @Expose()
+  @ClassFieldOptional(() => ProductionJobRefResDto, {
+    nullable: true,
+    description:
+      'LSX liên quan — chỉ có khi phiếu sinh từ OS-IN của một công đoạn gia công ngoài',
+  })
+  productionJob!: ProductionJobRefResDto | null;
+
+  @Expose()
+  @ClassFieldOptional(() => ProductionJobOperationRefResDto, {
+    nullable: true,
+    description:
+      'Công đoạn gia công ngoài liên quan — cùng điều kiện productionJob',
+  })
+  productionJobOperation!: ProductionJobOperationRefResDto | null;
+
+  @Expose()
+  @ClassFieldOptional(() => SupplierRefResDto, {
+    nullable: true,
+    description:
+      'null khi dòng sinh từ phiếu nhập RETURN gắn khách hàng — xem client',
+  })
+  supplier!: SupplierRefResDto | null;
+
+  @Expose()
+  @ClassFieldOptional(() => ClientRefResDto, {
+    nullable: true,
+    description: 'Khách hàng gửi trả — loại trừ lẫn nhau với supplier',
+  })
+  client!: ClientRefResDto | null;
+
+  @Expose()
+  @StringField({
+    description:
+      'Mã vật tư/part — từ item nếu có, không thì snapshot lúc tạo (node COMPONENT từ OS-IN)',
+  })
+  itemCode!: string;
+
+  @Expose()
+  @StringField({ description: 'Tên vật tư/part — cùng quy tắc itemCode' })
+  itemName!: string;
+
+  @Expose()
+  @ClassFieldOptional(() => ItemUnitRefResDto, {
+    nullable: true,
+    description:
+      'null khi lô kiểm là node COMPONENT nhận về từ OS-IN (không phải một item)',
+  })
+  item!: ItemUnitRefResDto | null;
+
+  @Expose()
+  @NumberField({ description: 'Số lượng kiểm' })
+  quantity!: number;
+
+  @Expose()
+  @DateField({ description: 'Ngày kiểm' })
+  inspectionDate!: Date;
+
+  @Expose()
+  @EnumFieldOptional(() => IqcResult, { nullable: true })
+  result!: IqcResult | null;
+
+  @Expose()
+  @EnumFieldOptional(() => IqcDisposition, { nullable: true })
+  disposition!: IqcDisposition | null;
+
+  @Expose()
+  @EnumField(() => QualityInspectionStatus)
+  status!: QualityInspectionStatus;
+
+  @Expose()
+  @StringFieldOptional({ nullable: true, description: 'Lý do kiểm' })
+  reason!: string | null;
+
+  @Expose()
+  @StringFieldOptional({ nullable: true, description: 'Ghi chú' })
+  note!: string | null;
+
+  @Expose()
+  @ClassFieldOptional(() => UserRefResDto, { nullable: true })
+  creatorBy!: UserRefResDto | null;
+
+  @Expose()
+  @DateField()
+  createdAt!: Date;
+
+  @Expose()
+  @DateField()
+  updatedAt!: Date;
+}

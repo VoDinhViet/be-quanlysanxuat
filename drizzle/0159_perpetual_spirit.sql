@@ -1,0 +1,3 @@
+ALTER TABLE "inventory_issues" ADD COLUMN "outbound_order_id" uuid;--> statement-breakpoint
+ALTER TABLE "inventory_issues" ADD CONSTRAINT "inventory_issues_outbound_order_id_outbound_orders_id_fk" FOREIGN KEY ("outbound_order_id") REFERENCES "public"."outbound_orders"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "idx_inventory_issues_outbound_order_id" ON "inventory_issues" USING btree ("outbound_order_id");

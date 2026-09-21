@@ -2,10 +2,11 @@ import { Exclude, Expose } from 'class-transformer';
 
 import {
   InventoryDocumentStatus,
+  InventoryReceiptAssetType,
   InventoryReceiptType,
 } from '../../../database/schemas';
 import {
-  ClassField,
+  BooleanField,
   ClassFieldOptional,
   DateField,
   DateFieldOptional,
@@ -14,11 +15,13 @@ import {
   StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
+import { ClientRefResDto } from '../../clients/dto/client-ref.res.dto';
+import { ProductionJobRefResDto } from '../../production-jobs/dto/production-job-ref.res.dto';
 import { ProductionOrderRefResDto } from '../../production-orders/dto/production-order-ref.res.dto';
+import { PurchaseOrderRefResDto } from '../../purchase-orders/dto/purchase-order-ref.res.dto';
 import { PurchaseRequestRefResDto } from '../../purchase-requests/dto/purchase-request-ref.res.dto';
 import { SupplierRefResDto } from '../../suppliers/dto/supplier-ref.res.dto';
 import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
-import { WarehouseRefResDto } from '../../warehouses/dto/warehouse-ref.res.dto';
 import { InventoryReceiptItemResDto } from './inventory-receipt-item.res.dto';
 
 @Exclude()
@@ -32,16 +35,20 @@ export class InventoryReceiptResDto {
   code!: string;
 
   @Expose()
-  @ClassField(() => WarehouseRefResDto)
-  warehouse!: WarehouseRefResDto;
-
-  @Expose()
   @EnumField(() => InventoryReceiptType)
   receiptType!: InventoryReceiptType;
 
   @Expose()
+  @EnumField(() => InventoryReceiptAssetType)
+  assetType!: InventoryReceiptAssetType;
+
+  @Expose()
   @EnumField(() => InventoryDocumentStatus)
   status!: InventoryDocumentStatus;
+
+  @Expose()
+  @BooleanField()
+  requiresIqc!: boolean;
 
   @Expose()
   @DateField({ description: 'Ngày chứng từ' })
@@ -52,12 +59,28 @@ export class InventoryReceiptResDto {
   supplier!: SupplierRefResDto | null;
 
   @Expose()
+  @ClassFieldOptional(() => ClientRefResDto, {
+    nullable: true,
+    description:
+      'Khách hàng gửi trả — chỉ có khi receiptType=RETURN gắn khách hàng',
+  })
+  client!: ClientRefResDto | null;
+
+  @Expose()
   @ClassFieldOptional(() => PurchaseRequestRefResDto, { nullable: true })
   purchaseRequest!: PurchaseRequestRefResDto | null;
 
   @Expose()
   @ClassFieldOptional(() => ProductionOrderRefResDto, { nullable: true })
   productionOrder!: ProductionOrderRefResDto | null;
+
+  @Expose()
+  @ClassFieldOptional(() => ProductionJobRefResDto, { nullable: true })
+  productionJob!: ProductionJobRefResDto | null;
+
+  @Expose()
+  @ClassFieldOptional(() => PurchaseOrderRefResDto, { nullable: true })
+  purchaseOrder!: PurchaseOrderRefResDto | null;
 
   @Expose()
   @StringFieldOptional({ nullable: true })
@@ -69,7 +92,15 @@ export class InventoryReceiptResDto {
 
   @Expose()
   @ClassFieldOptional(() => UserRefResDto, { nullable: true })
-  poster!: UserRefResDto | null;
+  confirmerBy!: UserRefResDto | null;
+
+  @Expose()
+  @DateFieldOptional({ nullable: true })
+  confirmedAt!: Date | null;
+
+  @Expose()
+  @ClassFieldOptional(() => UserRefResDto, { nullable: true })
+  posterBy!: UserRefResDto | null;
 
   @Expose()
   @DateFieldOptional({ nullable: true })
@@ -77,7 +108,7 @@ export class InventoryReceiptResDto {
 
   @Expose()
   @ClassFieldOptional(() => UserRefResDto, { nullable: true })
-  creator!: UserRefResDto | null;
+  creatorBy!: UserRefResDto | null;
 
   @Expose()
   @DateField()

@@ -68,7 +68,7 @@ export class AuthService {
       throw new AppException(ErrorCode.E004, HttpStatus.UNAUTHORIZED);
     }
 
-    await this.ensureCredentialActive(credential.userId);
+    await this.ensureCredentialEnabled(credential.id, credential.userId);
 
     const sessionId = randomUUID();
     const { accessToken, refreshToken } = await this.createTokenPair(
@@ -124,7 +124,7 @@ export class AuthService {
       throw new UnauthorizedException();
     }
 
-    await this.ensureCredentialActive(credential.userId);
+    await this.ensureCredentialEnabled(credential.id, credential.userId);
 
     const { accessToken, refreshToken } = await this.createTokenPair(
       {
@@ -190,12 +190,22 @@ export class AuthService {
   }
 
   /**
-   * A `users` row whose `status` is `RESIGNED` can no longer log in or refresh — this revokes
-   * access as soon as the next login/refresh happens, without needing to touch existing cached
-   * sessions directly. Nhận thẳng `userId` (đã có sẵn từ `credentials.userId` ở nơi gọi) — tra cứu
-   * PK trực tiếp, không cần join ngược.
+   * Checks whether credential is enabled (`credentialEnabled === true`) and user status is active.
+   * If `credentialEnabled` is false or `users.status` is `RESIGNED`, rejects login/refresh with E018 (FORBIDDEN).
    */
-  private async ensureCredentialActive(userId: string): Promise<void> {
+  private async ensureCredentialEnabled(
+    credentialId: string,
+    userId: string,
+  ): Promise<void> {
+    const credential = await this.db.query.credentials.findFirst({
+      where: eq(credentials.id, credentialId),
+      columns: { credentialEnabled: true },
+    });
+
+    if (!credential || !credential.credentialEnabled) {
+      throw new AppException(ErrorCode.E018, HttpStatus.FORBIDDEN);
+    }
+
     const user = await this.db.query.users.findFirst({
       where: eq(users.id, userId),
       columns: { status: true },

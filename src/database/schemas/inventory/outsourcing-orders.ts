@@ -1,0 +1,101 @@
+import { relations } from 'drizzle-orm';
+import {
+  date,
+  index,
+  pgEnum,
+  pgTable,
+  timestamp,
+  uuid,
+  varchar,
+} from 'drizzle-orm/pg-core';
+
+import { outsourcingOrderItems } from './outsourcing-order-items';
+import { suppliers } from '../suppliers/suppliers';
+import { users } from '../identity-access/users';
+
+/**
+ * Vừa là trạng thái chứng từ vừa là tiến độ nhận hàng — gộp làm một, không tách cột `progress`
+ * riêng (`docs/decisions/outsourcing-order-status-progress-merge.md`). `SENT` set thẳng lúc tạo
+ * (không có nháp, `docs/decisions/outsourcing-no-draft.md`); `PARTIAL`/`WAITING_QC`/`COMPLETED` chỉ
+ * do `recomputeOutsourcingOrderStatus` (`outsourcing-orders.query.ts`) ghi, gọi từ
+ * `OutsourcingReceiptsService`/`IqcService` mỗi khi có sự kiện đổi SL đã nhận hoặc IQC — không có
+ * route nào ghi tay 3 giá trị này. `CANCELLED` chỉ do `cancelOutsourcingOrder` ghi, và một khi đã
+ * `CANCELLED` thì `recomputeOutsourcingOrderStatus` không ghi đè lại (early return).
+ */
+export enum OutsourcingOrderStatus {
+  SENT = 'SENT',
+  PARTIAL = 'PARTIAL',
+  WAITING_QC = 'WAITING_QC',
+  COMPLETED = 'COMPLETED',
+  CANCELLED = 'CANCELLED',
+}
+
+export const outsourcingOrderStatusEnum = pgEnum('outsourcing_order_status', [
+  OutsourcingOrderStatus.SENT,
+  OutsourcingOrderStatus.PARTIAL,
+  OutsourcingOrderStatus.WAITING_QC,
+  OutsourcingOrderStatus.COMPLETED,
+  OutsourcingOrderStatus.CANCELLED,
+]);
+
+/**
+ * Phiếu gửi gia công ngoài (OS-OUT) — header, nhiều dòng ở `outsourcing_order_items`. Không có
+ * nháp — service luôn set `SENT` lúc tạo (xem `docs/domains/inventory.md`,
+ * `docs/workflows/outsourcing-round-trip.md`, `docs/decisions/outsourcing-no-draft.md`).
+ */
+export const outsourcingOrders = pgTable(
+  'outsourcing_orders',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    code: varchar('code', { length: 50 }).notNull().unique(),
+    supplierId: uuid('supplier_id')
+      .notNull()
+      .references(() => suppliers.id, { onDelete: 'restrict' }),
+    sendDate: date('send_date', { mode: 'date' }).notNull(),
+    expectedReturnDate: date('expected_return_date', { mode: 'date' }),
+    status: outsourcingOrderStatusEnum('status')
+      .notNull()
+      .default(OutsourcingOrderStatus.SENT),
+    note: varchar('note', { length: 1000 }),
+    postedBy: uuid('posted_by').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    postedAt: timestamp('posted_at'),
+    createdBy: uuid('created_by').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at')
+      .defaultNow()
+      .notNull()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    index('idx_outsourcing_orders_supplier_id').on(table.supplierId),
+    index('idx_outsourcing_orders_status').on(table.status),
+    index('idx_outsourcing_orders_send_date').on(table.sendDate),
+    index('idx_outsourcing_orders_created_by').on(table.createdBy),
+    index('idx_outsourcing_orders_posted_by').on(table.postedBy),
+  ],
+);
+
+export const outsourcingOrdersRelations = relations(
+  outsourcingOrders,
+  ({ one, many }) => ({
+    supplier: one(suppliers, {
+      fields: [outsourcingOrders.supplierId],
+      references: [suppliers.id],
+    }),
+    creatorBy: one(users, {
+      fields: [outsourcingOrders.createdBy],
+      references: [users.id],
+    }),
+    posterBy: one(users, {
+      fields: [outsourcingOrders.postedBy],
+      references: [users.id],
+    }),
+    items: many(outsourcingOrderItems),
+  }),
+);
+
+export type OutsourcingOrderSelect = typeof outsourcingOrders.$inferSelect;

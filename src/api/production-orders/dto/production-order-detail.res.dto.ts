@@ -3,12 +3,14 @@ import { Exclude, Expose } from 'class-transformer';
 import { ProductionOrderStatus } from '../../../database/schemas';
 import {
   ClassField,
+  ClassFieldOptional,
   DateFieldOptional,
   EnumField,
   StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
 import { OrderBaseResDto } from '../../orders/dto/order-base.res.dto';
+import { FileResDto } from '../../files/dto/file.res.dto';
 import { ProductionOrderItemResDto } from './production-order-item.res.dto';
 
 @Exclude()
@@ -39,6 +41,21 @@ export class ProductionOrderDetailResDto {
   @Expose()
   @ClassField(() => OrderBaseResDto)
   order!: OrderBaseResDto;
+
+  @Expose()
+  @ClassFieldOptional(() => FileResDto, {
+    nullable: true,
+    description: 'File LSX đã ký (scan/PDF)',
+  })
+  signedFile!: FileResDto | null;
+
+  @Expose()
+  @StringFieldOptional({
+    nullable: true,
+    description:
+      'Ghi chú của chính LSX — khác `order.note` (ghi chú đơn hàng gốc)',
+  })
+  productionOrderNote!: string | null;
 
   @Expose()
   @ClassField(() => ProductionOrderItemResDto, { each: true })

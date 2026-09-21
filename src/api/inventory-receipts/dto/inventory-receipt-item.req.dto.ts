@@ -1,23 +1,27 @@
-import { InventoryItemType } from '../../../database/schemas';
 import {
-  EnumField,
   NumberField,
   NumberFieldOptional,
   StringFieldOptional,
+  UUIDField,
   UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
 
 export class InventoryReceiptItemReqDto {
-  @EnumField(() => InventoryItemType)
-  readonly itemType!: InventoryItemType;
+  @UUIDField({ description: 'Id mặt hàng (item)' })
+  readonly itemId!: string;
 
-  @UUIDFieldOptional({ description: 'Bắt buộc khi itemType=PRODUCT' })
-  readonly productId?: string;
+  @UUIDFieldOptional({
+    description: 'Dòng đơn mua tương ứng — phải thuộc purchaseOrderId ở header',
+  })
+  readonly purchaseOrderItemId?: string;
 
-  @UUIDFieldOptional({ description: 'Bắt buộc khi itemType=MATERIAL' })
-  readonly materialId?: string;
+  @UUIDFieldOptional({
+    description:
+      'Đơn vị nhập liệu — mặc định đơn vị gốc của item; phải có trong item_units nếu khác',
+  })
+  readonly unitId?: string;
 
-  @NumberField({ isPositive: true, description: 'Số lượng' })
+  @NumberField({ isPositive: true, description: 'Số lượng theo unitId' })
   readonly quantity!: number;
 
   @NumberFieldOptional({

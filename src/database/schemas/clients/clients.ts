@@ -4,6 +4,7 @@ import {
   pgEnum,
   pgTable,
   timestamp,
+  uniqueIndex,
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core';
@@ -26,7 +27,7 @@ export const clients = pgTable(
   'clients',
   {
     id: uuid('id').defaultRandom().primaryKey(),
-    code: varchar('code', { length: 50 }).notNull().unique(),
+    code: varchar('code', { length: 50 }).notNull(),
     name: varchar('name', { length: 255 }).notNull(),
     clientGroupId: uuid('client_group_id')
       .notNull()
@@ -53,6 +54,11 @@ export const clients = pgTable(
     index('idx_clients_status')
       .on(table.status)
       .where(sql`deleted_at IS NULL`),
+    // Partial unique index — thật sự enforce (khác partial index chỉ để tăng tốc,
+    // `.claude/rules/database.md`) — mã do user tự đặt nên phải tái dùng được sau khi xoá mềm.
+    uniqueIndex('uq_clients_code_active')
+      .on(table.code)
+      .where(sql`deleted_at IS NULL`),
   ],
 );
 
@@ -61,9 +67,11 @@ export const clientsRelations = relations(clients, ({ one, many }) => ({
     fields: [clients.clientGroupId],
     references: [clientGroups.id],
   }),
-  creator: one(users, {
+  creatorBy: one(users, {
     fields: [clients.createdBy],
     references: [users.id],
   }),
   contacts: many(clientContacts),
 }));
+
+export type ClientSelect = typeof clients.$inferSelect;

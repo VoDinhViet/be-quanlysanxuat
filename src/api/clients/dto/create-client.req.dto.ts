@@ -3,6 +3,7 @@ import {
   ClassFieldOptional,
   EmailFieldOptional,
   EnumFieldOptional,
+  PhoneFieldOptional,
   StringField,
   StringFieldOptional,
   UUIDField,
@@ -10,17 +11,14 @@ import {
 import { ClientContactReqDto } from './client-contact.req.dto';
 
 export class CreateClientReqDto {
+  @StringField({ description: 'Client code', maxLength: 50 })
+  code!: string;
+
   @StringField({ description: 'Client name', maxLength: 255 })
   name!: string;
 
   @UUIDField({ description: 'Client group id (Nhóm KH)' })
   clientGroupId!: string;
-
-  @StringFieldOptional({
-    description: 'Client code; auto-generated if omitted',
-    maxLength: 50,
-  })
-  code?: string;
 
   @StringFieldOptional({
     description: 'Tax code (Mã số thuế)',
@@ -29,7 +27,7 @@ export class CreateClientReqDto {
   })
   taxCode?: string | null;
 
-  @StringFieldOptional({
+  @PhoneFieldOptional({
     description: 'Phone number',
     nullable: true,
     maxLength: 30,

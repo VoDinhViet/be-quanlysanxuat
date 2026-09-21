@@ -4,6 +4,10 @@ import { and, count, desc, eq, gte, inArray, isNull, lt } from 'drizzle-orm';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
+import {
+  DocumentType,
+  generateDocumentSequence,
+} from '../../common/utils/document-sequence.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
@@ -14,64 +18,50 @@ import {
   InventoryIssueType,
   inventoryIssueItems,
   inventoryIssues,
-  InventoryItemType,
   InventoryReferenceType,
+  inventoryRequisitions,
+  InventoryRequisitionStatus,
   InventoryTransactionType,
-  materials,
+  items,
+  ItemType,
   orderItems,
-  products,
   productionJobs,
   productionOrders,
   users,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
+import { hasPendingIqcForItems } from '../iqc/iqc.query';
 import { InventoryPostingService } from '../inventory/inventory-posting.service';
-import { WarehousesService } from '../warehouses/warehouses.service';
 import { CreateInventoryIssueReqDto } from './dto/create-inventory-issue.req.dto';
 import { GetInventoryIssuesReqDto } from './dto/get-inventory-issues.req.dto';
 import { InventoryIssueItemReqDto } from './dto/inventory-issue-item.req.dto';
 import { InventoryIssueResDto } from './dto/inventory-issue.res.dto';
+import { PageInventoryIssueResDto } from './dto/page-inventory-issue.res.dto';
 import { UpdateInventoryIssueReqDto } from './dto/update-inventory-issue.req.dto';
 
-const ISSUE_DETAIL_WITH = {
-  warehouse: true,
-  productionOrder: true,
-  productionJob: true,
-  department: true,
-  requester: true,
-  poster: true,
-  creator: true,
-  items: { with: { product: true, material: true } },
-} as const;
-
 /** Loại phiếu → loại bút toán lúc `post` — bảng đầy đủ ở `docs/domains/inventory.md`. */
-const ISSUE_TYPE_TRANSACTION_TYPE: Record<
+const issueTypeTransactionType: Record<
   InventoryIssueType,
   InventoryTransactionType
 > = {
   [InventoryIssueType.SALES]: InventoryTransactionType.ISSUE,
   [InventoryIssueType.RETURN]: InventoryTransactionType.ISSUE,
   [InventoryIssueType.PRODUCTION]: InventoryTransactionType.PRODUCTION_OUT,
-  [InventoryIssueType.ADJUSTMENT]: InventoryTransactionType.ADJUSTMENT_OUT,
 };
 
 @Injectable()
 export class InventoryIssuesService {
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
-    private readonly warehousesService: WarehousesService,
     private readonly inventoryPostingService: InventoryPostingService,
   ) {}
 
   async getInventoryIssues(
     reqDto: GetInventoryIssuesReqDto,
-  ): Promise<OffsetPaginatedDto<InventoryIssueResDto>> {
+  ): Promise<OffsetPaginatedDto<PageInventoryIssueResDto>> {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
     const where = and(
       keyword ? unaccentILike(inventoryIssues.code, keyword) : undefined,
-      reqDto.warehouseId
-        ? eq(inventoryIssues.warehouseId, reqDto.warehouseId)
-        : undefined,
       reqDto.issueType
         ? eq(inventoryIssues.issueType, reqDto.issueType)
         : undefined,
@@ -85,14 +75,14 @@ export class InventoryIssuesService {
       reqDto.departmentId
         ? eq(inventoryIssues.departmentId, reqDto.departmentId)
         : undefined,
-      reqDto.fromDate
-        ? gte(inventoryIssues.issueDate, reqDto.fromDate)
+      reqDto.startDate
+        ? gte(inventoryIssues.issueDate, reqDto.startDate)
         : undefined,
-      // Exclusive next-day boundary — `toDate` parses to midnight UTC, `lte` would drop same-day rows.
-      reqDto.toDate
+      // Exclusive next-day boundary — `endDate` parses to midnight UTC, `lte` would drop same-day rows.
+      reqDto.endDate
         ? lt(
             inventoryIssues.issueDate,
-            new Date(reqDto.toDate.getTime() + 24 * 60 * 60 * 1000),
+            new Date(reqDto.endDate.getTime() + 24 * 60 * 60 * 1000),
           )
         : undefined,
     );
@@ -106,32 +96,46 @@ export class InventoryIssuesService {
           desc(inventoryIssues.issueDate),
           desc(inventoryIssues.createdAt),
         ],
-        with: ISSUE_DETAIL_WITH,
+        with: {
+          productionOrder: true,
+          productionJob: true,
+          department: true,
+          requesterBy: true,
+          posterBy: true,
+          creatorBy: true,
+          items: { with: { item: true, unit: true } },
+        },
       }),
       this.db.select({ total: count() }).from(inventoryIssues).where(where),
     ]);
 
     return new OffsetPaginatedDto(
-      plainToInstance(InventoryIssueResDto, entities, {
+      plainToInstance(PageInventoryIssueResDto, entities, {
         excludeExtraneousValues: true,
       }),
       new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
     );
   }
 
-  async getInventoryIssueDetail(
-    issueId: string,
-  ): Promise<InventoryIssueResDto> {
-    const issue = await this.db.query.inventoryIssues.findFirst({
+  async getInventoryIssue(issueId: string): Promise<InventoryIssueResDto> {
+    const inventoryIssue = await this.db.query.inventoryIssues.findFirst({
       where: eq(inventoryIssues.id, issueId),
-      with: ISSUE_DETAIL_WITH,
+      with: {
+        productionOrder: true,
+        productionJob: true,
+        department: true,
+        requesterBy: true,
+        posterBy: true,
+        creatorBy: true,
+        items: { with: { item: true, unit: true } },
+      },
     });
 
-    if (!issue) {
+    if (!inventoryIssue) {
       throw new AppException(ErrorCode.E096, HttpStatus.NOT_FOUND);
     }
 
-    return plainToInstance(InventoryIssueResDto, issue, {
+    return plainToInstance(InventoryIssueResDto, inventoryIssue, {
       excludeExtraneousValues: true,
     });
   }
@@ -139,46 +143,41 @@ export class InventoryIssuesService {
   async createInventoryIssue(
     reqDto: CreateInventoryIssueReqDto,
     userId: string,
-  ): Promise<InventoryIssueResDto> {
-    await this.warehousesService.ensureWarehouseActive(reqDto.warehouseId);
-    await this.ensureItemsValid(reqDto.items);
+  ): Promise<void> {
+    this.ensureNotDirectProductionIssue(reqDto.issueType);
+    const baseUnitByItemId = await this.ensureItemsValid(reqDto.items);
     await this.ensureReferencesValid(reqDto);
 
-    let code = reqDto.code;
-    if (code) {
-      await this.validateCodeUniqueness(code);
-    } else {
-      code = await this.generateIssueCode(reqDto.issueDate);
-    }
+    const { items: itemsToCreate, ...issueFields } = reqDto;
 
-    const { items, ...issueFields } = reqDto;
+    await this.db.transaction(async (tx) => {
+      const code = await this.generateIssueCode(tx, reqDto.issueDate);
 
-    const issueId = await this.db.transaction(async (tx) => {
-      const [issue] = await tx
+      const [inventoryIssue] = await tx
         .insert(inventoryIssues)
         .values({ ...issueFields, code, createdBy: userId })
         .returning();
 
-      await this.createItems(tx, issue.id, items);
-
-      return issue.id;
+      await this.createIssueItems(
+        tx,
+        inventoryIssue.id,
+        itemsToCreate,
+        baseUnitByItemId,
+      );
     });
-
-    return this.getInventoryIssueDetail(issueId);
   }
 
   async updateInventoryIssue(
     issueId: string,
     reqDto: UpdateInventoryIssueReqDto,
-  ): Promise<InventoryIssueResDto> {
+  ): Promise<void> {
     await this.ensureIssueDraft(issueId);
 
-    if (reqDto.items !== undefined) {
-      await this.ensureItemsValid(reqDto.items);
-    }
+    this.ensureNotDirectProductionIssue(reqDto.issueType);
+    const baseUnitByItemId = await this.ensureItemsValid(reqDto.items);
     await this.ensureReferencesValid(reqDto);
 
-    const { items, ...issueFields } = reqDto;
+    const { items: itemsToReplace, ...issueFields } = reqDto;
 
     await this.db.transaction(async (tx) => {
       await tx
@@ -186,16 +185,29 @@ export class InventoryIssuesService {
         .set(issueFields)
         .where(eq(inventoryIssues.id, issueId));
 
-      if (items !== undefined) {
-        await this.replaceItems(tx, issueId, items);
-      }
+      await this.replaceIssueItems(
+        tx,
+        issueId,
+        itemsToReplace,
+        baseUnitByItemId,
+      );
     });
-
-    return this.getInventoryIssueDetail(issueId);
   }
 
+  /** Chặn (`E235`) nếu phiếu do `inventoryRequisitions.inventoryIssueId` trỏ tới — hard-delete để
+   * FK `set null` âm thầm gỡ liên kết sẽ để phiếu lãnh kẹt `APPROVED` không còn PXK đi kèm, huỷ
+   * (`InventoryRequisitionsService.cancelInventoryRequisition`) là đường đúng cho trường hợp này. */
   async deleteInventoryIssue(issueId: string): Promise<void> {
     await this.ensureIssueDraft(issueId);
+
+    const [generatingRequisition] = await this.db
+      .select({ id: inventoryRequisitions.id })
+      .from(inventoryRequisitions)
+      .where(eq(inventoryRequisitions.inventoryIssueId, issueId))
+      .limit(1);
+    if (generatingRequisition) {
+      throw new AppException(ErrorCode.E235, HttpStatus.CONFLICT);
+    }
 
     await this.db
       .delete(inventoryIssues)
@@ -203,27 +215,43 @@ export class InventoryIssuesService {
   }
 
   /** `DRAFT → POSTED` — sinh bút toán + cập nhật tồn qua `InventoryPostingService`, sau đó phiếu
-   * bất biến. Xem `docs/workflows/stock-movement.md`. */
+   * bất biến. Đọc trạng thái nằm trong cùng transaction, sau `getInventoryIssueForUpdate`.
+   * `issueType = PRODUCTION`
+   * kèm gate IQC (`E203`, `docs/decisions/qc-gates-on-stock-moves.md`) — vật tư chưa qua IQC (hoặc
+   * còn FAIL chưa xử lý) không được xuất cho sản xuất. Nếu phiếu do phiếu lãnh vật tư sinh ra
+   * (`inventoryRequisitions.inventoryIssueId`) thì ghi ngược phiếu lãnh đó sang `ISSUED`. Xem
+   * `docs/workflows/stock-movement.md`, `docs/workflows/inventory-requisition.md`. */
   async postInventoryIssue(issueId: string, userId: string): Promise<void> {
-    const issue = await this.ensureIssueDraft(issueId);
-    const items = await this.db.query.inventoryIssueItems.findMany({
-      where: eq(inventoryIssueItems.issueId, issueId),
-    });
-
     await this.db.transaction(async (tx) => {
+      const inventoryIssue = await this.getInventoryIssueForUpdate(tx, issueId);
+
+      if (inventoryIssue.status !== InventoryDocumentStatus.DRAFT) {
+        throw new AppException(ErrorCode.E098, HttpStatus.CONFLICT);
+      }
+
+      const itemsToPost = await tx.query.inventoryIssueItems.findMany({
+        where: eq(inventoryIssueItems.issueId, issueId),
+      });
+
+      if (inventoryIssue.issueType === InventoryIssueType.PRODUCTION) {
+        const hasPendingIqc = await hasPendingIqcForItems(tx, {
+          itemIds: itemsToPost.map((item) => item.itemId),
+        });
+        if (hasPendingIqc) {
+          throw new AppException(ErrorCode.E203, HttpStatus.CONFLICT);
+        }
+      }
+
       await this.inventoryPostingService.postDocument(tx, {
-        warehouseId: issue.warehouseId,
         referenceType: InventoryReferenceType.INVENTORY_ISSUE,
         referenceId: issueId,
-        transactionDate: issue.issueDate,
+        transactionDate: inventoryIssue.issueDate,
         createdBy: userId,
-        lines: items.map((item) => ({
-          itemType: item.itemType,
-          productId: item.productId,
-          materialId: item.materialId,
+        lines: itemsToPost.map((item) => ({
+          itemId: item.itemId,
           // Xuất luôn trừ tồn — dấu âm.
           signedQuantity: -item.quantity,
-          type: ISSUE_TYPE_TRANSACTION_TYPE[issue.issueType],
+          type: issueTypeTransactionType[inventoryIssue.issueType],
           orderItemId: item.orderItemId,
         })),
       });
@@ -236,171 +264,133 @@ export class InventoryIssuesService {
           postedAt: new Date(),
         })
         .where(eq(inventoryIssues.id, issueId));
+
+      await tx
+        .update(inventoryRequisitions)
+        .set({
+          status: InventoryRequisitionStatus.ISSUED,
+          issuedBy: userId,
+          issuedAt: new Date(),
+        })
+        .where(eq(inventoryRequisitions.inventoryIssueId, issueId));
     });
   }
 
-  /** `DRAFT`/`POSTED → CANCELLED`. Từ `POSTED` thì đảo bút toán trước khi đổi trạng thái — xem
-   * `InventoryPostingService.reverseDocument`. */
-  async cancelInventoryIssue(issueId: string, userId: string): Promise<void> {
-    const issue = await this.ensureIssueExists(issueId);
-    if (issue.status === InventoryDocumentStatus.CANCELLED) {
-      throw new AppException(ErrorCode.E098, HttpStatus.CONFLICT);
-    }
-
-    if (issue.status === InventoryDocumentStatus.DRAFT) {
-      await this.db
-        .update(inventoryIssues)
-        .set({ status: InventoryDocumentStatus.CANCELLED })
-        .where(eq(inventoryIssues.id, issueId));
-      return;
-    }
-
+  /** `DRAFT → CANCELLED` — chỉ huỷ được lúc còn Nháp; `POSTED` bất biến, không có đường đảo bút
+   * toán như `inventory-receipts`/`inventory-adjustments` (`docs/domains/inventory.md`). Nếu phiếu
+   * do phiếu lãnh vật tư sinh ra (`inventoryRequisitions.inventoryIssueId`) thì huỷ luôn phiếu
+   * lãnh đó — ngược chiều với `InventoryRequisitionsService.cancelInventoryRequisition`. */
+  async cancelInventoryIssue(issueId: string): Promise<void> {
     await this.db.transaction(async (tx) => {
-      await this.inventoryPostingService.reverseDocument(tx, {
-        referenceType: InventoryReferenceType.INVENTORY_ISSUE,
-        referenceId: issueId,
-        transactionDate: new Date(),
-        createdBy: userId,
-      });
+      const inventoryIssue = await this.getInventoryIssueForUpdate(tx, issueId);
+
+      if (inventoryIssue.status !== InventoryDocumentStatus.DRAFT) {
+        throw new AppException(ErrorCode.E098, HttpStatus.CONFLICT);
+      }
 
       await tx
         .update(inventoryIssues)
         .set({ status: InventoryDocumentStatus.CANCELLED })
         .where(eq(inventoryIssues.id, issueId));
+
+      await tx
+        .update(inventoryRequisitions)
+        .set({ status: InventoryRequisitionStatus.CANCELLED })
+        .where(eq(inventoryRequisitions.inventoryIssueId, issueId));
     });
   }
 
-  private async createItems(
+  private async createIssueItems(
     tx: DbTransaction,
     issueId: string,
     items: InventoryIssueItemReqDto[],
+    baseUnitByItemId: Map<string, string>,
   ): Promise<void> {
-    await tx
-      .insert(inventoryIssueItems)
-      .values(items.map((item) => ({ ...item, issueId })));
+    await tx.insert(inventoryIssueItems).values(
+      items.map((item) => ({
+        ...item,
+        issueId,
+        unitId: item.unitId ?? baseUnitByItemId.get(item.itemId)!,
+      })),
+    );
   }
 
-  private async replaceItems(
+  private async replaceIssueItems(
     tx: DbTransaction,
     issueId: string,
     items: InventoryIssueItemReqDto[],
+    baseUnitByItemId: Map<string, string>,
   ): Promise<void> {
     await tx
       .delete(inventoryIssueItems)
       .where(eq(inventoryIssueItems.issueId, issueId));
 
-    if (items.length) {
-      await this.createItems(tx, issueId, items);
-    }
+    await this.createIssueItems(tx, issueId, items, baseUnitByItemId);
   }
 
-  private async generateIssueCode(issueDate: Date): Promise<string> {
+  private async generateIssueCode(
+    tx: DbTransaction,
+    issueDate: Date,
+  ): Promise<string> {
     const year = issueDate.getFullYear();
-    const yearStart = new Date(year, 0, 1);
-    const yearEnd = new Date(year + 1, 0, 1);
-    const [totalRows] = await this.db
-      .select({ total: count() })
-      .from(inventoryIssues)
-      .where(
-        and(
-          gte(inventoryIssues.issueDate, yearStart),
-          lt(inventoryIssues.issueDate, yearEnd),
-        ),
-      );
-    return `PXK-${year}-${String((totalRows?.total ?? 0) + 1).padStart(5, '0')}`;
+    const sequence = await generateDocumentSequence(
+      tx,
+      DocumentType.INVENTORY_ISSUE,
+      year,
+    );
+
+    return `PXK-${year}-${String(sequence).padStart(5, '0')}`;
   }
 
-  private async validateCodeUniqueness(code: string): Promise<void> {
-    const existing = await this.db.query.inventoryIssues.findFirst({
-      columns: { id: true },
-      where: eq(inventoryIssues.code, code),
-    });
-
-    if (existing) {
-      throw new AppException(ErrorCode.E097, HttpStatus.CONFLICT);
-    }
-  }
-
-  /** Mỗi dòng phải đúng-một-trong `productId`/`materialId` khớp `itemType` (`E099`), mặt hàng
-   * phải tồn tại (`E100`), và `orderItemId` (nếu có) chỉ hợp lệ trên dòng `PRODUCT` + phải khớp
-   * đúng `productId` của dòng đơn hàng đó (`E107`). Không kiểm loại kho ↔ loại hàng — cố ý. */
+  /** Mặt hàng của mỗi dòng phải tồn tại (`E100`), và `orderItemId` (nếu có) chỉ hợp lệ trên dòng
+   * item FG + phải khớp đúng `itemId` của dòng đơn hàng đó (`E107`). Không kiểm loại kho ↔ loại
+   * hàng — cố ý. Trả về `itemId → unitId gốc` để mặc định `unitId` hiển thị khi payload không gửi,
+   * tránh round-trip kiểm tồn tại item lần hai. */
   private async ensureItemsValid(
-    items: InventoryIssueItemReqDto[],
-  ): Promise<void> {
-    for (const item of items) {
-      const matchesType =
-        item.itemType === InventoryItemType.PRODUCT
-          ? item.productId !== undefined && item.materialId === undefined
-          : item.materialId !== undefined && item.productId === undefined;
-
-      if (!matchesType) {
-        throw new AppException(ErrorCode.E099, HttpStatus.BAD_REQUEST);
-      }
-      if (item.orderItemId && item.itemType !== InventoryItemType.PRODUCT) {
-        throw new AppException(ErrorCode.E107, HttpStatus.BAD_REQUEST);
-      }
-    }
-
-    const productIds = [
-      ...new Set(
-        items.map((item) => item.productId).filter((id): id is string => !!id),
-      ),
-    ];
-    const materialIds = [
-      ...new Set(
-        items.map((item) => item.materialId).filter((id): id is string => !!id),
-      ),
-    ];
+    itemsToValidate: InventoryIssueItemReqDto[],
+  ): Promise<Map<string, string>> {
+    const itemIds = [...new Set(itemsToValidate.map((item) => item.itemId))];
     const orderItemIds = [
       ...new Set(
-        items
+        itemsToValidate
           .map((item) => item.orderItemId)
           .filter((id): id is string => !!id),
       ),
     ];
 
-    const [foundProducts, foundMaterials, foundOrderItems] = await Promise.all([
-      productIds.length
-        ? this.db.query.products.findMany({
-            columns: { id: true },
-            where: and(
-              inArray(products.id, productIds),
-              isNull(products.deletedAt),
-            ),
-          })
-        : Promise.resolve<Array<{ id: string }>>([]),
-      materialIds.length
-        ? this.db.query.materials.findMany({
-            columns: { id: true },
-            where: inArray(materials.id, materialIds),
-          })
-        : Promise.resolve<Array<{ id: string }>>([]),
+    const [foundItems, foundOrderItems] = await Promise.all([
+      this.db.query.items.findMany({
+        columns: { id: true, type: true, unitId: true },
+        where: and(inArray(items.id, itemIds), isNull(items.deletedAt)),
+      }),
       orderItemIds.length
         ? this.db.query.orderItems.findMany({
-            columns: { id: true, productId: true },
+            columns: { id: true, itemId: true },
             where: inArray(orderItems.id, orderItemIds),
           })
-        : Promise.resolve<Array<{ id: string; productId: string }>>([]),
+        : Promise.resolve<Array<{ id: string; itemId: string }>>([]),
     ]);
 
-    const foundProductIds = new Set(foundProducts.map((p) => p.id));
-    const foundMaterialIds = new Set(foundMaterials.map((m) => m.id));
+    const itemById = new Map(foundItems.map((item) => [item.id, item]));
     const orderItemById = new Map(foundOrderItems.map((oi) => [oi.id, oi]));
 
-    for (const item of items) {
-      if (item.productId && !foundProductIds.has(item.productId)) {
-        throw new AppException(ErrorCode.E100, HttpStatus.NOT_FOUND);
-      }
-      if (item.materialId && !foundMaterialIds.has(item.materialId)) {
+    for (const item of itemsToValidate) {
+      const found = itemById.get(item.itemId);
+      if (!found) {
         throw new AppException(ErrorCode.E100, HttpStatus.NOT_FOUND);
       }
       if (item.orderItemId) {
+        if (found.type !== ItemType.FG) {
+          throw new AppException(ErrorCode.E107, HttpStatus.BAD_REQUEST);
+        }
         const orderItem = orderItemById.get(item.orderItemId);
-        if (!orderItem || orderItem.productId !== item.productId) {
+        if (!orderItem || orderItem.itemId !== item.itemId) {
           throw new AppException(ErrorCode.E107, HttpStatus.BAD_REQUEST);
         }
       }
     }
+
+    return new Map(foundItems.map((item) => [item.id, item.unitId]));
   }
 
   private async ensureReferencesValid(reqDto: {
@@ -445,6 +435,23 @@ export class InventoryIssuesService {
     }
   }
 
+  /** Khoá dòng phiếu (`FOR UPDATE`) rồi trả về — chỉ gọi bên trong transaction, bằng chính `tx`,
+   * vì khoá nhả ngay khi transaction kết thúc. Nhờ đó hai lệnh `post`/`cancel` gọi trùng lên cùng
+   * phiếu không cùng lọt qua kiểm trạng thái và trừ tồn hai lần. */
+  private async getInventoryIssueForUpdate(tx: DbTransaction, issueId: string) {
+    const [inventoryIssue] = await tx
+      .select()
+      .from(inventoryIssues)
+      .where(eq(inventoryIssues.id, issueId))
+      .for('update');
+
+    if (!inventoryIssue) {
+      throw new AppException(ErrorCode.E096, HttpStatus.NOT_FOUND);
+    }
+
+    return inventoryIssue;
+  }
+
   private async ensureIssueExists(issueId: string) {
     const existing = await this.db.query.inventoryIssues.findFirst({
       where: eq(inventoryIssues.id, issueId),
@@ -457,13 +464,23 @@ export class InventoryIssuesService {
     return existing;
   }
 
-  private async ensureIssueDraft(issueId: string) {
-    const issue = await this.ensureIssueExists(issueId);
+  /** `issueType = PRODUCTION` chỉ còn sinh được từ `POST /inventory-requisitions/:requisitionId/issue` —
+   * lập/sửa tay ở đây bị chặn (`E234`), xem `docs/domains/inventory.md`, mục "Phiếu lãnh vật tư". */
+  private ensureNotDirectProductionIssue(
+    issueType: InventoryIssueType | undefined,
+  ): void {
+    if (issueType === InventoryIssueType.PRODUCTION) {
+      throw new AppException(ErrorCode.E234, HttpStatus.BAD_REQUEST);
+    }
+  }
 
-    if (issue.status !== InventoryDocumentStatus.DRAFT) {
+  private async ensureIssueDraft(issueId: string) {
+    const inventoryIssue = await this.ensureIssueExists(issueId);
+
+    if (inventoryIssue.status !== InventoryDocumentStatus.DRAFT) {
       throw new AppException(ErrorCode.E098, HttpStatus.CONFLICT);
     }
 
-    return issue;
+    return inventoryIssue;
   }
 }

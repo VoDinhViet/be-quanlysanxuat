@@ -15,9 +15,9 @@ export class GetProductionOrdersReqDto extends PageOptionsDto {
   @UUIDFieldOptional({ description: 'Filter by client id' })
   readonly clientId?: string;
 
-  @DateFieldOptional({ description: 'Filter: order.dueDate >= fromDate' })
-  readonly fromDate?: Date;
+  @DateFieldOptional({ description: 'Filter: order.dueDate >= startDate' })
+  readonly startDate?: Date;
 
-  @DateFieldOptional({ description: 'Filter: order.dueDate <= toDate' })
-  readonly toDate?: Date;
+  @DateFieldOptional({ description: 'Filter: order.dueDate <= endDate' })
+  readonly endDate?: Date;
 }

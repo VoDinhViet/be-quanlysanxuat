@@ -1,6 +1,7 @@
 import {
   BooleanFieldOptional,
   EmailFieldOptional,
+  PhoneFieldOptional,
   StringField,
   StringFieldOptional,
 } from '../../../decorators/field.decorators';
@@ -16,7 +17,7 @@ export class ClientContactReqDto {
   })
   position?: string | null;
 
-  @StringFieldOptional({
+  @PhoneFieldOptional({
     description: 'Phone number',
     nullable: true,
     maxLength: 30,

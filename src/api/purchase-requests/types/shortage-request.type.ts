@@ -1,7 +1,7 @@
 /** Một dòng vật tư thiếu của Job — `quantity` là **phần thiếu** (`requiredQty − onHand`), không
  * phải toàn bộ nhu cầu. Xem `docs/domains/purchase-requests.md`. */
 export type PurchaseRequestShortageItem = {
-  materialId: string;
+  itemId: string;
   quantity: number;
 };
 

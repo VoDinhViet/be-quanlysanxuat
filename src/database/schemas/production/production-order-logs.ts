@@ -17,6 +17,9 @@ export enum ProductionOrderLogAction {
   CREATED = 'CREATED',
   QUANTITY_UPDATED = 'QUANTITY_UPDATED',
   APPROVED = 'APPROVED',
+  NOTE_UPDATED = 'NOTE_UPDATED',
+  SIGNED_FILE_UPDATED = 'SIGNED_FILE_UPDATED',
+  COMPLETED = 'COMPLETED',
 }
 
 export const productionOrderLogActionEnum = pgEnum(
@@ -25,19 +28,25 @@ export const productionOrderLogActionEnum = pgEnum(
     ProductionOrderLogAction.CREATED,
     ProductionOrderLogAction.QUANTITY_UPDATED,
     ProductionOrderLogAction.APPROVED,
+    ProductionOrderLogAction.NOTE_UPDATED,
+    ProductionOrderLogAction.SIGNED_FILE_UPDATED,
+    ProductionOrderLogAction.COMPLETED,
   ],
 );
 
 /**
  * Lịch sử thao tác trên một LSX — thời gian (`createdAt`), người thực hiện (`performedBy`), nội
  * dung (`content`, mô tả sẵn bằng tiếng Việt, sinh tại nơi ghi chứ không tính lại lúc đọc). Append
- * -only, không có `updatedAt` — cùng khuôn `order_attachments`/`client_contacts`, một dòng log
+ * -only, không có `updatedAt` — cùng khuôn `order_files`/`client_contacts`, một dòng log
  * không bao giờ bị `UPDATE`.
  *
  * Rules:
- * - `ProductionOrdersService.logAction` là nơi ghi duy nhất, luôn gọi trong cùng transaction với
- *   hành động đang log (`seedPlan` → `CREATED`, `updateProductionOrder` → `QUANTITY_UPDATED`,
- *   `approveProductionOrder` → `APPROVED`) — không có route ghi log trực tiếp.
+ * - `ProductionOrdersService.logAction` ghi 4 hành động đầu (`seedPlan` → `CREATED`,
+ *   `updateProductionOrder` → `QUANTITY_UPDATED`, `approveProductionOrder` → `APPROVED`,
+ *   `NOTE_UPDATED`) — luôn trong cùng transaction với hành động đang log. `COMPLETED` là ngoại lệ
+ *   duy nhất: ghi thẳng (không qua `logAction`, hàm đó `private`) từ
+ *   `InventoryReceiptsService.postInventoryReceipt` khi Job cuối của LSX vừa nhận đủ hàng — xem
+ *   `docs/decisions/production-lifecycle-closing.md`. Không có route ghi log trực tiếp.
  * - `onDelete: 'cascade'` từ `productionOrders` — khi header bị xoá để ghi đè (replace-all lúc
  *   `seedPlan`/`OrdersService.updateOrder` xoá LSX `PENDING`), log cũ mất theo, cùng hành vi với
  *   `production_order_items`, không phải rủi ro riêng của bảng này.
@@ -60,6 +69,7 @@ export const productionOrderLogs = pgTable(
     index('idx_production_order_logs_production_order_id').on(
       table.productionOrderId,
     ),
+    index('idx_production_order_logs_performed_by').on(table.performedBy),
   ],
 );
 
@@ -70,9 +80,11 @@ export const productionOrderLogsRelations = relations(
       fields: [productionOrderLogs.productionOrderId],
       references: [productionOrders.id],
     }),
-    performer: one(users, {
+    performerBy: one(users, {
       fields: [productionOrderLogs.performedBy],
       references: [users.id],
     }),
   }),
 );
+
+export type ProductionOrderLogSelect = typeof productionOrderLogs.$inferSelect;

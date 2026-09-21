@@ -1,15 +1,16 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ServeStaticModule } from '@nestjs/serve-static';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { BomMaterialsModule } from './api/bom-materials/bom-materials.module';
+import { AllConfigType } from './config/config.type';
+import { BomConsumablesModule } from './api/bom-consumables/bom-consumables.module';
+import { BomOperationsModule } from './api/bom-operations/bom-operations.module';
 import { BomsModule } from './api/boms/boms.module';
 import { JwtAuthGuard } from './api/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from './api/auth/guards/permissions.guard';
-import { MaterialGroupsModule } from './api/material-groups/material-groups.module';
-import { MaterialsModule } from './api/materials/materials.module';
 import { RolesModule } from './api/roles/roles.module';
 import { SupplierGroupsModule } from './api/supplier-groups/supplier-groups.module';
 import { SuppliersModule } from './api/suppliers/suppliers.module';
@@ -29,26 +30,58 @@ import { DepartmentsModule } from './api/departments/departments.module';
 import { FilesModule } from './api/files/files.module';
 import { HealthModule } from './api/health/health.module';
 import { InventoryModule } from './api/inventory/inventory.module';
+import { InventoryAdjustmentsModule } from './api/inventory-adjustments/inventory-adjustments.module';
 import { InventoryIssuesModule } from './api/inventory-issues/inventory-issues.module';
+import { InventoryConsumablesModule } from './api/inventory-consumables/inventory-consumables.module';
+import { InventoryProductsModule } from './api/inventory-products/inventory-products.module';
 import { InventoryReceiptsModule } from './api/inventory-receipts/inventory-receipts.module';
+import { InventoryRequisitionsModule } from './api/inventory-requisitions/inventory-requisitions.module';
+import { IqcModule } from './api/iqc/iqc.module';
+import { ItemUnitsModule } from './api/item-units/item-units.module';
+import { ItemsModule } from './api/items/items.module';
 import { OperationsModule } from './api/operations/operations.module';
+import { OqcModule } from './api/oqc/oqc.module';
 import { OrdersModule } from './api/orders/orders.module';
+import { OutboundOrdersModule } from './api/outbound-orders/outbound-orders.module';
+import { OutsourcingOrdersModule } from './api/outsourcing-orders/outsourcing-orders.module';
+import { OutsourcingReceiptsModule } from './api/outsourcing-receipts/outsourcing-receipts.module';
+import { PaymentRequestsModule } from './api/payment-requests/payment-requests.module';
 import { PositionsModule } from './api/positions/positions.module';
-import { ProductGroupsModule } from './api/product-groups/product-groups.module';
+import { ProductionExecutionModule } from './api/production-execution/production-execution.module';
 import { ProductionJobsModule } from './api/production-jobs/production-jobs.module';
 import { ProductionOrdersModule } from './api/production-orders/production-orders.module';
-import { ProductsModule } from './api/products/products.module';
+import { PurchaseLedgerModule } from './api/purchase-ledger/purchase-ledger.module';
+import { PurchaseNotesModule } from './api/purchase-notes/purchase-notes.module';
+import { PurchaseOrdersModule } from './api/purchase-orders/purchase-orders.module';
+import { PurchaseQuotationsModule } from './api/purchase-quotations/purchase-quotations.module';
 import { PurchaseRequestsModule } from './api/purchase-requests/purchase-requests.module';
-import { RoutingModule } from './api/routing/routing.module';
+import { ReportsModule } from './api/reports/reports.module';
+import { RoutingsModule } from './api/routings/routings.module';
+import { SupplierReturnsModule } from './api/supplier-returns/supplier-returns.module';
 import { UnitsModule } from './api/units/units.module';
 import { UsersModule } from './api/users/users.module';
-import { WarehousesModule } from './api/warehouses/warehouses.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       load: [appConfig, authConfig, databaseConfig, redisConfig, uploadConfig],
       isGlobal: true,
+    }),
+
+    // File bytes served straight off disk at the domain root (storage key IS the path, e.g.
+    // `/2026/07/20/<uuid>.png`) — no auth, no signing, permanent public link
+    // (`docs/decisions/files-registry.md`). Never collides with a controller route: storage keys
+    // are always `<year>/<month>/<day>/<uuid>.<ext>`, nothing under `api`/`health`/`/` looks like
+    // that. `index`/`fallthrough` off: express's own miss-handler writes straight to `res` (skips
+    // `GlobalExceptionFilter`) and leaked the absolute disk path in its raw `ENOENT` message.
+    ServeStaticModule.forRootAsync({
+      useFactory: (configService: ConfigService<AllConfigType>) => [
+        {
+          rootPath: configService.getOrThrow('upload.dir', { infer: true }),
+          serveStaticOptions: { index: false, fallthrough: false },
+        },
+      ],
+      inject: [ConfigService],
     }),
 
     // Drives FilesCleanupService. In-memory timers, so this only ticks when the app runs as a
@@ -63,30 +96,45 @@ import { WarehousesModule } from './api/warehouses/warehouses.module';
     ClientsModule,
     ClientGroupsModule,
     CountriesModule,
-    ProductGroupsModule,
     UnitsModule,
-    ProductsModule,
+    ItemsModule,
+    ItemUnitsModule,
     BomsModule,
-    BomMaterialsModule,
+    BomOperationsModule,
+    BomConsumablesModule,
+    RoutingsModule,
     OperationsModule,
-    RoutingModule,
     DepartmentsModule,
     FilesModule,
     PositionsModule,
     HealthModule,
     RolesModule,
-    MaterialGroupsModule,
-    MaterialsModule,
     SuppliersModule,
     SupplierGroupsModule,
-    WarehousesModule,
     InventoryModule,
+    InventoryProductsModule,
+    InventoryConsumablesModule,
     InventoryReceiptsModule,
     InventoryIssuesModule,
+    InventoryAdjustmentsModule,
+    InventoryRequisitionsModule,
+    SupplierReturnsModule,
+    OutsourcingOrdersModule,
+    OutsourcingReceiptsModule,
+    OutboundOrdersModule,
+    IqcModule,
+    OqcModule,
+    ProductionExecutionModule,
     ProductionJobsModule,
     ProductionOrdersModule,
     OrdersModule,
     PurchaseRequestsModule,
+    PurchaseLedgerModule,
+    PurchaseQuotationsModule,
+    PurchaseOrdersModule,
+    PurchaseNotesModule,
+    PaymentRequestsModule,
+    ReportsModule,
   ],
 
   controllers: [AppController],

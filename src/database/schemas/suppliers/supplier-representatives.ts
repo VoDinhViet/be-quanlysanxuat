@@ -10,7 +10,9 @@ import {
 
 import { suppliers } from './suppliers';
 
-/** 1-many with suppliers: a supplier can have multiple representatives, replace-all on update. */
+/** 1-many with suppliers: a supplier can have multiple representatives, replace-all on update —
+ * no `updatedAt`, a row is deleted and reinserted rather than mutated (same reasoning as
+ * `client_contacts`). */
 export const supplierRepresentatives = pgTable(
   'supplier_representatives',
   {
@@ -37,3 +39,6 @@ export const supplierRepresentativesRelations = relations(
     }),
   }),
 );
+
+export type SupplierRepresentativeSelect =
+  typeof supplierRepresentatives.$inferSelect;

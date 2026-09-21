@@ -1,0 +1,2 @@
+ALTER TABLE "supplier_attachments" ADD CONSTRAINT "uq_supplier_attachments_supplier_file" UNIQUE("supplier_id","file_id");--> statement-breakpoint
+ALTER TABLE "qc_attachments" ADD CONSTRAINT "uq_qc_attachments_inspection_file_kind" UNIQUE("inspection_id","file_id","kind");

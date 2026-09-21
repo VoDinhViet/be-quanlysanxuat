@@ -11,8 +11,9 @@ import {
 } from 'drizzle-orm/pg-core';
 
 import { clients } from '../clients/clients';
-import { orderAttachments } from './order-attachments';
+import { orderFiles } from './order-files';
 import { orderItems } from './order-items';
+import { orderPayments } from './order-payments';
 import {
   PaymentTerm,
   paymentTermEnum,
@@ -24,16 +25,17 @@ import { users } from '../identity-access/users';
  * starts as DRAFT and needs director-level approval before production planning can see it.
  *
  * Rules:
- * - `AWAITING_PRODUCTION` is reachable only via `OrdersService.approveOrder`, never a plain
- *   create/update `status` field (`OrdersService.ensureStatusSettable`, `E075`).
- * - Every other transition — DRAFT → PENDING_CONFIRMATION, and everything from
- *   AWAITING_PRODUCTION onward — stays as loose as the rest of `orders`, no full state machine.
+ * - `AWAITING_PRODUCTION` and `REJECTED` are reachable only via `OrdersService.approveOrder`/
+ *   `rejectOrder`, never a plain create/update `status` field (`ensureStatusSettable`, `E075`).
+ * - Editing a `REJECTED` order without sending `status` reverts it to `DRAFT`
+ *   (`OrdersService.updateOrder`), keeping `rejectedBy`/`rejectedAt`/`rejectionReason` as history.
  *
  * See `OrdersService.ensureOrderEditable` for what stays editable.
  */
 export enum OrderStatus {
   DRAFT = 'DRAFT',
   PENDING_CONFIRMATION = 'PENDING_CONFIRMATION',
+  REJECTED = 'REJECTED',
   AWAITING_PRODUCTION = 'AWAITING_PRODUCTION',
   IN_PROGRESS = 'IN_PROGRESS',
   COMPLETED = 'COMPLETED',
@@ -43,6 +45,7 @@ export enum OrderStatus {
 export const orderStatusEnum = pgEnum('order_status', [
   OrderStatus.DRAFT,
   OrderStatus.PENDING_CONFIRMATION,
+  OrderStatus.REJECTED,
   OrderStatus.AWAITING_PRODUCTION,
   OrderStatus.IN_PROGRESS,
   OrderStatus.COMPLETED,
@@ -89,9 +92,6 @@ export const orderDiscountTypeEnum = pgEnum('order_discount_type', [
  * - Every money column (`subtotal`, `discountAmount`, `vatAmount`, `total`) is server-computed
  *   from `order_items` + the discount/VAT/shipping inputs below — see
  *   `OrdersService.recalculateTotals`. Never write them directly from a request DTO.
- * - `contactName`/`contactPhone`/`contactEmail` are a snapshot of a `client_contacts` row at
- *   create time, not a foreign key — `ClientsService.replaceContacts` deletes and re-inserts a
- *   client's contacts on every client update, so a contact id has no stable identity to point at.
  * - "Trễ hạn" (overdue) is intentionally not a column — derived at read time from `dueDate` vs
  *   "now" + `status`, see `OrdersService`.
  */
@@ -104,17 +104,15 @@ export const orders = pgTable(
     clientId: uuid('client_id').references(() => clients.id, {
       onDelete: 'restrict',
     }),
-    contactName: varchar('contact_name', { length: 255 }),
-    contactPhone: varchar('contact_phone', { length: 30 }),
-    contactEmail: varchar('contact_email', { length: 255 }),
     // Nhân viên kinh doanh phụ trách đơn — vai trò tổ chức, khác `createdBy` (ai bấm nút tạo đơn),
     // nhưng từ khi mọi FK audit đều trỏ `users.id`, hai loại không còn khác nhau về bảng đích nữa.
-    staffId: uuid('staff_id').references(() => users.id, {
+    assignedUserId: uuid('assigned_user_id').references(() => users.id, {
       onDelete: 'set null',
     }),
     orderDate: date('order_date', { mode: 'date' }).notNull(),
     dueDate: date('due_date', { mode: 'date' }),
-    deliveryAddress: varchar('delivery_address', { length: 500 }),
+    // Người nhận hàng thật — có thể khác khách hàng đặt đơn (giao qua đại lý/đối tác).
+    consigneeAddress: varchar('consignee_address', { length: 500 }),
     paymentTerm: paymentTermEnum('payment_term'),
     currency: currencyEnum('currency').notNull().default(Currency.VND),
     exchangeRate: numeric('exchange_rate', {
@@ -195,7 +193,7 @@ export const orders = pgTable(
   },
   (table) => [
     index('idx_orders_client_id').on(table.clientId),
-    index('idx_orders_staff_id').on(table.staffId),
+    index('idx_orders_assigned_user_id').on(table.assignedUserId),
     index('idx_orders_created_by').on(table.createdBy),
     index('idx_orders_status')
       .on(table.status)
@@ -208,22 +206,25 @@ export const ordersRelations = relations(orders, ({ one, many }) => ({
     fields: [orders.clientId],
     references: [clients.id],
   }),
-  staff: one(users, {
-    fields: [orders.staffId],
+  assignedUser: one(users, {
+    fields: [orders.assignedUserId],
     references: [users.id],
   }),
-  creator: one(users, {
+  creatorBy: one(users, {
     fields: [orders.createdBy],
     references: [users.id],
   }),
-  approver: one(users, {
+  approverBy: one(users, {
     fields: [orders.approvedBy],
     references: [users.id],
   }),
-  rejecter: one(users, {
+  rejecterBy: one(users, {
     fields: [orders.rejectedBy],
     references: [users.id],
   }),
   items: many(orderItems),
-  attachments: many(orderAttachments),
+  files: many(orderFiles),
+  payments: many(orderPayments),
 }));
+
+export type OrderSelect = typeof orders.$inferSelect;

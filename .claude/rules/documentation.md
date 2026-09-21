@@ -33,14 +33,14 @@ Reference done right: `OrdersService.approveOrder`, `ProductionOrdersService.see
 3. **The name lies** — the function does more/less/other than its name suggests (`getStockLevels`
    must exclude the order under evaluation itself; `updateProductionOrder` is partial, not
    replace-all).
-4. **Deliberate limitation** — a choice that looks like a bug but is a decision (raw `SUM`, not BOM
-   explosion; deliberately no `WITH RECURSIVE`).
+4. **Deliberate limitation** — a choice that looks like a bug but is a decision (deliberately no
+   `WITH RECURSIVE`, in-memory tree walk instead).
 
 ### MUST NOT comment — closed list
 
 - Controllers, DTOs (**both class and field**), `*.module.ts`, `index.ts`, seeds.
 - Single-table CRUD: `getXs`/`getX`/`createX`/`updateX`/`deleteX`.
-- Standard check helpers: `ensureXExists`, `validateXUniqueness`, `getXDetail`.
+- Standard check helpers: `ensureXExists`, `validateXUniqueness`.
 - Private select/mapper helpers.
 - Anything that only restates the function name, the signature, or a rule already in `docs/`.
 

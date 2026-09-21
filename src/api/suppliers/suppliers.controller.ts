@@ -13,11 +13,12 @@ import { ApiTags } from '@nestjs/swagger';
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { CurrentUser } from '../../decorators/current-user.decorator';
-import { ApiAuth, ApiPublic } from '../../decorators/http.decorators';
+import { ApiAuth } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
 import { CreateSupplierReqDto } from './dto/create-supplier.req.dto';
 import { GetSuppliersReqDto } from './dto/get-suppliers.req.dto';
+import { PageSupplierResDto } from './dto/page-supplier.res.dto';
 import { SupplierResDto } from './dto/supplier.res.dto';
 import { SupplierStatsResDto } from './dto/supplier-stats.res.dto';
 import { UpdateSupplierReqDto } from './dto/update-supplier.req.dto';
@@ -30,20 +31,20 @@ export class SuppliersController {
 
   @Get()
   @Permissions('suppliers:read')
-  @ApiPublic({
-    type: SupplierResDto,
+  @ApiAuth({
+    type: PageSupplierResDto,
     summary: 'List suppliers',
     isPaginated: true,
   })
   getSuppliers(
     @Query() reqDto: GetSuppliersReqDto,
-  ): Promise<OffsetPaginatedDto<SupplierResDto>> {
+  ): Promise<OffsetPaginatedDto<PageSupplierResDto>> {
     return this.suppliersService.getSuppliers(reqDto);
   }
 
   @Get('stats')
   @Permissions('suppliers:read')
-  @ApiPublic({
+  @ApiAuth({
     type: SupplierStatsResDto,
     summary: 'Get supplier stats (total / active / paused / stopped)',
   })
@@ -53,14 +54,14 @@ export class SuppliersController {
 
   @Get(':supplierId')
   @Permissions('suppliers:read')
-  @ApiPublic({
+  @ApiAuth({
     type: SupplierResDto,
     summary: 'Get supplier detail',
   })
-  getSupplierDetail(
+  getSupplier(
     @UUIDParam('supplierId') supplierId: string,
   ): Promise<SupplierResDto> {
-    return this.suppliersService.getSupplierDetail(supplierId);
+    return this.suppliersService.getSupplier(supplierId);
   }
 
   @Post()

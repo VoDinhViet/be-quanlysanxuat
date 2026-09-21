@@ -3,6 +3,7 @@ import { Exclude, Expose } from 'class-transformer';
 import { DepartmentResDto } from '../../departments/dto/department.res.dto';
 import {
   ClassField,
+  NumberField,
   StringField,
   UUIDField,
 } from '../../../decorators/field.decorators';
@@ -26,4 +27,8 @@ export class PositionResDto {
     description: 'Department this position belongs to',
   })
   department!: DepartmentResDto;
+
+  @Expose()
+  @NumberField({ description: 'Number of staff currently in this position' })
+  employeeCount!: number;
 }

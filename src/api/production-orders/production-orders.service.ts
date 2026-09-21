@@ -1,4 +1,4 @@
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, StreamableFile } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import {
   and,
@@ -13,15 +13,22 @@ import {
   lte,
   or,
 } from 'drizzle-orm';
+import { DateTime } from 'luxon';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
+import {
+  DocumentType,
+  generateDocumentSequence,
+} from '../../common/utils/document-sequence.util';
+import { buildXlsxBuffer, XLSX_MIME } from '../../common/utils/excel.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
   clients,
+  items as itemsTable,
   orderItems,
   OrderItemStatus,
   orders,
@@ -31,22 +38,27 @@ import {
   ProductionOrderLogAction,
   productionOrders,
   ProductionOrderStatus,
-  products,
+  users,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { InventoryService } from '../inventory/inventory.service';
 import { ProductionJobsService } from '../production-jobs/production-jobs.service';
+import { ExportProductionOrdersReqDto } from './dto/export-production-orders.req.dto';
 import { GetProductionOrderLogsReqDto } from './dto/get-production-order-logs.req.dto';
 import { GetProductionOrdersReqDto } from './dto/get-production-orders.req.dto';
 import { ProductionOrderDetailResDto } from './dto/production-order-detail.res.dto';
 import { ProductionOrderLogResDto } from './dto/production-order-log.res.dto';
 import { ProductionOrderResDto } from './dto/production-order.res.dto';
+import { UpdateProductionOrderNoteReqDto } from './dto/update-production-order-note.req.dto';
 import { UpdateProductionOrderReqDto } from './dto/update-production-order.req.dto';
+import { UpdateProductionOrderSignedFileReqDto } from './dto/update-production-order-signed-file.req.dto';
+import { FilesService } from '../files/files.service';
+import { PRODUCTION_ORDER_EXPORT_COLUMNS } from './production-orders.export';
 
 /** Số liệu đã chốt/tính toán của một dòng PO — hình dạng chung cho mọi hàm đọc/ghi bên dưới. */
 interface PlanItem {
   orderItemId: string;
-  productId: string;
+  itemId: string;
   quantity: number;
   orderQty: number;
   onHandQty: number;
@@ -59,10 +71,13 @@ interface PlanItem {
  * ghi log: `docs/domains/production.md`, `docs/workflows/production-order-approval.md`. */
 @Injectable()
 export class ProductionOrdersService {
+  private static readonly MAX_EXPORT_ROWS = 10_000;
+
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly inventoryService: InventoryService,
     private readonly productionJobsService: ProductionJobsService,
+    private readonly filesService: FilesService,
   ) {}
 
   async getProductionOrders(
@@ -80,8 +95,8 @@ export class ProductionOrdersService {
           )
         : undefined,
       reqDto.clientId ? eq(orders.clientId, reqDto.clientId) : undefined,
-      reqDto.fromDate ? gte(orders.dueDate, reqDto.fromDate) : undefined,
-      reqDto.toDate ? lte(orders.dueDate, reqDto.toDate) : undefined,
+      reqDto.startDate ? gte(orders.dueDate, reqDto.startDate) : undefined,
+      reqDto.endDate ? lte(orders.dueDate, reqDto.endDate) : undefined,
       reqDto.status ? eq(productionOrders.status, reqDto.status) : undefined,
     );
 
@@ -95,6 +110,7 @@ export class ProductionOrdersService {
           orderDate: orders.orderDate,
           dueDate: orders.dueDate,
           note: orders.note,
+          productionOrderNote: productionOrders.note,
           client: getTableColumns(clients),
           status: productionOrders.status,
         })
@@ -102,7 +118,7 @@ export class ProductionOrdersService {
         .innerJoin(orders, eq(orders.id, productionOrders.orderId))
         .leftJoin(clients, eq(clients.id, orders.clientId))
         .where(where)
-        .orderBy(asc(orders.dueDate), desc(orders.createdAt))
+        .orderBy(desc(productionOrders.createdAt), desc(orders.createdAt))
         .limit(reqDto.limit)
         .offset(reqDto.offset),
       this.db
@@ -112,17 +128,72 @@ export class ProductionOrdersService {
         .where(where),
     ]);
 
-    const items = entities.map((row) => ({
+    const rows = entities.map((row) => ({
       ...row,
       client: row.client?.id ? row.client : null,
     }));
 
     return new OffsetPaginatedDto(
-      plainToInstance(ProductionOrderResDto, items, {
+      plainToInstance(ProductionOrderResDto, rows, {
         excludeExtraneousValues: true,
       }),
       new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
     );
+  }
+
+  /** Cắt im lặng ở `MAX_EXPORT_ROWS`, không báo lỗi khi vượt trần. Bộ lọc tách riêng khỏi
+   * `getProductionOrders` dù trông giống nhau — hai route độc lập, sửa filter route nào chỉ route
+   * đó đổi. */
+  async exportProductionOrders(
+    reqDto: ExportProductionOrdersReqDto,
+  ): Promise<StreamableFile> {
+    const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
+    const where = and(
+      isNull(orders.deletedAt),
+      keyword
+        ? or(
+            unaccentILike(orders.code, keyword),
+            unaccentILike(productionOrders.code, keyword),
+          )
+        : undefined,
+      reqDto.clientId ? eq(orders.clientId, reqDto.clientId) : undefined,
+      reqDto.startDate ? gte(orders.dueDate, reqDto.startDate) : undefined,
+      reqDto.endDate ? lte(orders.dueDate, reqDto.endDate) : undefined,
+      reqDto.status ? eq(productionOrders.status, reqDto.status) : undefined,
+    );
+
+    const rows = await this.db
+      .select({
+        code: productionOrders.code,
+        orderCode: orders.code,
+        clientName: clients.name,
+        orderDate: orders.orderDate,
+        dueDate: orders.dueDate,
+        status: productionOrders.status,
+        note: orders.note,
+        productionOrderNote: productionOrders.note,
+        creatorName: users.fullName,
+        createdAt: productionOrders.createdAt,
+      })
+      .from(productionOrders)
+      .innerJoin(orders, eq(orders.id, productionOrders.orderId))
+      .leftJoin(clients, eq(clients.id, orders.clientId))
+      .leftJoin(users, eq(users.id, productionOrders.createdBy))
+      .where(where)
+      .orderBy(desc(productionOrders.createdAt), desc(orders.createdAt))
+      .limit(ProductionOrdersService.MAX_EXPORT_ROWS);
+
+    const buffer = await buildXlsxBuffer(
+      'Lệnh sản xuất',
+      PRODUCTION_ORDER_EXPORT_COLUMNS,
+      rows,
+    );
+    const fileName = `lenh-san-xuat-${DateTime.now().toFormat('yyyyLLdd-HHmm')}.xlsx`;
+
+    return new StreamableFile(buffer, {
+      type: XLSX_MIME,
+      disposition: `attachment; filename="${fileName}"`,
+    });
   }
 
   /** Snapshot dòng quyết định sản xuất đã ghi lúc duyệt PO — query thẳng trên `production_orders`
@@ -135,17 +206,28 @@ export class ProductionOrdersService {
       with: {
         order: { with: { client: true } },
         items: {
-          with: { product: { with: { unit: true, imageFile: true } } },
+          with: {
+            item: {
+              with: {
+                unit: true,
+                imageFile: true,
+                files: { with: { file: true } },
+              },
+            },
+          },
         },
+        signedFile: true,
       },
     });
     if (!productionOrder) {
       throw new AppException(ErrorCode.E081, HttpStatus.NOT_FOUND);
     }
 
-    return plainToInstance(ProductionOrderDetailResDto, productionOrder, {
-      excludeExtraneousValues: true,
-    });
+    return plainToInstance(
+      ProductionOrderDetailResDto,
+      { ...productionOrder, productionOrderNote: productionOrder.note },
+      { excludeExtraneousValues: true },
+    );
   }
 
   /** Sửa số lượng sản xuất từng dòng, nhập tay — chỉ khi LSX còn `PENDING` (`E084`). Partial: chỉ
@@ -160,14 +242,14 @@ export class ProductionOrdersService {
       columns: { id: true, status: true },
       where: eq(productionOrders.id, productionOrdersId),
       with: {
-        order: { columns: { deletedAt: true } },
+        order: { columns: { deletedAt: true, status: true } },
         items: {
           columns: {
             id: true,
             orderItemId: true,
             orderQty: true,
             quantity: true,
-            productId: true,
+            itemId: true,
           },
         },
       },
@@ -175,11 +257,12 @@ export class ProductionOrdersService {
     if (!productionOrder) {
       throw new AppException(ErrorCode.E081, HttpStatus.NOT_FOUND);
     }
-    // `orderId` là FK bắt buộc, đúng 1 dòng — Drizzle suy sai kiểu `order` thành one|many sau khi
-    // schema có thêm nhiều quan hệ trỏ `users`, ép lại cho đúng thực tế thay vì đổi logic.
-    const order = productionOrder.order as { deletedAt: Date | null };
+    const order = productionOrder.order;
     if (order.deletedAt) {
       throw new AppException(ErrorCode.E057, HttpStatus.NOT_FOUND);
+    }
+    if (order.status !== OrderStatus.AWAITING_PRODUCTION) {
+      throw new AppException(ErrorCode.E076, HttpStatus.CONFLICT);
     }
     if (productionOrder.status !== ProductionOrderStatus.PENDING) {
       throw new AppException(ErrorCode.E084, HttpStatus.CONFLICT);
@@ -195,7 +278,7 @@ export class ProductionOrdersService {
       }
       return {
         id: row.id,
-        productId: row.productId,
+        itemId: row.itemId,
         oldQuantity: row.quantity,
         quantity: item.quantity,
         fromStockQty: Math.max(0, row.orderQty - item.quantity),
@@ -203,21 +286,19 @@ export class ProductionOrdersService {
     });
 
     if (updates.length) {
-      // Tên SP chỉ để dựng nội dung log — 1 query gộp theo productId duy nhất, không lặp theo dòng.
-      const productIds = [
-        ...new Set(updates.map((update) => update.productId)),
-      ];
-      const productRows = await this.db
-        .select({ id: products.id, name: products.name })
-        .from(products)
-        .where(inArray(products.id, productIds));
-      const nameByProductId = new Map(
-        productRows.map((product) => [product.id, product.name]),
+      // Tên item chỉ để dựng nội dung log — 1 query gộp theo itemId duy nhất, không lặp theo dòng.
+      const itemIds = [...new Set(updates.map((update) => update.itemId))];
+      const itemRows = await this.db
+        .select({ id: itemsTable.id, name: itemsTable.name })
+        .from(itemsTable)
+        .where(inArray(itemsTable.id, itemIds));
+      const nameByItemId = new Map(
+        itemRows.map((item) => [item.id, item.name]),
       );
       const content = `Cập nhật SL sản xuất: ${updates
         .map(
           (update) =>
-            `${nameByProductId.get(update.productId) ?? update.productId} ${update.oldQuantity} → ${update.quantity}`,
+            `${nameByItemId.get(update.itemId) ?? update.itemId} ${update.oldQuantity} → ${update.quantity}`,
         )
         .join('; ')}`;
 
@@ -275,31 +356,37 @@ export class ProductionOrdersService {
       throw new AppException(ErrorCode.E076, HttpStatus.CONFLICT);
     }
 
-    // Gộp SL theo sản phẩm cho Job — chỉ giữ SL > 0 (khớp `chk_production_jobs_quantity`), theo
-    // số liệu đã lưu (kể cả đã sửa tay qua `updateProductionOrder`).
-    const items = await this.db
+    // Gộp SL theo item cho Job — chỉ giữ SL > 0 (khớp `chk_production_jobs_quantity`), theo số
+    // liệu đã lưu (kể cả đã sửa tay qua `updateProductionOrder`).
+    const planRows = await this.db
       .select({
-        productId: productionOrderItems.productId,
+        itemId: productionOrderItems.itemId,
         quantity: productionOrderItems.quantity,
       })
       .from(productionOrderItems)
       .where(eq(productionOrderItems.productionOrderId, productionOrdersId));
-    const quantityByProduct = new Map<string, number>();
-    for (const item of items) {
-      if (item.quantity > 0) {
-        quantityByProduct.set(
-          item.productId,
-          (quantityByProduct.get(item.productId) ?? 0) + item.quantity,
+    const quantityByItem = new Map<string, number>();
+    for (const row of planRows) {
+      if (row.quantity > 0) {
+        quantityByItem.set(
+          row.itemId,
+          (quantityByItem.get(row.itemId) ?? 0) + row.quantity,
         );
       }
     }
+
+    const jobCount = quantityByItem.size;
+    const targetStatus =
+      jobCount > 0
+        ? ProductionOrderStatus.APPROVED
+        : ProductionOrderStatus.COMPLETED;
 
     await this.db.transaction(async (tx) => {
       const code = await this.generateProductionOrderCode(tx);
       await tx
         .update(productionOrders)
         .set({
-          status: ProductionOrderStatus.APPROVED,
+          status: targetStatus,
           code,
           approvedBy: userId,
           approvedAt: new Date(),
@@ -309,21 +396,25 @@ export class ProductionOrdersService {
         .update(orders)
         .set({ status: OrderStatus.IN_PROGRESS })
         .where(eq(orders.id, productionOrder.orderId));
-      await this.productionJobsService.createJobs(
-        tx,
-        productionOrdersId,
-        quantityByProduct,
-      );
+      if (jobCount > 0) {
+        await this.productionJobsService.createJobs(
+          tx,
+          productionOrdersId,
+          quantityByItem,
+          userId,
+        );
+      }
 
-      const jobCount = quantityByProduct.size;
       const content =
         jobCount > 0
           ? `Duyệt LSX ${code}, sinh ${jobCount} Job`
-          : `Duyệt LSX ${code}`;
+          : `Duyệt LSX ${code} (100% xuất từ kho, tự động hoàn thành LSX)`;
       await this.logAction(
         tx,
         productionOrdersId,
-        ProductionOrderLogAction.APPROVED,
+        jobCount > 0
+          ? ProductionOrderLogAction.APPROVED
+          : ProductionOrderLogAction.COMPLETED,
         content,
         userId,
       );
@@ -332,16 +423,17 @@ export class ProductionOrdersService {
     return this.getProductionOrdersById(productionOrdersId);
   }
 
-  /** Khuôn `OrdersService.generateOrderCode`/`MaterialsService.generateMaterialCode` — vẫn TOCTOU
-   * như mọi generator khác trong repo, unique constraint trên `code` là chốt chặn thật. */
+  /** Khuôn `OrdersService.generateOrderCode`/`ItemsService.generateItemCode` — cấp số qua
+   * `generateDocumentSequence` (atomic `INSERT ... ON CONFLICT DO UPDATE`), không TOCTOU. */
   private async generateProductionOrderCode(
     tx: DbTransaction,
   ): Promise<string> {
-    const [totalRows] = await tx
-      .select({ total: count() })
-      .from(productionOrders)
-      .where(eq(productionOrders.status, ProductionOrderStatus.APPROVED));
-    return `LSX${String((totalRows?.total ?? 0) + 1).padStart(4, '0')}`;
+    const sequence = await generateDocumentSequence(
+      tx,
+      DocumentType.PRODUCTION_ORDER,
+    );
+
+    return `LSX${String(sequence).padStart(4, '0')}`;
   }
 
   /** Đề xuất SX ban đầu cho mọi dòng NORMAL của một PO, tại thời điểm duyệt — công thức ở
@@ -352,7 +444,7 @@ export class ProductionOrdersService {
     const normalOrderItems = await this.db
       .select({
         id: orderItems.id,
-        productId: orderItems.productId,
+        itemId: orderItems.itemId,
         quantity: orderItems.quantity,
       })
       .from(orderItems)
@@ -367,20 +459,18 @@ export class ProductionOrdersService {
       return [];
     }
 
-    // Gom productId duy nhất — 1 query tồn kho cho mọi sản phẩm thay vì mỗi dòng PO một query.
-    const productIds = [
-      ...new Set(normalOrderItems.map((item) => item.productId)),
-    ];
+    // Gom itemId duy nhất — 1 query tồn kho cho mọi item thay vì mỗi dòng PO một query.
+    const itemIds = [...new Set(normalOrderItems.map((item) => item.itemId))];
     // `excludeOrderId = orderId`: PO đang xét đã tự giữ chỗ trong `reserved`, phải loại trừ chính
     // nó ra để không bị trừ nhu cầu của nó hai lần (xem docs/domains/production.md).
-    const stockByProduct = await this.inventoryService.getStockLevels(
-      productIds,
+    const stockByItem = await this.inventoryService.getStockLevels(
+      itemIds,
       orderId,
     );
 
     return normalOrderItems.map((item) => {
-      // Sản phẩm chưa từng có phiếu kho nào → coi như tồn 0, không phải lỗi.
-      const stock = stockByProduct.get(item.productId) ?? {
+      // Item chưa từng có phiếu kho nào → coi như tồn 0, không phải lỗi.
+      const stock = stockByItem.get(item.itemId) ?? {
         onHand: 0,
         reserved: 0,
       };
@@ -392,7 +482,7 @@ export class ProductionOrdersService {
 
       return {
         orderItemId: item.id,
-        productId: item.productId,
+        itemId: item.itemId,
         quantity: suggested,
         orderQty: item.quantity,
         onHandQty: stock.onHand,
@@ -426,7 +516,7 @@ export class ProductionOrdersService {
         items.map((item) => ({
           productionOrderId: createdProductionOrders.id,
           orderItemId: item.orderItemId,
-          productId: item.productId,
+          itemId: item.itemId,
           quantity: item.quantity,
           orderQty: item.orderQty,
           onHandQty: item.onHandQty,
@@ -445,7 +535,7 @@ export class ProductionOrdersService {
     );
   }
 
-  /** `performer` null nếu credential đã bị xoá; `E081` nếu header không tồn tại. */
+  /** `performedBy` null nếu credential đã bị xoá; `E081` nếu header không tồn tại. */
   async getProductionOrderLogs(
     productionOrdersId: string,
     reqDto: GetProductionOrderLogsReqDto,
@@ -462,7 +552,7 @@ export class ProductionOrdersService {
     const [rows, countRows] = await Promise.all([
       this.db.query.productionOrderLogs.findMany({
         where,
-        with: { performer: true },
+        with: { performerBy: true },
         orderBy: desc(productionOrderLogs.createdAt),
         limit: reqDto.limit,
         offset: reqDto.offset,
@@ -476,6 +566,78 @@ export class ProductionOrdersService {
       }),
       new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
     );
+  }
+
+  /** Sửa được ở mọi trạng thái LSX — khác `updateProductionOrder` (chỉ `PENDING`, `E084`), vì đây
+   * chỉ là annotation nội bộ, không đụng số liệu sản xuất đã chốt. */
+
+  /** Cập nhật hoặc xóa file LSX đã ký (scan/PDF) — cho phép ở mọi trạng thái của LSX. */
+  async updateProductionOrderSignedFile(
+    productionOrdersId: string,
+    reqDto: UpdateProductionOrderSignedFileReqDto,
+    userId: string,
+  ): Promise<ProductionOrderDetailResDto> {
+    const productionOrder = await this.db.query.productionOrders.findFirst({
+      columns: { id: true, code: true },
+      where: eq(productionOrders.id, productionOrdersId),
+    });
+    if (!productionOrder) {
+      throw new AppException(ErrorCode.E081, HttpStatus.NOT_FOUND);
+    }
+
+    if (reqDto.signedFileId) {
+      await this.filesService.linkFiles([reqDto.signedFileId]);
+    }
+
+    await this.db.transaction(async (tx) => {
+      await tx
+        .update(productionOrders)
+        .set({ signedFileId: reqDto.signedFileId ?? null })
+        .where(eq(productionOrders.id, productionOrdersId));
+
+      const logContent = reqDto.signedFileId
+        ? 'Đã tải lên và lưu file LSX đã ký'
+        : 'Đã xóa file LSX đã ký';
+
+      await this.logAction(
+        tx,
+        productionOrdersId,
+        ProductionOrderLogAction.SIGNED_FILE_UPDATED,
+        logContent,
+        userId,
+      );
+    });
+
+    return this.getProductionOrdersById(productionOrdersId);
+  }
+
+  async updateProductionOrderNote(
+    productionOrdersId: string,
+    reqDto: UpdateProductionOrderNoteReqDto,
+    userId: string,
+  ): Promise<void> {
+    const exists = await this.db.query.productionOrders.findFirst({
+      columns: { id: true },
+      where: eq(productionOrders.id, productionOrdersId),
+    });
+    if (!exists) {
+      throw new AppException(ErrorCode.E081, HttpStatus.NOT_FOUND);
+    }
+
+    await this.db.transaction(async (tx) => {
+      await tx
+        .update(productionOrders)
+        .set({ note: reqDto.note })
+        .where(eq(productionOrders.id, productionOrdersId));
+
+      await this.logAction(
+        tx,
+        productionOrdersId,
+        ProductionOrderLogAction.NOTE_UPDATED,
+        'Cập nhật ghi chú LSX',
+        userId,
+      );
+    });
   }
 
   /** Ghi 1 dòng lịch sử thao tác — luôn gọi trong transaction của hành động đang log, không tách

@@ -1,12 +1,5 @@
 import { registerAs } from '@nestjs/config';
-import {
-  IsEnum,
-  IsInt,
-  IsOptional,
-  IsString,
-  MinLength,
-  Min,
-} from 'class-validator';
+import { IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator';
 import { join } from 'path';
 
 import { StorageDriver, UploadConfig } from './upload-config.type';
@@ -31,18 +24,6 @@ class EnvironmentVariablesValidator {
   @IsOptional()
   UPLOAD_MAX_DOCUMENT_SIZE?: number;
 
-  // Deliberately NOT @IsOptional(), unlike every other key here. File bytes are reachable only
-  // through a URL signed with this secret, so a missing or guessable value means anyone can mint a
-  // valid download link — i.e. the access control does nothing. Fail at boot instead.
-  @IsString()
-  @MinLength(32)
-  UPLOAD_URL_SECRET!: string;
-
-  @IsInt()
-  @Min(1)
-  @IsOptional()
-  UPLOAD_URL_TTL?: number;
-
   @IsInt()
   @Min(1)
   @IsOptional()
@@ -61,10 +42,6 @@ export default registerAs<UploadConfig>('upload', () => {
     maxDocumentSize: process.env.UPLOAD_MAX_DOCUMENT_SIZE
       ? parseInt(process.env.UPLOAD_MAX_DOCUMENT_SIZE, 10)
       : 10 * 1024 * 1024,
-    urlSecret: process.env.UPLOAD_URL_SECRET as string,
-    urlTtl: process.env.UPLOAD_URL_TTL
-      ? parseInt(process.env.UPLOAD_URL_TTL, 10)
-      : 3600,
     // Must comfortably outlast the longest a user might sit on a half-filled form with an image
     // already uploaded — sweeping too eagerly deletes a file the form is about to reference.
     orphanTtl: process.env.UPLOAD_ORPHAN_TTL

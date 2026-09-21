@@ -34,3 +34,5 @@ export const positionsRelations = relations(positions, ({ one }) => ({
     references: [departments.id],
   }),
 }));
+
+export type PositionSelect = typeof positions.$inferSelect;

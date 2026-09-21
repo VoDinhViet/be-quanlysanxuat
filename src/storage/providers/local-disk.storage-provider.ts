@@ -1,14 +1,13 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createReadStream } from 'fs';
 import { mkdir, rm, writeFile } from 'fs/promises';
 import { dirname, join } from 'path';
-import type { Readable } from 'stream';
 
 import { AllConfigType } from '../../config/config.type';
 import { StorageProvider } from '../storage-provider.interface';
 
-/** Stores bytes on the local filesystem under `upload.dir`, streamed back by `GET /files/:id/download`. */
+/** Stores bytes on the local filesystem under `upload.dir`, served back by `ServeStaticModule`
+ *  at the domain root (see `app.module.ts`). */
 @Injectable()
 export class LocalDiskStorageProvider implements StorageProvider {
   constructor(
@@ -20,10 +19,6 @@ export class LocalDiskStorageProvider implements StorageProvider {
     const destination = join(this.getUploadDir(), key);
     await mkdir(dirname(destination), { recursive: true });
     await writeFile(destination, buffer);
-  }
-
-  createReadStream(key: string): Readable {
-    return createReadStream(join(this.getUploadDir(), key));
   }
 
   async delete(key: string): Promise<void> {
