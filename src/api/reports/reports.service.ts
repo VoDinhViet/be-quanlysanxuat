@@ -15,9 +15,15 @@ import {
 import type { Column, SQL } from 'drizzle-orm';
 
 import { exclusiveEndOfDay } from '../../common/utils/date-range.util';
+import {
+  PermissionCode,
+  SUPER_PERMISSION,
+} from '../../constants/permission.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database } from '../../database/database.type';
 import {
+  InventoryRequisitionStatus,
+  inventoryRequisitions,
   IqcResult,
   orders,
   OrderStatus,
@@ -27,7 +33,12 @@ import {
   OutsourcingOrderStatus,
   ProductionJobStatus,
   productionJobs,
+  ProductionOrderStatus,
   productionOrders,
+  purchaseQuotations,
+  PurchaseQuotationStatus,
+  purchaseRequests,
+  PurchaseRequestStatus,
   QcKind,
   QualityInspectionDecision,
   QualityInspectionStatus,
@@ -36,11 +47,13 @@ import {
   qualityInspections,
   suppliers,
 } from '../../database/schemas';
+import { PermissionsService } from '../auth/permissions.service';
 import { GetProductionProgressReqDto } from './dto/get-production-progress.req.dto';
 import { GetReportStatsReqDto } from './dto/get-report-stats.req.dto';
 import { JobDueDateResDto } from './dto/job-due-date.res.dto';
 import { OpenNcrResDto } from './dto/open-ncr.res.dto';
 import { OutsourcingOrderDueDateResDto } from './dto/outsourcing-order-due-date.res.dto';
+import { PendingApprovalsResDto } from './dto/pending-approvals.res.dto';
 import { ProductionProgressResDto } from './dto/production-progress.res.dto';
 import { QcPassRateResDto } from './dto/qc-pass-rate.res.dto';
 import { ReportAlertsResDto } from './dto/report-alerts.res.dto';
@@ -126,7 +139,10 @@ export class ReportsService {
   private static readonly OPEN_NCR_LIMIT = 5;
   private static readonly QC_PASS_RATE_WINDOW_DAYS = 7;
 
-  constructor(@Inject(DRIZZLE) private readonly db: Database) {}
+  constructor(
+    @Inject(DRIZZLE) private readonly db: Database,
+    private readonly permissionsService: PermissionsService,
+  ) {}
 
   async getStats(reqDto: GetReportStatsReqDto): Promise<ReportStatsResDto> {
     const [ordersStats, jobsStats, qcStats] = await Promise.all([
@@ -579,6 +595,122 @@ export class ReportsService {
           ),
         ),
       );
+
+    return row.count;
+  }
+
+  // Mỗi field chỉ tính khi user có quyền approve module đó — không có quyền thì trả 0 mà không chạy
+  // query đếm, cho badge sidebar (`GET /reports/pending-approvals`).
+  async getPendingApprovals(
+    credentialId: string,
+  ): Promise<PendingApprovalsResDto> {
+    const granted =
+      await this.permissionsService.getPermissionCodes(credentialId);
+    const canApprove = (permission: PermissionCode) =>
+      granted.includes(SUPER_PERMISSION) || granted.includes(permission);
+
+    const [
+      purchaseRequestsCount,
+      purchaseQuotationsCount,
+      ordersCount,
+      productionOrdersCount,
+      inventoryRequisitionsCount,
+      outboundOrdersCount,
+    ] = await Promise.all([
+      canApprove('purchase-requests:approve')
+        ? this.getPurchaseRequestsPendingCount()
+        : 0,
+      canApprove('purchasing:approve')
+        ? this.getPurchaseQuotationsPendingCount()
+        : 0,
+      canApprove('orders:approve') ? this.getOrdersPendingCount() : 0,
+      canApprove('production:approve')
+        ? this.getProductionOrdersPendingCount()
+        : 0,
+      canApprove('inventory-requisitions:approve')
+        ? this.getInventoryRequisitionsPendingCount()
+        : 0,
+      canApprove('outbound:approve') ? this.getOutboundOrdersPendingCount() : 0,
+    ]);
+
+    return plainToInstance(
+      PendingApprovalsResDto,
+      {
+        purchaseRequests: purchaseRequestsCount,
+        purchaseQuotations: purchaseQuotationsCount,
+        orders: ordersCount,
+        productionOrders: productionOrdersCount,
+        inventoryRequisitions: inventoryRequisitionsCount,
+        outboundOrders: outboundOrdersCount,
+      },
+      { excludeExtraneousValues: true },
+    );
+  }
+
+  private async getPurchaseRequestsPendingCount(): Promise<number> {
+    const [row] = await this.db
+      .select({ count: sql<number>`count(*)`.mapWith(Number) })
+      .from(purchaseRequests)
+      .where(
+        eq(purchaseRequests.status, PurchaseRequestStatus.PENDING_APPROVAL),
+      );
+
+    return row.count;
+  }
+
+  private async getPurchaseQuotationsPendingCount(): Promise<number> {
+    const [row] = await this.db
+      .select({ count: sql<number>`count(*)`.mapWith(Number) })
+      .from(purchaseQuotations)
+      .where(
+        eq(purchaseQuotations.status, PurchaseQuotationStatus.PENDING_APPROVAL),
+      );
+
+    return row.count;
+  }
+
+  private async getOrdersPendingCount(): Promise<number> {
+    const [row] = await this.db
+      .select({ count: sql<number>`count(*)`.mapWith(Number) })
+      .from(orders)
+      .where(
+        and(
+          isNull(orders.deletedAt),
+          eq(orders.status, OrderStatus.PENDING_CONFIRMATION),
+        ),
+      );
+
+    return row.count;
+  }
+
+  private async getProductionOrdersPendingCount(): Promise<number> {
+    const [row] = await this.db
+      .select({ count: sql<number>`count(*)`.mapWith(Number) })
+      .from(productionOrders)
+      .where(eq(productionOrders.status, ProductionOrderStatus.PENDING));
+
+    return row.count;
+  }
+
+  private async getInventoryRequisitionsPendingCount(): Promise<number> {
+    const [row] = await this.db
+      .select({ count: sql<number>`count(*)`.mapWith(Number) })
+      .from(inventoryRequisitions)
+      .where(
+        eq(
+          inventoryRequisitions.status,
+          InventoryRequisitionStatus.PENDING_APPROVAL,
+        ),
+      );
+
+    return row.count;
+  }
+
+  private async getOutboundOrdersPendingCount(): Promise<number> {
+    const [row] = await this.db
+      .select({ count: sql<number>`count(*)`.mapWith(Number) })
+      .from(outboundOrders)
+      .where(eq(outboundOrders.status, OutboundOrderStatus.PENDING_APPROVAL));
 
     return row.count;
   }

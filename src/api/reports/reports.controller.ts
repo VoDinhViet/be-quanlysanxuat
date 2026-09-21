@@ -1,13 +1,16 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 
+import { CurrentUser } from '../../decorators/current-user.decorator';
 import { ApiAuth } from '../../decorators/http.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
+import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
 import { GetProductionProgressReqDto } from './dto/get-production-progress.req.dto';
 import { GetReportStatsReqDto } from './dto/get-report-stats.req.dto';
 import { JobDueDateResDto } from './dto/job-due-date.res.dto';
 import { OpenNcrResDto } from './dto/open-ncr.res.dto';
 import { OutsourcingOrderDueDateResDto } from './dto/outsourcing-order-due-date.res.dto';
+import { PendingApprovalsResDto } from './dto/pending-approvals.res.dto';
 import { ProductionProgressResDto } from './dto/production-progress.res.dto';
 import { QcPassRateResDto } from './dto/qc-pass-rate.res.dto';
 import { ReportAlertsResDto } from './dto/report-alerts.res.dto';
@@ -100,5 +103,17 @@ export class ReportsController {
     @Query() reqDto: GetProductionProgressReqDto,
   ): Promise<ProductionProgressResDto> {
     return this.reportsService.getProductionProgress(reqDto);
+  }
+
+  @Get('pending-approvals')
+  @ApiAuth({
+    type: PendingApprovalsResDto,
+    summary:
+      'Số đếm "chờ duyệt" theo module cho badge sidebar — mỗi field chỉ đếm khi user hiện tại có quyền approve module đó, ngược lại trả 0',
+  })
+  getPendingApprovals(
+    @CurrentUser() user: JwtPayloadType,
+  ): Promise<PendingApprovalsResDto> {
+    return this.reportsService.getPendingApprovals(user.sub);
   }
 }
