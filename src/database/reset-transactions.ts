@@ -29,7 +29,6 @@ const KEEP_TABLES = [
   'files',
   'document_sequences',
   'units',
-  'unit_scopes',
   'item_units',
   'operations',
   'client_groups',

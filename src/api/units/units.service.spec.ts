@@ -1,10 +1,4 @@
-import { HttpStatus } from '@nestjs/common';
-
-import { DocumentType } from '../../common/utils/document-sequence.util';
-import { ErrorCode } from '../../constants/error-code.constant';
 import type { Database } from '../../database/database.type';
-import { UnitScope } from '../../database/schemas';
-import { AppException } from '../../exceptions/app.exception';
 import { UnitsService } from './units.service';
 
 describe('UnitsService', () => {
@@ -28,9 +22,6 @@ describe('UnitsService', () => {
                 }),
               }),
             }),
-            delete: jest.fn().mockReturnValue({
-              where: jest.fn().mockResolvedValue([]),
-            }),
           };
           return await cb(tx);
         },
@@ -47,24 +38,10 @@ describe('UnitsService', () => {
   });
 
   it('should create unit with auto-generated code DVT0001 and not require code in reqDto', async () => {
-    await expect(
-      service.createUnit({
-        name: 'Cuộn',
-        scopes: [UnitScope.CONSUMABLE],
-      }),
-    ).resolves.toBeUndefined();
+    await expect(service.createUnit({ name: 'Cuộn' })).resolves.toBeUndefined();
 
     expect(
       (mockDb.transaction as jest.Mock<Promise<unknown>>).mock.calls.length,
     ).toBe(1);
-  });
-
-  it('should throw E243 if scopes array is empty', async () => {
-    await expect(
-      service.createUnit({
-        name: 'Cuộn',
-        scopes: [],
-      }),
-    ).rejects.toThrow(new AppException(ErrorCode.E243, HttpStatus.BAD_REQUEST));
   });
 });

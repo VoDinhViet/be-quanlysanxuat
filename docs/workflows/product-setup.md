@@ -24,7 +24,7 @@ Các route `GET` của mọi module trong nhóm này đều `@ApiAuth()` — đ�
 
 ## Preconditions
 
-- Tạo item: `unitId` phải đúng scope theo `type` — `PRODUCT` cho FG, `CONSUMABLE` cho CONSUMABLE (`E043`).
+- Tạo item: `unitId` phải tồn tại (`E011`).
 - Thêm node BOM: item gốc tồn tại và không phải CONSUMABLE (`E111`). Hai nhánh theo `type` — Cấp 0
   không tạo được qua route này (không phải một node, không nằm trong `bom_items`):
   - `COMPONENT` (cấu trúc con) — bắt buộc `code`/`name`, không gửi `itemId`; sai shape → `E271`.
@@ -104,7 +104,6 @@ theo nó; BOM, đơn hàng và sản xuất đều nhận item `INACTIVE`.
 
 | Tình huống | Mã |
 | --- | --- |
-| Đơn vị tính sai scope | `E043` |
 | Item gốc của BOM/routing là CONSUMABLE | `E111` |
 | Node CONSUMABLE trỏ tới item không phải CONSUMABLE (kể cả FG) | `E270` |
 | Node COMPONENT sai shape (thiếu `code`/`name`, hoặc kèm `itemId`) | `E271` |

@@ -48,8 +48,8 @@ export const bomTypeEnum = pgEnum('bom_node_type', [
  * - Một node CONSUMABLE là lá bắt buộc — không được có con, không được gắn `bom_operations`
  *   (`BomsService`).
  * - Đúng 1 trong 2 hình dạng, ép bởi `chk_bom_items_node_shape`: `CONSUMABLE` → `itemId` có,
- *   `code`/`name`/`unitId`/`imageFileId` không; `COMPONENT` → ngược lại, `unitId` (ĐVT riêng,
- *   không validate theo `unit_scopes`) và `imageFileId` (ảnh riêng) tuỳ chọn.
+ *   `code`/`name`/`unitId`/`imageFileId` không; `COMPONENT` → ngược lại, `unitId` (ĐVT riêng)
+ *   và `imageFileId` (ảnh riêng) tuỳ chọn.
  */
 export const bomItems = pgTable(
   'bom_items',
@@ -74,8 +74,7 @@ export const bomItems = pgTable(
     // chung. NULL ở `CONSUMABLE` (đọc từ `items` join thay vì lưu ở đây).
     code: varchar('code', { length: 50 }),
     name: varchar('name', { length: 255 }),
-    // Chỉ node `COMPONENT` dùng (không gắn `items` nên không có unit để join) — chọn tự do, không
-    // validate theo `unit_scopes`. NULL bắt buộc ở `CONSUMABLE` (đọc `unit` qua join item).
+    // Chỉ node `COMPONENT` dùng (không gắn `items` nên không có unit để join) — chọn tự do. NULL bắt buộc ở `CONSUMABLE` (đọc `unit` qua join item).
     unitId: uuid('unit_id').references(() => units.id, {
       onDelete: 'restrict',
     }),

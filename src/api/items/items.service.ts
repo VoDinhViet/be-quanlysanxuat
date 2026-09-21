@@ -44,7 +44,6 @@ import {
   routingOperations,
   suppliers,
   units,
-  UnitScope,
   users,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
@@ -239,7 +238,7 @@ export class ItemsService {
       );
     }
 
-    await this.ensureUnitExists(reqDto.unitId, type);
+    await this.ensureUnitExists(reqDto.unitId);
     if (reqDto.clientId) {
       await this.ensureClientExists(reqDto.clientId);
     }
@@ -290,7 +289,7 @@ export class ItemsService {
       );
     }
     if (reqDto.unitId) {
-      await this.ensureUnitExists(reqDto.unitId, reqDto.type ?? existing.type);
+      await this.ensureUnitExists(reqDto.unitId);
     }
     if (reqDto.clientId) {
       await this.ensureClientExists(reqDto.clientId);
@@ -695,26 +694,14 @@ export class ItemsService {
     }
   }
 
-  /** Unit phải tồn tại *và* được đánh dấu dùng được cho loại item này — lọc dropdown qua
-   * `GET /units?scope=...` chỉ là cosmetic, client vẫn post được unit id bất kỳ. */
-  private async ensureUnitExists(
-    unitId: string,
-    type: ItemType,
-  ): Promise<void> {
+  private async ensureUnitExists(unitId: string): Promise<void> {
     const existing = await this.db.query.units.findFirst({
       columns: { id: true },
-      with: { scopes: { columns: { scope: true } } },
       where: eq(units.id, unitId),
     });
 
     if (!existing) {
       throw new AppException(ErrorCode.E011, HttpStatus.NOT_FOUND);
-    }
-
-    const requiredScope =
-      type === ItemType.CONSUMABLE ? UnitScope.CONSUMABLE : UnitScope.PRODUCT;
-    if (!existing.scopes.some(({ scope }) => scope === requiredScope)) {
-      throw new AppException(ErrorCode.E043, HttpStatus.BAD_REQUEST);
     }
   }
 

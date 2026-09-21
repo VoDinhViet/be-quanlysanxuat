@@ -8,7 +8,6 @@ export * from './clients/clients';
 export * from './clients/client-contacts';
 export * from './operations';
 export * from './units/units';
-export * from './units/unit-scopes';
 export * from './items/items';
 export * from './items/item-files';
 export * from './items/item-units';

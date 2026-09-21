@@ -69,9 +69,8 @@ hàn+2 ốc, vị trí khác thì sơn, không cần ốc.
 
 **SL node phải nguyên nếu là `COMPONENT`, được phép lẻ nếu là `CONSUMABLE`** (`ensureQuantityValid`, `E055`).
 
-**ĐVT dùng chung, không thuộc riêng `items`.** `units` — `unit_scopes` map scope theo `type`
-(`CONSUMABLE`↔CONSUMABLE, `PRODUCT`↔FG, `E043` sai scope). Một unit không còn scope nào là unit chết — CRUD
-`units` ghi/xoá cả 2 bảng trong 1 transaction. Node `COMPONENT` không có ĐVT riêng (không phải item).
+**ĐVT dùng chung, không thuộc riêng `items`.** `units` dùng được cho mọi loại item — không còn phân
+scope theo `type`. Node `COMPONENT` không có ĐVT riêng (không phải item).
 
 **`item_units` khai đơn vị phụ + hệ số quy đổi tham khảo ra đơn vị gốc (`items.unitId`) của riêng
 item đó** — mount `/items/:itemId/units`. Dòng phiếu kho chỉ mặc định `unitId` hiển thị từ đây khi
@@ -97,7 +96,7 @@ dùng nhập `revision` mới cho bản sao. Clone chỉ FG (`E110` nếu CONSUM
 | `bom_operations` | Công đoạn as-used của node `COMPONENT` — `bomItemId NOT NULL` |
 | `routing_operations` | Công đoạn as-used của Cấp 0 — `bomId NOT NULL`, bảng riêng, không qua `bom_items` |
 | `operations` | Danh mục công đoạn gốc, full CRUD — `docs/domains/partners.md` |
-| `units` / `unit_scopes` | ĐVT + scope dùng được, ghi/xoá theo cặp |
+| `units` | ĐVT dùng chung cho mọi loại item |
 | `item_units` | Đơn vị phụ + hệ số quy đổi ra đơn vị gốc, riêng theo từng item |
 
 ## Lifecycle
@@ -132,7 +131,7 @@ tham chiếu.
   index theo `parent_id IS NULL`/`IS NOT NULL` (`uq_bom_items_bom_item_no_parent`,
   `uq_bom_items_bom_parent_item` — Postgres coi NULL ≠ NULL qua `=` nên cần tách), cộng
   `ensureBomItemNotDuplicate` → `E245` ở service (chỉ chạy khi thêm node CONSUMABLE).
-- ĐVT của item phải đúng scope theo `type` (`E043`). `POST /items/:itemId/copy` chặn CONSUMABLE (`E110`).
+- `POST /items/:itemId/copy` chặn CONSUMABLE (`E110`).
 - `GET /items/export` xuất Excel cùng bộ lọc `GET /items`; `type` là mảng CSV (`?type=FG` hay
   `?type=CONSUMABLE`) — cách duy nhất phân biệt xuất thành phẩm (FE trang Sản phẩm) hay vật tư (FE trang
   Vật tư), cả hai cùng gọi 1 endpoint. Không có cột giá — `items` không lưu giá. Trần 10.000 dòng,
