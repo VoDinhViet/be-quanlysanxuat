@@ -1,0 +1,1 @@
+ALTER TYPE "public"."inventory_document_status" ADD VALUE 'IQC_COMPLETED' BEFORE 'PENDING_RECEIPT';

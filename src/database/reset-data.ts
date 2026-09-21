@@ -27,7 +27,6 @@ const KEEP_TABLES = [
   'item_files',
   'item_units',
   'units',
-  'unit_scopes',
   'operations',
   'suppliers',
   'supplier_groups',

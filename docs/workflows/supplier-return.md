@@ -59,7 +59,7 @@ là bên xác nhận vật lý, khác vai trò với QC.
      từng vào `inventory_balances` (`docs/decisions/wip-not-stocked.md`), kiểm ca này **trước**.
    - Còn lại, đọc phiếu nhập liên quan (nếu có): đã `POSTED` thì trừ tồn thật qua
      `InventoryPostingService.postDocument` (`referenceType: SUPPLIER_RETURN`, `signedQuantity` âm,
-     `type: ISSUE`); còn `DRAFT`/`PENDING_IQC`/`PENDING_RECEIPT` thì **bỏ qua** — hàng chưa từng
+     `type: ISSUE`); còn `DRAFT`/`PENDING_IQC`/`IQC_COMPLETED`/`PENDING_RECEIPT` thì **bỏ qua** — hàng chưa từng
      thật sự vào `inventory_balances` (IQC chạy trước `post` phiếu nhập), trừ vào đó sẽ trừ vào tồn
      chưa từng có. Không có phiếu nhập/OS-IN liên quan (IQC tạo tay) → luôn trừ tồn bình thường.
 3. Cập nhật `status = POSTED`, `postedBy`, `postedAt`, `postNote` (`reqDto.note ?? null`); có

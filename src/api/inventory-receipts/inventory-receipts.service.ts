@@ -56,6 +56,7 @@ import {
 } from '../inventory/item-stock.query';
 import type { InventoryPostingLine } from '../inventory/inventory-posting.service';
 import { InventoryPostingService } from '../inventory/inventory-posting.service';
+import { areReceiptIqcInspectionsCompleted } from '../iqc/iqc.query';
 import { IqcService } from '../iqc/iqc.service';
 import { getJobQcCoverage } from '../oqc/oqc.query';
 import { PaymentRequestsService } from '../payment-requests/payment-requests.service';
@@ -89,6 +90,7 @@ export class InventoryReceiptsService {
   /** Phiếu coi như đã `confirm` — `DRAFT` không tính. */
   private static readonly CONFIRMED_STATUSES = [
     InventoryDocumentStatus.PENDING_IQC,
+    InventoryDocumentStatus.IQC_COMPLETED,
     InventoryDocumentStatus.PENDING_RECEIPT,
     InventoryDocumentStatus.POSTED,
   ];
@@ -423,15 +425,14 @@ export class InventoryReceiptsService {
     });
   }
 
-  /** `PENDING_RECEIPT`/`PENDING_IQC → POSTED` — sinh bút toán + cập nhật tồn qua
-   * `InventoryPostingService`, sau đó phiếu bất biến. `PENDING_IQC` chặn (`E153`) nếu còn phiếu
-   * IQC nào chưa `COMPLETED`. Đọc trạng thái nằm trong cùng transaction, sau
-   * `getInventoryReceiptForUpdate`. Trước khi ghi bút toán, `buildReceiptPostingLines` bù trừ SL đã
-   * trả NCC (`POSTED`) khỏi từng dòng — hàng NG chưa bao giờ thật sự vào tồn thì không được cộng
-   * vào (`docs/workflows/supplier-return.md`). Nếu phiếu gắn PO, gọi
-   * `PaymentRequestsService.createIfOrderCompleted`
-   * cùng transaction — tự sinh yêu cầu thanh toán khi PO vừa đạt COMPLETED. Xem
-   * `docs/workflows/receipt-confirmation.md`. */
+  /** `PENDING_RECEIPT`/`PENDING_IQC`/`IQC_COMPLETED → POSTED` — sinh bút toán + cập nhật tồn qua
+   * `InventoryPostingService`, sau đó phiếu bất biến. `PENDING_IQC`/`IQC_COMPLETED` chặn (`E153`)
+   * nếu còn phiếu IQC nào chưa `COMPLETED` — `IQC_COMPLETED` vẫn kiểm lại, chống lệch. Đọc trạng
+   * thái nằm trong cùng transaction, sau `getInventoryReceiptForUpdate`. Trước khi ghi bút toán,
+   * `buildReceiptPostingLines` bù trừ SL đã trả NCC (`POSTED`) khỏi từng dòng — hàng NG chưa bao
+   * giờ thật sự vào tồn thì không được cộng vào (`docs/workflows/supplier-return.md`). Nếu phiếu
+   * gắn PO, gọi `PaymentRequestsService.createIfOrderCompleted` cùng transaction — tự sinh yêu cầu
+   * thanh toán khi PO vừa đạt COMPLETED. Xem `docs/workflows/receipt-confirmation.md`. */
   async postInventoryReceipt(receiptId: string, userId: string): Promise<void> {
     await this.db.transaction(async (tx) => {
       const inventoryReceipt = await this.getInventoryReceiptForUpdate(
@@ -439,7 +440,10 @@ export class InventoryReceiptsService {
         receiptId,
       );
 
-      if (inventoryReceipt.status === InventoryDocumentStatus.PENDING_IQC) {
+      if (
+        inventoryReceipt.status === InventoryDocumentStatus.PENDING_IQC ||
+        inventoryReceipt.status === InventoryDocumentStatus.IQC_COMPLETED
+      ) {
         await this.ensureReceiptIqcCompleted(tx, receiptId);
       } else if (
         inventoryReceipt.status !== InventoryDocumentStatus.PENDING_RECEIPT
@@ -825,12 +829,12 @@ export class InventoryReceiptsService {
     }
   }
 
-  /** SL cộng dồn mọi phiếu đã `confirm` (`PENDING_IQC`/`PENDING_RECEIPT`/`POSTED`, `DRAFT` không
-   * tính vì nháp có thể không bao giờ được xác nhận) trỏ cùng một dòng PO, cộng thêm SL của
-   * payload đang xét, không được vượt SL đặt của dòng đó (`E154`). Nhận `Database | DbTransaction`
-   * (không bắt buộc `tx` như một write helper thường) vì đây thuần là đọc, và phải dùng được từ cả
-   * `create`/`update` (ngoài transaction) lẫn `confirm` (trong transaction) — cùng ngoại lệ với
-   * `IqcService.generateIqcCodes`. */
+  /** SL cộng dồn mọi phiếu đã `confirm` (`PENDING_IQC`/`IQC_COMPLETED`/`PENDING_RECEIPT`/`POSTED`,
+   * `DRAFT` không tính vì nháp có thể không bao giờ được xác nhận) trỏ cùng một dòng PO, cộng thêm
+   * SL của payload đang xét, không được vượt SL đặt của dòng đó (`E154`). Nhận
+   * `Database | DbTransaction` (không bắt buộc `tx` như một write helper thường) vì đây thuần là
+   * đọc, và phải dùng được từ cả `create`/`update` (ngoài transaction) lẫn `confirm` (trong
+   * transaction) — cùng ngoại lệ với `IqcService.generateIqcCodes`. */
   private async ensureReceiptQuantitiesWithinOrdered(
     db: Database | DbTransaction,
     itemsToValidate: {
@@ -943,11 +947,12 @@ export class InventoryReceiptsService {
     }
   }
 
-  /** Σ SL các dòng mọi phiếu nhập `PRODUCTION` đã `confirm` (`PENDING_IQC`/`PENDING_RECEIPT`/
-   * `POSTED`) cùng Job. `excludeReceiptId` dùng ở `ensureProductionReceiptOqcCleared` (gate lúc
-   * confirm, loại chính phiếu đang xét trước khi cộng thêm SL của nó); bỏ trống ở
-   * `postInventoryReceipt` — phiếu đang post đã ở `PENDING_RECEIPT`/`POSTED` (đều nằm trong
-   * `CONFIRMED_STATUSES`) nên tổng không đổi qua bước post, không cần loại trừ. */
+  /** Σ SL các dòng mọi phiếu nhập `PRODUCTION` đã `confirm` (`PENDING_IQC`/`IQC_COMPLETED`/
+   * `PENDING_RECEIPT`/`POSTED`) cùng Job. `excludeReceiptId` dùng ở
+   * `ensureProductionReceiptOqcCleared` (gate lúc confirm, loại chính phiếu đang xét trước khi
+   * cộng thêm SL của nó); bỏ trống ở `postInventoryReceipt` — phiếu đang post đã ở
+   * `PENDING_RECEIPT`/`POSTED` (đều nằm trong `CONFIRMED_STATUSES`) nên tổng không đổi qua bước
+   * post, không cần loại trừ. */
   private async getConfirmedProductionQuantityByJobId(
     tx: DbTransaction,
     productionJobId: string,
@@ -1024,10 +1029,7 @@ export class InventoryReceiptsService {
     tx: DbTransaction,
     receiptId: string,
   ): Promise<void> {
-    const completed = await this.iqcService.areInspectionsCompletedForReceipt(
-      tx,
-      receiptId,
-    );
+    const completed = await areReceiptIqcInspectionsCompleted(tx, receiptId);
 
     if (!completed) {
       throw new AppException(ErrorCode.E153, HttpStatus.CONFLICT);

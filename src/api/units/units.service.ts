@@ -1,6 +1,6 @@
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
-import { and, asc, eq, inArray, isNull, ne, or } from 'drizzle-orm';
+import { and, asc, eq, ne, or } from 'drizzle-orm';
 
 import {
   DocumentType,
@@ -11,14 +11,7 @@ import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
-import {
-  ItemType,
-  items,
-  productionJobUnits,
-  UnitScope,
-  units,
-  unitScopes,
-} from '../../database/schemas';
+import { items, productionJobUnits, units } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { CreateUnitReqDto } from './dto/create-unit.req.dto';
 import { GetUnitsReqDto } from './dto/get-units.req.dto';
@@ -33,63 +26,35 @@ export class UnitsService {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
 
     const entities = await this.db.query.units.findMany({
-      where: and(
-        keyword
-          ? or(
-              unaccentILike(units.code, keyword),
-              unaccentILike(units.name, keyword),
-            )
-          : undefined,
-        reqDto.scope
-          ? inArray(
-              units.id,
-              this.db
-                .select({ id: unitScopes.unitId })
-                .from(unitScopes)
-                .where(eq(unitScopes.scope, reqDto.scope)),
-            )
-          : undefined,
-      ),
-      with: { scopes: true },
+      where: keyword
+        ? or(
+            unaccentILike(units.code, keyword),
+            unaccentILike(units.name, keyword),
+          )
+        : undefined,
       // Alphabetical, because this list is rendered straight into a dropdown.
       orderBy: asc(units.name),
     });
 
-    return plainToInstance(
-      UnitResDto,
-      entities.map((unit) => ({
-        ...unit,
-        scopes: unit.scopes.map(({ scope }) => scope),
-      })),
-      { excludeExtraneousValues: true },
-    );
+    return plainToInstance(UnitResDto, entities, {
+      excludeExtraneousValues: true,
+    });
   }
 
   async getUnit(unitId: string): Promise<UnitResDto> {
     const unit = await this.ensureUnitExists(unitId);
 
-    return plainToInstance(
-      UnitResDto,
-      { ...unit, scopes: unit.scopes.map(({ scope }) => scope) },
-      { excludeExtraneousValues: true },
-    );
+    return plainToInstance(UnitResDto, unit, {
+      excludeExtraneousValues: true,
+    });
   }
 
   async createUnit(reqDto: CreateUnitReqDto): Promise<void> {
-    this.validateScopesNotEmpty(reqDto.scopes);
-
-    const { scopes, ...unitFields } = reqDto;
-
     try {
-      // Một unit không có scope là unit chết — chèn `units`/`unit_scopes` phải cùng vào hoặc cùng
-      // rollback, cùng lý lẽ `units.seed.ts`.
+      // Mã lấy từ sequence nên phải cùng transaction với lần chèn `units`.
       await this.db.transaction(async (tx) => {
         const code = await this.generateUnitCode(tx);
-        const [unit] = await tx
-          .insert(units)
-          .values({ ...unitFields, code })
-          .returning();
-        await this.replaceScopes(tx, unit.id, scopes);
+        await tx.insert(units).values({ ...reqDto, code });
       });
     } catch (error) {
       // Bắt xung đột unique code nếu có race condition
@@ -106,23 +71,11 @@ export class UnitsService {
     if (reqDto.code) {
       await this.validateCodeUniqueness(reqDto.code, unitId);
     }
-    if (reqDto.scopes) {
-      this.validateScopesNotEmpty(reqDto.scopes);
-      await this.ensureRemovedScopesNotInUse(unitId, reqDto.scopes);
+
+    // `updated_at` được bump bởi `$onUpdate` của cột.
+    if (Object.keys(reqDto).length > 0) {
+      await this.db.update(units).set(reqDto).where(eq(units.id, unitId));
     }
-
-    const { scopes, ...unitFields } = reqDto;
-
-    // Ghi `units` và (nếu có) xoá + chèn lại `unit_scopes` phải cùng transaction — cùng lý lẽ
-    // `createUnit`. `updated_at` được bump bởi `$onUpdate` của cột.
-    await this.db.transaction(async (tx) => {
-      if (Object.keys(unitFields).length > 0) {
-        await tx.update(units).set(unitFields).where(eq(units.id, unitId));
-      }
-      if (scopes) {
-        await this.replaceScopes(tx, unitId, scopes);
-      }
-    });
   }
 
   async deleteUnit(unitId: string): Promise<void> {
@@ -135,7 +88,6 @@ export class UnitsService {
   async ensureUnitExists(unitId: string) {
     const existing = await this.db.query.units.findFirst({
       where: eq(units.id, unitId),
-      with: { scopes: true },
     });
 
     if (!existing) {
@@ -143,12 +95,6 @@ export class UnitsService {
     }
 
     return existing;
-  }
-
-  private validateScopesNotEmpty(scopes: UnitScope[]): void {
-    if (scopes.length === 0) {
-      throw new AppException(ErrorCode.E243, HttpStatus.BAD_REQUEST);
-    }
   }
 
   private async validateCodeUniqueness(
@@ -191,61 +137,6 @@ export class UnitsService {
     if (usedInItem || usedInProductionJobUnit) {
       throw new AppException(ErrorCode.E242, HttpStatus.CONFLICT);
     }
-  }
-
-  /** Gỡ scope không phá dữ liệu cũ nhưng làm mọi `PATCH /items` sau đó rơi vào `E043`
-   * (scope_mismatch) — chặn trước ở đây thay vì để lộ lỗi khó truy đó. Map `UnitScope` sang
-   * `ItemType` tương ứng: `CONSUMABLE` ↔ CONSUMABLE, `PRODUCT` ↔ FG. `SEMI_FINISHED` không chặn —
-   * chưa module nào đọc scope này. */
-  private async ensureRemovedScopesNotInUse(
-    unitId: string,
-    nextScopes: UnitScope[],
-  ): Promise<void> {
-    const { scopes: currentScopes } = await this.ensureUnitExists(unitId);
-    const nextScopeSet = new Set(nextScopes);
-    const removedScopes = currentScopes
-      .map(({ scope }) => scope)
-      .filter((scope) => !nextScopeSet.has(scope));
-
-    for (const scope of removedScopes) {
-      const itemTypes =
-        scope === UnitScope.CONSUMABLE
-          ? [ItemType.CONSUMABLE]
-          : scope === UnitScope.PRODUCT
-            ? [ItemType.FG]
-            : [];
-
-      if (itemTypes.length === 0) {
-        continue;
-      }
-
-      const [usedInItem] = await this.db
-        .select({ id: items.id })
-        .from(items)
-        .where(
-          and(
-            eq(items.unitId, unitId),
-            inArray(items.type, itemTypes),
-            isNull(items.deletedAt),
-          ),
-        )
-        .limit(1);
-
-      if (usedInItem) {
-        throw new AppException(ErrorCode.E244, HttpStatus.CONFLICT);
-      }
-    }
-  }
-
-  private async replaceScopes(
-    tx: DbTransaction,
-    unitId: string,
-    scopes: UnitScope[],
-  ): Promise<void> {
-    await tx.delete(unitScopes).where(eq(unitScopes.unitId, unitId));
-    await tx
-      .insert(unitScopes)
-      .values(scopes.map((scope) => ({ unitId, scope })));
   }
 
   private async generateUnitCode(tx: DbTransaction): Promise<string> {

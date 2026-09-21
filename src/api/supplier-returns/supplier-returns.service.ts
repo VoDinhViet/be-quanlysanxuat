@@ -449,8 +449,9 @@ export class SupplierReturnsService {
   }
 
   /** Hai ca bỏ qua trừ tồn, còn lại luôn trừ:
-   *  1. Phiếu nhập gốc chưa `POSTED` — IQC chạy trước khi phiếu nhập ghi tồn (`PENDING_IQC` chưa
-   *     đụng `inventory_balances`), trừ vào đó sẽ ra âm giả (`E106`) hoặc trừ nhầm tồn của lô khác.
+   *  1. Phiếu nhập gốc chưa `POSTED` — IQC chạy trước khi phiếu nhập ghi tồn (`PENDING_IQC`/
+   *     `IQC_COMPLETED` chưa đụng `inventory_balances`), trừ vào đó sẽ ra âm giả (`E106`) hoặc trừ
+   *     nhầm tồn của lô khác.
    *     `postInventoryReceipt` tự bù trừ số lượng đã trả `POSTED` trước khi ghi bút toán `RECEIPT`
    *     (`getReturnedQuantityByReceiptItemId`), nên không ghi thiếu tồn.
    *  2. Sinh từ IQC của OS-IN (`outsourcingReceiptId` có giá trị) — hàng đó chưa từng vào tồn

@@ -63,9 +63,8 @@ export enum ErrorCode {
   // (`deletedAt`), không còn kiểm "đang được dùng" trước khi xoá, cùng khuôn `clients`/`orders`/
   // `suppliers`.
   E042 = 'file.error.not_found',
-  // The unit exists but isn't assignable to this kind of entity (e.g. `Mét` on an FG) —
-  // deliberately distinct from E011 so the client can tell a bad id from a wrong-scope unit.
-  E043 = 'unit.error.scope_mismatch',
+  // E043 (unit.error.scope_mismatch) stays reserved — `unit_scopes` bị bỏ, đơn vị tính giờ dùng
+  // được cho mọi item.
   // Nghỉ hưu — download URL không còn ký/hết hạn (public link vĩnh viễn), không còn throw site
   // nào. Giữ comment, không tái sử dụng số.
   E044 = 'file.error.invalid_signature',
@@ -542,11 +541,8 @@ export enum ErrorCode {
   E240 = 'outbound_order.error.invalid_approval_state',
   E241 = 'unit.error.code_exists',
   E242 = 'unit.error.in_use',
-  E243 = 'unit.error.scopes_required',
-  // Gỡ một scope khỏi unit trong khi còn `items` loại tương ứng dùng nó — deliberately distinct
-  // from E043 (unit sai scope ngay lúc gán cho item), đây là chặn trước khi unit *trở thành* sai
-  // scope cho những item đang gán nó.
-  E244 = 'unit.error.scope_in_use',
+  // E243 (unit.error.scopes_required) và E244 (unit.error.scope_in_use) stay reserved — cùng lý do
+  // với E043, `unit_scopes` bị bỏ.
   // `POST /items/:itemId/bom/items` thêm cùng `itemId` hai lần dưới cùng một node cha — chỉ còn
   // ý nghĩa cho node CONSUMABLE (COMPONENT không có `itemId`).
   E245 = 'bom_item.error.duplicate',

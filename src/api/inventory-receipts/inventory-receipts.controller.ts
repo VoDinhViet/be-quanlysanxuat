@@ -124,7 +124,7 @@ export class InventoryReceiptsController {
   @Permissions('inventory:update')
   @ApiAuth({
     summary:
-      'Post a receipt — PENDING_RECEIPT hoặc PENDING_IQC (mọi IQC đã COMPLETED) → POSTED, sinh bút toán + cập nhật tồn, sau đó phiếu bất biến',
+      'Post a receipt — PENDING_RECEIPT, PENDING_IQC hoặc IQC_COMPLETED (mọi IQC đã COMPLETED) → POSTED, sinh bút toán + cập nhật tồn, sau đó phiếu bất biến',
     statusCode: HttpStatus.NO_CONTENT,
   })
   postInventoryReceipt(

@@ -1,11 +1,6 @@
 import { Exclude, Expose } from 'class-transformer';
 
-import { UnitScope } from '../../../database/schemas';
-import {
-  EnumField,
-  StringField,
-  UUIDField,
-} from '../../../decorators/field.decorators';
+import { StringField, UUIDField } from '../../../decorators/field.decorators';
 
 @Exclude()
 export class UnitResDto {
@@ -20,11 +15,4 @@ export class UnitResDto {
   @Expose()
   @StringField({ description: 'Unit name, e.g. Cái' })
   name!: string;
-
-  @Expose()
-  @EnumField(() => UnitScope, {
-    each: true,
-    description: 'Kinds of entity this unit may be assigned to',
-  })
-  scopes!: UnitScope[];
 }

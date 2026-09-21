@@ -47,3 +47,31 @@ export async function hasPendingIqcForItems(
 
   return !!row;
 }
+
+/** `true` chỉ khi phiếu nhập có ≥ 1 phiếu IQC và **mọi** phiếu đã `COMPLETED` — dùng chung cho gate
+ * `E153` lúc `post` phiếu nhập và cho mốc `PENDING_IQC ⇄ IQC_COMPLETED` (`syncReceiptIqcStatus`). */
+export async function areReceiptIqcInspectionsCompleted(
+  tx: DbTransaction,
+  receiptId: string,
+): Promise<boolean> {
+  const inspections = await tx
+    .select({ status: qualityInspections.status })
+    .from(qualityInspections)
+    .where(
+      and(
+        eq(qualityInspections.inspectionType, QualityInspectionType.IQC),
+        eq(
+          qualityInspections.originType,
+          QualityInspectionOriginType.INVENTORY_RECEIPT,
+        ),
+        eq(qualityInspections.originId, receiptId),
+      ),
+    );
+
+  return (
+    inspections.length > 0 &&
+    inspections.every(
+      (inspection) => inspection.status === QualityInspectionStatus.COMPLETED,
+    )
+  );
+}

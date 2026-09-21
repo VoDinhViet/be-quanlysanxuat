@@ -5,7 +5,7 @@
 ## Bối cảnh
 
 Trước đợt này, IQC chỉ gate một điểm: `POST /inventory-receipts/:id/post` chặn (`E153`) khi phiếu
-đang `PENDING_IQC` mà còn phiếu IQC nào chưa `COMPLETED`. Không có gate nào ở luồng **xuất** vật tư
+đang `PENDING_IQC`/`IQC_COMPLETED` mà còn phiếu IQC nào chưa `COMPLETED`. Không có gate nào ở luồng **xuất** vật tư
 cho sản xuất hay ở luồng **giao hàng**. Lý do gốc (ngầm định): "hàng NG chưa từng vào tồn — `E153`
 đã chặn từ đầu vào, nên không cần chặn lại ở đầu ra." Rà lại khi thiết kế OQC lộ ra lý do đó **không
 còn đúng hoàn toàn** — 3 lỗ hổng thật: (1) phiếu nhập `requiresIqc=false` không qua `E153`; (2) IQC

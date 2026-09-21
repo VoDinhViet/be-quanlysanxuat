@@ -52,6 +52,7 @@ import {
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { FilesService } from '../files/files.service';
+import { syncReceiptIqcStatus } from '../inventory-receipts/inventory-receipts.write';
 import { closeJobIfQcCovered } from '../oqc/oqc.query';
 import { recomputeOutsourcingOrderStatus } from '../outsourcing-orders/outsourcing-orders.query';
 import { SupplierReturnsService } from '../supplier-returns/supplier-returns.service';
@@ -344,6 +345,12 @@ export class IqcService {
     // (`quality_inspection_decision`) — 2 vocabulary cùng giá trị string, ép kiểu tại điểm ghi
     // duy nhất thay vì đổi cột schema hẹp lại theo route này (xem `quality-inspections.ts`).
     const decision = result as QualityInspectionDecision | undefined;
+    const origin = {
+      originType: inventoryReceiptId
+        ? QualityInspectionOriginType.INVENTORY_RECEIPT
+        : QualityInspectionOriginType.MANUAL,
+      originId: inventoryReceiptId ?? null,
+    };
 
     await this.db.transaction(async (tx) => {
       const code = await this.generateIqcCode(tx, inspectionDate);
@@ -353,10 +360,7 @@ export class IqcService {
         .values({
           inspectionNo: code,
           inspectionType: QualityInspectionType.IQC,
-          originType: inventoryReceiptId
-            ? QualityInspectionOriginType.INVENTORY_RECEIPT
-            : QualityInspectionOriginType.MANUAL,
-          originId: inventoryReceiptId ?? null,
+          ...origin,
           purchaseOrderId,
           supplierId,
           itemId,
@@ -385,6 +389,8 @@ export class IqcService {
           inspectedBy: userId,
         });
       }
+
+      await syncReceiptIqcStatus(tx, origin);
     });
   }
 
@@ -487,32 +493,6 @@ export class IqcService {
         status: QualityInspectionStatus.DRAFT,
         createdBy: params.userId,
       })),
-    );
-  }
-
-  /** `true` chỉ khi phiếu nhập có ≥ 1 phiếu IQC và **mọi** phiếu đã `COMPLETED` — dùng bởi
-   *  `InventoryReceiptsService.postInventoryReceipt` để chặn `E153`. */
-  async areInspectionsCompletedForReceipt(
-    tx: DbTransaction,
-    inventoryReceiptId: string,
-  ): Promise<boolean> {
-    const inspections = await tx.query.qualityInspections.findMany({
-      columns: { status: true },
-      where: and(
-        eq(qualityInspections.inspectionType, QualityInspectionType.IQC),
-        eq(
-          qualityInspections.originType,
-          QualityInspectionOriginType.INVENTORY_RECEIPT,
-        ),
-        eq(qualityInspections.originId, inventoryReceiptId),
-      ),
-    });
-
-    return (
-      inspections.length > 0 &&
-      inspections.every(
-        (inspection) => inspection.status === QualityInspectionStatus.COMPLETED,
-      )
     );
   }
 
@@ -897,6 +877,8 @@ export class IqcService {
           );
         }
       }
+
+      await syncReceiptIqcStatus(tx, inspection);
     });
   }
 
@@ -975,7 +957,7 @@ export class IqcService {
    * `E206` vì hai domain khác nhau. */
   async deleteIqc(iqcId: string): Promise<void> {
     const inspection = await this.db.query.qualityInspections.findFirst({
-      columns: { status: true },
+      columns: { status: true, originType: true, originId: true },
       where: and(
         eq(qualityInspections.inspectionType, QualityInspectionType.IQC),
         eq(qualityInspections.id, iqcId),
@@ -989,9 +971,13 @@ export class IqcService {
       throw new AppException(ErrorCode.E206, HttpStatus.CONFLICT);
     }
 
-    await this.db
-      .delete(qualityInspections)
-      .where(eq(qualityInspections.id, iqcId));
+    await this.db.transaction(async (tx) => {
+      await tx
+        .delete(qualityInspections)
+        .where(eq(qualityInspections.id, iqcId));
+
+      await syncReceiptIqcStatus(tx, inspection);
+    });
   }
 
   /** Sửa lại ngày kiểm sau khi đã confirm — không đụng `result`, field quyết định PASS/FAIL vẫn
