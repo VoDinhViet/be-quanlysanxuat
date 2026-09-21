@@ -13,7 +13,9 @@ import {
   InventoryReceiptType,
   items,
   productionJobs,
+  QualityInspectionOriginType,
 } from '../../database/schemas';
+import { areReceiptIqcInspectionsCompleted } from '../iqc/iqc.query';
 
 export async function generateReceiptCode(
   tx: DbTransaction,
@@ -106,4 +108,53 @@ export async function createProductionReceiptForJob(
     quantity: job.quantity,
     unitId: job.unitId,
   });
+}
+
+/** Đưa phiếu `PENDING_IQC`/`IQC_COMPLETED` về đúng trạng thái theo IQC hiện có; bỏ qua khi dòng IQC
+ *  vừa ghi không neo vào phiếu nhập. Gọi trong tx của mọi điểm ghi IQC; plain function, không qua
+ *  DI — cùng lý do `createProductionReceiptForJob`. Chiều `IQC_COMPLETED → PENDING_IQC` là chủ đích
+ *  (IQC đã `COMPLETED` vẫn `confirm` lại được). */
+export async function syncReceiptIqcStatus(
+  tx: DbTransaction,
+  inspection: {
+    originType: QualityInspectionOriginType;
+    originId: string | null;
+  },
+): Promise<void> {
+  if (
+    inspection.originType !== QualityInspectionOriginType.INVENTORY_RECEIPT ||
+    !inspection.originId
+  ) {
+    return;
+  }
+
+  // Khoá phiếu TRƯỚC khi đọc IQC: hai lần confirm song song trên cùng phiếu phải nối đuôi nhau, nếu
+  // không mỗi bên chỉ thấy IQC của mình đã `COMPLETED` và phiếu kẹt ở `PENDING_IQC`.
+  const [inventoryReceipt] = await tx
+    .select({ status: inventoryReceipts.status })
+    .from(inventoryReceipts)
+    .where(eq(inventoryReceipts.id, inspection.originId))
+    .for('update');
+
+  if (
+    !inventoryReceipt ||
+    (inventoryReceipt.status !== InventoryDocumentStatus.PENDING_IQC &&
+      inventoryReceipt.status !== InventoryDocumentStatus.IQC_COMPLETED)
+  ) {
+    return;
+  }
+
+  const nextStatus = (await areReceiptIqcInspectionsCompleted(
+    tx,
+    inspection.originId,
+  ))
+    ? InventoryDocumentStatus.IQC_COMPLETED
+    : InventoryDocumentStatus.PENDING_IQC;
+
+  if (nextStatus !== inventoryReceipt.status) {
+    await tx
+      .update(inventoryReceipts)
+      .set({ status: nextStatus })
+      .where(eq(inventoryReceipts.id, inspection.originId));
+  }
 }

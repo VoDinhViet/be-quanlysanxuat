@@ -91,7 +91,7 @@ xuất SALES về đúng mã DO.
 
 | Entity | Vai trò |
 | --- | --- |
-| `inventory_receipts` | Phiếu nhập — 5 trạng thái; `purchaseOrderId`/`clientId`/`productionJobId` tuỳ theo `receiptType`; `confirmedBy`/`confirmedAt` ghi ở `confirm` |
+| `inventory_receipts` | Phiếu nhập — 6 trạng thái; `purchaseOrderId`/`clientId`/`productionJobId` tuỳ theo `receiptType`; `confirmedBy`/`confirmedAt` ghi ở `confirm` |
 | `inventory_receipt_items` | Dòng — `purchaseOrderItemId` tuỳ chọn, `quantity` cộng dồn ≤ SL đặt dòng PO (`E154`) |
 | `inventory_issues` | Phiếu xuất — cùng vòng đời 3 trạng thái; `outboundOrderId` chỉ `deliver` DO ghi |
 | `inventory_issue_items` | Dòng — thêm `orderItemId` tuỳ chọn (chỉ hợp lệ khi `itemId` là FG) |
@@ -118,15 +118,23 @@ chạy gate IQC (`E203`, xem Cross-domain).
 **Phiếu nhập** — có thêm `confirm` xen giữa lập phiếu và `post`:
 ```
 DRAFT ──confirm (requiresIqc=false)──> PENDING_RECEIPT ──post───────────────> POSTED
-DRAFT ──confirm (requiresIqc=true)───> PENDING_IQC ──post (mọi IQC COMPLETED)─> POSTED
-{DRAFT, PENDING_IQC, PENDING_RECEIPT, POSTED} ──cancel──> CANCELLED
+DRAFT ──confirm (requiresIqc=true)───> PENDING_IQC ⇄ IQC_COMPLETED ──post────> POSTED
+{DRAFT, PENDING_IQC, IQC_COMPLETED, PENDING_RECEIPT, POSTED} ──cancel──> CANCELLED
 ```
+`PENDING_IQC ⇄ IQC_COMPLETED` **tự chuyển**, không có route tay: mọi điểm ghi IQC gắn phiếu
+(`confirmIqc`, `completeIqcAfterSupplierReturn`, `createIqc`, `deleteIqc`) gọi
+`syncReceiptIqcStatus` trong cùng transaction — có ≥ 1 IQC và mọi IQC `COMPLETED` → `IQC_COMPLETED`
+("Đã QC"), ngược lại → `PENDING_IQC`. Chiều ngược có thật vì IQC đã `COMPLETED` vẫn `confirm` lại
+được, và IQC tay mới có thể gắn thêm vào phiếu. Dòng IQC `SORT`/`RETURN` chỉ `COMPLETED` sau khi
+phiếu trả NCC `post`, nên phiếu ở `PENDING_IQC` cho tới lúc đó.
 `confirm`: rỗng dòng → `E151`; ghi `confirmedBy`/`confirmedAt` (khác `postedBy`/`postedAt` — hai
 mốc, hai người có thể khác nhau); `requiresIqc=true` sinh N dòng IQC (`kind=INCOMING`) cùng
 transaction, nguồn suy từ `receipt.supplierId ?? receipt.clientId ?? purchaseOrder.supplierId`
 (không suy được → `E152`); `receiptType=PRODUCTION` chạy thêm gate OQC ngay ở bước này (xem "Gate
 nhập kho TP"). `post`: **không** còn nhận thẳng từ `DRAFT` — chỉ từ `PENDING_RECEIPT`, hoặc từ
-`PENDING_IQC` khi mọi IQC liên quan đã `COMPLETED` (thiếu → `E153`, kể cả chưa có IQC nào).
+`PENDING_IQC`/`IQC_COMPLETED` khi mọi IQC liên quan đã `COMPLETED` (thiếu → `E153`, kể cả chưa có
+IQC nào) — `IQC_COMPLETED` vẫn kiểm lại để chống lệch, và để phiếu `PENDING_IQC` có từ trước khi thêm
+trạng thái này (không backfill) vẫn `post` được.
 
 **Phiếu điều chỉnh**: `DRAFT →(post)→ POSTED →(cancel)→ CANCELLED`, hoặc `DRAFT →(cancel)→
 CANCELLED` — cùng khuôn phiếu xuất, không có bước `confirm`. `docs/workflows/inventory-adjustment.md`.

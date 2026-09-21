@@ -50,7 +50,7 @@ Lập/sửa phiếu — chạy **trước** transaction:
    NCC/vật tư khớp 3 chiều (`docs/domains/purchasing.md`).
 
 `PATCH`/`DELETE`/`confirm`/`post`/`cancel` đều mở đầu bằng kiểm phiếu tồn tại + đúng trạng thái cho
-phép (`E096`/`E098`). Riêng phiếu nhập, `post` không chỉ kiểm `status` — xem nhánh `PENDING_IQC` ở
+phép (`E096`/`E098`). Riêng phiếu nhập, `post` không chỉ kiểm `status` — xem nhánh `PENDING_IQC`/`IQC_COMPLETED` ở
 Flow bên dưới.
 
 `confirm` (chỉ phiếu nhập) chạy lại kiểm tra #4 (SL vượt, `E154`) và chặn thêm phiếu rỗng dòng
@@ -83,7 +83,7 @@ hai lệnh `post` gọi trùng lên cùng phiếu không cùng lọt qua và c�
      nào của phiếu → `E203` (`hasPendingIqcForItems`, `src/api/iqc/iqc.query.ts`) — vật tư chưa qua
      IQC (hoặc còn FAIL chưa xử lý) không được xuất cho sản xuất, xem
      `docs/decisions/qc-gates-on-stock-moves.md`.
-   - Phiếu nhập: `status = PENDING_RECEIPT` cho qua thẳng; `status = PENDING_IQC` thì đếm thêm
+   - Phiếu nhập: `status = PENDING_RECEIPT` cho qua thẳng; `status = PENDING_IQC`/`IQC_COMPLETED` thì đếm thêm
      `quality_inspections` (`inspectionType = IQC`) gắn với phiếu — còn dòng nào `status !== COMPLETED`
      (kể cả **chưa có dòng nào**) thì ném `E153`, không rollback bút toán vì bước 2 chưa chạy; mọi
      trạng thái khác
@@ -114,7 +114,7 @@ giữa hai loại phiếu:
    - Phiếu xuất: `status = DRAFT` (`E098` nếu không) — `POSTED` bất biến, không có đường huỷ (khác
      phiếu nhập bên dưới).
    - Phiếu nhập: mọi trạng thái khác `CANCELLED` (`E098` nếu đã huỷ) — `DRAFT`/`PENDING_IQC`/
-     `PENDING_RECEIPT`/`POSTED` đều huỷ được.
+     `IQC_COMPLETED`/`PENDING_RECEIPT`/`POSTED` đều huỷ được.
 2. **Chỉ phiếu nhập, khi đang `POSTED`**: đọc lại mọi bút toán đã sinh khi `post` (theo
    `referenceType`+`referenceId`), ghi bút toán **đảo dấu** cho từng dòng (append-only, không xoá
    bút toán cũ), cộng dồn ngược vào balance (khoá dòng bằng `FOR UPDATE` như lúc `post`). Phiếu xuất
@@ -135,9 +135,9 @@ Không có đường `CANCELLED → *`.
 | `inventory_receipts` | `confirm` | `DRAFT` | `PENDING_RECEIPT` (`requiresIqc=false`) hoặc `PENDING_IQC` (`requiresIqc=true`) |
 | `quality_inspections` (`inspectionType = IQC`) | `confirm` phiếu nhập (`requiresIqc=true`) | *(chưa có)* | N dòng mới `DRAFT` (N = số dòng phiếu) |
 | `inventory_issues` | `post` | `DRAFT` | `POSTED` |
-| `inventory_receipts` | `post` | `PENDING_RECEIPT` hoặc `PENDING_IQC` (mọi IQC `COMPLETED`) | `POSTED` |
+| `inventory_receipts` | `post` | `PENDING_RECEIPT`, `PENDING_IQC` hoặc `IQC_COMPLETED` (mọi IQC `COMPLETED`) | `POSTED` |
 | `inventory_issues` | `cancel` | `DRAFT` | `CANCELLED` |
-| `inventory_receipts` | `cancel` | `DRAFT`/`PENDING_IQC`/`PENDING_RECEIPT`/`POSTED` | `CANCELLED` |
+| `inventory_receipts` | `cancel` | `DRAFT`/`PENDING_IQC`/`IQC_COMPLETED`/`PENDING_RECEIPT`/`POSTED` | `CANCELLED` |
 | `inventory_balances` | `post` | — | tăng/giảm theo dấu bút toán |
 | `inventory_balances` | `cancel` phiếu nhập (từ `POSTED`) | — | đảo ngược đúng phần đã `post` |
 | `inventory_requisitions` (nếu PXK do nó sinh) | `post` PXK | `APPROVED` | `ISSUED` |
@@ -198,8 +198,8 @@ module") — atomic, hai lượt lập phiếu song song không thể ra cùng m
 | `PATCH`/`DELETE`/`confirm` gọi trên phiếu không còn `DRAFT` | `E098` | 409 |
 | (Phiếu xuất) `post` gọi trên phiếu không còn `DRAFT` | `E098` | 409 |
 | (Phiếu xuất `PRODUCTION`) `post` khi còn IQC chưa `COMPLETED` của cùng item | `E203` | 409 |
-| (Phiếu nhập) `post` gọi trên phiếu không phải `PENDING_RECEIPT`/`PENDING_IQC` | `E098` | 409 |
-| (Phiếu nhập) `post` một phiếu `PENDING_IQC` còn phiếu IQC chưa `COMPLETED` (kể cả chưa có phiếu IQC nào) | `E153` | 409 |
+| (Phiếu nhập) `post` gọi trên phiếu không phải `PENDING_RECEIPT`/`PENDING_IQC`/`IQC_COMPLETED` | `E098` | 409 |
+| (Phiếu nhập) `post` một phiếu `PENDING_IQC`/`IQC_COMPLETED` còn phiếu IQC chưa `COMPLETED` (kể cả chưa có phiếu IQC nào) | `E153` | 409 |
 | `cancel` gọi trên phiếu đã `CANCELLED` | `E098` | 409 |
 | (Phiếu xuất) `cancel` gọi trên phiếu không còn `DRAFT` (kể cả `POSTED`) | `E098` | 409 |
 | `post` làm tồn một mặt hàng xuống âm | `E106` | 409 |

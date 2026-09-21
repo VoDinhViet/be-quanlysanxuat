@@ -142,7 +142,7 @@ phân loại (`docs/decisions/items-merge.md`, `docs/decisions/wip-removal.md`).
 `docs/domains/production.md`).
 
 **Post/cancel phiếu kho** (`postInventoryReceipt`/`postInventoryIssue`, từ `PENDING_RECEIPT`/
-`PENDING_IQC`): validate ngoài tx → tx: `InventoryPostingService.postDocument` khoá
+`PENDING_IQC`/`IQC_COMPLETED`): validate ngoài tx → tx: `InventoryPostingService.postDocument` khoá
 `inventory_balances FOR UPDATE`, ghi `inventory_transactions`, update status phiếu. Phiếu nhập gắn
 `purchaseOrderId` gọi thêm `PaymentRequestsService.createIfOrderCompleted(tx, ...)` cùng transaction.
 Phiếu nhập `cancel` từ `POSTED` gọi `reverseDocument` (đảo dấu, không xoá); phiếu xuất không có

@@ -11,6 +11,7 @@ import {
   qualityInspections,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
+import { syncReceiptIqcStatus } from '../inventory-receipts/inventory-receipts.write';
 import { closeJobIfQcCovered } from '../oqc/oqc.query';
 
 /** Hoàn tất phiếu IQC sau khi phiếu trả NCC liên kết được `post` — gọi bởi
@@ -29,7 +30,12 @@ export async function completeIqcAfterSupplierReturn(
   userId: string,
 ): Promise<void> {
   const inspection = await tx.query.qualityInspections.findFirst({
-    columns: { status: true, productionJobId: true },
+    columns: {
+      status: true,
+      productionJobId: true,
+      originType: true,
+      originId: true,
+    },
     where: and(
       eq(qualityInspections.inspectionType, QualityInspectionType.IQC),
       eq(qualityInspections.id, iqcId),
@@ -48,6 +54,8 @@ export async function completeIqcAfterSupplierReturn(
     .update(qualityInspections)
     .set({ status: QualityInspectionStatus.COMPLETED })
     .where(eq(qualityInspections.id, iqcId));
+
+  await syncReceiptIqcStatus(tx, inspection);
 
   // Cùng lý do ở `IqcService.confirmIqc` — dòng IQC neo vào công đoạn `OUTSOURCE` có thể là dòng QC
   // cuối cùng đóng Job, dù được hoàn tất qua đường phiếu trả NCC chứ không phải `confirm` trực tiếp.

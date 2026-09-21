@@ -27,7 +27,7 @@ Nhánh nhập kho: `docs/workflows/receipt-confirmation.md`, `docs/workflows/sto
    `expectedDate`/`paymentTerm`/giá dòng (`E134`/`E156`/`E135`).
 4. **Nhận hàng** — `POST /inventory-receipts` gắn `purchaseOrderId` (validate PO `ORDERED`, dòng
    thuộc đúng PO, SL cộng dồn thực nhận ≤ SL đặt — `E121`/`E145`/`E123`/`E127`/`E154`) → `confirm` (`DRAFT →
-   PENDING_RECEIPT`/`PENDING_IQC`) → `post` (ghi tồn thật, tự động khấu trừ số lượng đã xuất trả NCC
+   PENDING_RECEIPT`/`PENDING_IQC`; `PENDING_IQC` tự sang `IQC_COMPLETED` khi mọi IQC xong) → `post` (ghi tồn thật, tự động khấu trừ số lượng đã xuất trả NCC
    `supplier_returns` đã `POSTED`). SL đã nhận của PO được tính theo số thực nhận ($\sum \text{nhập} - \sum \text{trả NCC}$),
    cho phép NCC giao bù hàng đạt chuẩn cho phần lỗi đã xuất trả mà không bị chặn bởi `E154`.
 5. **Tự sinh YCTT** — trong cùng transaction `post` (`docs/workflows/stock-movement.md`),
@@ -46,7 +46,7 @@ Nhánh nhập kho: `docs/workflows/receipt-confirmation.md`, `docs/workflows/sto
 | Entity | Trigger | Trước | Sau |
 | --- | --- | --- | --- |
 | `purchase_orders.status` | `confirm` | `DRAFT` | `ORDERED` |
-| `inventory_receipts.status` | `confirm`/`post` | `DRAFT` | `PENDING_RECEIPT`/`PENDING_IQC` → `POSTED` |
+| `inventory_receipts.status` | `confirm`/`post` | `DRAFT` | `PENDING_RECEIPT`/`PENDING_IQC`/`IQC_COMPLETED` → `POSTED` |
 | `inventory_balances`/`inventory_transactions` | `post` | — | cập nhật |
 | `payment_requests` | `post` (đủ hàng lần đầu) | *(chưa có)* | 1 dòng `PENDING` |
 | `payment_requests.status` | `mark-paid`/`cancel` | `PENDING` | `PAID`/`CANCELLED` |
