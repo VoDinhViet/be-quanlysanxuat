@@ -33,6 +33,19 @@ pnpm db:studio
 pnpm db:seed:<name> # xem package.json cho danh sách đầy đủ
 ```
 
+## Docker
+
+Container hoá đúng app (không kèm Postgres/Redis — app nối ra DB/Redis remote sẵn có qua biến môi
+trường, xem `docs/decisions/docker-app-only.md`).
+
+```bash
+cp .env.example .env.production   # nếu chưa có, điền đủ giá trị thật trước (DATABASE_URL/REDIS_URL trỏ server thật, không phải localhost)
+docker compose up -d --build
+```
+
+Kiểm tra: `GET http://localhost:8003/health` (kiểm tra cả DB lẫn Redis). Dữ liệu `uploads/`
+(`UPLOAD_DRIVER=local`) giữ qua named volume `uploads_data`.
+
 ## Scripts
 
 ```bash
