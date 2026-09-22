@@ -1,4 +1,4 @@
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, StreamableFile } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import {
   and,
@@ -14,6 +14,7 @@ import {
   sql,
   type SQL,
 } from 'drizzle-orm';
+import { DateTime } from 'luxon';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
@@ -21,8 +22,13 @@ import {
   DocumentType,
   generateDocumentSequence,
 } from '../../common/utils/document-sequence.util';
+import { formatExcelDate } from '../../common/utils/excel.util';
 import { hasFields } from '../../common/utils/object.util';
 import { unaccentILike } from '../../common/utils/search.util';
+import {
+  formatVndAmount,
+  readAmountInWords,
+} from '../../common/utils/vietnamese-number.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
@@ -41,6 +47,8 @@ import {
   users,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
+import { FormTemplateType } from '../../templates/form-templates.registry';
+import { PdfRendererService } from '../../templates/pdf-renderer.service';
 import { CancelPurchaseOrderReqDto } from './dto/cancel-purchase-order.req.dto';
 import { CreatePurchaseOrderItemReqDto } from './dto/create-purchase-order-item.req.dto';
 import { CreatePurchaseOrderReqDto } from './dto/create-purchase-order.req.dto';
@@ -59,6 +67,7 @@ import type {
   CreateDraftOrdersFromQuotationInput,
   PurchaseOrderDraftLine,
 } from './types/draft-order.type';
+import type { PurchaseOrderPdfContext } from './types/purchase-order-pdf-context.type';
 
 type OrderProgressRefs = {
   orderedQuantity: SQL<number>;
@@ -67,7 +76,10 @@ type OrderProgressRefs = {
 
 @Injectable()
 export class PurchaseOrdersService {
-  constructor(@Inject(DRIZZLE) private readonly db: Database) {}
+  constructor(
+    @Inject(DRIZZLE) private readonly db: Database,
+    private readonly pdfRendererService: PdfRendererService,
+  ) {}
 
   async getPurchaseOrders(
     reqDto: GetPurchaseOrdersReqDto,
@@ -336,6 +348,96 @@ export class PurchaseOrdersService {
   async getPurchaseOrder(
     purchaseOrderId: string,
   ): Promise<PurchaseOrderResDto> {
+    const order = await this.getPurchaseOrderEntity(purchaseOrderId);
+
+    const receivedByItemId = await getReceivedQuantityByPurchaseOrderItemId(
+      this.db,
+      {
+        purchaseOrderItemIds: order.items.map((item) => item.id),
+        statuses: [InventoryDocumentStatus.POSTED],
+      },
+    );
+
+    return plainToInstance(
+      PurchaseOrderResDto,
+      {
+        ...order,
+        items: order.items.map((item) => ({
+          ...item,
+          receivedQuantity: receivedByItemId.get(item.id) ?? 0,
+        })),
+      },
+      { excludeExtraneousValues: true },
+    );
+  }
+
+  /** Xuất PDF PO — subtotal/VAT/tổng tiền/đọc số thành chữ tính ở server, không phụ thuộc script
+   * client cũ trong `purchase-order.html` (đã xoá khi chuyển sang Handlebars). */
+  async exportPurchaseOrderPdf(
+    purchaseOrderId: string,
+    vatPercent: number,
+  ): Promise<StreamableFile> {
+    const order = await this.getPurchaseOrderEntity(purchaseOrderId);
+
+    let subtotal = 0;
+    const items = order.items.map((item, index) => {
+      const lineTotal =
+        item.unitPrice !== null ? item.quantity * item.unitPrice : null;
+      if (lineTotal !== null) subtotal += lineTotal;
+
+      return {
+        stt: index + 1,
+        itemCode: item.purchaseRequestItem.item.code,
+        purchaseRequestCode: item.purchaseRequestItem.purchaseRequest.code,
+        itemName: item.purchaseRequestItem.item.name,
+        unitName: item.purchaseRequestItem.item.unit.name,
+        quantity: item.quantity.toLocaleString('en-US', {
+          maximumFractionDigits: 3,
+        }),
+        unitPrice:
+          item.unitPrice !== null ? formatVndAmount(item.unitPrice) : '',
+        lineTotal: lineTotal !== null ? formatVndAmount(lineTotal) : '',
+        neededDate: formatExcelDate(
+          item.purchaseRequestItem.purchaseRequest.neededDate,
+        ),
+        note: item.note ?? '',
+      };
+    });
+
+    const vatAmount = Math.round((subtotal * vatPercent) / 100);
+    const grandTotal = subtotal + vatAmount;
+
+    const context: PurchaseOrderPdfContext = {
+      code: order.code,
+      orderDate: formatExcelDate(order.orderDate),
+      supplierName: order.supplier.name,
+      supplierAddress: order.supplier.address,
+      subtotal: formatVndAmount(subtotal),
+      vatPercent,
+      vatAmount: formatVndAmount(vatAmount),
+      grandTotal: formatVndAmount(grandTotal),
+      amountInWords: readAmountInWords(grandTotal),
+      assignedUserName: order.assignedUser?.fullName ?? '',
+      ordererName: order.ordererBy?.fullName ?? '',
+      items,
+    };
+
+    const buffer = await this.pdfRendererService.render(
+      FormTemplateType.PURCHASE_ORDER,
+      context,
+    );
+
+    const fileName = `${order.code}-${DateTime.now().toFormat('yyyyLLdd-HHmm')}.pdf`;
+    return new StreamableFile(buffer, {
+      type: 'application/pdf',
+      disposition: `attachment; filename="${fileName}"`,
+    });
+  }
+
+  /** Fetch quan hệ đầy đủ dùng chung cho `getPurchaseOrder` (map DTO) và `exportPurchaseOrderPdf`
+   * (dùng field thô: `supplier.address`/`purchaseRequest.neededDate` — 2 field DTO public không
+   * có, không đáng thêm vào DTO chỉ vì PDF). */
+  private async getPurchaseOrderEntity(purchaseOrderId: string) {
     const order = await this.db.query.purchaseOrders.findFirst({
       where: eq(purchaseOrders.id, purchaseOrderId),
       with: {
@@ -359,25 +461,7 @@ export class PurchaseOrdersService {
       throw new AppException(ErrorCode.E121, HttpStatus.NOT_FOUND);
     }
 
-    const receivedByItemId = await getReceivedQuantityByPurchaseOrderItemId(
-      this.db,
-      {
-        purchaseOrderItemIds: order.items.map((item) => item.id),
-        statuses: [InventoryDocumentStatus.POSTED],
-      },
-    );
-
-    return plainToInstance(
-      PurchaseOrderResDto,
-      {
-        ...order,
-        items: order.items.map((item) => ({
-          ...item,
-          receivedQuantity: receivedByItemId.get(item.id) ?? 0,
-        })),
-      },
-      { excludeExtraneousValues: true },
-    );
+    return order;
   }
 
   /** Lập PO tay, không qua RFQ (`docs/domains/purchasing.md`) — chọn thẳng dòng ĐXMH đã duyệt cho

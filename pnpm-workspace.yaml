@@ -6,4 +6,5 @@ allowBuilds:
   '@scarf/scarf': false
   esbuild: false
   msgpackr-extract: false
+  puppeteer: true
   unrs-resolver: false
