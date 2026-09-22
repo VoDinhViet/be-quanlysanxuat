@@ -411,14 +411,13 @@ export class OrdersService {
           Number,
         ),
         // null nếu đơn chưa duyệt/chưa lên LSX — có LSX thì đây là SL đã chốt (có thể đã sửa tay
-        // khi còn PENDING), khác `quantity` gốc trên đơn — `docs/decisions/
-        // order-target-quantity-follows-lsx.md`.
+        // khi còn PENDING), thuần hiển thị để so sánh với `quantity` gốc trên đơn, không dùng để
+        // tính `remainingQty` (SL mục tiêu giao luôn là SL đặt gốc đã duyệt).
         productionQuantity: productionOrderItems.quantity,
         // Không kẹp sàn 0 — để lộ ra nếu dòng bị xuất vượt SL còn lại thay vì giấu đi (chưa bị
-        // chặn ở tầng ghi, xem `docs/domains/inventory.md`). Ưu tiên SL đã chốt LSX thay vì SL đặt
-        // gốc, cùng lý do trên.
+        // chặn ở tầng ghi, xem `docs/domains/inventory.md`).
         remainingQty:
-          sql<number>`coalesce(${productionOrderItems.quantity}, ${orderItems.quantity}) - coalesce(${issuedByItem.issuedQty}, 0)`.mapWith(
+          sql<number>`${orderItems.quantity} - coalesce(${issuedByItem.issuedQty}, 0)`.mapWith(
             Number,
           ),
       })
