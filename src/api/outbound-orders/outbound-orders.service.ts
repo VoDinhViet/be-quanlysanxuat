@@ -43,7 +43,6 @@ import {
   outboundOrders,
   OutboundOrderStatus,
   productionJobs,
-  productionOrderItems,
   productionOrders,
   units,
   users,
@@ -233,9 +232,7 @@ export class OutboundOrdersService {
    * cùng cấp (không lồng `item.unit`), khớp thẳng shape select nên không cần map lại. 5 cột tồn
    * kho (BUG-090, mở rộng theo UI Spec) `LEFT JOIN` 3 subquery — `excludeOutboundOrderId =
    * outboundOrderId` cho "Đã giữ" để phiếu đang xem không tự trừ mình, cùng lý do
-   * `ensureOutboundLinesIssuable` làm khi kiểm `E194`. `orderedQuantity` ưu tiên SL đã chốt LSX
-   * (`production_order_items.quantity`) thay vì SL đặt gốc —
-   * `docs/decisions/order-target-quantity-follows-lsx.md`. */
+   * `ensureOutboundLinesIssuable` làm khi kiểm `E194`. */
   async getOutboundOrderItems(
     outboundOrderId: string,
   ): Promise<OutboundOrderItemResDto[]> {
@@ -252,10 +249,7 @@ export class OutboundOrdersService {
         unit: getTableColumns(units),
         productionJob: getTableColumns(productionJobs),
         order: getTableColumns(orders),
-        orderedQuantity:
-          sql<number>`coalesce(${productionOrderItems.quantity}, ${orderItems.quantity})`.mapWith(
-            Number,
-          ),
+        orderedQuantity: orderItems.quantity,
         issuedQuantity:
           sql<number>`coalesce(${issuedQty.issuedQty}, 0)`.mapWith(Number),
         onHandQuantity: sql<number>`coalesce(${onHand.onHand}, 0)`.mapWith(
@@ -279,10 +273,6 @@ export class OutboundOrdersService {
       .innerJoin(orderItems, eq(orderItems.id, outboundOrderItems.orderItemId))
       .innerJoin(orders, eq(orders.id, orderItems.orderId))
       .leftJoin(
-        productionOrderItems,
-        eq(productionOrderItems.orderItemId, orderItems.id),
-      )
-      .leftJoin(
         issuedQty,
         eq(issuedQty.orderItemId, outboundOrderItems.orderItemId),
       )
@@ -299,9 +289,7 @@ export class OutboundOrdersService {
   /** Popup "Chọn PO/Job cần giao" — mọi dòng `order_items` chưa `CANCELLED` của đơn
    * `AWAITING_PRODUCTION`/`IN_PROGRESS`, lọc thêm `clientId` khi mở lại từ trang Sửa một DO đã có
    * khách hàng (BUG-090). 5 cột tồn kho cùng khuôn `getOutboundOrderItems`;
-   * `excludeOutboundOrderId` loại chính phiếu đang sửa khỏi "Đã giữ". `orderedQuantity` ưu tiên SL
-   * đã chốt LSX, cùng lý do `getOutboundOrderItems` —
-   * `docs/decisions/order-target-quantity-follows-lsx.md`. */
+   * `excludeOutboundOrderId` loại chính phiếu đang sửa khỏi "Đã giữ". */
   async getUnfulfilledOrderItems(
     reqDto: GetUnfulfilledOrderItemsReqDto,
   ): Promise<OffsetPaginatedDto<UnfulfilledOrderItemResDto>> {
@@ -312,11 +300,7 @@ export class OutboundOrdersService {
       reqDto.excludeOutboundOrderId,
     );
 
-    const targetQtySql =
-      sql<number>`coalesce(${productionOrderItems.quantity}, ${orderItems.quantity})`.mapWith(
-        Number,
-      );
-    const issuedQtySql =
+    const issuedQtySql = () =>
       sql<number>`coalesce(${issuedQty.issuedQty}, 0)`.mapWith(Number);
 
     const where = and(
@@ -324,7 +308,7 @@ export class OutboundOrdersService {
       inArray(orders.status, OutboundOrdersService.UNFULFILLED_ORDER_STATUSES),
       eq(orderItems.status, OrderItemStatus.NORMAL),
       reqDto.clientId ? eq(orders.clientId, reqDto.clientId) : undefined,
-      sql`${issuedQtySql} < ${targetQtySql}`,
+      sql`${issuedQtySql()} < ${orderItems.quantity}`,
     );
 
     const [rows, [{ total }]] = await Promise.all([
@@ -336,12 +320,8 @@ export class OutboundOrdersService {
           job: getTableColumns(productionJobs),
           item: getTableColumns(items),
           unit: getTableColumns(units),
-          orderedQuantity:
-            sql<number>`coalesce(${productionOrderItems.quantity}, ${orderItems.quantity})`.mapWith(
-              Number,
-            ),
-          issuedQuantity:
-            sql<number>`coalesce(${issuedQty.issuedQty}, 0)`.mapWith(Number),
+          orderedQuantity: orderItems.quantity,
+          issuedQuantity: issuedQtySql(),
           onHandQuantity: sql<number>`coalesce(${onHand.onHand}, 0)`.mapWith(
             Number,
           ),
@@ -366,10 +346,6 @@ export class OutboundOrdersService {
             eq(productionJobs.itemId, orderItems.itemId),
           ),
         )
-        .leftJoin(
-          productionOrderItems,
-          eq(productionOrderItems.orderItemId, orderItems.id),
-        )
         .leftJoin(issuedQty, eq(issuedQty.orderItemId, orderItems.id))
         .leftJoin(onHand, eq(onHand.itemId, orderItems.itemId))
         .leftJoin(held, eq(held.itemId, orderItems.itemId))
@@ -381,10 +357,6 @@ export class OutboundOrdersService {
         .select({ total: count() })
         .from(orderItems)
         .innerJoin(orders, eq(orders.id, orderItems.orderId))
-        .leftJoin(
-          productionOrderItems,
-          eq(productionOrderItems.orderItemId, orderItems.id),
-        )
         .leftJoin(issuedQty, eq(issuedQty.orderItemId, orderItems.id))
         .where(where),
     ]);
@@ -810,10 +782,8 @@ export class OutboundOrdersService {
 
   /** Với mỗi đơn bị đụng bởi lô hàng vừa giao (1 DO có thể gộp nhiều đơn cùng khách): mọi dòng
    * `order_items` còn `NORMAL` đã `issuedQty >= targetQuantity` (tính lại trong transaction này,
-   * đọc đúng bút toán vừa ghi ở trên) → đơn đó chuyển `COMPLETED`. `targetQuantity` ưu tiên SL đã
-   * chốt ở LSX (`production_order_items.quantity`, có thể đã sửa tay khi còn `PENDING`) thay vì SL
-   * đặt gốc đã đóng băng trên đơn — `docs/decisions/order-target-quantity-follows-lsx.md`. Chỉ
-   * đóng đơn đang `IN_PROGRESS`, không đụng đơn ở trạng thái khác. */
+   * đọc đúng bút toán vừa ghi ở trên) → đơn đó chuyển `COMPLETED`. Chỉ đóng đơn đang
+   * `IN_PROGRESS`, không đụng đơn ở trạng thái khác. */
   private async closeOrdersIfFullyDelivered(
     tx: DbTransaction,
     deliveredOrderItemIds: string[],
@@ -828,17 +798,10 @@ export class OutboundOrdersService {
     for (const { orderId } of affectedOrders) {
       const lines = await tx
         .select({
-          targetQuantity:
-            sql<number>`coalesce(${productionOrderItems.quantity}, ${orderItems.quantity})`.mapWith(
-              Number,
-            ),
+          targetQuantity: orderItems.quantity,
           issuedQty: issuedByItem.issuedQty,
         })
         .from(orderItems)
-        .leftJoin(
-          productionOrderItems,
-          eq(productionOrderItems.orderItemId, orderItems.id),
-        )
         .leftJoin(issuedByItem, eq(issuedByItem.orderItemId, orderItems.id))
         .where(
           and(

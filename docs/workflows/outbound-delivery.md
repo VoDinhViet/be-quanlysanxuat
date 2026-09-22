@@ -79,9 +79,8 @@ trạng thái + ghi lý do → `REJECTED` (gửi lại được qua `send`).
 `getOutboundOrderForUpdate` → trong **một** transaction: sinh mã `PXK-{năm}-{5}` → `INSERT
 inventory_issues` (`issueType=SALES`, `POSTED` thẳng) + `inventory_issue_items` map 1:1 dòng DO
 (gắn `orderItemId`) → `postDocument` trừ tồn → `outbound_orders.status = DELIVERED` → với mỗi đơn
-hàng bị đụng: mọi dòng `order_items NORMAL` đã `issuedQty ≥ targetQuantity` (ưu tiên SL đã chốt LSX
-— `docs/decisions/order-target-quantity-follows-lsx.md`) → `orders.status: IN_PROGRESS →
-COMPLETED` (`docs/decisions/production-lifecycle-closing.md`).
+hàng bị đụng: mọi dòng `order_items NORMAL` đã `issuedQty ≥ order_items.quantity` (SL đặt gốc đã
+duyệt) → `orders.status: IN_PROGRESS → COMPLETED` (`docs/decisions/production-lifecycle-closing.md`).
 
 ### `cancel` / `delete`
 

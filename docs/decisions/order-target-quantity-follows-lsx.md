@@ -1,6 +1,7 @@
 # SL mục tiêu giao/hoàn tất đơn ưu tiên LSX, không phải SL đặt gốc
 
-**Trạng thái:** còn hiệu lực
+**Trạng thái:** đã đảo ngược 2026-09-22 — xem "Đảo ngược" ở cuối file. Phần Bối cảnh/Quyết định bên
+dưới giữ nguyên làm lịch sử, không còn mô tả hành vi hiện tại.
 
 ## Bối cảnh
 
@@ -53,15 +54,23 @@ nhận thêm phần `fromStockQty` (100) mà không hệ thống nào theo dõi 
 khoảng trống khác — cần đề xuất riêng nếu muốn xử lý (VD: chặn sửa SL LSX xuống dưới `orderQty` trừ
 khi tồn kho thật đủ `fromStockQty`, hoặc bắt buộc DO riêng cho phần `fromStockQty`).
 
-## Đừng hoàn lại
+## Đảo ngược (2026-09-22)
 
-- Đừng đổi 4 chỗ trên về đọc thẳng `order_items.quantity` làm mục tiêu giao/hoàn tất/nhu cầu — đó
-  chính là lỗ hổng đã sửa (đơn kẹt `IN_PROGRESS` vĩnh viễn khi LSX bị giảm SL).
-- Đừng nhầm `productionQuantity` (mới, ở `OrderItemResDto`) với `orderQty` (đã có sẵn trên
-  `production_order_items`, snapshot SL đặt gốc tại lần ghi gần nhất — dùng để tính `fromStockQty`,
-  khác mục đích).
-- `order_items.quantity` chính nó **không đổi nghĩa** — vẫn là SL khách đặt, hiển thị nguyên vẹn
-  trên trang chi tiết đơn; chỉ có các phép tính "còn thiếu/đã đủ" là đổi cơ sở so sánh.
+Người dùng báo lại đúng hệ quả cố ý ở trên: SL mục tiêu giao đang thấp hơn SL đơn hàng đã duyệt khi
+LSX bị chỉnh xuống, và yêu cầu SL giao phải luôn theo đơn hàng đã duyệt — không theo LSX. Đã đảo
+ngược cả 4 chỗ ở bảng trên về đọc thẳng `order_items.quantity` (bỏ luôn `coalesce`/`LEFT JOIN
+production_order_items` ở những chỗ không còn dùng cho mục đích nào khác).
+
+Đánh đổi được chấp nhận: bug mô tả ở "Bối cảnh" có thể tái diễn — nếu LSX bị hạ SL (phần chênh lệch
+`fromStockQty`) mà không có DO nào giao nốt phần đó (không gắn Job, lấy từ tồn kho có sẵn), đơn sẽ
+đứng `IN_PROGRESS` cho tới khi được giao đủ thật sự. Đây được coi là đúng thực tế nghiệp vụ — đơn chỉ
+nên `COMPLETED` khi khách nhận đủ SL đã đặt.
+
+`productionQuantity` trên `OrderItemResDto` (thêm ở quyết định gốc) **vẫn giữ** — thuần hiển thị SL
+đã chốt LSX để so sánh, không còn dùng để tính `remainingQty`/mục tiêu.
+
+Không backfill/xử lý gì thêm cho các đơn đang kẹt `IN_PROGRESS` vì đã "COMPLETED nhầm" theo logic cũ
+trước ngày đảo ngược — quyết định này chỉ đổi hành vi từ nay về sau.
 
 ## Related docs
 
