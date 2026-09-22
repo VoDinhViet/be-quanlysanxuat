@@ -148,7 +148,7 @@ export class PurchaseQuotationsService {
         : undefined,
     );
 
-    const [entities, countRows] = await Promise.all([
+    const [entities, [{ total }]] = await Promise.all([
       this.db.query.purchaseQuotations.findMany({
         where,
         limit: reqDto.limit,
@@ -191,7 +191,7 @@ export class PurchaseQuotationsService {
       plainToInstance(PageQuotationResDto, entitiesWithItemCount, {
         excludeExtraneousValues: true,
       }),
-      new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
+      new OffsetPaginationDto(total, reqDto),
     );
   }
 

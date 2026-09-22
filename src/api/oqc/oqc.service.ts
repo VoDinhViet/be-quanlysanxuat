@@ -125,7 +125,7 @@ export class OqcService {
     // nguyên `item`, danh sách không có cột nào cần nó (`getOqc` mới trả `item` đầy đủ). Join qua
     // `qualityInspections.itemId` (snapshot riêng, `NOT NULL`) — KHÔNG PHẢI
     // `productionJobBomItems.itemId` (cột đó nullable, `bomItem` chỉ cho `code`/`name`).
-    const [rows, countRows] = await Promise.all([
+    const [rows, [{ total }]] = await Promise.all([
       this.db
         .select({
           id: qualityInspections.id,
@@ -176,7 +176,7 @@ export class OqcService {
 
     return new OffsetPaginatedDto(
       plainToInstance(PageOqcResDto, rows, { excludeExtraneousValues: true }),
-      new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
+      new OffsetPaginationDto(total, reqDto),
     );
   }
 

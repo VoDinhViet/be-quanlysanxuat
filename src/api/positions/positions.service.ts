@@ -48,7 +48,7 @@ export class PositionsService {
 
     const employeeCounts = this.employeeCountSubquery();
 
-    const [rows, countRows] = await Promise.all([
+    const [rows, [{ total }]] = await Promise.all([
       this.db
         .select({
           ...getTableColumns(positions),
@@ -70,7 +70,7 @@ export class PositionsService {
       plainToInstance(PositionResDto, rows, {
         excludeExtraneousValues: true,
       }),
-      new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
+      new OffsetPaginationDto(total, reqDto),
     );
   }
 

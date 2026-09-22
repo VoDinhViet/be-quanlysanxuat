@@ -139,7 +139,7 @@ export class OutsourcingReceiptsService {
 
     const totalQuantityByReceipt = totalQuantityByReceiptIdSubquery(this.db);
 
-    const [entities, countRows] = await Promise.all([
+    const [entities, [{ total }]] = await Promise.all([
       this.db
         .select({
           ...getTableColumns(outsourcingReceipts),
@@ -171,7 +171,7 @@ export class OutsourcingReceiptsService {
       plainToInstance(PageOutsourcingReceiptResDto, entities, {
         excludeExtraneousValues: true,
       }),
-      new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
+      new OffsetPaginationDto(total, reqDto),
     );
   }
 

@@ -87,7 +87,7 @@ export class InventoryIssuesService {
         : undefined,
     );
 
-    const [entities, countRows] = await Promise.all([
+    const [entities, [{ total }]] = await Promise.all([
       this.db.query.inventoryIssues.findMany({
         where,
         limit: reqDto.limit,
@@ -113,7 +113,7 @@ export class InventoryIssuesService {
       plainToInstance(PageInventoryIssueResDto, entities, {
         excludeExtraneousValues: true,
       }),
-      new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
+      new OffsetPaginationDto(total, reqDto),
     );
   }
 

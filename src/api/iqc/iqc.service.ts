@@ -134,7 +134,7 @@ export class IqcService {
       reqDto.status ? eq(qualityInspections.status, reqDto.status) : undefined,
     );
 
-    const [rows, countRows] = await Promise.all([
+    const [rows, [{ total }]] = await Promise.all([
       this.db
         .select({
           id: qualityInspections.id,
@@ -210,7 +210,7 @@ export class IqcService {
         })),
         { excludeExtraneousValues: true },
       ),
-      new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
+      new OffsetPaginationDto(total, reqDto),
     );
   }
 

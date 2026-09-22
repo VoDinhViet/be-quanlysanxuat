@@ -130,7 +130,7 @@ export class InventoryRequisitionLinesService {
         : undefined,
     );
 
-    const [rows, countRows] = await Promise.all([
+    const [rows, [{ total }]] = await Promise.all([
       this.db
         .select({
           item: getTableColumns(items),
@@ -204,7 +204,7 @@ export class InventoryRequisitionLinesService {
       plainToInstance(RequisitionLineResDto, lines, {
         excludeExtraneousValues: true,
       }),
-      new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
+      new OffsetPaginationDto(total, reqDto),
     );
   }
 }

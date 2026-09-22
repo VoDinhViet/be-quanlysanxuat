@@ -146,7 +146,7 @@ export class PurchaseOrdersService {
     // không lọc theo tiến độ (suy từ aggregate) được bằng `db.query.findMany` (relational query
     // API), nên phải tách 2 bước. `orderedQuantity`/`receivedQuantity` chỉ để tính `progress` ở
     // bước 3 (JS, không cần SQL CASE) — không lên response.
-    const [idRows, countRows] = await Promise.all([
+    const [idRows, [{ total }]] = await Promise.all([
       this.db
         .select({
           id: purchaseOrders.id,
@@ -255,7 +255,7 @@ export class PurchaseOrdersService {
       plainToInstance(PagePurchaseOrderResDto, rows, {
         excludeExtraneousValues: true,
       }),
-      new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
+      new OffsetPaginationDto(total, reqDto),
     );
   }
 

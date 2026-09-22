@@ -138,7 +138,7 @@ export class OrdersService {
     const approverAlias = alias(users, 'approver');
     const rejecterAlias = alias(users, 'rejecter');
 
-    const [entities, countRows] = await Promise.all([
+    const [entities, [{ total }]] = await Promise.all([
       this.db
         .select({
           ...getTableColumns(orders),
@@ -170,7 +170,7 @@ export class OrdersService {
       plainToInstance(PageOrderResDto, entities, {
         excludeExtraneousValues: true,
       }),
-      new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
+      new OffsetPaginationDto(total, reqDto),
     );
   }
 

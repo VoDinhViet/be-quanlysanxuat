@@ -108,7 +108,7 @@ export class PurchaseLedgerService {
         : undefined,
     );
 
-    const [rows, countRows] = await Promise.all([
+    const [rows, [{ total }]] = await Promise.all([
       this.db
         .select({
           id: purchaseRequestItems.id,
@@ -178,7 +178,7 @@ export class PurchaseLedgerService {
       plainToInstance(PurchaseLedgerItemResDto, rows, {
         excludeExtraneousValues: true,
       }),
-      new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
+      new OffsetPaginationDto(total, reqDto),
     );
   }
 

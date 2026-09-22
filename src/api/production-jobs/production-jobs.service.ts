@@ -107,7 +107,7 @@ export class ProductionJobsService {
         : undefined,
     );
 
-    const [rows, countRows] = await Promise.all([
+    const [rows, [{ total }]] = await Promise.all([
       this.db
         .select({
           id: productionJobs.id,
@@ -149,7 +149,7 @@ export class ProductionJobsService {
       plainToInstance(ProductionJobResDto, rows, {
         excludeExtraneousValues: true,
       }),
-      new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
+      new OffsetPaginationDto(total, reqDto),
     );
   }
 
@@ -284,7 +284,7 @@ export class ProductionJobsService {
       plainToInstance(ProductionJobIssueResDto, lines, {
         excludeExtraneousValues: true,
       }),
-      new OffsetPaginationDto(total ?? 0, reqDto),
+      new OffsetPaginationDto(total, reqDto),
     );
   }
 
@@ -389,7 +389,7 @@ export class ProductionJobsService {
     await this.ensureJobExists(jobId);
 
     const where = eq(productionJobNotes.productionJobId, jobId);
-    const [rows, countRows] = await Promise.all([
+    const [rows, [{ total }]] = await Promise.all([
       this.db.query.productionJobNotes.findMany({
         where,
         with: { creatorBy: true },
@@ -404,7 +404,7 @@ export class ProductionJobsService {
       plainToInstance(ProductionJobNoteResDto, rows, {
         excludeExtraneousValues: true,
       }),
-      new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
+      new OffsetPaginationDto(total, reqDto),
     );
   }
 
@@ -415,7 +415,7 @@ export class ProductionJobsService {
     await this.ensureJobExists(jobId);
 
     const where = eq(productionJobLogs.productionJobId, jobId);
-    const [rows, countRows] = await Promise.all([
+    const [rows, [{ total }]] = await Promise.all([
       this.db.query.productionJobLogs.findMany({
         where,
         with: { performerBy: true },
@@ -430,7 +430,7 @@ export class ProductionJobsService {
       plainToInstance(ProductionJobLogResDto, rows, {
         excludeExtraneousValues: true,
       }),
-      new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
+      new OffsetPaginationDto(total, reqDto),
     );
   }
 

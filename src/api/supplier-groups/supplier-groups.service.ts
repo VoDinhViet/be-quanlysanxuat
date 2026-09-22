@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
-import { and, count as drizzleCount, desc, or } from 'drizzle-orm';
+import { and, count, desc, or } from 'drizzle-orm';
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
@@ -29,24 +29,21 @@ export class SupplierGroupsService {
     );
     const orderBy = desc(supplierGroups.createdAt);
 
-    const [entities, count] = await Promise.all([
+    const [entities, [{ total }]] = await Promise.all([
       this.db.query.supplierGroups.findMany({
         where,
         limit: reqDto.limit,
         offset: reqDto.offset,
         orderBy,
       }),
-      this.db
-        .select({ total: drizzleCount() })
-        .from(supplierGroups)
-        .where(where),
+      this.db.select({ total: count() }).from(supplierGroups).where(where),
     ]);
 
     return new OffsetPaginatedDto(
       plainToInstance(SupplierGroupResDto, entities, {
         excludeExtraneousValues: true,
       }),
-      new OffsetPaginationDto(count[0]?.total ?? 0, reqDto),
+      new OffsetPaginationDto(total, reqDto),
     );
   }
 }

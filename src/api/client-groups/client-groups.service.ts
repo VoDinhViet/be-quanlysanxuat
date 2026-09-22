@@ -29,7 +29,7 @@ export class ClientGroupsService {
     );
     const orderBy = desc(clientGroups.createdAt);
 
-    const [entities, countRows] = await Promise.all([
+    const [entities, [{ total }]] = await Promise.all([
       this.db.query.clientGroups.findMany({
         where,
         limit: reqDto.limit,
@@ -43,7 +43,7 @@ export class ClientGroupsService {
       plainToInstance(ClientGroupResDto, entities, {
         excludeExtraneousValues: true,
       }),
-      new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
+      new OffsetPaginationDto(total, reqDto),
     );
   }
 }

@@ -100,7 +100,7 @@ export class ProductionOrdersService {
       reqDto.status ? eq(productionOrders.status, reqDto.status) : undefined,
     );
 
-    const [entities, countRows] = await Promise.all([
+    const [entities, [{ total }]] = await Promise.all([
       this.db
         .select({
           id: productionOrders.id,
@@ -137,7 +137,7 @@ export class ProductionOrdersService {
       plainToInstance(ProductionOrderResDto, rows, {
         excludeExtraneousValues: true,
       }),
-      new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
+      new OffsetPaginationDto(total, reqDto),
     );
   }
 
@@ -549,7 +549,7 @@ export class ProductionOrdersService {
     }
 
     const where = eq(productionOrderLogs.productionOrderId, productionOrdersId);
-    const [rows, countRows] = await Promise.all([
+    const [rows, [{ total }]] = await Promise.all([
       this.db.query.productionOrderLogs.findMany({
         where,
         with: { performerBy: true },
@@ -564,7 +564,7 @@ export class ProductionOrdersService {
       plainToInstance(ProductionOrderLogResDto, rows, {
         excludeExtraneousValues: true,
       }),
-      new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
+      new OffsetPaginationDto(total, reqDto),
     );
   }
 
