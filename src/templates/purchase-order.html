@@ -4,10 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Đơn Hàng (Purchase Order) - BM-01/KD | Tiến Huy Mold</title>
-  <!-- Google Fonts: Plus Jakarta Sans & JetBrains Mono -->
+  <!-- Phông chữ chuẩn doanh nghiệp: Times New Roman / Tinos (Nghị định 30/2020/NĐ-CP & ISO 9001) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,600&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Tinos:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
   <style>
     /* =========================================================
        THIẾT KẾ BIỂU MẪU PHẲNG (FLAT CORPORATE FORM - NO CARDS)
@@ -18,11 +18,11 @@
       --navy-dark: #172554;
       --navy-light: #2563eb;
       --text-main: #000000;        /* Đen văn bản chuẩn */
-      --text-muted: #555555;       /* Xám phụ đề */
+      --text-muted: #475569;       /* Xám phụ đề */
       --border-table: #94a3b8;     /* Viền bảng sắc nét */
       --border-line: #cbd5e1;
-      --font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      --font-mono: 'JetBrains Mono', monospace;
+      --font-family: 'Times New Roman', 'Tinos', 'Liberation Serif', Times, serif;
+      --font-mono: 'Times New Roman', 'Tinos', 'Liberation Serif', Times, serif;
     }
 
     * {
@@ -141,7 +141,6 @@
       z-index: 2;
       display: flex;
       flex-direction: column;
-      justify-content: space-between;
       height: 100%;
     }
 
@@ -444,7 +443,7 @@
       display: flex;
       justify-content: space-around;
       align-items: flex-start;
-      margin-top: 16px;
+      margin-top: 28px;
       text-align: center;
     }
 
@@ -497,6 +496,7 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
+      margin-top: auto;
       border-top: 1px solid #cbd5e1;
       padding-top: 4px;
       font-size: 7.5pt;
@@ -512,7 +512,8 @@
         margin: 6mm 10mm 6mm 10mm;
       }
 
-      body {
+      html, body {
+        height: 100% !important;
         background: #ffffff !important;
         padding: 0 !important;
         margin: 0 !important;
@@ -524,14 +525,15 @@
       }
 
       .form-wrapper {
+        height: 100% !important;
         margin: 0 !important;
         padding: 0 !important;
       }
 
       .a4-page {
         width: 100% !important;
-        height: auto !important;
-        max-height: none !important;
+        height: 100% !important;
+        min-height: calc(210mm - 12mm) !important;
         padding: 0 !important;
         box-shadow: none !important;
         border-radius: 0 !important;
@@ -540,6 +542,14 @@
 
       .a4-page.active {
         display: flex !important;
+        flex-direction: column !important;
+        justify-content: space-between !important;
+      }
+
+      .form-inner {
+        height: 100% !important;
+        display: flex !important;
+        flex-direction: column !important;
       }
 
       * {
@@ -620,16 +630,16 @@
         <table class="form-integrated-table" id="table-po">
           <thead>
             <tr>
-              <th style="width: 34px;">STT<span class="th-subline">No</span></th>
-              <th style="width: 100px;">Mã sản phẩm<span class="th-subline">Product Code</span></th>
-              <th style="width: 85px;">Số PR<span class="th-subline">PR No</span></th>
+              <th style="width: 32px;">STT<span class="th-subline">No</span></th>
+              <th style="width: 115px;">Mã sản phẩm<span class="th-subline">Product Code</span></th>
+              <th style="width: 95px;">Số PR<span class="th-subline">PR No</span></th>
               <th>Tên hàng / Quy cách kỹ thuật gia công<span class="th-subline">Description & Specifications</span></th>
-              <th style="width: 48px;">ĐVT<span class="th-subline">Unit</span></th>
+              <th style="width: 45px;">ĐVT<span class="th-subline">Unit</span></th>
               <th style="width: 55px;">Số lượng<span class="th-subline">Qty</span></th>
-              <th style="width: 105px;">Đơn giá (VNĐ)<span class="th-subline">Unit Price</span></th>
-              <th style="width: 115px;">Thành tiền (VNĐ)<span class="th-subline">Amount</span></th>
+              <th style="width: 100px;">Đơn giá (VNĐ)<span class="th-subline">Unit Price</span></th>
+              <th style="width: 110px;">Thành tiền (VNĐ)<span class="th-subline">Amount</span></th>
               <th style="width: 90px;">Ngày giao<span class="th-subline">Delivery</span></th>
-              <th style="width: 95px;">Ghi chú<span class="th-subline">Note</span></th>
+              <th style="width: 90px;">Ghi chú<span class="th-subline">Note</span></th>
             </tr>
           </thead>
           <tbody>

@@ -2,6 +2,7 @@ import { HttpStatus, Inject, Injectable, StreamableFile } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import {
   and,
+  asc,
   count,
   desc,
   eq,
@@ -14,6 +15,7 @@ import {
   sql,
   type SQL,
 } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { DateTime } from 'luxon';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
@@ -44,6 +46,7 @@ import {
   PurchaseOrderStatus,
   PurchaseRequestStatus,
   suppliers,
+  units,
   users,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
@@ -377,29 +380,28 @@ export class PurchaseOrdersService {
     purchaseOrderId: string,
     vatPercent: number,
   ): Promise<StreamableFile> {
-    const order = await this.getPurchaseOrderEntity(purchaseOrderId);
+    const { order, items: rawItems } =
+      await this.getPurchaseOrderForPdf(purchaseOrderId);
 
     let subtotal = 0;
-    const items = order.items.map((item, index) => {
+    const items = rawItems.map((item, index) => {
       const lineTotal =
         item.unitPrice !== null ? item.quantity * item.unitPrice : null;
       if (lineTotal !== null) subtotal += lineTotal;
 
       return {
         stt: index + 1,
-        itemCode: item.purchaseRequestItem.item.code,
-        purchaseRequestCode: item.purchaseRequestItem.purchaseRequest.code,
-        itemName: item.purchaseRequestItem.item.name,
-        unitName: item.purchaseRequestItem.item.unit.name,
+        itemCode: item.itemCode,
+        purchaseRequestCode: item.purchaseRequestCode,
+        itemName: item.itemName,
+        unitName: item.unitName,
         quantity: item.quantity.toLocaleString('en-US', {
           maximumFractionDigits: 3,
         }),
         unitPrice:
           item.unitPrice !== null ? formatVndAmount(item.unitPrice) : '',
         lineTotal: lineTotal !== null ? formatVndAmount(lineTotal) : '',
-        neededDate: formatExcelDate(
-          item.purchaseRequestItem.purchaseRequest.neededDate,
-        ),
+        neededDate: formatExcelDate(item.neededDate),
         note: item.note ?? '',
       };
     });
@@ -410,15 +412,15 @@ export class PurchaseOrdersService {
     const context: PurchaseOrderPdfContext = {
       code: order.code,
       orderDate: formatExcelDate(order.orderDate),
-      supplierName: order.supplier.name,
-      supplierAddress: order.supplier.address,
+      supplierName: order.supplierName,
+      supplierAddress: order.supplierAddress,
       subtotal: formatVndAmount(subtotal),
       vatPercent,
       vatAmount: formatVndAmount(vatAmount),
       grandTotal: formatVndAmount(grandTotal),
       amountInWords: readAmountInWords(grandTotal),
-      assignedUserName: order.assignedUser?.fullName ?? '',
-      ordererName: order.ordererBy?.fullName ?? '',
+      assignedUserName: order.assignedUserName ?? '',
+      ordererName: order.ordererName ?? '',
       items,
     };
 
@@ -434,9 +436,63 @@ export class PurchaseOrdersService {
     });
   }
 
-  /** Fetch quan hệ đầy đủ dùng chung cho `getPurchaseOrder` (map DTO) và `exportPurchaseOrderPdf`
-   * (dùng field thô: `supplier.address`/`purchaseRequest.neededDate` — 2 field DTO public không
-   * có, không đáng thêm vào DTO chỉ vì PDF). */
+  /** Lấy dữ liệu PO phục vụ riêng xuất file PDF — dùng select trực tiếp, tối ưu gọn gàng và
+   * độc lập hoàn toàn với `getPurchaseOrderEntity` / các API khác. */
+  private async getPurchaseOrderForPdf(purchaseOrderId: string) {
+    const assignedUsers = alias(users, 'assigned_users');
+    const ordererUsers = alias(users, 'orderer_users');
+
+    const [order] = await this.db
+      .select({
+        code: purchaseOrders.code,
+        orderDate: purchaseOrders.orderDate,
+        supplierName: suppliers.name,
+        supplierAddress: suppliers.address,
+        assignedUserName: assignedUsers.fullName,
+        ordererName: ordererUsers.fullName,
+      })
+      .from(purchaseOrders)
+      .innerJoin(suppliers, eq(suppliers.id, purchaseOrders.supplierId))
+      .leftJoin(
+        assignedUsers,
+        eq(assignedUsers.id, purchaseOrders.assignedUserId),
+      )
+      .leftJoin(ordererUsers, eq(ordererUsers.id, purchaseOrders.orderedBy))
+      .where(eq(purchaseOrders.id, purchaseOrderId));
+
+    if (!order) {
+      throw new AppException(ErrorCode.E121, HttpStatus.NOT_FOUND);
+    }
+
+    const rawItems = await this.db
+      .select({
+        quantity: purchaseOrderItems.quantity,
+        unitPrice: purchaseOrderItems.unitPrice,
+        note: purchaseOrderItems.note,
+        itemCode: items.code,
+        itemName: items.name,
+        unitName: units.name,
+        purchaseRequestCode: purchaseRequests.code,
+        neededDate: purchaseRequests.neededDate,
+      })
+      .from(purchaseOrderItems)
+      .innerJoin(
+        purchaseRequestItems,
+        eq(purchaseRequestItems.id, purchaseOrderItems.purchaseRequestItemId),
+      )
+      .innerJoin(
+        purchaseRequests,
+        eq(purchaseRequests.id, purchaseRequestItems.purchaseRequestId),
+      )
+      .innerJoin(items, eq(items.id, purchaseRequestItems.itemId))
+      .innerJoin(units, eq(units.id, items.unitId))
+      .where(eq(purchaseOrderItems.purchaseOrderId, purchaseOrderId))
+      .orderBy(asc(purchaseOrderItems.id));
+
+    return { order, items: rawItems };
+  }
+
+  /** Fetch quan hệ đầy đủ dùng riêng cho `getPurchaseOrder` (map DTO). */
   private async getPurchaseOrderEntity(purchaseOrderId: string) {
     const order = await this.db.query.purchaseOrders.findFirst({
       where: eq(purchaseOrders.id, purchaseOrderId),
