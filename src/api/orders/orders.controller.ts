@@ -61,15 +61,40 @@ export class OrdersController {
     return this.ordersService.getOrderStats();
   }
 
+  @Get('export-excel')
+  @Permissions('orders:read')
+  @ApiAuth({
+    summary: 'Xuất Excel danh sách đơn hàng đã chọn',
+    fileType: XLSX_MIME,
+  })
+  exportOrdersExcel(
+    @Query() reqDto: ExportOrdersReqDto,
+  ): Promise<StreamableFile> {
+    return this.ordersService.exportOrdersExcel(reqDto);
+  }
+
   @Get('export')
   @Permissions('orders:read')
   @ApiAuth({
-    summary:
-      'Xuất Excel danh sách đơn hàng — cùng bộ lọc GET /orders, không phân trang',
+    summary: 'Xuất Excel danh sách đơn hàng đã chọn (alias)',
     fileType: XLSX_MIME,
   })
   exportOrders(@Query() reqDto: ExportOrdersReqDto): Promise<StreamableFile> {
-    return this.ordersService.exportOrders(reqDto);
+    return this.ordersService.exportOrdersExcel(reqDto);
+  }
+
+  // Khai trước ':orderId' để không bị nuốt thành param đó.
+  @Get('export-summary-pdf')
+  @Permissions('orders:read')
+  @ApiAuth({
+    summary: 'Xuất PDF danh sách tổng hợp nhiều đơn hàng bán đã chọn',
+    fileType: 'application/pdf',
+  })
+  exportOrdersSummaryPdf(
+    @Query() reqDto: ExportOrdersReqDto,
+    @CurrentUser() payload: JwtPayloadType,
+  ): Promise<StreamableFile> {
+    return this.ordersService.exportOrdersSummaryPdf(reqDto, payload.userId);
   }
 
   @Get(':orderId')
@@ -80,6 +105,18 @@ export class OrdersController {
   })
   getOrder(@UUIDParam('orderId') orderId: string): Promise<OrderResDto> {
     return this.ordersService.getOrder(orderId);
+  }
+
+  @Get(':orderId/export-pdf')
+  @Permissions('orders:read')
+  @ApiAuth({
+    summary: 'Xuất PDF chi tiết đơn hàng bán',
+    fileType: 'application/pdf',
+  })
+  exportOrderPdf(
+    @UUIDParam('orderId') orderId: string,
+  ): Promise<StreamableFile> {
+    return this.ordersService.exportOrderPdf(orderId);
   }
 
   @Get(':orderId/items')

@@ -40,8 +40,8 @@ function readThreeDigits(value: number, forcePadHundred: boolean): string {
 }
 
 /** Đọc số tiền VNĐ thành chữ (tỷ/triệu/nghìn/đồng) — làm tròn về đồng, không xử lý số âm/thập
- * phân. Dùng cho khối "Số tiền viết bằng chữ" trên PDF PO (`purchase-order.html`). */
-export function readAmountInWords(amount: number): string {
+ * phân. Dùng cho khối "Số tiền viết bằng chữ" trên các template PDF (`src/templates/`). */
+export function formatVndInWords(amount: number): string {
   let remaining = Math.round(amount);
   if (remaining <= 0) return 'Không đồng chẵn.';
 
@@ -68,8 +68,21 @@ export function readAmountInWords(amount: number): string {
   return `${res.charAt(0).toUpperCase()}${res.slice(1)} chẵn.`;
 }
 
-/** Format số tiền VNĐ: làm tròn về đồng, nhóm hàng nghìn bằng dấu phẩy (khớp cách trình bày gốc
- * của mockup `purchase-order.html`, VD `185,000,000`). */
-export function formatVndAmount(amount: number): string {
-  return Math.round(amount).toLocaleString('en-US');
+const VND_FORMATTER = new Intl.NumberFormat('vi-VN', {
+  maximumFractionDigits: 0,
+});
+
+/** Format số tiền VNĐ theo chuẩn Việt Nam: làm tròn về đồng, nhóm hàng nghìn bằng dấu chấm
+ * (VD `185.000.000`). */
+export function formatVnd(amount: number): string {
+  if (!Number.isFinite(amount)) return '0';
+  return VND_FORMATTER.format(amount);
+}
+
+const QUANTITY_FORMATTER = new Intl.NumberFormat('vi-VN', {
+  maximumFractionDigits: 3,
+});
+
+export function formatQuantity(value: number): string {
+  return QUANTITY_FORMATTER.format(value);
 }

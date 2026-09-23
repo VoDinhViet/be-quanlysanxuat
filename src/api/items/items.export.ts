@@ -1,5 +1,5 @@
 import {
-  formatExcelDateTime,
+  formatVnDateTime,
   type ExcelColumn,
 } from '../../common/utils/excel.util';
 import { ItemStatus, ItemType } from '../../database/schemas';
@@ -65,5 +65,5 @@ export const ITEM_EXPORT_COLUMNS: ExcelColumn<ItemExport>[] = [
   { header: 'Mô tả', value: (row) => row.description, width: 35 },
   { header: 'Ghi chú', value: (row) => row.note, width: 30 },
   { header: 'Người tạo', value: (row) => row.creatorName },
-  { header: 'Ngày tạo', value: (row) => formatExcelDateTime(row.createdAt) },
+  { header: 'Ngày tạo', value: (row) => formatVnDateTime(row.createdAt) },
 ];

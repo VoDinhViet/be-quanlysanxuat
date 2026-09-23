@@ -11,22 +11,29 @@ export interface ExcelColumn<T> {
   value: (row: T) => string | number | null;
 }
 
-// Cột DB là `date` lưu UTC-midnight — format ở UTC, không dùng giờ local server để tránh lệch ngày.
-export function formatExcelDate(date: Date | null): string {
-  return date
-    ? DateTime.fromJSDate(date, { zone: 'utc' }).toFormat('dd/MM/yyyy')
-    : '';
+// Pin về giờ VN thay vì giờ local server — tránh lệch ngày khi server chạy múi giờ khác.
+export function formatVnDate(date: Date | null): string {
+  if (!date) return '';
+
+  return DateTime.fromJSDate(date)
+    .setZone('Asia/Ho_Chi_Minh')
+    .toFormat('dd/MM/yyyy');
 }
 
-// Cột DB là `timestamp` (một mốc giờ thật, không phải UTC-midnight) — format theo giờ VN, khác
-// `formatExcelDate` ở trên. Dùng cho `createdAt`/`updatedAt`, không dùng cho cột `date`.
-export function formatExcelDateTime(date: Date | null): string {
-  return date
-    ? DateTime.fromJSDate(date, { zone: 'Asia/Ho_Chi_Minh' }).toFormat(
-        'dd/MM/yyyy',
-      )
-    : '';
+
+/**
+ * Format timestamp theo múi giờ Việt Nam.
+ * Dùng cho các cột `timestamp` như `createdAt`/`updatedAt`.
+ */
+export function formatVnDateTime(date: Date | null): string {
+  if (!date) return '';
+
+  return DateTime.fromJSDate(date, {
+    zone: 'Asia/Ho_Chi_Minh',
+  }).toFormat('dd/MM/yyyy HH:mm');
 }
+
+
 
 /** Điểm đóng gói ExcelJS duy nhất trong repo — mọi export khác chỉ khai `ExcelColumn[]`, không tự
  * đụng `Workbook`. Dòng header in đậm + đóng băng + autoFilter là format cố định cho mọi export. */

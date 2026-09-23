@@ -6,7 +6,6 @@ import {
   Patch,
   Post,
   Query,
-  StreamableFile,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 
@@ -20,7 +19,6 @@ import { PurchaseChainNotesResDto } from '../purchase-notes/dto/purchase-chain-n
 import { PurchaseNotesService } from '../purchase-notes/purchase-notes.service';
 import { CancelPurchaseOrderReqDto } from './dto/cancel-purchase-order.req.dto';
 import { CreatePurchaseOrderReqDto } from './dto/create-purchase-order.req.dto';
-import { ExportPurchaseOrderPdfReqDto } from './dto/export-purchase-order-pdf.req.dto';
 import { GetPurchaseOrdersReqDto } from './dto/get-purchase-orders.req.dto';
 import { PagePurchaseOrderResDto } from './dto/page-purchase-order.res.dto';
 import { PurchaseOrderResDto } from './dto/purchase-order.res.dto';
@@ -59,23 +57,6 @@ export class PurchaseOrdersController {
     @UUIDParam('purchaseOrderId') purchaseOrderId: string,
   ): Promise<PurchaseOrderResDto> {
     return this.purchaseOrdersService.getPurchaseOrder(purchaseOrderId);
-  }
-
-  @Get(':purchaseOrderId/export-pdf')
-  @Permissions('purchasing:read')
-  @ApiAuth({
-    summary:
-      'Xuất PDF đơn mua (PO) — subtotal/VAT/tổng tiền tính ở server, VAT truyền qua query',
-    fileType: 'application/pdf',
-  })
-  exportPurchaseOrderPdf(
-    @UUIDParam('purchaseOrderId') purchaseOrderId: string,
-    @Query() reqDto: ExportPurchaseOrderPdfReqDto,
-  ): Promise<StreamableFile> {
-    return this.purchaseOrdersService.exportPurchaseOrderPdf(
-      purchaseOrderId,
-      reqDto.vatPercent ?? 0,
-    );
   }
 
   @Post()

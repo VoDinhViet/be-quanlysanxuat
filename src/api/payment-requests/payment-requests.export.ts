@@ -1,6 +1,6 @@
 import {
-  formatExcelDate,
-  formatExcelDateTime,
+  formatVnDate,
+  formatVnDateTime,
   type ExcelColumn,
 } from '../../common/utils/excel.util';
 import { PaymentRequestStatus } from '../../database/schemas';
@@ -37,17 +37,17 @@ export const PAYMENT_REQUEST_EXPORT_COLUMNS: ExcelColumn<PaymentRequestExport>[]
       value: (row) => row.requestValue,
       numFmt: '#,##0',
     },
-    { header: 'Hạn thanh toán', value: (row) => formatExcelDate(row.dueDate) },
+    { header: 'Hạn thanh toán', value: (row) => formatVnDate(row.dueDate) },
     {
       header: 'Trạng thái',
       value: (row) => PAYMENT_REQUEST_STATUS_LABELS[row.status],
     },
     {
       header: 'Ngày đã thanh toán',
-      value: (row) => formatExcelDateTime(row.paidAt),
+      value: (row) => formatVnDateTime(row.paidAt),
     },
     { header: 'Lý do huỷ', value: (row) => row.cancellationReason },
     { header: 'Ghi chú', value: (row) => row.note, width: 30 },
     { header: 'Người tạo', value: (row) => row.creatorName },
-    { header: 'Ngày tạo', value: (row) => formatExcelDateTime(row.createdAt) },
+    { header: 'Ngày tạo', value: (row) => formatVnDateTime(row.createdAt) },
   ];

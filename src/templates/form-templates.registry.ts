@@ -1,9 +1,14 @@
 import { join } from 'path';
 
-/** Loại chứng từ đã có template — chỉ `PURCHASE_ORDER` (đơn mua hàng, mã BM-01/KD) lúc mở đầu,
- * thêm giá trị khác qua đăng ký thêm 1 dòng ở `FORM_TEMPLATES` khi cần. */
+/** Loại chứng từ đã có template từ KINH DOANH.xlsx:
+ * - `ORDER`: chi tiết 1 đơn hàng bán, file `order.html`
+ * - `ORDER_SUMMARY`: danh sách tổng hợp nhiều đơn hàng bán (mã BM-03/KD), file `order-summary.html`
+ * - `PRODUCTION_ORDER`: lệnh sản xuất (mã BM-02/KD), file `production-order.html`
+ */
 export enum FormTemplateType {
-  PURCHASE_ORDER = 'PURCHASE_ORDER',
+  ORDER = 'ORDER',
+  ORDER_SUMMARY = 'ORDER_SUMMARY',
+  PRODUCTION_ORDER = 'PRODUCTION_ORDER',
 }
 
 export interface FormTemplatePlaceholder {
@@ -20,15 +25,79 @@ interface FormTemplateDefinition {
 /** Mỗi loại chứng từ trỏ 1 file HTML tĩnh trong `src/templates/` (build sang `dist/src/templates/`
  * qua `assets` của `nest-cli.json`) — file **lưu cứng trong repo**, sửa nội dung là commit code +
  * deploy, không qua registry `files`/API upload. `placeholders` thuần mô tả token thật sự có trong
- * file HTML tương ứng — điền khi file thật được cung cấp, chưa có logic binding/render nào đọc nó.
- * Chuẩn bị cho tính năng xuất PDF sau này, xem `docs/decisions/form-templates-storage.md`. */
+ * file HTML tương ứng. */
 export const FORM_TEMPLATES: Record<FormTemplateType, FormTemplateDefinition> =
   {
-    [FormTemplateType.PURCHASE_ORDER]: {
-      fileName: 'purchase-order.html',
-      // TODO: điền đúng key/label khi chuyển nội dung sang Handlebars thật (mã PO, NCC, ngày,
-      // dòng vật tư lặp lại...).
-      placeholders: [],
+    [FormTemplateType.ORDER]: {
+      fileName: 'order.html',
+      placeholders: [
+        { key: 'code', label: 'Số đơn', group: 'meta' },
+        { key: 'order_date', label: 'Ngày tạo đơn', group: 'meta' },
+        { key: 'customer_name', label: 'Khách hàng', group: 'meta' },
+        {
+          key: 'customer_address',
+          label: 'Địa chỉ khách hàng',
+          group: 'meta',
+        },
+        { key: 'subtotal', label: 'Thành tiền trước thuế', group: 'totals' },
+        { key: 'discount_amount', label: 'Chiết khấu', group: 'totals' },
+        { key: 'shipping_fee', label: 'Phí vận chuyển', group: 'totals' },
+        { key: 'vat_percent', label: '% Thuế GTGT', group: 'totals' },
+        { key: 'vat_amount', label: 'Tiền thuế GTGT', group: 'totals' },
+        { key: 'grand_total', label: 'Tổng tiền', group: 'totals' },
+        { key: 'amount_in_words', label: 'Số tiền bằng chữ', group: 'totals' },
+        {
+          key: 'assigned_user_name',
+          label: 'NV Kinh doanh',
+          group: 'signatures',
+        },
+        {
+          key: 'approver_name',
+          label: 'Giám đốc duyệt',
+          group: 'signatures',
+        },
+      ],
+    },
+    [FormTemplateType.ORDER_SUMMARY]: {
+      fileName: 'order-summary.html',
+      placeholders: [
+        { key: 'period_from', label: 'Từ ngày', group: 'meta' },
+        { key: 'period_to', label: 'Đến ngày', group: 'meta' },
+        { key: 'report_code', label: 'Mã báo cáo', group: 'meta' },
+        { key: 'report_date', label: 'Ngày lập báo cáo', group: 'meta' },
+        {
+          key: 'subtotal',
+          label: 'Tổng thành tiền trước thuế',
+          group: 'totals',
+        },
+        { key: 'vat_amount', label: 'Tổng tiền thuế GTGT', group: 'totals' },
+        { key: 'grand_total', label: 'Tổng cộng', group: 'totals' },
+        {
+          key: 'amount_in_words',
+          label: 'Tổng số tiền bằng chữ',
+          group: 'totals',
+        },
+        {
+          key: 'preparer_name',
+          label: 'Người lập biểu',
+          group: 'signatures',
+        },
+      ],
+    },
+    [FormTemplateType.PRODUCTION_ORDER]: {
+      fileName: 'production-order.html',
+      placeholders: [
+        { key: 'code', label: 'Mã lệnh SX / PO', group: 'meta' },
+        { key: 'orderDate', label: 'Ngày tạo lệnh', group: 'meta' },
+        { key: 'customerName', label: 'Tên khách hàng', group: 'meta' },
+        { key: 'customerAddress', label: 'Địa chỉ khách hàng', group: 'meta' },
+        { key: 'salesUserName', label: 'NV Kinh doanh', group: 'signatures' },
+        {
+          key: 'supervisorName',
+          label: 'Quản lý sản xuất',
+          group: 'signatures',
+        },
+      ],
     },
   };
 

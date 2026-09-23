@@ -1,6 +1,6 @@
 import {
-  formatExcelDate,
-  formatExcelDateTime,
+  formatVnDate,
+  formatVnDateTime,
   type ExcelColumn,
 } from '../../common/utils/excel.util';
 import { ProductionOrderStatus } from '../../database/schemas';
@@ -29,10 +29,10 @@ export const PRODUCTION_ORDER_EXPORT_COLUMNS: ExcelColumn<ProductionOrderExport>
     { header: 'Mã LSX', value: (row) => row.code },
     { header: 'Mã đơn hàng', value: (row) => row.orderCode },
     { header: 'Khách hàng', value: (row) => row.clientName, width: 25 },
-    { header: 'Ngày đặt', value: (row) => formatExcelDate(row.orderDate) },
+    { header: 'Ngày đặt', value: (row) => formatVnDate(row.orderDate) },
     {
       header: 'Ngày giao yêu cầu',
-      value: (row) => formatExcelDate(row.dueDate),
+      value: (row) => formatVnDate(row.dueDate),
     },
     {
       header: 'Trạng thái',
@@ -45,5 +45,5 @@ export const PRODUCTION_ORDER_EXPORT_COLUMNS: ExcelColumn<ProductionOrderExport>
       width: 30,
     },
     { header: 'Người tạo', value: (row) => row.creatorName },
-    { header: 'Ngày tạo', value: (row) => formatExcelDateTime(row.createdAt) },
+    { header: 'Ngày tạo', value: (row) => formatVnDateTime(row.createdAt) },
   ];

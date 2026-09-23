@@ -1,5 +1,5 @@
 import {
-  formatExcelDateTime,
+  formatVnDateTime,
   type ExcelColumn,
 } from '../../common/utils/excel.util';
 import {
@@ -69,7 +69,7 @@ export const OQC_EXPORT_COLUMNS: ExcelColumn<OqcExport>[] = [
   },
   {
     header: 'Ngày kiểm',
-    value: (row) => formatExcelDateTime(row.inspectionDate),
+    value: (row) => formatVnDateTime(row.inspectionDate),
   },
   {
     header: 'Kết quả',
@@ -83,5 +83,5 @@ export const OQC_EXPORT_COLUMNS: ExcelColumn<OqcExport>[] = [
   { header: 'Trạng thái', value: (row) => OQC_STATUS_LABELS[row.status] },
   { header: 'Ghi chú', value: (row) => row.note, width: 30 },
   { header: 'Người tạo', value: (row) => row.creatorName },
-  { header: 'Ngày tạo', value: (row) => formatExcelDateTime(row.createdAt) },
+  { header: 'Ngày tạo', value: (row) => formatVnDateTime(row.createdAt) },
 ];
