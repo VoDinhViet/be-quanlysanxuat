@@ -21,7 +21,11 @@ import {
   DocumentType,
   generateDocumentSequence,
 } from '../../common/utils/document-sequence.util';
-import { buildXlsxBuffer, XLSX_MIME } from '../../common/utils/excel.util';
+import {
+  buildXlsxBuffer,
+  formatVnDate,
+  XLSX_MIME,
+} from '../../common/utils/excel.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
@@ -38,8 +42,12 @@ import {
   ProductionOrderLogAction,
   productionOrders,
   ProductionOrderStatus,
+  units,
   users,
 } from '../../database/schemas';
+import { alias } from 'drizzle-orm/pg-core';
+import { FormTemplateType } from '../../templates/form-templates.registry';
+import { PdfRendererService } from '../../templates/pdf-renderer.service';
 import { AppException } from '../../exceptions/app.exception';
 import { InventoryService } from '../inventory/inventory.service';
 import { ProductionJobsService } from '../production-jobs/production-jobs.service';
@@ -78,6 +86,7 @@ export class ProductionOrdersService {
     private readonly inventoryService: InventoryService,
     private readonly productionJobsService: ProductionJobsService,
     private readonly filesService: FilesService,
+    private readonly pdfRendererService: PdfRendererService,
   ) {}
 
   async getProductionOrders(
@@ -228,6 +237,107 @@ export class ProductionOrdersService {
       { ...productionOrder, productionOrderNote: productionOrder.note },
       { excludeExtraneousValues: true },
     );
+  }
+
+  async exportProductionOrderPdf(
+    productionOrderId: string,
+  ): Promise<StreamableFile> {
+    const { order, items: rawItems } =
+      await this.getProductionOrderForPdf(productionOrderId);
+
+    const deliveryDateStr = order.dueDate ? formatVnDate(order.dueDate) : '';
+    const orderDateStr = order.orderDate
+      ? formatVnDate(order.orderDate)
+      : formatVnDate(order.createdAt);
+
+    const items = rawItems.map((item, index) => ({
+      stt: index + 1,
+      itemCode: item.itemCode,
+      purchaseRequestCode: order.orderCode ?? '',
+      itemName: item.itemName,
+      unitName: item.unitName ?? '',
+      quantity: item.quantity.toLocaleString('en-US', {
+        maximumFractionDigits: 3,
+      }),
+      deliveryDate: deliveryDateStr,
+      note: item.note ?? '',
+    }));
+
+    const context = {
+      customerName: order.clientName ?? '',
+      customerAddress: order.clientAddress ?? '',
+      poCode: order.orderCode ?? order.code ?? '',
+      orderDate: orderDateStr,
+      code: order.code ?? '',
+      salesUserName: order.assignedUserName ?? '',
+      supervisorName: order.approverName ?? '',
+      items,
+    };
+
+    const buffer = await this.pdfRendererService.render(
+      FormTemplateType.PRODUCTION_ORDER,
+      context,
+    );
+
+    const fileName = `${order.code ?? 'LSX'}-${DateTime.now().toFormat('yyyyLLdd-HHmm')}.pdf`;
+    return new StreamableFile(buffer, {
+      type: 'application/pdf',
+      disposition: `attachment; filename="${fileName}"`,
+    });
+  }
+
+  /** Lấy dữ liệu LSX phục vụ riêng xuất file PDF — dùng select trực tiếp, tối ưu gọn gàng. */
+  private async getProductionOrderForPdf(productionOrderId: string) {
+    const assignedUsers = alias(users, 'assigned_users');
+    const approverUsers = alias(users, 'approver_users');
+
+    const [order] = await this.db
+      .select({
+        id: productionOrders.id,
+        code: productionOrders.code,
+        status: productionOrders.status,
+        createdAt: productionOrders.createdAt,
+        orderCode: orders.code,
+        orderDate: orders.orderDate,
+        dueDate: orders.dueDate,
+        clientName: clients.name,
+        clientAddress: clients.address,
+        assignedUserName: assignedUsers.fullName,
+        approverName: approverUsers.fullName,
+      })
+      .from(productionOrders)
+      .innerJoin(orders, eq(orders.id, productionOrders.orderId))
+      .leftJoin(clients, eq(clients.id, orders.clientId))
+      .leftJoin(assignedUsers, eq(assignedUsers.id, orders.assignedUserId))
+      .leftJoin(
+        approverUsers,
+        eq(approverUsers.id, productionOrders.approvedBy),
+      )
+      .where(eq(productionOrders.id, productionOrderId));
+
+    if (!order) {
+      throw new AppException(ErrorCode.E081, HttpStatus.NOT_FOUND);
+    }
+
+    const rawItems = await this.db
+      .select({
+        quantity: productionOrderItems.quantity,
+        note: orderItems.note,
+        itemCode: itemsTable.code,
+        itemName: itemsTable.name,
+        unitName: units.name,
+      })
+      .from(productionOrderItems)
+      .innerJoin(
+        orderItems,
+        eq(orderItems.id, productionOrderItems.orderItemId),
+      )
+      .innerJoin(itemsTable, eq(itemsTable.id, productionOrderItems.itemId))
+      .leftJoin(units, eq(units.id, itemsTable.unitId))
+      .where(eq(productionOrderItems.productionOrderId, productionOrderId))
+      .orderBy(asc(orderItems.sortOrder), asc(productionOrderItems.id));
+
+    return { order, items: rawItems };
   }
 
   /** Sửa số lượng sản xuất từng dòng, nhập tay — chỉ khi LSX còn `PENDING` (`E084`). Partial: chỉ
