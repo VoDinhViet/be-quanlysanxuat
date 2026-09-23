@@ -51,7 +51,6 @@ const WIPE_TABLES = [
   'orders',
   'order_items',
   'order_files',
-  'order_payments',
   // Purchase requests
   'purchase_requests',
   'purchase_request_items',

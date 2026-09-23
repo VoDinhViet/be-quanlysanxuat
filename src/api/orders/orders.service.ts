@@ -48,7 +48,6 @@ import {
   orderFiles,
   orderItems,
   OrderItemStatus,
-  orderPayments,
   orders,
   OrderStatus,
   productionOrderItems,
@@ -61,24 +60,18 @@ import {
 import { AppException } from '../../exceptions/app.exception';
 import { FilesService } from '../files/files.service';
 import { ProductionOrdersService } from '../production-orders/production-orders.service';
-import { CreateOrderPaymentReqDto } from './dto/create-order-payment.req.dto';
 import { CreateOrderReqDto } from './dto/create-order.req.dto';
 import { ExportOrdersReqDto } from './dto/export-orders.req.dto';
 import { GetOrdersReqDto } from './dto/get-orders.req.dto';
 import { OrderItemReqDto } from './dto/order-item.req.dto';
 import { OrderItemResDto } from './dto/order-item.res.dto';
-import { OrderPaymentResDto } from './dto/order-payment.res.dto';
 import { OrderResDto } from './dto/order.res.dto';
 import { OrderStatsResDto } from './dto/order-stats.res.dto';
 import { PageOrderResDto } from './dto/page-order.res.dto';
 import { RejectOrderReqDto } from './dto/reject-order.req.dto';
 import { UpdateOrderReqDto } from './dto/update-order.req.dto';
-import { OrderPaymentStatus } from './orders.constant';
 import { ORDER_EXPORT_COLUMNS, OrderExport } from './orders.export';
-import {
-  issuedQuantityByOrderItemIdSubquery,
-  paidAmountByOrderIdSubquery,
-} from './orders.query';
+import { issuedQuantityByOrderItemIdSubquery } from './orders.query';
 
 /** Đơn hàng: `DRAFT` → ... → `AWAITING_PRODUCTION` (duyệt Giám đốc) → `IN_PROGRESS`. Vòng đời +
  * business rule đầy đủ: `docs/domains/orders.md`, `docs/workflows/order-approval.md`. */
@@ -317,7 +310,6 @@ export class OrdersService {
     const creatorAlias = alias(users, 'creator');
     const approverAlias = alias(users, 'approver');
     const rejecterAlias = alias(users, 'rejecter');
-    const paidByOrder = paidAmountByOrderIdSubquery(this.db);
 
     const [[order], orderFileRows] = await Promise.all([
       this.db
@@ -330,8 +322,6 @@ export class OrdersService {
           creatorBy: getTableColumns(creatorAlias),
           approverBy: getTableColumns(approverAlias),
           rejecterBy: getTableColumns(rejecterAlias),
-          paidAmount:
-            sql<number>`coalesce(${paidByOrder.paidAmount}, 0)`.mapWith(Number),
         })
         .from(orders)
         .leftJoin(clients, eq(clients.id, orders.clientId))
@@ -342,7 +332,6 @@ export class OrdersService {
         .leftJoin(creatorAlias, eq(creatorAlias.id, orders.createdBy))
         .leftJoin(approverAlias, eq(approverAlias.id, orders.approvedBy))
         .leftJoin(rejecterAlias, eq(rejecterAlias.id, orders.rejectedBy))
-        .leftJoin(paidByOrder, eq(paidByOrder.orderId, orders.id))
         .where(and(eq(orders.id, orderId), isNull(orders.deletedAt))),
       this.db
         .select({
@@ -363,7 +352,6 @@ export class OrdersService {
       {
         ...order,
         files: orderFileRows,
-        paymentStatus: this.resolvePaymentStatus(order.paidAmount, order.total),
       },
       { excludeExtraneousValues: true },
     );
@@ -582,51 +570,6 @@ export class OrdersService {
     return plainToInstance(OrderItemResDto, rows, {
       excludeExtraneousValues: true,
     });
-  }
-
-  async getOrderPayments(orderId: string): Promise<OrderPaymentResDto[]> {
-    await this.ensureOrderExists(orderId);
-
-    const rows = await this.db.query.orderPayments.findMany({
-      where: eq(orderPayments.orderId, orderId),
-      orderBy: [desc(orderPayments.paidAt), desc(orderPayments.createdAt)],
-      with: { creatorBy: true },
-    });
-
-    return plainToInstance(OrderPaymentResDto, rows, {
-      excludeExtraneousValues: true,
-    });
-  }
-
-  async createOrderPayment(
-    orderId: string,
-    reqDto: CreateOrderPaymentReqDto,
-    userId: string,
-  ): Promise<void> {
-    await this.ensureOrderExists(orderId);
-
-    if (reqDto.amount === 0) {
-      throw new AppException(ErrorCode.E208, HttpStatus.BAD_REQUEST);
-    }
-
-    await this.db.insert(orderPayments).values({
-      ...reqDto,
-      orderId,
-      createdBy: userId,
-    });
-  }
-
-  private resolvePaymentStatus(
-    paidAmount: number,
-    total: number,
-  ): OrderPaymentStatus {
-    if (paidAmount <= 0) {
-      return OrderPaymentStatus.UNPAID;
-    } else if (paidAmount >= total) {
-      return OrderPaymentStatus.PAID;
-    } else {
-      return OrderPaymentStatus.PARTIAL;
-    }
   }
 
   async createOrder(

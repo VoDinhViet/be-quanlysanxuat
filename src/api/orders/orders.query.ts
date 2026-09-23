@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 
 import type { Database, DbTransaction } from '../../database/database.type';
-import { inventoryTransactions, orderPayments } from '../../database/schemas';
+import { inventoryTransactions } from '../../database/schemas';
 
 /** SL đã xuất/giao thật theo từng dòng đơn — cùng logic `InventoryService.deliveredSubquery`
  * (`src/api/inventory/inventory.service.ts`), copy có chủ ý vì khác domain tiêu thụ (cùng quy ước
@@ -25,19 +25,3 @@ export function issuedQuantityByOrderItemIdSubquery(
     .as('issued_qty_by_order_item');
 }
 
-/** Tổng đã trả theo từng đơn — cùng khuôn `receivedQuantityByOrderItemIdSubquery`
- * (`src/api/outsourcing-receipts/outsourcing-receipts.query.ts`): để `LEFT JOIN` thẳng vào
- * `OrdersService.getOrder`. `order_payments` là sổ cái append-only nên không cần lọc trạng thái
- * gì thêm. */
-export function paidAmountByOrderIdSubquery(db: Database) {
-  return db
-    .select({
-      orderId: orderPayments.orderId,
-      paidAmount: sql<number>`sum(${orderPayments.amount})`
-        .mapWith(Number)
-        .as('paid_amount'),
-    })
-    .from(orderPayments)
-    .groupBy(orderPayments.orderId)
-    .as('paid_amount_by_order');
-}

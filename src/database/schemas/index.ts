@@ -26,7 +26,6 @@ export * from './suppliers/supplier-payment-info';
 export * from './orders/orders';
 export * from './orders/order-items';
 export * from './orders/order-files';
-export * from './orders/order-payments';
 export * from './inventory/outbound-orders';
 export * from './inventory/outbound-order-items';
 export * from './inventory/inventory-documents';
