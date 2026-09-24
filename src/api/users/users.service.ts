@@ -55,7 +55,7 @@ import { GetUserOptionsReqDto } from './dto/get-user-options.req.dto';
 import { UpdateUserReqDto } from './dto/update-user.req.dto';
 import { UserRefResDto } from './dto/user-ref.res.dto';
 import { UserResDto } from './dto/user.res.dto';
-import { USER_EXPORT_COLUMNS, type UserExport } from './users.export';
+import { USER_EXPORT_COLUMNS } from './users.export';
 
 @Injectable()
 export class UsersService {
