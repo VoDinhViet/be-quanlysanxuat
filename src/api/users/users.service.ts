@@ -80,6 +80,11 @@ export class UsersService {
       keyword
         ? or(ilike(users.fullName, keyword), ilike(users.code, keyword))
         : undefined,
+      reqDto.status ? eq(users.status, reqDto.status) : undefined,
+      reqDto.departmentId
+        ? eq(users.departmentId, reqDto.departmentId)
+        : undefined,
+      reqDto.positionId ? eq(users.positionId, reqDto.positionId) : undefined,
       or(isNull(credentials.isProtected), eq(credentials.isProtected, false)),
     );
     const orderBy = desc(users.createdAt);
