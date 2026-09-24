@@ -5,30 +5,35 @@ import {
   EnumField,
   EnumFieldOptional,
   NumberFieldOptional,
-  PhoneField,
+  PhoneFieldOptional,
   StringField,
   StringFieldOptional,
-  UUIDField,
   UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
 import { SupplierPaymentReqDto } from './supplier-payment.req.dto';
 import { SupplierRepresentativeReqDto } from './supplier-representative.req.dto';
 
 export class CreateSupplierReqDto {
+  @StringField({
+    description: 'Supplier code (Mã nhà cung cấp)',
+    maxLength: 50,
+  })
+  code!: string;
+
   @StringField({ description: 'Supplier name', maxLength: 255 })
   name!: string;
 
-  @UUIDField({ description: 'Supplier group id (Nhóm NCC)' })
-  supplierGroupId!: string;
+  @UUIDFieldOptional({ description: 'Supplier group id (Nhóm NCC)' })
+  supplierGroupId?: string;
 
   @EnumField(() => SupplierType)
   type!: SupplierType;
 
-  @StringField({ description: 'Tax code (Mã số thuế)', maxLength: 50 })
-  taxCode!: string;
+  @StringFieldOptional({ description: 'Tax code (Mã số thuế)', maxLength: 50 })
+  taxCode?: string;
 
-  @PhoneField({ description: 'Phone number', maxLength: 30 })
-  phoneNumber!: string;
+  @PhoneFieldOptional({ description: 'Phone number', maxLength: 30 })
+  phoneNumber?: string;
 
   @StringField({ description: 'Address', maxLength: 500 })
   address!: string;

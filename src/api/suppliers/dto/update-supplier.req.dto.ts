@@ -15,17 +15,28 @@ export class UpdateSupplierReqDto {
   @StringFieldOptional({ description: 'Supplier name', maxLength: 255 })
   name?: string;
 
-  @UUIDFieldOptional({ description: 'Supplier group id (Nhóm NCC)' })
-  supplierGroupId?: string;
+  @UUIDFieldOptional({
+    description: 'Supplier group id (Nhóm NCC)',
+    nullable: true,
+  })
+  supplierGroupId?: string | null;
 
   @EnumFieldOptional(() => SupplierType)
   type?: SupplierType;
 
-  @StringFieldOptional({ description: 'Tax code (Mã số thuế)', maxLength: 50 })
-  taxCode?: string;
+  @StringFieldOptional({
+    description: 'Tax code (Mã số thuế)',
+    nullable: true,
+    maxLength: 50,
+  })
+  taxCode?: string | null;
 
-  @PhoneFieldOptional({ description: 'Phone number', maxLength: 30 })
-  phoneNumber?: string;
+  @PhoneFieldOptional({
+    description: 'Phone number',
+    nullable: true,
+    maxLength: 30,
+  })
+  phoneNumber?: string | null;
 
   @StringFieldOptional({ description: 'Address', maxLength: 500 })
   address?: string;

@@ -47,12 +47,13 @@ export const suppliers = pgTable(
     id: uuid('id').defaultRandom().primaryKey(),
     code: varchar('code', { length: 50 }).notNull().unique(),
     name: varchar('name', { length: 255 }).notNull(),
-    supplierGroupId: uuid('supplier_group_id')
-      .notNull()
-      .references(() => supplierGroups.id, { onDelete: 'restrict' }),
+    supplierGroupId: uuid('supplier_group_id').references(
+      () => supplierGroups.id,
+      { onDelete: 'restrict' },
+    ),
     type: supplierTypeEnum('type').notNull(),
-    taxCode: varchar('tax_code', { length: 50 }).notNull().unique(),
-    phoneNumber: varchar('phone_number', { length: 30 }).notNull(),
+    taxCode: varchar('tax_code', { length: 50 }).unique(),
+    phoneNumber: varchar('phone_number', { length: 30 }),
     email: varchar('email', { length: 255 }),
     address: varchar('address', { length: 500 }).notNull(),
     note: varchar('note', { length: 1000 }),
