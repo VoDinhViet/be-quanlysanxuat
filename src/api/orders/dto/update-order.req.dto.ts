@@ -20,6 +20,13 @@ export class UpdateOrderReqDto {
 
   @UUIDFieldOptional({
     nullable: true,
+    description:
+      'Người liên hệ (client_contacts.id) — phải thuộc khách hàng của đơn',
+  })
+  readonly clientContactId?: string | null;
+
+  @UUIDFieldOptional({
+    nullable: true,
     description: 'Nhân viên kinh doanh (users.id) id',
   })
   readonly assignedUserId?: string | null;
@@ -29,6 +36,14 @@ export class UpdateOrderReqDto {
 
   @DateFieldOptional({ description: 'Ngày giao hàng yêu cầu' })
   readonly dueDate?: Date;
+
+  @StringFieldOptional({
+    maxLength: 100,
+    nullable: true,
+    description:
+      'Số PO của khách hàng (user tự nhập) — khác mã đơn nội bộ do hệ thống sinh',
+  })
+  readonly buyerPoNo?: string | null;
 
   @StringFieldOptional({
     maxLength: 500,

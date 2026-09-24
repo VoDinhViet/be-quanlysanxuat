@@ -19,6 +19,7 @@ import {
   UUIDField,
 } from '../../../decorators/field.decorators';
 import { ClientBaseResDto } from '../../clients/dto/client-base.res.dto';
+import { ClientContactResDto } from '../../clients/dto/client-contact.res.dto';
 import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
 import { OrderFileResDto } from './order-file.res.dto';
 
@@ -37,12 +38,24 @@ export class OrderResDto {
   client!: ClientBaseResDto | null;
 
   @Expose()
+  @ClassFieldOptional(() => ClientContactResDto, { nullable: true })
+  clientContact!: ClientContactResDto | null;
+
+  @Expose()
   @DateField({ description: 'Ngày đặt hàng' })
   orderDate!: Date;
 
   @Expose()
   @DateFieldOptional({ nullable: true, description: 'Ngày giao hàng yêu cầu' })
   dueDate!: Date | null;
+
+  @Expose()
+  @StringFieldOptional({
+    nullable: true,
+    description:
+      'Số PO của khách hàng (user tự nhập) — khác mã đơn nội bộ do hệ thống sinh',
+  })
+  buyerPoNo!: string | null;
 
   @Expose()
   @StringFieldOptional({

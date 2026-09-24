@@ -10,6 +10,7 @@ import {
   varchar,
 } from 'drizzle-orm/pg-core';
 
+import { clientContacts } from '../clients/client-contacts';
 import { clients } from '../clients/clients';
 import { orderFiles } from './order-files';
 import { orderItems } from './order-items';
@@ -110,6 +111,13 @@ export const orders = pgTable(
     }),
     orderDate: date('order_date', { mode: 'date' }).notNull(),
     dueDate: date('due_date', { mode: 'date' }),
+    // Số PO (Purchase Order) của khách hàng — user tự nhập, khác `code` là mã nội bộ hệ thống tạo.
+    buyerPoNo: varchar('buyer_po_no', { length: 100 }),
+    // Người liên hệ của khách hàng cho đơn này — phải thuộc `clientId` (service kiểm tra).
+    clientContactId: uuid('client_contact_id').references(
+      () => clientContacts.id,
+      { onDelete: 'set null' },
+    ),
     // Người nhận hàng thật — có thể khác khách hàng đặt đơn (giao qua đại lý/đối tác).
     consigneeAddress: varchar('consignee_address', { length: 500 }),
     paymentTerm: paymentTermEnum('payment_term'),
@@ -192,6 +200,7 @@ export const orders = pgTable(
   },
   (table) => [
     index('idx_orders_client_id').on(table.clientId),
+    index('idx_orders_client_contact_id').on(table.clientContactId),
     index('idx_orders_assigned_user_id').on(table.assignedUserId),
     index('idx_orders_created_by').on(table.createdBy),
     index('idx_orders_status')
@@ -204,6 +213,10 @@ export const ordersRelations = relations(orders, ({ one, many }) => ({
   client: one(clients, {
     fields: [orders.clientId],
     references: [clients.id],
+  }),
+  clientContact: one(clientContacts, {
+    fields: [orders.clientContactId],
+    references: [clientContacts.id],
   }),
   assignedUser: one(users, {
     fields: [orders.assignedUserId],

@@ -47,6 +47,14 @@ export class PageOrderResDto {
   @StringFieldOptional({
     nullable: true,
     description:
+      'Số PO của khách hàng (user tự nhập) — khác mã đơn nội bộ do hệ thống sinh',
+  })
+  buyerPoNo!: string | null;
+
+  @Expose()
+  @StringFieldOptional({
+    nullable: true,
+    description:
       'Địa chỉ người nhận hàng — có thể khác khách hàng đặt đơn (đại lý/đối tác)',
   })
   consigneeAddress!: string | null;
