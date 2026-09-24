@@ -1,5 +1,13 @@
 providers = ['node']
 
+# Chromium cho PdfRendererService lấy từ nixpkgs, không để Puppeteer tự tải — image Nixpacks thiếu
+# `unzip` lẫn shared lib runtime của Chrome (cùng hướng với Dockerfile).
+[variables]
+PUPPETEER_SKIP_DOWNLOAD = 'true'
+
+[phases.setup]
+nixPkgs = ['...', 'chromium', 'dejavu_fonts']
+
 [phases.install]
 cmds = ['pnpm install --frozen-lockfile']
 
@@ -8,4 +16,4 @@ cmds = ['pnpm run build']
 dependsOn = ['install']
 
 [start]
-cmd = 'pnpm run start:prod'
+cmd = 'PUPPETEER_EXECUTABLE_PATH="$(command -v chromium)" pnpm run start:prod'
