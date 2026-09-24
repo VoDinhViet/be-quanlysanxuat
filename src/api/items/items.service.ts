@@ -231,6 +231,11 @@ export class ItemsService {
   async createItem(reqDto: CreateItemReqDto, userId: string): Promise<void> {
     const type = reqDto.type ?? ItemType.FG;
 
+    // Mã vật tư do người dùng tự đặt; chỉ FG mới tự sinh `SPxxxx` khi bỏ trống.
+    if (type === ItemType.CONSUMABLE && !reqDto.code) {
+      throw new AppException(ErrorCode.E276, HttpStatus.BAD_REQUEST);
+    }
+
     if (reqDto.code) {
       await this.validateCodeRevisionUniqueness(
         reqDto.code,
@@ -252,7 +257,7 @@ export class ItemsService {
 
     try {
       await this.db.transaction(async (tx) => {
-        const code = reqDto.code ?? (await this.generateItemCode(tx, type));
+        const code = reqDto.code ?? (await this.generateItemCode(tx));
 
         // `type`/`status`/`minStock` đều có default ở cột schema, bỏ trống là DB tự điền.
         const [item] = await tx
@@ -727,17 +732,10 @@ export class ItemsService {
     }
   }
 
-  private async generateItemCode(
-    tx: DbTransaction,
-    type: ItemType,
-  ): Promise<string> {
-    const prefix = type === ItemType.CONSUMABLE ? 'VT' : 'SP';
-    const documentType =
-      type === ItemType.CONSUMABLE
-        ? DocumentType.ITEM_CONSUMABLE
-        : DocumentType.ITEM_FG;
-    const sequence = await generateDocumentSequence(tx, documentType);
+  /** Chỉ FG tự sinh mã `SPxxxx` — vật tư luôn do người dùng nhập (`E276` nếu thiếu). */
+  private async generateItemCode(tx: DbTransaction): Promise<string> {
+    const sequence = await generateDocumentSequence(tx, DocumentType.ITEM_FG);
 
-    return `${prefix}${String(sequence).padStart(4, '0')}`;
+    return `SP${String(sequence).padStart(4, '0')}`;
   }
 }

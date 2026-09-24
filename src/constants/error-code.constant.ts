@@ -628,6 +628,8 @@ export enum ErrorCode {
   E274 = 'purchase_order.error.pdf_render_failed',
   // `clientContactId` trên đơn hàng không tồn tại hoặc không thuộc khách hàng của đơn.
   E275 = 'order.error.client_contact_invalid',
+  // `POST /items` với `type=CONSUMABLE` mà thiếu `code` — mã vật tư do người dùng tự đặt, không tự sinh.
+  E276 = 'item.error.consumable_code_required',
   V003 = 'common.error.too_many_requests',
   // `GlobalExceptionFilter` bắt chuỗi "No values to set" của drizzle-orm — mọi `PATCH` khi
   // `ValidationPipe` whitelist đã loại sạch field lạ, còn lại payload rỗng cho `.set()`. Trước đây

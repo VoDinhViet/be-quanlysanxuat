@@ -16,7 +16,8 @@ export class CreateItemReqDto {
   unitId!: string;
 
   @StringFieldOptional({
-    description: 'Mã hàng hoá; tự sinh nếu bỏ trống',
+    description:
+      'Mã hàng hoá; FG tự sinh nếu bỏ trống, CONSUMABLE bắt buộc (người dùng tự đặt)',
     maxLength: 50,
   })
   code?: string;
