@@ -86,7 +86,7 @@ export class ProductionOrdersService {
     private readonly productionJobsService: ProductionJobsService,
     private readonly filesService: FilesService,
     private readonly pdfRendererService: PdfRendererService,
-  ) {}
+  ) { }
 
   async getProductionOrders(
     reqDto: GetProductionOrdersReqDto,
@@ -98,9 +98,9 @@ export class ProductionOrdersService {
       isNull(orders.deletedAt),
       keyword
         ? or(
-            unaccentILike(orders.code, keyword),
-            unaccentILike(productionOrders.code, keyword),
-          )
+          unaccentILike(orders.code, keyword),
+          unaccentILike(productionOrders.code, keyword),
+        )
         : undefined,
       reqDto.clientId ? eq(orders.clientId, reqDto.clientId) : undefined,
       reqDto.startDate ? gte(orders.dueDate, reqDto.startDate) : undefined,
@@ -113,14 +113,10 @@ export class ProductionOrdersService {
         .select({
           id: productionOrders.id,
           code: productionOrders.code,
-          orderId: orders.id,
-          orderCode: orders.code,
-          orderDate: orders.orderDate,
-          dueDate: orders.dueDate,
-          note: orders.note,
           productionOrderNote: productionOrders.note,
-          client: getTableColumns(clients),
           status: productionOrders.status,
+          order: getTableColumns(orders),
+          client: getTableColumns(clients),
         })
         .from(productionOrders)
         .innerJoin(orders, eq(orders.id, productionOrders.orderId))
@@ -137,9 +133,14 @@ export class ProductionOrdersService {
     ]);
 
     return new OffsetPaginatedDto(
-      plainToInstance(ProductionOrderResDto, entities, {
-        excludeExtraneousValues: true,
-      }),
+      plainToInstance(
+        ProductionOrderResDto,
+        entities.map(({ order, client, ...productionOrder }) => ({
+          ...productionOrder,
+          order: { ...order, client },
+        })),
+        { excludeExtraneousValues: true },
+      ),
       new OffsetPaginationDto(total, reqDto),
     );
   }
@@ -155,9 +156,9 @@ export class ProductionOrdersService {
       isNull(orders.deletedAt),
       keyword
         ? or(
-            unaccentILike(orders.code, keyword),
-            unaccentILike(productionOrders.code, keyword),
-          )
+          unaccentILike(orders.code, keyword),
+          unaccentILike(productionOrders.code, keyword),
+        )
         : undefined,
       reqDto.clientId ? eq(orders.clientId, reqDto.clientId) : undefined,
       reqDto.startDate ? gte(orders.dueDate, reqDto.startDate) : undefined,
@@ -406,7 +407,7 @@ export class ProductionOrdersService {
   }
 
   /** Chỉ hợp lệ khi đang `PENDING` và PO gốc vẫn `AWAITING_PRODUCTION`. Trong cùng transaction:
-   * chốt mã `LSXxxxx`, đẩy PO gốc sang `IN_PROGRESS`, sinh Job. Không lập phiếu xuất kho, không
+   * đẩy PO gốc sang `IN_PROGRESS`, sinh Job. Không lập phiếu xuất kho, không
    * kiểm tồn kho tổng hợp trước duyệt (`docs/domains/production.md`, mục Invariants). */
   async approveProductionOrder(
     productionOrdersId: string,
@@ -415,6 +416,7 @@ export class ProductionOrdersService {
     const [productionOrder] = await this.db
       .select({
         id: productionOrders.id,
+        code: productionOrders.code,
         orderId: productionOrders.orderId,
         status: productionOrders.status,
         orderStatus: orders.status,
@@ -462,7 +464,9 @@ export class ProductionOrdersService {
         : ProductionOrderStatus.COMPLETED;
 
     await this.db.transaction(async (tx) => {
-      const code = await this.generateProductionOrderCode(tx);
+      // Mã đã cấp từ `seedPlan`; chỉ sinh ở đây cho dòng PENDING cũ chưa có mã.
+      const code =
+        productionOrder.code ?? (await this.generateProductionOrderCode(tx));
       await tx
         .update(productionOrders)
         .set({
@@ -582,13 +586,19 @@ export class ProductionOrdersService {
     items: PlanItem[],
     userId: string,
   ): Promise<void> {
+    const [previous] = await tx
+      .select({ code: productionOrders.code })
+      .from(productionOrders)
+      .where(eq(productionOrders.orderId, orderId));
     await tx
       .delete(productionOrders)
       .where(eq(productionOrders.orderId, orderId));
 
+    // Mã LSX cấp ngay khi sinh kế hoạch; duyệt lại đơn từng bị từ chối giữ nguyên mã cũ.
+    const code = previous?.code ?? (await this.generateProductionOrderCode(tx));
     const [createdProductionOrders] = await tx
       .insert(productionOrders)
-      .values({ orderId, createdBy: userId })
+      .values({ orderId, code, createdBy: userId })
       .returning({ id: productionOrders.id });
 
     if (items.length) {

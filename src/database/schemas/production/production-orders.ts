@@ -43,7 +43,8 @@ export const productionOrderStatusEnum = pgEnum('production_order_status', [
  * - `APPROVED` (`ProductionOrdersService.approveProductionOrder`) chốt LSX và đẩy `orders.status`
  *   sang `IN_PROGRESS` — hết sửa được số lượng (`E084`). Chưa có route huỷ duyệt (đưa `APPROVED`
  *   quay lại `PENDING`) — tạm hoãn, xem `docs/domains/production.md` (Common mistakes).
- * - `code`/`approvedBy`/`approvedAt` chỉ có giá trị khi `APPROVED`, luôn `NULL` khi `PENDING`
+ * - `code` cấp ngay khi sinh kế hoạch (`seedPlan`, dòng cũ chưa có mã thì cấp lúc duyệt);
+ *   `approvedBy`/`approvedAt` chỉ có giá trị khi `APPROVED`, luôn `NULL` khi `PENDING`
  *   (`chk_production_orders_status_fields`).
  * - `orderId` unique — mỗi PO chỉ có đúng một LSX tại một thời điểm; duyệt lại sau khi huỷ (bằng
  *   một PO khác, hoặc `OrdersService.approveOrder` seed lại) ghi đè hoàn toàn header + dòng quyết
@@ -87,7 +88,7 @@ export const productionOrders = pgTable(
     index('idx_production_orders_signed_file_id').on(table.signedFileId),
     check(
       'chk_production_orders_status_fields',
-      sql`(status = 'PENDING' AND code IS NULL AND approved_at IS NULL)
+      sql`(status = 'PENDING' AND approved_at IS NULL)
           OR (status = 'APPROVED' AND code IS NOT NULL AND approved_at IS NOT NULL)
           OR (status = 'COMPLETED' AND code IS NOT NULL AND approved_at IS NOT NULL)`,
     ),

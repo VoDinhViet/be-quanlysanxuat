@@ -1,13 +1,10 @@
 import { Exclude, Expose } from 'class-transformer';
 
 import { ProductionOrderStatus } from '../../../database/schemas';
-import { ClientBaseResDto } from '../../clients/dto/client-base.res.dto';
+import { OrderBaseResDto } from '../../orders/dto/order-base.res.dto';
 import {
-  ClassFieldOptional,
-  DateField,
-  DateFieldOptional,
+  ClassField,
   EnumField,
-  StringField,
   StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
@@ -29,32 +26,12 @@ export class ProductionOrderResDto {
   code!: string | null;
 
   @Expose()
-  @UUIDField({ description: 'Order id' })
-  orderId!: string;
-
-  @Expose()
-  @StringField({ description: 'Order code' })
-  orderCode!: string;
-
-  @Expose()
-  @ClassFieldOptional(() => ClientBaseResDto, { nullable: true })
-  client!: ClientBaseResDto | null;
-
-  @Expose()
-  @DateField({ description: 'Ngày đặt hàng' })
-  orderDate!: Date;
-
-  @Expose()
-  @DateFieldOptional({ nullable: true, description: 'Ngày giao hàng yêu cầu' })
-  dueDate!: Date | null;
+  @ClassField(() => OrderBaseResDto)
+  order!: OrderBaseResDto;
 
   @Expose()
   @EnumField(() => ProductionOrderStatus)
   status!: ProductionOrderStatus;
-
-  @Expose()
-  @StringFieldOptional({ nullable: true, description: 'orders.note' })
-  note!: string | null;
 
   @Expose()
   @StringFieldOptional({
