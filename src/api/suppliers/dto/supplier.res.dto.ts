@@ -35,20 +35,20 @@ export class SupplierResDto {
   name!: string;
 
   @Expose()
-  @ClassField(() => SupplierGroupRefResDto)
-  group!: SupplierGroupRefResDto;
+  @ClassFieldOptional(() => SupplierGroupRefResDto, { nullable: true })
+  group!: SupplierGroupRefResDto | null;
 
   @Expose()
   @EnumField(() => SupplierType)
   type!: SupplierType;
 
   @Expose()
-  @StringField({ description: 'Tax code' })
-  taxCode!: string;
+  @StringFieldOptional({ description: 'Tax code', nullable: true })
+  taxCode!: string | null;
 
   @Expose()
-  @StringField({ description: 'Phone number' })
-  phoneNumber!: string;
+  @StringFieldOptional({ description: 'Phone number', nullable: true })
+  phoneNumber!: string | null;
 
   @Expose()
   @StringFieldOptional({ nullable: true })

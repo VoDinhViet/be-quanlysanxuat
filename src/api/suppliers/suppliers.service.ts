@@ -4,10 +4,6 @@ import { and, count, desc, eq, inArray, isNull, ne, or } from 'drizzle-orm';
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
-import {
-  DocumentType,
-  generateDocumentSequence,
-} from '../../common/utils/document-sequence.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
@@ -147,8 +143,13 @@ export class SuppliersService {
     reqDto: CreateSupplierReqDto,
     userId: string,
   ): Promise<SupplierResDto> {
-    await this.validateTaxCodeUniqueness(reqDto.taxCode);
-    await this.ensureSupplierGroupExists(reqDto.supplierGroupId);
+    await this.validateCodeUniqueness(reqDto.code);
+    if (reqDto.taxCode) {
+      await this.validateTaxCodeUniqueness(reqDto.taxCode);
+    }
+    if (reqDto.supplierGroupId) {
+      await this.ensureSupplierGroupExists(reqDto.supplierGroupId);
+    }
     if (reqDto.countryId) {
       await this.ensureCountryExists(reqDto.countryId);
     }
@@ -159,12 +160,10 @@ export class SuppliersService {
     const { payment, representatives, fileIds, ...supplierFields } = reqDto;
 
     const supplierId = await this.db.transaction(async (tx) => {
-      const code = await this.generateSupplierCode(tx);
       const [supplier] = await tx
         .insert(suppliers)
         .values({
           ...supplierFields,
-          code,
           status: reqDto.status ?? SupplierStatus.ACTIVE,
           createdBy: userId,
         })
@@ -397,11 +396,5 @@ export class SuppliersService {
     if (!existing) {
       throw new AppException(ErrorCode.E023, HttpStatus.NOT_FOUND);
     }
-  }
-
-  private async generateSupplierCode(tx: DbTransaction): Promise<string> {
-    const sequence = await generateDocumentSequence(tx, DocumentType.SUPPLIER);
-
-    return `NCC${String(sequence).padStart(4, '0')}`;
   }
 }
