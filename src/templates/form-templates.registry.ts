@@ -4,11 +4,15 @@ import { join } from 'path';
  * - `ORDER`: chi tiết 1 đơn hàng bán, file `order.html`
  * - `ORDER_SUMMARY`: danh sách tổng hợp nhiều đơn hàng bán (mã BM-03/KD), file `order-summary.html`
  * - `PRODUCTION_ORDER`: lệnh sản xuất (mã BM-02/KD), file `production-order.html`
+ * - `PRODUCTION_PLAN`: kế hoạch sản xuất nhiều Job (mã BM 08-01), file `production-plan.html`
+ * - `STOCK_IN_SLIP`: phiếu nhập kho (mã BM 09-01), file `stock-in-slip.html`
  */
 export enum FormTemplateType {
   ORDER = 'ORDER',
   ORDER_SUMMARY = 'ORDER_SUMMARY',
   PRODUCTION_ORDER = 'PRODUCTION_ORDER',
+  PRODUCTION_PLAN = 'PRODUCTION_PLAN',
+  STOCK_IN_SLIP = 'STOCK_IN_SLIP',
 }
 
 export interface FormTemplatePlaceholder {
@@ -88,15 +92,26 @@ export const FORM_TEMPLATES: Record<FormTemplateType, FormTemplateDefinition> =
       fileName: 'production-order.html',
       placeholders: [
         { key: 'code', label: 'Mã lệnh SX / PO', group: 'meta' },
-        { key: 'orderDate', label: 'Ngày tạo lệnh', group: 'meta' },
-        { key: 'customerName', label: 'Tên khách hàng', group: 'meta' },
-        { key: 'customerAddress', label: 'Địa chỉ khách hàng', group: 'meta' },
-        { key: 'salesUserName', label: 'NV Kinh doanh', group: 'signatures' },
-        {
-          key: 'supervisorName',
-          label: 'Quản lý sản xuất',
-          group: 'signatures',
-        },
+        { key: 'order_date', label: 'Ngày tạo lệnh', group: 'meta' },
+        { key: 'customer_name', label: 'Tên khách hàng', group: 'meta' },
+        { key: 'customer_address', label: 'Địa chỉ khách hàng', group: 'meta' },
+      ],
+    },
+    [FormTemplateType.PRODUCTION_PLAN]: {
+      fileName: 'production-plan.html',
+      placeholders: [
+        { key: 'customer_name', label: 'Khách hàng', group: 'meta' },
+        { key: 'report_code', label: 'Số hiệu', group: 'meta' },
+        { key: 'report_date', label: 'Ngày lập', group: 'meta' },
+        { key: 'total_quantity', label: 'Tổng số lượng', group: 'totals' },
+      ],
+    },
+    [FormTemplateType.STOCK_IN_SLIP]: {
+      fileName: 'stock-in-slip.html',
+      placeholders: [
+        { key: 'code', label: 'Số phiếu nhập', group: 'meta' },
+        { key: 'receipt_date', label: 'Ngày nhập kho', group: 'meta' },
+        { key: 'delivery_unit', label: 'Đơn vị giao', group: 'meta' },
       ],
     },
   };

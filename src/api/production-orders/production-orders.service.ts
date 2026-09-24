@@ -45,7 +45,6 @@ import {
   units,
   users,
 } from '../../database/schemas';
-import { alias } from 'drizzle-orm/pg-core';
 import { FormTemplateType } from '../../templates/form-templates.registry';
 import { PdfRendererService } from '../../templates/pdf-renderer.service';
 import { AppException } from '../../exceptions/app.exception';
@@ -137,13 +136,8 @@ export class ProductionOrdersService {
         .where(where),
     ]);
 
-    const rows = entities.map((row) => ({
-      ...row,
-      client: row.client?.id ? row.client : null,
-    }));
-
     return new OffsetPaginatedDto(
-      plainToInstance(ProductionOrderResDto, rows, {
+      plainToInstance(ProductionOrderResDto, entities, {
         excludeExtraneousValues: true,
       }),
       new OffsetPaginationDto(total, reqDto),
@@ -242,35 +236,65 @@ export class ProductionOrdersService {
   async exportProductionOrderPdf(
     productionOrderId: string,
   ): Promise<StreamableFile> {
-    const { order, items: rawItems } =
-      await this.getProductionOrderForPdf(productionOrderId);
+    const [[order], itemRows] = await Promise.all([
+      this.db
+        .select({
+          code: productionOrders.code,
+          createdAt: productionOrders.createdAt,
+          orderCode: orders.code,
+          dueDate: orders.dueDate,
+          clientName: clients.name,
+          clientAddress: clients.address,
+        })
+        .from(productionOrders)
+        .innerJoin(orders, eq(orders.id, productionOrders.orderId))
+        .leftJoin(clients, eq(clients.id, orders.clientId))
+        .where(eq(productionOrders.id, productionOrderId)),
+      this.db
+        .select({
+          quantity: productionOrderItems.quantity,
+          note: orderItems.note,
+          itemCode: itemsTable.code,
+          itemName: itemsTable.name,
+          unitName: units.name,
+        })
+        .from(productionOrderItems)
+        .innerJoin(
+          orderItems,
+          eq(orderItems.id, productionOrderItems.orderItemId),
+        )
+        .innerJoin(itemsTable, eq(itemsTable.id, productionOrderItems.itemId))
+        .leftJoin(units, eq(units.id, itemsTable.unitId))
+        .where(eq(productionOrderItems.productionOrderId, productionOrderId))
+        .orderBy(asc(orderItems.sortOrder), asc(productionOrderItems.id)),
+    ]);
+
+    if (!order) {
+      throw new AppException(ErrorCode.E081, HttpStatus.NOT_FOUND);
+    }
 
     const deliveryDateStr = order.dueDate ? formatVnDate(order.dueDate) : '';
-    const orderDateStr = order.orderDate
-      ? formatVnDate(order.orderDate)
-      : formatVnDate(order.createdAt);
+    const orderDateStr = formatVnDate(order.createdAt);
 
-    const items = rawItems.map((item, index) => ({
+    const items = itemRows.map((item, index) => ({
       stt: index + 1,
-      itemCode: item.itemCode,
-      purchaseRequestCode: order.orderCode ?? '',
-      itemName: item.itemName,
-      unitName: item.unitName ?? '',
+      item_code: item.itemCode,
+      purchase_request_code: order.orderCode ?? '',
+      item_name: item.itemName,
+      unit_name: item.unitName ?? '',
       quantity: item.quantity.toLocaleString('en-US', {
         maximumFractionDigits: 3,
       }),
-      deliveryDate: deliveryDateStr,
+      delivery_date: deliveryDateStr,
       note: item.note ?? '',
     }));
 
     const context = {
-      customerName: order.clientName ?? '',
-      customerAddress: order.clientAddress ?? '',
-      poCode: order.orderCode ?? order.code ?? '',
-      orderDate: orderDateStr,
+      customer_name: order.clientName ?? '',
+      customer_address: order.clientAddress ?? '',
+      po_code: order.orderCode ?? order.code ?? '',
+      order_date: orderDateStr,
       code: order.code ?? '',
-      salesUserName: order.assignedUserName ?? '',
-      supervisorName: order.approverName ?? '',
       items,
     };
 
@@ -284,60 +308,6 @@ export class ProductionOrdersService {
       type: 'application/pdf',
       disposition: `attachment; filename="${fileName}"`,
     });
-  }
-
-  /** Lấy dữ liệu LSX phục vụ riêng xuất file PDF — dùng select trực tiếp, tối ưu gọn gàng. */
-  private async getProductionOrderForPdf(productionOrderId: string) {
-    const assignedUsers = alias(users, 'assigned_users');
-    const approverUsers = alias(users, 'approver_users');
-
-    const [order] = await this.db
-      .select({
-        id: productionOrders.id,
-        code: productionOrders.code,
-        status: productionOrders.status,
-        createdAt: productionOrders.createdAt,
-        orderCode: orders.code,
-        orderDate: orders.orderDate,
-        dueDate: orders.dueDate,
-        clientName: clients.name,
-        clientAddress: clients.address,
-        assignedUserName: assignedUsers.fullName,
-        approverName: approverUsers.fullName,
-      })
-      .from(productionOrders)
-      .innerJoin(orders, eq(orders.id, productionOrders.orderId))
-      .leftJoin(clients, eq(clients.id, orders.clientId))
-      .leftJoin(assignedUsers, eq(assignedUsers.id, orders.assignedUserId))
-      .leftJoin(
-        approverUsers,
-        eq(approverUsers.id, productionOrders.approvedBy),
-      )
-      .where(eq(productionOrders.id, productionOrderId));
-
-    if (!order) {
-      throw new AppException(ErrorCode.E081, HttpStatus.NOT_FOUND);
-    }
-
-    const rawItems = await this.db
-      .select({
-        quantity: productionOrderItems.quantity,
-        note: orderItems.note,
-        itemCode: itemsTable.code,
-        itemName: itemsTable.name,
-        unitName: units.name,
-      })
-      .from(productionOrderItems)
-      .innerJoin(
-        orderItems,
-        eq(orderItems.id, productionOrderItems.orderItemId),
-      )
-      .innerJoin(itemsTable, eq(itemsTable.id, productionOrderItems.itemId))
-      .leftJoin(units, eq(units.id, itemsTable.unitId))
-      .where(eq(productionOrderItems.productionOrderId, productionOrderId))
-      .orderBy(asc(orderItems.sortOrder), asc(productionOrderItems.id));
-
-    return { order, items: rawItems };
   }
 
   /** Sửa số lượng sản xuất từng dòng, nhập tay — chỉ khi LSX còn `PENDING` (`E084`). Partial: chỉ

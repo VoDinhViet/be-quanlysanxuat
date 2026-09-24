@@ -6,6 +6,7 @@ import {
   Patch,
   Post,
   Query,
+  StreamableFile,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 
@@ -16,6 +17,7 @@ import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
 import { OqcService } from '../oqc/oqc.service';
+import { ExportProductionJobsPlanReqDto } from './dto/export-production-jobs-plan.req.dto';
 import { CreateProductionJobNoteReqDto } from './dto/create-production-job-note.req.dto';
 import { GetProductionJobBomReqDto } from './dto/get-production-job-bom.req.dto';
 import { GetProductionJobLogsReqDto } from './dto/get-production-job-logs.req.dto';
@@ -51,6 +53,19 @@ export class ProductionJobsController {
     @Query() reqDto: GetProductionJobsReqDto,
   ): Promise<OffsetPaginatedDto<ProductionJobResDto>> {
     return this.productionJobsService.getProductionJobs(reqDto);
+  }
+
+  // Khai trước ':jobId' để không bị nuốt thành param đó.
+  @Get('export-plan-pdf')
+  @Permissions('production:read')
+  @ApiAuth({
+    summary: 'Xuất PDF Kế hoạch sản xuất (BM 08-01) cho các Job đã chọn',
+    fileType: 'application/pdf',
+  })
+  exportProductionPlanPdf(
+    @Query() reqDto: ExportProductionJobsPlanReqDto,
+  ): Promise<StreamableFile> {
+    return this.productionJobsService.exportProductionPlanPdf(reqDto);
   }
 
   @Get(':jobId')

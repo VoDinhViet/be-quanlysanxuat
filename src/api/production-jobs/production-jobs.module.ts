@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 
+import { TemplatesModule } from '../../templates/templates.module';
 import { AuthModule } from '../auth/auth.module';
 import { InventoryModule } from '../inventory/inventory.module';
 import { OqcModule } from '../oqc/oqc.module';
@@ -14,6 +15,7 @@ import { ProductionJobsService } from './production-jobs.service';
     InventoryModule,
     OqcModule,
     PurchaseRequestsModule,
+    TemplatesModule,
     UsersModule,
   ],
   controllers: [ProductionJobsController],

@@ -151,7 +151,7 @@
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
-      border-bottom: 1.5px solid var(--navy);
+      border-bottom: 1px solid #64748b;
       padding-bottom: 8px;
     }
 
@@ -240,9 +240,10 @@
 
     .meta-row-item {
       display: flex;
-      align-items: baseline;
+      align-items: flex-end;
       gap: 8px;
-      margin-bottom: 9px;
+      height: 22px;
+      margin-bottom: 8px;
     }
 
     .meta-row-item:last-child {
@@ -250,6 +251,7 @@
     }
 
     .meta-item-lbl {
+      padding-bottom: 3px;
       font-weight: 700;
       color: #111111;
       white-space: nowrap;
@@ -265,12 +267,26 @@
 
     .meta-item-val {
       flex: 1;
-      border-bottom: 1px dotted #94a3b8;
-      padding: 2px 6px 4px 6px;
-      line-height: 1.45;
+      overflow: hidden;
+      white-space: nowrap;
+      padding: 0 6px 3px 6px;
+      min-height: 18px;
+      box-sizing: border-box;
       outline: none;
       font-weight: 600;
       color: var(--text-main);
+    }
+
+    .meta-item-val::after {
+      content: "............................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................";
+      margin-left: 4px;
+      font-size: 7.5pt;
+      font-weight: 400;
+      color: #64748b;
+    }
+
+    .meta-item-val:empty::after {
+      margin-left: 0;
     }
 
     /* =========================================================
@@ -497,7 +513,7 @@
       justify-content: space-between;
       align-items: center;
       margin-top: auto;
-      border-top: 1px solid #cbd5e1;
+      border-top: 1px solid #64748b;
       padding-top: 4px;
       font-size: 7.5pt;
       color: #64748b;
@@ -607,22 +623,22 @@
           <div>
             <div class="meta-row-item">
               <span class="meta-item-lbl">Tên khách hàng <span>/Customer Name:</span></span>
-              <div class="meta-item-val font-semibold">{{customerName}}</div>
+              <div class="meta-item-val font-semibold">{{customer_name}}</div>
             </div>
             <div class="meta-row-item">
               <span class="meta-item-lbl">Địa chỉ <span>/Address:</span></span>
-              <div class="meta-item-val">{{customerAddress}}</div>
+              <div class="meta-item-val">{{customer_address}}</div>
             </div>
           </div>
 
           <div>
             <div class="meta-row-item">
               <span class="meta-item-lbl">Số PO <span>/PO No:</span></span>
-              <div class="meta-item-val font-bold font-mono" style="color: var(--navy);">{{poCode}}</div>
+              <div class="meta-item-val font-bold font-mono" style="color: var(--navy);">{{po_code}}</div>
             </div>
             <div class="meta-row-item">
               <span class="meta-item-lbl">Ngày tạo lệnh <span>/Creation Date:</span></span>
-              <div class="meta-item-val font-mono">{{orderDate}}</div>
+              <div class="meta-item-val font-mono">{{order_date}}</div>
             </div>
           </div>
         </div>
@@ -645,12 +661,12 @@
             {{#each items}}
             <tr>
               <td class="text-center font-bold">{{this.stt}}</td>
-              <td><div class="cell-edit text-center font-mono">{{this.itemCode}}</div></td>
-              <td><div class="cell-edit text-center font-mono">{{this.purchaseRequestCode}}</div></td>
-              <td><div class="cell-edit text-left font-semibold">{{this.itemName}}</div></td>
-              <td><div class="cell-edit text-center">{{this.unitName}}</div></td>
+              <td><div class="cell-edit text-center font-mono">{{this.item_code}}</div></td>
+              <td><div class="cell-edit text-center font-mono">{{this.purchase_request_code}}</div></td>
+              <td><div class="cell-edit text-left font-semibold">{{this.item_name}}</div></td>
+              <td><div class="cell-edit text-center">{{this.unit_name}}</div></td>
               <td><div class="cell-edit text-right font-bold font-mono">{{this.quantity}}</div></td>
-              <td><div class="cell-edit text-center font-mono">{{this.deliveryDate}}</div></td>
+              <td><div class="cell-edit text-center font-mono">{{this.delivery_date}}</div></td>
               <td><div class="cell-edit text-left">{{this.note}}</div></td>
             </tr>
             {{/each}}
@@ -679,7 +695,7 @@
               <div class="sig-title-sub">Sales Staff (Ký, ghi rõ họ tên)</div>
             </div>
             <div class="sig-name-block">
-              <div class="sig-person-name">{{salesUserName}}</div>
+              <div class="sig-person-name"></div>
               <div class="sig-date-note">Ngày ký: ....................</div>
             </div>
           </div>
@@ -690,7 +706,7 @@
               <div class="sig-title-sub">Production Supervisor (Ký nhận)</div>
             </div>
             <div class="sig-name-block">
-              <div class="sig-person-name">{{supervisorName}}</div>
+              <div class="sig-person-name"></div>
               <div class="sig-date-note">Ngày ký: ....................</div>
             </div>
           </div>

@@ -7,6 +7,7 @@ import {
   Patch,
   Post,
   Query,
+  StreamableFile,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 
@@ -152,6 +153,18 @@ export class InventoryReceiptsController {
       receiptId,
       payload.userId,
     );
+  }
+
+  @Get(':receiptId/export-pdf')
+  @Permissions('inventory:read')
+  @ApiAuth({
+    summary: 'Xuất PDF Phiếu nhập kho (BM 09-01)',
+    fileType: 'application/pdf',
+  })
+  exportInventoryReceiptPdf(
+    @UUIDParam('receiptId') receiptId: string,
+  ): Promise<StreamableFile> {
+    return this.inventoryReceiptsService.exportInventoryReceiptPdf(receiptId);
   }
 
   @Get(':receiptId/related-notes')

@@ -151,7 +151,7 @@
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
-      border-bottom: 1.5px solid var(--navy);
+      border-bottom: 1px solid #64748b;
       padding-bottom: 8px;
     }
 
@@ -240,9 +240,10 @@
 
     .meta-row-item {
       display: flex;
-      align-items: baseline;
+      align-items: flex-end;
       gap: 8px;
-      margin-bottom: 9px;
+      height: 22px;
+      margin-bottom: 8px;
     }
 
     .meta-row-item:last-child {
@@ -250,6 +251,7 @@
     }
 
     .meta-item-lbl {
+      padding-bottom: 3px;
       font-weight: 700;
       color: #111111;
       white-space: nowrap;
@@ -265,12 +267,26 @@
 
     .meta-item-val {
       flex: 1;
-      border-bottom: 1px dotted #94a3b8;
-      padding: 2px 6px 4px 6px;
-      line-height: 1.45;
+      overflow: hidden;
+      white-space: nowrap;
+      padding: 0 6px 3px 6px;
+      min-height: 18px;
+      box-sizing: border-box;
       outline: none;
       font-weight: 600;
       color: var(--text-main);
+    }
+
+    .meta-item-val::after {
+      content: "............................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................";
+      margin-left: 4px;
+      font-size: 7.5pt;
+      font-weight: 400;
+      color: #64748b;
+    }
+
+    .meta-item-val:empty::after {
+      margin-left: 0;
     }
 
     /* =========================================================
@@ -497,7 +513,7 @@
       justify-content: space-between;
       align-items: center;
       margin-top: auto;
-      border-top: 1px solid #cbd5e1;
+      border-top: 1px solid #64748b;
       padding-top: 4px;
       font-size: 7.5pt;
       color: #64748b;
