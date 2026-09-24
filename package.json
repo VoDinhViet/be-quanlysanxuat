@@ -27,7 +27,8 @@
     "db:check-drift": "ts-node src/database/check-migration-drift.ts",
     "db:reset": "ts-node src/database/reset-data.ts",
     "db:reset:transactions": "ts-node src/database/reset-transactions.ts",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "db:seed:supplier-groups": "ts-node src/database/seeds/supplier-groups.seed.ts"
   },
   "dependencies": {
     "@keyv/redis": "^5.1.6",
