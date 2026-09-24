@@ -183,6 +183,7 @@ export class ProductionJobsService {
           code: productionJobs.code,
           orderCode: orders.code,
           buyerPoNo: orders.buyerPoNo,
+          item: getTableColumns(items),
           client: getTableColumns(clients),
           imageFile: getTableColumns(files),
           quantity: productionJobs.quantity,
