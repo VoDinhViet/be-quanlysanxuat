@@ -11,6 +11,7 @@ import {
   EnumField,
   NumberField,
   StringField,
+  StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
 
@@ -25,8 +26,15 @@ export class ProductionJobResDto {
   code!: string;
 
   @Expose()
-  @StringField({ description: 'Mã đơn hàng (PO)' })
+  @StringField({ description: 'Mã đơn hàng (SO)' })
   orderCode!: string;
+
+  @Expose()
+  @StringFieldOptional({
+    nullable: true,
+    description: 'Số PO của khách hàng trên đơn hàng gốc',
+  })
+  buyerPoNo!: string | null;
 
   @Expose()
   @ClassFieldOptional(() => ClientBaseResDto, { nullable: true })

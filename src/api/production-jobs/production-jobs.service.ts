@@ -169,6 +169,7 @@ export class ProductionJobsService {
             unaccentILike(productionJobs.code, keyword),
             unaccentILike(productionOrders.code, keyword),
             unaccentILike(orders.code, keyword),
+            unaccentILike(orders.buyerPoNo, keyword),
             unaccentILike(items.code, keyword),
             unaccentILike(items.name, keyword),
           )
@@ -181,6 +182,7 @@ export class ProductionJobsService {
           id: productionJobs.id,
           code: productionJobs.code,
           orderCode: orders.code,
+          buyerPoNo: orders.buyerPoNo,
           client: getTableColumns(clients),
           imageFile: getTableColumns(files),
           quantity: productionJobs.quantity,

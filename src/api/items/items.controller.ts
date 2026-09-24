@@ -138,7 +138,7 @@ export class ItemsController {
   @Permissions('items:copy')
   @ApiAuth({
     summary:
-      'Copy (clone) an FG item, keeping its code and taking a new revision (Nhân bản)',
+      'Copy (clone) an item (Nhân bản): FG keeps its code and takes a new revision; CONSUMABLE takes a new code',
     statusCode: HttpStatus.CREATED,
   })
   copyItem(

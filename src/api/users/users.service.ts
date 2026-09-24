@@ -55,7 +55,7 @@ import { GetUserOptionsReqDto } from './dto/get-user-options.req.dto';
 import { UpdateUserReqDto } from './dto/update-user.req.dto';
 import { UserRefResDto } from './dto/user-ref.res.dto';
 import { UserResDto } from './dto/user.res.dto';
-import { USER_EXPORT_COLUMNS, type UserExport } from './users.export';
+import { USER_EXPORT_COLUMNS } from './users.export';
 
 @Injectable()
 export class UsersService {
@@ -80,6 +80,11 @@ export class UsersService {
       keyword
         ? or(ilike(users.fullName, keyword), ilike(users.code, keyword))
         : undefined,
+      reqDto.status ? eq(users.status, reqDto.status) : undefined,
+      reqDto.departmentId
+        ? eq(users.departmentId, reqDto.departmentId)
+        : undefined,
+      reqDto.positionId ? eq(users.positionId, reqDto.positionId) : undefined,
       or(isNull(credentials.isProtected), eq(credentials.isProtected, false)),
     );
     const orderBy = desc(users.createdAt);

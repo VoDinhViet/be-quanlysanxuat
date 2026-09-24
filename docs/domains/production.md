@@ -163,7 +163,7 @@ có node thì nhánh code không bao giờ chạy. Giới hạn thật, không p
   (`production_orders.note`) sửa được mọi trạng thái qua `PATCH .../note`, mỗi lần ghi 1 dòng
   `production_order_logs` (`NOTE_UPDATED`).
 - `GET /production-orders/export` xuất Excel cùng bộ lọc `GET /production-orders`, không phân
-  trang, trần 10.000 dòng cắt im lặng. `code` (Mã LSX) rỗng ở dòng `PENDING` — chỉ có khi đã duyệt.
+  trang, trần 10.000 dòng cắt im lặng. `code` (Mã LSX) cấp ngay khi sinh kế hoạch; chỉ dòng `PENDING` cũ (trước thay đổi này) còn rỗng tới lúc duyệt.
 
 ## Invariants
 

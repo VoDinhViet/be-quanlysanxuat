@@ -224,7 +224,7 @@ export enum ErrorCode {
   // `E050` covers "node not found" for both node types now (`docs/decisions/items-merge.md`).
   // `PATCH`/`DELETE` một dòng `bom_operations` không tồn tại đúng node.
   E109 = 'bom_operation.error.not_found',
-  // `POST /items/:itemId/copy` gọi trên item `type=CONSUMABLE` — vật tư không có cây BOM để nhân bản.
+  // Retired: `POST /items/:itemId/copy` từng chặn CONSUMABLE; nay copy vật tư được phép — không tái dùng số.
   E110 = 'item.error.cannot_copy_consumable',
   // CONSUMABLE không có BOM (`BomsService`) hoặc routing Cấp 0 (`RoutingsService`) — chỉ FG mới có
   // cấu trúc/công đoạn của chính nó.
@@ -628,6 +628,10 @@ export enum ErrorCode {
   E274 = 'purchase_order.error.pdf_render_failed',
   // `clientContactId` trên đơn hàng không tồn tại hoặc không thuộc khách hàng của đơn.
   E275 = 'order.error.client_contact_invalid',
+  // `POST /items` với `type=CONSUMABLE` mà thiếu `code` — mã vật tư do người dùng tự đặt, không tự sinh.
+  E276 = 'item.error.consumable_code_required',
+  // `POST /items/:itemId/copy` trên FG mà thiếu `revision` — FG giữ nguyên mã nên revision là thứ duy nhất phân biệt.
+  E277 = 'item.error.copy_revision_required',
   V003 = 'common.error.too_many_requests',
   // `GlobalExceptionFilter` bắt chuỗi "No values to set" của drizzle-orm — mọi `PATCH` khi
   // `ValidationPipe` whitelist đã loại sạch field lạ, còn lại payload rỗng cho `.set()`. Trước đây
