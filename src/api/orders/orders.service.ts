@@ -42,6 +42,7 @@ import { PdfRendererService } from '../../templates/pdf-renderer.service';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
+  clientContacts,
   clients,
   Currency,
   files,
@@ -98,6 +99,7 @@ export class OrdersService {
       keyword
         ? or(
             unaccentILike(orders.code, keyword),
+            unaccentILike(orders.buyerPoNo, keyword),
             exists(
               this.db
                 .select({ one: sql`1` })
@@ -152,6 +154,7 @@ export class OrdersService {
           expired: this.expiredSql(),
           totalVnd: this.totalVndSql(),
           client: getTableColumns(clients),
+          clientContact: getTableColumns(clientContacts),
           assignedUser: getTableColumns(assignedUserAlias),
           creatorBy: getTableColumns(creatorAlias),
           approverBy: getTableColumns(approverAlias),
@@ -159,6 +162,7 @@ export class OrdersService {
         })
         .from(orders)
         .leftJoin(clients, eq(clients.id, orders.clientId))
+        .leftJoin(clientContacts, eq(clientContacts.id, orders.clientContactId))
         .leftJoin(
           assignedUserAlias,
           eq(assignedUserAlias.id, orders.assignedUserId),
@@ -579,6 +583,12 @@ export class OrdersService {
     if (reqDto.clientId) {
       await this.ensureClientExists(reqDto.clientId);
     }
+    if (reqDto.clientContactId) {
+      await this.ensureClientContactBelongsToClient(
+        reqDto.clientContactId,
+        reqDto.clientId,
+      );
+    }
     if (reqDto.assignedUserId) {
       await this.ensureAssignedUserExists(reqDto.assignedUserId);
     }
@@ -637,6 +647,12 @@ export class OrdersService {
     if (reqDto.clientId) {
       await this.ensureClientExists(reqDto.clientId);
     }
+    if (reqDto.clientContactId) {
+      await this.ensureClientContactBelongsToClient(
+        reqDto.clientContactId,
+        reqDto.clientId ?? existing.clientId,
+      );
+    }
     if (reqDto.assignedUserId) {
       await this.ensureAssignedUserExists(reqDto.assignedUserId);
     }
@@ -660,6 +676,11 @@ export class OrdersService {
     // rejectionReason làm lịch sử. Request gửi `status` rõ ràng (vd CANCELLED) thì tôn trọng nó.
     const revertsToDraft =
       existing.status === OrderStatus.REJECTED && reqDto.status === undefined;
+    // Đổi khách hàng mà không chọn lại người liên hệ → bỏ liên hệ cũ (thuộc khách hàng khác).
+    const resetsContact =
+      reqDto.clientId !== undefined &&
+      reqDto.clientId !== existing.clientId &&
+      reqDto.clientContactId === undefined;
 
     await this.db.transaction(async (tx) => {
       await tx
@@ -671,6 +692,7 @@ export class OrdersService {
             orderFields.exchangeRate,
           ),
           ...(revertsToDraft && { status: OrderStatus.DRAFT }),
+          ...(resetsContact && { clientContactId: null }),
         })
         .where(eq(orders.id, orderId));
 
@@ -872,6 +894,25 @@ export class OrdersService {
     }
   }
 
+  private async ensureClientContactBelongsToClient(
+    clientContactId: string,
+    clientId: string | null | undefined,
+  ): Promise<void> {
+    const existing = clientId
+      ? await this.db.query.clientContacts.findFirst({
+          columns: { id: true },
+          where: and(
+            eq(clientContacts.id, clientContactId),
+            eq(clientContacts.clientId, clientId),
+          ),
+        })
+      : undefined;
+
+    if (!existing) {
+      throw new AppException(ErrorCode.E275, HttpStatus.UNPROCESSABLE_ENTITY);
+    }
+  }
+
   private async ensureAssignedUserExists(
     assignedUserId: string,
   ): Promise<void> {
@@ -971,11 +1012,14 @@ export class OrdersService {
     }
   }
 
-  private async ensureOrderExists(
-    orderId: string,
-  ): Promise<{ id: string; status: OrderStatus; currency: Currency }> {
+  private async ensureOrderExists(orderId: string): Promise<{
+    id: string;
+    status: OrderStatus;
+    currency: Currency;
+    clientId: string | null;
+  }> {
     const existing = await this.db.query.orders.findFirst({
-      columns: { id: true, status: true, currency: true },
+      columns: { id: true, status: true, currency: true, clientId: true },
       where: and(eq(orders.id, orderId), isNull(orders.deletedAt)),
     });
 

@@ -626,6 +626,8 @@ export enum ErrorCode {
   E273 = 'bom_item.error.parent_not_leaf',
   // Puppeteer render PDF lỗi cả sau khi thử khởi động lại browser 1 lần — Chromium crash liên tục.
   E274 = 'purchase_order.error.pdf_render_failed',
+  // `clientContactId` trên đơn hàng không tồn tại hoặc không thuộc khách hàng của đơn.
+  E275 = 'order.error.client_contact_invalid',
   V003 = 'common.error.too_many_requests',
   // `GlobalExceptionFilter` bắt chuỗi "No values to set" của drizzle-orm — mọi `PATCH` khi
   // `ValidationPipe` whitelist đã loại sạch field lạ, còn lại payload rỗng cho `.set()`. Trước đây
