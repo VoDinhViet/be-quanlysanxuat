@@ -42,7 +42,7 @@ export class BomOperationsService {
         : undefined,
     );
 
-    const [rows, countRows] = await Promise.all([
+    const [rows, [{ total }]] = await Promise.all([
       this.db.query.bomOperations.findMany({
         where,
         with: { operation: true },
@@ -61,7 +61,7 @@ export class BomOperationsService {
       plainToInstance(BomOperationResDto, rows, {
         excludeExtraneousValues: true,
       }),
-      new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
+      new OffsetPaginationDto(total, reqDto),
     );
   }
 

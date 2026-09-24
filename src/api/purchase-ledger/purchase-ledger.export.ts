@@ -1,6 +1,6 @@
 import {
-  formatExcelDate,
-  formatExcelDateTime,
+  formatVnDate,
+  formatVnDateTime,
   type ExcelColumn,
 } from '../../common/utils/excel.util';
 import { PurchaseLedgerStatus } from './purchase-ledger.constant';
@@ -53,10 +53,10 @@ export const PURCHASE_LEDGER_EXPORT_COLUMNS: ExcelColumn<PurchaseLedgerExport>[]
       header: 'Trạng thái',
       value: (row) => PURCHASE_LEDGER_STATUS_LABELS[row.status],
     },
-    { header: 'Ngày cần', value: (row) => formatExcelDate(row.neededDate) },
+    { header: 'Ngày cần', value: (row) => formatVnDate(row.neededDate) },
     { header: 'Ghi chú', value: (row) => row.note, width: 30 },
     {
       header: 'Ngày tạo',
-      value: (row) => formatExcelDateTime(row.createdAt),
+      value: (row) => formatVnDateTime(row.createdAt),
     },
   ];

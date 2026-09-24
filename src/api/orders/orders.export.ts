@@ -1,7 +1,4 @@
-import {
-  formatExcelDate,
-  type ExcelColumn,
-} from '../../common/utils/excel.util';
+import { formatVnDate, type ExcelColumn } from '../../common/utils/excel.util';
 import { Currency, OrderStatus } from '../../database/schemas';
 
 export interface OrderExport {
@@ -38,8 +35,8 @@ export const ORDER_EXPORT_COLUMNS: ExcelColumn<OrderExport>[] = [
   { header: 'Khách hàng', value: (row) => row.clientName, width: 30 },
   { header: 'Mã khách hàng', value: (row) => row.clientCode },
   { header: 'NVKD phụ trách', value: (row) => row.assignedUserName, width: 25 },
-  { header: 'Ngày đặt', value: (row) => formatExcelDate(row.orderDate) },
-  { header: 'Ngày giao', value: (row) => formatExcelDate(row.dueDate) },
+  { header: 'Ngày đặt', value: (row) => formatVnDate(row.orderDate) },
+  { header: 'Ngày giao', value: (row) => formatVnDate(row.dueDate) },
   { header: 'Trạng thái', value: (row) => ORDER_STATUS_LABELS[row.status] },
   { header: 'Tiền tệ', value: (row) => row.currency },
   {

@@ -1,5 +1,5 @@
 import {
-  formatExcelDateTime,
+  formatVnDateTime,
   type ExcelColumn,
 } from '../../common/utils/excel.util';
 import {
@@ -65,7 +65,7 @@ export const IQC_EXPORT_COLUMNS: ExcelColumn<IqcExport>[] = [
   },
   {
     header: 'Ngày kiểm',
-    value: (row) => formatExcelDateTime(row.inspectionDate),
+    value: (row) => formatVnDateTime(row.inspectionDate),
   },
   {
     header: 'Kết quả',
@@ -80,5 +80,5 @@ export const IQC_EXPORT_COLUMNS: ExcelColumn<IqcExport>[] = [
   { header: 'Lý do', value: (row) => row.reason },
   { header: 'Ghi chú', value: (row) => row.note, width: 30 },
   { header: 'Người tạo', value: (row) => row.creatorName },
-  { header: 'Ngày tạo', value: (row) => formatExcelDateTime(row.createdAt) },
+  { header: 'Ngày tạo', value: (row) => formatVnDateTime(row.createdAt) },
 ];

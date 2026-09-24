@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 
+import { TemplatesModule } from '../../templates/templates.module';
 import { AuthModule } from '../auth/auth.module';
 import { InventoryModule } from '../inventory/inventory.module';
 import { IqcModule } from '../iqc/iqc.module';
@@ -15,6 +16,7 @@ import { InventoryReceiptsService } from './inventory-receipts.service';
     IqcModule,
     PaymentRequestsModule,
     PurchaseNotesModule,
+    TemplatesModule,
   ],
   controllers: [InventoryReceiptsController],
   providers: [InventoryReceiptsService],

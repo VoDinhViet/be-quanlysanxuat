@@ -21,7 +21,11 @@ import {
   DocumentType,
   generateDocumentSequence,
 } from '../../common/utils/document-sequence.util';
-import { buildXlsxBuffer, XLSX_MIME } from '../../common/utils/excel.util';
+import {
+  buildXlsxBuffer,
+  formatVnDate,
+  XLSX_MIME,
+} from '../../common/utils/excel.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
@@ -38,8 +42,11 @@ import {
   ProductionOrderLogAction,
   productionOrders,
   ProductionOrderStatus,
+  units,
   users,
 } from '../../database/schemas';
+import { FormTemplateType } from '../../templates/form-templates.registry';
+import { PdfRendererService } from '../../templates/pdf-renderer.service';
 import { AppException } from '../../exceptions/app.exception';
 import { InventoryService } from '../inventory/inventory.service';
 import { ProductionJobsService } from '../production-jobs/production-jobs.service';
@@ -78,6 +85,7 @@ export class ProductionOrdersService {
     private readonly inventoryService: InventoryService,
     private readonly productionJobsService: ProductionJobsService,
     private readonly filesService: FilesService,
+    private readonly pdfRendererService: PdfRendererService,
   ) {}
 
   async getProductionOrders(
@@ -100,7 +108,7 @@ export class ProductionOrdersService {
       reqDto.status ? eq(productionOrders.status, reqDto.status) : undefined,
     );
 
-    const [entities, countRows] = await Promise.all([
+    const [entities, [{ total }]] = await Promise.all([
       this.db
         .select({
           id: productionOrders.id,
@@ -128,16 +136,11 @@ export class ProductionOrdersService {
         .where(where),
     ]);
 
-    const rows = entities.map((row) => ({
-      ...row,
-      client: row.client?.id ? row.client : null,
-    }));
-
     return new OffsetPaginatedDto(
-      plainToInstance(ProductionOrderResDto, rows, {
+      plainToInstance(ProductionOrderResDto, entities, {
         excludeExtraneousValues: true,
       }),
-      new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
+      new OffsetPaginationDto(total, reqDto),
     );
   }
 
@@ -228,6 +231,83 @@ export class ProductionOrdersService {
       { ...productionOrder, productionOrderNote: productionOrder.note },
       { excludeExtraneousValues: true },
     );
+  }
+
+  async exportProductionOrderPdf(
+    productionOrderId: string,
+  ): Promise<StreamableFile> {
+    const [[order], itemRows] = await Promise.all([
+      this.db
+        .select({
+          code: productionOrders.code,
+          createdAt: productionOrders.createdAt,
+          orderCode: orders.code,
+          dueDate: orders.dueDate,
+          clientName: clients.name,
+          clientAddress: clients.address,
+        })
+        .from(productionOrders)
+        .innerJoin(orders, eq(orders.id, productionOrders.orderId))
+        .leftJoin(clients, eq(clients.id, orders.clientId))
+        .where(eq(productionOrders.id, productionOrderId)),
+      this.db
+        .select({
+          quantity: productionOrderItems.quantity,
+          note: orderItems.note,
+          itemCode: itemsTable.code,
+          itemName: itemsTable.name,
+          unitName: units.name,
+        })
+        .from(productionOrderItems)
+        .innerJoin(
+          orderItems,
+          eq(orderItems.id, productionOrderItems.orderItemId),
+        )
+        .innerJoin(itemsTable, eq(itemsTable.id, productionOrderItems.itemId))
+        .leftJoin(units, eq(units.id, itemsTable.unitId))
+        .where(eq(productionOrderItems.productionOrderId, productionOrderId))
+        .orderBy(asc(orderItems.sortOrder), asc(productionOrderItems.id)),
+    ]);
+
+    if (!order) {
+      throw new AppException(ErrorCode.E081, HttpStatus.NOT_FOUND);
+    }
+
+    const deliveryDateStr = order.dueDate ? formatVnDate(order.dueDate) : '';
+    const orderDateStr = formatVnDate(order.createdAt);
+
+    const items = itemRows.map((item, index) => ({
+      stt: index + 1,
+      item_code: item.itemCode,
+      purchase_request_code: order.orderCode ?? '',
+      item_name: item.itemName,
+      unit_name: item.unitName ?? '',
+      quantity: item.quantity.toLocaleString('en-US', {
+        maximumFractionDigits: 3,
+      }),
+      delivery_date: deliveryDateStr,
+      note: item.note ?? '',
+    }));
+
+    const context = {
+      customer_name: order.clientName ?? '',
+      customer_address: order.clientAddress ?? '',
+      po_code: order.orderCode ?? order.code ?? '',
+      order_date: orderDateStr,
+      code: order.code ?? '',
+      items,
+    };
+
+    const buffer = await this.pdfRendererService.render(
+      FormTemplateType.PRODUCTION_ORDER,
+      context,
+    );
+
+    const fileName = `${order.code ?? 'LSX'}-${DateTime.now().toFormat('yyyyLLdd-HHmm')}.pdf`;
+    return new StreamableFile(buffer, {
+      type: 'application/pdf',
+      disposition: `attachment; filename="${fileName}"`,
+    });
   }
 
   /** Sửa số lượng sản xuất từng dòng, nhập tay — chỉ khi LSX còn `PENDING` (`E084`). Partial: chỉ
@@ -549,7 +629,7 @@ export class ProductionOrdersService {
     }
 
     const where = eq(productionOrderLogs.productionOrderId, productionOrdersId);
-    const [rows, countRows] = await Promise.all([
+    const [rows, [{ total }]] = await Promise.all([
       this.db.query.productionOrderLogs.findMany({
         where,
         with: { performerBy: true },
@@ -564,7 +644,7 @@ export class ProductionOrdersService {
       plainToInstance(ProductionOrderLogResDto, rows, {
         excludeExtraneousValues: true,
       }),
-      new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
+      new OffsetPaginationDto(total, reqDto),
     );
   }
 

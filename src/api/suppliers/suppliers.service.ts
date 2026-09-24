@@ -1,15 +1,6 @@
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
-import {
-  and,
-  count as drizzleCount,
-  desc,
-  eq,
-  inArray,
-  isNull,
-  ne,
-  or,
-} from 'drizzle-orm';
+import { and, count, desc, eq, inArray, isNull, ne, or } from 'drizzle-orm';
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
@@ -79,7 +70,7 @@ export class SuppliersService {
     );
     const orderBy = desc(suppliers.createdAt);
 
-    const [entities, count] = await Promise.all([
+    const [entities, [{ total }]] = await Promise.all([
       this.db.query.suppliers.findMany({
         where,
         limit: reqDto.limit,
@@ -95,20 +86,20 @@ export class SuppliersService {
           payment: true,
         },
       }),
-      this.db.select({ total: drizzleCount() }).from(suppliers).where(where),
+      this.db.select({ total: count() }).from(suppliers).where(where),
     ]);
 
     return new OffsetPaginatedDto(
       plainToInstance(PageSupplierResDto, entities, {
         excludeExtraneousValues: true,
       }),
-      new OffsetPaginationDto(count[0]?.total ?? 0, reqDto),
+      new OffsetPaginationDto(total, reqDto),
     );
   }
 
   async getSupplierStats(): Promise<SupplierStatsResDto> {
     const rows = await this.db
-      .select({ status: suppliers.status, total: drizzleCount() })
+      .select({ status: suppliers.status, total: count() })
       .from(suppliers)
       .where(isNull(suppliers.deletedAt))
       .groupBy(suppliers.status);

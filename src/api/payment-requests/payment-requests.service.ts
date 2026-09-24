@@ -102,7 +102,7 @@ export class PaymentRequestsService {
     // `.select()` thay vì relational query — `purchaseOrders`/`paymentRequests` collapse type ngay
     // ở `with:` 1 cấp (Drizzle relational query type-inference, không phải do lồng sâu). Join
     // thẳng, DTO (`PickType` trên Ref DTO) tự lọc field nào thật sự lộ ra ngoài.
-    const [rows, countRows] = await Promise.all([
+    const [rows, [{ total }]] = await Promise.all([
       this.db
         .select({
           id: paymentRequests.id,
@@ -140,7 +140,7 @@ export class PaymentRequestsService {
       plainToInstance(PagePaymentRequestResDto, rows, {
         excludeExtraneousValues: true,
       }),
-      new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
+      new OffsetPaginationDto(total, reqDto),
     );
   }
 
@@ -348,7 +348,7 @@ export class PaymentRequestsService {
     await this.ensurePaymentRequestExists(paymentRequestId);
 
     const where = eq(paymentRequestLogs.paymentRequestId, paymentRequestId);
-    const [rows, countRows] = await Promise.all([
+    const [rows, [{ total }]] = await Promise.all([
       this.db.query.paymentRequestLogs.findMany({
         where,
         with: { performerBy: true },
@@ -363,7 +363,7 @@ export class PaymentRequestsService {
       plainToInstance(PaymentRequestLogResDto, rows, {
         excludeExtraneousValues: true,
       }),
-      new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
+      new OffsetPaginationDto(total, reqDto),
     );
   }
 

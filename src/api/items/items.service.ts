@@ -90,7 +90,7 @@ export class ItemsService {
       reqDto.status ? eq(items.status, reqDto.status) : undefined,
     );
 
-    const [entities, countRows] = await Promise.all([
+    const [entities, [{ total }]] = await Promise.all([
       this.db.query.items.findMany({
         where,
         limit: reqDto.limit,
@@ -111,7 +111,7 @@ export class ItemsService {
       plainToInstance(PageItemResDto, entities, {
         excludeExtraneousValues: true,
       }),
-      new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
+      new OffsetPaginationDto(total, reqDto),
     );
   }
 

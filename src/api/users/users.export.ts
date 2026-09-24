@@ -1,7 +1,4 @@
-import {
-  formatExcelDate,
-  type ExcelColumn,
-} from '../../common/utils/excel.util';
+import { formatVnDate, type ExcelColumn } from '../../common/utils/excel.util';
 import { UserGender, UserStatus } from '../../database/schemas';
 
 export interface UserExport {
@@ -40,7 +37,7 @@ export const USER_EXPORT_COLUMNS: ExcelColumn<UserExport>[] = [
     value: (row) => USER_GENDER_LABELS[row.gender],
     width: 12,
   },
-  { header: 'Ngày sinh', value: (row) => formatExcelDate(row.dateOfBirth) },
+  { header: 'Ngày sinh', value: (row) => formatVnDate(row.dateOfBirth) },
   { header: 'CCCD/CMND', value: (row) => row.idNumber },
   { header: 'Số điện thoại', value: (row) => row.phoneNumber },
   { header: 'Email', value: (row) => row.email, width: 28 },
@@ -48,7 +45,7 @@ export const USER_EXPORT_COLUMNS: ExcelColumn<UserExport>[] = [
   { header: 'Phòng ban', value: (row) => row.departmentName, width: 25 },
   { header: 'Chức vụ', value: (row) => row.positionName, width: 25 },
   { header: 'Vai trò', value: (row) => row.roleName },
-  { header: 'Ngày vào làm', value: (row) => formatExcelDate(row.hireDate) },
+  { header: 'Ngày vào làm', value: (row) => formatVnDate(row.hireDate) },
   {
     header: 'Trạng thái',
     value: (row) => USER_STATUS_LABELS[row.status],

@@ -135,7 +135,7 @@ export class SupplierReturnsService {
         : undefined,
     );
 
-    const [entities, countRows] = await Promise.all([
+    const [entities, [{ total }]] = await Promise.all([
       this.db.query.supplierReturns.findMany({
         where,
         limit: reqDto.limit,
@@ -164,7 +164,7 @@ export class SupplierReturnsService {
         })),
         { excludeExtraneousValues: true },
       ),
-      new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
+      new OffsetPaginationDto(total, reqDto),
     );
   }
 

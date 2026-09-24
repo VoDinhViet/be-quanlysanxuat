@@ -6,7 +6,6 @@ import {
   OrderStatus,
   PaymentTerm,
 } from '../../../database/schemas';
-import { OrderPaymentStatus } from '../orders.constant';
 import {
   BooleanField,
   ClassFieldOptional,
@@ -167,12 +166,4 @@ export class OrderResDto {
   @Expose()
   @ClassFieldOptional(() => OrderFileResDto, { each: true })
   files!: OrderFileResDto[];
-
-  @Expose()
-  @NumberField({ description: 'Tổng đã trả — SUM(order_payments.amount)' })
-  paidAmount!: number;
-
-  @Expose()
-  @EnumField(() => OrderPaymentStatus)
-  paymentStatus!: OrderPaymentStatus;
 }

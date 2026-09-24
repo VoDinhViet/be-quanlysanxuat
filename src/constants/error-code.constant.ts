@@ -624,6 +624,8 @@ export enum ErrorCode {
   // Node cha đã có con COMPONENT (là node cấu trúc, không phải lá) — vật tư chỉ gắn vào node lá để
   // nổ cấp không cộng trùng nhu cầu. Khác `E052` (cha là lá CONSUMABLE nên không nhận con nào cả).
   E273 = 'bom_item.error.parent_not_leaf',
+  // Puppeteer render PDF lỗi cả sau khi thử khởi động lại browser 1 lần — Chromium crash liên tục.
+  E274 = 'purchase_order.error.pdf_render_failed',
   V003 = 'common.error.too_many_requests',
   // `GlobalExceptionFilter` bắt chuỗi "No values to set" của drizzle-orm — mọi `PATCH` khi
   // `ValidationPipe` whitelist đã loại sạch field lạ, còn lại payload rỗng cho `.set()`. Trước đây

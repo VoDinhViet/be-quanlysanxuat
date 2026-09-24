@@ -1,4 +1,4 @@
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, StreamableFile } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import {
   and,
@@ -14,9 +14,12 @@ import {
   ne,
   sql,
 } from 'drizzle-orm';
+import { DateTime } from 'luxon';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
+import { formatVnDate } from '../../common/utils/excel.util';
+import { formatQuantity } from '../../common/utils/vnd.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
@@ -33,6 +36,7 @@ import {
   InventoryReferenceType,
   InventoryTransactionType,
   items,
+  items as itemsTable,
   productionJobs,
   ProductionJobLogAction,
   productionJobLogs,
@@ -49,6 +53,8 @@ import {
   units,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
+import { FormTemplateType } from '../../templates/form-templates.registry';
+import { PdfRendererService } from '../../templates/pdf-renderer.service';
 import {
   onHandQuantityByItemSubquery,
   itemStockColumns,
@@ -100,6 +106,7 @@ export class InventoryReceiptsService {
     private readonly inventoryPostingService: InventoryPostingService,
     private readonly iqcService: IqcService,
     private readonly paymentRequestsService: PaymentRequestsService,
+    private readonly pdfRendererService: PdfRendererService,
   ) {}
 
   async getInventoryReceipts(
@@ -139,7 +146,7 @@ export class InventoryReceiptsService {
         : undefined,
     );
 
-    const [entities, countRows] = await Promise.all([
+    const [entities, [{ total }]] = await Promise.all([
       this.db.query.inventoryReceipts.findMany({
         where,
         limit: reqDto.limit,
@@ -167,8 +174,67 @@ export class InventoryReceiptsService {
       plainToInstance(PageInventoryReceiptResDto, entities, {
         excludeExtraneousValues: true,
       }),
-      new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
+      new OffsetPaginationDto(total, reqDto),
     );
+  }
+
+  /** Kho/Warehouse và các ô ký để trống cho người dùng điền tay — hệ thống chỉ có 1 kho
+   * (`docs/decisions/single-warehouse.md`). */
+  async exportInventoryReceiptPdf(receiptId: string): Promise<StreamableFile> {
+    const [[receipt], items] = await Promise.all([
+      this.db
+        .select({
+          code: inventoryReceipts.code,
+          receiptDate: inventoryReceipts.receiptDate,
+          supplier: getTableColumns(suppliers),
+          client: getTableColumns(clients),
+        })
+        .from(inventoryReceipts)
+        .leftJoin(suppliers, eq(suppliers.id, inventoryReceipts.supplierId))
+        .leftJoin(clients, eq(clients.id, inventoryReceipts.clientId))
+        .where(eq(inventoryReceipts.id, receiptId)),
+      this.db
+        .select({
+          item: getTableColumns(itemsTable),
+          unit: getTableColumns(units),
+          quantity: inventoryReceiptItems.quantity,
+          note: inventoryReceiptItems.note,
+        })
+        .from(inventoryReceiptItems)
+        .innerJoin(itemsTable, eq(itemsTable.id, inventoryReceiptItems.itemId))
+        .leftJoin(units, eq(units.id, inventoryReceiptItems.unitId))
+        .where(eq(inventoryReceiptItems.receiptId, receiptId))
+        .orderBy(asc(inventoryReceiptItems.createdAt)),
+    ]);
+
+    if (!receipt) {
+      throw new AppException(ErrorCode.E096, HttpStatus.NOT_FOUND);
+    }
+
+    const context = {
+      code: receipt.code,
+      receipt_date: formatVnDate(receipt.receiptDate),
+      delivery_unit: receipt.supplier?.name ?? receipt.client?.name ?? '',
+      receipt_items: items.map((row, index) => ({
+        stt: index + 1,
+        item_code: row.item.code,
+        item_name: row.item.name,
+        unit_name: row.unit?.name ?? '',
+        quantity: formatQuantity(row.quantity),
+        note: row.note ?? '',
+      })),
+    };
+
+    const buffer = await this.pdfRendererService.render(
+      FormTemplateType.STOCK_IN_SLIP,
+      context,
+    );
+
+    const fileName = `${receipt.code}-${DateTime.now().toFormat('yyyyLLdd-HHmm')}.pdf`;
+    return new StreamableFile(buffer, {
+      type: 'application/pdf',
+      disposition: `attachment; filename="${fileName}"`,
+    });
   }
 
   async getInventoryReceipt(

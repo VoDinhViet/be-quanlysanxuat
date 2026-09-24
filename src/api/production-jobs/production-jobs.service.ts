@@ -1,4 +1,4 @@
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, StreamableFile } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import {
   and,
@@ -13,6 +13,7 @@ import {
   or,
   sql,
 } from 'drizzle-orm';
+import { DateTime } from 'luxon';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
@@ -20,6 +21,8 @@ import {
   DocumentType,
   generateDocumentSequences,
 } from '../../common/utils/document-sequence.util';
+import { formatVnDate } from '../../common/utils/excel.util';
+import { formatQuantity } from '../../common/utils/vnd.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
@@ -45,11 +48,14 @@ import {
   QualityInspectionType,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
+import { FormTemplateType } from '../../templates/form-templates.registry';
+import { PdfRendererService } from '../../templates/pdf-renderer.service';
 import { issuedQuantityByJobItemSubquery } from '../inventory-requisitions/inventory-requisitions.query';
 import { InventoryService } from '../inventory/inventory.service';
 import { PurchaseRequestsService } from '../purchase-requests/purchase-requests.service';
 import { PurchaseRequestShortageItem } from '../purchase-requests/types/shortage-request.type';
 import { UsersService } from '../users/users.service';
+import { ExportProductionJobsPlanReqDto } from './dto/export-production-jobs-plan.req.dto';
 import { CreateProductionJobNoteReqDto } from './dto/create-production-job-note.req.dto';
 import { GetProductionJobBomReqDto } from './dto/get-production-job-bom.req.dto';
 import { GetProductionJobLogsReqDto } from './dto/get-production-job-logs.req.dto';
@@ -77,7 +83,69 @@ export class ProductionJobsService {
     private readonly inventoryService: InventoryService,
     private readonly purchaseRequestsService: PurchaseRequestsService,
     private readonly usersService: UsersService,
+    private readonly pdfRendererService: PdfRendererService,
   ) {}
+
+  /** Kế hoạch sản xuất (BM 08-01): mỗi dòng là 1 Job. "Yêu cầu kỹ thuật" và Ghi chú để trống cho
+   * người dùng điền tay; ô ký cũng để trống. */
+  async exportProductionPlanPdf(
+    reqDto: ExportProductionJobsPlanReqDto,
+  ): Promise<StreamableFile> {
+    const jobRows = await this.db
+      .select({
+        quantity: productionJobs.quantity,
+        item: getTableColumns(items),
+        order: getTableColumns(orders),
+        client: getTableColumns(clients),
+      })
+      .from(productionJobs)
+      .innerJoin(items, eq(items.id, productionJobs.itemId))
+      .innerJoin(
+        productionOrders,
+        eq(productionOrders.id, productionJobs.productionOrderId),
+      )
+      .innerJoin(orders, eq(orders.id, productionOrders.orderId))
+      .leftJoin(clients, eq(clients.id, orders.clientId))
+      .where(inArray(productionJobs.id, reqDto.jobIds))
+      .orderBy(asc(orders.dueDate), asc(productionJobs.code));
+
+    if (jobRows.length === 0) {
+      throw new AppException(ErrorCode.E082, HttpStatus.NOT_FOUND);
+    }
+
+    const customerNames = [
+      ...new Set(jobRows.map((row) => row.client?.name ?? '').filter(Boolean)),
+    ];
+    const totalQuantity = jobRows.reduce((sum, row) => sum + row.quantity, 0);
+
+    const context = {
+      customer_name: customerNames.join(', '),
+      report_code: `KH-${DateTime.now().toFormat('yyyyLLdd-HHmm')}`,
+      report_date: formatVnDate(new Date()),
+      total_quantity: formatQuantity(totalQuantity),
+      jobs: jobRows.map((row, index) => ({
+        stt: index + 1,
+        item_code: row.item.code,
+        item_name: row.item.name,
+        quantity: formatQuantity(row.quantity),
+        technical_requirements: '',
+        po_code: row.order.code,
+        completion_deadline: formatVnDate(row.order.dueDate),
+        note: '',
+      })),
+    };
+
+    const buffer = await this.pdfRendererService.render(
+      FormTemplateType.PRODUCTION_PLAN,
+      context,
+    );
+
+    const fileName = `ke-hoach-san-xuat-${DateTime.now().toFormat('yyyyLLdd-HHmm')}.pdf`;
+    return new StreamableFile(buffer, {
+      type: 'application/pdf',
+      disposition: `attachment; filename="${fileName}"`,
+    });
+  }
 
   /** `.select()` thủ công — `q` lọc trên `productionOrders`/`orders`/`items` (bảng join),
    * relational query API không biểu diễn được. */
@@ -107,7 +175,7 @@ export class ProductionJobsService {
         : undefined,
     );
 
-    const [rows, countRows] = await Promise.all([
+    const [rows, [{ total }]] = await Promise.all([
       this.db
         .select({
           id: productionJobs.id,
@@ -149,7 +217,7 @@ export class ProductionJobsService {
       plainToInstance(ProductionJobResDto, rows, {
         excludeExtraneousValues: true,
       }),
-      new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
+      new OffsetPaginationDto(total, reqDto),
     );
   }
 
@@ -284,7 +352,7 @@ export class ProductionJobsService {
       plainToInstance(ProductionJobIssueResDto, lines, {
         excludeExtraneousValues: true,
       }),
-      new OffsetPaginationDto(total ?? 0, reqDto),
+      new OffsetPaginationDto(total, reqDto),
     );
   }
 
@@ -376,7 +444,7 @@ export class ProductionJobsService {
       .returning({ id: productionJobOperations.id });
 
     if (result.length === 0) {
-      throw new AppException(ErrorCode.E091, HttpStatus.NOT_FOUND);
+      throw new AppException(ErrorCode.E082, HttpStatus.NOT_FOUND);
     }
   }
 
@@ -389,7 +457,7 @@ export class ProductionJobsService {
     await this.ensureJobExists(jobId);
 
     const where = eq(productionJobNotes.productionJobId, jobId);
-    const [rows, countRows] = await Promise.all([
+    const [rows, [{ total }]] = await Promise.all([
       this.db.query.productionJobNotes.findMany({
         where,
         with: { creatorBy: true },
@@ -404,7 +472,7 @@ export class ProductionJobsService {
       plainToInstance(ProductionJobNoteResDto, rows, {
         excludeExtraneousValues: true,
       }),
-      new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
+      new OffsetPaginationDto(total, reqDto),
     );
   }
 
@@ -415,7 +483,7 @@ export class ProductionJobsService {
     await this.ensureJobExists(jobId);
 
     const where = eq(productionJobLogs.productionJobId, jobId);
-    const [rows, countRows] = await Promise.all([
+    const [rows, [{ total }]] = await Promise.all([
       this.db.query.productionJobLogs.findMany({
         where,
         with: { performerBy: true },
@@ -430,7 +498,7 @@ export class ProductionJobsService {
       plainToInstance(ProductionJobLogResDto, rows, {
         excludeExtraneousValues: true,
       }),
-      new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
+      new OffsetPaginationDto(total, reqDto),
     );
   }
 

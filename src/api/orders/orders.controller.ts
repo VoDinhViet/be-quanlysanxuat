@@ -18,12 +18,10 @@ import { CurrentUser } from '../../decorators/current-user.decorator';
 import { ApiAuth } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
-import { CreateOrderPaymentReqDto } from './dto/create-order-payment.req.dto';
 import { CreateOrderReqDto } from './dto/create-order.req.dto';
 import { ExportOrdersReqDto } from './dto/export-orders.req.dto';
 import { GetOrdersReqDto } from './dto/get-orders.req.dto';
 import { OrderItemResDto } from './dto/order-item.res.dto';
-import { OrderPaymentResDto } from './dto/order-payment.res.dto';
 import { OrderResDto } from './dto/order.res.dto';
 import { OrderStatsResDto } from './dto/order-stats.res.dto';
 import { PageOrderResDto } from './dto/page-order.res.dto';
@@ -61,15 +59,40 @@ export class OrdersController {
     return this.ordersService.getOrderStats();
   }
 
+  @Get('export-excel')
+  @Permissions('orders:read')
+  @ApiAuth({
+    summary: 'Xuất Excel danh sách đơn hàng đã chọn',
+    fileType: XLSX_MIME,
+  })
+  exportOrdersExcel(
+    @Query() reqDto: ExportOrdersReqDto,
+  ): Promise<StreamableFile> {
+    return this.ordersService.exportOrdersExcel(reqDto);
+  }
+
   @Get('export')
   @Permissions('orders:read')
   @ApiAuth({
-    summary:
-      'Xuất Excel danh sách đơn hàng — cùng bộ lọc GET /orders, không phân trang',
+    summary: 'Xuất Excel danh sách đơn hàng đã chọn (alias)',
     fileType: XLSX_MIME,
   })
   exportOrders(@Query() reqDto: ExportOrdersReqDto): Promise<StreamableFile> {
-    return this.ordersService.exportOrders(reqDto);
+    return this.ordersService.exportOrdersExcel(reqDto);
+  }
+
+  // Khai trước ':orderId' để không bị nuốt thành param đó.
+  @Get('export-summary-pdf')
+  @Permissions('orders:read')
+  @ApiAuth({
+    summary: 'Xuất PDF danh sách tổng hợp nhiều đơn hàng bán đã chọn',
+    fileType: 'application/pdf',
+  })
+  exportOrdersSummaryPdf(
+    @Query() reqDto: ExportOrdersReqDto,
+    @CurrentUser() payload: JwtPayloadType,
+  ): Promise<StreamableFile> {
+    return this.ordersService.exportOrdersSummaryPdf(reqDto, payload.userId);
   }
 
   @Get(':orderId')
@@ -80,6 +103,18 @@ export class OrdersController {
   })
   getOrder(@UUIDParam('orderId') orderId: string): Promise<OrderResDto> {
     return this.ordersService.getOrder(orderId);
+  }
+
+  @Get(':orderId/export-pdf')
+  @Permissions('orders:read')
+  @ApiAuth({
+    summary: 'Xuất PDF chi tiết đơn hàng bán',
+    fileType: 'application/pdf',
+  })
+  exportOrderPdf(
+    @UUIDParam('orderId') orderId: string,
+  ): Promise<StreamableFile> {
+    return this.ordersService.exportOrderPdf(orderId);
   }
 
   @Get(':orderId/items')
@@ -93,38 +128,6 @@ export class OrdersController {
     @UUIDParam('orderId') orderId: string,
   ): Promise<OrderItemResDto[]> {
     return this.ordersService.getOrderItems(orderId);
-  }
-
-  @Get(':orderId/payments')
-  @Permissions('orders:read')
-  @ApiAuth({
-    type: OrderPaymentResDto,
-    summary: 'Lịch sử thanh toán của đơn hàng',
-    isArray: true,
-  })
-  getOrderPayments(
-    @UUIDParam('orderId') orderId: string,
-  ): Promise<OrderPaymentResDto[]> {
-    return this.ordersService.getOrderPayments(orderId);
-  }
-
-  @Post(':orderId/payments')
-  @Permissions('orders:update')
-  @ApiAuth({
-    summary:
-      'Ghi nhận một lần thanh toán — amount âm để đảo một lần ghi nhận trước đó',
-    statusCode: HttpStatus.NO_CONTENT,
-  })
-  createOrderPayment(
-    @UUIDParam('orderId') orderId: string,
-    @Body() reqDto: CreateOrderPaymentReqDto,
-    @CurrentUser() payload: JwtPayloadType,
-  ): Promise<void> {
-    return this.ordersService.createOrderPayment(
-      orderId,
-      reqDto,
-      payload.userId,
-    );
   }
 
   @Post()

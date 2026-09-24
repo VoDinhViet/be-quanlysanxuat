@@ -13,6 +13,7 @@ import {
   inArray,
   isNull,
   lte,
+  ne,
   or,
   sql,
 } from 'drizzle-orm';
@@ -24,9 +25,20 @@ import {
   DocumentType,
   generateDocumentSequence,
 } from '../../common/utils/document-sequence.util';
-import { buildXlsxBuffer, XLSX_MIME } from '../../common/utils/excel.util';
+import {
+  buildXlsxBuffer,
+  formatVnDate,
+  XLSX_MIME,
+} from '../../common/utils/excel.util';
 import { unaccentILike } from '../../common/utils/search.util';
+import {
+  formatQuantity,
+  formatVnd,
+  formatVndInWords,
+} from '../../common/utils/vnd.util';
 import { ErrorCode } from '../../constants/error-code.constant';
+import { FormTemplateType } from '../../templates/form-templates.registry';
+import { PdfRendererService } from '../../templates/pdf-renderer.service';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
@@ -35,7 +47,7 @@ import {
   files,
   orderFiles,
   orderItems,
-  orderPayments,
+  OrderItemStatus,
   orders,
   OrderStatus,
   productionOrderItems,
@@ -48,24 +60,18 @@ import {
 import { AppException } from '../../exceptions/app.exception';
 import { FilesService } from '../files/files.service';
 import { ProductionOrdersService } from '../production-orders/production-orders.service';
-import { CreateOrderPaymentReqDto } from './dto/create-order-payment.req.dto';
 import { CreateOrderReqDto } from './dto/create-order.req.dto';
 import { ExportOrdersReqDto } from './dto/export-orders.req.dto';
 import { GetOrdersReqDto } from './dto/get-orders.req.dto';
 import { OrderItemReqDto } from './dto/order-item.req.dto';
 import { OrderItemResDto } from './dto/order-item.res.dto';
-import { OrderPaymentResDto } from './dto/order-payment.res.dto';
 import { OrderResDto } from './dto/order.res.dto';
 import { OrderStatsResDto } from './dto/order-stats.res.dto';
 import { PageOrderResDto } from './dto/page-order.res.dto';
 import { RejectOrderReqDto } from './dto/reject-order.req.dto';
 import { UpdateOrderReqDto } from './dto/update-order.req.dto';
-import { OrderPaymentStatus } from './orders.constant';
 import { ORDER_EXPORT_COLUMNS, OrderExport } from './orders.export';
-import {
-  issuedQuantityByOrderItemIdSubquery,
-  paidAmountByOrderIdSubquery,
-} from './orders.query';
+import { issuedQuantityByOrderItemIdSubquery } from './orders.query';
 
 /** Đơn hàng: `DRAFT` → ... → `AWAITING_PRODUCTION` (duyệt Giám đốc) → `IN_PROGRESS`. Vòng đời +
  * business rule đầy đủ: `docs/domains/orders.md`, `docs/workflows/order-approval.md`. */
@@ -77,6 +83,7 @@ export class OrdersService {
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly filesService: FilesService,
     private readonly productionOrdersService: ProductionOrdersService,
+    private readonly pdfRendererService: PdfRendererService,
   ) {}
 
   async getOrders(
@@ -138,7 +145,7 @@ export class OrdersService {
     const approverAlias = alias(users, 'approver');
     const rejecterAlias = alias(users, 'rejecter');
 
-    const [entities, countRows] = await Promise.all([
+    const [entities, [{ total }]] = await Promise.all([
       this.db
         .select({
           ...getTableColumns(orders),
@@ -170,57 +177,16 @@ export class OrdersService {
       plainToInstance(PageOrderResDto, entities, {
         excludeExtraneousValues: true,
       }),
-      new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
+      new OffsetPaginationDto(total, reqDto),
     );
   }
 
   /** Cắt im lặng ở `MAX_EXPORT_ROWS`, không báo lỗi khi vượt trần. Bộ lọc tách riêng khỏi
    * `getOrders` dù trông giống nhau — hai route độc lập, sửa filter route nào chỉ route đó đổi. */
-  async exportOrders(reqDto: ExportOrdersReqDto): Promise<StreamableFile> {
-    const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
+  async exportOrdersExcel(reqDto: ExportOrdersReqDto): Promise<StreamableFile> {
     const where = and(
       isNull(orders.deletedAt),
-      keyword
-        ? or(
-            unaccentILike(orders.code, keyword),
-            exists(
-              this.db
-                .select({ one: sql`1` })
-                .from(clients)
-                .where(
-                  and(
-                    eq(clients.id, orders.clientId),
-                    or(
-                      unaccentILike(clients.name, keyword),
-                      unaccentILike(clients.code, keyword),
-                    ),
-                  ),
-                ),
-            ),
-            exists(
-              this.db
-                .select({ one: sql`1` })
-                .from(orderItems)
-                .innerJoin(items, eq(items.id, orderItems.itemId))
-                .where(
-                  and(
-                    eq(orderItems.orderId, orders.id),
-                    or(
-                      unaccentILike(items.name, keyword),
-                      unaccentILike(items.code, keyword),
-                    ),
-                  ),
-                ),
-            ),
-          )
-        : undefined,
-      reqDto.status ? eq(orders.status, reqDto.status) : undefined,
-      reqDto.clientId ? eq(orders.clientId, reqDto.clientId) : undefined,
-      reqDto.assignedUserId
-        ? eq(orders.assignedUserId, reqDto.assignedUserId)
-        : undefined,
-      reqDto.startDate ? gte(orders.dueDate, reqDto.startDate) : undefined,
-      reqDto.endDate ? lte(orders.dueDate, reqDto.endDate) : undefined,
+      inArray(orders.id, reqDto.orderIds),
     );
 
     const assignedUserAlias = alias(users, 'assigned_user');
@@ -344,7 +310,6 @@ export class OrdersService {
     const creatorAlias = alias(users, 'creator');
     const approverAlias = alias(users, 'approver');
     const rejecterAlias = alias(users, 'rejecter');
-    const paidByOrder = paidAmountByOrderIdSubquery(this.db);
 
     const [[order], orderFileRows] = await Promise.all([
       this.db
@@ -357,8 +322,6 @@ export class OrdersService {
           creatorBy: getTableColumns(creatorAlias),
           approverBy: getTableColumns(approverAlias),
           rejecterBy: getTableColumns(rejecterAlias),
-          paidAmount:
-            sql<number>`coalesce(${paidByOrder.paidAmount}, 0)`.mapWith(Number),
         })
         .from(orders)
         .leftJoin(clients, eq(clients.id, orders.clientId))
@@ -369,7 +332,6 @@ export class OrdersService {
         .leftJoin(creatorAlias, eq(creatorAlias.id, orders.createdBy))
         .leftJoin(approverAlias, eq(approverAlias.id, orders.approvedBy))
         .leftJoin(rejecterAlias, eq(rejecterAlias.id, orders.rejectedBy))
-        .leftJoin(paidByOrder, eq(paidByOrder.orderId, orders.id))
         .where(and(eq(orders.id, orderId), isNull(orders.deletedAt))),
       this.db
         .select({
@@ -390,10 +352,182 @@ export class OrdersService {
       {
         ...order,
         files: orderFileRows,
-        paymentStatus: this.resolvePaymentStatus(order.paidAmount, order.total),
       },
       { excludeExtraneousValues: true },
     );
+  }
+
+  /** Xuất PDF chi tiết 1 đơn hàng bán — subtotal/chiết khấu/VAT/phí vận chuyển/tổng tiền đọc
+   * thẳng từ cột đã lưu trên `orders` (`OrdersService.recalculateTotals`), không tính lại. */
+  async exportOrderPdf(orderId: string): Promise<StreamableFile> {
+    const [order] = await this.db
+      .select({
+        code: orders.code,
+        orderDate: orders.orderDate,
+        dueDate: orders.dueDate,
+        subtotal: orders.subtotal,
+        discountAmount: orders.discountAmount,
+        shippingFee: orders.shippingFee,
+        vatPercent: orders.vatPercent,
+        vatAmount: orders.vatAmount,
+        total: orders.total,
+        client: getTableColumns(clients),
+      })
+      .from(orders)
+      .leftJoin(clients, eq(clients.id, orders.clientId))
+      .where(and(eq(orders.id, orderId), isNull(orders.deletedAt)));
+
+    if (!order) {
+      throw new AppException(ErrorCode.E057, HttpStatus.NOT_FOUND);
+    }
+
+    const itemRows = await this.db
+      .select({
+        item: getTableColumns(items),
+        unit: getTableColumns(units),
+        quantity: orderItems.quantity,
+        unitPrice: orderItems.unitPrice,
+        discountPercent: orderItems.discountPercent,
+        lineTotal: orderItems.lineTotal,
+        note: orderItems.note,
+      })
+      .from(orderItems)
+      .innerJoin(items, eq(items.id, orderItems.itemId))
+      .leftJoin(units, eq(units.id, items.unitId))
+      .where(
+        and(
+          eq(orderItems.orderId, orderId),
+          ne(orderItems.status, OrderItemStatus.CANCELLED),
+        ),
+      )
+      .orderBy(asc(orderItems.sortOrder));
+
+    const dueDate = formatVnDate(order.dueDate);
+    const templateItems = itemRows.map((row, index) => ({
+      stt: index + 1,
+      item_code: row.item.code,
+      item_name: row.item.name,
+      unit_name: row.unit?.name ?? '',
+      quantity: formatQuantity(row.quantity),
+      unit_price: formatVnd(row.unitPrice),
+      discount_percent:
+        row.discountPercent > 0 ? `${row.discountPercent}%` : '',
+      line_total: formatVnd(row.lineTotal),
+      due_date: dueDate,
+      note: row.note ?? '',
+    }));
+
+    const context = {
+      code: order.code,
+      order_date: formatVnDate(order.orderDate),
+      customer_name: order.client?.name ?? '',
+      customer_address: order.client?.address ?? '',
+      subtotal: formatVnd(order.subtotal),
+      discount_amount: formatVnd(order.discountAmount),
+      shipping_fee: formatVnd(order.shippingFee),
+      vat_percent: order.vatPercent,
+      vat_amount: formatVnd(order.vatAmount),
+      grand_total: formatVnd(order.total),
+      amount_in_words: formatVndInWords(order.total),
+      // Để trống cho người ký điền tay, không tự điền từ dữ liệu hệ thống.
+      assigned_user_name: '',
+      approver_name: '',
+      items: templateItems,
+    };
+
+    const buffer = await this.pdfRendererService.render(
+      FormTemplateType.ORDER,
+      context,
+    );
+
+    const fileName = `${order.code}-${DateTime.now().toFormat('yyyyLLdd-HHmm')}.pdf`;
+    return new StreamableFile(buffer, {
+      type: 'application/pdf',
+      disposition: `attachment; filename="${fileName}"`,
+    });
+  }
+
+  /** Xuất PDF danh sách tổng hợp nhiều đơn hàng bán đã chọn — mỗi dòng là 1 đơn, không phải dòng
+   * sản phẩm. Số tiền/VAT/tổng tiền đọc thẳng từ cột đã lưu trên từng `orders`, không tính lại. */
+  async exportOrdersSummaryPdf(
+    reqDto: ExportOrdersReqDto,
+    userId: string,
+  ): Promise<StreamableFile> {
+    const orderRows = await this.db
+      .select({
+        code: orders.code,
+        orderDate: orders.orderDate,
+        vatPercent: orders.vatPercent,
+        vatAmount: orders.vatAmount,
+        total: orders.total,
+        clientCode: clients.code,
+        clientName: clients.name,
+        clientAddress: clients.address,
+      })
+      .from(orders)
+      .leftJoin(clients, eq(clients.id, orders.clientId))
+      .where(and(isNull(orders.deletedAt), inArray(orders.id, reqDto.orderIds)))
+      .orderBy(asc(orders.orderDate));
+
+    if (orderRows.length === 0) {
+      throw new AppException(ErrorCode.E057, HttpStatus.NOT_FOUND);
+    }
+
+    const [preparer] = await this.db
+      .select({ fullName: users.fullName })
+      .from(users)
+      .where(eq(users.id, userId));
+
+    let subtotal = 0;
+    let vatAmount = 0;
+    let grandTotal = 0;
+    const templateOrders = orderRows.map((row, index) => {
+      const amount = row.total - row.vatAmount;
+      subtotal += amount;
+      vatAmount += row.vatAmount;
+      grandTotal += row.total;
+
+      return {
+        stt: index + 1,
+        client_code: row.clientCode ?? '',
+        client_name: row.clientName ?? '',
+        client_address: row.clientAddress ?? '',
+        code: row.code,
+        amount: formatVnd(amount),
+        vat_percent: row.vatPercent,
+        grand_total: formatVnd(row.total),
+        note: '',
+      };
+    });
+
+    const orderDates = orderRows.map((row) => row.orderDate);
+    const context = {
+      period_from: formatVnDate(
+        new Date(Math.min(...orderDates.map((date) => date.getTime()))),
+      ),
+      period_to: formatVnDate(
+        new Date(Math.max(...orderDates.map((date) => date.getTime()))),
+      ),
+      report_code: `BC-SO-${DateTime.now().toFormat('yyyyLLdd-HHmm')}`,
+      report_date: formatVnDate(new Date()),
+      subtotal: formatVnd(subtotal),
+      vat_amount: formatVnd(vatAmount),
+      grand_total: formatVnd(grandTotal),
+      amount_in_words: formatVndInWords(grandTotal),
+      preparer_name: preparer?.fullName ?? '',
+      orders: templateOrders,
+    };
+
+    const buffer = await this.pdfRendererService.render(
+      FormTemplateType.ORDER_SUMMARY,
+      context,
+    );
+
+    const fileName = `danh-sach-tong-hop-don-hang-${DateTime.now().toFormat('yyyyLLdd-HHmm')}.pdf`;
+    return new StreamableFile(buffer, {
+      type: 'application/pdf',
+      disposition: `attachment; filename="${fileName}"`,
+    });
   }
 
   async getOrderItems(orderId: string): Promise<OrderItemResDto[]> {
@@ -436,51 +570,6 @@ export class OrdersService {
     return plainToInstance(OrderItemResDto, rows, {
       excludeExtraneousValues: true,
     });
-  }
-
-  async getOrderPayments(orderId: string): Promise<OrderPaymentResDto[]> {
-    await this.ensureOrderExists(orderId);
-
-    const rows = await this.db.query.orderPayments.findMany({
-      where: eq(orderPayments.orderId, orderId),
-      orderBy: [desc(orderPayments.paidAt), desc(orderPayments.createdAt)],
-      with: { creatorBy: true },
-    });
-
-    return plainToInstance(OrderPaymentResDto, rows, {
-      excludeExtraneousValues: true,
-    });
-  }
-
-  async createOrderPayment(
-    orderId: string,
-    reqDto: CreateOrderPaymentReqDto,
-    userId: string,
-  ): Promise<void> {
-    await this.ensureOrderExists(orderId);
-
-    if (reqDto.amount === 0) {
-      throw new AppException(ErrorCode.E208, HttpStatus.BAD_REQUEST);
-    }
-
-    await this.db.insert(orderPayments).values({
-      ...reqDto,
-      orderId,
-      createdBy: userId,
-    });
-  }
-
-  private resolvePaymentStatus(
-    paidAmount: number,
-    total: number,
-  ): OrderPaymentStatus {
-    if (paidAmount <= 0) {
-      return OrderPaymentStatus.UNPAID;
-    } else if (paidAmount >= total) {
-      return OrderPaymentStatus.PAID;
-    } else {
-      return OrderPaymentStatus.PARTIAL;
-    }
   }
 
   async createOrder(

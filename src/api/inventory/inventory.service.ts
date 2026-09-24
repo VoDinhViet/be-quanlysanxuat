@@ -63,7 +63,7 @@ export class InventoryService {
     const rmHeldSql = sql<number>`coalesce(${requisitionHeld.reservedQuantity}, 0)`;
     const fgHeldSql = sql<number>`coalesce(${outboundHeld.heldQuantity}, 0)`;
 
-    const [rows, countRows] = await Promise.all([
+    const [rows, [{ total }]] = await Promise.all([
       this.db
         .select({
           ...getTableColumns(inventoryBalances),
@@ -93,7 +93,7 @@ export class InventoryService {
       plainToInstance(InventoryBalanceResDto, rows, {
         excludeExtraneousValues: true,
       }),
-      new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
+      new OffsetPaginationDto(total, reqDto),
     );
   }
 
@@ -130,7 +130,7 @@ export class InventoryService {
         : undefined,
     );
 
-    const [entities, countRows] = await Promise.all([
+    const [entities, [{ total }]] = await Promise.all([
       this.db.query.inventoryTransactions.findMany({
         where,
         limit: reqDto.limit,
@@ -151,7 +151,7 @@ export class InventoryService {
       plainToInstance(InventoryTransactionResDto, entities, {
         excludeExtraneousValues: true,
       }),
-      new OffsetPaginationDto(countRows[0]?.total ?? 0, reqDto),
+      new OffsetPaginationDto(total, reqDto),
     );
   }
 

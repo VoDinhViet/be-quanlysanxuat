@@ -1,6 +1,6 @@
 import {
-  formatExcelDate,
-  formatExcelDateTime,
+  formatVnDate,
+  formatVnDateTime,
   type ExcelColumn,
 } from '../../common/utils/excel.util';
 import { FulfillmentType, OutboundOrderStatus } from '../../database/schemas';
@@ -41,7 +41,7 @@ export const OUTBOUND_ORDER_EXPORT_COLUMNS: ExcelColumn<OutboundOrderExport>[] =
     { header: 'Mã khách hàng', value: (row) => row.clientCode },
     {
       header: 'Ngày giao',
-      value: (row) => formatExcelDate(row.fulfillmentDate),
+      value: (row) => formatVnDate(row.fulfillmentDate),
     },
     {
       header: 'Hình thức giao',
@@ -63,5 +63,5 @@ export const OUTBOUND_ORDER_EXPORT_COLUMNS: ExcelColumn<OutboundOrderExport>[] =
     },
     { header: 'Ghi chú', value: (row) => row.note, width: 30 },
     { header: 'Người tạo', value: (row) => row.creatorName },
-    { header: 'Ngày tạo', value: (row) => formatExcelDateTime(row.createdAt) },
+    { header: 'Ngày tạo', value: (row) => formatVnDateTime(row.createdAt) },
   ];

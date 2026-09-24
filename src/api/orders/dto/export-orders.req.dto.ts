@@ -1,27 +1,30 @@
-import { OrderStatus } from '../../../database/schemas';
-import {
-  DateFieldOptional,
-  EnumFieldOptional,
-  StringFieldOptional,
-  UUIDFieldOptional,
-} from '../../../decorators/field.decorators';
+import { Transform } from 'class-transformer';
+import { ArrayMinSize, IsArray, IsDefined } from 'class-validator';
+import { UUIDField } from '../../../decorators/field.decorators';
 
 export class ExportOrdersReqDto {
-  @StringFieldOptional()
-  readonly q?: string;
-
-  @UUIDFieldOptional({ description: 'Filter by client id' })
-  readonly clientId?: string;
-
-  @UUIDFieldOptional({ description: 'Filter by sales staff (users) id' })
-  readonly assignedUserId?: string;
-
-  @EnumFieldOptional(() => OrderStatus)
-  readonly status?: OrderStatus;
-
-  @DateFieldOptional({ description: 'Filter: dueDate >= startDate' })
-  readonly startDate?: Date;
-
-  @DateFieldOptional({ description: 'Filter: dueDate <= endDate' })
-  readonly endDate?: Date;
+  @Transform(({ value }: { value: unknown }) => {
+    if (typeof value === 'string') {
+      return value
+        .split(',')
+        .map((id) => id.trim())
+        .filter(Boolean);
+    }
+    if (Array.isArray(value)) {
+      return value.map((id) => String(id).trim()).filter(Boolean);
+    }
+    return value;
+  })
+  @IsDefined({
+    message: 'Vui lòng chọn ít nhất một đơn hàng để xuất.',
+  })
+  @IsArray({ message: 'Danh sách đơn hàng không hợp lệ.' })
+  @ArrayMinSize(1, {
+    message: 'Vui lòng chọn ít nhất một đơn hàng để xuất.',
+  })
+  @UUIDField({
+    each: true,
+    description: 'Danh sách ID đơn hàng cần xuất (bắt buộc)',
+  })
+  readonly orderIds: string[];
 }

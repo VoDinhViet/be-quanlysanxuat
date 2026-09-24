@@ -76,6 +76,20 @@ export class ProductionOrdersController {
     );
   }
 
+  @Get(':productionOrdersId/export-pdf')
+  @Permissions('production:read')
+  @ApiAuth({
+    summary: 'Xuất PDF Lệnh sản xuất (BM-02/KD)',
+    fileType: 'application/pdf',
+  })
+  exportProductionOrderPdf(
+    @UUIDParam('productionOrdersId') productionOrdersId: string,
+  ): Promise<StreamableFile> {
+    return this.productionOrdersService.exportProductionOrderPdf(
+      productionOrdersId,
+    );
+  }
+
   @Patch(':productionOrdersId')
   @Permissions('production:update')
   @ApiAuth({
