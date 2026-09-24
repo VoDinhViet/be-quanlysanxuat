@@ -28,7 +28,7 @@ import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
   bomItems,
-  BomItemSelect,
+  ItemSelect,
   bomOperations,
   boms,
   BomType,
@@ -59,6 +59,8 @@ import { ItemOptionResDto } from './dto/item-option.res.dto';
 import { ItemResDto } from './dto/item.res.dto';
 import { PageItemResDto } from './dto/page-item.res.dto';
 import { UpdateItemReqDto } from './dto/update-item.req.dto';
+import type { ItemCopyIdentity } from './types/item-copy-identity.type';
+import type { ItemBomStructure } from './types/item-bom-structure.type';
 import { ITEM_EXPORT_COLUMNS } from './items.export';
 
 @Injectable()
@@ -503,37 +505,23 @@ export class ItemsService {
     );
   }
 
-  /** Clone một item FG: tạo item mới giữ nguyên `code`, mang `revision` do người dùng nhập
-   * (kiểm trùng cặp trước), giữ `clonedFromItemId` để truy vết, kèm nhân bản cả cây BOM (node
-   * COMPONENT lẫn lá CONSUMABLE). CONSUMABLE không có cây BOM nên bị chặn ở đây (`E110`). */
+  /** Clone một item. FG: giữ nguyên `code`, mang `revision` người dùng nhập, nhân bản cả cây BOM.
+   * CONSUMABLE: "tạo vật tư tương tự" — `code` mới bắt buộc (`E276`), `revision` giữ mặc định,
+   * `name` tuỳ chọn, không có BOM. Cả hai giữ `clonedFromItemId` và `item_files`. */
   async copyItem(
     itemId: string,
     reqDto: CopyItemReqDto,
     userId: string,
   ): Promise<void> {
     const item = await this.ensureItemExists(itemId);
+    const { code, name, revision } = this.resolveCopyIdentity(item, reqDto);
 
-    if (item.type === ItemType.CONSUMABLE) {
-      throw new AppException(ErrorCode.E110, HttpStatus.BAD_REQUEST);
-    }
+    await this.validateCodeRevisionUniqueness(code, revision);
 
-    await this.validateCodeRevisionUniqueness(item.code, reqDto.revision);
+    // 1. Đọc BOM + tài liệu đính kèm gốc trước khi mở transaction (vật tư không có BOM → null)
+    const bomStructure = await this.getBomStructureToCopy(itemId);
 
-    // 1. Đọc BOM + tài liệu đính kèm gốc trước khi mở transaction
-    const [bom] = await this.db
-      .select({ id: boms.id })
-      .from(boms)
-      .where(eq(boms.itemId, itemId))
-      .limit(1);
-
-    const sourceBomItems = bom
-      ? await this.db.query.bomItems.findMany({
-          where: eq(bomItems.bomId, bom.id),
-          orderBy: [asc(bomItems.level), asc(bomItems.sortOrder)],
-        })
-      : [];
-
-    const sourceFiles = await this.db
+    const itemFilesToCopy = await this.db
       .select({ fileId: itemFiles.fileId })
       .from(itemFiles)
       .where(eq(itemFiles.itemId, itemId));
@@ -555,27 +543,23 @@ export class ItemsService {
           .insert(items)
           .values({
             ...copyFields,
-            revision: reqDto.revision,
+            code,
+            name,
+            revision,
             clonedFromItemId,
             createdBy: userId,
           })
           .returning({ id: items.id });
 
-        if (bom) {
-          await this.copyBomTree(
-            tx,
-            createdItem.id,
-            bom,
-            sourceBomItems,
-            userId,
-          );
+        if (bomStructure) {
+          await this.copyBomTree(tx, createdItem.id, bomStructure, userId);
         }
 
-        if (sourceFiles.length) {
+        if (itemFilesToCopy.length) {
           await this.replaceFiles(
             tx,
             createdItem.id,
-            sourceFiles.map((row) => row.fileId),
+            itemFilesToCopy.map((row) => row.fileId),
           );
         }
       });
@@ -589,14 +573,57 @@ export class ItemsService {
     }
   }
 
+  private resolveCopyIdentity(
+    item: ItemSelect,
+    reqDto: CopyItemReqDto,
+  ): ItemCopyIdentity {
+    if (item.type === ItemType.CONSUMABLE) {
+      if (!reqDto.code) {
+        throw new AppException(ErrorCode.E276, HttpStatus.BAD_REQUEST);
+      }
+      return {
+        code: reqDto.code,
+        name: reqDto.name ?? item.name,
+        revision: ItemsService.DEFAULT_REVISION,
+      };
+    }
+
+    if (!reqDto.revision) {
+      throw new AppException(ErrorCode.E277, HttpStatus.BAD_REQUEST);
+    }
+    return {
+      code: item.code,
+      name: item.name,
+      revision: reqDto.revision,
+    };
+  }
+
+  private async getBomStructureToCopy(
+    itemId: string,
+  ): Promise<ItemBomStructure | null> {
+    const [bom] = await this.db
+      .select({ id: boms.id })
+      .from(boms)
+      .where(eq(boms.itemId, itemId))
+      .limit(1);
+
+    if (!bom) return null;
+
+    const bomItemsToCopy = await this.db.query.bomItems.findMany({
+      where: eq(bomItems.bomId, bom.id),
+      orderBy: [asc(bomItems.level), asc(bomItems.sortOrder)],
+    });
+
+    return { bom, bomItems: bomItemsToCopy };
+  }
+
   /** Nhân bản cây `bom_items` + công đoạn as-used (`bom_operations`) của từng node COMPONENT, cộng
    * công đoạn Cấp 0 (`routing_operations`, neo `bomId` — không phải một node `bom_items`, xem
    * `docs/decisions/routing-operations-table.md`) — bảng riêng nên copy 2 bước độc lập. */
   private async copyBomTree(
     tx: DbTransaction,
     itemId: string,
-    sourceBom: { id: string },
-    sourceBomItems: BomItemSelect[],
+    bomStructure: ItemBomStructure,
     userId: string,
   ): Promise<void> {
     const [newBom] = await tx
@@ -606,7 +633,7 @@ export class ItemsService {
 
     const newIdByOldId = new Map<string, string>();
 
-    const newItems = sourceBomItems.map(
+    const newItems = bomStructure.bomItems.map(
       ({
         id: oldId,
         parentId: oldParentId,
@@ -650,7 +677,7 @@ export class ItemsService {
     }
 
     const sourceRoutingOperations = await tx.query.routingOperations.findMany({
-      where: eq(routingOperations.bomId, sourceBom.id),
+      where: eq(routingOperations.bomId, bomStructure.bom.id),
     });
     if (sourceRoutingOperations.length) {
       await tx.insert(routingOperations).values(

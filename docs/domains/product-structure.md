@@ -82,8 +82,10 @@ payload không gửi — hệ số quy đổi thuần thông tin, không module 
 
 **Versioning = clone cùng mã, revision khác** (`clonedFromItemId` chỉ ghi lineage, không ràng
 buộc) — không phải lịch sử phiên bản có bảng riêng, vì sửa BOM/routing sau này không được đổi
-ngược dữ liệu đã nằm trong đơn cũ. `POST /items/:id/copy` giữ nguyên `code` của bản gốc, người
-dùng nhập `revision` mới cho bản sao. Clone chỉ FG (`E110` nếu CONSUMABLE).
+ngược dữ liệu đã nằm trong đơn cũ. `POST /items/:id/copy` với FG giữ nguyên `code` của bản gốc, người
+dùng nhập `revision` mới cho bản sao. Với CONSUMABLE (mã do người dùng tự đặt, không có BOM) copy là
+"tạo vật tư tương tự": người dùng nhập `code` mới (bắt buộc) và `name` (tuỳ chọn), `revision` giữ
+`R01`; mọi cột còn lại (đơn vị, NCC, `minStock`, cột mở rộng, ảnh, tài liệu) copy nguyên.
 
 ## Entities
 
@@ -131,7 +133,7 @@ tham chiếu.
   index theo `parent_id IS NULL`/`IS NOT NULL` (`uq_bom_items_bom_item_no_parent`,
   `uq_bom_items_bom_parent_item` — Postgres coi NULL ≠ NULL qua `=` nên cần tách), cộng
   `ensureBomItemNotDuplicate` → `E245` ở service (chỉ chạy khi thêm node CONSUMABLE).
-- `POST /items/:itemId/copy` chặn CONSUMABLE (`E110`).
+- `POST /items/:itemId/copy` thiếu trường bắt buộc theo loại: FG thiếu `revision` → `E277`, CONSUMABLE thiếu `code` → `E276`.
 - `GET /items/export` xuất Excel cùng bộ lọc `GET /items`; `type` là mảng CSV (`?type=FG` hay
   `?type=CONSUMABLE`) — cách duy nhất phân biệt xuất thành phẩm (FE trang Sản phẩm) hay vật tư (FE trang
   Vật tư), cả hai cùng gọi 1 endpoint. Không có cột giá — `items` không lưu giá. Trần 10.000 dòng,
