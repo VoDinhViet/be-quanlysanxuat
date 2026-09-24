@@ -2,16 +2,12 @@ import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { and, asc, eq, isNull, ne } from 'drizzle-orm';
 
-import {
-  DocumentType,
-  generateDocumentSequence,
-} from '../../common/utils/document-sequence.util';
 import { hasFields } from '../../common/utils/object.util';
 import { extractPostgresError } from '../../common/utils/postgres-error.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
-import type { Database, DbTransaction } from '../../database/database.type';
+import type { Database } from '../../database/database.type';
 import { bomOperations, operations } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { CreateOperationReqDto } from './dto/create-operation.req.dto';
@@ -62,13 +58,10 @@ export class OperationsService {
     reqDto: CreateOperationReqDto,
     userId: string,
   ): Promise<void> {
+    await this.validateCodeUniqueness(reqDto.code);
+
     try {
-      await this.db.transaction(async (tx) => {
-        const code = await this.generateOperationCode(tx);
-        await tx
-          .insert(operations)
-          .values({ ...reqDto, code, createdBy: userId });
-      });
+      await this.db.insert(operations).values({ ...reqDto, createdBy: userId });
     } catch (error) {
       // Chốt chặn unique constraint cho race giữa 2 request cùng lúc cấp trùng số.
       if (extractPostgresError(error)?.code === '23505') {
@@ -155,11 +148,5 @@ export class OperationsService {
     if (bomOperation) {
       throw new AppException(ErrorCode.E248, HttpStatus.CONFLICT);
     }
-  }
-
-  private async generateOperationCode(tx: DbTransaction): Promise<string> {
-    const sequence = await generateDocumentSequence(tx, DocumentType.OPERATION);
-
-    return `OP${String(sequence).padStart(4, '0')}`;
   }
 }

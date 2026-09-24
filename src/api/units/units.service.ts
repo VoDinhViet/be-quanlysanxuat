@@ -2,15 +2,11 @@ import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { and, asc, eq, ne, or } from 'drizzle-orm';
 
-import {
-  DocumentType,
-  generateDocumentSequence,
-} from '../../common/utils/document-sequence.util';
 import { extractPostgresError } from '../../common/utils/postgres-error.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
-import type { Database, DbTransaction } from '../../database/database.type';
+import type { Database } from '../../database/database.type';
 import { items, productionJobUnits, units } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { CreateUnitReqDto } from './dto/create-unit.req.dto';
@@ -50,12 +46,10 @@ export class UnitsService {
   }
 
   async createUnit(reqDto: CreateUnitReqDto): Promise<void> {
+    await this.validateCodeUniqueness(reqDto.code);
+
     try {
-      // Mã lấy từ sequence nên phải cùng transaction với lần chèn `units`.
-      await this.db.transaction(async (tx) => {
-        const code = await this.generateUnitCode(tx);
-        await tx.insert(units).values({ ...reqDto, code });
-      });
+      await this.db.insert(units).values(reqDto);
     } catch (error) {
       // Bắt xung đột unique code nếu có race condition
       if (extractPostgresError(error)?.code === '23505') {
@@ -137,11 +131,5 @@ export class UnitsService {
     if (usedInItem || usedInProductionJobUnit) {
       throw new AppException(ErrorCode.E242, HttpStatus.CONFLICT);
     }
-  }
-
-  private async generateUnitCode(tx: DbTransaction): Promise<string> {
-    const sequence = await generateDocumentSequence(tx, DocumentType.UNIT);
-
-    return `DVT${String(sequence).padStart(4, '0')}`;
   }
 }
