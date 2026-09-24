@@ -6,6 +6,9 @@ import {
 } from '../../../decorators/field.decorators';
 
 export class CreateOperationReqDto {
+  @StringField({ maxLength: 50, description: 'Operation code' })
+  code!: string;
+
   @StringField({ maxLength: 255, description: 'Operation name' })
   name!: string;
 
