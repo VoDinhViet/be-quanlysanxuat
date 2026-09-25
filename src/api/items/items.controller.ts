@@ -40,7 +40,7 @@ export class ItemsController {
   @Permissions('items:read')
   @ApiAuth({
     type: PageItemResDto,
-    summary: 'List items (FG/CONSUMABLE)',
+    summary: 'List items (FG/DIRECT)',
     isPaginated: true,
   })
   getItems(
@@ -114,7 +114,7 @@ export class ItemsController {
   @ApiAuth({
     type: ItemIssueResDto,
     summary:
-      "Get an item's exploded consumable demand per CONSUMABLE, gộp theo cây (Thành phần vật tư)",
+      "Get an item's exploded direct demand per DIRECT, gộp theo cây (Thành phần vật tư)",
     isPaginated: true,
   })
   getItemIssues(
@@ -138,7 +138,7 @@ export class ItemsController {
   @Permissions('items:copy')
   @ApiAuth({
     summary:
-      'Copy (clone) an item (Nhân bản): FG keeps its code and takes a new revision; CONSUMABLE takes a new code',
+      'Copy (clone) an item (Nhân bản): FG keeps its code and takes a new revision; DIRECT takes a new code',
     statusCode: HttpStatus.CREATED,
   })
   copyItem(

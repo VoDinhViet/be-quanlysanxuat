@@ -92,7 +92,7 @@ export class RoutingsService {
     userId: string,
   ): Promise<RoutingOperationResDto> {
     const item = await this.bomsService.ensureItemExists(itemId);
-    if (item.type === ItemType.CONSUMABLE) {
+    if (item.type === ItemType.DIRECT) {
       throw new AppException(ErrorCode.E111, HttpStatus.BAD_REQUEST);
     }
     await this.ensureOperationExists(reqDto.operationId);

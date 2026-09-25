@@ -1429,6 +1429,20 @@
       "when": 1790233129967,
       "tag": "0203_production_order_code_at_seed",
       "breakpoints": true
+    },
+    {
+      "idx": 204,
+      "version": "7",
+      "when": 1790301979133,
+      "tag": "0204_light_shooting_star",
+      "breakpoints": true
+    },
+    {
+      "idx": 205,
+      "version": "7",
+      "when": 1790308788212,
+      "tag": "0205_consumable_to_direct_rename",
+      "breakpoints": true
     }
   ]
 }

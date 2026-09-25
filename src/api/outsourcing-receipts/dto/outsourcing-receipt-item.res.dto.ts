@@ -35,14 +35,14 @@ export class OutsourcingReceiptItemResDto {
   @ClassFieldOptional(() => ItemRefResDto, {
     nullable: true,
     description:
-      'Vật tư tham khảo — chỉ khi node là CONSUMABLE; null với node COMPONENT',
+      'Vật tư tham khảo — chỉ khi node là DIRECT; null với node COMPONENT',
   })
   item!: ItemRefResDto | null;
 
   @Expose()
   @ClassFieldOptional(() => UnitRefResDto, {
     nullable: true,
-    description: 'ĐVT vật tư — chỉ khi node là CONSUMABLE',
+    description: 'ĐVT vật tư — chỉ khi node là DIRECT',
   })
   unit!: UnitRefResDto | null;
 

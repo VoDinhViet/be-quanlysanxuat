@@ -52,8 +52,8 @@ export class SupplierReturnsService {
     reqDto: GetSupplierReturnsReqDto,
   ): Promise<OffsetPaginatedDto<PageSupplierReturnResDto>> {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
-    const consumableKeyword = reqDto.consumableKeyword
-      ? `%${reqDto.consumableKeyword}%`
+    const directKeyword = reqDto.directKeyword
+      ? `%${reqDto.directKeyword}%`
       : undefined;
     const poKeyword = reqDto.poCode ? `%${reqDto.poCode}%` : undefined;
     const nkKeyword = reqDto.nkCode ? `%${reqDto.nkCode}%` : undefined;
@@ -87,10 +87,10 @@ export class SupplierReturnsService {
               ),
           )
         : undefined,
-      consumableKeyword
+      directKeyword
         ? or(
-            unaccentILike(supplierReturns.itemCode, consumableKeyword),
-            unaccentILike(supplierReturns.itemName, consumableKeyword),
+            unaccentILike(supplierReturns.itemCode, directKeyword),
+            unaccentILike(supplierReturns.itemName, directKeyword),
             exists(
               this.db
                 .select({ one: sql`1` })
@@ -99,8 +99,8 @@ export class SupplierReturnsService {
                   and(
                     eq(items.id, supplierReturns.itemId),
                     or(
-                      unaccentILike(items.name, consumableKeyword),
-                      unaccentILike(items.code, consumableKeyword),
+                      unaccentILike(items.name, directKeyword),
+                      unaccentILike(items.code, directKeyword),
                     ),
                   ),
                 ),

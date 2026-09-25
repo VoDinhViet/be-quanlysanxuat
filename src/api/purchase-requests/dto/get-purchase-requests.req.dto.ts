@@ -11,7 +11,7 @@ export class GetPurchaseRequestsReqDto extends PageOptionsDto {
   @StringFieldOptional({
     description: 'Tìm theo tên hoặc mã vật tư có trong các dòng của đề xuất',
   })
-  readonly consumableKeyword?: string;
+  readonly directKeyword?: string;
 
   @UUIDFieldOptional({
     description: 'Filter theo LSX (production order) liên quan',

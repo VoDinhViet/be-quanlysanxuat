@@ -1,6 +1,7 @@
 import { relations, sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
+  boolean,
   check,
   index,
   integer,
@@ -22,32 +23,32 @@ import { users } from '../identity-access/users';
 /**
  * `COMPONENT` — node cấu trúc con (thay cho WIP cũ, `docs/decisions/wip-removal.md`): không trỏ
  * `items`, mang `code`/`name` nhập trực tiếp trên chính dòng, riêng cho vị trí đó trong cây của
- * đúng 1 sản phẩm — không tái sử dụng được. `CONSUMABLE` — node lá, trỏ `items.id`
- * (`type = CONSUMABLE`). Cấp 0 (chính item FG) không có giá trị nào ở đây — không phải một dòng
+ * đúng 1 sản phẩm — không tái sử dụng được. `DIRECT` — node lá, trỏ `items.id`
+ * (`type = DIRECT`). Cấp 0 (chính item FG) không có giá trị nào ở đây — không phải một dòng
  * `bom_items`, không xuất hiện trong response `GET .../bom`
  * (`docs/decisions/level-0-outside-bom-tree-response.md`).
  */
 export enum BomType {
   COMPONENT = 'COMPONENT',
-  CONSUMABLE = 'CONSUMABLE',
+  DIRECT = 'DIRECT',
 }
 
 export const bomTypeEnum = pgEnum('bom_node_type', [
   BomType.COMPONENT,
-  BomType.CONSUMABLE,
+  BomType.DIRECT,
 ]);
 
 /**
  * One line of the BOM tree — a `COMPONENT` sub-assembly node (private to this tree, no `items`
- * row) or a `CONSUMABLE` leaf (`itemId`, không còn bảng `bom_materials` riêng — xem
+ * row) or a `DIRECT` leaf (`itemId`, không còn bảng `bom_materials` riêng — xem
  * `docs/decisions/items-merge.md`). `parentId` NULL nghĩa là node nằm ngay dưới Cấp 0 (dòng ảo,
  * không lưu ở đây — xem `docs/decisions/bom-header-as-level-0-anchor.md`). `level` stores 1-based
  * depth from Cấp 0, read straight into the response.
  *
  * Rules:
- * - Một node CONSUMABLE là lá bắt buộc — không được có con, không được gắn `bom_operations`
+ * - Một node DIRECT là lá bắt buộc — không được có con, không được gắn `bom_operations`
  *   (`BomsService`).
- * - Đúng 1 trong 2 hình dạng, ép bởi `chk_bom_items_node_shape`: `CONSUMABLE` → `itemId` có,
+ * - Đúng 1 trong 2 hình dạng, ép bởi `chk_bom_items_node_shape`: `DIRECT` → `itemId` có,
  *   `code`/`name`/`unitId`/`imageFileId` không; `COMPONENT` → ngược lại, `unitId` (ĐVT riêng)
  *   và `imageFileId` (ảnh riêng) tuỳ chọn.
  */
@@ -71,15 +72,15 @@ export const bomItems = pgTable(
       onDelete: 'restrict',
     }),
     // Chỉ node `COMPONENT` dùng — mã/tên nhập tay riêng cho vị trí này, không phải danh mục dùng
-    // chung. NULL ở `CONSUMABLE` (đọc từ `items` join thay vì lưu ở đây).
+    // chung. NULL ở `DIRECT` (đọc từ `items` join thay vì lưu ở đây).
     code: varchar('code', { length: 50 }),
     name: varchar('name', { length: 255 }),
-    // Chỉ node `COMPONENT` dùng (không gắn `items` nên không có unit để join) — chọn tự do. NULL bắt buộc ở `CONSUMABLE` (đọc `unit` qua join item).
+    // Chỉ node `COMPONENT` dùng (không gắn `items` nên không có unit để join) — chọn tự do. NULL bắt buộc ở `DIRECT` (đọc `unit` qua join item).
     unitId: uuid('unit_id').references(() => units.id, {
       onDelete: 'restrict',
     }),
     // Ảnh riêng — chỉ node `COMPONENT` (không trỏ `items` nên không có ảnh để join). NULL bắt buộc
-    // ở `CONSUMABLE` (đọc `image` qua join item).
+    // ở `DIRECT` (đọc `image` qua join item).
     imageFileId: uuid('image_file_id').references(() => files.id, {
       onDelete: 'set null',
     }),
@@ -93,6 +94,9 @@ export const bomItems = pgTable(
     // from tree position + this.
     sortOrder: integer('sort_order').notNull().default(0),
     note: varchar('note', { length: 1000 }),
+    // Chỉ `DIRECT` — vật tư ngoài cấu trúc: được gắn cạnh node COMPONENT (miễn `E273`) và không bị
+    // xoá ngầm khi node cha có thêm con COMPONENT (`docs/domains/product-structure.md`).
+    isOffStructure: boolean('is_off_structure').notNull().default(false),
     createdBy: uuid('created_by').references(() => users.id, {
       onDelete: 'set null',
     }),
@@ -112,9 +116,13 @@ export const bomItems = pgTable(
     check('chk_bom_items_quantity_positive', sql`quantity > 0`),
     check(
       'chk_bom_items_node_shape',
-      sql`(type = 'CONSUMABLE' AND item_id IS NOT NULL AND code IS NULL AND name IS NULL
+      sql`(type = 'DIRECT' AND item_id IS NOT NULL AND code IS NULL AND name IS NULL
           AND unit_id IS NULL AND image_file_id IS NULL)
         OR (type = 'COMPONENT' AND item_id IS NULL AND code IS NOT NULL AND name IS NOT NULL)`,
+    ),
+    check(
+      'chk_bom_items_off_structure_direct',
+      sql`NOT is_off_structure OR type = 'DIRECT'`,
     ),
     // Lưới an toàn tầng DB cho `BomsService.ensureBomItemNotDuplicate` — cùng `itemId` không được
     // xuất hiện hai lần dưới cùng node cha. Tách theo NULL ≠ NULL của Postgres vì `parent_id NULL`

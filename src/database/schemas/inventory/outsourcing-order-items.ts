@@ -65,7 +65,7 @@ export const outsourcingOrderItems = pgTable(
     ),
     itemCode: varchar('item_code', { length: 50 }).notNull(),
     itemName: varchar('item_name', { length: 255 }).notNull(),
-    // Chỉ có khi node là CONSUMABLE (tham khảo) — node COMPONENT không phải một item, NULL.
+    // Chỉ có khi node là DIRECT (tham khảo) — node COMPONENT không phải một item, NULL.
     itemId: uuid('item_id').references(() => items.id, {
       onDelete: 'set null',
     }),

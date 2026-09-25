@@ -381,6 +381,7 @@ export class ProductionJobsService {
         asc(productionJobBomItems.id),
       ],
       with: {
+        imageFile: true,
         operations: {
           where: operationId
             ? eq(productionJobOperations.operationId, operationId)
@@ -618,7 +619,7 @@ export class ProductionJobsService {
       return [];
     }
 
-    const onHandByItem = await this.inventoryService.getConsumableStockLevels(
+    const onHandByItem = await this.inventoryService.getDirectStockLevels(
       tx,
       itemIds,
     );

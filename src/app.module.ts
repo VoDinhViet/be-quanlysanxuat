@@ -6,7 +6,7 @@ import { ServeStaticModule } from '@nestjs/serve-static';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AllConfigType } from './config/config.type';
-import { BomConsumablesModule } from './api/bom-consumables/bom-consumables.module';
+import { BomDirectsModule } from './api/bom-directs/bom-directs.module';
 import { BomOperationsModule } from './api/bom-operations/bom-operations.module';
 import { BomsModule } from './api/boms/boms.module';
 import { JwtAuthGuard } from './api/auth/guards/jwt-auth.guard';
@@ -32,7 +32,7 @@ import { HealthModule } from './api/health/health.module';
 import { InventoryModule } from './api/inventory/inventory.module';
 import { InventoryAdjustmentsModule } from './api/inventory-adjustments/inventory-adjustments.module';
 import { InventoryIssuesModule } from './api/inventory-issues/inventory-issues.module';
-import { InventoryConsumablesModule } from './api/inventory-consumables/inventory-consumables.module';
+import { InventoryDirectsModule } from './api/inventory-directs/inventory-directs.module';
 import { InventoryProductsModule } from './api/inventory-products/inventory-products.module';
 import { InventoryReceiptsModule } from './api/inventory-receipts/inventory-receipts.module';
 import { InventoryRequisitionsModule } from './api/inventory-requisitions/inventory-requisitions.module';
@@ -101,7 +101,7 @@ import { UsersModule } from './api/users/users.module';
     ItemUnitsModule,
     BomsModule,
     BomOperationsModule,
-    BomConsumablesModule,
+    BomDirectsModule,
     RoutingsModule,
     OperationsModule,
     DepartmentsModule,
@@ -113,7 +113,7 @@ import { UsersModule } from './api/users/users.module';
     SupplierGroupsModule,
     InventoryModule,
     InventoryProductsModule,
-    InventoryConsumablesModule,
+    InventoryDirectsModule,
     InventoryReceiptsModule,
     InventoryIssuesModule,
     InventoryAdjustmentsModule,

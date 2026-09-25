@@ -10,7 +10,7 @@ import {
   UUIDField,
 } from '../../../decorators/field.decorators';
 
-/** Một dòng vật tư (CONSUMABLE) as-used trong cây BOM của một FG — 1 dòng/vật tư, gộp mọi vị trí xuất
+/** Một dòng vật tư (DIRECT) as-used trong cây BOM của một FG — 1 dòng/vật tư, gộp mọi vị trí xuất
  * hiện trong cây (cùng vật tư có thể nằm dưới nhiều node cha khác nhau). Nguồn là `bom_items`,
  * không phải bảng riêng. */
 @Exclude()

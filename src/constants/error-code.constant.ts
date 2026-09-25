@@ -79,19 +79,19 @@ export enum ErrorCode {
   // BOM của item trên URL — cùng khuôn kiểm tra (`BomsService.ensureBomItemInBom`), dùng chung mã
   // vì cùng resource `bom_items`.
   E051 = 'bom_item.error.parent_not_found',
-  // `bom_items` chứa cả node COMPONENT lẫn lá CONSUMABLE (`docs/decisions/items-merge.md`) —
-  // CONSUMABLE là lá bắt buộc, không được nhận node con. Sống lại từ chỗ reserved khi vật tư còn
+  // `bom_items` chứa cả node COMPONENT lẫn lá DIRECT (`docs/decisions/items-merge.md`) —
+  // DIRECT là lá bắt buộc, không được nhận node con. Sống lại từ chỗ reserved khi vật tư còn
   // ở bảng riêng `bom_materials`.
   E052 = 'bom_item.error.parent_is_leaf',
   // Nghỉ hưu — khái niệm WIP đã xoá khỏi hệ thống (`docs/decisions/wip-removal.md`), node cấu
   // trúc con giờ là `bom_items.type = COMPONENT` (không trỏ item). Kiểm tra tương đương cho node
-  // CONSUMABLE là E270.
+  // DIRECT là E270.
   E053 = 'bom_item.error.item_not_wip',
   // Nghỉ hưu — node COMPONENT không còn định danh dùng chung (`itemId` NULL) nên không thể vừa
   // là node con vừa có BOM riêng ở nơi khác; chu trình BOM bất khả thi về cấu trúc,
   // `checkNoCycle`/`MAX_BOM_DEPTH` đã xoá khỏi `BomsService`.
   E054 = 'bom_item.error.cycle_detected',
-  // COMPONENT bắt buộc SL nguyên (cấu trúc lắp ráp); CONSUMABLE được phép SL lẻ (định mức vật
+  // COMPONENT bắt buộc SL nguyên (cấu trúc lắp ráp); DIRECT được phép SL lẻ (định mức vật
   // tư) — validate ở `BomsService.ensureQuantityValid`, theo `bom_items.type` của node đang
   // thêm/sửa. Sống lại cùng lý do E052.
   E055 = 'bom_item.error.quantity_not_integer',
@@ -113,7 +113,7 @@ export enum ErrorCode {
   // sống ở `bom_operations` (dùng chung `E051` qua `BomsService.ensureBomItemInBom`), và từ
   // `docs/decisions/root-bom-item.md` node ROOT ("Cấp 0") cũng là một `bomItemId` thật nên đi
   // đúng đường kiểm đó — không còn ca nào thiếu `bomItemId` để cần mã riêng.
-  // CONSUMABLE là lá — không được gắn `bom_operations`. Khác `E052` (lá không được nhận node
+  // DIRECT là lá — không được gắn `bom_operations`. Khác `E052` (lá không được nhận node
   // **con**): đây là lá không được gắn **công đoạn**. Sống lại cùng lý do E052.
   E063 = 'bom_operation.error.leaf_node',
   // `positionId` on a user create/update exists (E015 already passed) but doesn't belong to the
@@ -224,11 +224,11 @@ export enum ErrorCode {
   // `E050` covers "node not found" for both node types now (`docs/decisions/items-merge.md`).
   // `PATCH`/`DELETE` một dòng `bom_operations` không tồn tại đúng node.
   E109 = 'bom_operation.error.not_found',
-  // Retired: `POST /items/:itemId/copy` từng chặn CONSUMABLE; nay copy vật tư được phép — không tái dùng số.
-  E110 = 'item.error.cannot_copy_consumable',
-  // CONSUMABLE không có BOM (`BomsService`) hoặc routing Cấp 0 (`RoutingsService`) — chỉ FG mới có
+  // Retired: `POST /items/:itemId/copy` từng chặn DIRECT; nay copy vật tư được phép — không tái dùng số.
+  E110 = 'item.error.cannot_copy_direct',
+  // DIRECT không có BOM (`BomsService`) hoặc routing Cấp 0 (`RoutingsService`) — chỉ FG mới có
   // cấu trúc/công đoạn của chính nó.
-  E111 = 'item.error.consumable_not_allowed',
+  E111 = 'item.error.direct_not_allowed',
   E112 = 'purchase_request.error.not_found',
   E113 = 'purchase_request_item.error.not_found',
   E114 = 'purchase_request.error.not_editable',
@@ -293,9 +293,9 @@ export enum ErrorCode {
   // Hai dòng cùng `itemId` trong một ĐXMH. Khác `E128`: E128 là trùng dòng ĐXMH giữa các dòng
   // của một báo giá.
   E147 = 'purchase_request_item.error.duplicate_item',
-  // Dòng ĐXMH trỏ vật tư không phải CONSUMABLE. Nghịch đảo của `E111`, nơi CONSUMABLE mới là loại
+  // Dòng ĐXMH trỏ vật tư không phải DIRECT. Nghịch đảo của `E111`, nơi DIRECT mới là loại
   // bị cấm.
-  E148 = 'purchase_request_item.error.item_not_consumable',
+  E148 = 'purchase_request_item.error.item_not_direct',
   // Dòng ĐXMH phân bổ vào một vật tư nhưng itemId của nó khác itemId của dòng báo giá chứa nó.
   E149 = 'purchase_quotation_item.error.allocation_item_mismatch',
   // Một dòng vật tư trong payload tạo/sửa báo giá không có phân bổ nào về dòng ĐXMH nguồn.
@@ -515,7 +515,7 @@ export enum ErrorCode {
   // Phiếu lãnh 0 dòng — ném ở `approve` (nơi giờ sinh dòng PXK), trước đây ném ở `issue` đã bỏ.
   E227 = 'inventory_requisition.error.no_items',
   E228 = 'inventory_requisition_item.error.duplicate_item',
-  E229 = 'inventory_requisition_item.error.item_not_consumable',
+  E229 = 'inventory_requisition_item.error.item_not_direct',
   E230 = 'inventory_requisition_item.error.not_in_job_bom',
   E231 = 'inventory_requisition_item.error.quantity_exceeds_issuable',
   E232 = 'inventory_requisition_item.error.quantity_exceeds_bom_remaining',
@@ -544,7 +544,7 @@ export enum ErrorCode {
   // E243 (unit.error.scopes_required) và E244 (unit.error.scope_in_use) stay reserved — cùng lý do
   // với E043, `unit_scopes` bị bỏ.
   // `POST /items/:itemId/bom/items` thêm cùng `itemId` hai lần dưới cùng một node cha — chỉ còn
-  // ý nghĩa cho node CONSUMABLE (COMPONENT không có `itemId`).
+  // ý nghĩa cho node DIRECT (COMPONENT không có `itemId`).
   E245 = 'bom_item.error.duplicate',
   // `DELETE /clients/:id` khi còn `orders`/`outbound_orders` trỏ tới.
   E246 = 'client.error.in_use',
@@ -601,8 +601,8 @@ export enum ErrorCode {
   // Xoá một dòng `item_units` không cần mã lỗi "in_use" riêng — `unitId` của dòng phiếu kho FK
   // thẳng `units`, không FK `item_units` (`docs/decisions/unit-conversion.md`).
   E263 = 'item_unit.error.duplicate_unit',
-  // `DELETE /orders/:orderId` khi status khác `DRAFT` — cùng khuôn `E258` (outbound_order), mint
-  // riêng vì khác resource.
+  // `DELETE /orders/:orderId` khi status khác `DRAFT`/`REJECTED` — cùng khuôn `E258`
+  // (outbound_order), mint riêng vì khác resource.
   E264 = 'order.error.not_deletable',
   // SL báo giá phân bổ cho một dòng ĐXMH vượt quá SL cần mua còn lại.
   E265 = 'purchase_quotation_item.error.quantity_exceeded',
@@ -614,22 +614,22 @@ export enum ErrorCode {
   E268 = 'position.error.code_exists',
   // `DELETE /positions/:id` khi còn `users` trỏ tới.
   E269 = 'position.error.in_use',
-  // Node `type = CONSUMABLE` nhưng `itemId` trỏ item không phải CONSUMABLE — thay E053 đã nghỉ hưu.
-  E270 = 'bom_item.error.item_not_consumable',
-  // Payload node BOM sai hình dạng: COMPONENT thiếu `code`/`name` (hoặc kèm `itemId`), CONSUMABLE
+  // Node `type = DIRECT` nhưng `itemId` trỏ item không phải DIRECT — thay E053 đã nghỉ hưu.
+  E270 = 'bom_item.error.item_not_direct',
+  // Payload node BOM sai hình dạng: COMPONENT thiếu `code`/`name` (hoặc kèm `itemId`), DIRECT
   // thiếu `itemId` (hoặc kèm `code`/`name`); cũng dùng khi `PATCH` sửa `code`/`name`/`unitId`/
-  // `imageFileId` trên node không cho phép (CONSUMABLE/ROOT không nhận `unitId`/`imageFileId` —
+  // `imageFileId` trên node không cho phép (DIRECT/ROOT không nhận `unitId`/`imageFileId` —
   // ĐVT/ảnh chỉ COMPONENT được gán riêng).
   E271 = 'bom_item.error.invalid_node_payload',
   // Node cha đã có con COMPONENT (là node cấu trúc, không phải lá) — vật tư chỉ gắn vào node lá để
-  // nổ cấp không cộng trùng nhu cầu. Khác `E052` (cha là lá CONSUMABLE nên không nhận con nào cả).
+  // nổ cấp không cộng trùng nhu cầu. Khác `E052` (cha là lá DIRECT nên không nhận con nào cả).
   E273 = 'bom_item.error.parent_not_leaf',
   // Puppeteer render PDF lỗi cả sau khi thử khởi động lại browser 1 lần — Chromium crash liên tục.
   E274 = 'purchase_order.error.pdf_render_failed',
   // `clientContactId` trên đơn hàng không tồn tại hoặc không thuộc khách hàng của đơn.
   E275 = 'order.error.client_contact_invalid',
-  // `POST /items` với `type=CONSUMABLE` mà thiếu `code` — mã vật tư do người dùng tự đặt, không tự sinh.
-  E276 = 'item.error.consumable_code_required',
+  // `POST /items` với `type=DIRECT` mà thiếu `code` — mã vật tư do người dùng tự đặt, không tự sinh.
+  E276 = 'item.error.direct_code_required',
   // `POST /items/:itemId/copy` trên FG mà thiếu `revision` — FG giữ nguyên mã nên revision là thứ duy nhất phân biệt.
   E277 = 'item.error.copy_revision_required',
   V003 = 'common.error.too_many_requests',

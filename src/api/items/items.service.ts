@@ -147,7 +147,7 @@ export class ItemsService {
         clientName: clients.name,
         supplierName: suppliers.name,
         minStock: items.minStock,
-        consumableGrade: items.consumableGrade,
+        directGrade: items.directGrade,
         technicalStandard: items.technicalStandard,
         dimensions: items.dimensions,
         specificWeight: items.specificWeight,
@@ -234,7 +234,7 @@ export class ItemsService {
     const type = reqDto.type ?? ItemType.FG;
 
     // Mã vật tư do người dùng tự đặt; chỉ FG mới tự sinh `SPxxxx` khi bỏ trống.
-    if (type === ItemType.CONSUMABLE && !reqDto.code) {
+    if (type === ItemType.DIRECT && !reqDto.code) {
       throw new AppException(ErrorCode.E276, HttpStatus.BAD_REQUEST);
     }
 
@@ -432,7 +432,7 @@ export class ItemsService {
       .orderBy(asc(bomItems.level), asc(bomItems.sortOrder));
 
     // multiplier[node] = multiplier[cha] × quantity node, gốc (parentId null) = 1 × quantity —
-    // đi từ gốc xuống đúng N tầng COMPONENT rồi dừng ở CONSUMABLE, không cần xử lý CONSUMABLE có con (bất biến `E052`).
+    // đi từ gốc xuống đúng N tầng COMPONENT rồi dừng ở DIRECT, không cần xử lý DIRECT có con (bất biến `E052`).
     // Làm tròn scale 3 ngay mỗi bước nhân (không chỉ lúc gộp cuối) — khác `createJobBomItems`/
     // `createJobIssues` phía Job, số ở đây không đi qua cột `numeric(18,3)` nào để Postgres tự làm
     // tròn hộ giữa các cấp, nên tự làm tròn để tránh rác dấu phẩy động lọt ra JSON (cùng idiom
@@ -448,14 +448,14 @@ export class ItemsService {
         Math.round(parentMultiplier * node.quantity * 1000) / 1000;
       multiplierById.set(node.id, multiplier);
 
-      if (node.type === BomType.CONSUMABLE) {
-        // Lá CONSUMABLE luôn trỏ item (`chk_bom_items_node_shape`).
-        const consumableItemId = node.itemId!;
+      if (node.type === BomType.DIRECT) {
+        // Lá DIRECT luôn trỏ item (`chk_bom_items_node_shape`).
+        const directItemId = node.itemId!;
         const total =
           Math.round(
-            ((totalByItemId.get(consumableItemId) ?? 0) + multiplier) * 1000,
+            ((totalByItemId.get(directItemId) ?? 0) + multiplier) * 1000,
           ) / 1000;
-        totalByItemId.set(consumableItemId, total);
+        totalByItemId.set(directItemId, total);
       }
     }
 
@@ -506,7 +506,7 @@ export class ItemsService {
   }
 
   /** Clone một item. FG: giữ nguyên `code`, mang `revision` người dùng nhập, nhân bản cả cây BOM.
-   * CONSUMABLE: "tạo vật tư tương tự" — `code` mới bắt buộc (`E276`), `revision` giữ mặc định,
+   * DIRECT: "tạo vật tư tương tự" — `code` mới bắt buộc (`E276`), `revision` giữ mặc định,
    * `name` tuỳ chọn, không có BOM. Cả hai giữ `clonedFromItemId` và `item_files`. */
   async copyItem(
     itemId: string,
@@ -577,7 +577,7 @@ export class ItemsService {
     item: ItemSelect,
     reqDto: CopyItemReqDto,
   ): ItemCopyIdentity {
-    if (item.type === ItemType.CONSUMABLE) {
+    if (item.type === ItemType.DIRECT) {
       if (!reqDto.code) {
         throw new AppException(ErrorCode.E276, HttpStatus.BAD_REQUEST);
       }

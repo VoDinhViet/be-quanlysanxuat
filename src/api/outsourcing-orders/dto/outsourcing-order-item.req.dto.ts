@@ -38,7 +38,7 @@ export class OutsourcingOrderItemReqDto {
   @UUIDFieldOptional({
     nullable: true,
     description:
-      'Vật tư tham khảo — chỉ khi node là CONSUMABLE (itemId từ popup); null với node COMPONENT',
+      'Vật tư tham khảo — chỉ khi node là DIRECT (itemId từ popup); null với node COMPONENT',
   })
   readonly itemId?: string | null;
 

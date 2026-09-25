@@ -44,9 +44,10 @@ type BomItemShapeCheck = {
 
 /**
  * Cây BOM một item FG — `bom_items` chứa node COMPONENT (cấu trúc con, `code`/`name` riêng,
- * không trỏ item) lẫn lá CONSUMABLE (trỏ `items`), xem `docs/decisions/wip-removal.md`.
- * CONSUMABLE luôn là lá: không được nhận con (`E052`) và không được gắn `bom_operations`
- * (`E063`); ngược lại, CONSUMABLE chỉ được gắn vào node chưa có con COMPONENT (`E273`).
+ * không trỏ item) lẫn lá DIRECT (trỏ `items`), xem `docs/decisions/wip-removal.md`.
+ * DIRECT luôn là lá: không được nhận con (`E052`) và không được gắn `bom_operations`
+ * (`E063`); ngược lại, DIRECT chỉ được gắn vào node chưa có con COMPONENT (`E273`), trừ vật tư
+ * ngoài cấu trúc (`isOffStructure`).
  * Xem `docs/domains/product-structure.md`.
  */
 @Injectable()
@@ -81,7 +82,7 @@ export class BomsService {
         parentId: bomItems.parentId,
         type: bomItems.type,
         itemId: bomItems.itemId,
-        // Node COMPONENT mang `code`/`name` trên chính dòng; node CONSUMABLE đọc từ item được
+        // Node COMPONENT mang `code`/`name` trên chính dòng; node DIRECT đọc từ item được
         // trỏ tới.
         code: sql<string>`coalesce(${bomItems.code}, ${items.code})`,
         name: sql<string>`coalesce(${bomItems.name}, ${items.name})`,
@@ -92,6 +93,7 @@ export class BomsService {
         level: bomItems.level,
         sortOrder: bomItems.sortOrder,
         note: bomItems.note,
+        isOffStructure: bomItems.isOffStructure,
       })
       .from(bomItems)
       .leftJoin(items, eq(bomItems.itemId, items.id))
@@ -113,8 +115,12 @@ export class BomsService {
         asc(bomItems.createdAt),
       );
 
-    const paths = buildBomItemPaths(rows);
-    rows.sort((a, b) =>
+    // Vật tư ngoài cấu trúc không tính vào path nên STT của Part không đổi — chúng đứng ngay sau
+    // node chủ (Cấp 0 → đầu mảng), `path` mượn của chủ.
+    const structureRows = rows.filter((row) => !row.isOffStructure);
+    const offStructureRows = rows.filter((row) => row.isOffStructure);
+    const paths = buildBomItemPaths(structureRows);
+    structureRows.sort((a, b) =>
       compareBomPaths(paths.get(a.id) ?? [], paths.get(b.id) ?? []),
     );
 
@@ -135,7 +141,7 @@ export class BomsService {
       .where(
         inArray(
           bomOperations.bomItemId,
-          rows.map((row) => row.id),
+          structureRows.map((row) => row.id),
         ),
       )
       .orderBy(
@@ -148,19 +154,39 @@ export class BomsService {
       ({ bomItemId }) => bomItemId,
     );
 
-    return plainToInstance(
-      BomItemResDto,
-      rows.map((row) => ({
-        ...row,
-        path: paths.get(row.id) ?? [],
-        operations: plainToInstance(
-          BomOperationResDto,
-          operationsByItemId.get(row.id) ?? [],
-          { excludeExtraneousValues: true },
-        ),
-      })),
-      { excludeExtraneousValues: true },
+    const offStructureByOwnerId = groupBy(
+      offStructureRows,
+      (row) => row.parentId,
     );
+    const toOffStructureNodes = (ownerId: string | null, path: number[]) =>
+      (offStructureByOwnerId.get(ownerId) ?? []).map((row) => ({
+        ...row,
+        path,
+        operations: [],
+      }));
+
+    const nodes = [
+      ...toOffStructureNodes(null, []),
+      ...structureRows.flatMap((row) => {
+        const path = paths.get(row.id) ?? [];
+        return [
+          {
+            ...row,
+            path,
+            operations: plainToInstance(
+              BomOperationResDto,
+              operationsByItemId.get(row.id) ?? [],
+              { excludeExtraneousValues: true },
+            ),
+          },
+          ...toOffStructureNodes(row.id, path),
+        ];
+      }),
+    ];
+
+    return plainToInstance(BomItemResDto, nodes, {
+      excludeExtraneousValues: true,
+    });
   }
 
   async createBomItem(
@@ -169,14 +195,14 @@ export class BomsService {
     userId: string,
   ): Promise<void> {
     const rootItem = await this.ensureItemExists(itemId);
-    if (rootItem.type === ItemType.CONSUMABLE) {
+    if (rootItem.type === ItemType.DIRECT) {
       throw new AppException(ErrorCode.E111, HttpStatus.BAD_REQUEST);
     }
 
     this.ensureNodePayloadValid(reqDto);
-    if (reqDto.type === BomType.CONSUMABLE) {
-      // `ensureNodePayloadValid` đã đảm bảo CONSUMABLE luôn kèm `itemId`.
-      await this.ensureConsumableItemValid(reqDto.itemId!);
+    if (reqDto.type === BomType.DIRECT) {
+      // `ensureNodePayloadValid` đã đảm bảo DIRECT luôn kèm `itemId`.
+      await this.ensureItemIsDirect(reqDto.itemId!);
     }
     this.ensureComponentOnlyFields(reqDto.type, reqDto);
     if (reqDto.unitId) {
@@ -211,9 +237,11 @@ export class BomsService {
         userId,
       );
 
-      if (reqDto.type === BomType.CONSUMABLE) {
-        await this.ensureBomItemIsLeaf(tx, bomId, parentId);
-        // `ensureNodePayloadValid` đã đảm bảo CONSUMABLE luôn kèm `itemId`.
+      if (reqDto.type === BomType.DIRECT) {
+        if (!reqDto.isOffStructure) {
+          await this.ensureBomItemIsLeaf(tx, bomId, parentId);
+        }
+        // `ensureNodePayloadValid` đã đảm bảo DIRECT luôn kèm `itemId`.
         await this.ensureBomItemNotDuplicate(
           tx,
           bomId,
@@ -221,7 +249,7 @@ export class BomsService {
           reqDto.itemId!,
         );
       } else {
-        await this.deleteConsumableChildren(tx, bomId, parentId);
+        await this.deleteDirectChildren(tx, bomId, parentId);
       }
 
       let parentLevel = 0;
@@ -261,7 +289,7 @@ export class BomsService {
     const bomItem = await this.ensureBomItemExists(bom.id, bomItemId);
 
     if (
-      bomItem.type === BomType.CONSUMABLE &&
+      bomItem.type === BomType.DIRECT &&
       (reqDto.code !== undefined || reqDto.name !== undefined)
     ) {
       throw new AppException(ErrorCode.E271, HttpStatus.BAD_REQUEST);
@@ -312,36 +340,38 @@ export class BomsService {
     return existing;
   }
 
-  /** Kiểm hình dạng node (CONSUMABLE chỉ có `itemId`, COMPONENT chỉ có `code`+`name`) ở đây để trả
+  /** Kiểm hình dạng node (DIRECT chỉ có `itemId`, COMPONENT chỉ có `code`+`name`) ở đây để trả
    * 400 thay vì để CHECK `chk_bom_items_node_shape` ở DB nổ thành 500. */
   private ensureNodePayloadValid(payload: CreateBomItemReqDto): void {
     const isValid =
-      payload.type === BomType.CONSUMABLE
+      payload.type === BomType.DIRECT
         ? !!payload.itemId && payload.code == null && payload.name == null
-        : !payload.itemId && !!payload.code && !!payload.name;
+        : !payload.itemId &&
+          !!payload.code &&
+          !!payload.name &&
+          !payload.isOffStructure;
 
     if (!isValid) {
       throw new AppException(ErrorCode.E271, HttpStatus.BAD_REQUEST);
     }
   }
 
-  private async ensureConsumableItemValid(
-    candidateItemId: string,
-  ): Promise<void> {
-    const item = await this.db.query.items.findFirst({
-      columns: { id: true, type: true },
-      where: and(eq(items.id, candidateItemId), isNull(items.deletedAt)),
-    });
+  private async ensureItemIsDirect(candidateItemId: string): Promise<void> {
+    const [item] = await this.db
+      .select({ id: items.id, type: items.type })
+      .from(items)
+      .where(and(eq(items.id, candidateItemId), isNull(items.deletedAt)))
+      .limit(1);
 
     if (!item) {
       throw new AppException(ErrorCode.E007, HttpStatus.NOT_FOUND);
     }
-    if (item.type !== ItemType.CONSUMABLE) {
+    if (item.type !== ItemType.DIRECT) {
       throw new AppException(ErrorCode.E270, HttpStatus.BAD_REQUEST);
     }
   }
 
-  /** ĐVT/ảnh riêng chỉ COMPONENT được gán — CONSUMABLE đã có cả hai qua join item
+  /** ĐVT/ảnh riêng chỉ COMPONENT được gán — DIRECT đã có cả hai qua join item
    * (`chk_bom_items_node_shape` chặn ở tầng DB, đây là kiểm sớm để trả 400 thay vì 500). */
   private ensureComponentOnlyFields(
     type: BomType,
@@ -355,7 +385,7 @@ export class BomsService {
     }
   }
 
-  /** COMPONENT bắt buộc SL nguyên (cấu trúc lắp ráp); CONSUMABLE được phép SL lẻ (định mức
+  /** COMPONENT bắt buộc SL nguyên (cấu trúc lắp ráp); DIRECT được phép SL lẻ (định mức
    * vật tư). */
   private ensureQuantityValid(type: BomType, quantity: number): void {
     if (type === BomType.COMPONENT && !Number.isInteger(quantity)) {
@@ -363,7 +393,7 @@ export class BomsService {
     }
   }
 
-  /** CONSUMABLE là lá — không được nhận node con. */
+  /** DIRECT là lá — không được nhận node con. */
   private async ensureBomItemCanHaveChildren(bomItemId: string): Promise<void> {
     const [bomItem] = await this.db
       .select({ type: bomItems.type })
@@ -371,7 +401,7 @@ export class BomsService {
       .where(eq(bomItems.id, bomItemId))
       .limit(1);
 
-    if (bomItem?.type === BomType.CONSUMABLE) {
+    if (bomItem?.type === BomType.DIRECT) {
       throw new AppException(ErrorCode.E052, HttpStatus.BAD_REQUEST);
     }
   }
@@ -403,8 +433,8 @@ export class BomsService {
   }
 
   /** Side-effect của `createBomItem` khi thêm COMPONENT: node cha vừa thành node cấu trúc nên vật tư
-   * đang khai trực tiếp trên nó bị xoá ngầm (`docs/domains/product-structure.md`). */
-  private async deleteConsumableChildren(
+   * đang khai trực tiếp trên nó bị xoá ngầm, trừ vật tư ngoài cấu trúc (`docs/domains/product-structure.md`). */
+  private async deleteDirectChildren(
     tx: DbTransaction,
     bomId: string,
     parentId: string | null,
@@ -417,7 +447,8 @@ export class BomsService {
           parentId
             ? eq(bomItems.parentId, parentId)
             : isNull(bomItems.parentId),
-          eq(bomItems.type, BomType.CONSUMABLE),
+          eq(bomItems.type, BomType.DIRECT),
+          eq(bomItems.isOffStructure, false),
         ),
       );
   }
@@ -451,7 +482,7 @@ export class BomsService {
     }
   }
 
-  /** CONSUMABLE là lá — không được gắn `bom_operations`. Public vì `BomOperationsService`
+  /** DIRECT là lá — không được gắn `bom_operations`. Public vì `BomOperationsService`
    * (`BomOperationsModule` import `BomsModule`) gọi trước khi insert. */
   async ensureBomItemCanHaveOperations(bomItemId: string): Promise<void> {
     const [bomItem] = await this.db
@@ -463,7 +494,7 @@ export class BomsService {
     if (!bomItem) {
       throw new AppException(ErrorCode.E050, HttpStatus.NOT_FOUND);
     }
-    if (bomItem.type === BomType.CONSUMABLE) {
+    if (bomItem.type === BomType.DIRECT) {
       throw new AppException(ErrorCode.E063, HttpStatus.BAD_REQUEST);
     }
   }

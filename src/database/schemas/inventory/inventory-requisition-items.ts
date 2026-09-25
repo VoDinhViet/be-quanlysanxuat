@@ -15,7 +15,7 @@ import { items } from '../items/items';
 import { units } from '../units/units';
 import { inventoryRequisitions } from './inventory-requisitions';
 
-/** Một dòng phiếu lãnh vật tư — luôn CONSUMABLE (service-enforced, `E229`). Unique
+/** Một dòng phiếu lãnh vật tư — luôn DIRECT (service-enforced, `E229`). Unique
  * `(requisitionId, itemId)` bắt buộc: phép SUM "Đã giữ"/"Đã lãnh"
  * (`src/api/inventory-requisitions/inventory-requisitions.query.ts`) và check vượt định mức BOM sẽ
  * sai nếu một phiếu có 2 dòng cùng vật tư. `unitId` chỉ để hiển thị (`docs/decisions/unit-conversion.md`)

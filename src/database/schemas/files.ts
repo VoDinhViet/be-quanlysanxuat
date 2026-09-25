@@ -34,12 +34,12 @@ export const fileKindEnum = pgEnum('file_kind', [
  * - `FileKind` says which bytes are acceptable (the mime family); `UploadType` says which screen
  *   asked for them, and is the key into `uploadPolicies` (`src/api/files/upload-policy.ts`) that
  *   decides the kind — and, later, the permission required.
- * - Stored so the registry stays auditable ("every consumable document") without joining anything.
+ * - Stored so the registry stays auditable ("every direct document") without joining anything.
  */
 export enum UploadType {
   USER_AVATAR = 'USER_AVATAR',
-  CONSUMABLE_IMAGE = 'CONSUMABLE_IMAGE',
-  CONSUMABLE_DOCUMENT = 'CONSUMABLE_DOCUMENT',
+  DIRECT_IMAGE = 'DIRECT_IMAGE',
+  DIRECT_DOCUMENT = 'DIRECT_DOCUMENT',
   PRODUCT_IMAGE = 'PRODUCT_IMAGE',
   /** Retired 2026-08-27 — thay bằng `ITEM_DOCUMENT`. Tài liệu đính kèm cấp sản phẩm bị bỏ nhầm khi
    * gộp `products`+`materials` thành `items` (04/08), tưởng bản vẽ theo node BOM thay thế được —
@@ -62,7 +62,7 @@ export enum UploadType {
   PRODUCTION_OPERATION_EVIDENCE = 'PRODUCTION_OPERATION_EVIDENCE',
   // File đính kèm khi kho xác nhận xuất trả NCC (`POST /supplier-returns/:id/post`).
   SUPPLIER_RETURN_EVIDENCE = 'SUPPLIER_RETURN_EVIDENCE',
-  // Tài liệu đính kèm cấp item — mọi `type` (FG/CONSUMABLE), danh sách nhiều file. Thay
+  // Tài liệu đính kèm cấp item — mọi `type` (FG/DIRECT), danh sách nhiều file. Thay
   // `PRODUCT_DOCUMENT` đã nghỉ hưu (BUG-007, 2026-08-27).
   ITEM_DOCUMENT = 'ITEM_DOCUMENT',
   // Ảnh riêng của một node BOM `COMPONENT` (`bom_items.image_file_id`, tối đa 1) — khác
@@ -74,8 +74,8 @@ export enum UploadType {
 
 export const uploadTypeEnum = pgEnum('upload_type', [
   UploadType.USER_AVATAR,
-  UploadType.CONSUMABLE_IMAGE,
-  UploadType.CONSUMABLE_DOCUMENT,
+  UploadType.DIRECT_IMAGE,
+  UploadType.DIRECT_DOCUMENT,
   UploadType.PRODUCT_IMAGE,
   UploadType.PRODUCT_DOCUMENT,
   UploadType.SUPPLIER_LOGO,

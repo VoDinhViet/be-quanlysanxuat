@@ -17,7 +17,7 @@ export class CreateItemReqDto {
 
   @StringFieldOptional({
     description:
-      'Mã hàng hoá; FG tự sinh nếu bỏ trống, CONSUMABLE bắt buộc (người dùng tự đặt)',
+      'Mã hàng hoá; FG tự sinh nếu bỏ trống, DIRECT bắt buộc (người dùng tự đặt)',
     maxLength: 50,
   })
   code?: string;
@@ -29,7 +29,7 @@ export class CreateItemReqDto {
   revision?: string;
 
   @EnumFieldOptional(() => ItemType, {
-    description: 'FG (thành phẩm) / CONSUMABLE (vật tư); mặc định FG',
+    description: 'FG (thành phẩm) / DIRECT (vật tư); mặc định FG',
   })
   type?: ItemType;
 
@@ -50,19 +50,19 @@ export class CreateItemReqDto {
 
   @UUIDFieldOptional({
     nullable: true,
-    description: 'NCC chính — chỉ có ý nghĩa với CONSUMABLE',
+    description: 'NCC chính — chỉ có ý nghĩa với DIRECT',
   })
   supplierId?: string | null;
 
   @NumberFieldOptional({
     min: 0,
     description:
-      'Định mức tồn tối thiểu — chỉ có ý nghĩa với CONSUMABLE, dùng tính trạng thái tồn kho. Mặc định 0',
+      'Định mức tồn tối thiểu — chỉ có ý nghĩa với DIRECT, dùng tính trạng thái tồn kho. Mặc định 0',
   })
   minStock?: number;
 
   @StringFieldOptional({ maxLength: 255, nullable: true })
-  consumableGrade?: string | null;
+  directGrade?: string | null;
 
   @StringFieldOptional({ maxLength: 255, nullable: true })
   technicalStandard?: string | null;

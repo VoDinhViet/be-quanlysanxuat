@@ -39,7 +39,7 @@ export class CreateInventoryRequisitionReqDto {
     each: true,
     minItems: 1,
     description:
-      'Dòng vật tư — tối thiểu 1 dòng, không trùng itemId, luôn CONSUMABLE',
+      'Dòng vật tư — tối thiểu 1 dòng, không trùng itemId, luôn DIRECT',
   })
   readonly items!: CreateInventoryRequisitionItemReqDto[];
 }

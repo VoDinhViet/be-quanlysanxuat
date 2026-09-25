@@ -7,22 +7,20 @@ import {
 export class UpdateBomItemReqDto {
   @StringFieldOptional({
     maxLength: 50,
-    description:
-      'Mã node — chỉ node COMPONENT (E271 nếu gửi cho node CONSUMABLE)',
+    description: 'Mã node — chỉ node COMPONENT (E271 nếu gửi cho node DIRECT)',
   })
   readonly code?: string;
 
   @StringFieldOptional({
     maxLength: 255,
-    description:
-      'Tên node — chỉ node COMPONENT (E271 nếu gửi cho node CONSUMABLE)',
+    description: 'Tên node — chỉ node COMPONENT (E271 nếu gửi cho node DIRECT)',
   })
   readonly name?: string;
 
   @NumberFieldOptional({
     isPositive: true,
     description:
-      'SL — nguyên nếu node là COMPONENT (E055 nếu lẻ), có thể lẻ nếu là CONSUMABLE',
+      'SL — nguyên nếu node là COMPONENT (E055 nếu lẻ), có thể lẻ nếu là DIRECT',
   })
   readonly quantity?: number;
 

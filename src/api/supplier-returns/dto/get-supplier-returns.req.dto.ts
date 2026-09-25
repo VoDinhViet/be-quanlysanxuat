@@ -8,7 +8,7 @@ import {
 
 export class GetSupplierReturnsReqDto extends PageOptionsDto {
   @StringFieldOptional({ description: 'Tìm theo tên hoặc mã vật tư' })
-  readonly consumableKeyword?: string;
+  readonly directKeyword?: string;
 
   @UUIDFieldOptional({ description: 'Filter theo NCC' })
   readonly supplierId?: string;

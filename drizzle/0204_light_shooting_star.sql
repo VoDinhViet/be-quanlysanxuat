@@ -1,0 +1,2 @@
+ALTER TABLE "bom_items" ADD COLUMN "is_off_structure" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "bom_items" ADD CONSTRAINT "chk_bom_items_off_structure_consumable" CHECK (NOT is_off_structure OR type = 'CONSUMABLE');

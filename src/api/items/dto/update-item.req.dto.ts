@@ -39,18 +39,18 @@ export class UpdateItemReqDto {
 
   @UUIDFieldOptional({
     nullable: true,
-    description: 'NCC chính — chỉ có ý nghĩa với CONSUMABLE',
+    description: 'NCC chính — chỉ có ý nghĩa với DIRECT',
   })
   supplierId?: string | null;
 
   @NumberFieldOptional({
     min: 0,
-    description: 'Định mức tồn tối thiểu — chỉ có ý nghĩa với CONSUMABLE',
+    description: 'Định mức tồn tối thiểu — chỉ có ý nghĩa với DIRECT',
   })
   minStock?: number;
 
   @StringFieldOptional({ maxLength: 255, nullable: true })
-  consumableGrade?: string | null;
+  directGrade?: string | null;
 
   @StringFieldOptional({ maxLength: 255, nullable: true })
   technicalStandard?: string | null;
