@@ -76,9 +76,9 @@ export class PageProductionExecutionJobResDto {
   @DateFieldOptional({
     nullable: true,
     description:
-      'Ngày hoàn thành công đoạn — chỉ có khi mọi Part của Job đã xong ở công đoạn đang chọn',
+      'Thời gian cập nhật gần nhất của công đoạn đang chọn (max qua mọi Part); null = chưa ai báo cáo',
   })
-  operationCompletedDate!: Date | null;
+  operationLastReportedAt!: Date | null;
 
   @Expose()
   @EnumField(() => JobOperationProgress, {

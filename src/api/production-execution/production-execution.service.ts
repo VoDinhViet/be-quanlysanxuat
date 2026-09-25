@@ -36,6 +36,7 @@ import {
   ProductionJobStatus,
   productionOrders,
 } from '../../database/schemas';
+import { vnToday } from '../../database/vn-date.util';
 import { AppException } from '../../exceptions/app.exception';
 import { FilesService } from '../files/files.service';
 import { closeJobIfFinalAssemblyDone } from '../production-jobs/production-jobs.query';
@@ -154,12 +155,7 @@ export class ProductionExecutionService {
         else ${JobOperationProgress.NOT_STARTED}
       end
     `;
-    const operationCompletedDateExpr = sql<Date | null>`
-      case when ${completedOpsExpr} = ${totalOpsExpr}
-        then max(${productionJobOperations.completedDate})
-        else null
-      end
-    `;
+    const operationLastReportedAtExpr = sql<Date | null>`max(${productionJobOperations.lastReportedAt})`;
 
     const [rows, [{ total }]] = await Promise.all([
       this.db
@@ -181,7 +177,7 @@ export class ProductionExecutionService {
             sql<number>`coalesce(sum(${productionJobOperations.rejectedQuantity}), 0)`.mapWith(
               Number,
             ),
-          operationCompletedDate: operationCompletedDateExpr,
+          operationLastReportedAt: operationLastReportedAtExpr,
           operationStatus: operationStatusExpr,
         })
         .from(productionJobs)
@@ -399,7 +395,7 @@ export class ProductionExecutionService {
           productionJobOperationId: jobOperationId,
           completedQuantityDelta: reqDto.completedQuantityDelta,
           rejectedQuantityDelta,
-          completedDate: reqDto.completedDate,
+          completedDate: vnToday(),
           note: reqDto.note,
           createdBy: userId,
         })
@@ -419,8 +415,9 @@ export class ProductionExecutionService {
         .set({
           completedQuantity: newCompletedQuantity,
           rejectedQuantity: newRejectedQuantity,
+          lastReportedAt: new Date(),
           completedDate:
-            roundedNewCompleted >= roundedPlanned ? reqDto.completedDate : null,
+            roundedNewCompleted >= roundedPlanned ? vnToday() : null,
         })
         .where(eq(productionJobOperations.id, jobOperationId));
 

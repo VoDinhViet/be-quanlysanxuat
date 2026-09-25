@@ -1,6 +1,6 @@
-import { and, asc, eq, getTableColumns, inArray, sql } from 'drizzle-orm';
+import { asc, eq, getTableColumns, inArray } from 'drizzle-orm';
 
-import type { DbTransaction } from '../../database/database.type';
+import type { Database, DbTransaction } from '../../database/database.type';
 import {
   bomItems,
   bomOperations,
@@ -9,6 +9,7 @@ import {
   items,
   ItemSelect,
   operations,
+  OperationType,
   productionJobBomItems,
   ProductionJobBomItemType,
   productionJobIssues,
@@ -23,138 +24,184 @@ import {
 
 type SnapshotJob = Pick<ProductionJobSelect, 'id' | 'itemId' | 'quantity'>;
 
+type JobPlanBomItem = typeof productionJobBomItems.$inferInsert & {
+  id: string;
+};
+
+export type JobPlanOperation = {
+  id: string;
+  productionJobBomItemId: string;
+  operationId: string;
+  code: string;
+  name: string;
+  type: OperationType;
+  sortOrder: number;
+  note: string | null;
+};
+
+export type JobPlanIssue = {
+  item: ItemSelect;
+  unit: UnitSelect;
+  requiredQty: number;
+};
+
+export type JobPlan = {
+  bomItems: JobPlanBomItem[];
+  operations: JobPlanOperation[];
+  issues: JobPlanIssue[];
+};
+
+type BaseBomItem = typeof bomItems.$inferSelect & { item: ItemSelect | null };
+
 /**
- * Dựng snapshot BOM, công đoạn và nhu cầu vật tư cho một Job khi bấm "Bắt đầu sản xuất". Đọc từ
- * master data hiện tại và đóng băng vĩnh viễn vào các bảng `production_job_*`, đúng thứ tự dưới —
- * `snapshotJobBomOperations` cần map id mà `snapshotJobBomItems` vừa tạo, `snapshotJobIssues` đọc
- * lại `production_job_bom_items` vừa ghi. Theo `docs/decisions/job-snapshot-at-start.md` và
- * `docs/decisions/bom-explosion-in-job-demand.md`.
+ * Kế hoạch của Job tính từ master data hiện tại × SL Job, chỉ trên bộ nhớ: cây BOM đã nổ cấp,
+ * công đoạn as-used, nhu cầu vật tư gộp. Job `PENDING` đọc thẳng hàm này (luôn khớp sản phẩm
+ * đang sửa, gọi trong một transaction chỉ đọc cho nhất quán); `createJobSnapshot` ghi đúng kết quả
+ * này khi xác nhận kế hoạch
+ * (`docs/adr/0029-job-snapshot-at-start.md`, `docs/adr/0014-bom-explosion-in-job-demand.md`).
+ */
+export async function buildJobPlan(
+  db: Database | DbTransaction,
+  job: SnapshotJob,
+): Promise<JobPlan> {
+  const [bom] = await db
+    .select({ id: boms.id })
+    .from(boms)
+    .where(eq(boms.itemId, job.itemId))
+    .limit(1);
+
+  if (!bom) {
+    return { bomItems: [], operations: [], issues: [] };
+  }
+
+  const baseBomItems: BaseBomItem[] = await db
+    .select({ ...getTableColumns(bomItems), item: getTableColumns(items) })
+    .from(bomItems)
+    .leftJoin(items, eq(items.id, bomItems.itemId))
+    .where(eq(bomItems.bomId, bom.id))
+    .orderBy(asc(bomItems.level), asc(bomItems.sortOrder));
+
+  const { planBomItems, jobBomItemIdByBaseId } = await buildPlanBomItems(
+    db,
+    job,
+    bom.id,
+    baseBomItems,
+  );
+  const planOperations = await buildPlanOperations(
+    db,
+    bom.id,
+    jobBomItemIdByBaseId,
+  );
+  const planIssues = await buildPlanIssues(db, baseBomItems, planBomItems);
+
+  return {
+    bomItems: planBomItems,
+    operations: planOperations,
+    issues: planIssues,
+  };
+}
+
+/**
+ * Đóng băng kế hoạch vào các bảng `production_job_*` khi bấm "Xác nhận kế hoạch". Gọi trong
+ * transaction của `startJob`.
  */
 export async function createJobSnapshot(
   tx: DbTransaction,
   job: SnapshotJob,
 ): Promise<void> {
-  const bomId = await getBomId(tx, job.itemId);
-  if (!bomId) {
-    return;
+  const plan = await buildJobPlan(tx, job);
+
+  if (plan.bomItems.length) {
+    await tx.insert(productionJobBomItems).values(plan.bomItems);
   }
 
-  const jobBomItemIdByBaseId = await snapshotJobBomItems(tx, job, bomId);
-  await snapshotJobBomOperations(tx, job.id, bomId, jobBomItemIdByBaseId);
-  await snapshotJobIssues(tx, job);
-}
+  if (plan.operations.length) {
+    await tx.insert(productionJobOperations).values(
+      plan.operations.map((operation) => ({
+        id: operation.id,
+        productionJobId: job.id,
+        productionJobBomItemId: operation.productionJobBomItemId,
+        operationId: operation.operationId,
+        code: operation.code,
+        name: operation.name,
+        type: operation.type,
+        sortOrder: operation.sortOrder,
+        note: operation.note,
+      })),
+    );
+  }
 
-async function getBomId(
-  tx: DbTransaction,
-  itemId: string,
-): Promise<string | null> {
-  const [bom] = await tx
-    .select({ id: boms.id })
-    .from(boms)
-    .where(eq(boms.itemId, itemId))
-    .limit(1);
-
-  return bom?.id ?? null;
-}
-
-/**
- * Nhân bản cây `bom_items` (node COMPONENT/DIRECT) sang `production_job_bom_items`, nổ cấp số
- * lượng `plannedQuantity` — nguồn ghi duy nhất của cột này, mọi route đọc chỉ đọc lại. Cấp 0 (chính
- * FG, không phải một node `bom_items` — `docs/decisions/bom-header-as-level-0-anchor.md`) không
- * snapshot từ `bomItems` mà thành một node `FG` riêng đứng cuối cây, đọc thẳng từ `items`, chỉ khi
- * Cấp 0 có công đoạn. Trả map nguồn → id snapshot mới, khoá theo `bom_items.id` cho node thường và
- * theo `bomId` cho entry FG (không có `bom_items.id` nguồn) để `snapshotJobBomOperations` gắn
- * đúng công đoạn.
- */
-type BaseBomItem = typeof bomItems.$inferSelect & {
-  item: typeof items.$inferSelect | null;
-};
-
-/**
- * Tính số lượng kế hoạch (`plannedQuantity`) luỹ kế theo cây cha-con:
- * - Với node Cấp 1 (không có cha, `parentId === null`): định mức nhân trực tiếp với số lượng Job (`jobQuantity`).
- * - Với node con (`parentId !== null`): định mức nhân với số lượng kế hoạch đã nổ của node cha.
- *
- * Yêu cầu: Danh sách BOM item nguồn phải được duyệt theo thứ tự `level` tăng dần (cha trước con).
- */
-function resolvePlannedQuantity(
-  parentId: string | null,
-  quantity: number,
-  jobQuantity: number,
-  plannedQtyByBaseId: Map<string, number>,
-): number {
-  const parentPlannedQty = parentId
-    ? (plannedQtyByBaseId.get(parentId) ?? jobQuantity)
-    : jobQuantity;
-  return parentPlannedQty * quantity;
+  await snapshotJobIssues(tx, job, plan.issues);
 }
 
 /**
- * Chuyển đổi một node `baseBomItem` sang bản ghi snapshot `production_job_bom_items`:
- * Tận dụng fallback `??`: DIRECT tự lấy từ bảng `items` join sang, COMPONENT lấy từ `bom_items`.
+ * Nhân bản cây `bom_items` sang node của Job, nổ cấp `plannedQuantity` (cha trước con nhờ
+ * `orderBy level`). Cấp 0 không phải một node `bom_items` (`docs/adr/0030-bom-header-as-level-0-anchor.md`)
+ * nên thành một node `FG` riêng đứng cuối cây, chỉ khi Cấp 0 có công đoạn. Map nguồn → id node
+ * Job khoá theo `bom_items.id`, riêng node FG khoá theo `bomId` để gắn công đoạn Cấp 0.
  */
-function buildJobBomItem(
-  baseBomItem: BaseBomItem,
-  jobId: string,
-  jobBomItemId: string,
-  jobParentId: string | null,
-  plannedQuantity: number,
-): typeof productionJobBomItems.$inferInsert {
-  return {
-    id: jobBomItemId,
-    productionJobId: jobId,
-    parentId: jobParentId,
-    itemType:
-      baseBomItem.type === BomType.DIRECT
-        ? ProductionJobBomItemType.DIRECT
-        : ProductionJobBomItemType.COMPONENT,
-    code: (baseBomItem.item?.code ?? baseBomItem.code)!,
-    name: (baseBomItem.item?.name ?? baseBomItem.name)!,
-    quantity: baseBomItem.quantity,
-    plannedQuantity,
-    sortOrder: baseBomItem.sortOrder,
-    level: baseBomItem.level,
-    itemId: baseBomItem.itemId,
-    imageFileId:
-      baseBomItem.item?.imageFileId ?? baseBomItem.imageFileId ?? null,
-  };
-}
-
-/**
- * Dựng node Cấp 0 (FG - thành phẩm chính) ở cuối cây BOM khi sản phẩm có công đoạn lắp ráp Cấp 0
- * (`routing_operations.bomId`). Xem `docs/decisions/bom-header-as-level-0-anchor.md`.
- */
-async function buildFgBomItem(
-  tx: DbTransaction,
+async function buildPlanBomItems(
+  db: Database | DbTransaction,
   job: SnapshotJob,
   bomId: string,
-  sortOrder: number,
+  baseBomItems: BaseBomItem[],
 ): Promise<{
-  fgItemId: string;
-  item: typeof productionJobBomItems.$inferInsert;
-} | null> {
-  const [fgStep] = await tx
+  planBomItems: JobPlanBomItem[];
+  jobBomItemIdByBaseId: Map<string, string>;
+}> {
+  const jobBomItemIdByBaseId = new Map<string, string>();
+  const plannedQtyByBaseId = new Map<string, number>();
+  const planBomItems: JobPlanBomItem[] = [];
+
+  for (const baseBomItem of baseBomItems) {
+    const jobBomItemId = crypto.randomUUID();
+    jobBomItemIdByBaseId.set(baseBomItem.id, jobBomItemId);
+
+    const parentPlannedQty = baseBomItem.parentId
+      ? (plannedQtyByBaseId.get(baseBomItem.parentId) ?? job.quantity)
+      : job.quantity;
+    const plannedQuantity = parentPlannedQty * baseBomItem.quantity;
+    plannedQtyByBaseId.set(baseBomItem.id, plannedQuantity);
+
+    planBomItems.push({
+      id: jobBomItemId,
+      productionJobId: job.id,
+      parentId:
+        (baseBomItem.parentId &&
+          jobBomItemIdByBaseId.get(baseBomItem.parentId)) ??
+        null,
+      itemType:
+        baseBomItem.type === BomType.DIRECT
+          ? ProductionJobBomItemType.DIRECT
+          : ProductionJobBomItemType.COMPONENT,
+      code: (baseBomItem.item?.code ?? baseBomItem.code)!,
+      name: (baseBomItem.item?.name ?? baseBomItem.name)!,
+      quantity: baseBomItem.quantity,
+      plannedQuantity,
+      sortOrder: baseBomItem.sortOrder,
+      level: baseBomItem.level,
+      itemId: baseBomItem.itemId,
+      imageFileId:
+        baseBomItem.item?.imageFileId ?? baseBomItem.imageFileId ?? null,
+    });
+  }
+
+  const [fgStep] = await db
     .select({ id: routingOperations.id })
     .from(routingOperations)
     .where(eq(routingOperations.bomId, bomId))
     .limit(1);
 
-  if (!fgStep) {
-    return null;
-  }
-
-  const [fgItem] = await tx
-    .select({ ...getTableColumns(items) })
-    .from(items)
-    .where(eq(items.id, job.itemId))
-    .limit(1);
-
-  const fgItemId = crypto.randomUUID();
-
-  return {
-    fgItemId,
-    item: {
-      id: fgItemId,
+  if (fgStep) {
+    const [fgItem] = await db
+      .select()
+      .from(items)
+      .where(eq(items.id, job.itemId))
+      .limit(1);
+    const fgNodeId = crypto.randomUUID();
+    jobBomItemIdByBaseId.set(bomId, fgNodeId);
+    planBomItems.push({
+      id: fgNodeId,
       productionJobId: job.id,
       parentId: null,
       itemType: ProductionJobBomItemType.FG,
@@ -162,135 +209,58 @@ async function buildFgBomItem(
       name: fgItem.name,
       quantity: 1,
       plannedQuantity: job.quantity,
-      sortOrder,
+      sortOrder:
+        Math.max(-1, ...baseBomItems.map((node) => node.sortOrder)) + 1,
       level: 0,
       itemId: job.itemId,
       imageFileId: fgItem.imageFileId,
-    },
-  };
+    });
+  }
+
+  return { planBomItems, jobBomItemIdByBaseId };
 }
 
 /**
- * Nhân bản cây `bom_items` (node COMPONENT/DIRECT) sang `production_job_bom_items`, nổ cấp số
- * lượng `plannedQuantity` — nguồn ghi duy nhất của cột này, mọi route đọc chỉ đọc lại. Cấp 0 (chính
- * FG, không phải một node `bom_items` — `docs/decisions/bom-header-as-level-0-anchor.md`) không
- * snapshot từ `bomItems` mà thành một node `FG` riêng đứng cuối cây, đọc thẳng từ `items`, chỉ khi
- * Cấp 0 có công đoạn. Trả map nguồn → id snapshot mới, khoá theo `bom_items.id` cho node thường và
- * theo `bomId` cho entry FG (không có `bom_items.id` nguồn) để `snapshotJobBomOperations` gắn
- * đúng công đoạn.
+ * Công đoạn as-used của mọi node: `bom_operations` (node COMPONENT) và `routing_operations`
+ * (Cấp 0, `docs/adr/0032-routing-operations-table.md`). Node DIRECT không có công đoạn (chặn từ
+ * lúc ghi).
  */
-async function snapshotJobBomItems(
-  tx: DbTransaction,
-  job: SnapshotJob,
-  bomId: string,
-): Promise<Map<string, string>> {
-  const baseBomItems = await tx
-    .select({ ...getTableColumns(bomItems), item: getTableColumns(items) })
-    .from(bomItems)
-    .leftJoin(items, eq(items.id, bomItems.itemId))
-    .where(eq(bomItems.bomId, bomId))
-    .orderBy(asc(bomItems.level), asc(bomItems.sortOrder));
-
-  const jobBomItemIdByBaseId = new Map<string, string>();
-  const plannedQtyByBaseId = new Map<string, number>();
-  const itemsToCreate: (typeof productionJobBomItems.$inferInsert)[] = [];
-
-  let maxSortOrder = -1;
-
-  // Yêu cầu `baseBomItems` sắp cha-trước-con (`orderBy level`) — id cha luôn có sẵn trong map khi
-  // tới con, cho phép tính luỹ kế `plannedQuantity` trong đúng một vòng lặp.
-  for (const baseBomItem of baseBomItems) {
-    const jobBomItemId = crypto.randomUUID();
-    jobBomItemIdByBaseId.set(baseBomItem.id, jobBomItemId);
-
-    maxSortOrder = Math.max(maxSortOrder, baseBomItem.sortOrder);
-
-    const jobParentId =
-      (baseBomItem.parentId &&
-        jobBomItemIdByBaseId.get(baseBomItem.parentId)) ??
-      null;
-
-    const plannedQuantity = resolvePlannedQuantity(
-      baseBomItem.parentId,
-      baseBomItem.quantity,
-      job.quantity,
-      plannedQtyByBaseId,
-    );
-    plannedQtyByBaseId.set(baseBomItem.id, plannedQuantity);
-
-    itemsToCreate.push(
-      buildJobBomItem(
-        baseBomItem,
-        job.id,
-        jobBomItemId,
-        jobParentId,
-        plannedQuantity,
-      ),
-    );
-  }
-
-  // Node Cấp 0 (FG) — bổ sung cuối cây nếu Cấp 0 có định nghĩa công đoạn
-  const fgNode = await buildFgBomItem(tx, job, bomId, maxSortOrder + 1);
-  if (fgNode) {
-    // Không có `bom_items.id` nguồn cho Cấp 0 — dùng `bomId` làm khoá map để
-    // `snapshotJobBomOperations` gắn đúng công đoạn Cấp 0 (`routing_operations.bomId`).
-    jobBomItemIdByBaseId.set(bomId, fgNode.fgItemId);
-    itemsToCreate.push(fgNode.item);
-  }
-
-  if (itemsToCreate.length) {
-    await tx.insert(productionJobBomItems).values(itemsToCreate);
-  }
-
-  return jobBomItemIdByBaseId;
-}
-
-/**
- * Copy công đoạn as-used sang `production_job_operations` cho mọi node vừa snapshot lẫn node FG —
- * 2 nguồn đọc khác nhau vì khác bảng lưu: `bom_operations` (node COMPONENT, khoá `bomItemId`) và
- * `routing_operations` (Cấp 0, khoá `bomId` —
- * `docs/decisions/routing-operations-table.md`), gộp trước khi insert. Node DIRECT không có
- * `bom_operations` (chặn từ lúc ghi) nên tự nhiên không sinh dòng nào, không cần lọc riêng.
- */
-async function snapshotJobBomOperations(
-  tx: DbTransaction,
-  productionJobId: string,
+async function buildPlanOperations(
+  db: Database | DbTransaction,
   bomId: string,
   jobBomItemIdByBaseId: Map<string, string>,
-): Promise<void> {
+): Promise<JobPlanOperation[]> {
   const baseBomItemIds = [...jobBomItemIdByBaseId.keys()].filter(
     (id) => id !== bomId,
   );
 
-  const [nodeSteps, fgSteps] = await Promise.all([
-    baseBomItemIds.length
-      ? tx
-          .select({
-            ...getTableColumns(bomOperations),
-            operation: getTableColumns(operations),
-          })
-          .from(bomOperations)
-          .innerJoin(operations, eq(operations.id, bomOperations.operationId))
-          .where(inArray(bomOperations.bomItemId, baseBomItemIds))
-          .orderBy(asc(bomOperations.sortOrder), asc(bomOperations.createdAt))
-      : Promise.resolve([]),
-    tx
-      .select({
-        ...getTableColumns(routingOperations),
-        operation: getTableColumns(operations),
-      })
-      .from(routingOperations)
-      .innerJoin(operations, eq(operations.id, routingOperations.operationId))
-      .where(eq(routingOperations.bomId, bomId))
-      .orderBy(
-        asc(routingOperations.sortOrder),
-        asc(routingOperations.createdAt),
-      ),
-  ]);
+  const nodeSteps = baseBomItemIds.length
+    ? await db
+        .select({
+          ...getTableColumns(bomOperations),
+          operation: getTableColumns(operations),
+        })
+        .from(bomOperations)
+        .innerJoin(operations, eq(operations.id, bomOperations.operationId))
+        .where(inArray(bomOperations.bomItemId, baseBomItemIds))
+        .orderBy(asc(bomOperations.sortOrder), asc(bomOperations.createdAt))
+    : [];
+  const fgSteps = await db
+    .select({
+      ...getTableColumns(routingOperations),
+      operation: getTableColumns(operations),
+    })
+    .from(routingOperations)
+    .innerJoin(operations, eq(operations.id, routingOperations.operationId))
+    .where(eq(routingOperations.bomId, bomId))
+    .orderBy(
+      asc(routingOperations.sortOrder),
+      asc(routingOperations.createdAt),
+    );
 
-  const operationsToCreate = [
+  return [
     ...nodeSteps.map((step) => ({
-      productionJobId,
+      id: crypto.randomUUID(),
       productionJobBomItemId: jobBomItemIdByBaseId.get(step.bomItemId)!,
       operationId: step.operationId,
       code: step.operation.code,
@@ -300,7 +270,7 @@ async function snapshotJobBomOperations(
       note: step.note,
     })),
     ...fgSteps.map((step) => ({
-      productionJobId,
+      id: crypto.randomUUID(),
       productionJobBomItemId: jobBomItemIdByBaseId.get(bomId)!,
       operationId: step.operationId,
       code: step.operation.code,
@@ -310,66 +280,87 @@ async function snapshotJobBomOperations(
       note: step.note,
     })),
   ];
-
-  if (operationsToCreate.length) {
-    await tx.insert(productionJobOperations).values(operationsToCreate);
-  }
 }
 
 /**
- * Tổng hợp nhu cầu vật tư (DIRECT) đã nổ cấp từ `production_job_bom_items`, get-or-create hai
- * bảng chiều `productionJobItems`/`productionJobUnits` rồi ghi vào `production_job_issues`.
+ * Nhu cầu vật tư đã nổ cấp: Σ `plannedQuantity` các node DIRECT theo `itemId`, làm tròn 3 số lẻ
+ * như cột numeric; bỏ dòng tròn về 0 (`production_job_issues.required_qty` có CHECK `> 0`).
  */
+async function buildPlanIssues(
+  db: Database | DbTransaction,
+  baseBomItems: BaseBomItem[],
+  planBomItems: JobPlanBomItem[],
+): Promise<JobPlanIssue[]> {
+  const itemById = new Map(
+    baseBomItems.flatMap((node) =>
+      node.item ? [[node.item.id, node.item]] : [],
+    ),
+  );
+  const requiredQtyByItemId = new Map<string, number>();
+  for (const node of planBomItems) {
+    if (node.itemType !== ProductionJobBomItemType.DIRECT || !node.itemId) {
+      continue;
+    }
+    requiredQtyByItemId.set(
+      node.itemId,
+      (requiredQtyByItemId.get(node.itemId) ?? 0) +
+        Math.round(node.plannedQuantity * 1000) / 1000,
+    );
+  }
+
+  const unitIds = [
+    ...new Set(
+      [...requiredQtyByItemId.keys()].map((id) => itemById.get(id)!.unitId),
+    ),
+  ];
+  if (!unitIds.length) {
+    return [];
+  }
+  const unitRows = await db
+    .select()
+    .from(units)
+    .where(inArray(units.id, unitIds));
+  const unitById = new Map(unitRows.map((unit) => [unit.id, unit]));
+
+  return [...requiredQtyByItemId]
+    .map(([itemId, requiredQty]) => {
+      const item = itemById.get(itemId)!;
+      return {
+        item,
+        unit: unitById.get(item.unitId)!,
+        requiredQty: Math.round(requiredQty * 1000) / 1000,
+      };
+    })
+    .filter((issue) => issue.requiredQty > 0)
+    .sort((a, b) => a.item.code.localeCompare(b.item.code));
+}
+
+/** Ghi nhu cầu vật tư, get-or-create hai bảng chiều `production_job_items`/`_units`. */
 async function snapshotJobIssues(
   tx: DbTransaction,
   job: SnapshotJob,
+  issues: JobPlanIssue[],
 ): Promise<void> {
-  const directDemandRows = await tx
-    .select({
-      item: getTableColumns(items),
-      unit: getTableColumns(units),
-      requiredQty:
-        sql<number>`sum(${productionJobBomItems.plannedQuantity})`.mapWith(
-          Number,
-        ),
-    })
-    .from(productionJobBomItems)
-    .innerJoin(items, eq(productionJobBomItems.itemId, items.id))
-    .innerJoin(units, eq(items.unitId, units.id))
-    .where(
-      and(
-        eq(productionJobBomItems.productionJobId, job.id),
-        eq(productionJobBomItems.itemType, ProductionJobBomItemType.DIRECT),
-      ),
-    )
-    // Group theo khoá chính của `items`/`units` — Postgres tự suy ra mọi cột còn lại của 2 bảng
-    // này phụ thuộc hàm vào khoá chính, nên select được nguyên `getTableColumns` mà không phải
-    // liệt kê từng cột trong GROUP BY.
-    .groupBy(items.id, units.id)
-    // `plannedQuantity` không có CHECK `> 0` (định mức lẻ nhiều cấp có thể tròn về 0 ở scale 3),
-    // trong khi `production_job_issues.required_qty` có — lọc ngay ở DB thay vì đọc thừa về app.
-    .having(sql`sum(${productionJobBomItems.plannedQuantity}) > 0`);
-
-  if (!directDemandRows.length) {
+  if (!issues.length) {
     return;
   }
 
-  const jobItemIdByKey = await getOrCreateJobItemIds(tx, directDemandRows);
-  const jobUnitIdByKey = await getOrCreateJobUnitIds(tx, directDemandRows);
+  const jobItemIdByKey = await getOrCreateJobItemIds(tx, issues);
+  const jobUnitIdByKey = await getOrCreateJobUnitIds(tx, issues);
 
   await tx.insert(productionJobIssues).values(
-    directDemandRows.map((row) => ({
+    issues.map((issue) => ({
       productionJobId: job.id,
-      itemId: row.item.id,
+      itemId: issue.item.id,
       productionJobItemId: jobItemIdByKey.get(
-        dimensionKey(row.item.id, row.item.code, row.item.name),
+        dimensionKey(issue.item.id, issue.item.code, issue.item.name),
       )!,
       productionJobUnitId: jobUnitIdByKey.get(
-        dimensionKey(row.unit.id, row.unit.code, row.unit.name),
+        dimensionKey(issue.unit.id, issue.unit.code, issue.unit.name),
       )!,
-      imageFileId: row.item.imageFileId,
-      unitQty: row.requiredQty / job.quantity,
-      requiredQty: row.requiredQty,
+      imageFileId: issue.item.imageFileId,
+      unitQty: issue.requiredQty / job.quantity,
+      requiredQty: issue.requiredQty,
     })),
   );
 }
