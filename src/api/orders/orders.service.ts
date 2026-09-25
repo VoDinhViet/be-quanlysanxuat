@@ -985,10 +985,11 @@ export class OrdersService {
     }
   }
 
-  /** Chỉ xoá được đơn còn `DRAFT` — hẹp hơn `ensureOrderEditable` (PATCH cho sửa ở nhiều trạng thái
-   * hơn), vì xoá là loại bỏ hẳn khỏi các luồng đang thấy, không phải chỉnh sửa. */
+  /** Chỉ xoá được đơn chưa được duyệt (`DRAFT` hoặc `REJECTED`) — hẹp hơn `ensureOrderEditable`
+   * (PATCH cho sửa ở nhiều trạng thái hơn), vì xoá là loại bỏ hẳn khỏi các luồng đang thấy, không
+   * phải chỉnh sửa. */
   private ensureOrderDeletable(status: OrderStatus): void {
-    if (status !== OrderStatus.DRAFT) {
+    if (status !== OrderStatus.DRAFT && status !== OrderStatus.REJECTED) {
       throw new AppException(ErrorCode.E264, HttpStatus.CONFLICT);
     }
   }

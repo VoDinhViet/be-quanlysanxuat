@@ -601,8 +601,8 @@ export enum ErrorCode {
   // Xoá một dòng `item_units` không cần mã lỗi "in_use" riêng — `unitId` của dòng phiếu kho FK
   // thẳng `units`, không FK `item_units` (`docs/decisions/unit-conversion.md`).
   E263 = 'item_unit.error.duplicate_unit',
-  // `DELETE /orders/:orderId` khi status khác `DRAFT` — cùng khuôn `E258` (outbound_order), mint
-  // riêng vì khác resource.
+  // `DELETE /orders/:orderId` khi status khác `DRAFT`/`REJECTED` — cùng khuôn `E258`
+  // (outbound_order), mint riêng vì khác resource.
   E264 = 'order.error.not_deletable',
   // SL báo giá phân bổ cho một dòng ĐXMH vượt quá SL cần mua còn lại.
   E265 = 'purchase_quotation_item.error.quantity_exceeded',

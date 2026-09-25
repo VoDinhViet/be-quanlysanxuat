@@ -190,7 +190,7 @@ export class OrdersController {
   @Delete(':orderId')
   @Permissions('orders:delete')
   @ApiAuth({
-    summary: 'Delete an order — only while DRAFT',
+    summary: 'Delete an order — only while DRAFT or REJECTED',
     statusCode: HttpStatus.NO_CONTENT,
   })
   deleteOrder(@UUIDParam('orderId') orderId: string): Promise<void> {

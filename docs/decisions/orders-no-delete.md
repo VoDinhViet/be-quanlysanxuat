@@ -50,3 +50,12 @@ Permission `orders:delete` cấp lại — `PERMISSION_CODES`, seed vai trò `SA
 
 `E058 = 'order.error.code_exists'` (đã nghỉ hưu, không liên quan việc này) **vẫn không được tái
 dùng** — mã lỗi mới cho việc này là `E264 = 'order.error.not_deletable'`.
+
+## Cập nhật 2026-09-25 — thêm `REJECTED`
+
+Đơn bị từ chối (`REJECTED`) không còn luồng xử lý tiếp theo nếu người bán quyết định bỏ hẳn (góp ý
+PH-10): sửa rồi gửi duyệt lại đã có, nhưng không xoá được. `DELETE /orders/:orderId` nay cho xoá đơn
+**chưa được duyệt** — `DRAFT` hoặc `REJECTED` (`ensureOrderDeletable` trong `orders.service.ts`).
+Đơn `REJECTED` chưa từng được duyệt nên chưa sinh hồ sơ LSX (LSX sinh cùng transaction với duyệt);
+xoá vẫn là xoá mềm, các cột `rejectedBy`/`rejectedAt`/lý do nằm trong chính dòng đơn nên không mất
+thêm dấu vết nào ngoài việc ẩn đơn khỏi query. Mã lỗi `E264` giữ nguyên cho mọi trạng thái còn lại.

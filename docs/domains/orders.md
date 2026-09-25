@@ -74,7 +74,7 @@ Production.
 - Duyệt đơn đồng thời sinh sẵn hồ sơ LSX, cùng transaction với đổi trạng thái.
 - Sửa được ở mọi trạng thái trừ `COMPLETED`/`CANCELLED` (`E065`) và `PENDING_CONFIRMATION` (`E090`)
   — riêng đổi `items` bị chặn thêm (`E080`) nếu đơn đã có hồ sơ LSX (kể cả PENDING hay APPROVED). Huỷ dùng `PATCH status = CANCELLED`;
-  xoá (`DELETE`, mềm) chỉ khi còn `DRAFT` (`E264` nếu khác) — `docs/decisions/orders-no-delete.md`.
+  xoá (`DELETE`, mềm) chỉ khi đơn chưa được duyệt — `DRAFT` hoặc `REJECTED` (`E264` nếu khác) — `docs/decisions/orders-no-delete.md`.
 - Huỷ đơn cũng chặn (`E236`) nếu LSX đã `APPROVED` — cùng guard hình dạng với `E080`.
 - `items` trên `PATCH` là replace-all. `code` (`SOxxxx`) tự sinh, bất biến.
 - Mọi route `/orders*` cần bearer token, kể cả đọc.
