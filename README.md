@@ -36,7 +36,7 @@ pnpm db:seed:<name> # xem package.json cho danh sách đầy đủ
 ## Docker
 
 Container hoá đúng app (không kèm Postgres/Redis — app nối ra DB/Redis remote sẵn có qua biến môi
-trường, xem `docs/decisions/docker-app-only.md`).
+trường).
 
 ```bash
 cp .env.example .env.production   # nếu chưa có, điền đủ giá trị thật trước (DATABASE_URL/REDIS_URL trỏ server thật, không phải localhost)
@@ -50,7 +50,7 @@ Kiểm tra: `GET http://localhost:8003/health` (kiểm tra cả DB lẫn Redis).
 
 ```bash
 pnpm build / lint / format
-pnpm test / test:e2e / test:cov   # KHÔNG dùng — xem docs/decisions/testing-paused.md
+pnpm test / test:e2e / test:cov   # KHÔNG dùng — test đang tạm dừng
 ```
 
 ## Cấu trúc module
@@ -63,14 +63,5 @@ src/api/<module>/
   dto/
 ```
 
-24 module hiện có, xem bảng đầy đủ trong `CLAUDE.md`.
+Danh sách module: xem `src/api/` và Swagger `/api-docs` (reference route/DTO tự sinh từ code).
 
-## Tài liệu cho agent/dev
-
-- `CLAUDE.md` — quy ước, danh sách module, quyết định đang hiệu lực.
-- `docs/architecture.md` — sơ đồ ER + thứ tự ghi xuyên module.
-- `docs/domains/<domain>.md` — khái niệm, vòng đời, business rule, bất biến của 6 vùng nghiệp vụ.
-- `docs/workflows/<flow>.md` — trình tự chạy của từng luồng nghiệp vụ đầu-cuối.
-- `docs/decisions/<slug>.md` — quyết định đảo chiều và ranh giới phạm vi ("vì sao không có X").
-- Swagger `/api-docs` — reference route/DTO đầy đủ, tự sinh từ code.
-- `.claude/rules/`, `.claude/skills/` — convention chi tiết + quy trình dùng cho Claude Code.

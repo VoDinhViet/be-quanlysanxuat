@@ -8,7 +8,6 @@ uploads
 !.env.example
 docs
 .claude
-.gitnexus
 .codegraph
 coverage
 test
