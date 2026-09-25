@@ -82,9 +82,9 @@ PENDING ──start──> IN_PROGRESS (POST .../reports mở khoá ngay)
 `start`: **transaction** — khoá Job (`SELECT ... FOR UPDATE`) → kiểm trạng thái `PENDING` (`E087`)
 → `createJobSnapshot` (`production-job-snapshot.query.ts`) dựng snapshot **lần đầu và duy nhất**:
 nhân bản cây BOM sang `production_job_bom_items`, copy routing as-used sang
-`production_job_operations`, gộp nhu cầu CONSUMABLE sang `production_job_issues` — từ đúng BOM/công
+`production_job_operations`, gộp nhu cầu DIRECT sang `production_job_issues` — từ đúng BOM/công
 đoạn của sản phẩm tại thời điểm bấm `start` → đọc `production_job_issues` vừa ghi, gọi
-`InventoryService.getConsumableStockLevels` (gộp mọi kho, cùng `tx`) để so `requiredQty` với
+`InventoryService.getDirectStockLevels` (gộp mọi kho, cùng `tx`) để so `requiredQty` với
 `onHand`, giữ lại phần thiếu (`> 0`) của từng vật tư → `UPDATE` (`status`, `startedBy`,
 `startedAt`) → ghi 1 dòng `production_job_logs STARTED`; nếu có ít nhất một vật tư thiếu, gọi
 `PurchaseRequestsService.createShortageRequest` ghi thêm một phiếu `purchase_requests` (`status`
@@ -207,7 +207,7 @@ production_jobs` (điều kiện, chỉ khi công đoạn Cấp 0 vừa xong) ph
 
 `start` **có transaction** bao trọn từ đầu: khoá Job (`SELECT ... FOR UPDATE`, chặn 2 lượt `start`
 song song) → `createJobSnapshot` (`INSERT` cả ba bảng snapshot) → đọc `production_job_issues` vừa
-ghi + `getConsumableStockLevels` (cùng `tx`) → `UPDATE production_jobs` + (nếu có thiếu)
+ghi + `getDirectStockLevels` (cùng `tx`) → `UPDATE production_jobs` + (nếu có thiếu)
 `INSERT purchase_requests` + `INSERT purchase_request_items`, bao đúng bằng `db.transaction`
 (`.claude/rules/transactions.md`) — hoặc snapshot + Job chuyển trạng thái + phiếu đề xuất cùng vào,
 hoặc không gì cả.
@@ -248,7 +248,7 @@ Phần lớn `production` thuần — `bom`/`operations` chỉ đọc lại snap
 `PENDING`); `POST .../reports` cũng chỉ sửa dữ liệu snapshot của chính Job. `start` chạm hai domain
 khác trong cùng transaction: đọc `product-structure` (gián tiếp qua `createJobSnapshot` — cây
 `bom_items`/`bom_operations` sống của sản phẩm, xem `docs/decisions/job-snapshot-at-start.md`), đọc
-`inventory` (`InventoryService.getConsumableStockLevels`, chỉ đọc `inventory_balances`, không ghi)
+`inventory` (`InventoryService.getDirectStockLevels`, chỉ đọc `inventory_balances`, không ghi)
 và **ghi** `purchase-requests` (`PurchaseRequestsService.createShortageRequest`).
 
 Bước trước: `docs/workflows/production-order-approval.md`. Bước sau (Job rời `WAITING_QC`):
@@ -260,4 +260,4 @@ Code: `ProductionJobsService.startJob`/`getProductionJobForUpdate`/`collectJobIs
 `production-jobs/production-job-snapshot.query.ts` (`createJobSnapshot`);
 `ProductionExecutionService.getOperations`/`getJobs`/`createJobOperationReport`;
 `UsersService.getUserDepartmentId`; `PurchaseRequestsService.createShortageRequest`;
-`InventoryService.getConsumableStockLevels`.
+`InventoryService.getDirectStockLevels`.

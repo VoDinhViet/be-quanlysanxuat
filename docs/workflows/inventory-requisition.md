@@ -16,7 +16,7 @@ qua `POST /inventory-issues/:issueId/post` (`inventory:update`) — WAREHOUSE **
 
 ## Precondition
 
-- Mọi `itemId` phải tồn tại (`E007`), là `type = CONSUMABLE`, chưa xoá mềm (`E229`).
+- Mọi `itemId` phải tồn tại (`E007`), là `type = DIRECT`, chưa xoá mềm (`E229`).
 - `type = PRODUCTION` bắt buộc `productionJobId` (`E233`) — dòng lấy từ popup chọn vật tư dùng
   chung (`GET /inventory-requisitions/lines`, kèm `productionJobId` để khoanh vùng theo định mức
   BOM của Job). `type = OTHER` không bắt buộc, dùng cột `reason` thay cho liên kết Job (cùng popup,
@@ -104,7 +104,7 @@ từ `APPROVED` ghi thêm 1 `UPDATE` vào `inventory_issues` cùng transaction.
 | `E225` | `approve`/`reject` khi không còn `PENDING_APPROVAL`                                                   |
 | `E227` | `approve` khi phiếu 0 dòng                                                                            |
 | `E228` | Trùng `itemId` trong cùng payload                                                                     |
-| `E229` | Có dòng không phải CONSUMABLE                                                                                 |
+| `E229` | Có dòng không phải DIRECT                                                                                 |
 | `E230` | `type = PRODUCTION`: có dòng ngoài định mức BOM của Job                                               |
 | `E231` | SL lãnh > Có thể lãnh (Tồn − Đã giữ)                                                                  |
 | `E232` | `type = PRODUCTION`: SL lãnh > SL BOM còn lại (requiredQty − Đã lãnh)                                 |

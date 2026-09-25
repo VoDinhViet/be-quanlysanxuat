@@ -48,7 +48,7 @@ export const inventoryRequisitionStatusEnum = pgEnum(
 );
 
 /**
- * Phiếu lãnh vật tư — chứng từ duy nhất đưa CONSUMABLE ra khỏi kho cho sản xuất
+ * Phiếu lãnh vật tư — chứng từ duy nhất đưa DIRECT ra khỏi kho cho sản xuất
  * (`docs/domains/inventory.md`, mục "Phiếu lãnh vật tư"). `status` cố ý không dùng chung
  * `inventory_document_status` với `inventory_receipts`/`inventory_issues`/`supplier_returns` —
  * ba bảng đó sẽ nhận 3 giá trị duyệt chúng không bao giờ dùng.

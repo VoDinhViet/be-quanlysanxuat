@@ -20,19 +20,16 @@ import { itemFiles } from './item-files';
 import { itemUnits } from './item-units';
 
 /**
- * FG (thành phẩm, gốc cây BOM của chính nó), CONSUMABLE (vật tư, chỉ xuất hiện như node lá —
+ * FG (thành phẩm, gốc cây BOM của chính nó), DIRECT (vật tư, chỉ xuất hiện như node lá —
  * không có BOM/công đoạn riêng). Node cấu trúc con không phải một item — sống trên
  * `bom_items.type = COMPONENT` (`docs/decisions/wip-removal.md`). Xem `docs/decisions/items-merge.md`.
  */
 export enum ItemType {
   FG = 'FG',
-  CONSUMABLE = 'CONSUMABLE',
+  DIRECT = 'DIRECT',
 }
 
-export const itemTypeEnum = pgEnum('item_type', [
-  ItemType.FG,
-  ItemType.CONSUMABLE,
-]);
+export const itemTypeEnum = pgEnum('item_type', [ItemType.FG, ItemType.DIRECT]);
 
 export enum ItemStatus {
   ACTIVE = 'ACTIVE',
@@ -45,11 +42,11 @@ export const itemStatusEnum = pgEnum('item_status', [
 ]);
 
 /**
- * Danh mục hàng hoá dùng chung cho cả FG/CONSUMABLE — gộp `products`+`materials` cũ, một bảng, một
+ * Danh mục hàng hoá dùng chung cho cả FG/DIRECT — gộp `products`+`materials` cũ, một bảng, một
  * module `/items` (`docs/decisions/items-merge.md`).
  *
  * Rules:
- * - `supplierId`/`minStock`/8 cột mở rộng bên dưới chỉ có ý nghĩa với CONSUMABLE — luôn
+ * - `supplierId`/`minStock`/8 cột mở rộng bên dưới chỉ có ý nghĩa với DIRECT — luôn
  *   nullable/mặc định trên FG, không tách bảng phụ.
  * - Không còn cột nhóm hàng hoá (`productGroupId`/`materialGroupId` cũ) — `type` là thứ duy nhất
  *   phân loại.
@@ -87,7 +84,7 @@ export const items = pgTable(
       .notNull()
       .references(() => units.id, { onDelete: 'restrict' }),
 
-    // Chỉ CONSUMABLE dùng — nullable/mặc định trên FG.
+    // Chỉ DIRECT dùng — nullable/mặc định trên FG.
     supplierId: uuid('supplier_id').references(() => suppliers.id, {
       onDelete: 'set null',
     }),
@@ -98,7 +95,7 @@ export const items = pgTable(
     })
       .notNull()
       .default(0),
-    consumableGrade: varchar('consumable_grade', { length: 255 }),
+    directGrade: varchar('direct_grade', { length: 255 }),
     technicalStandard: varchar('technical_standard', { length: 255 }),
     dimensions: varchar('dimensions', { length: 255 }),
     specificWeight: numeric('specific_weight', {

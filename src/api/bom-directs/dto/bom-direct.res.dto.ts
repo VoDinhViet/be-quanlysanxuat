@@ -11,13 +11,13 @@ import {
 } from '../../../decorators/field.decorators';
 
 /**
- * Một dòng CONSUMABLE gắn trực tiếp vào một node cha (`GET
- * items/:itemId/bom/items/:bomItemId/consumables`) — cùng field CONSUMABLE mà
+ * Một dòng DIRECT gắn trực tiếp vào một node cha (`GET
+ * items/:itemId/bom/items/:bomItemId/directs`) — cùng field DIRECT mà
  * `BomItemResDto` (cây đầy đủ) đã có, trừ những field chỉ có ý nghĩa ở ngữ cảnh cây
  * (level, sortOrder, parentId, type, operations).
  */
 @Exclude()
-export class BomConsumableResDto {
+export class BomDirectResDto {
   @Expose()
   @UUIDField()
   id!: string;

@@ -5,6 +5,7 @@ import { UnitRefResDto } from '../../units/dto/unit-ref.res.dto';
 import { BomOperationResDto } from '../../bom-operations/dto/bom-operation.res.dto';
 import { BomType } from '../../../database/schemas';
 import {
+  BooleanField,
   ClassField,
   ClassFieldOptional,
   EnumField,
@@ -31,7 +32,7 @@ export class BomItemResDto {
   @Expose()
   @EnumField(() => BomType, {
     description:
-      'COMPONENT (node cấu trúc con, không trỏ item) hoặc CONSUMABLE (lá, trỏ vật tư) — Cấp 0 ' +
+      'COMPONENT (node cấu trúc con, không trỏ item) hoặc DIRECT (lá, trỏ vật tư) — Cấp 0 ' +
       '(chính sản phẩm) không nằm trong mảng này, đọc qua GET /items/:itemId',
   })
   type!: BomType;
@@ -39,29 +40,28 @@ export class BomItemResDto {
   @Expose()
   @UUIDFieldOptional({
     nullable: true,
-    description: 'Id vật tư liên kết (CONSUMABLE); null với node COMPONENT',
+    description: 'Id vật tư liên kết (DIRECT); null với node COMPONENT',
   })
   itemId!: string | null;
 
   @Expose()
   @StringField({
     description:
-      'Mã bản vẽ — COMPONENT: nhập tay trên node; CONSUMABLE: đọc từ item liên kết',
+      'Mã bản vẽ — COMPONENT: nhập tay trên node; DIRECT: đọc từ item liên kết',
   })
   code!: string;
 
   @Expose()
   @StringFieldOptional({
     nullable: true,
-    description:
-      'Phiên bản item liên kết (CONSUMABLE); null với node COMPONENT',
+    description: 'Phiên bản item liên kết (DIRECT); null với node COMPONENT',
   })
   revision!: string | null;
 
   @Expose()
   @StringField({
     description:
-      'Tên bản vẽ — COMPONENT: nhập tay trên node; CONSUMABLE: đọc từ item liên kết',
+      'Tên bản vẽ — COMPONENT: nhập tay trên node; DIRECT: đọc từ item liên kết',
   })
   name!: string;
 
@@ -69,7 +69,7 @@ export class BomItemResDto {
   @ClassFieldOptional(() => FileResDto, {
     nullable: true,
     description:
-      'CONSUMABLE: ảnh item liên kết; COMPONENT: ảnh riêng gán trên node (null nếu chưa gán)',
+      'DIRECT: ảnh item liên kết; COMPONENT: ảnh riêng gán trên node (null nếu chưa gán)',
   })
   image!: FileResDto | null;
 
@@ -77,13 +77,13 @@ export class BomItemResDto {
   @ClassFieldOptional(() => UnitRefResDto, {
     nullable: true,
     description:
-      'CONSUMABLE: ĐVT của item liên kết; COMPONENT: ĐVT riêng gán trên node (null nếu chưa gán)',
+      'DIRECT: ĐVT của item liên kết; COMPONENT: ĐVT riêng gán trên node (null nếu chưa gán)',
   })
   unit!: UnitRefResDto | null;
 
   @Expose()
   @NumberField({
-    description: 'Số lượng — nguyên nếu COMPONENT, có thể lẻ nếu CONSUMABLE',
+    description: 'Số lượng — nguyên nếu COMPONENT, có thể lẻ nếu DIRECT',
   })
   quantity!: number;
 
@@ -119,7 +119,13 @@ export class BomItemResDto {
   @ClassField(() => BomOperationResDto, {
     each: true,
     description:
-      'Chuỗi công đoạn gắn trên node này, đã sắp theo sortOrder — CONSUMABLE luôn rỗng (không gắn được công đoạn)',
+      'Chuỗi công đoạn gắn trên node này, đã sắp theo sortOrder — DIRECT luôn rỗng (không gắn được công đoạn)',
   })
   operations!: BomOperationResDto[];
+  @Expose()
+  @BooleanField({
+    description:
+      'true nếu là vật tư ngoài cấu trúc — đứng ngay sau node chủ (`parentId`, null = Cấp 0) và không chiếm số thứ tự anh em',
+  })
+  isOffStructure!: boolean;
 }

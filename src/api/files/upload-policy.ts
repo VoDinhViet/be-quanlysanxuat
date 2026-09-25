@@ -23,8 +23,8 @@ type UploadPolicy = {
  */
 export const uploadPolicies: Record<UploadType, UploadPolicy> = {
   [UploadType.USER_AVATAR]: { kind: FileKind.IMAGE },
-  [UploadType.CONSUMABLE_IMAGE]: { kind: FileKind.IMAGE },
-  [UploadType.CONSUMABLE_DOCUMENT]: { kind: FileKind.DOCUMENT },
+  [UploadType.DIRECT_IMAGE]: { kind: FileKind.IMAGE },
+  [UploadType.DIRECT_DOCUMENT]: { kind: FileKind.DOCUMENT },
   [UploadType.PRODUCT_IMAGE]: { kind: FileKind.IMAGE },
   [UploadType.PRODUCT_DOCUMENT]: { kind: FileKind.DOCUMENT },
   [UploadType.SUPPLIER_LOGO]: { kind: FileKind.IMAGE },

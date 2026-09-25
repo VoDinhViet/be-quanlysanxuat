@@ -39,7 +39,7 @@ export class ItemResDto {
 
   @Expose()
   @EnumField(() => ItemType, {
-    description: 'FG (thành phẩm) / CONSUMABLE (vật tư)',
+    description: 'FG (thành phẩm) / DIRECT (vật tư)',
   })
   type!: ItemType;
 
@@ -66,19 +66,19 @@ export class ItemResDto {
   @Expose()
   @ClassFieldOptional(() => SupplierRefResDto, {
     nullable: true,
-    description: 'NCC chính — chỉ có ý nghĩa với CONSUMABLE',
+    description: 'NCC chính — chỉ có ý nghĩa với DIRECT',
   })
   supplier!: SupplierRefResDto | null;
 
   @Expose()
   @NumberField({
-    description: 'Định mức tồn tối thiểu — chỉ có ý nghĩa với CONSUMABLE',
+    description: 'Định mức tồn tối thiểu — chỉ có ý nghĩa với DIRECT',
   })
   minStock!: number;
 
   @Expose()
   @StringFieldOptional({ nullable: true })
-  consumableGrade!: string | null;
+  directGrade!: string | null;
 
   @Expose()
   @StringFieldOptional({ nullable: true })

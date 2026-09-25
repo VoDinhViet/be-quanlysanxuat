@@ -264,8 +264,8 @@ export class PaymentRequestsService {
 
       return {
         id: item.id,
-        consumableCode: item.purchaseRequestItem.item.code,
-        consumableName: item.purchaseRequestItem.item.name,
+        directCode: item.purchaseRequestItem.item.code,
+        directName: item.purchaseRequestItem.item.name,
         unit: item.purchaseRequestItem.item.unit.name,
         orderedQty: item.quantity,
         receivedQty: receivedByItemId.get(item.id) ?? 0,

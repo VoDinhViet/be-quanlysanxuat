@@ -5,7 +5,7 @@ import {
 } from '../../../decorators/field.decorators';
 
 /** Không phân trang — luôn trả cả danh sách cho dropdown, giới hạn 100. Chỉ trả item `ACTIVE`;
- * `type` để tách use case theo FG (đơn hàng) / CONSUMABLE (vật tư node BOM). */
+ * `type` để tách use case theo FG (đơn hàng) / DIRECT (vật tư node BOM). */
 export class GetItemOptionsReqDto {
   @StringFieldOptional({
     description: 'Search on code or name (accent-insensitive)',

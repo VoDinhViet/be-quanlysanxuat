@@ -16,7 +16,7 @@ import { users } from '../identity-access/users';
 import { purchaseRequests } from './purchase-requests';
 
 /**
- * Một dòng vật tư của đề xuất mua hàng — luôn `type = CONSUMABLE`, sửa/xoá qua
+ * Một dòng vật tư của đề xuất mua hàng — luôn `type = DIRECT`, sửa/xoá qua
  * `PATCH`/`DELETE /purchase-requests/:purchaseRequestId/items/:id`, xem
  * `docs/domains/purchase-requests.md`. Ba cột `cancelled*` chưa có nơi nào ghi; chỉ
  * `PurchaseQuotationsService.validateAllocations` đọc `cancelled_at`.

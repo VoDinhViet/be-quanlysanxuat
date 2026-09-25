@@ -56,7 +56,7 @@ export class InventoryRequisitionsController {
       'Popup chọn vật tư — dùng chung "+ Lãnh từ LSX"/"+ Lãnh thủ công", kèm SL BOM/Đã lãnh/Tồn/' +
       'Đã giữ/Có thể lãnh/Khả dụng/SL lãnh gợi ý. `productionJobId` optional: có thì khoanh vùng ' +
       'theo định mức BOM của Job (SL BOM/Đã lãnh/SL lãnh gợi ý mới khác null), không có thì mọi ' +
-      'CONSUMABLE tại kho',
+      'DIRECT tại kho',
     isPaginated: true,
   })
   getRequisitionLines(

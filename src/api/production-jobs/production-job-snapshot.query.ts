@@ -58,7 +58,7 @@ async function getBomId(
 }
 
 /**
- * Nhân bản cây `bom_items` (node COMPONENT/CONSUMABLE) sang `production_job_bom_items`, nổ cấp số
+ * Nhân bản cây `bom_items` (node COMPONENT/DIRECT) sang `production_job_bom_items`, nổ cấp số
  * lượng `plannedQuantity` — nguồn ghi duy nhất của cột này, mọi route đọc chỉ đọc lại. Cấp 0 (chính
  * FG, không phải một node `bom_items` — `docs/decisions/bom-header-as-level-0-anchor.md`) không
  * snapshot từ `bomItems` mà thành một node `FG` riêng đứng cuối cây, đọc thẳng từ `items`, chỉ khi
@@ -91,7 +91,7 @@ function resolvePlannedQuantity(
 
 /**
  * Chuyển đổi một node `baseBomItem` sang bản ghi snapshot `production_job_bom_items`:
- * Tận dụng fallback `??`: CONSUMABLE tự lấy từ bảng `items` join sang, COMPONENT lấy từ `bom_items`.
+ * Tận dụng fallback `??`: DIRECT tự lấy từ bảng `items` join sang, COMPONENT lấy từ `bom_items`.
  */
 function buildJobBomItem(
   baseBomItem: BaseBomItem,
@@ -105,8 +105,8 @@ function buildJobBomItem(
     productionJobId: jobId,
     parentId: jobParentId,
     itemType:
-      baseBomItem.type === BomType.CONSUMABLE
-        ? ProductionJobBomItemType.CONSUMABLE
+      baseBomItem.type === BomType.DIRECT
+        ? ProductionJobBomItemType.DIRECT
         : ProductionJobBomItemType.COMPONENT,
     code: (baseBomItem.item?.code ?? baseBomItem.code)!,
     name: (baseBomItem.item?.name ?? baseBomItem.name)!,
@@ -171,7 +171,7 @@ async function buildFgBomItem(
 }
 
 /**
- * Nhân bản cây `bom_items` (node COMPONENT/CONSUMABLE) sang `production_job_bom_items`, nổ cấp số
+ * Nhân bản cây `bom_items` (node COMPONENT/DIRECT) sang `production_job_bom_items`, nổ cấp số
  * lượng `plannedQuantity` — nguồn ghi duy nhất của cột này, mọi route đọc chỉ đọc lại. Cấp 0 (chính
  * FG, không phải một node `bom_items` — `docs/decisions/bom-header-as-level-0-anchor.md`) không
  * snapshot từ `bomItems` mà thành một node `FG` riêng đứng cuối cây, đọc thẳng từ `items`, chỉ khi
@@ -249,7 +249,7 @@ async function snapshotJobBomItems(
  * Copy công đoạn as-used sang `production_job_operations` cho mọi node vừa snapshot lẫn node FG —
  * 2 nguồn đọc khác nhau vì khác bảng lưu: `bom_operations` (node COMPONENT, khoá `bomItemId`) và
  * `routing_operations` (Cấp 0, khoá `bomId` —
- * `docs/decisions/routing-operations-table.md`), gộp trước khi insert. Node CONSUMABLE không có
+ * `docs/decisions/routing-operations-table.md`), gộp trước khi insert. Node DIRECT không có
  * `bom_operations` (chặn từ lúc ghi) nên tự nhiên không sinh dòng nào, không cần lọc riêng.
  */
 async function snapshotJobBomOperations(
@@ -317,14 +317,14 @@ async function snapshotJobBomOperations(
 }
 
 /**
- * Tổng hợp nhu cầu vật tư (CONSUMABLE) đã nổ cấp từ `production_job_bom_items`, get-or-create hai
+ * Tổng hợp nhu cầu vật tư (DIRECT) đã nổ cấp từ `production_job_bom_items`, get-or-create hai
  * bảng chiều `productionJobItems`/`productionJobUnits` rồi ghi vào `production_job_issues`.
  */
 async function snapshotJobIssues(
   tx: DbTransaction,
   job: SnapshotJob,
 ): Promise<void> {
-  const consumableDemandRows = await tx
+  const directDemandRows = await tx
     .select({
       item: getTableColumns(items),
       unit: getTableColumns(units),
@@ -339,7 +339,7 @@ async function snapshotJobIssues(
     .where(
       and(
         eq(productionJobBomItems.productionJobId, job.id),
-        eq(productionJobBomItems.itemType, ProductionJobBomItemType.CONSUMABLE),
+        eq(productionJobBomItems.itemType, ProductionJobBomItemType.DIRECT),
       ),
     )
     // Group theo khoá chính của `items`/`units` — Postgres tự suy ra mọi cột còn lại của 2 bảng
@@ -350,15 +350,15 @@ async function snapshotJobIssues(
     // trong khi `production_job_issues.required_qty` có — lọc ngay ở DB thay vì đọc thừa về app.
     .having(sql`sum(${productionJobBomItems.plannedQuantity}) > 0`);
 
-  if (!consumableDemandRows.length) {
+  if (!directDemandRows.length) {
     return;
   }
 
-  const jobItemIdByKey = await getOrCreateJobItemIds(tx, consumableDemandRows);
-  const jobUnitIdByKey = await getOrCreateJobUnitIds(tx, consumableDemandRows);
+  const jobItemIdByKey = await getOrCreateJobItemIds(tx, directDemandRows);
+  const jobUnitIdByKey = await getOrCreateJobUnitIds(tx, directDemandRows);
 
   await tx.insert(productionJobIssues).values(
-    consumableDemandRows.map((row) => ({
+    directDemandRows.map((row) => ({
       productionJobId: job.id,
       itemId: row.item.id,
       productionJobItemId: jobItemIdByKey.get(
@@ -377,17 +377,17 @@ async function snapshotJobIssues(
 /**
  * Get-or-create `production_job_items`, trả map `dimensionKey → id`. `ON CONFLICT DO NOTHING`
  * không `RETURNING` dòng đã có, nên luôn `SELECT` lại theo `itemId` (cột dẫn đầu của unique) rồi
- * ghép bộ ba trong bộ nhớ — không cần join lại `items` sống, `consumableDemandRows` đã mang đúng
+ * ghép bộ ba trong bộ nhớ — không cần join lại `items` sống, `directDemandRows` đã mang đúng
  * code/name tại thời điểm đọc trong cùng `tx`. `SELECT` lại thấy đủ dòng phụ thuộc READ COMMITTED
  * (mặc định Postgres, `.claude/rules/transactions.md` cấm đổi isolation).
  */
 async function getOrCreateJobItemIds(
   tx: DbTransaction,
-  consumableDemandRows: { item: Pick<ItemSelect, 'id' | 'code' | 'name'> }[],
+  directDemandRows: { item: Pick<ItemSelect, 'id' | 'code' | 'name'> }[],
 ): Promise<Map<string, string>> {
   const rowsToInsert = [
     ...new Map(
-      consumableDemandRows.map((row) => [
+      directDemandRows.map((row) => [
         dimensionKey(row.item.id, row.item.code, row.item.name),
         { itemId: row.item.id, code: row.item.code, name: row.item.name },
       ]),
@@ -432,11 +432,11 @@ async function getOrCreateJobItemIds(
  * đọc lại, cùng ràng buộc READ COMMITTED. */
 async function getOrCreateJobUnitIds(
   tx: DbTransaction,
-  consumableDemandRows: { unit: Pick<UnitSelect, 'id' | 'code' | 'name'> }[],
+  directDemandRows: { unit: Pick<UnitSelect, 'id' | 'code' | 'name'> }[],
 ): Promise<Map<string, string>> {
   const rowsToInsert = [
     ...new Map(
-      consumableDemandRows.map((row) => [
+      directDemandRows.map((row) => [
         dimensionKey(row.unit.id, row.unit.code, row.unit.name),
         { unitId: row.unit.id, code: row.unit.code, name: row.unit.name },
       ]),

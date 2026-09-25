@@ -6,7 +6,7 @@ import {
   UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
 
-export class GetInventoryConsumablesReqDto extends PageOptionsDto {
+export class GetInventoryDirectsReqDto extends PageOptionsDto {
   @UUIDFieldOptional({ description: 'Filter theo NCC' })
   readonly supplierId?: string;
 

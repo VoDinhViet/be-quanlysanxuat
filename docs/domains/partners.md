@@ -3,7 +3,7 @@
 ## Purpose
 
 Dữ liệu nền mà các domain nghiệp vụ trỏ FK vào: khách hàng, nhà cung cấp, và các danh mục phân loại
-nhỏ. Vật tư (CONSUMABLE) không sống ở đây — đã gộp vào `items`, xem `docs/domains/product-structure.md`.
+nhỏ. Vật tư (DIRECT) không sống ở đây — đã gộp vào `items`, xem `docs/domains/product-structure.md`.
 Giá trị của domain này nằm ở chỗ nó bị ai tham chiếu và điều gì xảy ra khi nó thay đổi.
 
 ## Core concepts
@@ -28,7 +28,7 @@ thật, không bảng giá theo thời gian) ở `docs/decisions/purchasing-scop
 | Entity                                               | Vai trò                                | Ai tham chiếu                                                                                                                                                                       |
 | ---------------------------------------------------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `clients` (+ `client_contacts`)                      | Khách hàng và danh bạ liên hệ          | `orders.clientId`, `outbound_orders.clientId`                                                                                                                                       |
-| `suppliers` (+ payment info, representatives, files) | Nhà cung cấp                           | `items.supplierId` (chính, CONSUMABLE); `purchase_orders`/`purchase_quotation_item_suppliers`/`quality_inspections`/`outsourcing_orders`/`supplier_returns`/`inventory_receipts.supplierId` |
+| `suppliers` (+ payment info, representatives, files) | Nhà cung cấp                           | `items.supplierId` (chính, DIRECT); `purchase_orders`/`purchase_quotation_item_suppliers`/`quality_inspections`/`outsourcing_orders`/`supplier_returns`/`inventory_receipts.supplierId` |
 | Danh mục nhỏ (5 chỉ-đọc + `operations`)              | Phân loại + cơ cấu tổ chức + công đoạn | `clients`/`suppliers`/`items`/`users`/routing/BOM                                                                                                                                   |
 
 `supplier_payment_info` là 1-1, merge từng phần khi update; `supplier_representatives`/
@@ -71,7 +71,7 @@ Không phải invariant dù dễ tưởng:
 
 - **→ Orders**: `clientId`; `paymentTermEnum` dùng chung.
 - **→ Purchasing**: `suppliers` là bên NCC cho RFQ/PO/gia công ngoài — xem Entities.
-- **→ Product Structure**: `suppliers` được `items` (CONSUMABLE) tham chiếu làm NCC chính; `operations` là
+- **→ Product Structure**: `suppliers` được `items` (DIRECT) tham chiếu làm NCC chính; `operations` là
   danh mục cho routing/BOM.
 - **→ Inventory**: `suppliers` dùng lọc màn tồn kho vật tư, gắn trên phiếu nhập/OS-OUT/OS-IN.
 - **→ Identity**: `departments`/`positions` là cơ cấu tổ chức cho hồ sơ nhân sự.
@@ -86,7 +86,7 @@ Không phải invariant dù dễ tưởng:
 5. Dựa vào id của một dòng `client_contacts` như thể ổn định — nó đổi mỗi lần khách hàng được sửa.
 6. Tưởng `orders` snapshot liên hệ khách hàng — không, chỉ giữ `clientId`.
 7. Tưởng `supplier_payment_info` là replace-all như các bảng con khác — nó 1-1, merge từng phần.
-8. Đi tìm vật tư (`materials`) ở domain này — đã chuyển sang `items` (`type = CONSUMABLE`).
+8. Đi tìm vật tư (`materials`) ở domain này — đã chuyển sang `items` (`type = DIRECT`).
 
 ## Related docs
 

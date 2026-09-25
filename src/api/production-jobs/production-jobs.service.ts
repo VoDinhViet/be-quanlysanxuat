@@ -618,7 +618,7 @@ export class ProductionJobsService {
       return [];
     }
 
-    const onHandByItem = await this.inventoryService.getConsumableStockLevels(
+    const onHandByItem = await this.inventoryService.getDirectStockLevels(
       tx,
       itemIds,
     );

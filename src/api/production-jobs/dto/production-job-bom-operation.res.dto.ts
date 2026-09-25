@@ -110,7 +110,7 @@ export class ProductionJobBomItemResDto {
   @Expose()
   @EnumField(() => ProductionJobBomItemType, {
     description:
-      'FG = node Cấp 0 (lắp ráp/đóng gói thành phẩm, luôn đứng cuối); COMPONENT/CONSUMABLE = node cây BOM',
+      'FG = node Cấp 0 (lắp ráp/đóng gói thành phẩm, luôn đứng cuối); COMPONENT/DIRECT = node cây BOM',
   })
   itemType!: ProductionJobBomItemType;
 

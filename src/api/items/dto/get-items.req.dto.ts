@@ -17,7 +17,7 @@ export class GetItemsReqDto extends PageOptionsDto {
   @UUIDFieldOptional({ description: 'Filter by client id' })
   readonly clientId?: string;
 
-  @UUIDFieldOptional({ description: 'Filter by supplier id (CONSUMABLE)' })
+  @UUIDFieldOptional({ description: 'Filter by supplier id (DIRECT)' })
   readonly supplierId?: string;
 
   @EnumFieldOptional(() => ItemStatus)

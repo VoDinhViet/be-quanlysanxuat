@@ -25,7 +25,7 @@ export class GetQuotationsReqDto extends PageOptionsDto {
   @StringFieldOptional({
     description: 'Tìm theo tên hoặc mã vật tư trong dòng báo giá',
   })
-  readonly consumableKeyword?: string;
+  readonly directKeyword?: string;
 
   @DateFieldOptional({ description: 'Filter: createdAt >= startDate' })
   readonly startDate?: Date;

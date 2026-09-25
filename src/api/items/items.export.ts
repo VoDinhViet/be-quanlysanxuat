@@ -14,7 +14,7 @@ export interface ItemExport {
   clientName: string | null;
   supplierName: string | null;
   minStock: number;
-  consumableGrade: string | null;
+  directGrade: string | null;
   technicalStandard: string | null;
   dimensions: string | null;
   specificWeight: number | null;
@@ -29,7 +29,7 @@ export interface ItemExport {
 
 const ITEM_TYPE_LABELS: Record<ItemType, string> = {
   [ItemType.FG]: 'Thành phẩm',
-  [ItemType.CONSUMABLE]: 'Vật tư',
+  [ItemType.DIRECT]: 'Vật tư',
 };
 
 const ITEM_STATUS_LABELS: Record<ItemStatus, string> = {
@@ -51,7 +51,7 @@ export const ITEM_EXPORT_COLUMNS: ExcelColumn<ItemExport>[] = [
     value: (row) => row.minStock,
     numFmt: '#,##0.###',
   },
-  { header: 'Mác vật tư', value: (row) => row.consumableGrade },
+  { header: 'Mác vật tư', value: (row) => row.directGrade },
   { header: 'Tiêu chuẩn kỹ thuật', value: (row) => row.technicalStandard },
   { header: 'Quy cách', value: (row) => row.dimensions },
   {

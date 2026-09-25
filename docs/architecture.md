@@ -12,13 +12,13 @@ erDiagram
     CLIENTS }o--|| CLIENT_GROUPS : "phân loại"
     SUPPLIERS }o--|| SUPPLIER_GROUPS : "phân loại"
     SUPPLIERS }o--|| COUNTRIES : "xuất xứ"
-    ITEMS }o--o| SUPPLIERS : "NCC chính (chỉ CONSUMABLE)"
+    ITEMS }o--o| SUPPLIERS : "NCC chính (chỉ DIRECT)"
     ITEMS }o--o| ITEMS : "clonedFromItemId"
 
     ITEMS ||--o| BOMS : "1 BOM/item (FG)"
     BOMS ||--o{ BOM_ITEMS : "cây cấu trúc, self-ref"
     BOM_ITEMS }o--o| BOM_ITEMS : parentId
-    BOM_ITEMS }o--o| ITEMS : "node CONSUMABLE (lá, itemId NOT NULL); node COMPONENT không trỏ items"
+    BOM_ITEMS }o--o| ITEMS : "node DIRECT (lá, itemId NOT NULL); node COMPONENT không trỏ items"
     BOM_ITEMS ||--o{ BOM_OPERATIONS : "công đoạn as-used của node COMPONENT"
     BOM_OPERATIONS }o--|| OPERATIONS : "công đoạn"
     BOMS ||--o{ ROUTING_OPERATIONS : "công đoạn Cấp 0 (chính item FG, không phải node bom_items)"
@@ -37,7 +37,7 @@ erDiagram
     PRODUCTION_ORDER_ITEMS }o--|| ORDER_ITEMS : "1-1"
     PRODUCTION_ORDERS ||--o{ PRODUCTION_JOBS : "1 FG/LSX = 1 Job"
     PRODUCTION_JOBS }o--|| ITEMS : "item FG"
-    PRODUCTION_JOBS ||--o{ PRODUCTION_JOB_BOM_ITEMS : "snapshot cây BOM (COMPONENT + CONSUMABLE)"
+    PRODUCTION_JOBS ||--o{ PRODUCTION_JOB_BOM_ITEMS : "snapshot cây BOM (COMPONENT + DIRECT)"
     PRODUCTION_JOB_BOM_ITEMS }o--o| PRODUCTION_JOB_BOM_ITEMS : parentId
     PRODUCTION_JOB_BOM_ITEMS ||--o{ PRODUCTION_JOB_OPERATIONS : "công đoạn as-used"
     PRODUCTION_JOBS ||--o{ PRODUCTION_JOB_ISSUES : "snapshot vật tư (gộp theo itemId)"
@@ -48,14 +48,14 @@ erDiagram
     PRODUCTION_ORDERS ||--o{ PURCHASE_REQUESTS : "đề xuất mua vật tư (tuỳ chọn)"
     PRODUCTION_JOBS ||--o{ PURCHASE_REQUESTS : "sinh tự động lúc start nếu thiếu vật tư"
     PURCHASE_REQUESTS ||--o{ PURCHASE_REQUEST_ITEMS : gồm
-    PURCHASE_REQUEST_ITEMS }o--|| ITEMS : "vật tư cần mua (CONSUMABLE)"
+    PURCHASE_REQUEST_ITEMS }o--|| ITEMS : "vật tư cần mua (DIRECT)"
 
     INVENTORY_RECEIPTS ||--o{ INVENTORY_RECEIPT_ITEMS : gồm
     INVENTORY_ISSUES ||--o{ INVENTORY_ISSUE_ITEMS : gồm
     INVENTORY_ADJUSTMENTS ||--o{ INVENTORY_ADJUSTMENT_ITEMS : gồm
-    INVENTORY_RECEIPT_ITEMS }o--|| ITEMS : "mặt hàng (FG/CONSUMABLE)"
-    INVENTORY_ISSUE_ITEMS }o--|| ITEMS : "mặt hàng (FG/CONSUMABLE)"
-    INVENTORY_ADJUSTMENT_ITEMS }o--|| ITEMS : "mặt hàng (FG/CONSUMABLE)"
+    INVENTORY_RECEIPT_ITEMS }o--|| ITEMS : "mặt hàng (FG/DIRECT)"
+    INVENTORY_ISSUE_ITEMS }o--|| ITEMS : "mặt hàng (FG/DIRECT)"
+    INVENTORY_ADJUSTMENT_ITEMS }o--|| ITEMS : "mặt hàng (FG/DIRECT)"
     INVENTORY_ISSUE_ITEMS }o--o| ORDER_ITEMS : "delivery tracking (tuỳ chọn)"
     INVENTORY_RECEIPTS }o--o| PURCHASE_REQUESTS : "phát sinh từ đề xuất (tuỳ chọn)"
     INVENTORY_RECEIPTS }o--o| PURCHASE_ORDERS : "trace mức phiếu (tuỳ chọn)"
@@ -65,7 +65,7 @@ erDiagram
 
     PRODUCTION_JOBS }o--o| INVENTORY_REQUISITIONS : "Job liên quan (bắt buộc nếu type=PRODUCTION)"
     INVENTORY_REQUISITIONS ||--o{ INVENTORY_REQUISITION_ITEMS : gồm
-    INVENTORY_REQUISITION_ITEMS }o--|| ITEMS : "vật tư lãnh (CONSUMABLE)"
+    INVENTORY_REQUISITION_ITEMS }o--|| ITEMS : "vật tư lãnh (DIRECT)"
     INVENTORY_REQUISITIONS ||--o| INVENTORY_ISSUES : "tự sinh lúc issue (POSTED ngay)"
 
     PURCHASE_QUOTATIONS ||--o{ PURCHASE_QUOTATION_ITEMS : "gồm (1 dòng/vật tư)"
@@ -110,7 +110,7 @@ erDiagram
 
 Master data (`client-groups`, `supplier-groups`, `countries`, `departments`, `positions`, `units`,
 `operations`) chỉ được tham chiếu, không tham chiếu ngược — bỏ khỏi sơ đồ cho gọn, xem
-`docs/domains/partners.md`. `items` không còn nhóm hàng hoá — `type` (FG/CONSUMABLE) là thứ duy nhất
+`docs/domains/partners.md`. `items` không còn nhóm hàng hoá — `type` (FG/DIRECT) là thứ duy nhất
 phân loại (`docs/decisions/items-merge.md`, `docs/decisions/wip-removal.md`). Hệ thống chỉ một kho vật lý — không có bảng
 `warehouses`/cột `warehouseId` ở đâu trong sơ đồ này (`docs/decisions/single-warehouse.md`).
 
@@ -123,7 +123,7 @@ phân loại (`docs/decisions/items-merge.md`, `docs/decisions/wip-removal.md`).
   `bom_operations` của node COMPONENT qua `.../bom/items/:bomItemId/operations`, công đoạn Cấp 0
   (chính item FG, không phải một node `bom_items`) qua route riêng `POST /items/:itemId/operations`
   (`RoutingsModule`, ghi bảng `routing_operations`) — xem
-  `docs/decisions/routing-operations-table.md`. `POST /:id/copy` (chỉ FG, `E110` nếu CONSUMABLE)
+  `docs/decisions/routing-operations-table.md`. `POST /:id/copy` (chỉ FG, `E110` nếu DIRECT)
   đọc cả cây `bom_items` + `item_files` gốc rồi ghi lại toàn bộ (kể cả header `boms`) trong một
   transaction, gắn `clonedFromItemId` — nhân bản luôn `bom_operations` của mọi node COMPONENT lẫn
   `routing_operations` của Cấp 0. Chi tiết: `docs/workflows/product-setup.md`.
@@ -174,7 +174,7 @@ chạy lại ở `update`/`send`/`approve`). `deliver` (chỉ từ `PENDING_DELI
 
 **Start Job** (`startJob`, chỉ từ `PENDING`): tx — khoá Job `FOR UPDATE` → `createJobSnapshot`
 (`production-job-snapshot.query.ts`) dựng snapshot **lần đầu và duy nhất** từ BOM sản phẩm hiện tại
-→ đọc `production_job_issues` vừa ghi + `getConsumableStockLevels` (cùng `tx`) →
+→ đọc `production_job_issues` vừa ghi + `getDirectStockLevels` (cùng `tx`) →
 `production_jobs.status = IN_PROGRESS`, thiếu vật tư thì `createShortageRequest` ghi thêm
 `purchase_requests DRAFT` + dòng. Chi tiết: `docs/workflows/production-job-execution.md`,
 `docs/decisions/job-snapshot-at-start.md`.
@@ -246,14 +246,14 @@ thẳng qua `DRIZZLE`.
 Những sự thật này không nằm trọn trong một `docs/domains/<x>.md` nào — mỗi cái nối ≥ 2 module.
 
 - **`products`/`materials` gộp thành `items`** (`type = FG|WIP|RM` lúc đó, `WIP` xoá hẳn sau
-  (`docs/decisions/wip-removal.md`), `RM` đổi tên thành `CONSUMABLE` sau nữa
+  (`docs/decisions/wip-removal.md`), `RM` đổi tên thành `DIRECT` sau nữa
   (`docs/decisions/material-to-consumable-rename.md`)) — `docs/decisions/items-merge.md`.
 - **Công đoạn Cấp 0 sống ở bảng riêng `routing_operations`** (`bomId NOT NULL` → `boms.id`), tách
   khỏi `bom_operations` (`bomItemId NOT NULL` → node COMPONENT thật) —
   `docs/decisions/routing-operations-table.md`. Cùng node COMPONENT ở 2 vị trí cha khác nhau có thể
   mang routing khác nhau.
 - **`bom_items` chỉ chứa `COMPONENT` (cấu trúc con, `itemId NULL`, `code`/`name` riêng) lẫn lá
-  `CONSUMABLE`** — loại node đọc thẳng cột `type`, không còn suy qua `items.type` (node COMPONENT
+  `DIRECT`** — loại node đọc thẳng cột `type`, không còn suy qua `items.type` (node COMPONENT
   không có item). **Cấp 0 (chính item FG) không nằm trong `bom_items` và không xuất hiện trong
   `GET /items/:itemId/bom`** — đọc qua `GET /items/:itemId` (thông tin) +
   `GET /items/:itemId/operations` (công đoạn), xem

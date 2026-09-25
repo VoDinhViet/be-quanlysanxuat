@@ -63,13 +63,13 @@ export class PurchaseRequestsService {
     reqDto: GetPurchaseRequestsReqDto,
   ): Promise<OffsetPaginatedDto<PagePurchaseRequestResDto>> {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
-    const consumableKeyword = reqDto.consumableKeyword
-      ? `%${reqDto.consumableKeyword}%`
+    const directKeyword = reqDto.directKeyword
+      ? `%${reqDto.directKeyword}%`
       : undefined;
 
     const where = and(
       keyword ? unaccentILike(purchaseRequests.code, keyword) : undefined,
-      consumableKeyword
+      directKeyword
         ? exists(
             this.db
               .select({ one: sql`1` })
@@ -82,8 +82,8 @@ export class PurchaseRequestsService {
                     purchaseRequests.id,
                   ),
                   or(
-                    unaccentILike(items.name, consumableKeyword),
-                    unaccentILike(items.code, consumableKeyword),
+                    unaccentILike(items.name, directKeyword),
+                    unaccentILike(items.code, directKeyword),
                   ),
                 ),
               ),
@@ -505,7 +505,7 @@ export class PurchaseRequestsService {
   }
 
   /** Ngoài "tồn tại" còn chốt ba bất biến chỉ đường tay mới phá được: không rỗng (`E146`), không
-   * trùng `itemId` trong cùng payload (`E147`) và mọi dòng phải là CONSUMABLE (`E148`) — đường tự động lấy
+   * trùng `itemId` trong cùng payload (`E147`) và mọi dòng phải là DIRECT (`E148`) — đường tự động lấy
    * dòng từ `production_job_issues` nên vốn đã đúng cả ba. */
   private async ensureRequestItemsValid(
     itemsToValidate: CreatePurchaseRequestItemReqDto[],
@@ -529,7 +529,7 @@ export class PurchaseRequestsService {
       throw new AppException(ErrorCode.E007, HttpStatus.NOT_FOUND);
     }
 
-    if (found.some((item) => item.type !== ItemType.CONSUMABLE)) {
+    if (found.some((item) => item.type !== ItemType.DIRECT)) {
       throw new AppException(ErrorCode.E148, HttpStatus.BAD_REQUEST);
     }
   }

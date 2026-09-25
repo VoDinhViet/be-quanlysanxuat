@@ -9,27 +9,27 @@ import { unaccentILike } from '../../common/utils/search.util';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database } from '../../database/database.type';
 import { bomItems, BomType, files, items, units } from '../../database/schemas';
-import { BomConsumableResDto } from './dto/bom-consumable.res.dto';
-import { GetBomConsumablesReqDto } from './dto/get-bom-consumables.req.dto';
+import { BomDirectResDto } from './dto/bom-direct.res.dto';
+import { GetBomDirectsReqDto } from './dto/get-bom-directs.req.dto';
 
 @Injectable()
-export class BomConsumablesService {
+export class BomDirectsService {
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly bomsService: BomsService,
   ) {}
 
-  async getBomConsumables(
+  async getBomDirects(
     itemId: string,
     bomItemId: string,
-    reqDto: GetBomConsumablesReqDto,
-  ): Promise<OffsetPaginatedDto<BomConsumableResDto>> {
+    reqDto: GetBomDirectsReqDto,
+  ): Promise<OffsetPaginatedDto<BomDirectResDto>> {
     await this.bomsService.ensureBomItemInBom(itemId, bomItemId);
 
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
     const where = and(
       eq(bomItems.parentId, bomItemId),
-      eq(bomItems.type, BomType.CONSUMABLE),
+      eq(bomItems.type, BomType.DIRECT),
       keyword
         ? or(
             unaccentILike(items.code, keyword),
@@ -67,7 +67,7 @@ export class BomConsumablesService {
     ]);
 
     return new OffsetPaginatedDto(
-      plainToInstance(BomConsumableResDto, rows, {
+      plainToInstance(BomDirectResDto, rows, {
         excludeExtraneousValues: true,
       }),
       new OffsetPaginationDto(total, reqDto),

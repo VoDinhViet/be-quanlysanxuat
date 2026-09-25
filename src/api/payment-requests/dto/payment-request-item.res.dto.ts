@@ -16,11 +16,11 @@ export class PaymentRequestItemResDto {
 
   @Expose()
   @StringField()
-  consumableCode!: string;
+  directCode!: string;
 
   @Expose()
   @StringField()
-  consumableName!: string;
+  directName!: string;
 
   @Expose()
   @StringField()

@@ -32,22 +32,22 @@ import {
   balanceByItemSubquery,
   stockStatusCondition,
 } from '../inventory/inventory.query';
-import { GetInventoryConsumablesReqDto } from './dto/get-inventory-consumables.req.dto';
-import { InventoryConsumableResDto } from './dto/inventory-consumable.res.dto';
+import { GetInventoryDirectsReqDto } from './dto/get-inventory-directs.req.dto';
+import { InventoryDirectResDto } from './dto/inventory-direct.res.dto';
 
-/** Tồn kho vật tư — nhánh CONSUMABLE tách khỏi `InventoryService.getInventory` cũ
+/** Tồn kho vật tư — nhánh DIRECT tách khỏi `InventoryService.getInventory` cũ
  * (`docs/domains/inventory.md`). FG sống ở `inventory-products`, không nhánh nào đọc chéo sang
- * nhánh kia. Chưa có sổ cái/thẻ kho riêng cho CONSUMABLE — đợt sau. */
+ * nhánh kia. Chưa có sổ cái/thẻ kho riêng cho DIRECT — đợt sau. */
 @Injectable()
-export class InventoryConsumablesService {
+export class InventoryDirectsService {
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
 
   /** Liệt kê mọi vật tư ACTIVE, kể cả chưa từng phát sinh kho — cùng lý do
    * `InventoryService.getInventory` cũ: filter `status` là giá trị tính nên toàn bộ join + tính
    * toán phải nằm trong một `.select()` duy nhất. */
-  async getInventoryConsumables(
-    reqDto: GetInventoryConsumablesReqDto,
-  ): Promise<OffsetPaginatedDto<InventoryConsumableResDto>> {
+  async getInventoryDirects(
+    reqDto: GetInventoryDirectsReqDto,
+  ): Promise<OffsetPaginatedDto<InventoryDirectResDto>> {
     const stock = balanceByItemSubquery(this.db, reqDto.asOfDate);
     const requisitionHeld = requisitionHeldQuantityByItemSubquery(this.db);
     const bomRemaining = remainingBomDemandByItemSubquery(this.db);
@@ -66,7 +66,7 @@ export class InventoryConsumablesService {
     const where = and(
       isNull(items.deletedAt),
       eq(items.status, ItemStatus.ACTIVE),
-      eq(items.type, ItemType.CONSUMABLE),
+      eq(items.type, ItemType.DIRECT),
       keyword
         ? or(
             unaccentILike(items.code, keyword),
@@ -115,7 +115,7 @@ export class InventoryConsumablesService {
     ]);
 
     return new OffsetPaginatedDto(
-      plainToInstance(InventoryConsumableResDto, rows, {
+      plainToInstance(InventoryDirectResDto, rows, {
         excludeExtraneousValues: true,
       }),
       new OffsetPaginationDto(total, reqDto),

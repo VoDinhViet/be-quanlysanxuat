@@ -33,14 +33,14 @@ import {
 } from './inventory.query';
 
 /** Đọc tồn thô (kho×item) + sổ cái + tra cứu nội bộ dùng bởi các module khác — list Tồn kho thành
- * phẩm/vật tư nay sống ở `inventory-products`/`inventory-consumables`
+ * phẩm/vật tư nay sống ở `inventory-products`/`inventory-directs`
  * (`docs/domains/inventory.md`). */
 @Injectable()
 export class InventoryService {
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
 
   /** Tồn thô theo mặt hàng. `reservedQuantity` KHÔNG đọc cột cùng tên trên `inventory_balances`
-   * (cột đó đã bỏ) — điền số tính động lúc đọc: phiếu lãnh `APPROVED` (CONSUMABLE) cộng DO
+   * (cột đó đã bỏ) — điền số tính động lúc đọc: phiếu lãnh `APPROVED` (DIRECT) cộng DO
    * `DRAFT`/`PENDING_APPROVAL`/`PENDING_DELIVERY` (FG, giữ từ lúc tạo, BUG-087). Hai nguồn loại trừ
    * lẫn nhau theo `items.type` nên cộng thẳng, không cần điều kiện phân loại. Giữ nguyên hợp đồng
    * API cũ, xem `docs/domains/inventory.md`. */
@@ -195,7 +195,7 @@ export class InventoryService {
 
   /** Per-item on-hand, luôn gộp mọi kho. Nhận `db`/`tx` — `ProductionJobsService.startJob` gọi từ
    * trong transaction chốt snapshot. */
-  async getConsumableStockLevels(
+  async getDirectStockLevels(
     db: Database | DbTransaction,
     itemIds: string[],
   ): Promise<Map<string, number>> {

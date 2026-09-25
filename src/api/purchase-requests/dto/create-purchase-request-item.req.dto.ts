@@ -5,7 +5,7 @@ import {
 } from '../../../decorators/field.decorators';
 
 export class CreatePurchaseRequestItemReqDto {
-  @UUIDField({ description: 'Id vật tư — bắt buộc type = CONSUMABLE' })
+  @UUIDField({ description: 'Id vật tư — bắt buộc type = DIRECT' })
   readonly itemId!: string;
 
   @NumberField({ isPositive: true, description: 'SL đề xuất' })

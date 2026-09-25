@@ -23,7 +23,7 @@ với master data sống từ đó (denormalize `code`/`name`, FK gốc chỉ c�
 | ---------------------------------------------------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
 | `production_job_bom_items` (cây BOM)                             | `bom_items`, id nhân bản mới                           | Không route nào sửa                                                                                       |
 | `production_job_operations` (công đoạn as-used)                  | `bom_operations` as-used                               | `completedQuantity`/`rejectedQuantity`/`completedDate` sửa qua `POST .../reports`; `dueDate` (hạn kế hoạch) sửa qua `PATCH .../due-date`; phần còn lại đóng băng |
-| `production_job_issues` (vật tư, gộp theo `itemId` trên node CONSUMABLE) | `production_job_bom_items.plannedQuantity` (đã nổ cấp) | Không route đọc/ghi — nội bộ, chỉ dùng bởi `startJob`/`bomDemand`/`GET .../bom`                           |
+| `production_job_issues` (vật tư, gộp theo `itemId` trên node DIRECT) | `production_job_bom_items.plannedQuantity` (đã nổ cấp) | Không route đọc/ghi — nội bộ, chỉ dùng bởi `startJob`/`bomDemand`/`GET .../bom`                           |
 
 Muốn xem cấu trúc/công đoạn của sản phẩm trong lúc Job còn `PENDING` (trước khi có snapshot), đọc
 thẳng `GET /items/:itemId/bom` + `.../bom/items/:bomItemId/operations` — hai route Job tương ứng
@@ -182,7 +182,7 @@ có node thì nhánh code không bao giờ chạy. Giới hạn thật, không p
 
 - **← Orders**: `approveOrder` seed toàn bộ tầng LSX — đường duy nhất tạo LSX.
 - **→ Orders**: duyệt LSX là đường duy nhất đẩy đơn `AWAITING_PRODUCTION → IN_PROGRESS`.
-- **← Inventory**: chỉ đọc qua `getStockLevels`/`getConsumableStockLevels`. Domain này không ghi vào
+- **← Inventory**: chỉ đọc qua `getStockLevels`/`getDirectStockLevels`. Domain này không ghi vào
   sổ kho.
 - **→ Inventory (ghi, gián tiếp)**: Inventory **ghi ngược** vào `production_jobs.status`/
   `production_orders.status` — xem Lifecycle (`closeJobIfQcCovered`/`closeJobIfFullyReceived`).

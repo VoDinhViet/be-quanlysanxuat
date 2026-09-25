@@ -19,14 +19,14 @@ import { productionJobOperations } from './production-job-operations';
 import { productionJobs } from './production-jobs';
 
 /**
- * `FG` — node "Cấp 0" đại diện chính thành phẩm (đúng 1 mỗi Job); `COMPONENT`/`CONSUMABLE` — nhân
+ * `FG` — node "Cấp 0" đại diện chính thành phẩm (đúng 1 mỗi Job); `COMPONENT`/`DIRECT` — nhân
  * bản từ `bom_items.type` (`docs/decisions/wip-removal.md`). Enum riêng, không dùng chung
  * `ItemType`: `items.type` không còn giá trị nào cho node cấu trúc con.
  */
 export enum ProductionJobBomItemType {
   FG = 'FG',
   COMPONENT = 'COMPONENT',
-  CONSUMABLE = 'CONSUMABLE',
+  DIRECT = 'DIRECT',
 }
 
 export const productionJobBomItemTypeEnum = pgEnum(
@@ -34,12 +34,12 @@ export const productionJobBomItemTypeEnum = pgEnum(
   [
     ProductionJobBomItemType.FG,
     ProductionJobBomItemType.COMPONENT,
-    ProductionJobBomItemType.CONSUMABLE,
+    ProductionJobBomItemType.DIRECT,
   ],
 );
 
 /**
- * Snapshot cây BOM của một Job — nhân bản `bom_items` (cả node COMPONENT lẫn lá CONSUMABLE), id
+ * Snapshot cây BOM của một Job — nhân bản `bom_items` (cả node COMPONENT lẫn lá DIRECT), id
  * hoàn toàn mới. Dựng đúng một lần trong transaction `start` (`ProductionJobsService.startJob` →
  * `createJobSnapshot`) — Job còn `PENDING` không có dòng nào ở đây, xem
  * `docs/decisions/job-snapshot-at-start.md`. Đóng băng ngay từ lúc đó, không có route sửa — sửa/xoá
@@ -49,7 +49,7 @@ export const productionJobBomItemTypeEnum = pgEnum(
  * - `code`/`name` là **snapshot text**, nguồn hiển thị chính — KHÔNG đọc qua `itemId` lúc render.
  *   `itemId` chỉ còn là liên kết tham khảo tới item gốc (`set null` khi bị xoá), không phải nguồn
  *   dữ liệu — và luôn NULL với node `COMPONENT` (node đó không phải một item).
- * - `itemType` chủ yếu `COMPONENT`/`CONSUMABLE` (nhân bản từ `bom_items`), cộng **đúng một** node
+ * - `itemType` chủ yếu `COMPONENT`/`DIRECT` (nhân bản từ `bom_items`), cộng **đúng một** node
  *   `FG` mỗi Job —
  *   node "Cấp 0" đại diện chính thành phẩm, mang routing lắp ráp/đóng gói của FG
  *   (`createJobBomItems`, xem `docs/decisions/oqc-per-operation.md` mục "Đừng hoàn
@@ -115,7 +115,7 @@ export const productionJobBomItems = pgTable(
     index('idx_production_job_bom_items_image_file_id').on(table.imageFileId),
     check(
       'chk_production_job_bom_items_item_type',
-      sql`item_type IN ('FG', 'COMPONENT', 'CONSUMABLE')`,
+      sql`item_type IN ('FG', 'COMPONENT', 'DIRECT')`,
     ),
     check('chk_production_job_bom_items_quantity_positive', sql`quantity > 0`),
     // Mỗi Job nhiều nhất một node Cấp 0 (FG) — cắm routing lắp ráp/đóng gói của thành phẩm.
