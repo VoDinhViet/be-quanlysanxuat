@@ -136,6 +136,10 @@ export const productionJobBomItemsRelations = relations(
       fields: [productionJobBomItems.productionJobId],
       references: [productionJobs.id],
     }),
+    imageFile: one(files, {
+      fields: [productionJobBomItems.imageFileId],
+      references: [files.id],
+    }),
     operations: many(productionJobOperations),
   }),
 );

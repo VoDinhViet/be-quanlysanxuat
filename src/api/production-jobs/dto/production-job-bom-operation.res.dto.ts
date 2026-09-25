@@ -4,6 +4,8 @@ import {
   OperationType,
   ProductionJobBomItemType,
 } from '../../../database/schemas';
+import { FileField } from '../../files/dto/file.field';
+import { FileResDto } from '../../files/dto/file.res.dto';
 import {
   ClassField,
   DateField,
@@ -113,6 +115,10 @@ export class ProductionJobBomItemResDto {
       'FG = node Cấp 0 (lắp ráp/đóng gói thành phẩm, luôn đứng cuối); COMPONENT/DIRECT = node cây BOM',
   })
   itemType!: ProductionJobBomItemType;
+
+  @Expose()
+  @FileField('imageFile', 'Ảnh part snapshot (hoặc ảnh thành phẩm cho FG)')
+  image!: FileResDto | null;
 
   @Expose()
   @ClassField(() => ProductionJobBomOperationResDto, { each: true })

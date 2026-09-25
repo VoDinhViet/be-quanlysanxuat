@@ -381,6 +381,7 @@ export class ProductionJobsService {
         asc(productionJobBomItems.id),
       ],
       with: {
+        imageFile: true,
         operations: {
           where: operationId
             ? eq(productionJobOperations.operationId, operationId)
