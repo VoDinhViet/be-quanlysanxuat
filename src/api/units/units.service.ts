@@ -22,12 +22,16 @@ export class UnitsService {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
 
     const entities = await this.db.query.units.findMany({
-      where: keyword
-        ? or(
-            unaccentILike(units.code, keyword),
-            unaccentILike(units.name, keyword),
-          )
-        : undefined,
+      where: and(
+        keyword
+          ? or(
+              unaccentILike(units.code, keyword),
+              unaccentILike(units.name, keyword),
+            )
+          : undefined,
+        reqDto.type ? eq(units.type, reqDto.type) : undefined,
+        reqDto.status ? eq(units.status, reqDto.status) : undefined,
+      ),
       // Alphabetical, because this list is rendered straight into a dropdown.
       orderBy: asc(units.name),
     });
