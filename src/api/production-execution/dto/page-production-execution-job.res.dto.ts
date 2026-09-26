@@ -6,11 +6,17 @@ import {
   DateField,
   DateFieldOptional,
   EnumField,
+  EnumFieldOptional,
   NumberField,
   StringField,
   UUIDField,
 } from '../../../decorators/field.decorators';
-import { JobOperationProgress } from '../production-execution.constant';
+import { FileField } from '../../files/dto/file.field';
+import { FileResDto } from '../../files/dto/file.res.dto';
+import {
+  JobOperationEvaluation,
+  JobOperationProgress,
+} from '../production-execution.constant';
 
 @Exclude()
 export class ProductionExecutionItemRefResDto {
@@ -42,6 +48,10 @@ export class PageProductionExecutionJobResDto {
   item!: ProductionExecutionItemRefResDto;
 
   @Expose()
+  @FileField('imageFile', 'Ảnh sản phẩm')
+  image!: FileResDto | null;
+
+  @Expose()
   @NumberField({ description: 'SL cần sản xuất' })
   quantity!: number;
 
@@ -58,31 +68,24 @@ export class PageProductionExecutionJobResDto {
   jobStatus!: ProductionJobStatus;
 
   @Expose()
-  @NumberField({
-    description:
-      'Định mức (pcs) — SUM qua mọi Part của Job có công đoạn đang chọn',
-  })
-  plannedQuantity!: number;
-
-  @Expose()
-  @NumberField({ description: 'SL đã hoàn thành (đạt) — SUM qua mọi Part' })
-  completedQuantity!: number;
-
-  @Expose()
-  @NumberField({ description: 'SL không đạt (NG) — SUM qua mọi Part' })
-  rejectedQuantity!: number;
-
-  @Expose()
   @DateFieldOptional({
     nullable: true,
     description:
-      'Thời gian cập nhật gần nhất của công đoạn đang chọn (max qua mọi Part); null = chưa ai báo cáo',
+      'Hạn hoàn thành của công đoạn đang chọn — muộn nhất qua mọi Part của Job; null = chưa đặt hạn',
   })
-  operationLastReportedAt!: Date | null;
+  operationDueDate!: Date | null;
 
   @Expose()
   @EnumField(() => JobOperationProgress, {
     description: 'Tiến độ công đoạn đang chọn của Job',
   })
   operationStatus!: JobOperationProgress;
+
+  @Expose()
+  @EnumFieldOptional(() => JobOperationEvaluation, {
+    nullable: true,
+    description:
+      'Đúng/trễ hạn của công đoạn đã xong; null = chưa xong hoặc không có hạn để so',
+  })
+  operationEvaluation!: JobOperationEvaluation | null;
 }

@@ -132,6 +132,14 @@ export class ProductionJobBomItemResDto {
   image!: FileResDto | null;
 
   @Expose()
+  @StringFieldOptional({
+    nullable: true,
+    description:
+      'Tên công đoạn liền sau công đoạn đang lọc (`operationId`) trong routing của Part này — null khi không lọc hoặc khi đó là bước cuối',
+  })
+  nextOperationName!: string | null;
+
+  @Expose()
   @ClassField(() => ProductionJobBomOperationResDto, { each: true })
   operations!: ProductionJobBomOperationResDto[];
 }

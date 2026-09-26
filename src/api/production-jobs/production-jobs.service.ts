@@ -17,6 +17,8 @@ import { DateTime } from 'luxon';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
+import { groupBy } from '../../common/utils/array.util';
+import { selectOperations } from './production-job-operations.util';
 import {
   DocumentType,
   generateDocumentSequences,
@@ -383,35 +385,51 @@ export class ProductionJobsService {
       return this.getPlannedJobOperations(job, operationId);
     }
 
-    const bomItems = await this.db.query.productionJobBomItems.findMany({
-      where: eq(productionJobBomItems.productionJobId, jobId),
-      orderBy: [
-        asc(productionJobBomItems.sortOrder),
-        asc(productionJobBomItems.id),
-      ],
-      with: {
-        imageFile: true,
-        operations: {
-          where: operationId
-            ? eq(productionJobOperations.operationId, operationId)
-            : undefined,
-          orderBy: [
-            asc(productionJobOperations.sortOrder),
-            asc(productionJobOperations.createdAt),
-          ],
-        },
-      },
-    });
+    const [bomItems, jobOperations] = await Promise.all([
+      this.db
+        .select({
+          ...getTableColumns(productionJobBomItems),
+          imageFile: getTableColumns(files),
+        })
+        .from(productionJobBomItems)
+        .leftJoin(files, eq(files.id, productionJobBomItems.imageFileId))
+        .where(eq(productionJobBomItems.productionJobId, jobId))
+        .orderBy(
+          asc(productionJobBomItems.sortOrder),
+          asc(productionJobBomItems.id),
+        ),
+      this.db
+        .select()
+        .from(productionJobOperations)
+        .where(eq(productionJobOperations.productionJobId, jobId))
+        .orderBy(
+          asc(productionJobOperations.sortOrder),
+          asc(productionJobOperations.createdAt),
+        ),
+    ]);
+
+    const operationsByBomItemId = groupBy(
+      jobOperations,
+      (operation) => operation.productionJobBomItemId,
+    );
 
     const groups = bomItems
-      .filter((bomItem) => bomItem.operations.length > 0)
-      .map((bomItem) => ({
-        ...bomItem,
-        operations: bomItem.operations.map((operation) => ({
-          ...operation,
-          plannedQuantity: bomItem.plannedQuantity,
-        })),
-      }));
+      .map((bomItem) => {
+        const { operations, nextOperationName } = selectOperations(
+          operationsByBomItemId.get(bomItem.id) ?? [],
+          operationId,
+        );
+
+        return {
+          ...bomItem,
+          nextOperationName,
+          operations: operations.map((operation) => ({
+            ...operation,
+            plannedQuantity: bomItem.plannedQuantity,
+          })),
+        };
+      })
+      .filter((bomItem) => bomItem.operations.length > 0);
 
     return plainToInstance(ProductionJobBomItemResDto, groups, {
       excludeExtraneousValues: true,
@@ -690,8 +708,7 @@ export class ProductionJobsService {
     );
   }
 
-  /** Tab "Công đoạn" của Job `PENDING`: kế hoạch sống kèm leadtime đã nhập. `id` công đoạn null
-   * (chưa lưu). */
+  /** Tab "Công đoạn" của Job `PENDING`: kế hoạch sống. `id` công đoạn null (chưa lưu). */
   private async getPlannedJobOperations(
     job: { id: string; itemId: string; quantity: number },
     operationId?: string,
@@ -709,21 +726,28 @@ export class ProductionJobsService {
       : [];
     const imageFileById = new Map(imageFiles.map((file) => [file.id, file]));
 
+    const operationsByBomItemId = groupBy(
+      plan.operations,
+      (operation) => operation.productionJobBomItemId,
+    );
+
     const groups = plan.bomItems
       .sort((a, b) => a.sortOrder! - b.sortOrder!)
-      .map((node) => ({
-        ...node,
-        imageFile: node.imageFileId
-          ? (imageFileById.get(node.imageFileId) ?? null)
-          : null,
-        operations: plan.operations
-          .filter(
-            (operation) =>
-              operation.productionJobBomItemId === node.id &&
-              (!operationId || operation.operationId === operationId),
-          )
-          .sort((a, b) => a.sortOrder - b.sortOrder)
-          .map((operation) => ({
+      .map((node) => {
+        const { operations, nextOperationName } = selectOperations(
+          [...(operationsByBomItemId.get(node.id) ?? [])].sort(
+            (a, b) => a.sortOrder - b.sortOrder,
+          ),
+          operationId,
+        );
+
+        return {
+          ...node,
+          imageFile: node.imageFileId
+            ? (imageFileById.get(node.imageFileId) ?? null)
+            : null,
+          nextOperationName,
+          operations: operations.map((operation) => ({
             ...operation,
             id: null,
             plannedQuantity: node.plannedQuantity,
@@ -734,7 +758,8 @@ export class ProductionJobsService {
             dueDate: null,
             createdAt: null,
           })),
-      }))
+        };
+      })
       .filter((node) => node.operations.length > 0);
 
     return plainToInstance(ProductionJobBomItemResDto, groups, {
