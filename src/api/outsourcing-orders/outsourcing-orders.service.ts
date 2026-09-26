@@ -405,6 +405,15 @@ export class OutsourcingOrdersService {
     if (new Set(operationIds).size !== operationIds.length) {
       throw new AppException(ErrorCode.E183, HttpStatus.BAD_REQUEST);
     }
+
+    // Một phiếu chỉ gửi gia công một công đoạn. `operationId` có thể null (snapshot mất liên kết
+    // danh mục) nên fallback về mã công đoạn.
+    const operationKeys = new Set(
+      reqItems.map((item) => item.operationId ?? item.operationCode),
+    );
+    if (operationKeys.size > 1) {
+      throw new AppException(ErrorCode.E280, HttpStatus.BAD_REQUEST);
+    }
   }
 
   private async ensureOutsourcingOrderExists(
