@@ -166,7 +166,7 @@ export class ProductionJobsController {
   @Permissions('production:update')
   @ApiAuth({
     summary:
-      'Start a Job — PENDING → IN_PROGRESS. Tự tạo đề xuất mua vật tư thiếu nếu có. Sau bước này, POST /production-execution/operations/:jobOperationId/reports mở ngay, không còn bước duyệt công đoạn riêng',
+      'Xác nhận kế hoạch — PENDING → IN_PROGRESS: đóng băng BOM/vật tư/công đoạn, tự tạo đề xuất mua vật tư thiếu. Sau bước này POST /production-execution/operations/:jobOperationId/reports mở ngay',
     statusCode: HttpStatus.NO_CONTENT,
   })
   startJob(

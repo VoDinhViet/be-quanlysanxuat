@@ -8,7 +8,6 @@ import { FileField } from '../../files/dto/file.field';
 import { FileResDto } from '../../files/dto/file.res.dto';
 import {
   ClassField,
-  DateField,
   DateFieldOptional,
   EnumField,
   NumberField,
@@ -21,8 +20,12 @@ import {
 @Exclude()
 export class ProductionJobBomOperationResDto {
   @Expose()
-  @UUIDField()
-  id!: string;
+  @UUIDFieldOptional({
+    nullable: true,
+    description:
+      'Id công đoạn của Job — null khi Job PENDING (kế hoạch tạm tính, chưa lưu)',
+  })
+  id!: string | null;
 
   @Expose()
   @UUIDFieldOptional({
@@ -86,13 +89,21 @@ export class ProductionJobBomOperationResDto {
   @DateFieldOptional({
     nullable: true,
     description:
-      'Hạn cần hoàn thành công đoạn — kế hoạch, đặt/sửa tay qua PATCH .../due-date',
+      'Thời gian cập nhật gần nhất — server tự ghi mỗi lần báo cáo/OS-IN đổi tiến độ; null = chưa cập nhật',
+  })
+  lastReportedAt!: Date | null;
+
+  @Expose()
+  @DateFieldOptional({
+    nullable: true,
+    description:
+      'Hạn cần hoàn thành công đoạn — đặt/sửa tay qua PATCH .../due-date',
   })
   dueDate!: Date | null;
 
   @Expose()
-  @DateField()
-  createdAt!: Date;
+  @DateFieldOptional({ nullable: true })
+  createdAt!: Date | null;
 }
 
 @Exclude()
@@ -119,6 +130,14 @@ export class ProductionJobBomItemResDto {
   @Expose()
   @FileField('imageFile', 'Ảnh part snapshot (hoặc ảnh thành phẩm cho FG)')
   image!: FileResDto | null;
+
+  @Expose()
+  @StringFieldOptional({
+    nullable: true,
+    description:
+      'Tên công đoạn liền sau công đoạn đang lọc (`operationId`) trong routing của Part này — null khi không lọc hoặc khi đó là bước cuối',
+  })
+  nextOperationName!: string | null;
 
   @Expose()
   @ClassField(() => ProductionJobBomOperationResDto, { each: true })

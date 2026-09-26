@@ -17,6 +17,8 @@ import { DateTime } from 'luxon';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
+import { groupBy } from '../../common/utils/array.util';
+import { selectOperations } from './production-job-operations.util';
 import {
   DocumentType,
   generateDocumentSequences,
@@ -68,7 +70,10 @@ import { ProductionJobLogResDto } from './dto/production-job-log.res.dto';
 import { ProductionJobNoteResDto } from './dto/production-job-note.res.dto';
 import { ProductionJobResDto } from './dto/production-job.res.dto';
 import { UpdateProductionJobOperationDueDateReqDto } from './dto/update-production-job-operation-due-date.req.dto';
-import { createJobSnapshot } from './production-job-snapshot.query';
+import {
+  buildJobPlan,
+  createJobSnapshot,
+} from './production-job-snapshot.query';
 
 /** Job sản xuất — 1 sản phẩm (FG) = 1 Job trong một LSX. Chỉ tạo được qua `createJobs`, gọi từ
  * transaction duyệt LSX (`ProductionOrdersService.approveProductionOrder`) — không có route tạo
@@ -290,7 +295,10 @@ export class ProductionJobsService {
     jobId: string,
     reqDto: GetProductionJobBomReqDto,
   ): Promise<OffsetPaginatedDto<ProductionJobIssueResDto>> {
-    await this.ensureJobExists(jobId);
+    const job = await this.ensureJobExists(jobId);
+    if (job.status === ProductionJobStatus.PENDING) {
+      return this.getPlannedJobBom(job, reqDto);
+    }
 
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
     const where = and(
@@ -364,7 +372,7 @@ export class ProductionJobsService {
    * (`production_job_operations.id`) cho `POST
    * /production-execution/operations/:jobOperationId/reports`. `plannedQuantity` đọc thẳng cột đã
    * đóng băng lúc `start` (`production-job-snapshot.query.ts`, xem
-   * `docs/decisions/job-snapshot-at-start.md` — Job còn `PENDING` trả mảng rỗng), gắn xuống từng
+   * `docs/decisions/job-snapshot-at-start.md` — Job `PENDING` trả kế hoạch sống, `id` null), gắn xuống từng
    * công đoạn của node. `operationId` optional lọc chỉ trả BOM item nào chứa đúng công đoạn đó —
    * dùng bởi "Thực hiện sản xuất" (`ProductionExecutionService` đọc qua route này, không có route
    * riêng). Mảng thường, không phân trang — số BOM item của một Job luôn nhỏ. */
@@ -372,37 +380,56 @@ export class ProductionJobsService {
     jobId: string,
     operationId?: string,
   ): Promise<ProductionJobBomItemResDto[]> {
-    await this.ensureJobExists(jobId);
+    const job = await this.ensureJobExists(jobId);
+    if (job.status === ProductionJobStatus.PENDING) {
+      return this.getPlannedJobOperations(job, operationId);
+    }
 
-    const bomItems = await this.db.query.productionJobBomItems.findMany({
-      where: eq(productionJobBomItems.productionJobId, jobId),
-      orderBy: [
-        asc(productionJobBomItems.sortOrder),
-        asc(productionJobBomItems.id),
-      ],
-      with: {
-        imageFile: true,
-        operations: {
-          where: operationId
-            ? eq(productionJobOperations.operationId, operationId)
-            : undefined,
-          orderBy: [
-            asc(productionJobOperations.sortOrder),
-            asc(productionJobOperations.createdAt),
-          ],
-        },
-      },
-    });
+    const [bomItems, jobOperations] = await Promise.all([
+      this.db
+        .select({
+          ...getTableColumns(productionJobBomItems),
+          imageFile: getTableColumns(files),
+        })
+        .from(productionJobBomItems)
+        .leftJoin(files, eq(files.id, productionJobBomItems.imageFileId))
+        .where(eq(productionJobBomItems.productionJobId, jobId))
+        .orderBy(
+          asc(productionJobBomItems.sortOrder),
+          asc(productionJobBomItems.id),
+        ),
+      this.db
+        .select()
+        .from(productionJobOperations)
+        .where(eq(productionJobOperations.productionJobId, jobId))
+        .orderBy(
+          asc(productionJobOperations.sortOrder),
+          asc(productionJobOperations.createdAt),
+        ),
+    ]);
+
+    const operationsByBomItemId = groupBy(
+      jobOperations,
+      (operation) => operation.productionJobBomItemId,
+    );
 
     const groups = bomItems
-      .filter((bomItem) => bomItem.operations.length > 0)
-      .map((bomItem) => ({
-        ...bomItem,
-        operations: bomItem.operations.map((operation) => ({
-          ...operation,
-          plannedQuantity: bomItem.plannedQuantity,
-        })),
-      }));
+      .map((bomItem) => {
+        const { operations, nextOperationName } = selectOperations(
+          operationsByBomItemId.get(bomItem.id) ?? [],
+          operationId,
+        );
+
+        return {
+          ...bomItem,
+          nextOperationName,
+          operations: operations.map((operation) => ({
+            ...operation,
+            plannedQuantity: bomItem.plannedQuantity,
+          })),
+        };
+      })
+      .filter((bomItem) => bomItem.operations.length > 0);
 
     return plainToInstance(ProductionJobBomItemResDto, groups, {
       excludeExtraneousValues: true,
@@ -576,8 +603,8 @@ export class ProductionJobsService {
         productionJobId: jobId,
         action: ProductionJobLogAction.STARTED,
         content: jobIssueShortages.length
-          ? `Bắt đầu sản xuất — sinh đề xuất mua ${jobIssueShortages.length} vật tư thiếu`
-          : 'Bắt đầu sản xuất',
+          ? `Xác nhận kế hoạch — sinh đề xuất mua ${jobIssueShortages.length} vật tư thiếu`
+          : 'Xác nhận kế hoạch',
         performedBy: userId,
       });
 
@@ -630,6 +657,113 @@ export class ProductionJobsService {
       }
       const shortage = row.requiredQty - (onHandByItem.get(row.itemId) ?? 0);
       return shortage > 0 ? [{ itemId: row.itemId, quantity: shortage }] : [];
+    });
+  }
+
+  /** Tab "BOM" của Job `PENDING`: nhu cầu vật tư tính sống (`buildJobPlan`), phân trang trong bộ
+   * nhớ — chưa có snapshot nên chưa có gì để lãnh. `q` để DB lọc (`unaccentILike`) trên đúng các
+   * vật tư của kế hoạch, cùng cách so khớp với đường đã snapshot. */
+  private async getPlannedJobBom(
+    job: { id: string; itemId: string; quantity: number },
+    reqDto: GetProductionJobBomReqDto,
+  ): Promise<OffsetPaginatedDto<ProductionJobIssueResDto>> {
+    const plan = await buildJobPlan(this.db, job);
+
+    let matchedItemIds: Set<string> | undefined;
+    if (reqDto.q && plan.issues.length) {
+      const keyword = `%${reqDto.q}%`;
+      const matched = await this.db
+        .select({ id: items.id })
+        .from(items)
+        .where(
+          and(
+            inArray(
+              items.id,
+              plan.issues.map((issue) => issue.item.id),
+            ),
+            or(
+              unaccentILike(items.code, keyword),
+              unaccentILike(items.name, keyword),
+            ),
+          ),
+        );
+      matchedItemIds = new Set(matched.map((row) => row.id));
+    }
+
+    const lines = plan.issues
+      .filter((issue) => !matchedItemIds || matchedItemIds.has(issue.item.id))
+      .map((issue) => ({
+        ...issue,
+        issuedQuantity: 0,
+        remainingQuantity: issue.requiredQty,
+      }));
+
+    return new OffsetPaginatedDto(
+      plainToInstance(
+        ProductionJobIssueResDto,
+        lines.slice(reqDto.offset, reqDto.offset + reqDto.limit),
+        { excludeExtraneousValues: true },
+      ),
+      new OffsetPaginationDto(lines.length, reqDto),
+    );
+  }
+
+  /** Tab "Công đoạn" của Job `PENDING`: kế hoạch sống. `id` công đoạn null (chưa lưu). */
+  private async getPlannedJobOperations(
+    job: { id: string; itemId: string; quantity: number },
+    operationId?: string,
+  ): Promise<ProductionJobBomItemResDto[]> {
+    const plan = await buildJobPlan(this.db, job);
+
+    const imageFileIds = plan.bomItems.flatMap((node) =>
+      node.imageFileId ? [node.imageFileId] : [],
+    );
+    const imageFiles = imageFileIds.length
+      ? await this.db
+          .select()
+          .from(files)
+          .where(inArray(files.id, imageFileIds))
+      : [];
+    const imageFileById = new Map(imageFiles.map((file) => [file.id, file]));
+
+    const operationsByBomItemId = groupBy(
+      plan.operations,
+      (operation) => operation.productionJobBomItemId,
+    );
+
+    const groups = plan.bomItems
+      .sort((a, b) => a.sortOrder! - b.sortOrder!)
+      .map((node) => {
+        const { operations, nextOperationName } = selectOperations(
+          [...(operationsByBomItemId.get(node.id) ?? [])].sort(
+            (a, b) => a.sortOrder - b.sortOrder,
+          ),
+          operationId,
+        );
+
+        return {
+          ...node,
+          imageFile: node.imageFileId
+            ? (imageFileById.get(node.imageFileId) ?? null)
+            : null,
+          nextOperationName,
+          operations: operations.map((operation) => ({
+            ...operation,
+            id: null,
+            plannedQuantity: node.plannedQuantity,
+            completedQuantity: 0,
+            rejectedQuantity: 0,
+            completedDate: null,
+            lastReportedAt: null,
+            dueDate: null,
+            createdAt: null,
+          })),
+        };
+      })
+      .filter((node) => node.operations.length > 0);
+
+    return plainToInstance(ProductionJobBomItemResDto, groups, {
+      excludeExtraneousValues: true,
     });
   }
 

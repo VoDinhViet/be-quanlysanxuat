@@ -1450,6 +1450,13 @@
       "when": 1790328510081,
       "tag": "0206_unit_type_status",
       "breakpoints": true
+    },
+    {
+      "idx": 207,
+      "version": "7",
+      "when": 1790331789505,
+      "tag": "0207_operation_last_reported_at",
+      "breakpoints": true
     }
   ]
 }

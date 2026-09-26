@@ -1,5 +1,6 @@
 import { and, count, eq, isNull, sql } from 'drizzle-orm';
 
+import { vnToday } from '../../database/vn-date.util';
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
   InventoryDocumentStatus,
@@ -203,7 +204,8 @@ export async function recomputeOutsourcedOperationProgress(
     .update(productionJobOperations)
     .set({
       completedQuantity: receivedQuantity,
-      completedDate: isCompleted ? new Date() : null,
+      completedDate: isCompleted ? vnToday() : null,
+      lastReportedAt: new Date(),
     })
     .where(eq(productionJobOperations.id, productionJobOperationId));
 

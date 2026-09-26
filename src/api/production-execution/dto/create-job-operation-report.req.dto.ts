@@ -1,5 +1,4 @@
 import {
-  DateField,
   NumberField,
   NumberFieldOptional,
   StringFieldOptional,
@@ -15,9 +14,6 @@ export class CreateJobOperationReportReqDto {
     description: 'SL không đạt (NG) cộng thêm lần này',
   })
   readonly rejectedQuantityDelta?: number;
-
-  @DateField({ description: 'Ngày hoàn thành' })
-  readonly completedDate!: Date;
 
   @StringFieldOptional({
     minLength: 0,

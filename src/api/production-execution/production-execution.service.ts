@@ -23,6 +23,7 @@ import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
+  files,
   items,
   operations,
   OperationType,
@@ -36,6 +37,7 @@ import {
   ProductionJobStatus,
   productionOrders,
 } from '../../database/schemas';
+import { vnToday } from '../../database/vn-date.util';
 import { AppException } from '../../exceptions/app.exception';
 import { FilesService } from '../files/files.service';
 import { closeJobIfFinalAssemblyDone } from '../production-jobs/production-jobs.query';
@@ -46,7 +48,10 @@ import { GetJobOperationReportsReqDto } from './dto/get-job-operation-reports.re
 import { PageProductionExecutionJobResDto } from './dto/page-production-execution-job.res.dto';
 import { ProductionExecutionOperationResDto } from './dto/production-execution-operation.res.dto';
 import { ProductionExecutionReportResDto } from './dto/production-execution-report.res.dto';
-import { JobOperationProgress } from './production-execution.constant';
+import {
+  JobOperationEvaluation,
+  JobOperationProgress,
+} from './production-execution.constant';
 
 /** Màn "Thực hiện sản xuất" (view của tổ sản xuất, đi từ công đoạn xuống) — đọc thuần snapshot đã
  * có sẵn từ `production-jobs` (không import module đó, không gọi service nào của nó).
@@ -122,8 +127,8 @@ export class ProductionExecutionService {
 
   /** `.select()` thủ công — `q`/`orderBy` chạm bảng join, cùng khuôn
    * `ProductionJobsService.getProductionJobs`. Gộp theo Job trên đúng các dòng
-   * `production_job_operations` khớp `operationId`, `plannedQuantity`/`completedQuantity`/
-   * `rejectedQuantity` là `SUM` qua mọi Part của Job có công đoạn đó. */
+   * `production_job_operations` khớp `operationId`: hạn hoàn thành là `MAX(due_date)` qua mọi
+   * Part, từ đó suy ra `operationStatus` (kể cả `OVERDUE`) và `operationEvaluation`. */
   async getJobs(
     reqDto: GetProductionExecutionJobsReqDto,
   ): Promise<OffsetPaginatedDto<PageProductionExecutionJobResDto>> {
@@ -144,20 +149,25 @@ export class ProductionExecutionService {
         : undefined,
     );
 
-    const completedOpsExpr = sql`count(*) filter (where ${productionJobOperations.completedDate} is not null)`;
-    const totalOpsExpr = sql`count(*)`;
+    const today = vnToday().toISOString().slice(0, 10);
     const completedQuantitySumExpr = sql`coalesce(sum(${productionJobOperations.completedQuantity}), 0)`;
+    // Hạn / ngày xong của Job = muộn nhất qua các Part: công đoạn chỉ xong khi Part cuối xong.
+    const operationDueDateExpr = sql<Date | null>`max(${productionJobOperations.dueDate})`;
+    const operationCompletedDateExpr = sql`max(${productionJobOperations.completedDate})`;
+    const isDoneExpr = sql`count(*) filter (where ${productionJobOperations.completedDate} is not null) = count(*)`;
     const operationStatusExpr = sql<JobOperationProgress>`
       case
-        when ${completedOpsExpr} = ${totalOpsExpr} then ${JobOperationProgress.DONE}
-        when ${completedQuantitySumExpr} > 0 then ${JobOperationProgress.IN_PROGRESS}
+        when ${isDoneExpr} then ${JobOperationProgress.DONE}
+        when ${operationDueDateExpr} < ${today}::date then ${JobOperationProgress.OVERDUE}
+        when ${completedQuantitySumExpr} > 0 or ${productionJobs.status} = ${ProductionJobStatus.IN_PROGRESS} then ${JobOperationProgress.IN_PROGRESS}
         else ${JobOperationProgress.NOT_STARTED}
       end
     `;
-    const operationCompletedDateExpr = sql<Date | null>`
-      case when ${completedOpsExpr} = ${totalOpsExpr}
-        then max(${productionJobOperations.completedDate})
-        else null
+    const operationEvaluationExpr = sql<JobOperationEvaluation | null>`
+      case
+        when not ${isDoneExpr} or ${operationDueDateExpr} is null then null
+        when ${operationCompletedDateExpr} <= ${operationDueDateExpr} then ${JobOperationEvaluation.ON_TIME}
+        else ${JobOperationEvaluation.LATE}
       end
     `;
 
@@ -168,21 +178,14 @@ export class ProductionExecutionService {
           jobCode: productionJobs.code,
           orderCode: orders.code,
           item: getTableColumns(items),
+          imageFile: getTableColumns(files),
           quantity: productionJobs.quantity,
           orderDate: orders.orderDate,
           dueDate: orders.dueDate,
           jobStatus: productionJobs.status,
-          plannedQuantity:
-            sql<number>`coalesce(sum(${productionJobBomItems.plannedQuantity}), 0)`.mapWith(
-              Number,
-            ),
-          completedQuantity: completedQuantitySumExpr.mapWith(Number),
-          rejectedQuantity:
-            sql<number>`coalesce(sum(${productionJobOperations.rejectedQuantity}), 0)`.mapWith(
-              Number,
-            ),
-          operationCompletedDate: operationCompletedDateExpr,
+          operationDueDate: operationDueDateExpr,
           operationStatus: operationStatusExpr,
+          operationEvaluation: operationEvaluationExpr,
         })
         .from(productionJobs)
         .innerJoin(
@@ -191,19 +194,19 @@ export class ProductionExecutionService {
         )
         .innerJoin(orders, eq(orders.id, productionOrders.orderId))
         .innerJoin(items, eq(items.id, productionJobs.itemId))
+        .leftJoin(files, eq(files.id, items.imageFileId))
         .innerJoin(
           productionJobOperations,
           eq(productionJobOperations.productionJobId, productionJobs.id),
         )
-        .innerJoin(
-          productionJobBomItems,
-          eq(
-            productionJobBomItems.id,
-            productionJobOperations.productionJobBomItemId,
-          ),
-        )
         .where(where)
-        .groupBy(productionJobs.id, orders.id, productionOrders.id, items.id)
+        .groupBy(
+          productionJobs.id,
+          orders.id,
+          productionOrders.id,
+          items.id,
+          files.id,
+        )
         .orderBy(desc(productionJobs.createdAt), desc(orders.createdAt))
         .limit(reqDto.limit)
         .offset(reqDto.offset),
@@ -235,80 +238,66 @@ export class ProductionExecutionService {
     );
   }
 
-  /** Lấy danh sách lịch sử báo cáo sản lượng của một Job (có thể lọc theo công đoạn). */
+  /** Lịch sử báo cáo sản lượng của một Job (lọc theo công đoạn tuỳ chọn), mỗi lần báo cáo một
+   * dòng, mới nhất trước, phân trang. */
   async getJobOperationReports(
     productionJobId: string,
     reqDto: GetJobOperationReportsReqDto,
-  ): Promise<ProductionExecutionReportResDto[]> {
-    const whereConditions = [
+  ): Promise<OffsetPaginatedDto<ProductionExecutionReportResDto>> {
+    const where = and(
       eq(productionJobOperations.productionJobId, productionJobId),
-    ];
+      reqDto.jobOperationId
+        ? eq(productionJobOperations.id, reqDto.jobOperationId)
+        : undefined,
+      reqDto.operationId
+        ? eq(productionJobOperations.operationId, reqDto.operationId)
+        : undefined,
+      reqDto.bomItemId
+        ? eq(productionJobOperations.productionJobBomItemId, reqDto.bomItemId)
+        : undefined,
+    );
 
-    if (reqDto.jobOperationId) {
-      whereConditions.push(
-        eq(productionJobOperations.id, reqDto.jobOperationId),
-      );
-    } else if (reqDto.operationId) {
-      whereConditions.push(
-        eq(productionJobOperations.operationId, reqDto.operationId),
-      );
-    }
+    const reportWhere = inArray(
+      productionJobOperationReports.productionJobOperationId,
+      this.db
+        .select({ id: productionJobOperations.id })
+        .from(productionJobOperations)
+        .where(where),
+    );
 
-    const matchedOperations =
-      await this.db.query.productionJobOperations.findMany({
-        where: and(...whereConditions),
-        columns: { id: true },
-      });
-
-    if (matchedOperations.length === 0) {
-      return [];
-    }
-
-    const operationIds = matchedOperations.map((o) => o.id);
-
-    const reports = await this.db.query.productionJobOperationReports.findMany({
-      where: inArray(
-        productionJobOperationReports.productionJobOperationId,
-        operationIds,
-      ),
-      with: {
-        creatorBy: true,
-        files: {
-          with: {
-            file: true,
-          },
+    const [reports, [{ total }]] = await Promise.all([
+      this.db.query.productionJobOperationReports.findMany({
+        where: reportWhere,
+        with: {
+          creatorBy: { columns: { id: true, code: true, fullName: true } },
+          files: { with: { file: true } },
+          productionJobOperation: { with: { bomItem: true } },
         },
-        productionJobOperation: {
-          with: {
-            bomItem: true,
-          },
-        },
-      },
-      orderBy: [desc(productionJobOperationReports.createdAt)],
-    });
+        orderBy: desc(productionJobOperationReports.createdAt),
+        limit: reqDto.limit,
+        offset: reqDto.offset,
+      }),
+      this.db
+        .select({ total: count() })
+        .from(productionJobOperationReports)
+        .where(reportWhere),
+    ]);
 
-    return reports.map((r) =>
+    const data = reports.map((report) =>
       plainToInstance(
         ProductionExecutionReportResDto,
         {
-          id: r.id,
-          productionJobOperationId: r.productionJobOperationId,
-          operationCode: r.productionJobOperation.code,
-          operationName: r.productionJobOperation.name,
-          bomItemId: r.productionJobOperation.bomItem.id,
-          bomItemCode: r.productionJobOperation.bomItem.code,
-          bomItemName: r.productionJobOperation.bomItem.name,
-          completedQuantityDelta: r.completedQuantityDelta,
-          rejectedQuantityDelta: r.rejectedQuantityDelta,
-          completedDate: r.completedDate,
-          note: r.note,
-          createdAt: r.createdAt,
-          creator: r.creatorBy,
-          files: r.files.map((f) => f.file),
+          ...report,
+          operation: report.productionJobOperation,
+          bomItem: report.productionJobOperation.bomItem,
+          creator: report.creatorBy,
+          files: report.files.map(({ file }) => file),
         },
         { excludeExtraneousValues: true },
       ),
     );
+
+    return new OffsetPaginatedDto(data, new OffsetPaginationDto(total, reqDto));
   }
 
   /** `POST .../operations/:jobOperationId/reports` — đường ghi duy nhất vào
@@ -399,7 +388,7 @@ export class ProductionExecutionService {
           productionJobOperationId: jobOperationId,
           completedQuantityDelta: reqDto.completedQuantityDelta,
           rejectedQuantityDelta,
-          completedDate: reqDto.completedDate,
+          completedDate: vnToday(),
           note: reqDto.note,
           createdBy: userId,
         })
@@ -419,8 +408,9 @@ export class ProductionExecutionService {
         .set({
           completedQuantity: newCompletedQuantity,
           rejectedQuantity: newRejectedQuantity,
+          lastReportedAt: new Date(),
           completedDate:
-            roundedNewCompleted >= roundedPlanned ? reqDto.completedDate : null,
+            roundedNewCompleted >= roundedPlanned ? vnToday() : null,
         })
         .where(eq(productionJobOperations.id, jobOperationId));
 

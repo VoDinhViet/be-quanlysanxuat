@@ -78,6 +78,8 @@ export const productionJobOperations = pgTable(
       .notNull()
       .default(0),
     completedDate: date('completed_date', { mode: 'date' }),
+    // Thời điểm server ghi lần báo cáo/cập nhật tiến độ gần nhất; null = chưa từng cập nhật.
+    lastReportedAt: timestamp('last_reported_at'),
     dueDate: date('due_date', { mode: 'date' }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at')

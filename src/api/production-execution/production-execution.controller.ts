@@ -55,13 +55,14 @@ export class ProductionExecutionController {
   @Permissions('production:read')
   @ApiAuth({
     type: ProductionExecutionReportResDto,
-    isArray: true,
-    summary: 'Lấy danh sách lịch sử báo cáo sản lượng của một Job',
+    isPaginated: true,
+    summary:
+      'Lấy lịch sử báo cáo sản lượng của một Job (mỗi lần báo cáo một dòng, phân trang)',
   })
   getJobOperationReports(
     @UUIDParam('productionJobId') productionJobId: string,
     @Query() reqDto: GetJobOperationReportsReqDto,
-  ): Promise<ProductionExecutionReportResDto[]> {
+  ): Promise<OffsetPaginatedDto<ProductionExecutionReportResDto>> {
     return this.productionExecutionService.getJobOperationReports(
       productionJobId,
       reqDto,

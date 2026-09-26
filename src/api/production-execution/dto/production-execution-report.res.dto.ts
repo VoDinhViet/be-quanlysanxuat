@@ -1,3 +1,4 @@
+import { PickType } from '@nestjs/swagger';
 import { Exclude, Expose } from 'class-transformer';
 
 import {
@@ -5,12 +6,19 @@ import {
   ClassFieldOptional,
   DateField,
   NumberField,
-  StringField,
   StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
+import { ProductionJobBomItemResDto } from '../../production-jobs/dto/production-job-bom-operation.res.dto';
+import { ProductionJobOperationRefResDto } from '../../production-jobs/dto/production-job-operation-ref.res.dto';
 import { FileResDto } from '../../files/dto/file.res.dto';
 import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
+
+@Exclude()
+export class ProductionExecutionReportBomItemRefResDto extends PickType(
+  ProductionJobBomItemResDto,
+  ['id', 'code', 'name'] as const,
+) {}
 
 @Exclude()
 export class ProductionExecutionReportResDto {
@@ -23,24 +31,12 @@ export class ProductionExecutionReportResDto {
   productionJobOperationId!: string;
 
   @Expose()
-  @StringField({ description: 'Mã công đoạn' })
-  operationCode!: string;
+  @ClassField(() => ProductionJobOperationRefResDto)
+  operation!: ProductionJobOperationRefResDto;
 
   @Expose()
-  @StringField({ description: 'Tên công đoạn' })
-  operationName!: string;
-
-  @Expose()
-  @UUIDField({ description: 'ID Part' })
-  bomItemId!: string;
-
-  @Expose()
-  @StringField({ description: 'Mã Part' })
-  bomItemCode!: string;
-
-  @Expose()
-  @StringField({ description: 'Tên Part' })
-  bomItemName!: string;
+  @ClassField(() => ProductionExecutionReportBomItemRefResDto)
+  bomItem!: ProductionExecutionReportBomItemRefResDto;
 
   @Expose()
   @NumberField({ description: 'SL hoàn thành (đạt) tăng thêm' })
