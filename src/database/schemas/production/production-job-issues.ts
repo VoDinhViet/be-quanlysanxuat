@@ -66,10 +66,10 @@ export const productionJobIssues = pgTable(
     imageFileId: uuid('image_file_id').references(() => files.id, {
       onDelete: 'set null',
     }),
-    unitQty: numeric('unit_qty', { precision: 18, scale: 3, mode: 'number' }),
+    unitQty: numeric('unit_qty', { precision: 18, scale: 6, mode: 'number' }),
     requiredQty: numeric('required_qty', {
       precision: 18,
-      scale: 3,
+      scale: 6,
       mode: 'number',
     }).notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),

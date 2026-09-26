@@ -157,9 +157,16 @@ async function buildPlanBomItems(
     const jobBomItemId = crypto.randomUUID();
     jobBomItemIdByBaseId.set(baseBomItem.id, jobBomItemId);
 
-    const parentPlannedQty = baseBomItem.parentId
-      ? (plannedQtyByBaseId.get(baseBomItem.parentId) ?? job.quantity)
-      : job.quantity;
+    let parentPlannedQty = job.quantity;
+    if (baseBomItem.parentId) {
+      const plannedQtyOfParent = plannedQtyByBaseId.get(baseBomItem.parentId);
+      if (plannedQtyOfParent === undefined) {
+        throw new Error(
+          `BOM item ${baseBomItem.id} đứng trước node cha ${baseBomItem.parentId} khi nổ cấp`,
+        );
+      }
+      parentPlannedQty = plannedQtyOfParent;
+    }
     const plannedQuantity = parentPlannedQty * baseBomItem.quantity;
     plannedQtyByBaseId.set(baseBomItem.id, plannedQuantity);
 
@@ -283,8 +290,9 @@ async function buildPlanOperations(
 }
 
 /**
- * Nhu cầu vật tư đã nổ cấp: Σ `plannedQuantity` các node DIRECT theo `itemId`, làm tròn 3 số lẻ
- * như cột numeric; bỏ dòng tròn về 0 (`production_job_issues.required_qty` có CHECK `> 0`).
+ * Nhu cầu vật tư đã nổ cấp: Σ `plannedQuantity` các node DIRECT theo `itemId` (không làm tròn từng
+ * node), chỉ làm tròn scale 6 một lần ở tổng — khớp cột numeric, gọt rác dấu phẩy động cho bản xem
+ * trước Job `PENDING`; bỏ dòng tròn về 0 (`production_job_issues.required_qty` có CHECK `> 0`).
  */
 async function buildPlanIssues(
   db: Database | DbTransaction,
@@ -303,8 +311,7 @@ async function buildPlanIssues(
     }
     requiredQtyByItemId.set(
       node.itemId,
-      (requiredQtyByItemId.get(node.itemId) ?? 0) +
-        Math.round(node.plannedQuantity * 1000) / 1000,
+      (requiredQtyByItemId.get(node.itemId) ?? 0) + node.plannedQuantity,
     );
   }
 
@@ -328,7 +335,7 @@ async function buildPlanIssues(
       return {
         item,
         unit: unitById.get(item.unitId)!,
-        requiredQty: Math.round(requiredQty * 1000) / 1000,
+        requiredQty: Math.round(requiredQty * 1e6) / 1e6,
       };
     })
     .filter((issue) => issue.requiredQty > 0)

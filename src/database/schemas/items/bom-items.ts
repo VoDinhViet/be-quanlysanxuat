@@ -86,7 +86,7 @@ export const bomItems = pgTable(
     }),
     quantity: numeric('quantity', {
       precision: 12,
-      scale: 3,
+      scale: 6,
       mode: 'number',
     }).notNull(),
     level: integer('level').notNull().default(1),
