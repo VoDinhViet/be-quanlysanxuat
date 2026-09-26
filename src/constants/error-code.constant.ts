@@ -632,6 +632,10 @@ export enum ErrorCode {
   E276 = 'item.error.direct_code_required',
   // `POST /items/:itemId/copy` trên FG mà thiếu `revision` — FG giữ nguyên mã nên revision là thứ duy nhất phân biệt.
   E277 = 'item.error.copy_revision_required',
+  // Người dùng không tồn tại hoặc đã nghỉ việc khi phân công vào công đoạn.
+  E278 = 'operation.error.assignment_invalid',
+  // Người dùng báo cáo/xem công đoạn mà mình chưa được phân công (`operation_assignments`).
+  E279 = 'production_execution.error.operation_not_assigned',
   V003 = 'common.error.too_many_requests',
   // `GlobalExceptionFilter` bắt chuỗi "No values to set" của drizzle-orm — mọi `PATCH` khi
   // `ValidationPipe` whitelist đã loại sạch field lạ, còn lại payload rỗng cho `.set()`. Trước đây

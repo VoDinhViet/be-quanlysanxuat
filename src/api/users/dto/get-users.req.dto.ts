@@ -14,4 +14,10 @@ export class GetUsersReqDto extends PageOptionsDto {
 
   @UUIDFieldOptional({ description: 'Filter by position id' })
   readonly positionId?: string;
+
+  @UUIDFieldOptional({
+    description:
+      'Bỏ qua nhân sự đã được phân công vào công đoạn này (dùng cho hộp thoại phân công — chỉ liệt kê người chưa thuộc công đoạn)',
+  })
+  readonly excludeOperationId?: string;
 }

@@ -3,13 +3,15 @@ import { ProductionJobStatus } from '../../../database/schemas';
 import {
   DateFieldOptional,
   EnumFieldOptional,
-  UUIDField,
   UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
 
 export class GetProductionExecutionJobsReqDto extends PageOptionsDto {
-  @UUIDField({ description: 'Công đoạn đang chọn (operations.id)' })
-  readonly operationId!: string;
+  @UUIDFieldOptional({
+    description:
+      'Công đoạn đang chọn (operations.id). Bỏ trống = "Tất cả công đoạn" người dùng được phép: mỗi dòng là một cặp Job × công đoạn',
+  })
+  readonly operationId?: string;
 
   @EnumFieldOptional(() => ProductionJobStatus, {
     description: 'Lọc theo trạng thái Job',

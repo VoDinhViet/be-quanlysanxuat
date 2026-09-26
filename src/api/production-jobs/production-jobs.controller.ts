@@ -16,6 +16,7 @@ import { ApiAuth } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
+import { OperationAccessService } from '../operations/operation-access.service';
 import { OqcService } from '../oqc/oqc.service';
 import { ExportProductionJobsPlanReqDto } from './dto/export-production-jobs-plan.req.dto';
 import { CreateProductionJobNoteReqDto } from './dto/create-production-job-note.req.dto';
@@ -39,6 +40,7 @@ export class ProductionJobsController {
   constructor(
     private readonly productionJobsService: ProductionJobsService,
     private readonly oqcService: OqcService,
+    private readonly operationAccess: OperationAccessService,
   ) {}
 
   @Get()
@@ -105,10 +107,16 @@ export class ProductionJobsController {
       '`operationId` query optional lọc chỉ trả BOM item nào chứa đúng công đoạn đó ' +
       '(màn "Thực hiện sản xuất")',
   })
-  getProductionJobOperations(
+  async getProductionJobOperations(
     @UUIDParam('jobId') jobId: string,
     @Query() reqDto: GetProductionJobOperationsReqDto,
+    @CurrentUser() payload: JwtPayloadType,
   ): Promise<ProductionJobBomItemResDto[]> {
+    // Có `operationId` = đang xem từ màn "Thực hiện sản xuất" → chỉ công đoạn được phân công.
+    if (reqDto.operationId) {
+      await this.operationAccess.assertCanAccess(payload, reqDto.operationId);
+    }
+
     return this.productionJobsService.getProductionJobOperations(
       jobId,
       reqDto.operationId,

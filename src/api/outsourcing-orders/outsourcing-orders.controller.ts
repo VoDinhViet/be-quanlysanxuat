@@ -7,6 +7,7 @@ import { ApiAuth } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
+import { OperationAccessService } from '../operations/operation-access.service';
 import { CreateOutsourcingOrderReqDto } from './dto/create-outsourcing-order.req.dto';
 import { GetOutsourceableOperationsReqDto } from './dto/get-outsourceable-operations.req.dto';
 import { GetOutsourcingOrdersReqDto } from './dto/get-outsourcing-orders.req.dto';
@@ -21,6 +22,7 @@ import { OutsourcingOrdersService } from './outsourcing-orders.service';
 export class OutsourcingOrdersController {
   constructor(
     private readonly outsourcingOrdersService: OutsourcingOrdersService,
+    private readonly operationAccess: OperationAccessService,
   ) {}
 
   @Get()
@@ -44,9 +46,15 @@ export class OutsourcingOrdersController {
       'Popup "chọn part cần gia công" — công đoạn OUTSOURCE của Job đang IN_PROGRESS, kèm định mức/đã gửi/còn được phép gửi',
     isPaginated: true,
   })
-  getOutsourceableOperations(
+  async getOutsourceableOperations(
     @Query() reqDto: GetOutsourceableOperationsReqDto,
+    @CurrentUser() payload: JwtPayloadType,
   ): Promise<OffsetPaginatedDto<OutsourceableOperationResDto>> {
+    // Có `operationId` = đang xem từ màn "Thực hiện sản xuất" → chỉ công đoạn được phân công.
+    if (reqDto.operationId) {
+      await this.operationAccess.assertCanAccess(payload, reqDto.operationId);
+    }
+
     return this.outsourcingOrdersService.getOutsourceableOperations(reqDto);
   }
 

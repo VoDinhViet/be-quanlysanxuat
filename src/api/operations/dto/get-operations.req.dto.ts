@@ -1,15 +1,9 @@
+import { PageOptionsDto } from '../../../common/dto/offset-pagination/page-options.dto';
 import { OperationStatus, OperationType } from '../../../database/schemas';
-import {
-  EnumFieldOptional,
-  StringFieldOptional,
-} from '../../../decorators/field.decorators';
+import { EnumFieldOptional } from '../../../decorators/field.decorators';
 
-export class GetOperationsReqDto {
-  @StringFieldOptional({
-    description: 'Search on name (accent-insensitive)',
-  })
-  readonly q?: string;
-
+/** Danh sách công đoạn có phân trang (`page`, `limit`); `q` tìm theo tên, không phân biệt dấu. */
+export class GetOperationsReqDto extends PageOptionsDto {
   @EnumFieldOptional(() => OperationType, {
     description:
       'Filter by type — e.g. type=OUTSOURCE for the "Gia công ngoài" screen',
