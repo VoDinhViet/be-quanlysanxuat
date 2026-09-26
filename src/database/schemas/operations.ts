@@ -4,6 +4,7 @@ import {
   pgEnum,
   pgTable,
   timestamp,
+  unique,
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core';
@@ -71,11 +72,49 @@ export const operations = pgTable(
   ],
 );
 
-export const operationsRelations = relations(operations, ({ one }) => ({
+/** Nhân sự được phân công vào công đoạn — công đoạn chính là tổ sản xuất. Nhiều-nhiều: một người
+ * có thể thuộc nhiều công đoạn. */
+export const operationAssignments = pgTable(
+  'operation_assignments',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    operationId: uuid('operation_id')
+      .notNull()
+      .references(() => operations.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [
+    unique('uq_operation_assignments_operation_id_user_id').on(
+      table.operationId,
+      table.userId,
+    ),
+    index('idx_operation_assignments_user_id').on(table.userId),
+  ],
+);
+
+export const operationsRelations = relations(operations, ({ one, many }) => ({
   creatorBy: one(users, {
     fields: [operations.createdBy],
     references: [users.id],
   }),
+  assignments: many(operationAssignments),
 }));
+
+export const operationAssignmentsRelations = relations(
+  operationAssignments,
+  ({ one }) => ({
+    operation: one(operations, {
+      fields: [operationAssignments.operationId],
+      references: [operations.id],
+    }),
+    user: one(users, {
+      fields: [operationAssignments.userId],
+      references: [users.id],
+    }),
+  }),
+);
 
 export type OperationSelect = typeof operations.$inferSelect;

@@ -11,6 +11,7 @@ import {
   ilike,
   isNull,
   ne,
+  notInArray,
   or,
   sql,
 } from 'drizzle-orm';
@@ -35,6 +36,7 @@ import {
   credentials,
   departments,
   files,
+  operationAssignments,
   positions,
   roles,
   users,
@@ -85,6 +87,17 @@ export class UsersService {
         ? eq(users.departmentId, reqDto.departmentId)
         : undefined,
       reqDto.positionId ? eq(users.positionId, reqDto.positionId) : undefined,
+      reqDto.excludeOperationId
+        ? notInArray(
+            users.id,
+            this.db
+              .select({ userId: operationAssignments.userId })
+              .from(operationAssignments)
+              .where(
+                eq(operationAssignments.operationId, reqDto.excludeOperationId),
+              ),
+          )
+        : undefined,
       or(isNull(credentials.isProtected), eq(credentials.isProtected, false)),
     );
     const orderBy = desc(users.createdAt);
