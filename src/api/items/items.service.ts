@@ -433,8 +433,8 @@ export class ItemsService {
 
     // multiplier[node] = multiplier[cha] × quantity node, gốc (parentId null) = 1 × quantity —
     // đi từ gốc xuống đúng N tầng COMPONENT rồi dừng ở DIRECT, không cần xử lý DIRECT có con (bất biến `E052`).
-    // Làm tròn scale 3 ngay mỗi bước nhân (không chỉ lúc gộp cuối) — khác `createJobBomItems`/
-    // `createJobIssues` phía Job, số ở đây không đi qua cột `numeric(18,3)` nào để Postgres tự làm
+    // Làm tròn scale 6 ngay mỗi bước nhân (không chỉ lúc gộp cuối) — khác `createJobBomItems`/
+    // `createJobIssues` phía Job, số ở đây không đi qua cột `numeric(18,6)` nào để Postgres tự làm
     // tròn hộ giữa các cấp, nên tự làm tròn để tránh rác dấu phẩy động lọt ra JSON (cùng idiom
     // `IqcService.validateDecision`'s `scale`).
     const multiplierById = new Map<string, number>();
@@ -445,7 +445,7 @@ export class ItemsService {
         ? multiplierById.get(node.parentId)!
         : 1;
       const multiplier =
-        Math.round(parentMultiplier * node.quantity * 1000) / 1000;
+        Math.round(parentMultiplier * node.quantity * 1e6) / 1e6;
       multiplierById.set(node.id, multiplier);
 
       if (node.type === BomType.DIRECT) {
@@ -453,8 +453,8 @@ export class ItemsService {
         const directItemId = node.itemId!;
         const total =
           Math.round(
-            ((totalByItemId.get(directItemId) ?? 0) + multiplier) * 1000,
-          ) / 1000;
+            ((totalByItemId.get(directItemId) ?? 0) + multiplier) * 1e6,
+          ) / 1e6;
         totalByItemId.set(directItemId, total);
       }
     }

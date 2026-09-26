@@ -64,7 +64,7 @@ export const productionJobBomItemTypeEnum = pgEnum(
  *   cột path riêng.
  * - `plannedQuantity` là giá trị **dẫn xuất** (nhân luỹ kế `quantity` theo cây × SL Job), tính một
  *   lần cùng lúc `createJobBomItems` và đóng băng — không có CHECK `> 0` vì định mức lẻ nhiều cấp có thể
- *   tròn về 0 ở scale 3. Node FG dùng thẳng `quantity = 1`, `plannedQuantity = job.quantity`.
+ *   tròn về 0 ở scale 6. Node FG dùng thẳng `quantity = 1`, `plannedQuantity = job.quantity`.
  * - `imageFileId` copy thẳng ảnh item lúc duyệt, cùng lý lẽ `productionJobIssues.imageFileId` —
  *   `files` là registry ghi-một-lần nên giữ dạng liên kết sống (`set null` khi bị xoá) là an toàn,
  *   khác `itemId`/`code`/`name` vốn phải đóng băng.
@@ -88,12 +88,12 @@ export const productionJobBomItems = pgTable(
     name: varchar('name', { length: 255 }).notNull(),
     quantity: numeric('quantity', {
       precision: 12,
-      scale: 3,
+      scale: 6,
       mode: 'number',
     }).notNull(),
     plannedQuantity: numeric('planned_quantity', {
       precision: 18,
-      scale: 3,
+      scale: 6,
       mode: 'number',
     }).notNull(),
     sortOrder: integer('sort_order').notNull().default(0),
