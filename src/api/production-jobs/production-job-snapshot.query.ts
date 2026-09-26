@@ -157,15 +157,13 @@ async function buildPlanBomItems(
     const jobBomItemId = crypto.randomUUID();
     jobBomItemIdByBaseId.set(baseBomItem.id, jobBomItemId);
 
-    let parentPlannedQty = job.quantity;
-    if (baseBomItem.parentId) {
-      const plannedQtyOfParent = plannedQtyByBaseId.get(baseBomItem.parentId);
-      if (plannedQtyOfParent === undefined) {
-        throw new Error(
-          `BOM item ${baseBomItem.id} đứng trước node cha ${baseBomItem.parentId} khi nổ cấp`,
-        );
-      }
-      parentPlannedQty = plannedQtyOfParent;
+    const parentPlannedQty = baseBomItem.parentId
+      ? plannedQtyByBaseId.get(baseBomItem.parentId)
+      : job.quantity;
+    if (parentPlannedQty === undefined) {
+      throw new Error(
+        `BOM item ${baseBomItem.id} đứng trước node cha ${baseBomItem.parentId} khi nổ cấp`,
+      );
     }
     const plannedQuantity = parentPlannedQty * baseBomItem.quantity;
     plannedQtyByBaseId.set(baseBomItem.id, plannedQuantity);

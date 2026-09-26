@@ -636,6 +636,9 @@ export enum ErrorCode {
   E278 = 'operation.error.assignment_invalid',
   // Người dùng báo cáo/xem công đoạn mà mình chưa được phân công (`operation_assignments`).
   E279 = 'production_execution.error.operation_not_assigned',
+  // Các dòng trong cùng payload OS-OUT thuộc nhiều công đoạn khác nhau — một phiếu chỉ gửi gia công
+  // đúng một công đoạn.
+  E280 = 'outsourcing_order.error.mixed_operations',
   V003 = 'common.error.too_many_requests',
   // `GlobalExceptionFilter` bắt chuỗi "No values to set" của drizzle-orm — mọi `PATCH` khi
   // `ValidationPipe` whitelist đã loại sạch field lạ, còn lại payload rỗng cho `.set()`. Trước đây
