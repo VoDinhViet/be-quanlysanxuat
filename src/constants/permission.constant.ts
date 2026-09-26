@@ -65,6 +65,9 @@ export const PERMISSION_CODES = [
   'production:create',
   'production:update',
   'production:approve',
+  'production-execution:read',
+  'production-execution:report',
+  'production-execution:read-all',
   'purchase-requests:read',
   'purchase-requests:create',
   'purchase-requests:update',
@@ -165,6 +168,10 @@ export const PERMISSION_LABELS: Record<PermissionCode, string> = {
   'production:create': 'Tạo lệnh/kế hoạch sản xuất',
   'production:update': 'Sửa lệnh/kế hoạch sản xuất',
   'production:approve': 'Duyệt lệnh sản xuất',
+  'production-execution:read': 'Xem màn Thực hiện sản xuất',
+  'production-execution:report': 'Báo cáo sản lượng (Thực hiện sản xuất)',
+  'production-execution:read-all':
+    'Xem mọi công đoạn (không giới hạn theo phân công)',
   'purchase-requests:read': 'Xem đề xuất mua hàng',
   'purchase-requests:create': 'Tạo đề xuất mua hàng',
   'purchase-requests:update': 'Sửa đề xuất mua hàng',
@@ -198,6 +205,10 @@ export const PERMISSION_LABELS: Record<PermissionCode, string> = {
 export const PERMISSION_ITEM_DESCRIPTIONS: Partial<
   Record<PermissionCode, string>
 > = {
+  'production-execution:report':
+    'Gửi báo cáo sản lượng hoàn thành / không đạt ở màn Thực hiện sản xuất',
+  'production-execution:read-all':
+    'Xem và báo cáo mọi công đoạn, bỏ giới hạn theo công đoạn được phân công (dành cho quản lý/điều độ)',
   'items:copy':
     'Nhân bản nhanh thông tin sản phẩm và định mức vật tư sang mã mới',
   'items:bom-manage':
@@ -427,6 +438,18 @@ const PERMISSION_GROUP_DEFS: PermissionGroupDef[] = [
       'production:create',
       'production:update',
       'production:approve',
+    ],
+  },
+  {
+    resource: 'production-execution',
+    block: 'production',
+    description:
+      'Màn Thực hiện sản xuất cho tổ/nhân sự báo cáo sản lượng — người dùng chỉ thấy và báo cáo các công đoạn mình được phân công, trừ khi có quyền xem mọi công đoạn',
+    label: 'Thực hiện sản xuất',
+    codes: [
+      'production-execution:read',
+      'production-execution:report',
+      'production-execution:read-all',
     ],
   },
   {

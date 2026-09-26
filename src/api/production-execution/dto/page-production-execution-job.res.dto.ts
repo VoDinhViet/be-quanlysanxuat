@@ -40,6 +40,18 @@ export class PageProductionExecutionJobResDto {
   jobCode!: string;
 
   @Expose()
+  @UUIDField({ description: 'Công đoạn của dòng này (operations.id)' })
+  operationId!: string;
+
+  @Expose()
+  @StringField({ description: 'Mã công đoạn' })
+  operationCode!: string;
+
+  @Expose()
+  @StringField({ description: 'Tên công đoạn' })
+  operationName!: string;
+
+  @Expose()
   @StringField({ description: 'Mã đơn hàng (PO)' })
   orderCode!: string;
 

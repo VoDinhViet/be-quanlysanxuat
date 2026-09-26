@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { TemplatesModule } from '../../templates/templates.module';
 import { AuthModule } from '../auth/auth.module';
 import { InventoryModule } from '../inventory/inventory.module';
+import { OperationsModule } from '../operations/operations.module';
 import { OqcModule } from '../oqc/oqc.module';
 import { PurchaseRequestsModule } from '../purchase-requests/purchase-requests.module';
 import { UsersModule } from '../users/users.module';
@@ -13,6 +14,7 @@ import { ProductionJobsService } from './production-jobs.service';
   imports: [
     AuthModule,
     InventoryModule,
+    OperationsModule,
     OqcModule,
     PurchaseRequestsModule,
     TemplatesModule,

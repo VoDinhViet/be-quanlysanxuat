@@ -32,4 +32,19 @@ export class ProductionExecutionOperationResDto {
     description: 'Số Job khớp bộ lọc hiện tại có ít nhất 1 dòng công đoạn này',
   })
   jobCount!: number;
+
+  @Expose()
+  @NumberField({
+    int: true,
+    description: 'Số Job đang sản xuất (status IN_PROGRESS) trong jobCount',
+  })
+  inProgressCount!: number;
+
+  @Expose()
+  @NumberField({
+    int: true,
+    description:
+      'Số Job có ít nhất 1 dòng công đoạn này chưa xong mà đã quá hạn hoàn thành',
+  })
+  overdueCount!: number;
 }

@@ -1,11 +1,14 @@
 import { Module } from '@nestjs/common';
 
+import { AuthModule } from '../auth/auth.module';
+import { OperationAccessService } from './operation-access.service';
 import { OperationsController } from './operations.controller';
 import { OperationsService } from './operations.service';
 
 @Module({
+  imports: [AuthModule],
   controllers: [OperationsController],
-  providers: [OperationsService],
-  exports: [OperationsService],
+  providers: [OperationsService, OperationAccessService],
+  exports: [OperationsService, OperationAccessService],
 })
 export class OperationsModule {}

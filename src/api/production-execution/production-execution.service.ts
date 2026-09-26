@@ -39,12 +39,17 @@ import {
 } from '../../database/schemas';
 import { vnToday } from '../../database/vn-date.util';
 import { AppException } from '../../exceptions/app.exception';
+import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
 import { FilesService } from '../files/files.service';
+import { OperationAccessService } from '../operations/operation-access.service';
+import { ProductionJobsService } from '../production-jobs/production-jobs.service';
+import { ProductionJobBomItemResDto } from '../production-jobs/dto/production-job-bom-operation.res.dto';
 import { closeJobIfFinalAssemblyDone } from '../production-jobs/production-jobs.query';
 import { CreateJobOperationReportReqDto } from './dto/create-job-operation-report.req.dto';
 import { GetProductionExecutionJobsReqDto } from './dto/get-production-execution-jobs.req.dto';
 import { GetProductionExecutionOperationsReqDto } from './dto/get-production-execution-operations.req.dto';
 import { GetJobOperationReportsReqDto } from './dto/get-job-operation-reports.req.dto';
+import { ProductionExecutionJobDetailResDto } from './dto/production-execution-job-detail.res.dto';
 import { PageProductionExecutionJobResDto } from './dto/page-production-execution-job.res.dto';
 import { ProductionExecutionOperationResDto } from './dto/production-execution-operation.res.dto';
 import { ProductionExecutionReportResDto } from './dto/production-execution-report.res.dto';
@@ -53,8 +58,9 @@ import {
   JobOperationProgress,
 } from './production-execution.constant';
 
-/** Màn "Thực hiện sản xuất" (view của tổ sản xuất, đi từ công đoạn xuống) — đọc thuần snapshot đã
- * có sẵn từ `production-jobs` (không import module đó, không gọi service nào của nó).
+/** Màn "Thực hiện sản xuất" (view của tổ sản xuất, đi từ công đoạn xuống) — đọc snapshot đã có
+ * sẵn từ `production-jobs`; header và cấu trúc công đoạn của Job ủy quyền `ProductionJobsService`
+ * sau khi kiểm phạm vi công đoạn (`OperationAccessService`).
  * `createJobOperationReport` là đường ghi duy nhất vào `production_job_operations` — cộng dồn,
  * kèm nhật ký `production_job_operation_reports`. Xem
  * `docs/workflows/production-job-execution.md`, `docs/domains/production.md`. */
@@ -63,6 +69,8 @@ export class ProductionExecutionService {
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly filesService: FilesService,
+    private readonly operationAccess: OperationAccessService,
+    private readonly productionJobsService: ProductionJobsService,
   ) {}
 
   /** Một dòng / công đoạn (`operations`, master data) có ít nhất 1 Job khớp bộ lọc — không gộp gì
@@ -73,8 +81,16 @@ export class ProductionExecutionService {
    * không có cách hiện đúng type từng Job ở đây mà không đổi hẳn cách gộp. */
   async getOperations(
     reqDto: GetProductionExecutionOperationsReqDto,
+    payload: JwtPayloadType,
   ): Promise<ProductionExecutionOperationResDto[]> {
+    const allowedOperationIds =
+      await this.operationAccess.getAllowedOperationIds(payload);
+    if (allowedOperationIds?.length === 0) {
+      return [];
+    }
+
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
+    const today = vnToday().toISOString().slice(0, 10);
 
     const rows = await this.db
       .select({
@@ -85,6 +101,14 @@ export class ProductionExecutionService {
         jobCount: sql<number>`count(distinct ${productionJobs.id})`.mapWith(
           Number,
         ),
+        inProgressCount:
+          sql<number>`count(distinct ${productionJobs.id}) filter (where ${productionJobs.status} = ${ProductionJobStatus.IN_PROGRESS})`.mapWith(
+            Number,
+          ),
+        overdueCount:
+          sql<number>`count(distinct ${productionJobs.id}) filter (where ${productionJobOperations.completedDate} is null and ${productionJobOperations.dueDate} < ${today}::date)`.mapWith(
+            Number,
+          ),
       })
       .from(operations)
       .innerJoin(
@@ -103,6 +127,9 @@ export class ProductionExecutionService {
       .innerJoin(items, eq(items.id, productionJobs.itemId))
       .where(
         and(
+          allowedOperationIds
+            ? inArray(operations.id, allowedOperationIds)
+            : undefined,
           reqDto.status ? eq(productionJobs.status, reqDto.status) : undefined,
           reqDto.clientId ? eq(orders.clientId, reqDto.clientId) : undefined,
           reqDto.startDate ? gte(orders.dueDate, reqDto.startDate) : undefined,
@@ -131,10 +158,29 @@ export class ProductionExecutionService {
    * Part, từ đó suy ra `operationStatus` (kể cả `OVERDUE`) và `operationEvaluation`. */
   async getJobs(
     reqDto: GetProductionExecutionJobsReqDto,
+    payload: JwtPayloadType,
   ): Promise<OffsetPaginatedDto<PageProductionExecutionJobResDto>> {
+    // Một công đoạn cụ thể: kiểm quyền vào đúng công đoạn đó. Không truyền = "Tất cả công đoạn" —
+    // giới hạn trong các công đoạn người dùng được phép (null = không giới hạn, [] = không
+    // được vào công đoạn nào), mỗi dòng là một cặp Job × công đoạn.
+    let allowedOperationIds: string[] | null = null;
+    if (reqDto.operationId) {
+      await this.operationAccess.assertCanAccess(payload, reqDto.operationId);
+    } else {
+      allowedOperationIds =
+        await this.operationAccess.getAllowedOperationIds(payload);
+      if (allowedOperationIds?.length === 0) {
+        return new OffsetPaginatedDto([], new OffsetPaginationDto(0, reqDto));
+      }
+    }
+
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
     const where = and(
-      eq(productionJobOperations.operationId, reqDto.operationId),
+      reqDto.operationId
+        ? eq(productionJobOperations.operationId, reqDto.operationId)
+        : allowedOperationIds
+          ? inArray(productionJobOperations.operationId, allowedOperationIds)
+          : undefined,
       reqDto.status ? eq(productionJobs.status, reqDto.status) : undefined,
       reqDto.clientId ? eq(orders.clientId, reqDto.clientId) : undefined,
       reqDto.startDate ? gte(orders.dueDate, reqDto.startDate) : undefined,
@@ -176,6 +222,9 @@ export class ProductionExecutionService {
         .select({
           jobId: productionJobs.id,
           jobCode: productionJobs.code,
+          operationId: operations.id,
+          operationCode: operations.code,
+          operationName: operations.name,
           orderCode: orders.code,
           item: getTableColumns(items),
           imageFile: getTableColumns(files),
@@ -199,9 +248,14 @@ export class ProductionExecutionService {
           productionJobOperations,
           eq(productionJobOperations.productionJobId, productionJobs.id),
         )
+        .innerJoin(
+          operations,
+          eq(operations.id, productionJobOperations.operationId),
+        )
         .where(where)
         .groupBy(
           productionJobs.id,
+          operations.id,
           orders.id,
           productionOrders.id,
           items.id,
@@ -212,9 +266,11 @@ export class ProductionExecutionService {
         .offset(reqDto.offset),
       this.db
         .select({
-          total: sql<number>`count(distinct ${productionJobs.id})`.mapWith(
-            Number,
-          ),
+          // Một dòng / (Job × công đoạn) — đúng bằng số nhóm của câu SELECT phía trên.
+          total:
+            sql<number>`count(distinct (${productionJobs.id}, ${productionJobOperations.operationId}))`.mapWith(
+              Number,
+            ),
         })
         .from(productionJobs)
         .innerJoin(
@@ -238,14 +294,88 @@ export class ProductionExecutionService {
     );
   }
 
+  /** Header của Job cho màn "Thực hiện sản xuất" — chỉ khi Job có công đoạn `operationId` và người
+   * dùng được phép làm việc ở công đoạn đó. */
+  async getJob(
+    productionJobId: string,
+    operationId: string,
+    payload: JwtPayloadType,
+  ): Promise<ProductionExecutionJobDetailResDto> {
+    await this.operationAccess.assertCanAccess(payload, operationId);
+    await this.ensureJobHasOperation(productionJobId, operationId);
+
+    const detail =
+      await this.productionJobsService.getProductionJob(productionJobId);
+    const [item] = await this.db
+      .select({ imageFile: getTableColumns(files) })
+      .from(items)
+      .leftJoin(files, eq(files.id, items.imageFileId))
+      .where(eq(items.id, detail.itemId))
+      .limit(1);
+
+    return plainToInstance(
+      ProductionExecutionJobDetailResDto,
+      { ...detail, imageFile: item?.imageFile?.id ? item.imageFile : null },
+      { excludeExtraneousValues: true },
+    );
+  }
+
+  /** Part → công đoạn của Job, đã lọc theo công đoạn `operationId` được phép. */
+  async getJobOperations(
+    productionJobId: string,
+    operationId: string,
+    payload: JwtPayloadType,
+  ): Promise<ProductionJobBomItemResDto[]> {
+    await this.operationAccess.assertCanAccess(payload, operationId);
+    await this.ensureJobHasOperation(productionJobId, operationId);
+
+    return this.productionJobsService.getProductionJobOperations(
+      productionJobId,
+      operationId,
+    );
+  }
+
+  private async ensureJobHasOperation(
+    productionJobId: string,
+    operationId: string,
+  ): Promise<void> {
+    const [existing] = await this.db
+      .select({ id: productionJobOperations.id })
+      .from(productionJobOperations)
+      .where(
+        and(
+          eq(productionJobOperations.productionJobId, productionJobId),
+          eq(productionJobOperations.operationId, operationId),
+        ),
+      )
+      .limit(1);
+
+    if (!existing) {
+      throw new AppException(ErrorCode.E091, HttpStatus.NOT_FOUND);
+    }
+  }
+
   /** Lịch sử báo cáo sản lượng của một Job (lọc theo công đoạn tuỳ chọn), mỗi lần báo cáo một
    * dòng, mới nhất trước, phân trang. */
   async getJobOperationReports(
     productionJobId: string,
     reqDto: GetJobOperationReportsReqDto,
+    payload: JwtPayloadType,
   ): Promise<OffsetPaginatedDto<ProductionExecutionReportResDto>> {
+    const allowedOperationIds =
+      await this.operationAccess.getAllowedOperationIds(payload);
+    if (reqDto.operationId) {
+      this.operationAccess.assertOperationAllowed(
+        allowedOperationIds,
+        reqDto.operationId,
+      );
+    }
+
     const where = and(
       eq(productionJobOperations.productionJobId, productionJobId),
+      allowedOperationIds
+        ? inArray(productionJobOperations.operationId, allowedOperationIds)
+        : undefined,
       reqDto.jobOperationId
         ? eq(productionJobOperations.id, reqDto.jobOperationId)
         : undefined,
@@ -305,7 +435,7 @@ export class ProductionExecutionService {
   async createJobOperationReport(
     jobOperationId: string,
     reqDto: CreateJobOperationReportReqDto,
-    userId: string,
+    payload: JwtPayloadType,
   ): Promise<void> {
     const operation = await this.db.query.productionJobOperations.findFirst({
       where: eq(productionJobOperations.id, jobOperationId),
@@ -315,6 +445,8 @@ export class ProductionExecutionService {
     if (!operation) {
       throw new AppException(ErrorCode.E091, HttpStatus.NOT_FOUND);
     }
+
+    await this.operationAccess.assertCanAccess(payload, operation.operationId);
 
     // completedQuantity/completedDate của công đoạn OUTSOURCE chỉ do OS-IN ghi
     // (`recomputeOutsourcedOperationProgress`) — không cho báo cáo tay,
@@ -390,7 +522,7 @@ export class ProductionExecutionService {
           rejectedQuantityDelta,
           completedDate: vnToday(),
           note: reqDto.note,
-          createdBy: userId,
+          createdBy: payload.userId,
         })
         .returning({ id: productionJobOperationReports.id });
 
