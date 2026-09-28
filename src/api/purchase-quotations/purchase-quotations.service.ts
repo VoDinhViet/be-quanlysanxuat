@@ -6,6 +6,7 @@ import {
   desc,
   eq,
   exists,
+  getTableColumns,
   gte,
   inArray,
   isNull,
@@ -27,13 +28,17 @@ import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
   items,
+  PurchaseQuotationItemAllocationSelect,
   PurchaseQuotationStatus,
+  PurchaseRequestItemSelect,
+  PurchaseRequestSelect,
   PurchaseRequestStatus,
   purchaseRequestItems,
   purchaseRequests,
   purchaseQuotationItemAllocations,
   purchaseQuotationItems,
   purchaseQuotationItemSuppliers,
+  purchaseQuotationItemSupplierFiles,
   purchaseQuotations,
   suppliers,
 } from '../../database/schemas';
@@ -51,12 +56,19 @@ import { QuotationResDto } from './dto/quotation.res.dto';
 import { RejectQuotationReqDto } from './dto/reject-quotation.req.dto';
 import { UpdateQuotationReqDto } from './dto/update-quotation.req.dto';
 import { lastPurchaseQuery } from './purchase-quotations.query';
+import { FilesService } from '../files/files.service';
+
+type QuotationAllocationDetail = PurchaseQuotationItemAllocationSelect & {
+  purchaseRequest: PurchaseRequestSelect;
+  purchaseRequestItem: PurchaseRequestItemSelect;
+};
 
 @Injectable()
 export class PurchaseQuotationsService {
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly purchaseOrdersService: PurchaseOrdersService,
+    private readonly filesService: FilesService,
   ) {}
 
   async getQuotations(
@@ -206,14 +218,13 @@ export class PurchaseQuotationsService {
         items: {
           with: {
             item: { with: { unit: true } },
-            allocations: {
+            suppliers: {
               with: {
-                purchaseRequestItem: {
-                  with: { purchaseRequest: true, item: true },
-                },
+                supplier: true,
+                selectorBy: true,
+                files: { with: { file: true } },
               },
             },
-            suppliers: { with: { supplier: true, selectorBy: true } },
           },
         },
       },
@@ -224,6 +235,9 @@ export class PurchaseQuotationsService {
     }
 
     const quotationItems = quotation.items;
+    const quotationItemIds = quotationItems.map((item) => item.id);
+    const allocationsByItemId =
+      await this.getAllocationsByQuotationItemIds(quotationItemIds);
 
     const itemIds = [...new Set(quotationItems.map((item) => item.item.id))];
     const supplierIds = [
@@ -245,19 +259,23 @@ export class PurchaseQuotationsService {
       ]),
     );
 
-    const quotationItemsWithLastPurchase = quotationItems.map((item) => ({
-      ...item,
-      quantity: item.allocations.reduce(
-        (sum, allocation) => sum + allocation.quantity,
-        0,
-      ),
-      suppliers: item.suppliers.map((supplier) => ({
-        ...supplier,
-        lastPurchase:
-          lastPurchaseByKey.get(`${item.item.id}:${supplier.supplierId}`) ??
-          null,
-      })),
-    }));
+    const quotationItemsWithLastPurchase = quotationItems.map((item) => {
+      const itemAllocations = allocationsByItemId.get(item.id) ?? [];
+      return {
+        ...item,
+        allocations: itemAllocations,
+        quantity: itemAllocations.reduce(
+          (sum: number, allocation) => sum + allocation.quantity,
+          0,
+        ),
+        suppliers: item.suppliers.map((supplier) => ({
+          ...supplier,
+          lastPurchase:
+            lastPurchaseByKey.get(`${item.item.id}:${supplier.supplierId}`) ??
+            null,
+        })),
+      };
+    });
 
     return plainToInstance(
       QuotationResDto,
@@ -266,12 +284,60 @@ export class PurchaseQuotationsService {
     );
   }
 
+  private async getAllocationsByQuotationItemIds(quotationItemIds: string[]) {
+    const allocationsByItemId = new Map<string, QuotationAllocationDetail[]>();
+
+    if (!quotationItemIds.length) {
+      return allocationsByItemId;
+    }
+
+    const rows = await this.db
+      .select({
+        ...getTableColumns(purchaseQuotationItemAllocations),
+        purchaseRequest: getTableColumns(purchaseRequests),
+        purchaseRequestItem: getTableColumns(purchaseRequestItems),
+      })
+      .from(purchaseQuotationItemAllocations)
+      .innerJoin(
+        purchaseRequestItems,
+        eq(
+          purchaseRequestItems.id,
+          purchaseQuotationItemAllocations.purchaseRequestItemId,
+        ),
+      )
+      .innerJoin(
+        purchaseRequests,
+        eq(purchaseRequests.id, purchaseRequestItems.purchaseRequestId),
+      )
+      .where(
+        inArray(
+          purchaseQuotationItemAllocations.quotationItemId,
+          quotationItemIds,
+        ),
+      );
+
+    for (const row of rows) {
+      const list = allocationsByItemId.get(row.quotationItemId);
+      if (list) {
+        list.push(row);
+      } else {
+        allocationsByItemId.set(row.quotationItemId, [row]);
+      }
+    }
+
+    return allocationsByItemId;
+  }
+
   async createQuotation(
     reqDto: CreateQuotationReqDto,
     userId: string,
   ): Promise<void> {
     const { items: itemsReq, ...quotationFields } = reqDto;
     const quotationItems = await this.prepareQuotationItems(itemsReq);
+
+    // Link files BEFORE the transaction — `linkFiles` uses `this.db` (not `tx`),
+    // running it inside the transaction deadlocks when the pool is exhausted.
+    await this.linkQuotationSupplierFiles(quotationItems);
 
     await this.db.transaction(async (tx) => {
       const code = await this.generateQuotationCode(tx);
@@ -298,6 +364,8 @@ export class PurchaseQuotationsService {
       itemsReq,
       quotationId,
     );
+
+    await this.linkQuotationSupplierFiles(quotationItems);
 
     await this.db.transaction(async (tx) => {
       await tx
@@ -604,7 +672,34 @@ export class PurchaseQuotationsService {
     );
 
     if (supplierRows.length) {
-      await tx.insert(purchaseQuotationItemSuppliers).values(supplierRows);
+      const supplierRowsWithIds = supplierRows.map((row) => ({
+        ...row,
+        id: crypto.randomUUID() as string,
+      }));
+      await tx.insert(purchaseQuotationItemSuppliers).values(supplierRowsWithIds);
+
+      // Link + insert tệp đính kèm NCC
+      const allFileIds = itemsReq.flatMap((item) =>
+        item.suppliers.flatMap((s) => s.fileIds ?? []),
+      );
+      if (allFileIds.length) {
+        // linkFiles already called before the transaction (see createQuotation/updateQuotation)
+        // Map supplier row id → its fileIds
+        let supplierIdx = 0;
+        const fileRows: { quotationItemSupplierId: string; fileId: string }[] = [];
+        for (const item of itemsReq) {
+          for (const supplier of item.suppliers) {
+            const supplierId = supplierRowsWithIds[supplierIdx].id;
+            for (const fileId of supplier.fileIds ?? []) {
+              fileRows.push({ quotationItemSupplierId: supplierId, fileId });
+            }
+            supplierIdx++;
+          }
+        }
+        if (fileRows.length) {
+          await tx.insert(purchaseQuotationItemSupplierFiles).values(fileRows);
+        }
+      }
     }
   }
 
@@ -650,6 +745,20 @@ export class PurchaseQuotationsService {
     await this.validateAllocations(quotationItems, quotationId);
 
     return quotationItems;
+  }
+
+  /** Stamp `linkedAt` on supplier attachment files before opening the main transaction.
+   *  Runs outside `tx` on purpose — `FilesService.linkFiles` uses `this.db` (the pool),
+   *  calling it inside a transaction deadlocks when every pool connection is reserved. */
+  private async linkQuotationSupplierFiles(
+    itemsReq: CreateQuotationItemReqDto[],
+  ): Promise<void> {
+    const allFileIds = itemsReq.flatMap((item) =>
+      item.suppliers.flatMap((s) => s.fileIds ?? []),
+    );
+    if (allFileIds.length) {
+      await this.filesService.linkFiles(allFileIds);
+    }
   }
 
   private async ensureSuppliersExist(supplierIds: string[]): Promise<void> {

@@ -44,4 +44,6 @@ export const uploadPolicies: Record<UploadType, UploadPolicy> = {
   [UploadType.ITEM_DOCUMENT]: { kind: FileKind.DOCUMENT },
   [UploadType.BOM_ITEM_IMAGE]: { kind: FileKind.IMAGE },
   [UploadType.PRODUCTION_ORDER_SIGNED_DOCUMENT]: { kind: FileKind.EVIDENCE },
+  // Ảnh + tài liệu đính kèm dòng NCC trong báo giá (catalogue, chứng chỉ, bảng giá PDF, ảnh mẫu).
+  [UploadType.QUOTATION_SUPPLIER_EVIDENCE]: { kind: FileKind.EVIDENCE },
 };

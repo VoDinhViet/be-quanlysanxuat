@@ -6,7 +6,22 @@ import {
   StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
-import { PurchaseRequestItemRefResDto } from '../../purchase-requests/dto/purchase-request-item-ref.res.dto';
+import { PurchaseRequestRefResDto } from '../../purchase-requests/dto/purchase-request-ref.res.dto';
+
+@Exclude()
+export class QuotationAllocationPurchaseRequestItemResDto {
+  @Expose()
+  @UUIDField()
+  id!: string;
+
+  @Expose()
+  @NumberField({ description: 'SL đề xuất' })
+  quantity!: number;
+
+  @Expose()
+  @StringFieldOptional({ nullable: true, description: 'Ghi chú dòng đề xuất' })
+  note!: string | null;
+}
 
 @Exclude()
 export class QuotationItemAllocationResDto {
@@ -23,6 +38,10 @@ export class QuotationItemAllocationResDto {
   quantityAdjustmentReason!: string | null;
 
   @Expose()
-  @ClassField(() => PurchaseRequestItemRefResDto)
-  purchaseRequestItem!: PurchaseRequestItemRefResDto;
+  @ClassField(() => PurchaseRequestRefResDto)
+  purchaseRequest!: PurchaseRequestRefResDto;
+
+  @Expose()
+  @ClassField(() => QuotationAllocationPurchaseRequestItemResDto)
+  purchaseRequestItem!: QuotationAllocationPurchaseRequestItemResDto;
 }
