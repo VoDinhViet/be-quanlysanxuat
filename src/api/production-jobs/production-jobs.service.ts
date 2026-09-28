@@ -70,6 +70,7 @@ import { ProductionJobLogResDto } from './dto/production-job-log.res.dto';
 import { ProductionJobNoteResDto } from './dto/production-job-note.res.dto';
 import { ProductionJobResDto } from './dto/production-job.res.dto';
 import { UpdateProductionJobOperationDueDateReqDto } from './dto/update-production-job-operation-due-date.req.dto';
+import { UpdateProductionJobOperationsPlanReqDto } from './dto/update-production-job-operations-plan.req.dto';
 import {
   buildJobPlan,
   createJobSnapshot,
@@ -483,6 +484,34 @@ export class ProductionJobsService {
     if (result.length === 0) {
       throw new AppException(ErrorCode.E082, HttpStatus.NOT_FOUND);
     }
+  }
+
+  /** Lập kế hoạch / cập nhật hàng loạt hạn cần hoàn thành của các công đoạn trong Job — chỉ khi Job IN_PROGRESS */
+  async updateProductionJobOperationsPlan(
+    jobId: string,
+    reqDto: UpdateProductionJobOperationsPlanReqDto,
+  ): Promise<void> {
+    const job = await this.ensureJobExists(jobId);
+
+    this.ensureStatus(job.status, [ProductionJobStatus.IN_PROGRESS]);
+
+    if (!reqDto.operations?.length) {
+      return;
+    }
+
+    await this.db.transaction(async (tx) => {
+      for (const op of reqDto.operations) {
+        await tx
+          .update(productionJobOperations)
+          .set({ dueDate: op.dueDate })
+          .where(
+            and(
+              eq(productionJobOperations.id, op.id),
+              eq(productionJobOperations.productionJobId, jobId),
+            ),
+          );
+      }
+    });
   }
 
   /** Sắp `asc(createdAt)` — đọc xuôi như luồng trao đổi, khác `getProductionOrderLogs` (đọc ngược
