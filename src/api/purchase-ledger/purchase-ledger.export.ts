@@ -12,8 +12,9 @@ export interface PurchaseLedgerExport {
   unitName: string;
   productionOrderCode: string | null;
   quantity: number;
-  quotedQuantity: number;
+  quotedQuantity?: number;
   orderedQuantity: number;
+  receivedQuantity: number;
   status: PurchaseLedgerStatus;
   neededDate: Date;
   note: string | null;
@@ -40,13 +41,13 @@ export const PURCHASE_LEDGER_EXPORT_COLUMNS: ExcelColumn<PurchaseLedgerExport>[]
       numFmt: '#,##0.###',
     },
     {
-      header: 'SL báo giá',
-      value: (row) => row.quotedQuantity,
+      header: 'SL đặt mua',
+      value: (row) => row.orderedQuantity,
       numFmt: '#,##0.###',
     },
     {
-      header: 'SL đặt mua',
-      value: (row) => row.orderedQuantity,
+      header: 'SL đã nhập kho',
+      value: (row) => row.receivedQuantity,
       numFmt: '#,##0.###',
     },
     {

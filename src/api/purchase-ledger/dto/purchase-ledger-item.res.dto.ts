@@ -64,6 +64,13 @@ export class PurchaseLedgerItemResDto {
   orderedQuantity!: number;
 
   @Expose()
+  @NumberField({
+    description:
+      'SL đã nhập kho — Σ quantity mọi dòng phiếu nhập kho POSTED trừ hàng trả NCC',
+  })
+  receivedQuantity!: number;
+
+  @Expose()
   @DateField({ description: 'Ngày tạo phiếu đề xuất' })
   createdAt!: Date;
 
