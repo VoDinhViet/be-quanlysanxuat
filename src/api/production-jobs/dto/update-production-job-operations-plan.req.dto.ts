@@ -1,12 +1,18 @@
 import {
   ClassField,
   DateField,
-  UUIDField,
+  UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
 
 export class UpdateProductionJobOperationPlanItemReqDto {
-  @UUIDField({ description: 'ID công đoạn trong Job' })
-  readonly id!: string;
+  @UUIDFieldOptional({ description: 'ID công đoạn cụ thể trong Job' })
+  readonly id?: string;
+
+  @UUIDFieldOptional({
+    each: true,
+    description: 'Danh sách ID công đoạn cụ thể trong Job',
+  })
+  readonly operationIds?: string[];
 
   @DateField({ description: 'Hạn cần hoàn thành công đoạn' })
   readonly dueDate!: Date;

@@ -26,6 +26,7 @@ import { GetProductionJobNotesReqDto } from './dto/get-production-job-notes.req.
 import { GetProductionJobOperationsReqDto } from './dto/get-production-job-operations.req.dto';
 import { GetProductionJobsReqDto } from './dto/get-production-jobs.req.dto';
 import { ProductionJobBomItemResDto } from './dto/production-job-bom-operation.res.dto';
+import { ProductionJobPlanOperationResDto } from './dto/production-job-plan-operation.res.dto';
 import { ProductionJobDetailResDto } from './dto/production-job-detail.res.dto';
 import { ProductionJobIssueResDto } from './dto/production-job-issue.res.dto';
 import { ProductionJobLogResDto } from './dto/production-job-log.res.dto';
@@ -183,6 +184,21 @@ export class ProductionJobsController {
     @CurrentUser() payload: JwtPayloadType,
   ): Promise<void> {
     return this.productionJobsService.startJob(jobId, payload.userId);
+  }
+
+
+  @Get(':jobId/operations/plan')
+  @Permissions('production:read')
+  @ApiAuth({
+    type: ProductionJobPlanOperationResDto,
+    isArray: true,
+    summary:
+      'Lấy danh sách các nhóm công đoạn trong Job để lập kế hoạch sản xuất',
+  })
+  getProductionJobPlanOperations(
+    @UUIDParam('jobId') jobId: string,
+  ): Promise<ProductionJobPlanOperationResDto[]> {
+    return this.productionJobsService.getProductionJobPlanOperations(jobId);
   }
 
   @Patch(':jobId/operations/plan')
