@@ -117,6 +117,13 @@ export class ProductionJobBomItemResDto {
   code!: string;
 
   @Expose()
+  @StringFieldOptional({
+    nullable: true,
+    description: 'Phiên bản part (revision)',
+  })
+  revision?: string | null;
+
+  @Expose()
   @StringField({ description: 'Tên chi tiết (snapshot BOM của Job)' })
   name!: string;
 

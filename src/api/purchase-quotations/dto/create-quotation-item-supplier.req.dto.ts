@@ -2,6 +2,7 @@ import {
   NumberFieldOptional,
   StringFieldOptional,
   UUIDField,
+  UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
 
 export class CreateQuotationItemSupplierReqDto {
@@ -23,4 +24,10 @@ export class CreateQuotationItemSupplierReqDto {
 
   @StringFieldOptional({ maxLength: 500 })
   readonly note?: string;
+
+  @UUIDFieldOptional({
+    each: true,
+    description: 'File ids (from POST /files?type=QUOTATION_SUPPLIER_EVIDENCE)',
+  })
+  readonly fileIds?: string[];
 }

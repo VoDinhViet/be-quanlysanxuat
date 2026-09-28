@@ -84,6 +84,7 @@ export class InventoryProductsService {
       keyword
         ? or(
             unaccentILike(items.code, keyword),
+            unaccentILike(items.revision, keyword),
             unaccentILike(items.name, keyword),
           )
         : undefined,
@@ -97,6 +98,7 @@ export class InventoryProductsService {
         .select({
           id: items.id,
           code: items.code,
+          revision: items.revision,
           name: items.name,
           unit: getTableColumns(units),
           image: getTableColumns(files),

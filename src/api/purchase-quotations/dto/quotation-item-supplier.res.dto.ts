@@ -11,6 +11,7 @@ import {
 import { SupplierRefResDto } from '../../suppliers/dto/supplier-ref.res.dto';
 import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
 import { QuotationItemSupplierLastPurchaseResDto } from './quotation-item-supplier-last-purchase.res.dto';
+import { FileResDto } from '../../files/dto/file.res.dto';
 
 @Exclude()
 export class QuotationItemSupplierResDto {
@@ -53,4 +54,8 @@ export class QuotationItemSupplierResDto {
   @Expose()
   @DateFieldOptional({ nullable: true, description: 'Thời điểm thắng thầu' })
   selectedAt!: Date | null;
+
+  @Expose()
+  @ClassFieldOptional(() => FileResDto, { each: true })
+  files!: FileResDto[];
 }

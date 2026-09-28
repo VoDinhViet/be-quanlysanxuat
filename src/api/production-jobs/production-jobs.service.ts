@@ -64,12 +64,14 @@ import { GetProductionJobLogsReqDto } from './dto/get-production-job-logs.req.dt
 import { GetProductionJobNotesReqDto } from './dto/get-production-job-notes.req.dto';
 import { GetProductionJobsReqDto } from './dto/get-production-jobs.req.dto';
 import { ProductionJobBomItemResDto } from './dto/production-job-bom-operation.res.dto';
+import { ProductionJobPlanOperationResDto } from './dto/production-job-plan-operation.res.dto';
 import { ProductionJobDetailResDto } from './dto/production-job-detail.res.dto';
 import { ProductionJobIssueResDto } from './dto/production-job-issue.res.dto';
 import { ProductionJobLogResDto } from './dto/production-job-log.res.dto';
 import { ProductionJobNoteResDto } from './dto/production-job-note.res.dto';
 import { ProductionJobResDto } from './dto/production-job.res.dto';
 import { UpdateProductionJobOperationDueDateReqDto } from './dto/update-production-job-operation-due-date.req.dto';
+import { UpdateProductionJobOperationsPlanReqDto } from './dto/update-production-job-operations-plan.req.dto';
 import {
   buildJobPlan,
   createJobSnapshot,
@@ -131,6 +133,7 @@ export class ProductionJobsService {
       jobs: jobRows.map((row, index) => ({
         stt: index + 1,
         item_code: row.item.code,
+        revision: row.item.revision ?? '',
         item_name: row.item.name,
         quantity: formatQuantity(row.quantity),
         technical_requirements: '',
@@ -176,6 +179,7 @@ export class ProductionJobsService {
             unaccentILike(orders.code, keyword),
             unaccentILike(orders.buyerPoNo, keyword),
             unaccentILike(items.code, keyword),
+            unaccentILike(items.revision, keyword),
             unaccentILike(items.name, keyword),
           )
         : undefined,
@@ -189,6 +193,7 @@ export class ProductionJobsService {
           orderCode: orders.code,
           buyerPoNo: orders.buyerPoNo,
           item: getTableColumns(items),
+          revision: items.revision,
           client: getTableColumns(clients),
           imageFile: getTableColumns(files),
           quantity: productionJobs.quantity,
@@ -247,6 +252,7 @@ export class ProductionJobsService {
         createdAt: productionJobs.createdAt,
         updatedAt: productionJobs.updatedAt,
         item: getTableColumns(items),
+        revision: items.revision,
         unit: getTableColumns(units),
       })
       .from(productionJobs)
@@ -390,9 +396,11 @@ export class ProductionJobsService {
         .select({
           ...getTableColumns(productionJobBomItems),
           imageFile: getTableColumns(files),
+          revision: items.revision,
         })
         .from(productionJobBomItems)
         .leftJoin(files, eq(files.id, productionJobBomItems.imageFileId))
+        .leftJoin(items, eq(items.id, productionJobBomItems.itemId))
         .where(eq(productionJobBomItems.productionJobId, jobId))
         .orderBy(
           asc(productionJobBomItems.sortOrder),
@@ -477,6 +485,120 @@ export class ProductionJobsService {
     if (result.length === 0) {
       throw new AppException(ErrorCode.E082, HttpStatus.NOT_FOUND);
     }
+  }
+
+  /** Lập kế hoạch / cập nhật hàng loạt hạn cần hoàn thành của các công đoạn trong Job — chỉ khi Job IN_PROGRESS */
+
+  async getProductionJobPlanOperations(
+    jobId: string,
+  ): Promise<ProductionJobPlanOperationResDto[]> {
+    await this.ensureJobExists(jobId);
+
+    const [bomItems, jobOperations] = await Promise.all([
+      this.db
+        .select({
+          id: productionJobBomItems.id,
+          code: productionJobBomItems.code,
+        })
+        .from(productionJobBomItems)
+        .where(eq(productionJobBomItems.productionJobId, jobId)),
+      this.db
+        .select()
+        .from(productionJobOperations)
+        .where(eq(productionJobOperations.productionJobId, jobId))
+        .orderBy(
+          asc(productionJobOperations.sortOrder),
+          asc(productionJobOperations.createdAt),
+        ),
+    ]);
+
+    const bomItemCodeById = new Map<string, string>();
+    for (const b of bomItems) {
+      if (b.code) bomItemCodeById.set(b.id, b.code);
+    }
+
+    const groupedMap = new Map<
+      string,
+      {
+        key: string;
+        name: string;
+        code: string;
+        operationIds: string[];
+        bomItemCodes: string[];
+        dueDate: Date | null;
+        sortOrder: number;
+      }
+    >();
+
+    for (const op of jobOperations) {
+      const groupKey = (op.operationId || op.code || op.name)
+        .trim()
+        .toLowerCase();
+      const bomCode = bomItemCodeById.get(op.productionJobBomItemId);
+      const existing = groupedMap.get(groupKey);
+
+      if (existing) {
+        existing.operationIds.push(op.id);
+        if (bomCode && !existing.bomItemCodes.includes(bomCode)) {
+          existing.bomItemCodes.push(bomCode);
+        }
+        if (op.dueDate && (!existing.dueDate || op.dueDate > existing.dueDate)) {
+          existing.dueDate = op.dueDate;
+        }
+      } else {
+        groupedMap.set(groupKey, {
+          key: groupKey,
+          name: op.name,
+          code: op.code,
+          operationIds: [op.id],
+          bomItemCodes: bomCode ? [bomCode] : [],
+          dueDate: op.dueDate ?? null,
+          sortOrder: op.sortOrder ?? 0,
+        });
+      }
+    }
+
+    const result = Array.from(groupedMap.values()).sort(
+      (a, b) => a.sortOrder - b.sortOrder,
+    );
+
+    return plainToInstance(ProductionJobPlanOperationResDto, result, {
+      excludeExtraneousValues: true,
+    });
+  }
+
+  async updateProductionJobOperationsPlan(
+    jobId: string,
+    reqDto: UpdateProductionJobOperationsPlanReqDto,
+  ): Promise<void> {
+    const job = await this.ensureJobExists(jobId);
+
+    this.ensureStatus(job.status, [ProductionJobStatus.IN_PROGRESS]);
+
+    if (!reqDto.operations?.length) {
+      return;
+    }
+
+    await this.db.transaction(async (tx) => {
+      for (const op of reqDto.operations) {
+        const ids = op.operationIds?.length
+          ? op.operationIds
+          : op.id
+            ? [op.id]
+            : [];
+        if (!ids.length) continue;
+
+        await tx
+          .update(productionJobOperations)
+          .set({ dueDate: op.dueDate })
+          .where(
+            and(
+              inArray(productionJobOperations.id, ids),
+              eq(productionJobOperations.productionJobId, jobId),
+            ),
+          );
+      }
+    });
   }
 
   /** Sắp `asc(createdAt)` — đọc xuôi như luồng trao đổi, khác `getProductionOrderLogs` (đọc ngược

@@ -68,6 +68,7 @@ export * from './purchase-requests/purchase-request-items';
 export * from './purchasing/purchase-quotations';
 export * from './purchasing/purchase-quotation-items';
 export * from './purchasing/purchase-quotation-item-allocations';
+export * from './purchasing/purchase-quotation-item-supplier-files';
 export * from './purchasing/purchase-quotation-item-suppliers';
 export * from './purchasing/purchase-orders';
 export * from './purchasing/purchase-order-items';

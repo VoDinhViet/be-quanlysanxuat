@@ -24,6 +24,10 @@ export class InventoryProductResDto {
   code!: string;
 
   @Expose()
+  @StringField({ description: 'Phiên bản' })
+  revision!: string;
+
+  @Expose()
   @StringField({ description: 'Tên thành phẩm' })
   name!: string;
 

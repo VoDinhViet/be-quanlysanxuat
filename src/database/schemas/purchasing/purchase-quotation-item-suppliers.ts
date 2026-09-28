@@ -15,6 +15,7 @@ import {
 import { suppliers } from '../suppliers/suppliers';
 import { users } from '../identity-access/users';
 import { purchaseQuotationItems } from './purchase-quotation-items';
+import { purchaseQuotationItemSupplierFiles } from './purchase-quotation-item-supplier-files';
 
 /**
  * Giá một NCC báo cho một dòng vật tư. `unitPrice` nullable tới khi NCC được nhập giá. `selectedAt`
@@ -71,7 +72,7 @@ export const purchaseQuotationItemSuppliers = pgTable(
 
 export const purchaseQuotationItemSuppliersRelations = relations(
   purchaseQuotationItemSuppliers,
-  ({ one }) => ({
+  ({ one, many }) => ({
     quotationItem: one(purchaseQuotationItems, {
       fields: [purchaseQuotationItemSuppliers.quotationItemId],
       references: [purchaseQuotationItems.id],
@@ -84,6 +85,7 @@ export const purchaseQuotationItemSuppliersRelations = relations(
       fields: [purchaseQuotationItemSuppliers.selectedBy],
       references: [users.id],
     }),
+    files: many(purchaseQuotationItemSupplierFiles),
   }),
 );
 

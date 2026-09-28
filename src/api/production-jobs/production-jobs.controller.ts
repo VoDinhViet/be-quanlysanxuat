@@ -26,12 +26,14 @@ import { GetProductionJobNotesReqDto } from './dto/get-production-job-notes.req.
 import { GetProductionJobOperationsReqDto } from './dto/get-production-job-operations.req.dto';
 import { GetProductionJobsReqDto } from './dto/get-production-jobs.req.dto';
 import { ProductionJobBomItemResDto } from './dto/production-job-bom-operation.res.dto';
+import { ProductionJobPlanOperationResDto } from './dto/production-job-plan-operation.res.dto';
 import { ProductionJobDetailResDto } from './dto/production-job-detail.res.dto';
 import { ProductionJobIssueResDto } from './dto/production-job-issue.res.dto';
 import { ProductionJobLogResDto } from './dto/production-job-log.res.dto';
 import { ProductionJobNoteResDto } from './dto/production-job-note.res.dto';
 import { ProductionJobResDto } from './dto/production-job.res.dto';
 import { UpdateProductionJobOperationDueDateReqDto } from './dto/update-production-job-operation-due-date.req.dto';
+import { UpdateProductionJobOperationsPlanReqDto } from './dto/update-production-job-operations-plan.req.dto';
 import { ProductionJobsService } from './production-jobs.service';
 
 @ApiTags('Production Jobs')
@@ -182,6 +184,38 @@ export class ProductionJobsController {
     @CurrentUser() payload: JwtPayloadType,
   ): Promise<void> {
     return this.productionJobsService.startJob(jobId, payload.userId);
+  }
+
+
+  @Get(':jobId/operations/plan')
+  @Permissions('production:read')
+  @ApiAuth({
+    type: ProductionJobPlanOperationResDto,
+    isArray: true,
+    summary:
+      'Lấy danh sách các nhóm công đoạn trong Job để lập kế hoạch sản xuất',
+  })
+  getProductionJobPlanOperations(
+    @UUIDParam('jobId') jobId: string,
+  ): Promise<ProductionJobPlanOperationResDto[]> {
+    return this.productionJobsService.getProductionJobPlanOperations(jobId);
+  }
+
+  @Patch(':jobId/operations/plan')
+  @Permissions('production:update')
+  @ApiAuth({
+    summary:
+      'Lập kế hoạch / cập nhật hàng loạt hạn cần hoàn thành của các công đoạn trong Job — chỉ khi Job IN_PROGRESS',
+    statusCode: HttpStatus.NO_CONTENT,
+  })
+  updateProductionJobOperationsPlan(
+    @UUIDParam('jobId') jobId: string,
+    @Body() reqDto: UpdateProductionJobOperationsPlanReqDto,
+  ): Promise<void> {
+    return this.productionJobsService.updateProductionJobOperationsPlan(
+      jobId,
+      reqDto,
+    );
   }
 
   @Patch(':jobId/operations/:jobOperationId/due-date')

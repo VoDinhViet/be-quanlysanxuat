@@ -18,6 +18,7 @@ import {
 import { ProductionJobOperationRefResDto } from '../../production-jobs/dto/production-job-operation-ref.res.dto';
 import { ProductionJobRefResDto } from '../../production-jobs/dto/production-job-ref.res.dto';
 import { UnitRefResDto } from '../../units/dto/unit-ref.res.dto';
+import { ItemRefResDto } from '../../items/dto/item-ref.res.dto';
 import { OqcBomItemResDto } from './oqc.res.dto';
 
 @Exclude()
@@ -45,6 +46,17 @@ export class PageOqcResDto {
   @Expose()
   @ClassField(() => OqcBomItemResDto)
   bomItem!: OqcBomItemResDto;
+
+  @Expose()
+  @ClassField(() => ItemRefResDto)
+  item!: ItemRefResDto;
+
+  @Expose()
+  @StringFieldOptional({
+    nullable: true,
+    description: 'Phiên bản sản phẩm (revision)',
+  })
+  revision?: string;
 
   @Expose()
   @ClassField(() => UnitRefResDto)

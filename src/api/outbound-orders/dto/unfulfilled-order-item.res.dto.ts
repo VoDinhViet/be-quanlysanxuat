@@ -4,6 +4,7 @@ import {
   ClassField,
   ClassFieldOptional,
   NumberField,
+  StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
 import { ClientRefResDto } from '../../clients/dto/client-ref.res.dto';
@@ -35,6 +36,10 @@ export class UnfulfilledOrderItemResDto {
   @Expose()
   @ClassField(() => ItemRefResDto)
   item!: ItemRefResDto;
+
+  @Expose()
+  @StringFieldOptional({ nullable: true, description: 'Phiên bản (revision)' })
+  revision?: string;
 
   @Expose()
   @ClassField(() => UnitRefResDto)

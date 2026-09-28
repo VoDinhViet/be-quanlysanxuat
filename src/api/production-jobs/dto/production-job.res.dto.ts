@@ -47,6 +47,10 @@ export class ProductionJobResDto {
   item!: ItemRefResDto;
 
   @Expose()
+  @StringFieldOptional({ nullable: true, description: 'Phiên bản (revision)' })
+  revision?: string;
+
+  @Expose()
   @FileField('imageFile', 'Ảnh sản phẩm')
   image!: FileResDto | null;
 

@@ -121,6 +121,7 @@ export class PurchaseLedgerService {
           neededDate: purchaseRequests.neededDate,
           createdAt: purchaseRequests.createdAt,
           orderedQuantity: refs.orderedQuantity,
+          receivedQuantity: refs.receivedQuantity,
           quotedQuantity: refs.quotedQuantity,
           status: this.buildLedgerStatus(refs),
         })
@@ -242,6 +243,7 @@ export class PurchaseLedgerService {
         quantity: purchaseRequestItems.quantity,
         quotedQuantity: refs.quotedQuantity,
         orderedQuantity: refs.orderedQuantity,
+        receivedQuantity: refs.receivedQuantity,
         status: this.buildLedgerStatus(refs),
         neededDate: purchaseRequests.neededDate,
         note: purchaseRequestItems.note,
