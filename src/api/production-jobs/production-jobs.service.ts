@@ -131,6 +131,7 @@ export class ProductionJobsService {
       jobs: jobRows.map((row, index) => ({
         stt: index + 1,
         item_code: row.item.code,
+        revision: row.item.revision ?? '',
         item_name: row.item.name,
         quantity: formatQuantity(row.quantity),
         technical_requirements: '',
@@ -176,6 +177,7 @@ export class ProductionJobsService {
             unaccentILike(orders.code, keyword),
             unaccentILike(orders.buyerPoNo, keyword),
             unaccentILike(items.code, keyword),
+            unaccentILike(items.revision, keyword),
             unaccentILike(items.name, keyword),
           )
         : undefined,
@@ -189,6 +191,7 @@ export class ProductionJobsService {
           orderCode: orders.code,
           buyerPoNo: orders.buyerPoNo,
           item: getTableColumns(items),
+          revision: items.revision,
           client: getTableColumns(clients),
           imageFile: getTableColumns(files),
           quantity: productionJobs.quantity,
@@ -247,6 +250,7 @@ export class ProductionJobsService {
         createdAt: productionJobs.createdAt,
         updatedAt: productionJobs.updatedAt,
         item: getTableColumns(items),
+        revision: items.revision,
         unit: getTableColumns(units),
       })
       .from(productionJobs)
@@ -390,9 +394,11 @@ export class ProductionJobsService {
         .select({
           ...getTableColumns(productionJobBomItems),
           imageFile: getTableColumns(files),
+          revision: items.revision,
         })
         .from(productionJobBomItems)
         .leftJoin(files, eq(files.id, productionJobBomItems.imageFileId))
+        .leftJoin(items, eq(items.id, productionJobBomItems.itemId))
         .where(eq(productionJobBomItems.productionJobId, jobId))
         .orderBy(
           asc(productionJobBomItems.sortOrder),

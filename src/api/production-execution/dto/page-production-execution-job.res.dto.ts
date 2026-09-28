@@ -9,6 +9,7 @@ import {
   EnumFieldOptional,
   NumberField,
   StringField,
+  StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
 import { FileField } from '../../files/dto/file.field';
@@ -23,6 +24,10 @@ export class ProductionExecutionItemRefResDto {
   @Expose()
   @StringField({ description: 'Mã sản phẩm' })
   code!: string;
+
+  @Expose()
+  @StringField({ description: 'Phiên bản (revision)' })
+  revision!: string;
 
   @Expose()
   @StringField({ description: 'Tên sản phẩm' })
@@ -58,6 +63,13 @@ export class PageProductionExecutionJobResDto {
   @Expose()
   @ClassField(() => ProductionExecutionItemRefResDto)
   item!: ProductionExecutionItemRefResDto;
+
+  @Expose()
+  @StringFieldOptional({
+    nullable: true,
+    description: 'Phiên bản sản phẩm (revision)',
+  })
+  revision?: string;
 
   @Expose()
   @FileField('imageFile', 'Ảnh sản phẩm')

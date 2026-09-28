@@ -10,6 +10,7 @@ import {
   isNull,
   lt,
   ne,
+  or,
 } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { DateTime } from 'luxon';
@@ -84,7 +85,12 @@ export class OqcService {
     const where = and(
       eq(qualityInspections.inspectionType, QualityInspectionType.OQC),
       keyword
-        ? unaccentILike(qualityInspections.inspectionNo, keyword)
+        ? or(
+            unaccentILike(qualityInspections.inspectionNo, keyword),
+            unaccentILike(items.code, keyword),
+            unaccentILike(items.revision, keyword),
+            unaccentILike(items.name, keyword),
+          )
         : undefined,
       reqDto.productionJobId
         ? eq(qualityInspections.productionJobId, reqDto.productionJobId)
@@ -139,6 +145,8 @@ export class OqcService {
           orderCode: orders.code,
           operation: getTableColumns(productionJobOperations),
           bomItem: getTableColumns(productionJobBomItems),
+          item: getTableColumns(items),
+          revision: items.revision,
           unit: getTableColumns(units),
         })
         .from(qualityInspections)
@@ -171,7 +179,11 @@ export class OqcService {
         .orderBy(desc(qualityInspections.createdAt))
         .limit(reqDto.limit)
         .offset(reqDto.offset),
-      this.db.select({ total: count() }).from(qualityInspections).where(where),
+      this.db
+        .select({ total: count() })
+        .from(qualityInspections)
+        .innerJoin(items, eq(items.id, qualityInspections.itemId))
+        .where(where),
     ]);
 
     return new OffsetPaginatedDto(
@@ -188,7 +200,12 @@ export class OqcService {
     const where = and(
       eq(qualityInspections.inspectionType, QualityInspectionType.OQC),
       keyword
-        ? unaccentILike(qualityInspections.inspectionNo, keyword)
+        ? or(
+            unaccentILike(qualityInspections.inspectionNo, keyword),
+            unaccentILike(items.code, keyword),
+            unaccentILike(items.revision, keyword),
+            unaccentILike(items.name, keyword),
+          )
         : undefined,
       reqDto.productionJobId
         ? eq(qualityInspections.productionJobId, reqDto.productionJobId)
@@ -228,6 +245,9 @@ export class OqcService {
         orderCode: orders.code,
         operationCode: productionJobOperations.code,
         operationName: productionJobOperations.name,
+        itemCode: items.code,
+        itemRevision: items.revision,
+        itemName: items.name,
         bomItemCode: productionJobBomItems.code,
         bomItemName: productionJobBomItems.name,
         unitName: units.name,
@@ -304,6 +324,7 @@ export class OqcService {
         operation: getTableColumns(productionJobOperations),
         bomItem: getTableColumns(productionJobBomItems),
         item: getTableColumns(items),
+        revision: items.revision,
         unit: getTableColumns(units),
         creatorBy: getTableColumns(creatorUsers),
         confirmerBy: getTableColumns(confirmerUsers),

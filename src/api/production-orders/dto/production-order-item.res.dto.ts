@@ -4,6 +4,7 @@ import { OrderItemRefResDto } from '../../orders/dto/order-item-ref.res.dto';
 import {
   ClassField,
   NumberField,
+  StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
 
@@ -16,6 +17,10 @@ export class ProductionOrderItemResDto {
   @Expose()
   @ClassField(() => OrderItemRefResDto)
   item!: OrderItemRefResDto;
+
+  @Expose()
+  @StringFieldOptional({ nullable: true, description: 'Phiên bản (revision)' })
+  revision?: string;
 
   @Expose()
   @NumberField({

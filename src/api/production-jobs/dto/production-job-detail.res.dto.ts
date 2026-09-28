@@ -14,6 +14,7 @@ import {
   EnumField,
   NumberField,
   StringField,
+  StringFieldOptional,
   UUIDField,
   UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
@@ -47,6 +48,10 @@ export class ProductionJobDetailResDto {
   @Expose()
   @ItemUnitField()
   item!: ItemUnitRefResDto;
+
+  @Expose()
+  @StringFieldOptional({ nullable: true, description: 'Phiên bản (revision)' })
+  revision?: string;
 
   @Expose()
   @NumberField({ description: 'SL cần sản xuất — đã gộp theo sản phẩm' })

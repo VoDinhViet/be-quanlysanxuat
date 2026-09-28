@@ -66,6 +66,13 @@ export class OqcResDto {
   item!: ItemRefResDto;
 
   @Expose()
+  @StringFieldOptional({
+    nullable: true,
+    description: 'Phiên bản thành phẩm (revision)',
+  })
+  revision?: string;
+
+  @Expose()
   @ClassField(() => UnitRefResDto)
   unit!: UnitRefResDto;
 

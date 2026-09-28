@@ -14,6 +14,9 @@ export interface OqcExport {
   orderCode: string | null;
   operationCode: string;
   operationName: string;
+  itemCode: string;
+  itemRevision: string;
+  itemName: string;
   bomItemCode: string;
   bomItemName: string;
   unitName: string;
@@ -59,6 +62,9 @@ export const OQC_EXPORT_COLUMNS: ExcelColumn<OqcExport>[] = [
   { header: 'Mã đơn hàng', value: (row) => row.orderCode },
   { header: 'Mã công đoạn', value: (row) => row.operationCode },
   { header: 'Tên công đoạn', value: (row) => row.operationName, width: 25 },
+  { header: 'Mã thành phẩm', value: (row) => row.itemCode },
+  { header: 'Phiên bản (Rev)', value: (row) => row.itemRevision },
+  { header: 'Tên thành phẩm', value: (row) => row.itemName, width: 30 },
   { header: 'Mã BOM item', value: (row) => row.bomItemCode },
   { header: 'Tên BOM item', value: (row) => row.bomItemName, width: 30 },
   { header: 'Đơn vị tính', value: (row) => row.unitName },

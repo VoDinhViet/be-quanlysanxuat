@@ -644,7 +644,8 @@
           <thead>
             <tr>
               <th style="width: 35px;">STT<span class="th-subline">No</span></th>
-              <th style="width: 110px;">Mã sản phẩm<span class="th-subline">Product Code</span></th>
+              <th style="width: 100px;">Mã sản phẩm<span class="th-subline">Product Code</span></th>
+              <th style="width: 45px;">Rev<span class="th-subline">Rev</span></th>
               <th>Tên sản phẩm<span class="th-subline">Product Name</span></th>
               <th style="width: 65px;">Số lượng<span class="th-subline">Qty</span></th>
               <th style="width: 110px;">Yêu cầu kỹ thuật<span class="th-subline">Technical Requirements</span></th>
@@ -658,6 +659,7 @@
             <tr>
               <td class="text-center font-bold">{{this.stt}}</td>
               <td><div class="cell-edit text-center font-mono">{{this.item_code}}</div></td>
+              <td><div class="cell-edit text-center font-mono">{{this.revision}}</div></td>
               <td><div class="cell-edit text-left font-semibold">{{this.item_name}}</div></td>
               <td><div class="cell-edit text-right font-bold font-mono">{{this.quantity}}</div></td>
               <td><div class="cell-edit text-left">{{this.technical_requirements}}</div></td>
@@ -670,7 +672,7 @@
 
           <tfoot>
             <tr class="tfoot-calc-row">
-              <td colspan="3" class="text-right font-bold" style="padding: 6px 14px;">TỔNG CỘNG / TOTAL:</td>
+              <td colspan="4" class="text-right font-bold" style="padding: 6px 14px;">TỔNG CỘNG / TOTAL:</td>
               <td class="text-right font-bold font-mono" style="padding: 6px 8px;">{{total_quantity}}</td>
               <td colspan="4"></td>
             </tr>

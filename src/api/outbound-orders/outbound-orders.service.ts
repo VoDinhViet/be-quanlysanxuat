@@ -246,6 +246,7 @@ export class OutboundOrdersService {
       .select({
         ...getTableColumns(outboundOrderItems),
         item: getTableColumns(items),
+        revision: items.revision,
         unit: getTableColumns(units),
         productionJob: getTableColumns(productionJobs),
         order: getTableColumns(orders),
@@ -319,6 +320,7 @@ export class OutboundOrdersService {
           order: getTableColumns(orders),
           job: getTableColumns(productionJobs),
           item: getTableColumns(items),
+          revision: items.revision,
           unit: getTableColumns(units),
           orderedQuantity: orderItems.quantity,
           issuedQuantity: issuedQtySql(),

@@ -648,13 +648,14 @@
           <thead>
             <tr>
               <th style="width: 35px;">STT<span class="th-subline">No</span></th>
-              <th style="width: 120px;">Mã sản phẩm<span class="th-subline">Product Code</span></th>
-              <th style="width: 100px;">Số PR<span class="th-subline">PR No</span></th>
+              <th style="width: 100px;">Mã sản phẩm<span class="th-subline">Product Code</span></th>
+              <th style="width: 45px;">Rev<span class="th-subline">Rev</span></th>
+              <th style="width: 90px;">Số PR<span class="th-subline">PR No</span></th>
               <th>Tên hàng / Quy cách kỹ thuật gia công<span class="th-subline">Description & Specifications</span></th>
-              <th style="width: 50px;">ĐVT<span class="th-subline">Unit</span></th>
-              <th style="width: 65px;">Số lượng<span class="th-subline">Qty</span></th>
-              <th style="width: 100px;">Ngày giao hàng<span class="th-subline">Delivery date</span></th>
-              <th style="width: 120px;">Ghi chú<span class="th-subline">Note</span></th>
+              <th style="width: 45px;">ĐVT<span class="th-subline">Unit</span></th>
+              <th style="width: 60px;">Số lượng<span class="th-subline">Qty</span></th>
+              <th style="width: 95px;">Ngày giao hàng<span class="th-subline">Delivery date</span></th>
+              <th style="width: 110px;">Ghi chú<span class="th-subline">Note</span></th>
             </tr>
           </thead>
           <tbody>
@@ -662,6 +663,7 @@
             <tr>
               <td class="text-center font-bold">{{this.stt}}</td>
               <td><div class="cell-edit text-center font-mono">{{this.item_code}}</div></td>
+              <td><div class="cell-edit text-center font-mono">{{this.revision}}</div></td>
               <td><div class="cell-edit text-center font-mono">{{this.purchase_request_code}}</div></td>
               <td><div class="cell-edit text-left font-semibold">{{this.item_name}}</div></td>
               <td><div class="cell-edit text-center">{{this.unit_name}}</div></td>
@@ -675,7 +677,7 @@
           <!-- KHỐI ĐIỀU KHOẢN KỸ THUẬT SẢN XUẤT LIỀN TRONG BẢNG -->
           <tfoot>
             <tr class="tfoot-calc-row">
-              <td colspan="8" class="tfoot-notes-cell" style="padding: 8px 14px;">
+              <td colspan="9" class="tfoot-notes-cell" style="padding: 8px 14px;">
                 <div class="tfoot-subnotes" style="font-size: 8pt; line-height: 1.45;">
                   <strong>* YÊU CẦU KỸ THUẬT VÀ KIỂM SOÁT CHẤT LƯỢNG GIA CÔNG:</strong><br>
                   • Phân xưởng sản xuất gia công chính xác theo đúng bản vẽ kỹ thuật được duyệt, dung sai và hoàn thiện bề mặt theo tiêu chuẩn Tiến Huy Mold.<br>

@@ -229,7 +229,14 @@ export class ProductionOrdersService {
 
     return plainToInstance(
       ProductionOrderDetailResDto,
-      { ...productionOrder, productionOrderNote: productionOrder.note },
+      {
+        ...productionOrder,
+        productionOrderNote: productionOrder.note,
+        items: productionOrder.items.map((item) => ({
+          ...item,
+          revision: item.item?.revision,
+        })),
+      },
       { excludeExtraneousValues: true },
     );
   }
@@ -256,6 +263,7 @@ export class ProductionOrdersService {
           quantity: productionOrderItems.quantity,
           note: orderItems.note,
           itemCode: itemsTable.code,
+          itemRevision: itemsTable.revision,
           itemName: itemsTable.name,
           unitName: units.name,
         })
@@ -280,6 +288,7 @@ export class ProductionOrdersService {
     const items = itemRows.map((item, index) => ({
       stt: index + 1,
       item_code: item.itemCode,
+      revision: item.itemRevision ?? '',
       purchase_request_code: order.orderCode ?? '',
       item_name: item.itemName,
       unit_name: item.unitName ?? '',
