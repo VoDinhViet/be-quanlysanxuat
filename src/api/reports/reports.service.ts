@@ -35,6 +35,8 @@ import {
   productionJobs,
   ProductionOrderStatus,
   productionOrders,
+  purchaseOrders,
+  PurchaseOrderStatus,
   purchaseQuotations,
   PurchaseQuotationStatus,
   purchaseRequests,
@@ -612,6 +614,7 @@ export class ReportsService {
     const [
       purchaseRequestsCount,
       purchaseQuotationsCount,
+      purchaseOrdersCount,
       ordersCount,
       productionOrdersCount,
       inventoryRequisitionsCount,
@@ -622,6 +625,9 @@ export class ReportsService {
         : 0,
       canApprove('purchasing:approve')
         ? this.getPurchaseQuotationsPendingCount()
+        : 0,
+      canApprove('purchasing:update')
+        ? this.getPurchaseOrdersPendingCount()
         : 0,
       canApprove('orders:approve') ? this.getOrdersPendingCount() : 0,
       canApprove('production:approve')
@@ -638,6 +644,7 @@ export class ReportsService {
       {
         purchaseRequests: purchaseRequestsCount,
         purchaseQuotations: purchaseQuotationsCount,
+        purchaseOrders: purchaseOrdersCount,
         orders: ordersCount,
         productionOrders: productionOrdersCount,
         inventoryRequisitions: inventoryRequisitionsCount,
@@ -664,6 +671,17 @@ export class ReportsService {
       .from(purchaseQuotations)
       .where(
         eq(purchaseQuotations.status, PurchaseQuotationStatus.PENDING_APPROVAL),
+      );
+
+    return row.count;
+  }
+
+  private async getPurchaseOrdersPendingCount(): Promise<number> {
+    const [row] = await this.db
+      .select({ count: sql<number>`count(*)`.mapWith(Number) })
+      .from(purchaseOrders)
+      .where(
+        eq(purchaseOrders.status, PurchaseOrderStatus.PENDING_CONFIRMATION),
       );
 
     return row.count;

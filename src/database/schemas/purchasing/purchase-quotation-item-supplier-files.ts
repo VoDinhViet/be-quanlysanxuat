@@ -23,9 +23,9 @@ export const purchaseQuotationItemSupplierFiles = pgTable(
       .references(() => files.id, { onDelete: 'cascade' }),
   },
   (table) => [
-    index(
-      'idx_purchase_quotation_item_supplier_files_supplier_id',
-    ).on(table.quotationItemSupplierId),
+    index('idx_purchase_quotation_item_supplier_files_supplier_id').on(
+      table.quotationItemSupplierId,
+    ),
     index('idx_purchase_quotation_item_supplier_files_file_id').on(
       table.fileId,
     ),

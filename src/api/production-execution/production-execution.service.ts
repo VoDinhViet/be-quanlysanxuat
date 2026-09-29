@@ -134,15 +134,15 @@ export class ProductionExecutionService {
           reqDto.clientId ? eq(orders.clientId, reqDto.clientId) : undefined,
           reqDto.startDate ? gte(orders.dueDate, reqDto.startDate) : undefined,
           reqDto.endDate ? lte(orders.dueDate, reqDto.endDate) : undefined,
-              keyword
-                ? or(
-                    unaccentILike(productionJobs.code, keyword),
-                    unaccentILike(orders.code, keyword),
-                    unaccentILike(items.code, keyword),
-                    unaccentILike(items.revision, keyword),
-                    unaccentILike(items.name, keyword),
-                  )
-                : undefined,
+          keyword
+            ? or(
+                unaccentILike(productionJobs.code, keyword),
+                unaccentILike(orders.code, keyword),
+                unaccentILike(items.code, keyword),
+                unaccentILike(items.revision, keyword),
+                unaccentILike(items.name, keyword),
+              )
+            : undefined,
         ),
       )
       .groupBy(operations.id)

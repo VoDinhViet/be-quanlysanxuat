@@ -186,7 +186,6 @@ export class ProductionJobsController {
     return this.productionJobsService.startJob(jobId, payload.userId);
   }
 
-
   @Get(':jobId/operations/plan')
   @Permissions('production:read')
   @ApiAuth({

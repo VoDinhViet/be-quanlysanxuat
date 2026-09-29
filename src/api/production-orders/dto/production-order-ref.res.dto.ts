@@ -15,8 +15,9 @@ export class ProductionOrderRefResDto extends PickType(ProductionOrderResDto, [
   /** Số PO khách hàng của đơn hàng gốc (flatten từ `order.buyerPoNo`). */
   @Expose()
   @StringFieldOptional({ nullable: true })
-  @Transform(({ obj }: { obj: { order?: { buyerPoNo?: string | null } | null } }) =>
-    obj.order?.buyerPoNo ?? null,
+  @Transform(
+    ({ obj }: { obj: { order?: { buyerPoNo?: string | null } | null } }) =>
+      obj.order?.buyerPoNo ?? null,
   )
   buyerPoNo!: string | null;
 }

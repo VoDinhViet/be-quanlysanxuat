@@ -22,6 +22,7 @@ import { ApproveQuotationReqDto } from './dto/approve-quotation.req.dto';
 import { CreateQuotationReqDto } from './dto/create-quotation.req.dto';
 import { GetQuotationsReqDto } from './dto/get-quotations.req.dto';
 import { PageQuotationResDto } from './dto/page-quotation.res.dto';
+import { QuotationItemResDto } from './dto/quotation-item.res.dto';
 import { QuotationResDto } from './dto/quotation.res.dto';
 import { RejectQuotationReqDto } from './dto/reject-quotation.req.dto';
 import { UpdateQuotationReqDto } from './dto/update-quotation.req.dto';
@@ -58,6 +59,19 @@ export class PurchaseQuotationsController {
     @UUIDParam('quotationId') quotationId: string,
   ): Promise<QuotationResDto> {
     return this.purchaseQuotationsService.getQuotation(quotationId);
+  }
+
+  @Get(':quotationId/comparison')
+  @Permissions('purchasing:read')
+  @ApiAuth({
+    type: QuotationItemResDto,
+    summary: 'Bảng so sánh báo giá của RFQ',
+    isArray: true,
+  })
+  getQuotationComparison(
+    @UUIDParam('quotationId') quotationId: string,
+  ): Promise<QuotationItemResDto[]> {
+    return this.purchaseQuotationsService.getQuotationComparison(quotationId);
   }
 
   @Post()

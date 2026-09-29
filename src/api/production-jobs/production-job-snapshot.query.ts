@@ -113,9 +113,9 @@ export async function createJobSnapshot(
   const plan = await buildJobPlan(tx, job);
 
   if (plan.bomItems.length) {
-    await tx.insert(productionJobBomItems).values(
-      plan.bomItems.map(({ revision, ...rest }) => rest),
-    );
+    await tx
+      .insert(productionJobBomItems)
+      .values(plan.bomItems.map(({ revision, ...rest }) => rest));
   }
 
   if (plan.operations.length) {

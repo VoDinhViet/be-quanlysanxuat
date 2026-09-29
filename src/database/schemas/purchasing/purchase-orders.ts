@@ -16,13 +16,13 @@ import { purchaseQuotations } from './purchase-quotations';
 import { users } from '../identity-access/users';
 
 export enum PurchaseOrderStatus {
-  DRAFT = 'DRAFT',
+  PENDING_CONFIRMATION = 'PENDING_CONFIRMATION',
   ORDERED = 'ORDERED',
   CANCELLED = 'CANCELLED',
 }
 
 export const purchaseOrderStatusEnum = pgEnum('purchase_order_status', [
-  PurchaseOrderStatus.DRAFT,
+  PurchaseOrderStatus.PENDING_CONFIRMATION,
   PurchaseOrderStatus.ORDERED,
   PurchaseOrderStatus.CANCELLED,
 ]);
@@ -46,7 +46,7 @@ export const purchaseOrders = pgTable(
     }),
     status: purchaseOrderStatusEnum('status')
       .notNull()
-      .default(PurchaseOrderStatus.DRAFT),
+      .default(PurchaseOrderStatus.PENDING_CONFIRMATION),
     orderDate: date('order_date', { mode: 'date' }).notNull(),
     expectedDate: date('expected_date', { mode: 'date' }),
     assignedUserId: uuid('assigned_user_id').references(() => users.id, {
