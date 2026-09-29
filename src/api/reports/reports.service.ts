@@ -681,10 +681,7 @@ export class ReportsService {
       .select({ count: sql<number>`count(*)`.mapWith(Number) })
       .from(purchaseOrders)
       .where(
-        eq(
-          purchaseOrders.status,
-          PurchaseOrderStatus.PENDING_CONFIRMATION,
-        ),
+        eq(purchaseOrders.status, PurchaseOrderStatus.PENDING_CONFIRMATION),
       );
 
     return row.count;

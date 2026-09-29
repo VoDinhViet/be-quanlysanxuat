@@ -62,7 +62,7 @@ export class PurchaseOrdersController {
   @Permissions('purchasing:update')
   @ApiAuth({
     summary:
-      'Sửa người phụ trách/điều khoản TT/kho nhập/ngày giao/ghi chú — chỉ khi DRAFT',
+      'Sửa người phụ trách/điều khoản TT/kho nhập/ngày giao/ghi chú — chỉ khi PENDING_CONFIRMATION',
     statusCode: HttpStatus.NO_CONTENT,
   })
   updatePurchaseOrder(
@@ -78,7 +78,8 @@ export class PurchaseOrdersController {
   @Patch(':purchaseOrderId/items/:purchaseOrderItemId')
   @Permissions('purchasing:update')
   @ApiAuth({
-    summary: 'Sửa SL đặt/đơn giá/lý do điều chỉnh SL một dòng — chỉ khi DRAFT',
+    summary:
+      'Sửa SL đặt/đơn giá/lý do điều chỉnh SL một dòng — chỉ khi PENDING_CONFIRMATION',
     statusCode: HttpStatus.NO_CONTENT,
   })
   updatePurchaseOrderItem(
@@ -96,7 +97,7 @@ export class PurchaseOrdersController {
   @Post(':purchaseOrderId/confirm')
   @Permissions('purchasing:update')
   @ApiAuth({
-    summary: 'Xác nhận đặt hàng — DRAFT → ORDERED',
+    summary: 'Xác nhận đặt hàng — PENDING_CONFIRMATION → ORDERED',
     statusCode: HttpStatus.NO_CONTENT,
   })
   confirmPurchaseOrder(
@@ -112,7 +113,8 @@ export class PurchaseOrdersController {
   @Post(':purchaseOrderId/cancel')
   @Permissions('purchasing:approve')
   @ApiAuth({
-    summary: 'Huỷ PO — DRAFT/ORDERED → CANCELLED, lý do bắt buộc',
+    summary:
+      'Huỷ PO — PENDING_CONFIRMATION/ORDERED → CANCELLED, lý do bắt buộc',
     statusCode: HttpStatus.NO_CONTENT,
   })
   cancelPurchaseOrder(

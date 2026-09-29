@@ -44,7 +44,7 @@ import {
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { PurchaseOrdersService } from '../purchase-orders/purchase-orders.service';
-import type { PurchaseOrderDraftLine } from '../purchase-orders/types/draft-order.type';
+import type { PurchaseOrderPendingLine } from '../purchase-orders/types/pending-order.type';
 import { ApproveQuotationSelectedSupplierReqDto } from './dto/approve-quotation-selected-supplier.req.dto';
 import { ApproveQuotationReqDto } from './dto/approve-quotation.req.dto';
 import { CreateQuotationItemReqDto } from './dto/create-quotation-item.req.dto';
@@ -312,11 +312,7 @@ export class PurchaseQuotationsService {
       return new Map();
     }
 
-    const rows = await lastPurchaseQuery(
-      this.db,
-      directItemIds,
-      supplierIds,
-    );
+    const rows = await lastPurchaseQuery(this.db, directItemIds, supplierIds);
 
     return new Map(
       rows.map((r) => [
@@ -565,7 +561,7 @@ export class PurchaseQuotationsService {
       itemSuppliers.map((supplier) => [supplier.id, supplier]),
     );
 
-    const linesBySupplierId = new Map<string, PurchaseOrderDraftLine[]>();
+    const linesBySupplierId = new Map<string, PurchaseOrderPendingLine[]>();
     for (const item of items) {
       const selection = reqDto.selectedSuppliers.find(
         (s) => s.quotationItemId === item.id,
@@ -608,7 +604,7 @@ export class PurchaseQuotationsService {
         })
         .where(eq(purchaseQuotations.id, quotationId));
 
-      await this.purchaseOrdersService.createDraftOrdersFromQuotation(tx, {
+      await this.purchaseOrdersService.createPendingOrdersFromQuotation(tx, {
         quotationId,
         createdBy: userId,
         linesBySupplierId,
@@ -658,7 +654,7 @@ export class PurchaseQuotationsService {
     const itemIds = items.map((item) => item.id);
 
     await this.db.transaction(async (tx) => {
-      await this.purchaseOrdersService.deleteDraftOrdersByQuotation(
+      await this.purchaseOrdersService.deletePendingOrdersByQuotation(
         tx,
         quotationId,
       );

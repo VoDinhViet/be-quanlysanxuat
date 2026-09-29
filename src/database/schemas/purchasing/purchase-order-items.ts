@@ -43,7 +43,7 @@ export const purchaseOrderItems = pgTable(
     }),
     // Lý do khi SL đặt khác SL báo giá RFQ (vd mua gộp, tồn tối thiểu NCC) — text tự do. Khi PO
     // sinh từ duyệt RFQ, copy 1:1 từ `purchase_quotation_item_allocations.quantityAdjustmentReason`
-    // của đúng phân bổ đó (`PurchaseOrdersService.createDraftOrdersFromQuotation`); PO lập thẳng
+    // của đúng phân bổ đó (`PurchaseOrdersService.createPendingOrdersFromQuotation`); PO lập thẳng
     // hoặc sửa sau thì nhập tay qua `PATCH .../items/:id`.
     quantityAdjustmentReason: varchar('quantity_adjustment_reason', {
       length: 500,

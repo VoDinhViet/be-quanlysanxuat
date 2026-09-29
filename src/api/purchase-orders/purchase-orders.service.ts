@@ -51,9 +51,9 @@ import {
   orderReceivedQuantitySubquery,
 } from './purchase-orders.query';
 import type {
-  CreateDraftOrdersFromQuotationInput,
-  PurchaseOrderDraftLine,
-} from './types/draft-order.type';
+  CreatePendingOrdersFromQuotationInput,
+  PurchaseOrderPendingLine,
+} from './types/pending-order.type';
 
 type OrderProgressRefs = {
   orderedQuantity: SQL<number>;
@@ -304,7 +304,10 @@ export class PurchaseOrdersService {
       case PurchaseOrderProgress.CANCELLED:
         return eq(purchaseOrders.status, PurchaseOrderStatus.CANCELLED);
       case PurchaseOrderProgress.PENDING_CONFIRMATION:
-        return eq(purchaseOrders.status, PurchaseOrderStatus.PENDING_CONFIRMATION);
+        return eq(
+          purchaseOrders.status,
+          PurchaseOrderStatus.PENDING_CONFIRMATION,
+        );
       case PurchaseOrderProgress.COMPLETED:
         return sql`(
           ${purchaseOrders.status} = ${PurchaseOrderStatus.ORDERED}
@@ -375,12 +378,12 @@ export class PurchaseOrdersService {
     );
   }
 
-  /** Sinh PO Draft từ NCC thắng thầu của một RFQ — một NCC nhiều vật tư gộp chung một PO. Bắt
+  /** Sinh PO Chờ xác nhận từ NCC thắng thầu của một RFQ — một NCC nhiều vật tư gộp chung một PO. Bắt
    * buộc truyền `tx` — chỉ gọi được từ transaction `approve`/`recall` của
    * `PurchaseQuotationsService` (`docs/workflows/rfq-approval.md`). */
-  async createDraftOrdersFromQuotation(
+  async createPendingOrdersFromQuotation(
     tx: DbTransaction,
-    input: CreateDraftOrdersFromQuotationInput,
+    input: CreatePendingOrdersFromQuotationInput,
   ): Promise<void> {
     for (const [supplierId, lines] of input.linesBySupplierId) {
       const code = await this.generatePurchaseOrderCode(tx);
@@ -414,7 +417,7 @@ export class PurchaseOrdersService {
     purchaseOrderId: string,
     reqDto: UpdatePurchaseOrderReqDto,
   ): Promise<void> {
-    await this.ensurePurchaseOrderDraft(purchaseOrderId);
+    await this.ensurePurchaseOrderPendingConfirmation(purchaseOrderId);
 
     if (reqDto.assignedUserId) {
       await this.ensureAssignedUserExists(reqDto.assignedUserId);
@@ -433,7 +436,7 @@ export class PurchaseOrdersService {
     purchaseOrderItemId: string,
     reqDto: UpdatePurchaseOrderItemReqDto,
   ): Promise<void> {
-    await this.ensurePurchaseOrderDraft(purchaseOrderId);
+    await this.ensurePurchaseOrderPendingConfirmation(purchaseOrderId);
 
     const item = await this.db.query.purchaseOrderItems.findFirst({
       columns: { id: true },
@@ -455,7 +458,7 @@ export class PurchaseOrdersService {
     }
   }
 
-  /** Xác nhận đặt hàng — `DRAFT → ORDERED`. Chặn nếu chưa có `expectedDate` (`E134`), chưa chọn
+  /** Xác nhận đặt hàng — `PENDING_CONFIRMATION → ORDERED`. Chặn nếu chưa có `expectedDate` (`E134`), chưa chọn
    * `paymentTerm` (`E156` — cần để tính `dueDate` khi PO đạt COMPLETED tự sinh yêu cầu thanh
    * toán, `PaymentRequestsService.createIfOrderCompleted`), hoặc còn dòng thiếu `unitPrice`
    * (`E135`); `quantity` luôn > 0 sẵn (`CHECK` ở DB), không cần kiểm lại. */
@@ -463,7 +466,7 @@ export class PurchaseOrdersService {
     purchaseOrderId: string,
     userId: string,
   ): Promise<void> {
-    await this.ensurePurchaseOrderDraft(purchaseOrderId);
+    await this.ensurePurchaseOrderPendingConfirmation(purchaseOrderId);
 
     const order = await this.db.query.purchaseOrders.findFirst({
       columns: {
@@ -524,7 +527,9 @@ export class PurchaseOrdersService {
       .where(eq(purchaseOrders.id, purchaseOrderId));
   }
 
-  private async ensurePurchaseOrderDraft(purchaseOrderId: string) {
+  private async ensurePurchaseOrderPendingConfirmation(
+    purchaseOrderId: string,
+  ) {
     const order = await this.db.query.purchaseOrders.findFirst({
       columns: { id: true, status: true },
       where: eq(purchaseOrders.id, purchaseOrderId),
@@ -539,7 +544,7 @@ export class PurchaseOrdersService {
     }
   }
 
-  /** `cancel` hợp lệ từ cả `DRAFT` lẫn `ORDERED` (khác `ensurePurchaseOrderDraft`, chỉ chặn khi đã
+  /** `cancel` hợp lệ từ cả `PENDING_CONFIRMATION` lẫn `ORDERED` (khác `ensurePurchaseOrderPendingConfirmation`, chỉ chặn khi đã
    * `CANCELLED`), khớp lifecycle `docs/domains/purchasing.md`. */
   private async ensurePurchaseOrderCancellable(purchaseOrderId: string) {
     const order = await this.db.query.purchaseOrders.findFirst({
@@ -599,7 +604,7 @@ export class PurchaseOrdersService {
    * ngày giao, nên lấy dòng chờ lâu nhất. `null` nếu không dòng nào có leadtime từ báo giá. */
   private expectedDateFromLeadTime(
     orderDate: Date,
-    lines: PurchaseOrderDraftLine[],
+    lines: PurchaseOrderPendingLine[],
   ): Date | null {
     const leadTimes = lines
       .map((line) => line.leadTimeDays)
@@ -629,10 +634,10 @@ export class PurchaseOrdersService {
     return total > 0;
   }
 
-  /** Xoá PO Draft sinh từ một RFQ khi `recall` — chỉ xoá `DRAFT`, gọi sau khi
+  /** Xoá PO Chờ xác nhận sinh từ một RFQ khi `recall` — chỉ xoá `PENDING_CONFIRMATION`, gọi sau khi
    * `hasOrderedOrdersForQuotation` đã xác nhận không còn PO nào `ORDERED`. Bắt buộc truyền `tx`,
    * cùng transaction với việc bỏ chọn thắng thầu ở `PurchaseQuotationsService.recallQuotation`. */
-  async deleteDraftOrdersByQuotation(
+  async deletePendingOrdersByQuotation(
     tx: DbTransaction,
     quotationId: string,
   ): Promise<void> {
