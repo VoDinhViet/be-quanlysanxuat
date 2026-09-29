@@ -76,8 +76,44 @@ export class PurchaseOrdersService {
     const receivedAgg = orderReceivedQuantitySubquery(this.db);
     const refs = this.buildProgressRefs(orderedAgg, receivedAgg);
 
+    const hasItemFilters = Boolean(reqDto.purchaseRequestId || directKeyword);
+
     const where = and(
-      keyword ? unaccentILike(purchaseOrders.code, keyword) : undefined,
+      keyword
+        ? or(
+            unaccentILike(purchaseOrders.code, keyword),
+            exists(
+              this.db
+                .select({ one: sql`1` })
+                .from(purchaseOrderItems)
+                .innerJoin(
+                  purchaseRequestItems,
+                  eq(
+                    purchaseRequestItems.id,
+                    purchaseOrderItems.purchaseRequestItemId,
+                  ),
+                )
+                .innerJoin(items, eq(items.id, purchaseRequestItems.itemId))
+                .innerJoin(
+                  purchaseRequests,
+                  eq(
+                    purchaseRequests.id,
+                    purchaseRequestItems.purchaseRequestId,
+                  ),
+                )
+                .where(
+                  and(
+                    eq(purchaseOrderItems.purchaseOrderId, purchaseOrders.id),
+                    or(
+                      unaccentILike(items.name, keyword),
+                      unaccentILike(items.code, keyword),
+                      unaccentILike(purchaseRequests.code, keyword),
+                    ),
+                  ),
+                ),
+            ),
+          )
+        : undefined,
       reqDto.supplierId
         ? eq(purchaseOrders.supplierId, reqDto.supplierId)
         : undefined,
@@ -94,7 +130,7 @@ export class PurchaseOrdersService {
             this.buildProgressCondition(refs, PurchaseOrderProgress.RECEIVING),
           )
         : undefined,
-      reqDto.purchaseRequestId || directKeyword
+      hasItemFilters
         ? exists(
             this.db
               .select({ one: sql`1` })
