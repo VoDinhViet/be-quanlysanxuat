@@ -5,7 +5,7 @@
  * cùng khuôn `PurchaseLedgerStatus` (`purchase-ledger.constant.ts`).
  */
 export enum PurchaseOrderProgress {
-  DRAFT = 'DRAFT',
+  PENDING_CONFIRMATION = 'PENDING_CONFIRMATION',
   ORDERED = 'ORDERED',
   RECEIVING = 'RECEIVING',
   COMPLETED = 'COMPLETED',

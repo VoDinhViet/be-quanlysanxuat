@@ -282,8 +282,8 @@ export class PurchaseOrdersService {
     if (status === PurchaseOrderStatus.CANCELLED) {
       return PurchaseOrderProgress.CANCELLED;
     }
-    if (status === PurchaseOrderStatus.DRAFT) {
-      return PurchaseOrderProgress.DRAFT;
+    if (status === PurchaseOrderStatus.PENDING_CONFIRMATION) {
+      return PurchaseOrderProgress.PENDING_CONFIRMATION;
     }
     if (orderedQuantity > 0 && receivedQuantity >= orderedQuantity) {
       return PurchaseOrderProgress.COMPLETED;
@@ -303,8 +303,8 @@ export class PurchaseOrdersService {
     switch (progress) {
       case PurchaseOrderProgress.CANCELLED:
         return eq(purchaseOrders.status, PurchaseOrderStatus.CANCELLED);
-      case PurchaseOrderProgress.DRAFT:
-        return eq(purchaseOrders.status, PurchaseOrderStatus.DRAFT);
+      case PurchaseOrderProgress.PENDING_CONFIRMATION:
+        return eq(purchaseOrders.status, PurchaseOrderStatus.PENDING_CONFIRMATION);
       case PurchaseOrderProgress.COMPLETED:
         return sql`(
           ${purchaseOrders.status} = ${PurchaseOrderStatus.ORDERED}
@@ -534,7 +534,7 @@ export class PurchaseOrdersService {
       throw new AppException(ErrorCode.E121, HttpStatus.NOT_FOUND);
     }
 
-    if (order.status !== PurchaseOrderStatus.DRAFT) {
+    if (order.status !== PurchaseOrderStatus.PENDING_CONFIRMATION) {
       throw new AppException(ErrorCode.E122, HttpStatus.CONFLICT);
     }
   }
@@ -641,7 +641,7 @@ export class PurchaseOrdersService {
       .where(
         and(
           eq(purchaseOrders.quotationId, quotationId),
-          eq(purchaseOrders.status, PurchaseOrderStatus.DRAFT),
+          eq(purchaseOrders.status, PurchaseOrderStatus.PENDING_CONFIRMATION),
         ),
       );
   }

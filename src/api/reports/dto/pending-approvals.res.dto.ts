@@ -24,6 +24,14 @@ export class PendingApprovalsResDto {
   @NumberField({
     int: true,
     description:
+      'Count of purchase orders (PO) with status PENDING_CONFIRMATION — 0 if the current user lacks purchasing:update',
+  })
+  purchaseOrders!: number;
+
+  @Expose()
+  @NumberField({
+    int: true,
+    description:
       'Count of orders (SO) with status PENDING_CONFIRMATION — 0 if the current user lacks orders:approve',
   })
   orders!: number;
