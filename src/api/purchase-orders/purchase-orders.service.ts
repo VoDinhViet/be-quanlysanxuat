@@ -394,7 +394,6 @@ export class PurchaseOrdersService {
           orderDate,
           expectedDate: this.expectedDateFromLeadTime(orderDate, lines),
           createdBy: input.createdBy,
-          assignedUserId: input.createdBy,
         })
         .returning({ id: purchaseOrders.id });
 
@@ -496,6 +495,7 @@ export class PurchaseOrdersService {
         status: PurchaseOrderStatus.ORDERED,
         orderedBy: userId,
         orderedAt: new Date(),
+        assignedUserId: sql`COALESCE(${purchaseOrders.assignedUserId}, ${userId})`,
       })
       .where(eq(purchaseOrders.id, purchaseOrderId));
   }
