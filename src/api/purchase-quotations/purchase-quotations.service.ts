@@ -674,9 +674,11 @@ export class PurchaseQuotationsService {
     if (supplierRows.length) {
       const supplierRowsWithIds = supplierRows.map((row) => ({
         ...row,
-        id: crypto.randomUUID() as string,
+        id: crypto.randomUUID(),
       }));
-      await tx.insert(purchaseQuotationItemSuppliers).values(supplierRowsWithIds);
+      await tx
+        .insert(purchaseQuotationItemSuppliers)
+        .values(supplierRowsWithIds);
 
       // Link + insert tệp đính kèm NCC
       const allFileIds = itemsReq.flatMap((item) =>
@@ -686,7 +688,8 @@ export class PurchaseQuotationsService {
         // linkFiles already called before the transaction (see createQuotation/updateQuotation)
         // Map supplier row id → its fileIds
         let supplierIdx = 0;
-        const fileRows: { quotationItemSupplierId: string; fileId: string }[] = [];
+        const fileRows: { quotationItemSupplierId: string; fileId: string }[] =
+          [];
         for (const item of itemsReq) {
           for (const supplier of item.suppliers) {
             const supplierId = supplierRowsWithIds[supplierIdx].id;

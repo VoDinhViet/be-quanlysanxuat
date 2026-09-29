@@ -542,7 +542,10 @@ export class ProductionJobsService {
         if (bomCode && !existing.bomItemCodes.includes(bomCode)) {
           existing.bomItemCodes.push(bomCode);
         }
-        if (op.dueDate && (!existing.dueDate || op.dueDate > existing.dueDate)) {
+        if (
+          op.dueDate &&
+          (!existing.dueDate || op.dueDate > existing.dueDate)
+        ) {
           existing.dueDate = op.dueDate;
         }
       } else {

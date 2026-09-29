@@ -24,4 +24,3 @@ export function issuedQuantityByOrderItemIdSubquery(
     .groupBy(inventoryTransactions.orderItemId)
     .as('issued_qty_by_order_item');
 }
-

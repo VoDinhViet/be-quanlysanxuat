@@ -86,7 +86,7 @@ export class ProductionOrdersService {
     private readonly productionJobsService: ProductionJobsService,
     private readonly filesService: FilesService,
     private readonly pdfRendererService: PdfRendererService,
-  ) { }
+  ) {}
 
   async getProductionOrders(
     reqDto: GetProductionOrdersReqDto,
@@ -98,9 +98,9 @@ export class ProductionOrdersService {
       isNull(orders.deletedAt),
       keyword
         ? or(
-          unaccentILike(orders.code, keyword),
-          unaccentILike(productionOrders.code, keyword),
-        )
+            unaccentILike(orders.code, keyword),
+            unaccentILike(productionOrders.code, keyword),
+          )
         : undefined,
       reqDto.clientId ? eq(orders.clientId, reqDto.clientId) : undefined,
       reqDto.startDate ? gte(orders.dueDate, reqDto.startDate) : undefined,
@@ -156,9 +156,9 @@ export class ProductionOrdersService {
       isNull(orders.deletedAt),
       keyword
         ? or(
-          unaccentILike(orders.code, keyword),
-          unaccentILike(productionOrders.code, keyword),
-        )
+            unaccentILike(orders.code, keyword),
+            unaccentILike(productionOrders.code, keyword),
+          )
         : undefined,
       reqDto.clientId ? eq(orders.clientId, reqDto.clientId) : undefined,
       reqDto.startDate ? gte(orders.dueDate, reqDto.startDate) : undefined,

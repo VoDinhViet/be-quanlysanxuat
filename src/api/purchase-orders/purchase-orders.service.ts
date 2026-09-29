@@ -8,7 +8,6 @@ import {
   exists,
   gte,
   inArray,
-  isNull,
   lt,
   or,
   sql,
@@ -36,8 +35,6 @@ import {
   purchaseRequestItems,
   purchaseRequests,
   PurchaseOrderStatus,
-  PurchaseRequestStatus,
-  suppliers,
   users,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
@@ -378,7 +375,6 @@ export class PurchaseOrdersService {
     );
   }
 
-
   /** Sinh PO Draft từ NCC thắng thầu của một RFQ — một NCC nhiều vật tư gộp chung một PO. Bắt
    * buộc truyền `tx` — chỉ gọi được từ transaction `approve`/`recall` của
    * `PurchaseQuotationsService` (`docs/workflows/rfq-approval.md`). */
@@ -596,7 +592,7 @@ export class PurchaseOrdersService {
       DocumentType.PURCHASE_ORDER,
     );
 
-    return `PO-${String(sequence).padStart(5, '0')}`;
+    return `DMH-${String(sequence).padStart(5, '0')}`;
   }
 
   /** Ngày giao dự kiến = ngày đặt + leadtime dài nhất trong nhóm dòng cùng NCC — một PO chỉ có một

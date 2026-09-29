@@ -128,7 +128,9 @@ export class PurchaseRequestsService {
           senderBy: true,
           approverBy: true,
           rejecterBy: true,
-          productionOrder: { with: { order: { columns: { buyerPoNo: true } } } },
+          productionOrder: {
+            with: { order: { columns: { buyerPoNo: true } } },
+          },
           productionJob: true,
         },
       }),

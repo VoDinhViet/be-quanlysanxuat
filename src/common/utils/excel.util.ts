@@ -20,7 +20,6 @@ export function formatVnDate(date: Date | null): string {
     .toFormat('dd/MM/yyyy');
 }
 
-
 /**
  * Format timestamp theo múi giờ Việt Nam.
  * Dùng cho các cột `timestamp` như `createdAt`/`updatedAt`.
@@ -32,8 +31,6 @@ export function formatVnDateTime(date: Date | null): string {
     zone: 'Asia/Ho_Chi_Minh',
   }).toFormat('dd/MM/yyyy HH:mm');
 }
-
-
 
 /** Điểm đóng gói ExcelJS duy nhất trong repo — mọi export khác chỉ khai `ExcelColumn[]`, không tự
  * đụng `Workbook`. Dòng header in đậm + đóng băng + autoFilter là format cố định cho mọi export. */
