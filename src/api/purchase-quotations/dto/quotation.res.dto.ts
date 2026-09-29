@@ -33,7 +33,7 @@ export class QuotationResDto {
 
   @Expose()
   @ClassFieldOptional(() => QuotationItemResDto, { each: true })
-  items!: QuotationItemResDto[];
+  items?: QuotationItemResDto[];
 
   @Expose()
   @ClassFieldOptional(() => UserRefResDto, { nullable: true })

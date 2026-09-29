@@ -6,7 +6,9 @@ import {
   NumberField,
   UUIDField,
 } from '../../../decorators/field.decorators';
-import { ItemUnitRefResDto } from '../../items/dto/item-unit-ref.res.dto';
+import { FileField } from '../../files/dto/file.field';
+import { FileResDto } from '../../files/dto/file.res.dto';
+import { OrderItemRefResDto } from '../../orders/dto/order-item-ref.res.dto';
 import { QuotationItemAllocationResDto } from './quotation-item-allocation.res.dto';
 import { QuotationItemSupplierResDto } from './quotation-item-supplier.res.dto';
 
@@ -17,8 +19,12 @@ export class QuotationItemResDto {
   id!: string;
 
   @Expose()
-  @ClassField(() => ItemUnitRefResDto)
-  item!: ItemUnitRefResDto;
+  @ClassField(() => OrderItemRefResDto)
+  item!: OrderItemRefResDto;
+
+  @Expose()
+  @FileField('imageFile', 'Ảnh vật tư')
+  image?: FileResDto | null;
 
   @Expose()
   @NumberField({ description: 'SL báo giá của vật tư — tổng SL các phân bổ' })

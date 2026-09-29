@@ -52,6 +52,7 @@ import { CreateQuotationItemSupplierReqDto } from './dto/create-quotation-item-s
 import { CreateQuotationReqDto } from './dto/create-quotation.req.dto';
 import { GetQuotationsReqDto } from './dto/get-quotations.req.dto';
 import { PageQuotationResDto } from './dto/page-quotation.res.dto';
+import { QuotationItemResDto } from './dto/quotation-item.res.dto';
 import { QuotationResDto } from './dto/quotation.res.dto';
 import { RejectQuotationReqDto } from './dto/reject-quotation.req.dto';
 import { UpdateQuotationReqDto } from './dto/update-quotation.req.dto';
@@ -215,13 +216,30 @@ export class PurchaseQuotationsService {
         approverBy: true,
         cancellerBy: true,
         creatorBy: true,
+      },
+    });
+
+    if (!quotation) {
+      throw new AppException(ErrorCode.E117, HttpStatus.NOT_FOUND);
+    }
+
+    return plainToInstance(QuotationResDto, quotation, {
+      excludeExtraneousValues: true,
+    });
+  }
+
+  async getQuotationComparison(
+    quotationId: string,
+  ): Promise<QuotationItemResDto[]> {
+    const quotation = await this.db.query.purchaseQuotations.findFirst({
+      where: eq(purchaseQuotations.id, quotationId),
+      with: {
         items: {
           with: {
-            item: { with: { unit: true } },
+            item: { with: { unit: true, imageFile: true } },
             suppliers: {
               with: {
                 supplier: true,
-                selectorBy: true,
                 files: { with: { file: true } },
               },
             },
@@ -235,52 +253,76 @@ export class PurchaseQuotationsService {
     }
 
     const quotationItems = quotation.items;
+    if (!quotationItems.length) {
+      return [];
+    }
+
+    // 1. Lấy phân bổ ĐXMH nguồn theo từng dòng vật tư
     const quotationItemIds = quotationItems.map((item) => item.id);
     const allocationsByItemId =
       await this.getAllocationsByQuotationItemIds(quotationItemIds);
 
-    const itemIds = [...new Set(quotationItems.map((item) => item.item.id))];
+    // 2. Tra cứu giá + ngày mua gần nhất của từng cặp (vật tư, NCC)
+    const lastPurchaseMap = await this.getLastPurchaseMap(quotationItems);
+
+    // 3. Ghép dữ liệu cho bảng so sánh báo giá
+    const comparisonItems = quotationItems.map((item) => {
+      const allocations = allocationsByItemId.get(item.id) ?? [];
+      const quantity = allocations.reduce((sum, a) => sum + a.quantity, 0);
+
+      const suppliers = item.suppliers.map((s) => ({
+        ...s,
+        files: s.files?.map((f) => f.file) ?? [],
+        lastPurchase:
+          lastPurchaseMap.get(`${item.item.id}:${s.supplierId}`) ?? null,
+      }));
+
+      return {
+        ...item,
+        imageFile: item.item?.imageFile,
+        quantity,
+        allocations,
+        suppliers,
+      };
+    });
+
+    return plainToInstance(QuotationItemResDto, comparisonItems, {
+      excludeExtraneousValues: true,
+    });
+  }
+
+  private async getLastPurchaseMap(
+    quotationItems: Array<{
+      item: { id: string };
+      suppliers: Array<{ supplierId: string }>;
+    }>,
+  ): Promise<Map<string, { unitPrice: number; orderDate: Date }>> {
+    const directItemIds = [
+      ...new Set(quotationItems.map((item) => item.item.id)),
+    ];
     const supplierIds = [
       ...new Set(
         quotationItems.flatMap((item) =>
-          item.suppliers.map((supplier) => supplier.supplierId),
+          item.suppliers.map((s) => s.supplierId),
         ),
       ),
     ];
 
-    const lastPurchaseRows =
-      itemIds.length && supplierIds.length
-        ? await lastPurchaseQuery(this.db, itemIds, supplierIds)
-        : [];
-    const lastPurchaseByKey = new Map(
-      lastPurchaseRows.map((row) => [
-        `${row.itemId}:${row.supplierId}`,
-        { unitPrice: row.unitPrice!, orderDate: row.orderDate },
-      ]),
+    if (!directItemIds.length || !supplierIds.length) {
+      return new Map();
+    }
+
+    const rows = await lastPurchaseQuery(
+      this.db,
+      directItemIds,
+      supplierIds,
     );
 
-    const quotationItemsWithLastPurchase = quotationItems.map((item) => {
-      const itemAllocations = allocationsByItemId.get(item.id) ?? [];
-      return {
-        ...item,
-        allocations: itemAllocations,
-        quantity: itemAllocations.reduce(
-          (sum: number, allocation) => sum + allocation.quantity,
-          0,
-        ),
-        suppliers: item.suppliers.map((supplier) => ({
-          ...supplier,
-          lastPurchase:
-            lastPurchaseByKey.get(`${item.item.id}:${supplier.supplierId}`) ??
-            null,
-        })),
-      };
-    });
-
-    return plainToInstance(
-      QuotationResDto,
-      { ...quotation, items: quotationItemsWithLastPurchase },
-      { excludeExtraneousValues: true },
+    return new Map(
+      rows.map((r) => [
+        `${r.itemId}:${r.supplierId}`,
+        { unitPrice: r.unitPrice!, orderDate: r.orderDate },
+      ]),
     );
   }
 
@@ -835,7 +877,7 @@ export class PurchaseQuotationsService {
    * không giới hạn trên so với SL đề xuất mua. */
   private async validateAllocations(
     itemsReq: CreateQuotationItemReqDto[],
-    quotationId?: string,
+    _quotationId?: string,
   ): Promise<void> {
     if (itemsReq.some((item) => !item.allocations.length)) {
       throw new AppException(ErrorCode.E150, HttpStatus.BAD_REQUEST);
