@@ -1,0 +1,32 @@
+services:
+  langflow:
+    image: langflowai/langflow:latest
+    container_name: erp-langflow
+    restart: unless-stopped
+    ports:
+      - "7860:7860"
+    environment:
+      # Biến môi trường Langflow
+      - LANGFLOW_AUTO_LOGIN=true
+      - LANGFLOW_PORT=7860
+      - LANGFLOW_CORS_ORIGINS=["*"]
+      # Tắt SSRF Protection để Langflow có thể gọi API nội bộ backend (host.docker.internal / localhost)
+      - LANGFLOW_SSRF_PROTECTION_ENABLED=false
+      # Lưu cấu hình và SQLite database vào volume /app/data để KHÔNG bị mất dữ liệu khi restart/deploy container
+      - LANGFLOW_CONFIG_DIR=/app/data/.cache/langflow
+      - LANGFLOW_DATABASE_URL=sqlite:////app/data/langflow.db
+      # Secret key dùng để mã hoá/giải mã các API keys & credentials trong database
+      - LANGFLOW_SECRET_KEY=QD18PPNEsbsDSGoD5TSfTclqSu0JLefC2_Uy7-FXWUk
+      # Cấu hình backend host để proxy localhost:8000 trong container về máy host
+      - BACKEND_HOST=172.27.229.203
+      - BACKEND_PORT=8000
+      # API Key LLM (truyền vào file .env hoặc export trong shell)
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+    command: >
+      sh -c "python /app/data/proxy.py & langflow run"
+    volumes:
+      - ./langflow_data:/app/data
+    extra_hosts:
+      # Cho phép container Langflow gọi ngược lại NestJS backend qua host.docker.internal
+      - "host.docker.internal:host-gateway"

@@ -55,6 +55,7 @@ import { PurchaseNotesModule } from './api/purchase-notes/purchase-notes.module'
 import { PurchaseOrdersModule } from './api/purchase-orders/purchase-orders.module';
 import { PurchaseQuotationsModule } from './api/purchase-quotations/purchase-quotations.module';
 import { PurchaseRequestsModule } from './api/purchase-requests/purchase-requests.module';
+import { AiAssistantModule } from './api/ai-assistant/ai-assistant.module';
 import { ReportsModule } from './api/reports/reports.module';
 import { RoutingsModule } from './api/routings/routings.module';
 import { SupplierReturnsModule } from './api/supplier-returns/supplier-returns.module';
@@ -135,6 +136,7 @@ import { UsersModule } from './api/users/users.module';
     PurchaseNotesModule,
     PaymentRequestsModule,
     ReportsModule,
+    AiAssistantModule,
   ],
 
   controllers: [AppController],
