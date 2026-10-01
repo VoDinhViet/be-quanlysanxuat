@@ -2,7 +2,6 @@ import { Exclude, Expose } from 'class-transformer';
 
 import {
   ClassField,
-  BooleanField,
   NumberField,
   UUIDField,
   StringField,
@@ -37,12 +36,6 @@ export class ProductionJobIssueResDto {
   @Expose()
   @UUIDField({ description: 'Id dòng vật tư của Job — dùng cho sửa/xoá' })
   id!: string;
-
-  @Expose()
-  @BooleanField({
-    description: 'Dòng do người dùng thêm tay (không có định mức BOM gốc)',
-  })
-  isManual!: boolean;
 
   @Expose()
   @ClassField(() => ProductionJobItemResDto)

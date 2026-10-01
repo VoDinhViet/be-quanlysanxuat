@@ -336,7 +336,6 @@ export class ProductionJobsService {
       this.db
         .select({
           id: productionJobIssues.id,
-          isManual: sql<boolean>`${productionJobIssues.unitQty} is null`,
           item: getTableColumns(productionJobItems),
           unit: getTableColumns(productionJobUnits),
           imageFile: getTableColumns(files),
