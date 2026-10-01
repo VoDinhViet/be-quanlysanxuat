@@ -53,7 +53,7 @@ import { AppException } from '../../exceptions/app.exception';
 import { FormTemplateType } from '../../templates/form-templates.registry';
 import { PdfRendererService } from '../../templates/pdf-renderer.service';
 import { issuedQuantityByJobItemSubquery } from '../inventory-requisitions/inventory-requisitions.query';
-import { InventoryService } from '../inventory/inventory.service';
+import { InventoryDirectsService } from '../inventory-directs/inventory-directs.service';
 import { PurchaseRequestsService } from '../purchase-requests/purchase-requests.service';
 import { PurchaseRequestShortageItem } from '../purchase-requests/types/shortage-request.type';
 import { UsersService } from '../users/users.service';
@@ -87,7 +87,7 @@ import {
 export class ProductionJobsService {
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
-    private readonly inventoryService: InventoryService,
+    private readonly inventoryDirectsService: InventoryDirectsService,
     private readonly purchaseRequestsService: PurchaseRequestsService,
     private readonly usersService: UsersService,
     private readonly pdfRendererService: PdfRendererService,
@@ -713,7 +713,7 @@ export class ProductionJobsService {
 
       await createJobSnapshot(tx, job);
 
-      const jobIssueShortages = await this.collectJobIssueShortages(tx, jobId);
+      const shortageItems = await this.getShortageItems(tx, jobId);
 
       await tx
         .update(productionJobs)
@@ -727,13 +727,13 @@ export class ProductionJobsService {
       await tx.insert(productionJobLogs).values({
         productionJobId: jobId,
         action: ProductionJobLogAction.STARTED,
-        content: jobIssueShortages.length
-          ? `Xác nhận kế hoạch — sinh đề xuất mua ${jobIssueShortages.length} vật tư thiếu`
+        content: shortageItems.length
+          ? `Xác nhận kế hoạch — sinh đề xuất mua ${shortageItems.length} vật tư thiếu`
           : 'Xác nhận kế hoạch',
         performedBy: userId,
       });
 
-      if (!jobIssueShortages.length) {
+      if (!shortageItems.length) {
         return;
       }
 
@@ -742,16 +742,18 @@ export class ProductionJobsService {
         productionOrderId: job.productionOrderId,
         productionJobId: jobId,
         createdBy: userId,
-        items: jobIssueShortages,
+        items: shortageItems,
       });
     });
   }
 
   /** Vật tư của Job thiếu tồn tại thời điểm bấm start: `requiredQty` (snapshot vừa chốt) trừ tồn
-   * kho vật tư hiện tại (gộp mọi kho), chỉ giữ phần dương. Dòng `itemId = NULL` (vật tư bị xoá sau
-   * khi snapshot) bị bỏ qua — `purchase_request_items.itemId` là `NOT NULL`, không dựng được dòng.
+   * **khả dụng** (tồn thực tế − phiếu lãnh đã duyệt giữ chỗ − nhu cầu các Job khác, không tính
+   * chính Job này), chỉ giữ phần dương — trừ tồn thực tế sẽ bỏ sót vật tư đã bị giữ chỗ. Dòng
+   * `itemId = NULL` (vật tư bị xoá sau khi snapshot) bị bỏ qua — `purchase_request_items.itemId`
+   * là `NOT NULL`, không dựng được dòng.
    * Nhận `tx` — chạy trong transaction của `startJob`, sau `createJobSnapshot`. */
-  private async collectJobIssueShortages(
+  private async getShortageItems(
     tx: DbTransaction,
     jobId: string,
   ): Promise<PurchaseRequestShortageItem[]> {
@@ -771,16 +773,17 @@ export class ProductionJobsService {
       return [];
     }
 
-    const onHandByItem = await this.inventoryService.getDirectStockLevels(
-      tx,
-      itemIds,
-    );
+    const availableByItem =
+      await this.inventoryDirectsService.getAvailableStockLevels(tx, itemIds, {
+        excludeJobId: jobId,
+      });
 
     return jobIssues.flatMap((row) => {
       if (!row.itemId) {
         return [];
       }
-      const shortage = row.requiredQty - (onHandByItem.get(row.itemId) ?? 0);
+      const available = Math.max(availableByItem.get(row.itemId) ?? 0, 0);
+      const shortage = row.requiredQty - available;
       return shortage > 0 ? [{ itemId: row.itemId, quantity: shortage }] : [];
     });
   }
