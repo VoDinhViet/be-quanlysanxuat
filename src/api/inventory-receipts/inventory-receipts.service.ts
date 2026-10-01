@@ -62,7 +62,7 @@ import {
 } from '../inventory/item-stock.query';
 import type { InventoryPostingLine } from '../inventory/inventory-posting.service';
 import { InventoryPostingService } from '../inventory/inventory-posting.service';
-import { InventoryDirectsService } from '../inventory-directs/inventory-directs.service';
+import { availableQuantityByItemSubquery } from '../inventory/available-quantity.query';
 import { areReceiptIqcInspectionsCompleted } from '../iqc/iqc.query';
 import { IqcService } from '../iqc/iqc.service';
 import { getJobQcCoverage } from '../oqc/oqc.query';
@@ -105,7 +105,6 @@ export class InventoryReceiptsService {
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly inventoryPostingService: InventoryPostingService,
-    private readonly inventoryDirectsService: InventoryDirectsService,
     private readonly iqcService: IqcService,
     private readonly paymentRequestsService: PaymentRequestsService,
     private readonly pdfRendererService: PdfRendererService,
@@ -281,9 +280,9 @@ export class InventoryReceiptsService {
   }
 
   /** `bomDemand`/`available`/`fromStock` không phải cột thật — relational API không tính được,
-   * nên dòng phiếu nhập dùng `.select()` + join thay vì `with: { items: ... }`. Công thức 4 số
-   * sống ở `item-stock.query.ts`, dùng chung với `PurchaseRequestsService` (riêng `available` lấy từ
-   * `InventoryDirectsService`). */
+   * nên dòng phiếu nhập dùng `.select()` + join thay vì `with: { items: ... }`. `onHand`/`bomDemand`/
+   * `fromStock` sống ở `item-stock.query.ts`, dùng chung với `PurchaseRequestsService`; `available`
+   * từ `availableQuantityByItemSubquery`. */
   private async getReceiptLines(
     receiptId: string,
     scope: {
@@ -293,6 +292,9 @@ export class InventoryReceiptsService {
   ) {
     const balance = onHandQuantityByItemSubquery(this.db);
     const demand = jobIssueDemandSubquery(this.db, scope);
+    // Số "khả dụng" của hệ thống (cùng màn Tồn kho vật tư): join subquery chung vào câu select bên dưới,
+    // không phải `onHand − bomDemand` của riêng Job này.
+    const available = availableQuantityByItemSubquery(this.db);
 
     const [rows, returnedByItemId] = await Promise.all([
       this.db
@@ -305,6 +307,7 @@ export class InventoryReceiptsService {
           unit: getTableColumns(units),
           purchaseOrderItem: getTableColumns(purchaseOrderItems),
           ...itemStockColumns(balance, demand),
+          available: available.availableQuantity,
         })
         .from(inventoryReceiptItems)
         .innerJoin(items, eq(items.id, inventoryReceiptItems.itemId))
@@ -315,25 +318,17 @@ export class InventoryReceiptsService {
         )
         .leftJoin(balance, eq(balance.itemId, items.id))
         .leftJoin(demand, eq(demand.itemId, items.id))
+        .innerJoin(available, eq(available.itemId, items.id))
         .where(eq(inventoryReceiptItems.receiptId, receiptId))
         .orderBy(asc(items.code)),
       getReturnedQuantityByReceiptItemId(this.db, receiptId),
     ]);
-
-    // `available` là tồn khả dụng của hệ thống (cùng công thức màn Tồn kho vật tư), không phải
-    // `onHand − bomDemand` của riêng Job này — xem `PurchaseRequestsService.getPurchaseRequestLines`.
-    const availableByItem =
-      await this.inventoryDirectsService.getAvailableStockLevels(
-        this.db,
-        rows.map((row) => row.item.id),
-      );
 
     return rows.map((row) => {
       const returnedQuantity = returnedByItemId.get(row.item.id) ?? 0;
       const actualQuantity = Math.max(row.quantity - returnedQuantity, 0);
       return {
         ...row,
-        available: availableByItem.get(row.item.id) ?? 0,
         returnedQuantity,
         actualQuantity,
       };

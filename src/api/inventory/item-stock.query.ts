@@ -81,9 +81,7 @@ export function jobIssueDemandSubquery(
 }
 
 /** 3 cột số spread vào `.select()` — `fromStock` không lưu ở đâu, luôn tính lại lúc đọc. Không có
- * cột `available`: số "Khả dụng" hiển thị cho người dùng (chi tiết đề xuất mua, chi tiết phiếu nhập)
- * lấy từ `InventoryDirectsService.getAvailableStockLevels` — cùng công thức màn Tồn kho vật tư —
- * chứ không phải `onHand − bomDemand` của riêng Job/LSX. */
+ * cột "khả dụng": xem `availableQuantityByItemSubquery` (`available-quantity.query.ts`). */
 export function itemStockColumns(
   balance: ReturnType<typeof onHandQuantityByItemSubquery>,
   demand: ReturnType<typeof jobIssueDemandSubquery>,

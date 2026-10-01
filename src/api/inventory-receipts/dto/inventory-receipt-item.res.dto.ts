@@ -56,7 +56,7 @@ export class InventoryReceiptItemResDto {
   @Expose()
   @NumberField({
     description:
-      'Tồn khả dụng của hệ thống, cùng công thức cột "Khả dụng" ở màn Tồn kho vật tư: tồn thực tế − phiếu lãnh đang giữ chỗ − nhu cầu BOM còn lại của mọi Job. Có thể âm',
+      'Tồn khả dụng của hệ thống (cùng công thức màn Tồn kho vật tư), có thể âm',
   })
   available!: number;
 

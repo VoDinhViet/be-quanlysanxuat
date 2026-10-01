@@ -53,7 +53,7 @@ import { AppException } from '../../exceptions/app.exception';
 import { FormTemplateType } from '../../templates/form-templates.registry';
 import { PdfRendererService } from '../../templates/pdf-renderer.service';
 import { issuedQuantityByJobItemSubquery } from '../inventory-requisitions/inventory-requisitions.query';
-import { InventoryDirectsService } from '../inventory-directs/inventory-directs.service';
+import { getAvailableQuantities } from '../inventory/available-quantity.query';
 import { PurchaseRequestsService } from '../purchase-requests/purchase-requests.service';
 import { PurchaseRequestShortageItem } from '../purchase-requests/types/shortage-request.type';
 import { UsersService } from '../users/users.service';
@@ -87,7 +87,6 @@ import {
 export class ProductionJobsService {
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
-    private readonly inventoryDirectsService: InventoryDirectsService,
     private readonly purchaseRequestsService: PurchaseRequestsService,
     private readonly usersService: UsersService,
     private readonly pdfRendererService: PdfRendererService,
@@ -773,10 +772,13 @@ export class ProductionJobsService {
       return [];
     }
 
-    const availableByItem =
-      await this.inventoryDirectsService.getAvailableStockLevels(tx, itemIds, {
-        excludeJobId: jobId,
-      });
+    // Tồn khả dụng của từng vật tư NGAY TRƯỚC Job này (loại nhu cầu của chính Job, vì snapshot vừa
+    // chốt nên nhu cầu của nó đã nằm trong `production_job_issues`). Âm nghĩa là đã bị Job/phiếu lãnh
+    // khác giữ chỗ quá mức: lúc đó coi như còn 0 và phải mua đủ nhu cầu.
+    const availableByItem = await getAvailableQuantities(tx, {
+      itemIds,
+      excludeJobId: jobId,
+    });
 
     return jobIssues.flatMap((row) => {
       if (!row.itemId) {

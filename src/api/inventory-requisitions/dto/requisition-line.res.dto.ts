@@ -50,7 +50,7 @@ export class RequisitionLineResDto {
   @Expose()
   @NumberField({
     description:
-      'Khả dụng của hệ thống (cùng công thức màn Tồn kho vật tư: tồn thực tế − phiếu lãnh giữ chỗ − nhu cầu BOM còn lại của mọi Job) — có thể âm, chỉ tham khảo',
+      'Khả dụng của hệ thống (cùng công thức màn Tồn kho vật tư), có thể âm, chỉ tham khảo',
   })
   availableQuantity!: number;
 
