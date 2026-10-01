@@ -73,6 +73,22 @@ export class ProductionJobDetailResDto {
   startedAt!: Date | null;
 
   @Expose()
+  @DateFieldOptional({
+    nullable: true,
+    description:
+      'Lần cuối BOM/công đoạn/vật tư được chụp từ sản phẩm (null = Job cũ chưa snapshot)',
+  })
+  snapshotLoadedAt!: Date | null;
+
+  @Expose()
+  @DateFieldOptional({
+    nullable: true,
+    description:
+      'Lần cuối vật tư của Job bị sửa tay (null = nguyên bản từ sản phẩm)',
+  })
+  snapshotEditedAt!: Date | null;
+
+  @Expose()
   @UUIDFieldOptional({ nullable: true, description: 'Ai duyệt công đoạn' })
   operationsApprovedBy!: string | null;
 

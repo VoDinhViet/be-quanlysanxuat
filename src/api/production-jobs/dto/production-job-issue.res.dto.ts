@@ -2,9 +2,13 @@ import { Exclude, Expose } from 'class-transformer';
 
 import {
   ClassField,
+  BooleanField,
   NumberField,
+  UUIDField,
   StringField,
 } from '../../../decorators/field.decorators';
+import { FileField } from '../../files/dto/file.field';
+import { FileResDto } from '../../files/dto/file.res.dto';
 
 @Exclude()
 export class ProductionJobItemResDto {
@@ -31,12 +35,37 @@ export class ProductionJobUnitResDto {
 @Exclude()
 export class ProductionJobIssueResDto {
   @Expose()
+  @UUIDField({ description: 'Id dòng vật tư của Job — dùng cho sửa/xoá' })
+  id!: string;
+
+  @Expose()
+  @BooleanField({
+    description: 'Dòng do người dùng thêm tay (không có định mức BOM gốc)',
+  })
+  isManual!: boolean;
+
+  @Expose()
   @ClassField(() => ProductionJobItemResDto)
   item!: ProductionJobItemResDto;
 
   @Expose()
   @ClassField(() => ProductionJobUnitResDto)
   unit!: ProductionJobUnitResDto;
+
+  @Expose()
+  @FileField('imageFile', 'Ảnh vật tư (copy lúc snapshot)')
+  image!: FileResDto | null;
+
+  @Expose()
+  @NumberField({ description: 'Tồn thực tế của vật tư (mọi kho)' })
+  onHand!: number;
+
+  @Expose()
+  @NumberField({
+    description:
+      'Khả dụng của hệ thống (cùng công thức màn Tồn kho vật tư), có thể âm, chỉ tham khảo',
+  })
+  availableQuantity!: number;
 
   @Expose()
   @NumberField({

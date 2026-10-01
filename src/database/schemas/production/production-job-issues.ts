@@ -17,16 +17,18 @@ import { productionJobUnits } from './production-job-units';
 
 /**
  * Danh sách vật tư của một Job — khởi tạo bằng cách gộp `production_job_bom_items.plannedQuantity`
- * (đã nổ cấp) theo vật tư, dựng đúng một lần trong transaction `start`
- * (`ProductionJobsService.startJob` → `createJobSnapshot`, sau `createJobBomItems`) — Job còn `PENDING`
- * không có dòng nào ở đây, xem `docs/decisions/job-snapshot-at-start.md`. Không expose route ghi
- * nào — chỉ còn là nguồn nội bộ: `startJob` (vật tư thiếu), `bomDemand` của Inventory/Purchase
- * Requests, và `GET /production-jobs/:jobId/bom`. Xem `docs/domains/production.md`,
- * "Chuẩn nổ cấp BOM" ở `docs/domains/product-structure.md`.
+ * (đã nổ cấp) theo vật tư, dựng lúc tạo Job (`ProductionJobsService.createJobs` →
+ * `createJobSnapshot`) và chụp lại được khi còn `PENDING` (`reloadSnapshot`). Job `PENDING` còn
+ * sửa tay được: thêm/sửa/xoá dòng (`production-job-issues.query.ts`, chỉ tác động Job đó,
+ * đóng dấu `production_jobs.snapshotEditedAt`); từ `IN_PROGRESS` khoá hẳn. Sau snapshot đây là
+ * nguồn duy nhất cho nhu cầu vật tư: `startJob` (vật tư thiếu), `bomDemand` của Inventory/Purchase
+ * Requests, phiếu lãnh và `GET /production-jobs/:jobId/bom` — cây `production_job_bom_items` có
+ * thể lệch với bảng này sau khi sửa tay. Xem `docs/domains/production.md`, "Chuẩn nổ cấp BOM" ở
+ * `docs/domains/product-structure.md`.
  *
  * Rules:
- * - `unitQty` là định mức BOM lúc duyệt, **bất biến**. NULL để sẵn chỗ cho lúc có CRUD — dòng
- *   người dùng thêm tay (ngoài BOM) sẽ không có định mức gốc.
+ * - `unitQty` là định mức BOM lúc duyệt, **bất biến**. NULL cho dòng người dùng thêm tay
+ *   (ngoài BOM) — không có định mức gốc.
  * - Mã/tên vật tư và mã/tên ĐVT **không nằm trên dòng này** — tách sang hai bảng chiều dùng chung
  *   `productionJobItems`/`productionJobUnits` (SCD type-2, khoá theo bộ ba nội dung, xem doc
  *   comment hai bảng đó). Hai FK **song song**, hai bảng chiều không tham chiếu nhau: đổi tên vật
@@ -45,7 +47,7 @@ import { productionJobUnits } from './production-job-units';
  *   thuyết làm unique mất hiệu lực nếu có ≥ 2 dòng cùng item bị NULL hoá (Postgres coi NULL là
  *   distinct) — chấp nhận được vì `items` **không có route hard-delete** (chỉ soft-delete qua
  *   `deletedAt`), nên nhánh `set null` trên thực tế không bao giờ chạy.
- * - Không `updatedAt` — append-only lúc sinh, chưa có route ghi nào khác.
+ * - Không `updatedAt` — sửa số lượng ghi vết ở `production_job_logs` (`ITEMS_EDITED`).
  */
 export const productionJobIssues = pgTable(
   'production_job_issues',

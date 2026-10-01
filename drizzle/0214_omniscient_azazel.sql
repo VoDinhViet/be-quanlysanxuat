@@ -1,0 +1,1 @@
+ALTER TABLE "production_jobs" ADD COLUMN "snapshot_loaded_at" timestamp;

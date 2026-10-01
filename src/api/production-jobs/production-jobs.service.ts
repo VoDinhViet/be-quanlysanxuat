@@ -53,11 +53,17 @@ import { AppException } from '../../exceptions/app.exception';
 import { FormTemplateType } from '../../templates/form-templates.registry';
 import { PdfRendererService } from '../../templates/pdf-renderer.service';
 import { issuedQuantityByJobItemSubquery } from '../inventory-requisitions/inventory-requisitions.query';
-import { getAvailableQuantities } from '../inventory/available-quantity.query';
+import {
+  availableQuantityByItemSubquery,
+  getAvailableQuantities,
+} from '../inventory/available-quantity.query';
+import { balanceByItemSubquery } from '../inventory/inventory.query';
 import { PurchaseRequestsService } from '../purchase-requests/purchase-requests.service';
 import { PurchaseRequestShortageItem } from '../purchase-requests/types/shortage-request.type';
 import { UsersService } from '../users/users.service';
 import { ExportProductionJobsPlanReqDto } from './dto/export-production-jobs-plan.req.dto';
+import { CreateProductionJobIssuesReqDto } from './dto/create-production-job-issues.req.dto';
+import { UpdateProductionJobIssueReqDto } from './dto/update-production-job-issue.req.dto';
 import { CreateProductionJobNoteReqDto } from './dto/create-production-job-note.req.dto';
 import { GetProductionJobBomReqDto } from './dto/get-production-job-bom.req.dto';
 import { GetProductionJobLogsReqDto } from './dto/get-production-job-logs.req.dto';
@@ -73,15 +79,19 @@ import { ProductionJobResDto } from './dto/production-job.res.dto';
 import { UpdateProductionJobOperationDueDateReqDto } from './dto/update-production-job-operation-due-date.req.dto';
 import { UpdateProductionJobOperationsPlanReqDto } from './dto/update-production-job-operations-plan.req.dto';
 import {
-  buildJobPlan,
+  addJobIssues,
+  removeJobIssue,
+  updateJobIssue,
+} from './production-job-issues.query';
+import {
+  clearJobSnapshot,
   createJobSnapshot,
 } from './production-job-snapshot.query';
 
 /** Job sản xuất — 1 sản phẩm (FG) = 1 Job trong một LSX. Chỉ tạo được qua `createJobs`, gọi từ
  * transaction duyệt LSX (`ProductionOrdersService.approveProductionOrder`) — không có route tạo
- * Job riêng. Job `PENDING` chưa có snapshot nào — `start` là nơi DUY NHẤT gọi `createJobSnapshot`,
- * dựng cây BOM/công đoạn/vật tư từ master data hiện tại rồi đóng băng vĩnh viễn ngay từ đó, xem
- * `docs/decisions/job-snapshot-at-start.md`. Vòng đời, business rule:
+ * Job riêng. Snapshot dựng ngay lúc tạo Job (`createJobs`), chụp lại được khi còn `PENDING`
+ * (`reloadSnapshot`); Job không bao giờ đọc sống từ sản phẩm. Vòng đời, business rule:
  * `docs/domains/production.md`, `docs/workflows/production-job-execution.md`. */
 @Injectable()
 export class ProductionJobsService {
@@ -246,6 +256,8 @@ export class ProductionJobsService {
         status: productionJobs.status,
         startedBy: productionJobs.startedBy,
         startedAt: productionJobs.startedAt,
+        snapshotLoadedAt: productionJobs.snapshotLoadedAt,
+        snapshotEditedAt: productionJobs.snapshotEditedAt,
         operationsApprovedBy: productionJobs.operationsApprovedBy,
         operationsApprovedAt: productionJobs.operationsApprovedAt,
         createdAt: productionJobs.createdAt,
@@ -288,8 +300,8 @@ export class ProductionJobsService {
   }
 
   /** `GET /production-jobs/:jobId/bom` — nhu cầu vật tư của Job. Đọc `production_job_issues`
-   * (1 dòng/vật tư, `requiredQty` = định mức BOM × SL Job, ghi đúng 1 lần lúc `start` — Job còn
-   * `PENDING` trả mảng rỗng, xem `docs/decisions/job-snapshot-at-start.md`) join hai bảng chiều
+   * (1 dòng/vật tư, `requiredQty` = định mức BOM × SL Job, chụp lúc tạo Job hoặc khi tải lại từ sản phẩm lúc
+   * `PENDING`) join hai bảng chiều
    * `productionJobItems`/`productionJobUnits`, trả nguyên cả hai qua `getTableColumns` lồng dưới
    * `item`/`unit` — `code`/`name` trùng tên giữa hai bảng nên không spread phẳng được, và DTO
    * (`@Expose()` trên `ProductionJobItemResDto`/`ProductionJobUnitResDto`) tự lọc chỉ còn
@@ -300,10 +312,7 @@ export class ProductionJobsService {
     jobId: string,
     reqDto: GetProductionJobBomReqDto,
   ): Promise<OffsetPaginatedDto<ProductionJobIssueResDto>> {
-    const job = await this.ensureJobExists(jobId);
-    if (job.status === ProductionJobStatus.PENDING) {
-      return this.getPlannedJobBom(job, reqDto);
-    }
+    await this.ensureJobExists(jobId);
 
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
     const where = and(
@@ -319,12 +328,25 @@ export class ProductionJobsService {
     // "Theo dõi đã lãnh" — Đã lãnh đọc qua hàm thuần của module `inventory-requisitions`
     // (`docs/domains/inventory.md`), không qua DI, cùng tiền lệ `hasPendingIqcForItems`.
     const issued = issuedQuantityByJobItemSubquery(this.db);
+    // Tồn thực tế + khả dụng cùng nguồn với màn Tồn kho vật tư, đọc theo vật tư sống (`itemId`).
+    const onHandByItem = balanceByItemSubquery(this.db);
+    const availableByItem = availableQuantityByItemSubquery(this.db);
 
     const [rows, [{ total }]] = await Promise.all([
       this.db
         .select({
+          id: productionJobIssues.id,
+          isManual: sql<boolean>`${productionJobIssues.unitQty} is null`,
           item: getTableColumns(productionJobItems),
           unit: getTableColumns(productionJobUnits),
+          imageFile: getTableColumns(files),
+          onHand: sql<number>`coalesce(${onHandByItem.onHand}, 0)`.mapWith(
+            Number,
+          ),
+          availableQuantity:
+            sql<number>`coalesce(${availableByItem.availableQuantity}, 0)`.mapWith(
+              Number,
+            ),
           requiredQty: productionJobIssues.requiredQty,
           issuedQuantity:
             sql<number>`coalesce(${issued.issuedQuantity}, 0)`.mapWith(Number),
@@ -338,12 +360,21 @@ export class ProductionJobsService {
           productionJobUnits,
           eq(productionJobUnits.id, productionJobIssues.productionJobUnitId),
         )
+        .leftJoin(files, eq(files.id, productionJobIssues.imageFileId))
         .leftJoin(
           issued,
           and(
             eq(issued.productionJobId, jobId),
             eq(issued.itemId, productionJobIssues.itemId),
           ),
+        )
+        .leftJoin(
+          onHandByItem,
+          eq(onHandByItem.itemId, productionJobIssues.itemId),
+        )
+        .leftJoin(
+          availableByItem,
+          eq(availableByItem.itemId, productionJobIssues.itemId),
         )
         .where(where)
         .orderBy(asc(productionJobItems.code), asc(productionJobIssues.id))
@@ -385,10 +416,7 @@ export class ProductionJobsService {
     jobId: string,
     operationId?: string,
   ): Promise<ProductionJobBomItemResDto[]> {
-    const job = await this.ensureJobExists(jobId);
-    if (job.status === ProductionJobStatus.PENDING) {
-      return this.getPlannedJobOperations(job, operationId);
-    }
+    await this.ensureJobExists(jobId);
 
     const [bomItems, jobOperations] = await Promise.all([
       this.db
@@ -659,9 +687,8 @@ export class ProductionJobsService {
 
   /** Sinh Job cho một LSX vừa duyệt — 1 Job/item FG (SL > 0), gộp mọi dòng
    * `production_order_items` cùng `itemId`. Bắt buộc truyền `tx` — chỉ gọi được từ transaction
-   * duyệt của `ProductionOrdersService.approveProductionOrder`. Chỉ sinh header `production_jobs`
-   * (`PENDING`) — KHÔNG snapshot gì cả; `startJob` mới là nơi dựng cây BOM/công đoạn/vật tư, xem
-   * `docs/decisions/job-snapshot-at-start.md`. */
+   * duyệt của `ProductionOrdersService.approveProductionOrder`. Sinh header `production_jobs`
+   * (`PENDING`) kèm snapshot BOM/công đoạn/vật tư (`createJobSnapshot`) trong cùng transaction. */
   async createJobs(
     tx: DbTransaction,
     productionOrderId: string,
@@ -687,7 +714,12 @@ export class ProductionJobsService {
       .returning({
         id: productionJobs.id,
         itemId: productionJobs.itemId,
+        quantity: productionJobs.quantity,
       });
+
+    for (const job of jobRows) {
+      await createJobSnapshot(tx, job);
+    }
 
     await tx.insert(productionJobLogs).values(
       jobRows.map((job) => ({
@@ -699,9 +731,66 @@ export class ProductionJobsService {
     );
   }
 
-  /** `PENDING` → `IN_PROGRESS` (`E087` nếu không), ghi `startedBy`/`startedAt`. `createJobSnapshot`
-   * ở đây là lần **duy nhất** Job có snapshot — dựng từ BOM/công đoạn/vật tư của sản phẩm ngay lúc
-   * bấm, rồi đóng băng vĩnh viễn (`docs/decisions/job-snapshot-at-start.md`). Cùng transaction: vật
+  /** Tải lại BOM/công đoạn/vật tư từ sản phẩm gốc — chỉ khi Job còn `PENDING` (`E087` nếu không).
+   * Xoá snapshot hiện có rồi chụp lại, ghi đè mọi thay đổi trên Job. */
+  async reloadSnapshot(jobId: string): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      const job = await this.getProductionJobForUpdate(tx, jobId);
+      this.ensureStatus(job.status, [ProductionJobStatus.PENDING]);
+
+      await clearJobSnapshot(tx, jobId);
+      await createJobSnapshot(tx, job);
+    });
+  }
+
+  /** Thêm/sửa/xoá vật tư riêng của Job — chỉ khi `PENDING` (`E087` nếu không), không đụng sản phẩm
+   * gốc. Khoá hàng Job để không chồng với `startJob`/`reloadSnapshot`. Sau snapshot,
+   * `production_job_issues` là nguồn duy nhất cho nhu cầu vật tư (tab BOM, đề xuất mua, phiếu
+   * lãnh); cây `production_job_bom_items` chỉ phục vụ công đoạn nên có thể lệch. */
+  async addIssues(
+    jobId: string,
+    reqDto: CreateProductionJobIssuesReqDto,
+    userId: string,
+  ): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      await this.lockPendingJob(tx, jobId);
+      await addJobIssues(tx, { jobId, lines: reqDto.items, userId });
+    });
+  }
+
+  async updateIssue(
+    jobId: string,
+    issueId: string,
+    reqDto: UpdateProductionJobIssueReqDto,
+    userId: string,
+  ): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      await this.lockPendingJob(tx, jobId);
+      await updateJobIssue(tx, { jobId, issueId, ...reqDto, userId });
+    });
+  }
+
+  async removeIssue(
+    jobId: string,
+    issueId: string,
+    userId: string,
+  ): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      await this.lockPendingJob(tx, jobId);
+      await removeJobIssue(tx, { jobId, issueId, userId });
+    });
+  }
+
+  private async lockPendingJob(
+    tx: DbTransaction,
+    jobId: string,
+  ): Promise<void> {
+    const job = await this.getProductionJobForUpdate(tx, jobId);
+    this.ensureStatus(job.status, [ProductionJobStatus.PENDING]);
+  }
+
+  /** `PENDING` → `IN_PROGRESS` (`E087` nếu không), ghi `startedBy`/`startedAt`. Dùng snapshot đang
+   * có của Job (chỉ chụp bù cho Job cũ tạo trước khi có snapshot lúc tạo). Cùng transaction: vật
    * tư nào của Job thiếu tồn thì sinh một đề xuất mua hàng cho đúng phần thiếu
    * (`PurchaseRequestsService.createShortageRequest`) — không thiếu gì thì không tạo phiếu.
    * Trình tự đầy đủ: `docs/workflows/production-job-execution.md`. */
@@ -710,7 +799,9 @@ export class ProductionJobsService {
       const job = await this.getProductionJobForUpdate(tx, jobId);
       this.ensureStatus(job.status, [ProductionJobStatus.PENDING]);
 
-      await createJobSnapshot(tx, job);
+      if (!job.snapshotLoadedAt) {
+        await createJobSnapshot(tx, job);
+      }
 
       const shortageItems = await this.getShortageItems(tx, jobId);
 
@@ -790,115 +881,8 @@ export class ProductionJobsService {
     });
   }
 
-  /** Tab "BOM" của Job `PENDING`: nhu cầu vật tư tính sống (`buildJobPlan`), phân trang trong bộ
-   * nhớ — chưa có snapshot nên chưa có gì để lãnh. `q` để DB lọc (`unaccentILike`) trên đúng các
-   * vật tư của kế hoạch, cùng cách so khớp với đường đã snapshot. */
-  private async getPlannedJobBom(
-    job: { id: string; itemId: string; quantity: number },
-    reqDto: GetProductionJobBomReqDto,
-  ): Promise<OffsetPaginatedDto<ProductionJobIssueResDto>> {
-    const plan = await buildJobPlan(this.db, job);
-
-    let matchedItemIds: Set<string> | undefined;
-    if (reqDto.q && plan.issues.length) {
-      const keyword = `%${reqDto.q}%`;
-      const matched = await this.db
-        .select({ id: items.id })
-        .from(items)
-        .where(
-          and(
-            inArray(
-              items.id,
-              plan.issues.map((issue) => issue.item.id),
-            ),
-            or(
-              unaccentILike(items.code, keyword),
-              unaccentILike(items.name, keyword),
-            ),
-          ),
-        );
-      matchedItemIds = new Set(matched.map((row) => row.id));
-    }
-
-    const lines = plan.issues
-      .filter((issue) => !matchedItemIds || matchedItemIds.has(issue.item.id))
-      .map((issue) => ({
-        ...issue,
-        issuedQuantity: 0,
-        remainingQuantity: issue.requiredQty,
-      }));
-
-    return new OffsetPaginatedDto(
-      plainToInstance(
-        ProductionJobIssueResDto,
-        lines.slice(reqDto.offset, reqDto.offset + reqDto.limit),
-        { excludeExtraneousValues: true },
-      ),
-      new OffsetPaginationDto(lines.length, reqDto),
-    );
-  }
-
-  /** Tab "Công đoạn" của Job `PENDING`: kế hoạch sống. `id` công đoạn null (chưa lưu). */
-  private async getPlannedJobOperations(
-    job: { id: string; itemId: string; quantity: number },
-    operationId?: string,
-  ): Promise<ProductionJobBomItemResDto[]> {
-    const plan = await buildJobPlan(this.db, job);
-
-    const imageFileIds = plan.bomItems.flatMap((node) =>
-      node.imageFileId ? [node.imageFileId] : [],
-    );
-    const imageFiles = imageFileIds.length
-      ? await this.db
-          .select()
-          .from(files)
-          .where(inArray(files.id, imageFileIds))
-      : [];
-    const imageFileById = new Map(imageFiles.map((file) => [file.id, file]));
-
-    const operationsByBomItemId = groupBy(
-      plan.operations,
-      (operation) => operation.productionJobBomItemId,
-    );
-
-    const groups = plan.bomItems
-      .sort((a, b) => a.sortOrder! - b.sortOrder!)
-      .map((node) => {
-        const { operations, nextOperationName } = selectOperations(
-          [...(operationsByBomItemId.get(node.id) ?? [])].sort(
-            (a, b) => a.sortOrder - b.sortOrder,
-          ),
-          operationId,
-        );
-
-        return {
-          ...node,
-          imageFile: node.imageFileId
-            ? (imageFileById.get(node.imageFileId) ?? null)
-            : null,
-          nextOperationName,
-          operations: operations.map((operation) => ({
-            ...operation,
-            id: null,
-            plannedQuantity: node.plannedQuantity,
-            completedQuantity: 0,
-            rejectedQuantity: 0,
-            completedDate: null,
-            lastReportedAt: null,
-            dueDate: null,
-            createdAt: null,
-          })),
-        };
-      })
-      .filter((node) => node.operations.length > 0);
-
-    return plainToInstance(ProductionJobBomItemResDto, groups, {
-      excludeExtraneousValues: true,
-    });
-  }
-
   /** Khoá hàng (`FOR UPDATE`) trước khi `start` — chặn hai lượt bấm "Xác nhận sản xuất" song song
-   * trên cùng một Job cùng chốt snapshot chồng nhau. */
+   * trên cùng một Job (hoặc start song song với tải lại snapshot). */
   private async getProductionJobForUpdate(
     tx: DbTransaction,
     jobId: string,
@@ -908,10 +892,12 @@ export class ProductionJobsService {
     quantity: number;
     itemId: string;
     productionOrderId: string;
+    snapshotLoadedAt: Date | null;
   }> {
     const [job] = await tx
       .select({
         id: productionJobs.id,
+        snapshotLoadedAt: productionJobs.snapshotLoadedAt,
         status: productionJobs.status,
         quantity: productionJobs.quantity,
         itemId: productionJobs.itemId,

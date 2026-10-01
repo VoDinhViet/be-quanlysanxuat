@@ -94,6 +94,8 @@ export const productionJobs = pgTable(
       onDelete: 'set null',
     }),
     startedAt: timestamp('started_at'),
+    snapshotLoadedAt: timestamp('snapshot_loaded_at'),
+    snapshotEditedAt: timestamp('snapshot_edited_at'),
     operationsApprovedBy: uuid('operations_approved_by').references(
       () => users.id,
       { onDelete: 'set null' },
