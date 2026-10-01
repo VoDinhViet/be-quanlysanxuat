@@ -15,6 +15,7 @@ import {
   productionJobIssues,
   productionJobItems,
   productionJobOperations,
+  productionJobs,
   ProductionJobSelect,
   productionJobUnits,
   routingOperations,
@@ -103,8 +104,8 @@ export async function buildJobPlan(
 }
 
 /**
- * Đóng băng kế hoạch vào các bảng `production_job_*` khi bấm "Xác nhận kế hoạch". Gọi trong
- * transaction của `startJob`.
+ * Ghi kế hoạch vào các bảng `production_job_*` và đóng dấu `snapshotLoadedAt`. Gọi trong
+ * transaction tạo Job (`createJobs`) hoặc tải lại (`reloadSnapshot`, sau `clearJobSnapshot`).
  */
 export async function createJobSnapshot(
   tx: DbTransaction,
@@ -135,6 +136,28 @@ export async function createJobSnapshot(
   }
 
   await snapshotJobIssues(tx, job, plan.issues);
+
+  await tx
+    .update(productionJobs)
+    .set({ snapshotLoadedAt: new Date(), snapshotEditedAt: null })
+    .where(eq(productionJobs.id, job.id));
+}
+
+/** Xoá snapshot của Job trước khi chụp lại — chỉ an toàn khi Job còn `PENDING` (chưa có báo cáo,
+ * phiếu lãnh nào tham chiếu). Công đoạn xoá trước vì FK sang node BOM của Job. */
+export async function clearJobSnapshot(
+  tx: DbTransaction,
+  jobId: string,
+): Promise<void> {
+  await tx
+    .delete(productionJobOperations)
+    .where(eq(productionJobOperations.productionJobId, jobId));
+  await tx
+    .delete(productionJobIssues)
+    .where(eq(productionJobIssues.productionJobId, jobId));
+  await tx
+    .delete(productionJobBomItems)
+    .where(eq(productionJobBomItems.productionJobId, jobId));
 }
 
 /**
@@ -382,7 +405,7 @@ async function snapshotJobIssues(
  * code/name tại thời điểm đọc trong cùng `tx`. `SELECT` lại thấy đủ dòng phụ thuộc READ COMMITTED
  * (mặc định Postgres, `.claude/rules/transactions.md` cấm đổi isolation).
  */
-async function getOrCreateJobItemIds(
+export async function getOrCreateJobItemIds(
   tx: DbTransaction,
   directDemandRows: { item: Pick<ItemSelect, 'id' | 'code' | 'name'> }[],
 ): Promise<Map<string, string>> {
@@ -431,7 +454,7 @@ async function getOrCreateJobItemIds(
 
 /** Song sinh của `getOrCreateJobItemIds` cho `production_job_units` — cùng lý lẽ `DO NOTHING` +
  * đọc lại, cùng ràng buộc READ COMMITTED. */
-async function getOrCreateJobUnitIds(
+export async function getOrCreateJobUnitIds(
   tx: DbTransaction,
   directDemandRows: { unit: Pick<UnitSelect, 'id' | 'code' | 'name'> }[],
 ): Promise<Map<string, string>> {
@@ -480,6 +503,6 @@ async function getOrCreateJobUnitIds(
 
 /** Khoá bộ ba của hai bảng chiều — `JSON.stringify` một tuple, tránh tự bịa dấu phân cách:
  * `code`/`name` là text tự do, một delimiter tự chọn luôn có rủi ro trùng lặp giả. */
-function dimensionKey(id: string, code: string, name: string): string {
+export function dimensionKey(id: string, code: string, name: string): string {
   return JSON.stringify([id, code, name]);
 }

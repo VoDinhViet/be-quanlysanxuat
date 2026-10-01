@@ -639,6 +639,12 @@ export enum ErrorCode {
   // Các dòng trong cùng payload OS-OUT thuộc nhiều công đoạn khác nhau — một phiếu chỉ gửi gia công
   // đúng một công đoạn.
   E280 = 'outsourcing_order.error.mixed_operations',
+  // Thêm vật tư vào Job đã có dòng vật tư đó — muốn đổi số lượng thì sửa dòng hiện có.
+  E281 = 'production_job_issue.error.duplicate_item',
+  // Dòng vật tư của Job không tồn tại (hoặc không thuộc Job này).
+  E282 = 'production_job_issue.error.not_found',
+  // Vật tư thêm vào Job phải là DIRECT (không phải FG).
+  E283 = 'production_job_issue.error.item_not_direct',
   V003 = 'common.error.too_many_requests',
   // `GlobalExceptionFilter` bắt chuỗi "No values to set" của drizzle-orm — mọi `PATCH` khi
   // `ValidationPipe` whitelist đã loại sạch field lạ, còn lại payload rỗng cho `.set()`. Trước đây

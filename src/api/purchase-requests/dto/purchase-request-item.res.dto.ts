@@ -1,7 +1,9 @@
 import { Exclude, Expose } from 'class-transformer';
 
 import {
+  BooleanField,
   ClassField,
+  DateFieldOptional,
   NumberField,
   StringFieldOptional,
   UUIDField,
@@ -56,4 +58,19 @@ export class PurchaseRequestItemResDto {
     description: 'Ghi chú riêng của dòng vật tư này',
   })
   note!: string | null;
+
+  @Expose()
+  @DateFieldOptional({
+    nullable: true,
+    description: 'Thời điểm đánh dấu huỷ/không mua (null nghĩa là mua)',
+  })
+  cancelledAt!: Date | null;
+
+  @Expose()
+  @BooleanField({
+    description: 'true: Mua hàng, false: Đã đánh dấu không mua',
+  })
+  get requiresPurchase(): boolean {
+    return !this.cancelledAt;
+  }
 }

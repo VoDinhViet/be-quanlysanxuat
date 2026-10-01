@@ -190,6 +190,7 @@ export class ProductionExecutionService {
         ? or(
             unaccentILike(productionJobs.code, keyword),
             unaccentILike(orders.code, keyword),
+            unaccentILike(orders.buyerPoNo, keyword),
             unaccentILike(items.code, keyword),
             unaccentILike(items.revision, keyword),
             unaccentILike(items.name, keyword),
@@ -228,6 +229,7 @@ export class ProductionExecutionService {
           operationCode: operations.code,
           operationName: operations.name,
           orderCode: orders.code,
+          buyerPoNo: orders.buyerPoNo,
           item: getTableColumns(items),
           revision: items.revision,
           imageFile: getTableColumns(files),

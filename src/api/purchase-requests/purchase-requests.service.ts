@@ -12,6 +12,7 @@ import {
   inArray,
   isNull,
   lt,
+  ne,
   or,
   sql,
 } from 'drizzle-orm';
@@ -34,6 +35,9 @@ import {
   inventoryReceipts,
   ItemType,
   items,
+  PurchaseOrderStatus,
+  purchaseOrderItems,
+  purchaseOrders,
   PurchaseRequestStatus,
   purchaseRequestItems,
   purchaseRequests,
@@ -53,6 +57,7 @@ import { PagePurchaseRequestResDto } from './dto/page-purchase-request.res.dto';
 import { PurchaseRequestResDto } from './dto/purchase-request.res.dto';
 import { RejectPurchaseRequestReqDto } from './dto/reject-purchase-request.req.dto';
 import { UpdatePurchaseRequestItemReqDto } from './dto/update-purchase-request-item.req.dto';
+import { UpdatePurchaseRequestItemPurchasableReqDto } from './dto/update-purchase-request-item-purchasable.req.dto';
 import { UpdatePurchaseRequestNoteReqDto } from './dto/update-purchase-request-note.req.dto';
 import { CreateShortageRequestInput } from './types/shortage-request.type';
 
@@ -206,6 +211,7 @@ export class PurchaseRequestsService {
         id: purchaseRequestItems.id,
         quantity: purchaseRequestItems.quantity,
         note: purchaseRequestItems.note,
+        cancelledAt: purchaseRequestItems.cancelledAt,
         ...itemStockColumns(balance, demand),
         available: available.availableQuantity,
         item: getTableColumns(items),
@@ -296,6 +302,81 @@ export class PurchaseRequestsService {
         .where(eq(purchaseRequestItems.id, purchaseRequestItemId));
     });
   }
+  async updatePurchaseRequestItemPurchasable(
+    purchaseRequestId: string,
+    purchaseRequestItemId: string,
+    reqDto: UpdatePurchaseRequestItemPurchasableReqDto,
+    userId: string,
+  ): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      const pr = await tx.query.purchaseRequests.findFirst({
+        columns: { id: true, status: true },
+        where: eq(purchaseRequests.id, purchaseRequestId),
+      });
+
+      if (!pr) {
+        throw new AppException(ErrorCode.E112, HttpStatus.NOT_FOUND);
+      }
+
+      if (pr.status === PurchaseRequestStatus.DRAFT) {
+        throw new AppException(ErrorCode.E114, HttpStatus.CONFLICT);
+      }
+
+      const item = await tx.query.purchaseRequestItems.findFirst({
+        columns: { id: true, cancelledAt: true },
+        where: and(
+          eq(purchaseRequestItems.id, purchaseRequestItemId),
+          eq(purchaseRequestItems.purchaseRequestId, purchaseRequestId),
+        ),
+      });
+
+      if (!item) {
+        throw new AppException(ErrorCode.E113, HttpStatus.NOT_FOUND);
+      }
+
+      if (!reqDto.requiresPurchase) {
+        const activePoItem = await tx
+          .select({ id: purchaseOrderItems.id })
+          .from(purchaseOrderItems)
+          .innerJoin(
+            purchaseOrders,
+            eq(purchaseOrders.id, purchaseOrderItems.purchaseOrderId),
+          )
+          .where(
+            and(
+              eq(
+                purchaseOrderItems.purchaseRequestItemId,
+                purchaseRequestItemId,
+              ),
+              ne(purchaseOrders.status, PurchaseOrderStatus.CANCELLED),
+            ),
+          )
+          .limit(1);
+
+        if (activePoItem.length > 0) {
+          throw new AppException(ErrorCode.E125, HttpStatus.CONFLICT);
+        }
+
+        await tx
+          .update(purchaseRequestItems)
+          .set({
+            cancelledAt: new Date(),
+            cancelledBy: userId,
+          })
+          .where(eq(purchaseRequestItems.id, purchaseRequestItemId));
+      } else {
+        await tx
+          .update(purchaseRequestItems)
+          .set({
+            cancelledAt: null,
+            cancelledBy: null,
+            cancellationReason: null,
+          })
+          .where(eq(purchaseRequestItems.id, purchaseRequestItemId));
+      }
+    });
+  }
+
 
   /** Một `delete` chạm 3 bảng: dòng vật tư theo `ON DELETE CASCADE`, phiếu nhập kho chỉ bị bỏ
    * trống `purchaseRequestId` (`set null`) — mất trace, có chủ ý. Xem

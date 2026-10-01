@@ -7,6 +7,8 @@ import {
   inventoryRequisitionItems,
   inventoryRequisitions,
   productionJobIssues,
+  productionJobs,
+  ProductionJobStatus,
 } from '../../database/schemas';
 
 // Giữ chỗ bắt đầu từ lúc duyệt — `DRAFT`/`PENDING_APPROVAL` chưa giữ, `ISSUED` thôi giữ vì đã trừ
@@ -165,7 +167,8 @@ export async function getIssuedQuantities(
  * báo thiếu, không chặn thao tác nào, khác "Có thể lãnh"). Trừ phần **còn lại** (không phải nguyên `requiredQty`) vì Job không có trạng
  * thái kết thúc (`docs/domains/production.md`) — trừ nguyên `requiredQty` mãi mãi sẽ làm số càng
  * lúc càng âm sai dù Job đã lãnh xong. Xem `docs/domains/inventory.md`, mục "Phiếu lãnh vật tư".
- * `excludeJobId` bỏ nhu cầu của đúng một Job — dùng khi đo tồn khả dụng *trước* Job đó (lúc start). */
+ * `excludeJobId` bỏ nhu cầu của đúng một Job — dùng khi đo tồn khả dụng *trước* Job đó (lúc start).
+ * Job `PENDING` (đã có snapshot nhưng chưa "Xác nhận kế hoạch") không giữ chỗ vật tư. */
 export function remainingBomDemandByItemSubquery(
   db: Database,
   excludeJobId?: string,
@@ -181,6 +184,10 @@ export function remainingBomDemandByItemSubquery(
           .as('remaining_demand'),
     })
     .from(productionJobIssues)
+    .innerJoin(
+      productionJobs,
+      eq(productionJobs.id, productionJobIssues.productionJobId),
+    )
     .leftJoin(
       issued,
       and(
@@ -189,9 +196,12 @@ export function remainingBomDemandByItemSubquery(
       ),
     )
     .where(
-      excludeJobId
-        ? ne(productionJobIssues.productionJobId, excludeJobId)
-        : undefined,
+      and(
+        ne(productionJobs.status, ProductionJobStatus.PENDING),
+        excludeJobId
+          ? ne(productionJobIssues.productionJobId, excludeJobId)
+          : undefined,
+      ),
     )
     .groupBy(productionJobIssues.itemId)
     .as('remaining_bom_demand');

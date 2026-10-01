@@ -38,6 +38,7 @@ import {
   orders,
   productionJobIssues,
   productionJobs,
+  ProductionJobStatus,
   productionOrders,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
@@ -551,6 +552,15 @@ export class InventoryRequisitionsService {
 
     const jobDemandByItemId = new Map<string, number>();
     if (productionJobId) {
+      // Job `PENDING` đã có snapshot vật tư nhưng chưa "Xác nhận kế hoạch" — chưa được lãnh.
+      const job = await db.query.productionJobs.findFirst({
+        columns: { status: true },
+        where: eq(productionJobs.id, productionJobId),
+      });
+      if (job?.status === ProductionJobStatus.PENDING) {
+        throw new AppException(ErrorCode.E087, HttpStatus.CONFLICT);
+      }
+
       const jobIssues = await db.query.productionJobIssues.findMany({
         columns: { itemId: true, requiredQty: true },
         where: eq(productionJobIssues.productionJobId, productionJobId),

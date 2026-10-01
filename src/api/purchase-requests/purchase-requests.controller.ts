@@ -24,6 +24,7 @@ import { PagePurchaseRequestResDto } from './dto/page-purchase-request.res.dto';
 import { PurchaseRequestResDto } from './dto/purchase-request.res.dto';
 import { RejectPurchaseRequestReqDto } from './dto/reject-purchase-request.req.dto';
 import { UpdatePurchaseRequestItemReqDto } from './dto/update-purchase-request-item.req.dto';
+import { UpdatePurchaseRequestItemPurchasableReqDto } from './dto/update-purchase-request-item-purchasable.req.dto';
 import { UpdatePurchaseRequestNoteReqDto } from './dto/update-purchase-request-note.req.dto';
 import { PurchaseRequestsService } from './purchase-requests.service';
 
@@ -178,6 +179,28 @@ export class PurchaseRequestsController {
       purchaseRequestItemId,
     );
   }
+
+  @Patch(':purchaseRequestId/items/:purchaseRequestItemId/purchasable')
+  @Permissions('purchase-requests:update')
+  @ApiAuth({
+    summary:
+      'Đánh dấu mua / không mua của một dòng vật tư — dùng cho các trạng thái sau khi duyệt',
+    statusCode: HttpStatus.NO_CONTENT,
+  })
+  updatePurchaseRequestItemPurchasable(
+    @UUIDParam('purchaseRequestId') purchaseRequestId: string,
+    @UUIDParam('purchaseRequestItemId') purchaseRequestItemId: string,
+    @Body() reqDto: UpdatePurchaseRequestItemPurchasableReqDto,
+    @CurrentUser() payload: JwtPayloadType,
+  ): Promise<void> {
+    return this.purchaseRequestsService.updatePurchaseRequestItemPurchasable(
+      purchaseRequestId,
+      purchaseRequestItemId,
+      reqDto,
+      payload.userId,
+    );
+  }
+
 
   @Patch(':purchaseRequestId/note')
   @Permissions('purchase-requests:update')

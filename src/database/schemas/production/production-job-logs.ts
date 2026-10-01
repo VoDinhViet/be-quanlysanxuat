@@ -19,6 +19,7 @@ export enum ProductionJobLogAction {
   WAITING_QC = 'WAITING_QC',
   WAITING_DELIVERY = 'WAITING_DELIVERY',
   COMPLETED = 'COMPLETED',
+  ITEMS_EDITED = 'ITEMS_EDITED',
 }
 
 export const productionJobLogActionEnum = pgEnum('production_job_log_action', [
@@ -27,6 +28,7 @@ export const productionJobLogActionEnum = pgEnum('production_job_log_action', [
   ProductionJobLogAction.WAITING_QC,
   ProductionJobLogAction.WAITING_DELIVERY,
   ProductionJobLogAction.COMPLETED,
+  ProductionJobLogAction.ITEMS_EDITED,
 ]);
 
 /**

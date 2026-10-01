@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   HttpStatus,
+  Delete,
   Patch,
   Post,
   Query,
@@ -19,6 +20,8 @@ import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
 import { OperationAccessService } from '../operations/operation-access.service';
 import { OqcService } from '../oqc/oqc.service';
 import { ExportProductionJobsPlanReqDto } from './dto/export-production-jobs-plan.req.dto';
+import { CreateProductionJobIssuesReqDto } from './dto/create-production-job-issues.req.dto';
+import { UpdateProductionJobIssueReqDto } from './dto/update-production-job-issue.req.dto';
 import { CreateProductionJobNoteReqDto } from './dto/create-production-job-note.req.dto';
 import { GetProductionJobBomReqDto } from './dto/get-production-job-bom.req.dto';
 import { GetProductionJobLogsReqDto } from './dto/get-production-job-logs.req.dto';
@@ -172,11 +175,75 @@ export class ProductionJobsController {
     );
   }
 
+  @Post(':jobId/bom')
+  @Permissions('production:update')
+  @ApiAuth({
+    summary:
+      'Thêm một hoặc nhiều vật tư riêng cho Job — chỉ Job PENDING, không đổi sản phẩm gốc',
+    statusCode: HttpStatus.NO_CONTENT,
+  })
+  addIssues(
+    @UUIDParam('jobId') jobId: string,
+    @Body() reqDto: CreateProductionJobIssuesReqDto,
+    @CurrentUser() payload: JwtPayloadType,
+  ): Promise<void> {
+    return this.productionJobsService.addIssues(jobId, reqDto, payload.userId);
+  }
+
+  @Patch(':jobId/bom/:issueId')
+  @Permissions('production:update')
+  @ApiAuth({
+    summary: 'Sửa số lượng một vật tư của Job — chỉ Job PENDING',
+    statusCode: HttpStatus.NO_CONTENT,
+  })
+  updateIssue(
+    @UUIDParam('jobId') jobId: string,
+    @UUIDParam('issueId') issueId: string,
+    @Body() reqDto: UpdateProductionJobIssueReqDto,
+    @CurrentUser() payload: JwtPayloadType,
+  ): Promise<void> {
+    return this.productionJobsService.updateIssue(
+      jobId,
+      issueId,
+      reqDto,
+      payload.userId,
+    );
+  }
+
+  @Delete(':jobId/bom/:issueId')
+  @Permissions('production:update')
+  @ApiAuth({
+    summary: 'Xoá một vật tư khỏi Job — chỉ Job PENDING',
+    statusCode: HttpStatus.NO_CONTENT,
+  })
+  removeIssue(
+    @UUIDParam('jobId') jobId: string,
+    @UUIDParam('issueId') issueId: string,
+    @CurrentUser() payload: JwtPayloadType,
+  ): Promise<void> {
+    return this.productionJobsService.removeIssue(
+      jobId,
+      issueId,
+      payload.userId,
+    );
+  }
+
+  @Post(':jobId/snapshot')
+  @Permissions('production:update')
+  @ApiAuth({
+    summary:
+      'Tải lại BOM/công đoạn/vật tư từ sản phẩm gốc — chỉ Job PENDING, ghi đè snapshot hiện có',
+    statusCode: HttpStatus.NO_CONTENT,
+  })
+  reloadSnapshot(@UUIDParam('jobId') jobId: string): Promise<void> {
+    return this.productionJobsService.reloadSnapshot(jobId);
+  }
+
   @Post(':jobId/start')
   @Permissions('production:update')
   @ApiAuth({
     summary:
-      'Xác nhận kế hoạch — PENDING → IN_PROGRESS: đóng băng BOM/vật tư/công đoạn, tự tạo đề xuất mua vật tư thiếu. Sau bước này POST /production-execution/operations/:jobOperationId/reports mở ngay',
+      'Xác nhận kế hoạch — PENDING → IN_PROGRESS: dùng snapshot BOM/vật tư/công đoạn của Job, tự tạo đề xuất mua vật tư thiếu. Sau bước này POST /production-execution/operations/:jobOperationId/reports mở ngay',
     statusCode: HttpStatus.NO_CONTENT,
   })
   startJob(
