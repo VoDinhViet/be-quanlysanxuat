@@ -37,6 +37,8 @@ NestJS 11 modular monolith. One folder per domain in `src/api/<domain>/` with `*
 
 Request pipeline (wired in `main.ts` and `app.module.ts`): global prefix `api` (`/` and `/health` excluded); `JwtAuthGuard` then `PermissionsGuard` as global `APP_GUARD`s, so every route needs a valid JWT unless marked `@Public()`; `ValidationPipe` with `whitelist`; `GlobalExceptionFilter`; `ClassSerializerInterceptor`.
 
+Before changing a flow that touches several modules, read `docs/architecture.md` and the matching `docs/domains/<area>.md`.
+
 ## Rules
 
 Detailed rules live in `.claude/rules/` and load by topic:
@@ -51,3 +53,5 @@ Detailed rules live in `.claude/rules/` and load by topic:
 - Code comments and domain names are in Vietnamese in places (SO = sales order, LSX = production order, JOB = production job, DMH = supplier purchase order, IQC/OQC = incoming/outgoing quality check, NCR = non-conformance report).
 - Prettier: single quotes, trailing commas, 2 spaces.
 - `docs/` is being rewritten from the current code, one part per area (see `docs/README.md` for which parts exist). Older comments in `src` that point at `docs/domains/*.md` or `docs/decisions/*.md` refer to the deleted pre-2026-09-25 docs; those that have no file yet are not dangling mistakes, they are still to be written.
+- Docs conventions: prose in Vietnamese, identifiers and error codes as in code; check every route, permission and error code against the source; when a part is done, update its status in the `docs/README.md` table and commit it on its own. If the code contradicts itself, record it as a note in the doc instead of fixing the code in the same change.
+- The editor shows `MD060` table-style warnings on `docs/*.md`; they are cosmetic.
