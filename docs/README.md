@@ -10,7 +10,7 @@ Quy ước chung (lệnh chạy, quy tắc viết code, cảnh báo database) n�
 |---|---|---|---|
 | 0 | [architecture.md](architecture.md) | Request pipeline, cấu trúc module, mã chứng từ, lỗi, lưu trữ | Xong |
 | 1 | [domains/identity-access.md](domains/identity-access.md) | auth, users, roles, departments, positions | Xong |
-| 2 | domains/master-data.md | clients, client-groups, suppliers, supplier-groups, items, item-units, units, countries, files, operations, routings, boms, bom-operations, bom-directs | Chưa viết |
+| 2 | [domains/master-data.md](domains/master-data.md) | clients, client-groups, suppliers, supplier-groups, items, item-units, units, countries, files, operations, routings, boms, bom-operations, bom-directs | Xong |
 | 3 | domains/sales.md | orders, outbound-orders | Chưa viết |
 | 4 | domains/production.md | production-orders, production-jobs, production-execution | Chưa viết |
 | 5 | domains/purchasing.md | purchase-requests, purchase-quotations, purchase-orders, purchase-notes, purchase-ledger, payment-requests | Chưa viết |

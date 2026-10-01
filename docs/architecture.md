@@ -47,7 +47,8 @@ Bảng `document_sequences` giữ bộ đếm cho `(documentType, year)`; `year 
 - Rollback thì số đó được trả lại, khác với sequence của Postgres.
 - `generateDocumentSequences` cấp một cụm số liên tiếp trong một câu (dùng cho IQC).
 - Các loại hiện có (`DocumentType`): ITEM_DIRECT, ITEM_FG, PURCHASE_REQUEST, OQC, IQC, INVENTORY_RECEIPT, INVENTORY_ISSUE, INVENTORY_ADJUSTMENT, INVENTORY_REQUISITION, PURCHASE_QUOTATION, PURCHASE_ORDER, OUTSOURCING_ORDER, OUTSOURCING_RECEIPT, USER, SUPPLIER, ORDER, PRODUCTION_ORDER, PRODUCTION_JOB, OUTBOUND_ORDER, SUPPLIER_RETURN, PAYMENT_REQUEST, UNIT, OPERATION.
-- Định dạng chuỗi mã do từng service tự ghép (ví dụ nhân sự `NV0001`), nên xem trong doc của domain tương ứng.
+- Trong danh sách trên, `ITEM_DIRECT`, `SUPPLIER`, `UNIT` và `OPERATION` hiện **không có nơi nào gọi** (mã vật tư, nhà cung cấp, đơn vị và công đoạn do người dùng tự đặt).
+- Định dạng chuỗi mã do từng service tự ghép (ví dụ nhân sự `NV0001`, thành phẩm `SP0001`), nên xem trong doc của domain tương ứng.
 
 ### Transaction
 
