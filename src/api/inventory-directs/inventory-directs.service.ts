@@ -1,22 +1,12 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
-import {
-  and,
-  asc,
-  count,
-  eq,
-  getTableColumns,
-  inArray,
-  isNull,
-  or,
-  sql,
-} from 'drizzle-orm';
+import { and, asc, count, eq, getTableColumns, isNull, or } from 'drizzle-orm';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { unaccentILike } from '../../common/utils/search.util';
 import { DRIZZLE } from '../../database/database.module';
-import type { Database, DbTransaction } from '../../database/database.type';
+import type { Database } from '../../database/database.type';
 import {
   files,
   items,
@@ -29,6 +19,7 @@ import {
   remainingBomDemandByItemSubquery,
   requisitionHeldQuantityByItemSubquery,
 } from '../inventory-requisitions/inventory-requisitions.query';
+import { stockSqlFragments } from '../inventory/available-quantity.query';
 import {
   balanceByItemSubquery,
   stockStatusCondition,
@@ -115,63 +106,4 @@ export class InventoryDirectsService {
       new OffsetPaginationDto(total, reqDto),
     );
   }
-
-  /** Tồn khả dụng hiện tại theo `itemId` — cùng công thức cột "Khả dụng" của `getInventoryDirects`.
-   * `excludeJobId` bỏ nhu cầu BOM của Job đó: lúc `startJob` snapshot vừa chốt nên nhu cầu của
-   * chính Job đã nằm trong `production_job_issues`, không loại thì bị trừ hai lần. Có thể âm. */
-  async getAvailableStockLevels(
-    db: Database | DbTransaction,
-    itemIds: string[],
-    options: { excludeJobId?: string } = {},
-  ): Promise<Map<string, number>> {
-    if (!itemIds.length) {
-      return new Map();
-    }
-
-    // Subquery chỉ là SQL lồng nhau nên dựng bằng `this.db`, chạy theo `db` truyền vào (có thể là tx).
-    const stock = balanceByItemSubquery(this.db);
-    const requisitionHeld = requisitionHeldQuantityByItemSubquery(this.db);
-    const bomRemaining = remainingBomDemandByItemSubquery(
-      this.db,
-      options.excludeJobId,
-    );
-    const { availableSql } = stockSqlFragments(
-      stock,
-      requisitionHeld,
-      bomRemaining,
-    );
-
-    const rows = await db
-      .select({
-        itemId: items.id,
-        available: availableSql().mapWith(Number),
-      })
-      .from(items)
-      .leftJoin(stock, eq(stock.itemId, items.id))
-      .leftJoin(requisitionHeld, eq(requisitionHeld.itemId, items.id))
-      .leftJoin(bomRemaining, eq(bomRemaining.itemId, items.id))
-      .where(inArray(items.id, itemIds));
-
-    return new Map(rows.map((row) => [row.itemId, row.available]));
-  }
-}
-
-/** Biểu thức SQL TKD = TTT − giữ chỗ − nhu cầu BOM còn lại (đã trừ phần giữ chỗ cho Job để không
- * cộng trùng). Dùng chung giữa danh sách tồn kho và `getAvailableStockLevels` để hai nơi không lệch. */
-function stockSqlFragments(
-  stock: ReturnType<typeof balanceByItemSubquery>,
-  requisitionHeld: ReturnType<typeof requisitionHeldQuantityByItemSubquery>,
-  bomRemaining: ReturnType<typeof remainingBomDemandByItemSubquery>,
-) {
-  const onHandSql = () => sql<number>`coalesce(${stock.onHand}, 0)`;
-  const reservedSql = () =>
-    sql<number>`coalesce(${requisitionHeld.heldQuantity}, 0)`;
-  const heldForJobsSql = () =>
-    sql<number>`coalesce(${requisitionHeld.heldForJobsQuantity}, 0)`;
-  const bomDemandSql = () =>
-    sql<number>`greatest(coalesce(${bomRemaining.remainingDemand}, 0) - (${heldForJobsSql()}), 0)`;
-  const availableSql = () =>
-    sql<number>`(${onHandSql()}) - (${reservedSql()}) - (${bomDemandSql()})`;
-
-  return { onHandSql, reservedSql, bomDemandSql, availableSql };
 }

@@ -54,7 +54,10 @@ export class InventoryReceiptItemResDto {
   bomDemand!: number;
 
   @Expose()
-  @NumberField({ description: 'Tồn khả dụng = onHand − bomDemand, có thể âm' })
+  @NumberField({
+    description:
+      'Tồn khả dụng của hệ thống (cùng công thức màn Tồn kho vật tư), có thể âm',
+  })
   available!: number;
 
   @Expose()

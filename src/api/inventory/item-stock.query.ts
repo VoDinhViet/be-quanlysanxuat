@@ -80,12 +80,8 @@ export function jobIssueDemandSubquery(
     .as('job_issue_demand');
 }
 
-/** 4 cột số spread vào `.select()` — `available` cố ý có thể âm (nhu cầu vượt tồn thực tế);
- * `fromStock` không lưu ở đâu, luôn tính lại lúc đọc. Ba field tên `available` có ba công thức
- * riêng, cố ý không hợp nhất, đừng nhầm: ở đây `onHand − bomDemand`; `GET /inventory`
- * `onHand − reserved − bomDemand` (`inventory.service.ts`); và
- * `requisitionStockColumns.availableQuantity` `onHand − remainingBomDemand`
- * (`inventory-requisitions.query.ts`). */
+/** 3 cột số spread vào `.select()` — `fromStock` không lưu ở đâu, luôn tính lại lúc đọc. Không có
+ * cột "khả dụng": xem `availableQuantityByItemSubquery` (`available-quantity.query.ts`). */
 export function itemStockColumns(
   balance: ReturnType<typeof onHandQuantityByItemSubquery>,
   demand: ReturnType<typeof jobIssueDemandSubquery>,
@@ -96,7 +92,6 @@ export function itemStockColumns(
   return {
     onHand: onHandSql.mapWith(Number),
     bomDemand: bomDemandSql.mapWith(Number),
-    available: sql<number>`(${onHandSql}) - (${bomDemandSql})`.mapWith(Number),
     fromStock: sql<number>`least(${onHandSql}, ${bomDemandSql})`.mapWith(
       Number,
     ),

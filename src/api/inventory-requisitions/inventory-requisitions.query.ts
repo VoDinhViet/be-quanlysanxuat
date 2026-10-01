@@ -160,9 +160,9 @@ export async function getIssuedQuantities(
   return new Map(rows.map((row) => [row.itemId, row.issuedQuantity]));
 }
 
-/** "Khả dụng" — theo `itemId`, KHÔNG scope theo Job: `Tồn thực tế − Σ max(requiredQty −
- * Đã lãnh, 0)` cộng dồn mọi Job đang mở, cố ý có thể âm (chỉ báo thiếu, không chặn thao tác nào,
- * khác "Có thể lãnh"). Trừ phần **còn lại** (không phải nguyên `requiredQty`) vì Job không có trạng
+/** Nhu cầu BOM còn lại theo `itemId`, KHÔNG scope theo Job: `Σ max(requiredQty − Đã lãnh, 0)` cộng
+ * dồn mọi Job đang mở — đầu vào để `InventoryDirectsService` tính tồn khả dụng (cố ý có thể âm, chỉ
+ * báo thiếu, không chặn thao tác nào, khác "Có thể lãnh"). Trừ phần **còn lại** (không phải nguyên `requiredQty`) vì Job không có trạng
  * thái kết thúc (`docs/domains/production.md`) — trừ nguyên `requiredQty` mãi mãi sẽ làm số càng
  * lúc càng âm sai dù Job đã lãnh xong. Xem `docs/domains/inventory.md`, mục "Phiếu lãnh vật tư".
  * `excludeJobId` bỏ nhu cầu của đúng một Job — dùng khi đo tồn khả dụng *trước* Job đó (lúc start). */
@@ -197,13 +197,13 @@ export function remainingBomDemandByItemSubquery(
     .as('remaining_bom_demand');
 }
 
-/** 4 cột số spread vào cả ba `.select()` đọc dòng vật tư (chi tiết phiếu + 2 popup) — cùng khuôn
+/** 3 cột số spread vào cả ba `.select()` đọc dòng vật tư (chi tiết phiếu + 2 popup) — cùng khuôn
  * `itemStockColumns` (`inventory/item-stock.query.ts`). Nơi gọi phải LEFT JOIN sẵn
- * `inventory_balances` + hai subquery theo đúng `itemId`; `availableQuantity` cố ý có thể âm,
- * `issuableQuantity` mới là số dùng để chặn. */
+ * `inventory_balances` + `reservedQuantitySubquery` theo đúng `itemId`. `availableQuantity` không
+ * nằm ở đây: nơi gọi join `availableQuantityByItemSubquery` (`inventory/available-quantity.query.ts`)
+ * để cùng công thức màn Tồn kho; `issuableQuantity` mới là số dùng để chặn. */
 export function requisitionStockColumns(
   reserved: ReturnType<typeof reservedQuantitySubquery>,
-  remainingDemand: ReturnType<typeof remainingBomDemandByItemSubquery>,
 ) {
   const onHandSql = sql<number>`coalesce(${inventoryBalances.quantity}, 0)`;
   const reservedSql = sql<number>`coalesce(${reserved.reservedQuantity}, 0)`;
@@ -214,9 +214,5 @@ export function requisitionStockColumns(
     issuableQuantity: sql<number>`(${onHandSql}) - (${reservedSql})`.mapWith(
       Number,
     ),
-    availableQuantity:
-      sql<number>`(${onHandSql}) - coalesce(${remainingDemand.remainingDemand}, 0)`.mapWith(
-        Number,
-      ),
   };
 }

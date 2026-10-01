@@ -40,7 +40,7 @@ import {
   units,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
-import { InventoryDirectsService } from '../inventory-directs/inventory-directs.service';
+import { availableQuantityByItemSubquery } from '../inventory/available-quantity.query';
 import {
   onHandQuantityByItemSubquery,
   itemStockColumns,
@@ -58,10 +58,7 @@ import { CreateShortageRequestInput } from './types/shortage-request.type';
 
 @Injectable()
 export class PurchaseRequestsService {
-  constructor(
-    @Inject(DRIZZLE) private readonly db: Database,
-    private readonly inventoryDirectsService: InventoryDirectsService,
-  ) {}
+  constructor(@Inject(DRIZZLE) private readonly db: Database) {}
 
   async getPurchaseRequests(
     reqDto: GetPurchaseRequestsReqDto,
@@ -189,8 +186,8 @@ export class PurchaseRequestsService {
 
   /** `purchase_request_items` không có `sortOrder`, và relational query API không order được
    * theo cột của bảng join (`items.code`) — dùng `.select()` + join để Postgres sort thay vì
-   * `.sort()` trong JS. 4 số tồn/nhu cầu dùng chung công thức với `InventoryReceiptsService` —
-   * xem `item-stock.query.ts` (riêng `available` lấy từ `InventoryDirectsService`). */
+   * `.sort()` trong JS. `onHand`/`bomDemand`/`fromStock` dùng chung với `InventoryReceiptsService` —
+   * xem `item-stock.query.ts`; `available` từ `availableQuantityByItemSubquery`. */
   private async getPurchaseRequestLines(
     purchaseRequestId: string,
     scope: {
@@ -200,6 +197,9 @@ export class PurchaseRequestsService {
   ) {
     const balance = onHandQuantityByItemSubquery(this.db);
     const demand = jobIssueDemandSubquery(this.db, scope);
+    // Số "khả dụng" của hệ thống (cùng màn Tồn kho vật tư): join subquery chung vào câu select bên dưới,
+    // không phải `onHand − bomDemand` của riêng Job này (cột đó chỉ là nhu cầu của Job).
+    const available = availableQuantityByItemSubquery(this.db);
 
     const rows = await this.db
       .select({
@@ -207,6 +207,7 @@ export class PurchaseRequestsService {
         quantity: purchaseRequestItems.quantity,
         note: purchaseRequestItems.note,
         ...itemStockColumns(balance, demand),
+        available: available.availableQuantity,
         item: getTableColumns(items),
         unit: getTableColumns(units),
         imageFile: getTableColumns(files),
@@ -217,17 +218,9 @@ export class PurchaseRequestsService {
       .leftJoin(files, eq(files.id, items.imageFileId))
       .leftJoin(balance, eq(balance.itemId, items.id))
       .leftJoin(demand, eq(demand.itemId, items.id))
+      .innerJoin(available, eq(available.itemId, items.id))
       .where(eq(purchaseRequestItems.purchaseRequestId, purchaseRequestId))
       .orderBy(asc(items.code));
-
-    // `available` ở dòng đề xuất là tồn khả dụng của hệ thống (cùng công thức cột "Khả dụng" ở
-    // `GET /inventory/directs`), không phải `onHand − bomDemand` của riêng Job này — nếu không số
-    // ở đây lệch với màn Tồn kho khi vật tư còn bị Job/phiếu lãnh khác giữ chỗ.
-    const availableByItem =
-      await this.inventoryDirectsService.getAvailableStockLevels(
-        this.db,
-        rows.map((row) => row.item.id),
-      );
 
     // `unit`/`imageFile` join phẳng ở cấp gốc — lồng vào trong `item` cho khớp shape
     // `OrderItemRefResDto` (`item.unit`, `item.image`) mà `.select()` không tự lồng được.
@@ -235,7 +228,6 @@ export class PurchaseRequestsService {
     // (`mapResultRow`), lồng sẵn trong `item` sẽ ra `{id: null, ...}` chứ không phải `null`.
     return rows.map(({ item, unit, imageFile, ...line }) => ({
       ...line,
-      available: availableByItem.get(item.id) ?? 0,
       item: { ...item, unit, imageFile },
     }));
   }

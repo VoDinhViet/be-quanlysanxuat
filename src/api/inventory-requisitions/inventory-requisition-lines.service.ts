@@ -25,12 +25,12 @@ import {
   productionJobIssues,
   units,
 } from '../../database/schemas';
+import { availableQuantityByItemSubquery } from '../inventory/available-quantity.query';
 import { jobIssueDemandSubquery } from '../inventory/item-stock.query';
 import { GetRequisitionLinesReqDto } from './dto/get-requisition-lines.req.dto';
 import { RequisitionLineResDto } from './dto/requisition-line.res.dto';
 import {
   issuedQuantityByJobItemSubquery,
-  remainingBomDemandByItemSubquery,
   requisitionStockColumns,
   reservedQuantitySubquery,
 } from './inventory-requisitions.query';
@@ -57,7 +57,9 @@ export class InventoryRequisitionLinesService {
     });
     const issued = issuedQuantityByJobItemSubquery(this.db);
     const reserved = reservedQuantitySubquery(this.db);
-    const remainingDemand = remainingBomDemandByItemSubquery(this.db);
+    // "Khả dụng" của hệ thống (cùng màn Tồn kho vật tư): join subquery chung vào câu select bên dưới.
+    // Khác "Có thể lãnh" (`issuableQuantity`, tồn − đã giữ) dùng để chặn thao tác.
+    const available = availableQuantityByItemSubquery(this.db);
 
     const rows = await this.db
       .select({
@@ -68,7 +70,8 @@ export class InventoryRequisitionLinesService {
         unit: getTableColumns(units),
         bomQuantity: demand.bomDemand,
         issuedQuantity: issued.issuedQuantity,
-        ...requisitionStockColumns(reserved, remainingDemand),
+        ...requisitionStockColumns(reserved),
+        availableQuantity: available.availableQuantity,
       })
       .from(inventoryRequisitionItems)
       .innerJoin(items, eq(items.id, inventoryRequisitionItems.itemId))
@@ -85,7 +88,7 @@ export class InventoryRequisitionLinesService {
       )
       .leftJoin(inventoryBalances, eq(inventoryBalances.itemId, items.id))
       .leftJoin(reserved, eq(reserved.itemId, items.id))
-      .leftJoin(remainingDemand, eq(remainingDemand.itemId, items.id))
+      .innerJoin(available, eq(available.itemId, items.id))
       .where(eq(inventoryRequisitionItems.requisitionId, requisitionId))
       .orderBy(
         asc(inventoryRequisitionItems.sortOrder),
@@ -106,7 +109,9 @@ export class InventoryRequisitionLinesService {
   ): Promise<OffsetPaginatedDto<RequisitionLineResDto>> {
     const issued = issuedQuantityByJobItemSubquery(this.db);
     const reserved = reservedQuantitySubquery(this.db);
-    const remainingDemand = remainingBomDemandByItemSubquery(this.db);
+    // "Khả dụng" của hệ thống (cùng màn Tồn kho vật tư): join subquery chung vào câu select bên dưới.
+    // Khác "Có thể lãnh" (`issuableQuantity`, tồn − đã giữ) dùng để chặn thao tác.
+    const available = availableQuantityByItemSubquery(this.db);
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
     const { productionJobId } = reqDto;
 
@@ -137,7 +142,8 @@ export class InventoryRequisitionLinesService {
           unit: getTableColumns(units),
           bomQuantity: productionJobIssues.requiredQty,
           issuedQuantity: issued.issuedQuantity,
-          ...requisitionStockColumns(reserved, remainingDemand),
+          ...requisitionStockColumns(reserved),
+          availableQuantity: available.availableQuantity,
         })
         .from(items)
         .innerJoin(units, eq(units.id, items.unitId))
@@ -161,7 +167,7 @@ export class InventoryRequisitionLinesService {
         )
         .leftJoin(inventoryBalances, eq(inventoryBalances.itemId, items.id))
         .leftJoin(reserved, eq(reserved.itemId, items.id))
-        .leftJoin(remainingDemand, eq(remainingDemand.itemId, items.id))
+        .innerJoin(available, eq(available.itemId, items.id))
         .where(where)
         .orderBy(asc(items.code))
         .limit(reqDto.limit)
