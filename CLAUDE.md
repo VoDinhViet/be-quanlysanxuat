@@ -27,7 +27,7 @@ pnpm db:check-drift                 # compares drizzle/meta/_journal.json and fi
 
 ## Environment and database cautions
 
-- `DATABASE_URL` and `REDIS_URL` always point at remote servers, never localhost. Dev and prod are separate databases; check `.env.development` before assuming which host is which. Do not run `db:migrate`, `db:reset*` or seeds against a shared or production database without the user's approval.
+- `DATABASE_URL` and `REDIS_URL` always point at remote servers, never localhost. Dev and prod are separate databases; check `.env.development` before assuming which host is which. Do not run `db:migrate`, `db:reset*` (wipes data) or `db:seed:*` against a shared or production database without the user's approval.
 - Env files load as `.env.${NODE_ENV}` first, then `.env`.
 - `drizzle-kit` prompts interactively. Do not try to drive it with a pseudo-terminal; ask the user to run it.
 
@@ -50,3 +50,4 @@ Detailed rules live in `.claude/rules/` and load by topic:
 
 - Code comments and domain names are in Vietnamese in places (SO = sales order, LSX = production order, JOB = production job, DMH = supplier purchase order, IQC/OQC = incoming/outgoing quality check, NCR = non-conformance report).
 - Prettier: single quotes, trailing commas, 2 spaces.
+- `docs/` is being rewritten from the current code, one part per area (see `docs/README.md` for which parts exist). Older comments in `src` that point at `docs/domains/*.md` or `docs/decisions/*.md` refer to the deleted pre-2026-09-25 docs; those that have no file yet are not dangling mistakes, they are still to be written.
