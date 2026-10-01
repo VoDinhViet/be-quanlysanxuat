@@ -15,7 +15,7 @@ import {
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { DRIZZLE } from '../../database/database.module';
-import type { Database, DbTransaction } from '../../database/database.type';
+import type { Database } from '../../database/database.type';
 import {
   inventoryBalances,
   inventoryTransactions,
@@ -191,29 +191,5 @@ export class InventoryService {
         { onHand: row.onHand, reserved: row.reserved },
       ]),
     );
-  }
-
-  /** Per-item on-hand, luôn gộp mọi kho. Nhận `db`/`tx` — `ProductionJobsService.startJob` gọi từ
-   * trong transaction chốt snapshot. */
-  async getDirectStockLevels(
-    db: Database | DbTransaction,
-    itemIds: string[],
-  ): Promise<Map<string, number>> {
-    if (!itemIds.length) {
-      return new Map();
-    }
-
-    const balance = balanceByItemSubquery(db);
-
-    const rows = await db
-      .select({
-        itemId: items.id,
-        onHand: sql<number>`coalesce(${balance.onHand}, 0)`.mapWith(Number),
-      })
-      .from(items)
-      .leftJoin(balance, eq(balance.itemId, items.id))
-      .where(inArray(items.id, itemIds));
-
-    return new Map(rows.map((row) => [row.itemId, row.onHand]));
   }
 }

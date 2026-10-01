@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, ne, sql } from 'drizzle-orm';
 
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
@@ -164,8 +164,12 @@ export async function getIssuedQuantities(
  * Đã lãnh, 0)` cộng dồn mọi Job đang mở, cố ý có thể âm (chỉ báo thiếu, không chặn thao tác nào,
  * khác "Có thể lãnh"). Trừ phần **còn lại** (không phải nguyên `requiredQty`) vì Job không có trạng
  * thái kết thúc (`docs/domains/production.md`) — trừ nguyên `requiredQty` mãi mãi sẽ làm số càng
- * lúc càng âm sai dù Job đã lãnh xong. Xem `docs/domains/inventory.md`, mục "Phiếu lãnh vật tư". */
-export function remainingBomDemandByItemSubquery(db: Database) {
+ * lúc càng âm sai dù Job đã lãnh xong. Xem `docs/domains/inventory.md`, mục "Phiếu lãnh vật tư".
+ * `excludeJobId` bỏ nhu cầu của đúng một Job — dùng khi đo tồn khả dụng *trước* Job đó (lúc start). */
+export function remainingBomDemandByItemSubquery(
+  db: Database,
+  excludeJobId?: string,
+) {
   const issued = issuedQuantityByJobItemSubquery(db);
 
   return db
@@ -183,6 +187,11 @@ export function remainingBomDemandByItemSubquery(db: Database) {
         eq(issued.productionJobId, productionJobIssues.productionJobId),
         eq(issued.itemId, productionJobIssues.itemId),
       ),
+    )
+    .where(
+      excludeJobId
+        ? ne(productionJobIssues.productionJobId, excludeJobId)
+        : undefined,
     )
     .groupBy(productionJobIssues.itemId)
     .as('remaining_bom_demand');

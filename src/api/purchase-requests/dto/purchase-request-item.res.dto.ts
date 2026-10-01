@@ -21,7 +21,7 @@ export class PurchaseRequestItemResDto {
   @Expose()
   @NumberField({
     description:
-      'Phần thiếu chốt lúc start Job (requiredQty − onHand tại thời điểm đó), không phải toàn bộ nhu cầu',
+      'Phần thiếu chốt lúc start Job (requiredQty − tồn khả dụng tại thời điểm đó, kẹp về 0), không phải toàn bộ nhu cầu',
   })
   quantity!: number;
 
@@ -37,7 +37,10 @@ export class PurchaseRequestItemResDto {
   bomDemand!: number;
 
   @Expose()
-  @NumberField({ description: 'Tồn khả dụng = onHand − bomDemand, có thể âm' })
+  @NumberField({
+    description:
+      'Tồn khả dụng của hệ thống, cùng công thức cột "Khả dụng" ở màn Tồn kho vật tư: tồn thực tế − phiếu lãnh đang giữ chỗ − nhu cầu BOM còn lại của mọi Job. Có thể âm',
+  })
   available!: number;
 
   @Expose()
