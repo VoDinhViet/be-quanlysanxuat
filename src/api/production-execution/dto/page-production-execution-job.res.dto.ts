@@ -57,8 +57,15 @@ export class PageProductionExecutionJobResDto {
   operationName!: string;
 
   @Expose()
-  @StringField({ description: 'Mã đơn hàng (PO)' })
+  @StringField({ description: 'Mã đơn hàng (SO)' })
   orderCode!: string;
+
+  @Expose()
+  @StringFieldOptional({
+    nullable: true,
+    description: 'Số PO của khách hàng trên đơn hàng gốc (Buyer PO No)',
+  })
+  buyerPoNo!: string | null;
 
   @Expose()
   @ClassField(() => ProductionExecutionItemRefResDto)
