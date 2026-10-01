@@ -8,9 +8,10 @@ Quy ước chung (lệnh chạy, quy tắc viết code, cảnh báo database) n�
 
 | Part | File | Phạm vi (thư mục `src/api/...`) | Trạng thái |
 |---|---|---|---|
-| 0 | [architecture.md](architecture.md) | Request pipeline, cấu trúc module, mã chứng từ, lỗi, lưu trữ | Xong |
+| 0 | [architecture.md](architecture.md) | Request pipeline, cấu trúc module, mã chứng từ, lỗi, lưu trữ, registry tệp (`/files`) | Xong |
 | 1 | [domains/identity-access.md](domains/identity-access.md) | auth, users, roles, departments, positions | Xong |
-| 2 | [domains/master-data.md](domains/master-data.md) | clients, client-groups, suppliers, supplier-groups, items, item-units, units, countries, files, operations, routings, boms, bom-operations, bom-directs | Xong |
+| 2a | [domains/product-structure.md](domains/product-structure.md) | units, items, item-units, boms, bom-operations, bom-directs, routings, operations | Xong |
+| 2b | [domains/partners.md](domains/partners.md) | clients, client-groups, suppliers, supplier-groups, countries | Xong |
 | 3 | domains/sales.md | orders, outbound-orders | Chưa viết |
 | 4 | domains/production.md | production-orders, production-jobs, production-execution | Chưa viết |
 | 5 | domains/purchasing.md | purchase-requests, purchase-quotations, purchase-orders, purchase-notes, purchase-ledger, payment-requests | Chưa viết |

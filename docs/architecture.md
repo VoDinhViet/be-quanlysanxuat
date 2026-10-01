@@ -62,6 +62,36 @@ Kiểm tra chỉ đọc (tồn tại, trùng mã, quyền) chạy **trước** k
 
 `StorageModule` có provider lưu đĩa cục bộ (`UPLOAD_DRIVER=local`, thư mục `uploads/`). `ServeStaticModule` phục vụ thư mục này ở gốc domain, không xác thực, không ký. Khoá lưu trữ chính là đường dẫn công khai dạng `<năm>/<tháng>/<ngày>/<uuid>.<ext>`, nên không đụng route `/api`. Bảng `files` là registry; các domain gắn file qua `FilesService.linkFiles`, và `FilesCleanupService` (theo lịch) dọn file mồ côi.
 
+### Registry và API tệp (`/files`)
+
+`files` là registry duy nhất cho mọi tệp tải lên. Các bảng khác chỉ giữ `fileId` (cột như `imageFileId`, `avatarFileId`) hoặc bảng nối (`item_files`, `supplier_files`...), không lưu lại url hay tên tệp.
+
+| Route | Quyền | Ghi chú |
+|---|---|---|
+| `POST /files?type=<UploadType>` | đăng nhập | `multipart/form-data`, trường `file`. Trả `201` kèm metadata. Chưa gắn vào đối tượng nào. |
+| `GET /files/:fileId` | đăng nhập | Metadata. `E042` nếu không thấy. |
+| `DELETE /files/:fileId` | đăng nhập | Chỉ **người tải lên** hoặc `system:manage` (`E033` nếu không). File đang là bằng chứng QC thì bị chặn. |
+
+Quy tắc tải lên:
+
+1. `type` (`UploadType`) đi theo query, không theo body. `kind` (`IMAGE`/`DOCUMENT`/`EVIDENCE`) do server suy ra từ `uploadPolicies`, **không bao giờ lấy từ client**, để không dùng loại `USER_AVATAR` rồi lách bằng PDF.
+2. Dung lượng tối đa: ảnh 5 MB (`UPLOAD_MAX_IMAGE_SIZE`), tài liệu và bằng chứng 10 MB (`UPLOAD_MAX_DOCUMENT_SIZE`). Quá cỡ: `E017` (413).
+3. Loại tệp xác định bằng **byte thật** (`file-type`), không tin mimetype client khai. Sai loại hoặc không nhận diện được: `E016` (400).
+   - `IMAGE`: jpeg, png, webp, gif.
+   - `DOCUMENT`: PDF, RTF, EPUB, Office OOXML (docx, xlsx, pptx và template), OpenDocument, DWG, Visio, iWork, và các tệp nén (zip, rar, 7z, tar, gzip, bzip2). Cố ý **không nhận** Office nhị phân cũ (.doc, .xls, .ppt) và tệp có macro (.docm, .xlsm, .pptm).
+   - `EVIDENCE`: hợp của hai tập trên.
+4. Khoá lưu trữ dạng `<năm>/<tháng>/<ngày>/<uuid>.<ext>`, kèm SHA-256 `checksum`. `url` dựng từ khoá lưu trữ và là liên kết công khai vĩnh viễn (xem `architecture.md`).
+5. **Hiện không kiểm quyền theo loại tệp**: người đăng nhập nào cũng tải lên được mọi `UploadType`. Đây là chủ ý, có ghi trong `upload-policy.ts`.
+
+Vòng đời liên kết:
+
+- Service dùng tệp phải gọi `FilesService.linkFiles(fileIds)` **trước** khi ghi `*FileId` và trước khi mở transaction. Hàm kiểm tra tệp tồn tại (`E042`) rồi đánh dấu `linkedAt` (chỉ lần đầu).
+- `FilesCleanupService` chạy mỗi giờ (`@Cron EVERY_HOUR`), xoá các tệp có `linkedAt IS NULL` và cũ hơn `UPLOAD_ORPHAN_TTL` (mặc định 24 giờ). Xoá byte trước rồi mới xoá dòng: dòng trỏ nhầm byte đã mất thì lần quét sau xử lý lại được, còn byte không có dòng thì không bao giờ tìm lại.
+- Quét theo `linkedAt` chứ không dò ngược các bảng tham chiếu, nên thêm module mới mà quên khai báo thì **không** làm mất dữ liệu thật.
+- Job chỉ chạy khi app là tiến trình chạy lâu dài; ở chế độ serverless (`handler` của `main.ts`) timer trong bộ nhớ không bao giờ kích hoạt và chưa có bộ lập lịch ngoài thay thế.
+
+Loại tệp đã nghỉ hưu, vẫn giữ giá trị trong enum, không dùng lại: `PRODUCT_DOCUMENT` (thay bằng `ITEM_DOCUMENT`), `BOM_ITEM_DRAWING` (cột `bom_items.drawing_file_id` đã bỏ ở migration 0185).
+
 ## Mẫu in và xuất file
 
 `src/templates/` chứa mẫu HTML (đơn hàng, tổng hợp đơn, lệnh sản xuất, kế hoạch sản xuất, phiếu nhập kho) và `PdfRendererService` dựng PDF bằng puppeteer (gói chỉ có ESM, nên spec phải `jest.mock` service này). Xuất Excel dùng `src/common/utils/excel.util.ts`.
