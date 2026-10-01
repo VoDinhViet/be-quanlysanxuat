@@ -62,6 +62,7 @@ import {
 } from '../inventory/item-stock.query';
 import type { InventoryPostingLine } from '../inventory/inventory-posting.service';
 import { InventoryPostingService } from '../inventory/inventory-posting.service';
+import { InventoryDirectsService } from '../inventory-directs/inventory-directs.service';
 import { areReceiptIqcInspectionsCompleted } from '../iqc/iqc.query';
 import { IqcService } from '../iqc/iqc.service';
 import { getJobQcCoverage } from '../oqc/oqc.query';
@@ -104,6 +105,7 @@ export class InventoryReceiptsService {
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly inventoryPostingService: InventoryPostingService,
+    private readonly inventoryDirectsService: InventoryDirectsService,
     private readonly iqcService: IqcService,
     private readonly paymentRequestsService: PaymentRequestsService,
     private readonly pdfRendererService: PdfRendererService,
@@ -280,7 +282,8 @@ export class InventoryReceiptsService {
 
   /** `bomDemand`/`available`/`fromStock` không phải cột thật — relational API không tính được,
    * nên dòng phiếu nhập dùng `.select()` + join thay vì `with: { items: ... }`. Công thức 4 số
-   * sống ở `item-stock.query.ts`, dùng chung với `PurchaseRequestsService`. */
+   * sống ở `item-stock.query.ts`, dùng chung với `PurchaseRequestsService` (riêng `available` lấy từ
+   * `InventoryDirectsService`). */
   private async getReceiptLines(
     receiptId: string,
     scope: {
@@ -317,11 +320,20 @@ export class InventoryReceiptsService {
       getReturnedQuantityByReceiptItemId(this.db, receiptId),
     ]);
 
+    // `available` là tồn khả dụng của hệ thống (cùng công thức màn Tồn kho vật tư), không phải
+    // `onHand − bomDemand` của riêng Job này — xem `PurchaseRequestsService.getPurchaseRequestLines`.
+    const availableByItem =
+      await this.inventoryDirectsService.getAvailableStockLevels(
+        this.db,
+        rows.map((row) => row.item.id),
+      );
+
     return rows.map((row) => {
       const returnedQuantity = returnedByItemId.get(row.item.id) ?? 0;
       const actualQuantity = Math.max(row.quantity - returnedQuantity, 0);
       return {
         ...row,
+        available: availableByItem.get(row.item.id) ?? 0,
         returnedQuantity,
         actualQuantity,
       };

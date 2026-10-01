@@ -51,7 +51,10 @@ export class InventoryRequisitionItemResDto {
   issuableQuantity!: number;
 
   @Expose()
-  @NumberField({ description: 'Khả dụng, có thể âm, chỉ tham khảo' })
+  @NumberField({
+    description:
+      'Khả dụng của hệ thống (cùng công thức màn Tồn kho vật tư), có thể âm, chỉ tham khảo',
+  })
   availableQuantity!: number;
 
   @Expose()

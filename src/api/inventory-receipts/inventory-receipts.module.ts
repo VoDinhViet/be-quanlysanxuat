@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 
 import { TemplatesModule } from '../../templates/templates.module';
 import { AuthModule } from '../auth/auth.module';
+import { InventoryDirectsModule } from '../inventory-directs/inventory-directs.module';
 import { InventoryModule } from '../inventory/inventory.module';
 import { IqcModule } from '../iqc/iqc.module';
 import { PaymentRequestsModule } from '../payment-requests/payment-requests.module';
@@ -12,6 +13,7 @@ import { InventoryReceiptsService } from './inventory-receipts.service';
 @Module({
   imports: [
     AuthModule,
+    InventoryDirectsModule,
     InventoryModule,
     IqcModule,
     PaymentRequestsModule,

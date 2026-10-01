@@ -25,12 +25,12 @@ import {
   productionJobIssues,
   units,
 } from '../../database/schemas';
+import { InventoryDirectsService } from '../inventory-directs/inventory-directs.service';
 import { jobIssueDemandSubquery } from '../inventory/item-stock.query';
 import { GetRequisitionLinesReqDto } from './dto/get-requisition-lines.req.dto';
 import { RequisitionLineResDto } from './dto/requisition-line.res.dto';
 import {
   issuedQuantityByJobItemSubquery,
-  remainingBomDemandByItemSubquery,
   requisitionStockColumns,
   reservedQuantitySubquery,
 } from './inventory-requisitions.query';
@@ -42,7 +42,10 @@ import {
  * lãnh vật tư". */
 @Injectable()
 export class InventoryRequisitionLinesService {
-  constructor(@Inject(DRIZZLE) private readonly db: Database) {}
+  constructor(
+    @Inject(DRIZZLE) private readonly db: Database,
+    private readonly inventoryDirectsService: InventoryDirectsService,
+  ) {}
 
   /** Tab "Chi tiết vật tư lãnh" của một phiếu đã lưu — cùng khuôn `getPurchaseRequestLines`
    * (`.select()` thủ công vì `inventory_requisition_items` không có cột để `orderBy` qua relational
@@ -57,7 +60,6 @@ export class InventoryRequisitionLinesService {
     });
     const issued = issuedQuantityByJobItemSubquery(this.db);
     const reserved = reservedQuantitySubquery(this.db);
-    const remainingDemand = remainingBomDemandByItemSubquery(this.db);
 
     const rows = await this.db
       .select({
@@ -68,7 +70,7 @@ export class InventoryRequisitionLinesService {
         unit: getTableColumns(units),
         bomQuantity: demand.bomDemand,
         issuedQuantity: issued.issuedQuantity,
-        ...requisitionStockColumns(reserved, remainingDemand),
+        ...requisitionStockColumns(reserved),
       })
       .from(inventoryRequisitionItems)
       .innerJoin(items, eq(items.id, inventoryRequisitionItems.itemId))
@@ -85,14 +87,22 @@ export class InventoryRequisitionLinesService {
       )
       .leftJoin(inventoryBalances, eq(inventoryBalances.itemId, items.id))
       .leftJoin(reserved, eq(reserved.itemId, items.id))
-      .leftJoin(remainingDemand, eq(remainingDemand.itemId, items.id))
       .where(eq(inventoryRequisitionItems.requisitionId, requisitionId))
       .orderBy(
         asc(inventoryRequisitionItems.sortOrder),
         asc(inventoryRequisitionItems.createdAt),
       );
 
-    return rows;
+    const availableByItem =
+      await this.inventoryDirectsService.getAvailableStockLevels(
+        this.db,
+        rows.map((row) => row.item.id),
+      );
+
+    return rows.map((row) => ({
+      ...row,
+      availableQuantity: availableByItem.get(row.item.id) ?? 0,
+    }));
   }
 
   /** Popup chọn vật tư dùng chung "Lãnh từ LSX"/"Lãnh thủ công" — `productionJobId` optional quyết
@@ -106,7 +116,6 @@ export class InventoryRequisitionLinesService {
   ): Promise<OffsetPaginatedDto<RequisitionLineResDto>> {
     const issued = issuedQuantityByJobItemSubquery(this.db);
     const reserved = reservedQuantitySubquery(this.db);
-    const remainingDemand = remainingBomDemandByItemSubquery(this.db);
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
     const { productionJobId } = reqDto;
 
@@ -137,7 +146,7 @@ export class InventoryRequisitionLinesService {
           unit: getTableColumns(units),
           bomQuantity: productionJobIssues.requiredQty,
           issuedQuantity: issued.issuedQuantity,
-          ...requisitionStockColumns(reserved, remainingDemand),
+          ...requisitionStockColumns(reserved),
         })
         .from(items)
         .innerJoin(units, eq(units.id, items.unitId))
@@ -161,7 +170,6 @@ export class InventoryRequisitionLinesService {
         )
         .leftJoin(inventoryBalances, eq(inventoryBalances.itemId, items.id))
         .leftJoin(reserved, eq(reserved.itemId, items.id))
-        .leftJoin(remainingDemand, eq(remainingDemand.itemId, items.id))
         .where(where)
         .orderBy(asc(items.code))
         .limit(reqDto.limit)
@@ -169,7 +177,17 @@ export class InventoryRequisitionLinesService {
       this.db.select({ total: count() }).from(items).where(where),
     ]);
 
-    const lines = rows.map((row) => {
+    const availableByItem =
+      await this.inventoryDirectsService.getAvailableStockLevels(
+        this.db,
+        rows.map((row) => row.item.id),
+      );
+    const stockedRows = rows.map((row) => ({
+      ...row,
+      availableQuantity: availableByItem.get(row.item.id) ?? 0,
+    }));
+
+    const lines = stockedRows.map((row) => {
       // `where` đã giới hạn chỉ item nằm trong BOM của Job khi có `productionJobId`, và join phía
       // trên khớp đúng (productionJobId, itemId) đó — nên `bomQuantity` (từ LEFT JOIN
       // `productionJobIssues`) null khi và chỉ khi không có `productionJobId`, không cần kiểm
