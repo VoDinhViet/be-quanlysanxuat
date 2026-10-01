@@ -6,6 +6,7 @@ import { ServeStaticModule } from '@nestjs/serve-static';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AllConfigType } from './config/config.type';
+import { AiModule } from './api/ai/ai.module';
 import { BomDirectsModule } from './api/bom-directs/bom-directs.module';
 import { BomOperationsModule } from './api/bom-operations/bom-operations.module';
 import { BomsModule } from './api/boms/boms.module';
@@ -90,6 +91,7 @@ import { UsersModule } from './api/users/users.module';
 
     DatabaseModule,
     RedisModule,
+    AiModule,
     StorageModule,
     AuthModule,
     UsersModule,
