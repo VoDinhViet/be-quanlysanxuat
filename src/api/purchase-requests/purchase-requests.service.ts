@@ -40,6 +40,7 @@ import {
   units,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
+import { InventoryDirectsService } from '../inventory-directs/inventory-directs.service';
 import {
   onHandQuantityByItemSubquery,
   itemStockColumns,
@@ -57,7 +58,10 @@ import { CreateShortageRequestInput } from './types/shortage-request.type';
 
 @Injectable()
 export class PurchaseRequestsService {
-  constructor(@Inject(DRIZZLE) private readonly db: Database) {}
+  constructor(
+    @Inject(DRIZZLE) private readonly db: Database,
+    private readonly inventoryDirectsService: InventoryDirectsService,
+  ) {}
 
   async getPurchaseRequests(
     reqDto: GetPurchaseRequestsReqDto,
@@ -186,7 +190,7 @@ export class PurchaseRequestsService {
   /** `purchase_request_items` không có `sortOrder`, và relational query API không order được
    * theo cột của bảng join (`items.code`) — dùng `.select()` + join để Postgres sort thay vì
    * `.sort()` trong JS. 4 số tồn/nhu cầu dùng chung công thức với `InventoryReceiptsService` —
-   * xem `item-stock.query.ts`. */
+   * xem `item-stock.query.ts` (riêng `available` lấy từ `InventoryDirectsService`). */
   private async getPurchaseRequestLines(
     purchaseRequestId: string,
     scope: {
@@ -216,12 +220,22 @@ export class PurchaseRequestsService {
       .where(eq(purchaseRequestItems.purchaseRequestId, purchaseRequestId))
       .orderBy(asc(items.code));
 
+    // `available` ở dòng đề xuất là tồn khả dụng của hệ thống (cùng công thức cột "Khả dụng" ở
+    // `GET /inventory/directs`), không phải `onHand − bomDemand` của riêng Job này — nếu không số
+    // ở đây lệch với màn Tồn kho khi vật tư còn bị Job/phiếu lãnh khác giữ chỗ.
+    const availableByItem =
+      await this.inventoryDirectsService.getAvailableStockLevels(
+        this.db,
+        rows.map((row) => row.item.id),
+      );
+
     // `unit`/`imageFile` join phẳng ở cấp gốc — lồng vào trong `item` cho khớp shape
     // `OrderItemRefResDto` (`item.unit`, `item.image`) mà `.select()` không tự lồng được.
     // `imageFile` bắt buộc ở cấp gốc: drizzle chỉ null-collapse LEFT JOIN trượt ở độ sâu 1
     // (`mapResultRow`), lồng sẵn trong `item` sẽ ra `{id: null, ...}` chứ không phải `null`.
     return rows.map(({ item, unit, imageFile, ...line }) => ({
       ...line,
+      available: availableByItem.get(item.id) ?? 0,
       item: { ...item, unit, imageFile },
     }));
   }
