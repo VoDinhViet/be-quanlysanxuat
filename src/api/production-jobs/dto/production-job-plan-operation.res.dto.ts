@@ -40,6 +40,14 @@ export class ProductionJobPlanOperationResDto {
   sortOrder!: number;
 
   @Expose()
+  @NumberField({
+    int: true,
+    description:
+      'Cấp BOM sâu nhất của chi tiết có công đoạn này (0 = thành phẩm) — công đoạn cấp sâu hơn phải xong trước',
+  })
+  level!: number;
+
+  @Expose()
   @DateFieldOptional({
     nullable: true,
     description: 'Hạn hoàn thành công đoạn nếu đã có',

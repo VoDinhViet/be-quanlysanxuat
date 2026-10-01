@@ -525,6 +525,7 @@ export class ProductionJobsService {
         .select({
           id: productionJobBomItems.id,
           code: productionJobBomItems.code,
+          level: productionJobBomItems.level,
         })
         .from(productionJobBomItems)
         .where(eq(productionJobBomItems.productionJobId, jobId)),
@@ -539,8 +540,10 @@ export class ProductionJobsService {
     ]);
 
     const bomItemCodeById = new Map<string, string>();
+    const bomItemLevelById = new Map<string, number>();
     for (const b of bomItems) {
       if (b.code) bomItemCodeById.set(b.id, b.code);
+      bomItemLevelById.set(b.id, b.level);
     }
 
     const groupedMap = new Map<
@@ -553,6 +556,7 @@ export class ProductionJobsService {
         bomItemCodes: string[];
         dueDate: Date | null;
         sortOrder: number;
+        level: number;
       }
     >();
 
@@ -561,10 +565,13 @@ export class ProductionJobsService {
         .trim()
         .toLowerCase();
       const bomCode = bomItemCodeById.get(op.productionJobBomItemId);
+      const level = bomItemLevelById.get(op.productionJobBomItemId) ?? 0;
       const existing = groupedMap.get(groupKey);
 
       if (existing) {
         existing.operationIds.push(op.id);
+        existing.level = Math.max(existing.level, level);
+        existing.sortOrder = Math.min(existing.sortOrder, op.sortOrder ?? 0);
         if (bomCode && !existing.bomItemCodes.includes(bomCode)) {
           existing.bomItemCodes.push(bomCode);
         }
@@ -583,12 +590,21 @@ export class ProductionJobsService {
           bomItemCodes: bomCode ? [bomCode] : [],
           dueDate: op.dueDate ?? null,
           sortOrder: op.sortOrder ?? 0,
+          level,
         });
       }
     }
 
+    // `sortOrder` chỉ có nghĩa trong routing của một node, không so sánh được giữa các node — nên
+    // thứ tự mặc định đi theo cấp BOM: chi tiết sâu nhất làm trước, thành phẩm (Cấp 0: lắp ráp,
+    // đóng gói) làm sau cùng. Kế hoạch đã lưu giữ nguyên thứ tự người dùng xếp (hạn tăng dần,
+    // mỗi công đoạn tối thiểu 1 ngày làm việc nên không trùng hạn); chưa có hạn thì xếp sau.
     const result = Array.from(groupedMap.values()).sort(
-      (a, b) => a.sortOrder - b.sortOrder,
+      (a, b) =>
+        (a.dueDate?.getTime() ?? Infinity) -
+          (b.dueDate?.getTime() ?? Infinity) ||
+        b.level - a.level ||
+        a.sortOrder - b.sortOrder,
     );
 
     return plainToInstance(ProductionJobPlanOperationResDto, result, {
