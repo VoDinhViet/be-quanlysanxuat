@@ -56,6 +56,7 @@ import { ProductionExecutionReportResDto } from './dto/production-execution-repo
 import {
   JobOperationEvaluation,
   JobOperationProgress,
+  ProductionExecutionOperationSort,
 } from './production-execution.constant';
 
 /** Màn "Thực hiện sản xuất" (view của tổ sản xuất, đi từ công đoạn xuống) — đọc snapshot đã có
@@ -150,16 +151,18 @@ export class ProductionExecutionService {
         Number,
       );
 
+    const remainingJobCountExpr =
+      sql<number>`count(*) filter (where ${jobOperationStatus.progress} <> ${JobOperationProgress.DONE})`.mapWith(
+        Number,
+      );
+
     const rows = await this.db
       .select({
         operationId: operations.id,
         code: operations.code,
         name: operations.name,
         type: operations.type,
-        remainingJobCount:
-          sql<number>`count(*) filter (where ${jobOperationStatus.progress} <> ${JobOperationProgress.DONE})`.mapWith(
-            Number,
-          ),
+        remainingJobCount: remainingJobCountExpr,
         inProgressJobCount: countJobs(JobOperationProgress.IN_PROGRESS),
         overdueJobCount: countJobs(JobOperationProgress.OVERDUE),
       })
@@ -169,7 +172,13 @@ export class ProductionExecutionService {
         eq(jobOperationStatus.operationId, operations.id),
       )
       .groupBy(operations.id)
-      .orderBy(asc(operations.code));
+      .orderBy(
+        ...(reqDto.sort === ProductionExecutionOperationSort.NAME
+          ? [asc(operations.name), asc(operations.code)]
+          : reqDto.sort === ProductionExecutionOperationSort.REMAINING_JOB_COUNT
+            ? [desc(remainingJobCountExpr), asc(operations.code)]
+            : [asc(operations.code)]),
+      );
 
     return plainToInstance(ProductionExecutionOperationResDto, rows, {
       excludeExtraneousValues: true,

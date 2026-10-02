@@ -22,3 +22,9 @@ export enum JobOperationEvaluation {
   ON_TIME = 'ON_TIME',
   LATE = 'LATE',
 }
+
+export enum ProductionExecutionOperationSort {
+  DEFAULT = 'default',
+  NAME = 'name',
+  REMAINING_JOB_COUNT = 'remainingJobCount',
+}

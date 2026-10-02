@@ -5,6 +5,7 @@ import {
   StringFieldOptional,
   UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
+import { ProductionExecutionOperationSort } from '../production-execution.constant';
 
 export class GetProductionExecutionOperationsReqDto {
   @StringFieldOptional()
@@ -23,4 +24,9 @@ export class GetProductionExecutionOperationsReqDto {
 
   @DateFieldOptional({ description: 'Filter: order.dueDate <= endDate' })
   readonly endDate?: Date;
+
+  @EnumFieldOptional(() => ProductionExecutionOperationSort, {
+    description: 'Sắp xếp công đoạn',
+  })
+  readonly sort?: ProductionExecutionOperationSort;
 }
