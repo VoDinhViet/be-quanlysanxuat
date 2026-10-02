@@ -36,6 +36,15 @@ export const purchaseRequestItems = pgTable(
       scale: 3,
       mode: 'number',
     }).notNull(),
+    // Phần nhu cầu đã được tồn kho đáp ứng, chốt lúc start Job (`min(max(khả dụng, 0), requiredQty)`)
+    // — không đổi khi người dùng sửa `quantity`. Dòng tạo tay: 0.
+    fromStockQty: numeric('from_stock_qty', {
+      precision: 18,
+      scale: 3,
+      mode: 'number',
+    })
+      .notNull()
+      .default(0),
     note: varchar('note', { length: 500 }),
     cancelledBy: uuid('cancelled_by').references(() => users.id, {
       onDelete: 'set null',

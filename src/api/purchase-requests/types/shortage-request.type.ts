@@ -1,8 +1,10 @@
-/** Một dòng vật tư thiếu của Job — `quantity` là **phần thiếu** (`requiredQty − onHand`), không
+/** Một dòng vật tư thiếu của Job — `quantity` là **phần thiếu** (`requiredQty − tồn khả dụng`, kẹp về 0), không
  * phải toàn bộ nhu cầu. Xem `docs/domains/purchase-requests.md`. */
 export type PurchaseRequestShortageItem = {
   itemId: string;
   quantity: number;
+  /** Phần nhu cầu đã được tồn kho đáp ứng lúc chốt, ghi vào `purchase_request_items.fromStockQty`. */
+  fromStockQty: number;
 };
 
 /** Input của `PurchaseRequestsService.createShortageRequest` — chỉ dựng được từ

@@ -48,7 +48,7 @@ export class PurchaseRequestItemResDto {
   @Expose()
   @NumberField({
     description:
-      'Phần tồn thực tế bị nhu cầu LSX này chiếm = min(onHand, bomDemand)',
+      'Phần nhu cầu LSX này đã được tồn kho đáp ứng, chốt lúc start Job (không đổi khi sửa quantity); dòng tạo tay là 0',
   })
   fromStock!: number;
 

@@ -892,7 +892,15 @@ export class ProductionJobsService {
       }
       const available = Math.max(availableByItem.get(row.itemId) ?? 0, 0);
       const shortage = row.requiredQty - available;
-      return shortage > 0 ? [{ itemId: row.itemId, quantity: shortage }] : [];
+      return shortage > 0
+        ? [
+            {
+              itemId: row.itemId,
+              quantity: shortage,
+              fromStockQty: row.requiredQty - shortage,
+            },
+          ]
+        : [];
     });
   }
 

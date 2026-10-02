@@ -192,7 +192,7 @@ export class PurchaseRequestsService {
 
   /** `purchase_request_items` không có `sortOrder`, và relational query API không order được
    * theo cột của bảng join (`items.code`) — dùng `.select()` + join để Postgres sort thay vì
-   * `.sort()` trong JS. `onHand`/`bomDemand`/`fromStock` dùng chung với `InventoryReceiptsService` —
+   * `.sort()` trong JS. `onHand`/`bomDemand` dùng chung với `InventoryReceiptsService` —
    * xem `item-stock.query.ts`; `available` từ `availableQuantityByItemSubquery`. */
   private async getPurchaseRequestLines(
     purchaseRequestId: string,
@@ -214,6 +214,7 @@ export class PurchaseRequestsService {
         note: purchaseRequestItems.note,
         cancelledAt: purchaseRequestItems.cancelledAt,
         ...itemStockColumns(balance, demand),
+        fromStock: purchaseRequestItems.fromStockQty,
         available: available.availableQuantity,
         item: getTableColumns(items),
         unit: getTableColumns(units),
