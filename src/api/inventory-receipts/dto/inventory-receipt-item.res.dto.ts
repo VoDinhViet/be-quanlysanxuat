@@ -8,7 +8,7 @@ import {
   StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
-import { ItemRefResDto } from '../../items/dto/item-ref.res.dto';
+import { ItemImageRefResDto } from '../../items/dto/item-image-ref.res.dto';
 import { PurchaseOrderItemRefResDto } from '../../purchase-orders/dto/purchase-order-item-ref.res.dto';
 import { UnitRefResDto } from '../../units/dto/unit-ref.res.dto';
 
@@ -19,8 +19,8 @@ export class InventoryReceiptItemResDto {
   id!: string;
 
   @Expose()
-  @ClassField(() => ItemRefResDto)
-  item!: ItemRefResDto;
+  @ClassField(() => ItemImageRefResDto)
+  item!: ItemImageRefResDto;
 
   @Expose()
   @ClassField(() => UnitRefResDto)

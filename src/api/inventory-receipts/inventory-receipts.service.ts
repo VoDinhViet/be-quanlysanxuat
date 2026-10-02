@@ -12,6 +12,7 @@ import {
   isNull,
   lt,
   ne,
+  or,
   sql,
 } from 'drizzle-orm';
 import { DateTime } from 'luxon';
@@ -26,6 +27,7 @@ import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
   clients,
+  files,
   InventoryDocumentStatus,
   inventoryReceiptItems,
   type InventoryReceiptItemSelect,
@@ -116,7 +118,29 @@ export class InventoryReceiptsService {
   ): Promise<OffsetPaginatedDto<PageInventoryReceiptResDto>> {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
     const where = and(
-      keyword ? unaccentILike(inventoryReceipts.code, keyword) : undefined,
+      // Tìm theo mã phiếu hoặc mã/tên vật tư trong các dòng của phiếu. `inArray` + subquery độc lập
+      // (không tương quan) vì relational query đặt alias cho bảng chính, `exists` tương quan sẽ vỡ.
+      keyword
+        ? or(
+            unaccentILike(inventoryReceipts.code, keyword),
+            inArray(
+              inventoryReceipts.id,
+              this.db
+                .select({ receiptId: inventoryReceiptItems.receiptId })
+                .from(inventoryReceiptItems)
+                .innerJoin(
+                  itemsTable,
+                  eq(itemsTable.id, inventoryReceiptItems.itemId),
+                )
+                .where(
+                  or(
+                    unaccentILike(itemsTable.code, keyword),
+                    unaccentILike(itemsTable.name, keyword),
+                  ),
+                ),
+            ),
+          )
+        : undefined,
       reqDto.receiptType
         ? eq(inventoryReceipts.receiptType, reqDto.receiptType)
         : undefined,
@@ -166,7 +190,7 @@ export class InventoryReceiptsService {
           purchaseOrder: true,
           posterBy: true,
           creatorBy: true,
-          items: { with: { item: true, unit: true } },
+          items: { with: { item: { with: { imageFile: true } }, unit: true } },
         },
       }),
       this.db.select({ total: count() }).from(inventoryReceipts).where(where),
@@ -305,6 +329,7 @@ export class InventoryReceiptsService {
           unitPrice: inventoryReceiptItems.unitPrice,
           note: inventoryReceiptItems.note,
           item: getTableColumns(items),
+          imageFile: getTableColumns(files),
           unit: getTableColumns(units),
           purchaseOrderItem: getTableColumns(purchaseOrderItems),
           ...itemStockColumns(balance, demand),
@@ -312,6 +337,7 @@ export class InventoryReceiptsService {
         })
         .from(inventoryReceiptItems)
         .innerJoin(items, eq(items.id, inventoryReceiptItems.itemId))
+        .leftJoin(files, eq(files.id, items.imageFileId))
         .innerJoin(units, eq(units.id, inventoryReceiptItems.unitId))
         .leftJoin(
           purchaseOrderItems,
@@ -325,11 +351,12 @@ export class InventoryReceiptsService {
       getReturnedQuantityByReceiptItemId(this.db, receiptId),
     ]);
 
-    return rows.map((row) => {
+    return rows.map(({ imageFile, ...row }) => {
       const returnedQuantity = returnedByItemId.get(row.item.id) ?? 0;
       const actualQuantity = Math.max(row.quantity - returnedQuantity, 0);
       return {
         ...row,
+        item: { ...row.item, imageFile },
         returnedQuantity,
         actualQuantity,
       };

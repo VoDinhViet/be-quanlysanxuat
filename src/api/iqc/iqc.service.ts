@@ -195,7 +195,7 @@ export class IqcService {
           eq(creatorUsers.id, qualityInspections.createdBy),
         )
         .where(where)
-        .orderBy(desc(qualityInspections.createdAt))
+        .orderBy(desc(qualityInspections.inspectionNo))
         .limit(reqDto.limit)
         .offset(reqDto.offset),
       this.db.select({ total: count() }).from(qualityInspections).where(where),
@@ -267,7 +267,7 @@ export class IqcService {
       .leftJoin(clients, eq(clients.id, qualityInspections.clientId))
       .leftJoin(creatorUsers, eq(creatorUsers.id, qualityInspections.createdBy))
       .where(where)
-      .orderBy(desc(qualityInspections.createdAt))
+      .orderBy(desc(qualityInspections.inspectionNo))
       .limit(IqcService.MAX_EXPORT_ROWS);
 
     const buffer = await buildXlsxBuffer('IQC', IQC_EXPORT_COLUMNS, rows);

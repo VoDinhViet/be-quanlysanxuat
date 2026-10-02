@@ -7,7 +7,7 @@ import {
   StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
-import { ItemRefResDto } from '../../items/dto/item-ref.res.dto';
+import { ItemImageRefResDto } from '../../items/dto/item-image-ref.res.dto';
 
 @Exclude()
 export class PageInventoryReceiptItemResDto {
@@ -16,8 +16,8 @@ export class PageInventoryReceiptItemResDto {
   id!: string;
 
   @Expose()
-  @ClassField(() => ItemRefResDto)
-  item!: ItemRefResDto;
+  @ClassField(() => ItemImageRefResDto)
+  item!: ItemImageRefResDto;
 
   @Expose()
   @NumberField({ description: 'Số lượng' })
