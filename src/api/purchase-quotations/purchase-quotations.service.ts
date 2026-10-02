@@ -54,6 +54,7 @@ import { GetQuotationsReqDto } from './dto/get-quotations.req.dto';
 import { PageQuotationResDto } from './dto/page-quotation.res.dto';
 import { QuotationItemResDto } from './dto/quotation-item.res.dto';
 import { QuotationResDto } from './dto/quotation.res.dto';
+import { CancelQuotationReqDto } from './dto/cancel-quotation.req.dto';
 import { RejectQuotationReqDto } from './dto/reject-quotation.req.dto';
 import { UpdateQuotationReqDto } from './dto/update-quotation.req.dto';
 import { lastPurchaseQuery } from './purchase-quotations.query';
@@ -633,7 +634,13 @@ export class PurchaseQuotationsService {
       .where(eq(purchaseQuotations.id, quotationId));
   }
 
-  async recallQuotation(quotationId: string): Promise<void> {
+  /** Huỷ RFQ đã duyệt (APPROVED → CANCELLED, terminal): xoá PO chờ xác nhận đã sinh và nhả số lượng
+   * đã báo giá cho đề xuất mua. Chặn nếu đã có PO được đặt hàng — cùng điều kiện với `recall`. */
+  async cancelQuotation(
+    quotationId: string,
+    reqDto: CancelQuotationReqDto,
+    userId: string,
+  ): Promise<void> {
     await this.ensureQuotationStatus(
       quotationId,
       PurchaseQuotationStatus.APPROVED,
@@ -647,9 +654,21 @@ export class PurchaseQuotationsService {
       throw new AppException(ErrorCode.E133, HttpStatus.CONFLICT);
     }
 
-    await this.db.transaction((tx) =>
-      this.purchaseOrdersService.revertQuotationToDraft(tx, quotationId),
-    );
+    await this.db.transaction(async (tx) => {
+      await this.purchaseOrdersService.deletePendingOrdersByQuotation(
+        tx,
+        quotationId,
+      );
+      await tx
+        .update(purchaseQuotations)
+        .set({
+          status: PurchaseQuotationStatus.CANCELLED,
+          cancelledBy: userId,
+          cancelledAt: new Date(),
+          cancellationReason: reqDto.reason,
+        })
+        .where(eq(purchaseQuotations.id, quotationId));
+    });
   }
 
   private async createQuotationItems(

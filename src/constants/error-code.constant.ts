@@ -259,7 +259,7 @@ export enum ErrorCode {
   E131 = 'purchase_quotation.error.no_items',
   // Duyệt khi còn dòng vật tư chưa chọn đúng một NCC thắng thầu.
   E132 = 'purchase_quotation.error.supplier_not_selected',
-  // Thu hồi báo giá đã duyệt khi PO do nó sinh ra đã chuyển `ORDERED`.
+  // Huỷ báo giá đã duyệt khi PO do nó sinh ra đã chuyển `ORDERED`.
   E133 = 'purchase_quotation.error.order_already_placed',
   // Xác nhận đặt hàng khi PO chưa có ngày giao dự kiến.
   E134 = 'purchase_order.error.missing_expected_date',

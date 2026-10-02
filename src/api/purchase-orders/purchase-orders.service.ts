@@ -540,7 +540,7 @@ export class PurchaseOrdersService {
   }
 
   /** Sinh PO Chờ xác nhận từ NCC thắng thầu của một RFQ — một NCC nhiều vật tư gộp chung một PO. Bắt
-   * buộc truyền `tx` — chỉ gọi được từ transaction `approve`/`recall` của
+   * buộc truyền `tx` — chỉ gọi được từ transaction `approve`/`cancel` của
    * `PurchaseQuotationsService` (`docs/workflows/rfq-approval.md`). */
   async createPendingOrdersFromQuotation(
     tx: DbTransaction,
@@ -781,7 +781,7 @@ export class PurchaseOrdersService {
   }
 
   /** Đưa RFQ `APPROVED` về `DRAFT`: xoá PO chờ xác nhận còn lại, bỏ chọn NCC thắng thầu. Dùng chung
-   * cho `PurchaseQuotationsService.recallQuotation` và huỷ PO kèm `reopenQuotation` (nằm ở đây vì
+   * cho huỷ PO kèm `reopenQuotation` (nằm ở đây vì
    * `PurchaseQuotationsService` đã phụ thuộc service này, chiều ngược lại sẽ thành vòng). */
   async revertQuotationToDraft(
     tx: DbTransaction,
@@ -1085,9 +1085,9 @@ export class PurchaseOrdersService {
     return total > 0;
   }
 
-  /** Xoá PO Chờ xác nhận sinh từ một RFQ khi `recall` — chỉ xoá `PENDING_CONFIRMATION`, gọi sau khi
+  /** Xoá PO Chờ xác nhận sinh từ một RFQ khi huỷ RFQ — chỉ xoá `PENDING_CONFIRMATION`, gọi sau khi
    * `hasOrderedOrdersForQuotation` đã xác nhận không còn PO nào `ORDERED`. Bắt buộc truyền `tx`,
-   * cùng transaction với việc bỏ chọn thắng thầu ở `PurchaseQuotationsService.recallQuotation`. */
+   * cùng transaction với việc đổi trạng thái RFQ ở `PurchaseQuotationsService.cancelQuotation`. */
   async deletePendingOrdersByQuotation(
     tx: DbTransaction,
     quotationId: string,

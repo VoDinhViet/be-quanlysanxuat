@@ -24,6 +24,7 @@ import { GetQuotationsReqDto } from './dto/get-quotations.req.dto';
 import { PageQuotationResDto } from './dto/page-quotation.res.dto';
 import { QuotationItemResDto } from './dto/quotation-item.res.dto';
 import { QuotationResDto } from './dto/quotation.res.dto';
+import { CancelQuotationReqDto } from './dto/cancel-quotation.req.dto';
 import { RejectQuotationReqDto } from './dto/reject-quotation.req.dto';
 import { UpdateQuotationReqDto } from './dto/update-quotation.req.dto';
 import { PurchaseQuotationsService } from './purchase-quotations.service';
@@ -169,17 +170,23 @@ export class PurchaseQuotationsController {
     );
   }
 
-  @Post(':quotationId/recall')
-  @Permissions('purchasing:update')
+  @Post(':quotationId/cancel')
+  @Permissions('purchasing:approve')
   @ApiAuth({
     summary:
-      'Thu hồi RFQ đã duyệt — APPROVED → DRAFT, huỷ PO Draft đã sinh (chặn nếu đã có PO ORDERED)',
+      'Huỷ RFQ đã duyệt — APPROVED → CANCELLED, lý do bắt buộc, xoá PO chờ xác nhận đã sinh (chặn nếu đã có PO ORDERED)',
     statusCode: HttpStatus.NO_CONTENT,
   })
-  recallQuotation(
+  cancelQuotation(
     @UUIDParam('quotationId') quotationId: string,
+    @Body() reqDto: CancelQuotationReqDto,
+    @CurrentUser() payload: JwtPayloadType,
   ): Promise<void> {
-    return this.purchaseQuotationsService.recallQuotation(quotationId);
+    return this.purchaseQuotationsService.cancelQuotation(
+      quotationId,
+      reqDto,
+      payload.userId,
+    );
   }
 
   @Get(':quotationId/related-notes')

@@ -13,7 +13,7 @@ export type PurchaseOrderPendingLine = {
 };
 
 /** Input của `PurchaseOrdersService.createPendingOrdersFromQuotation` — chỉ dựng được từ
- * `PurchaseQuotationsService.approveQuotation`/`recallQuotation`, nơi duy nhất gom dòng thắng thầu
+ * `PurchaseQuotationsService.approveQuotation`, nơi duy nhất gom dòng thắng thầu
  * theo NCC. */
 export type CreatePendingOrdersFromQuotationInput = {
   quotationId: string;
