@@ -463,7 +463,7 @@ export class PurchaseOrdersService {
         items: {
           with: {
             purchaseRequestItem: {
-              with: { purchaseRequest: true, item: { with: { unit: true } } },
+              with: { purchaseRequest: true, item: { with: { unit: true, imageFile: true } } },
             },
           },
         },

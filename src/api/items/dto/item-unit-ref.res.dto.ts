@@ -10,4 +10,5 @@ export class ItemUnitRefResDto extends PickType(ItemResDto, [
   'revision',
   'name',
   'unit',
+  'image',
 ] as const) {}
