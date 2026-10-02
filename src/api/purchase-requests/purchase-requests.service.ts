@@ -50,6 +50,7 @@ import {
   itemStockColumns,
   jobIssueDemandSubquery,
 } from '../inventory/item-stock.query';
+import { CreatePurchaseRequestItemsReqDto } from './dto/create-purchase-request-items.req.dto';
 import { CreatePurchaseRequestItemReqDto } from './dto/create-purchase-request-item.req.dto';
 import { CreatePurchaseRequestReqDto } from './dto/create-purchase-request.req.dto';
 import { GetPurchaseRequestsReqDto } from './dto/get-purchase-requests.req.dto';
@@ -238,6 +239,41 @@ export class PurchaseRequestsService {
     }));
   }
 
+  /** Chỉ vật tư `DIRECT`, không trùng nhau và không trùng dòng đã có (`E287`) — muốn đổi SL thì sửa
+   * dòng hiện có. Cùng cửa `DRAFT`/`REJECTED` với sửa/xoá dòng. */
+  async createPurchaseRequestItems(
+    purchaseRequestId: string,
+    reqDto: CreatePurchaseRequestItemsReqDto,
+  ): Promise<void> {
+    await this.ensureRequestItemsValid(reqDto.items);
+
+    await this.db.transaction(async (tx) => {
+      await this.ensurePurchaseRequestEditable(tx, purchaseRequestId);
+
+      const existing = await tx.query.purchaseRequestItems.findMany({
+        columns: { itemId: true },
+        where: and(
+          eq(purchaseRequestItems.purchaseRequestId, purchaseRequestId),
+          inArray(
+            purchaseRequestItems.itemId,
+            reqDto.items.map((item) => item.itemId),
+          ),
+        ),
+      });
+
+      if (existing.length) {
+        throw new AppException(ErrorCode.E287, HttpStatus.CONFLICT);
+      }
+
+      await tx.insert(purchaseRequestItems).values(
+        reqDto.items.map((item) => ({
+          ...item,
+          purchaseRequestId,
+        })),
+      );
+    });
+  }
+
   async updatePurchaseRequestItem(
     purchaseRequestId: string,
     purchaseRequestItemId: string,
@@ -376,7 +412,6 @@ export class PurchaseRequestsService {
       }
     });
   }
-
 
   /** Một `delete` chạm 3 bảng: dòng vật tư theo `ON DELETE CASCADE`, phiếu nhập kho chỉ bị bỏ
    * trống `purchaseRequestId` (`set null`) — mất trace, có chủ ý. Xem

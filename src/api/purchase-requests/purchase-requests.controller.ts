@@ -18,6 +18,7 @@ import { Permissions } from '../../decorators/permissions.decorator';
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
 import { PurchaseChainNotesResDto } from '../purchase-notes/dto/purchase-chain-notes.res.dto';
 import { PurchaseNotesService } from '../purchase-notes/purchase-notes.service';
+import { CreatePurchaseRequestItemsReqDto } from './dto/create-purchase-request-items.req.dto';
 import { CreatePurchaseRequestReqDto } from './dto/create-purchase-request.req.dto';
 import { GetPurchaseRequestsReqDto } from './dto/get-purchase-requests.req.dto';
 import { PagePurchaseRequestResDto } from './dto/page-purchase-request.res.dto';
@@ -144,6 +145,23 @@ export class PurchaseRequestsController {
     );
   }
 
+  @Post(':purchaseRequestId/items')
+  @Permissions('purchase-requests:update')
+  @ApiAuth({
+    summary:
+      'Thêm dòng vật tư vào đề xuất — chỉ khi DRAFT/REJECTED (REJECTED tự về DRAFT), chỉ vật tư DIRECT, không trùng dòng đã có',
+    statusCode: HttpStatus.NO_CONTENT,
+  })
+  createPurchaseRequestItems(
+    @UUIDParam('purchaseRequestId') purchaseRequestId: string,
+    @Body() reqDto: CreatePurchaseRequestItemsReqDto,
+  ): Promise<void> {
+    return this.purchaseRequestsService.createPurchaseRequestItems(
+      purchaseRequestId,
+      reqDto,
+    );
+  }
+
   @Patch(':purchaseRequestId/items/:purchaseRequestItemId')
   @Permissions('purchase-requests:update')
   @ApiAuth({
@@ -200,7 +218,6 @@ export class PurchaseRequestsController {
       payload.userId,
     );
   }
-
 
   @Patch(':purchaseRequestId/note')
   @Permissions('purchase-requests:update')

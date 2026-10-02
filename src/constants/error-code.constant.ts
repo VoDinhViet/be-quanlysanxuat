@@ -651,6 +651,8 @@ export enum ErrorCode {
   E285 = 'purchase_order.error.has_unposted_receipts',
   // Đóng sớm PO không có gì để đóng: chưa nhận gì (dùng Huỷ) hoặc đã nhận đủ mọi dòng.
   E286 = 'purchase_order.error.nothing_to_close',
+  // Thêm vật tư vào đề xuất mua hàng đã có dòng vật tư đó — muốn đổi số lượng thì sửa dòng hiện có.
+  E287 = 'purchase_request.error.item_already_in_request',
   V003 = 'common.error.too_many_requests',
   // `GlobalExceptionFilter` bắt chuỗi "No values to set" của drizzle-orm — mọi `PATCH` khi
   // `ValidationPipe` whitelist đã loại sạch field lạ, còn lại payload rỗng cho `.set()`. Trước đây

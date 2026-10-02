@@ -54,6 +54,7 @@ stateDiagram-v2
 | `POST .../send` | `purchase-requests:update` | `DRAFT → PENDING_APPROVAL`. |
 | `POST .../approve` | `purchase-requests:approve` | `PENDING_APPROVAL → APPROVED`. `E116` nếu sai trạng thái. |
 | `POST .../reject` | `purchase-requests:approve` | `PENDING_APPROVAL → REJECTED`, lý do bắt buộc. |
+| `POST .../items` | `purchase-requests:update` | Thêm dòng vật tư vào phiếu có sẵn. Chỉ `DRAFT`/`REJECTED` (`E114`, `REJECTED` tự về `DRAFT`); cùng luật `E146`/`E147`/`E148` như lập tay, và không trùng vật tư đã có trong phiếu (`E287`). |
 | `PATCH .../items/:itemId`, `DELETE .../items/:itemId` | `purchase-requests:update` | Chỉ `DRAFT`/`REJECTED` (`E114`); `REJECTED` tự về `DRAFT`. Xoá phải còn ≥ 1 dòng (`E115`). |
 | `PATCH .../items/:itemId/purchasable` | `purchase-requests:update` | Đánh dấu mua/không mua một dòng **sau khi duyệt**. Không mua bị chặn (`E125`) nếu dòng còn nằm trong PO chưa huỷ. |
 | `PATCH .../note` | `purchase-requests:update` | Sửa ghi chú chung, ở mọi trạng thái. |
