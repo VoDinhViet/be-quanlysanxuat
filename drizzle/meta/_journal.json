@@ -1541,6 +1541,13 @@
       "when": 1790934976271,
       "tag": "0219_faithful_shooting_star",
       "breakpoints": true
+    },
+    {
+      "idx": 220,
+      "version": "7",
+      "when": 1790936026214,
+      "tag": "0220_backfill_from_stock_qty",
+      "breakpoints": true
     }
   ]
 }
