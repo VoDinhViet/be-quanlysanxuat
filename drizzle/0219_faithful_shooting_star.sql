@@ -1,0 +1,1 @@
+ALTER TABLE "purchase_request_items" ADD COLUMN "from_stock_qty" numeric(18, 3) DEFAULT 0 NOT NULL;
