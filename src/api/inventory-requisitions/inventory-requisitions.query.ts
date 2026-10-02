@@ -1,4 +1,4 @@
-import { and, eq, inArray, ne, sql } from 'drizzle-orm';
+import { and, eq, inArray, ne, notInArray, sql } from 'drizzle-orm';
 
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
@@ -45,7 +45,12 @@ export function reservedQuantitySubquery(db: Database) {
  * phần này mới trùng với `remainingBomDemandByItemSubquery` (nguồn `production_job_issues`) nên
  * mới được trừ chéo ở `InventoryService.getInventory`; phiếu `type = OTHER` không có Job nên không
  * có nhu cầu BOM đối ứng để trùng, trộn chung vào `heldQuantity` rồi trừ chéo sẽ trừ nhầm phần
- * chưa từng bị cộng trùng. Xem `docs/domains/inventory.md`. */
+ * chưa từng bị cộng trùng. Xem `docs/domains/inventory.md`.
+ *
+ * Phần giữ của Job `COMPLETED` cũng KHÔNG tính vào `heldForJobsQuantity`: nhu cầu BOM của Job đã
+ * hoàn tất đã bị loại khỏi `remainingBomDemandByItemSubquery`, nên phiếu APPROVED còn treo của nó
+ * không còn nhu cầu đối ứng để trừ chéo — trừ chéo vẫn sẽ làm tụt nhu cầu của Job khác. Phiếu đó
+ * vẫn nằm trong `heldQuantity` (giữ tồn thật) cho tới khi lãnh hoặc huỷ. */
 export function requisitionHeldQuantityByItemSubquery(db: Database) {
   return db
     .select({
@@ -54,7 +59,7 @@ export function requisitionHeldQuantityByItemSubquery(db: Database) {
         .mapWith(Number)
         .as('requisition_held_quantity_by_item'),
       heldForJobsQuantity:
-        sql<number>`sum(${inventoryRequisitionItems.quantity}) filter (where ${inventoryRequisitions.productionJobId} is not null)`
+        sql<number>`sum(${inventoryRequisitionItems.quantity}) filter (where ${inventoryRequisitions.productionJobId} is not null and ${productionJobs.status} is distinct from ${ProductionJobStatus.COMPLETED})`
           .mapWith(Number)
           .as('requisition_held_for_jobs_quantity_by_item'),
     })
@@ -62,6 +67,10 @@ export function requisitionHeldQuantityByItemSubquery(db: Database) {
     .innerJoin(
       inventoryRequisitions,
       eq(inventoryRequisitions.id, inventoryRequisitionItems.requisitionId),
+    )
+    .leftJoin(
+      productionJobs,
+      eq(productionJobs.id, inventoryRequisitions.productionJobId),
     )
     .where(eq(inventoryRequisitions.status, HOLDING_STATUS))
     .groupBy(inventoryRequisitionItems.itemId)
@@ -164,11 +173,12 @@ export async function getIssuedQuantities(
 
 /** Nhu cầu BOM còn lại theo `itemId`, KHÔNG scope theo Job: `Σ max(requiredQty − Đã lãnh, 0)` cộng
  * dồn mọi Job đang mở — đầu vào để `InventoryDirectsService` tính tồn khả dụng (cố ý có thể âm, chỉ
- * báo thiếu, không chặn thao tác nào, khác "Có thể lãnh"). Trừ phần **còn lại** (không phải nguyên `requiredQty`) vì Job không có trạng
- * thái kết thúc (`docs/domains/production.md`) — trừ nguyên `requiredQty` mãi mãi sẽ làm số càng
- * lúc càng âm sai dù Job đã lãnh xong. Xem `docs/domains/inventory.md`, mục "Phiếu lãnh vật tư".
- * `excludeJobId` bỏ nhu cầu của đúng một Job — dùng khi đo tồn khả dụng *trước* Job đó (lúc start).
- * Job `PENDING` (đã có snapshot nhưng chưa "Xác nhận kế hoạch") không giữ chỗ vật tư. */
+ * báo thiếu, không chặn thao tác nào, khác "Có thể lãnh"). Trừ phần **còn lại** (không phải nguyên
+ * `requiredQty`) để số không âm sai khi Job đã lãnh xong. Xem `docs/domains/inventory.md`, mục
+ * "Phiếu lãnh vật tư". `excludeJobId` bỏ nhu cầu của đúng một Job — dùng khi đo tồn khả dụng
+ * *trước* Job đó (lúc start). Job `PENDING` (đã có snapshot nhưng chưa "Xác nhận kế hoạch") chưa
+ * giữ chỗ vật tư; Job `COMPLETED` (nhập kho thành phẩm đủ) thì thôi giữ chỗ — phần vật tư chưa lãnh
+ * của nó tự được nhả, không còn trừ vào tồn khả dụng. */
 export function remainingBomDemandByItemSubquery(
   db: Database,
   excludeJobId?: string,
@@ -197,7 +207,10 @@ export function remainingBomDemandByItemSubquery(
     )
     .where(
       and(
-        ne(productionJobs.status, ProductionJobStatus.PENDING),
+        notInArray(productionJobs.status, [
+          ProductionJobStatus.PENDING,
+          ProductionJobStatus.COMPLETED,
+        ]),
         excludeJobId
           ? ne(productionJobIssues.productionJobId, excludeJobId)
           : undefined,
