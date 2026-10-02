@@ -119,7 +119,7 @@ stateDiagram-v2
 
 ### Huỷ PO
 
-`POST /purchase-orders/:id/cancel`, body `{ reason, reopenQuotation? }`. Hợp lệ từ `PENDING_CONFIRMATION` lẫn `ORDERED`; đã `CANCELLED` thì `E122`; đã có phiếu nhập `POSTED` thì `E124` (hàng đã vào kho, muốn đảo thì huỷ phiếu nhập hoặc trả hàng NCC trước). Mọi việc dưới đây chạy trong **một transaction**:
+`POST /purchase-orders/:id/cancel`, body `{ reason, reopenQuotation? }`. Hợp lệ từ `PENDING_CONFIRMATION` lẫn `ORDERED`; đã `CANCELLED` thì `E122`; đã có phiếu nhập `POSTED` thì `E124` (hàng đã vào kho; phiếu đã ghi sổ không huỷ được nên dùng đóng sớm hoặc phiếu trả NCC). Mọi việc dưới đây chạy trong **một transaction**:
 
 1. Huỷ yêu cầu thanh toán của PO nếu còn `PENDING`; đã `PAID` thì `E284`.
 2. Huỷ các phiếu nhập `DRAFT` của PO. Phiếu ở `PENDING_RECEIPT`, `PENDING_IQC`, `IQC_COMPLETED` giữ nguyên nhưng không còn xác nhận hoặc ghi sổ được (`E145`).
@@ -143,7 +143,7 @@ Vì SL dòng được hạ về số đã nhận nên mọi nơi tính theo SL �
 
 ## Phiếu nhập kho và yêu cầu thanh toán
 
-Phiếu nhập thuộc nhóm inventory; ở đây chỉ nêu phần nối vào mua hàng. Phiếu nhập gắn PO chỉ tạo/sửa được khi PO đang `ORDERED` (`E145`), SL nhận cộng dồn các phiếu đã xác nhận không vượt SL đặt của dòng (`E154`). `confirm` và `post` kiểm lại PO còn `ORDERED`. Huỷ phiếu đã ghi sổ thì đảo bút toán kho và **huỷ YCTT của PO** nếu còn `PENDING` (đã `PAID` thì `E284` và việc huỷ phiếu bị hoàn tác).
+Phiếu nhập thuộc nhóm inventory; ở đây chỉ nêu phần nối vào mua hàng. Phiếu nhập gắn PO chỉ tạo/sửa được khi PO đang `ORDERED` (`E145`), SL nhận cộng dồn các phiếu đã xác nhận không vượt SL đặt của dòng (`E154`). `confirm` và `post` kiểm lại PO còn `ORDERED`. **Phiếu đã ghi sổ (`POSTED`) không huỷ được** (`E289`): ghi sổ xong phiếu bất biến, muốn đảo hàng đã nhập thì dùng phiếu trả NCC. Huỷ phiếu chưa ghi sổ thì **huỷ luôn các phiếu IQC sinh từ phiếu** (chuyển `CANCELLED`, giữ lại để truy vết, không xác nhận hay sửa được nữa: `E288`) và các phiếu trả NCC nháp của phiếu; đã có phiếu trả NCC `POSTED` thì `E290`.
 
 ### Yêu cầu thanh toán (YCTT) — `/payment-requests`
 
@@ -155,7 +155,7 @@ Tự sinh khi ghi sổ một phiếu nhập làm PO **nhận đủ** (`createIfO
 stateDiagram-v2
   [*] --> PENDING: PO nhận đủ / đóng sớm
   PENDING --> PAID: mark-paid
-  PENDING --> CANCELLED: cancel / huỷ phiếu nhập / huỷ PO
+  PENDING --> CANCELLED: cancel / huỷ PO
   CANCELLED --> PENDING: PO nhận đủ lại
 ```
 
@@ -205,9 +205,9 @@ Trong đó: *đã đặt* = Σ SL dòng của PO `ORDERED` (PO chờ xác nhận
 | Nhập sai giá khi PO đã `ORDERED`, chưa nhập hàng | Huỷ PO với `reopenQuotation: true`, sửa giá ở RFQ (đang `DRAFT`), gửi duyệt và duyệt lại | PO cũ `CANCELLED` (giữ lịch sử), PO mới sinh với giá đúng. |
 | Không mua nữa (chưa nhập hàng) | Huỷ PO, không bật `reopenQuotation` | RFQ cũng `CANCELLED` nếu không còn PO hoạt động; dòng đề xuất về "Chờ mua", có thể đánh dấu không mua hoặc lập RFQ mới. |
 | PO nhận một phần, phần còn lại không về nữa | `POST .../close` | SL dòng hạ về số nhận, PO hoàn tất, YCTT theo số nhận; phần thiếu mua riêng bằng RFQ mới. |
-| Muốn huỷ PO đã có phiếu nhập ghi sổ | Huỷ phiếu nhập (hoặc trả hàng NCC) trước | Huỷ phiếu đảo kho và huỷ YCTT chờ; sau đó huỷ PO được. |
-| Huỷ phiếu nhập đã ghi sổ rồi nhận lại đủ hàng | Tạo và ghi sổ phiếu mới | YCTT bị huỷ tự hồi sinh. |
-| YCTT đã thanh toán mà muốn huỷ phiếu nhập hoặc PO | Không làm được | `E284`; cần xử lý thanh toán ngoài hệ thống trước. |
+| Muốn huỷ PO đã có phiếu nhập ghi sổ | Không huỷ được (`E124`, phiếu ghi sổ cũng không huỷ được) | Dùng **đóng sớm** để chốt phần đã nhập, hoặc phiếu trả NCC để đảo hàng. |
+| Huỷ phiếu nhập đang chờ nhận hoặc chờ IQC | Huỷ phiếu nhập | Phiếu `CANCELLED`, các phiếu IQC của phiếu chuyển "Đã huỷ", phiếu trả NCC nháp huỷ theo; chưa chạm kho. |
+| YCTT đã thanh toán mà muốn huỷ PO | Không làm được | `E284`; cần xử lý thanh toán ngoài hệ thống trước. |
 | RFQ đã duyệt, muốn đổi NCC thắng | `POST .../recall` rồi duyệt lại | Chặn nếu đã có PO `ORDERED` (`E133`); khi đó huỷ các PO đó (kèm `reopenQuotation`) hoặc lập RFQ mới. |
 
 ## Ma trận hệ quả chéo
@@ -221,7 +221,7 @@ Mỗi cột là ảnh hưởng lên chứng từ đó (— là không đổi).
 | Huỷ PO, `reopenQuotation` | `DRAFT` | PO `CANCELLED`, xoá PO chờ khác | `DRAFT` huỷ theo | `PENDING` huỷ theo | Vẫn đã báo giá |
 | Huỷ PO, không mua nữa | `CANCELLED` nếu hết PO hoạt động | PO `CANCELLED` | `DRAFT` huỷ theo | `PENDING` huỷ theo | Về "Chờ mua" nếu RFQ huỷ |
 | Đóng sớm PO | — | SL hạ về số nhận, hoàn tất | Yêu cầu không còn phiếu chưa ghi sổ | Sinh theo số nhận | Đã đặt = số nhận |
-| Huỷ phiếu nhập đã ghi sổ | — | Tiến độ lùi về `RECEIVING`/`ORDERED` | `CANCELLED`, đảo kho | `PENDING` huỷ (chặn nếu `PAID`) | Đã nhận giảm |
+| Huỷ phiếu nhập chưa ghi sổ | — | — | `CANCELLED`, IQC và phiếu trả NCC nháp huỷ theo | — | — |
 | Ghi sổ phiếu làm PO đủ hàng | — | `COMPLETED` | `POSTED` | Sinh hoặc hồi sinh | `COMPLETED` |
 
 ## Ghi chú (chỗ code chưa khớp nhau, chưa sửa)
@@ -263,6 +263,9 @@ Mỗi cột là ảnh hưởng lên chứng từ đó (— là không đổi).
 | E154 | 400 | SL nhận vượt SL đặt của dòng PO |
 | E157 | 404 | Không thấy YCTT |
 | E158 | 409 | YCTT sai trạng thái cho `mark-paid`/`cancel` |
-| E284 | 409 | Huỷ phiếu nhập hoặc PO khi YCTT đã `PAID` |
+| E284 | 409 | Huỷ PO khi YCTT đã `PAID` |
 | E285 | 409 | Đóng sớm PO khi còn phiếu nhập chưa ghi sổ |
 | E286 | 400 | Đóng sớm PO không có gì để đóng (chưa nhận gì hoặc đã nhận đủ) |
+| E288 | 409 | Xác nhận hoặc sửa phiếu IQC đã huỷ (phiếu nhập nguồn đã bị huỷ) |
+| E289 | 409 | Huỷ phiếu nhập đã ghi sổ |
+| E290 | 409 | Huỷ phiếu nhập khi một phiếu trả NCC của phiếu đã `POSTED` |

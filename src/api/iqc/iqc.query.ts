@@ -65,6 +65,7 @@ export async function areReceiptIqcInspectionsCompleted(
           QualityInspectionOriginType.INVENTORY_RECEIPT,
         ),
         eq(qualityInspections.originId, receiptId),
+        ne(qualityInspections.status, QualityInspectionStatus.CANCELLED),
       ),
     );
 

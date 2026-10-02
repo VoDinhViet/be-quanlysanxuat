@@ -12,8 +12,7 @@ export const qualityInspectionTypeEnum = pgEnum('quality_inspection_type', [
 
 // `IN_PROGRESS` gộp 2 giá trị cũ `WAITING_RETURN`(IQC)/`REWORK`(OQC) — DB không còn tự phân biệt
 // được IQC đang WAITING_RETURN với OQC đang REWORK (mất so với `qc_status` cũ), chốt này chuyển
-// xuống service. `CANCELLED` để dành, chưa có đường ghi — chặn bằng
-// `chk_quality_inspections_status_in_use`.
+// xuống service. `CANCELLED` chỉ ghi từ `cancelReceiptInspections` khi phiếu nhập nguồn bị huỷ.
 export enum QualityInspectionStatus {
   DRAFT = 'DRAFT',
   PENDING = 'PENDING',

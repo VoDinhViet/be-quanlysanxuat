@@ -24,7 +24,6 @@ import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
-import { vnToday } from '../../database/vn-date.util';
 import {
   clients,
   InventoryDocumentStatus,
@@ -64,6 +63,7 @@ import type { InventoryPostingLine } from '../inventory/inventory-posting.servic
 import { InventoryPostingService } from '../inventory/inventory-posting.service';
 import { availableQuantityByItemSubquery } from '../inventory/available-quantity.query';
 import { areReceiptIqcInspectionsCompleted } from '../iqc/iqc.query';
+import { cancelReceiptInspections } from '../iqc/iqc.write';
 import { IqcService } from '../iqc/iqc.service';
 import { getJobQcCoverage } from '../oqc/oqc.query';
 import { PaymentRequestsService } from '../payment-requests/payment-requests.service';
@@ -708,12 +708,10 @@ export class InventoryReceiptsService {
     return lines;
   }
 
-  /** `DRAFT`/`POSTED → CANCELLED`. Từ `POSTED` thì đảo bút toán trước khi đổi trạng thái — xem
-   * `InventoryPostingService.reverseDocument`. */
-  async cancelInventoryReceipt(
-    receiptId: string,
-    userId: string,
-  ): Promise<void> {
+  /** Phiếu chưa ghi sổ → `CANCELLED`, kéo theo huỷ các phiếu IQC (và phiếu trả NCC nháp) sinh từ
+   * phiếu này. Phiếu `POSTED` không huỷ được (`E289`) — muốn đảo hàng đã nhập thì dùng phiếu trả
+   * NCC. Phiếu chưa ghi sổ chưa chạm kho nên không có bút toán nào để đảo. */
+  async cancelInventoryReceipt(receiptId: string): Promise<void> {
     await this.db.transaction(async (tx) => {
       const inventoryReceipt = await this.getInventoryReceiptForUpdate(
         tx,
@@ -724,25 +722,12 @@ export class InventoryReceiptsService {
         throw new AppException(ErrorCode.E098, HttpStatus.CONFLICT);
       }
 
+      // Ghi sổ xong phiếu bất biến; muốn đảo hàng đã nhập thì dùng phiếu trả NCC.
       if (inventoryReceipt.status === InventoryDocumentStatus.POSTED) {
-        await this.inventoryPostingService.reverseDocument(tx, {
-          referenceType: InventoryReferenceType.INVENTORY_RECEIPT,
-          referenceId: receiptId,
-          transactionDate: vnToday(),
-          createdBy: userId,
-        });
-
-        // Phiếu đã ghi sổ bị huỷ thì PO không còn nhận đủ hàng → yêu cầu thanh toán sinh từ đó cũng huỷ
-        // (đã `PAID` thì `E284` chặn, rollback cả việc huỷ phiếu). Nhận lại đủ hàng sẽ sinh lại.
-        if (inventoryReceipt.purchaseOrderId) {
-          await this.paymentRequestsService.cancelForOrder(
-            tx,
-            inventoryReceipt.purchaseOrderId,
-            userId,
-            `Phiếu nhập ${inventoryReceipt.code} bị huỷ`,
-          );
-        }
+        throw new AppException(ErrorCode.E289, HttpStatus.CONFLICT);
       }
+
+      await cancelReceiptInspections(tx, receiptId);
 
       await tx
         .update(inventoryReceipts)

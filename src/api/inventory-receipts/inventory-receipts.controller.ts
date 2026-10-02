@@ -142,17 +142,13 @@ export class InventoryReceiptsController {
   @Permissions('inventory:update')
   @ApiAuth({
     summary:
-      'Cancel a receipt — from DRAFT just voids it; from POSTED reverses its transactions first',
+      'Huỷ phiếu nhập chưa ghi sổ — huỷ luôn các phiếu IQC sinh từ phiếu; phiếu đã ghi sổ không huỷ được (E289)',
     statusCode: HttpStatus.NO_CONTENT,
   })
   cancelInventoryReceipt(
     @UUIDParam('receiptId') receiptId: string,
-    @CurrentUser() payload: JwtPayloadType,
   ): Promise<void> {
-    return this.inventoryReceiptsService.cancelInventoryReceipt(
-      receiptId,
-      payload.userId,
-    );
+    return this.inventoryReceiptsService.cancelInventoryReceipt(receiptId);
   }
 
   @Get(':receiptId/export-pdf')

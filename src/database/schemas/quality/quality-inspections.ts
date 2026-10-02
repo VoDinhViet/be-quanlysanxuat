@@ -208,10 +208,6 @@ export const qualityInspections = pgTable(
       'chk_quality_inspections_oqc_job',
       sql`inspection_type <> 'OQC' OR (production_job_id IS NOT NULL AND production_job_operation_id IS NOT NULL)`,
     ),
-    // Yếu hơn `chk_qc_requests_status_by_kind` cũ — IQC/OQC dùng chung 1 tập giá trị `status` sau
-    // khi gộp WAITING_RETURN/REWORK thành IN_PROGRESS, DB không còn tự phân biệt được 2 kind ở cột
-    // này; chỉ còn chặn giá trị CANCELLED để dành. Phân biệt IQC-không-bao-giờ-REWORK giữ ở service.
-    check('chk_quality_inspections_status_in_use', sql`status <> 'CANCELLED'`),
     check(
       'chk_quality_inspections_decision_in_use',
       sql`decision IS NULL OR decision IN ('PASS','FAIL')`,

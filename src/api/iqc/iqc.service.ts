@@ -282,7 +282,12 @@ export class IqcService {
   async getIqcStats(): Promise<IqcStatsResDto> {
     const [row] = await this.db
       .select({
-        total: count(),
+        total: count(
+          sql`case when ${qualityInspections.status} <> ${QualityInspectionStatus.CANCELLED} then 1 end`,
+        ),
+        cancelled: count(
+          sql`case when ${qualityInspections.status} = ${QualityInspectionStatus.CANCELLED} then 1 end`,
+        ),
         notInspected: count(
           sql`case when ${qualityInspections.status} = ${QualityInspectionStatus.DRAFT} then 1 end`,
         ),
@@ -729,6 +734,9 @@ export class IqcService {
         .where(eq(qualityInspections.id, iqcId))
         .for('update');
 
+      if (locked?.status === QualityInspectionStatus.CANCELLED) {
+        throw new AppException(ErrorCode.E288, HttpStatus.CONFLICT);
+      }
       if (!locked || locked.status === QualityInspectionStatus.IN_PROGRESS) {
         throw new AppException(ErrorCode.E159, HttpStatus.CONFLICT);
       }
@@ -945,6 +953,9 @@ export class IqcService {
       throw new AppException(ErrorCode.E138, HttpStatus.NOT_FOUND);
     }
 
+    if (inspection.status === QualityInspectionStatus.CANCELLED) {
+      throw new AppException(ErrorCode.E288, HttpStatus.CONFLICT);
+    }
     if (inspection.status === QualityInspectionStatus.IN_PROGRESS) {
       throw new AppException(ErrorCode.E159, HttpStatus.CONFLICT);
     }
@@ -1007,6 +1018,9 @@ export class IqcService {
       throw new AppException(ErrorCode.E138, HttpStatus.NOT_FOUND);
     }
 
+    if (inspection.status === QualityInspectionStatus.CANCELLED) {
+      throw new AppException(ErrorCode.E288, HttpStatus.CONFLICT);
+    }
     if (inspection.status === QualityInspectionStatus.DRAFT) {
       throw new AppException(ErrorCode.E144, HttpStatus.CONFLICT);
     }

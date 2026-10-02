@@ -5,7 +5,10 @@ import { NumberField } from '../../../decorators/field.decorators';
 @Exclude()
 export class IqcStatsResDto {
   @Expose()
-  @NumberField({ int: true, description: 'Tổng số phiếu IQC' })
+  @NumberField({
+    int: true,
+    description: 'Tổng số phiếu IQC (không tính phiếu đã huỷ)',
+  })
   total!: number;
 
   @Expose()
@@ -31,4 +34,8 @@ export class IqcStatsResDto {
   @Expose()
   @NumberField({ int: true, description: 'Hoàn thành' })
   completed!: number;
+
+  @Expose()
+  @NumberField({ int: true, description: 'Đã huỷ (phiếu nhập nguồn bị huỷ)' })
+  cancelled!: number;
 }

@@ -651,6 +651,12 @@ export enum ErrorCode {
   E285 = 'purchase_order.error.has_unposted_receipts',
   // Đóng sớm PO không có gì để đóng: chưa nhận gì (dùng Huỷ) hoặc đã nhận đủ mọi dòng.
   E286 = 'purchase_order.error.nothing_to_close',
+  // Thao tác (xác nhận/sửa) trên phiếu IQC đã huỷ — phiếu nhập nguồn đã bị huỷ.
+  E288 = 'iqc.error.cancelled',
+  // Huỷ phiếu nhập đã ghi sổ (`POSTED`) — phiếu bất biến sau ghi sổ, muốn đảo thì dùng phiếu trả NCC.
+  E289 = 'inventory_receipt.error.posted_not_cancellable',
+  // Huỷ phiếu nhập khi một phiếu trả NCC sinh từ phiếu này đã `POSTED`.
+  E290 = 'inventory_receipt.error.has_posted_supplier_returns',
   // Thêm vật tư vào đề xuất mua hàng đã có dòng vật tư đó — muốn đổi số lượng thì sửa dòng hiện có.
   E287 = 'purchase_request.error.item_already_in_request',
   V003 = 'common.error.too_many_requests',

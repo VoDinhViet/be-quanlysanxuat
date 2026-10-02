@@ -4,11 +4,14 @@ import { and, eq } from 'drizzle-orm';
 import { ErrorCode } from '../../constants/error-code.constant';
 import type { DbTransaction } from '../../database/database.type';
 import {
+  InventoryDocumentStatus,
   QualityEvidenceKind,
   qualityInspectionEvidences,
+  QualityInspectionOriginType,
   QualityInspectionStatus,
   QualityInspectionType,
   qualityInspections,
+  supplierReturns,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { syncReceiptIqcStatus } from '../inventory-receipts/inventory-receipts.write';
@@ -86,4 +89,51 @@ export async function linkQcFiles(
       kind,
     })),
   );
+}
+
+/** Huỷ mọi phiếu IQC (và phiếu trả NCC nháp) sinh từ một phiếu nhập kho khi phiếu đó bị huỷ — gọi
+ *  bởi `InventoryReceiptsService.cancelInventoryReceipt` trong CÙNG transaction. Phiếu trả NCC đã
+ *  `POSTED` thì chặn (`E290`): hàng đã xuất trả NCC, không tự đảo được. IQC giữ lại ở trạng thái
+ *  `CANCELLED` để truy vết. Plain function nhận `tx`, cùng lý do `completeIqcAfterSupplierReturn`. */
+export async function cancelReceiptInspections(
+  tx: DbTransaction,
+  receiptId: string,
+): Promise<void> {
+  const [postedReturn] = await tx
+    .select({ id: supplierReturns.id })
+    .from(supplierReturns)
+    .where(
+      and(
+        eq(supplierReturns.inventoryReceiptId, receiptId),
+        eq(supplierReturns.status, InventoryDocumentStatus.POSTED),
+      ),
+    )
+    .limit(1);
+  if (postedReturn) {
+    throw new AppException(ErrorCode.E290, HttpStatus.CONFLICT);
+  }
+
+  await tx
+    .update(supplierReturns)
+    .set({ status: InventoryDocumentStatus.CANCELLED })
+    .where(
+      and(
+        eq(supplierReturns.inventoryReceiptId, receiptId),
+        eq(supplierReturns.status, InventoryDocumentStatus.DRAFT),
+      ),
+    );
+
+  await tx
+    .update(qualityInspections)
+    .set({ status: QualityInspectionStatus.CANCELLED })
+    .where(
+      and(
+        eq(qualityInspections.inspectionType, QualityInspectionType.IQC),
+        eq(
+          qualityInspections.originType,
+          QualityInspectionOriginType.INVENTORY_RECEIPT,
+        ),
+        eq(qualityInspections.originId, receiptId),
+      ),
+    );
 }

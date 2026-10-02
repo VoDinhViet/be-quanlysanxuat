@@ -1,0 +1,1 @@
+ALTER TABLE "quality_inspections" DROP CONSTRAINT "chk_quality_inspections_status_in_use";
