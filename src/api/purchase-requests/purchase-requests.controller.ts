@@ -26,6 +26,7 @@ import { PurchaseRequestResDto } from './dto/purchase-request.res.dto';
 import { RejectPurchaseRequestReqDto } from './dto/reject-purchase-request.req.dto';
 import { UpdatePurchaseRequestItemReqDto } from './dto/update-purchase-request-item.req.dto';
 import { UpdatePurchaseRequestItemPurchasableReqDto } from './dto/update-purchase-request-item-purchasable.req.dto';
+import { UpdatePurchaseRequestNeededDateReqDto } from './dto/update-purchase-request-needed-date.req.dto';
 import { UpdatePurchaseRequestNoteReqDto } from './dto/update-purchase-request-note.req.dto';
 import { PurchaseRequestsService } from './purchase-requests.service';
 
@@ -230,6 +231,23 @@ export class PurchaseRequestsController {
     @Body() reqDto: UpdatePurchaseRequestNoteReqDto,
   ): Promise<void> {
     return this.purchaseRequestsService.updatePurchaseRequestNote(
+      purchaseRequestId,
+      reqDto,
+    );
+  }
+
+  @Patch(':purchaseRequestId/needed-date')
+  @Permissions('purchase-requests:update')
+  @ApiAuth({
+    summary:
+      'Sửa ngày cần của phiếu — chỉ khi Nháp/Bị từ chối (đề xuất tự sinh từ Job mặc định ngày cần = ngày tạo)',
+    statusCode: HttpStatus.NO_CONTENT,
+  })
+  updatePurchaseRequestNeededDate(
+    @UUIDParam('purchaseRequestId') purchaseRequestId: string,
+    @Body() reqDto: UpdatePurchaseRequestNeededDateReqDto,
+  ): Promise<void> {
+    return this.purchaseRequestsService.updatePurchaseRequestNeededDate(
       purchaseRequestId,
       reqDto,
     );

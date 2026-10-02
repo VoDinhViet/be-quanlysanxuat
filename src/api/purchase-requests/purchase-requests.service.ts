@@ -59,6 +59,7 @@ import { PurchaseRequestResDto } from './dto/purchase-request.res.dto';
 import { RejectPurchaseRequestReqDto } from './dto/reject-purchase-request.req.dto';
 import { UpdatePurchaseRequestItemReqDto } from './dto/update-purchase-request-item.req.dto';
 import { UpdatePurchaseRequestItemPurchasableReqDto } from './dto/update-purchase-request-item-purchasable.req.dto';
+import { UpdatePurchaseRequestNeededDateReqDto } from './dto/update-purchase-request-needed-date.req.dto';
 import { UpdatePurchaseRequestNoteReqDto } from './dto/update-purchase-request-note.req.dto';
 import { CreateShortageRequestInput } from './types/shortage-request.type';
 
@@ -441,6 +442,23 @@ export class PurchaseRequestsService {
       .update(purchaseRequests)
       .set({ note: reqDto.note })
       .where(eq(purchaseRequests.id, purchaseRequestId));
+  }
+
+  /** Cùng cửa `DRAFT`/`REJECTED` với sửa dòng vật tư (`ensurePurchaseRequestEditable`, `REJECTED` tự
+   * về `DRAFT`). Cần vì đề xuất tự sinh khi `startJob` luôn có ngày cần = ngày tạo
+   * (`createShortageRequest`) và người dùng không có cách nào đặt lại. */
+  async updatePurchaseRequestNeededDate(
+    purchaseRequestId: string,
+    reqDto: UpdatePurchaseRequestNeededDateReqDto,
+  ): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      await this.ensurePurchaseRequestEditable(tx, purchaseRequestId);
+
+      await tx
+        .update(purchaseRequests)
+        .set({ neededDate: reqDto.neededDate })
+        .where(eq(purchaseRequests.id, purchaseRequestId));
+    });
   }
 
   async sendPurchaseRequest(
