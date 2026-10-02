@@ -811,6 +811,14 @@ export class ProductionJobsService {
    * Trình tự đầy đủ: `docs/workflows/production-job-execution.md`. */
   async startJob(jobId: string, userId: string): Promise<void> {
     await this.db.transaction(async (tx) => {
+      // Tính thiếu đọc nhu cầu của mọi Job đã start, mà Job vừa start chỉ hiện ra sau khi commit —
+      // hai Job start song song sẽ cùng thấy đủ tồn và không ai sinh đề xuất mua. Khoá mức hệ thống
+      // (nhu cầu là tài nguyên dùng chung giữa các Job) để các lần start xếp hàng; khoá tự nhả khi
+      // commit/rollback. Luôn lấy trước khoá hàng Job để mọi đường vào cùng thứ tự, không deadlock.
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(hashtext('production-job-start'))`,
+      );
+
       const job = await this.getProductionJobForUpdate(tx, jobId);
       this.ensureStatus(job.status, [ProductionJobStatus.PENDING]);
 
