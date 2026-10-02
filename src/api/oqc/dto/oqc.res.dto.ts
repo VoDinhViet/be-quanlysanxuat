@@ -17,6 +17,8 @@ import {
   StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
+import { FileField } from '../../files/dto/file.field';
+import { FileResDto } from '../../files/dto/file.res.dto';
 import { ItemRefResDto } from '../../items/dto/item-ref.res.dto';
 import { QcFileResDto } from '../../iqc/dto/qc-file.res.dto';
 import { ProductionJobOperationRefResDto } from '../../production-jobs/dto/production-job-operation-ref.res.dto';
@@ -64,6 +66,10 @@ export class OqcResDto {
   @Expose()
   @ClassField(() => ItemRefResDto)
   item!: ItemRefResDto;
+
+  @Expose()
+  @FileField('imageFile', 'Ảnh sản phẩm / chi tiết')
+  image!: FileResDto | null;
 
   @Expose()
   @StringFieldOptional({

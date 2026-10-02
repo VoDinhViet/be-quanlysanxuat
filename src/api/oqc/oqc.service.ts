@@ -3,6 +3,7 @@ import { plainToInstance } from 'class-transformer';
 import {
   and,
   count,
+  sql,
   desc,
   eq,
   getTableColumns,
@@ -27,6 +28,7 @@ import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
+  files,
   IqcResult,
   items,
   OperationType,
@@ -147,6 +149,7 @@ export class OqcService {
           bomItem: getTableColumns(productionJobBomItems),
           item: getTableColumns(items),
           revision: items.revision,
+          imageFile: getTableColumns(files),
           unit: getTableColumns(units),
         })
         .from(qualityInspections)
@@ -175,6 +178,13 @@ export class OqcService {
         )
         .innerJoin(items, eq(items.id, qualityInspections.itemId))
         .innerJoin(units, eq(units.id, items.unitId))
+        .leftJoin(
+          files,
+          eq(
+            files.id,
+            sql`coalesce(${productionJobBomItems.imageFileId}, ${items.imageFileId})`,
+          ),
+        )
         .where(where)
         .orderBy(desc(qualityInspections.createdAt))
         .limit(reqDto.limit)
@@ -286,6 +296,13 @@ export class OqcService {
       )
       .innerJoin(items, eq(items.id, qualityInspections.itemId))
       .innerJoin(units, eq(units.id, items.unitId))
+      .leftJoin(
+        files,
+        eq(
+          files.id,
+          sql`coalesce(${productionJobBomItems.imageFileId}, ${items.imageFileId})`,
+        ),
+      )
       .leftJoin(creatorUsers, eq(creatorUsers.id, qualityInspections.createdBy))
       .where(where)
       .orderBy(desc(qualityInspections.createdAt))
@@ -325,6 +342,7 @@ export class OqcService {
         bomItem: getTableColumns(productionJobBomItems),
         item: getTableColumns(items),
         revision: items.revision,
+        imageFile: getTableColumns(files),
         unit: getTableColumns(units),
         creatorBy: getTableColumns(creatorUsers),
         confirmerBy: getTableColumns(confirmerUsers),
@@ -356,6 +374,13 @@ export class OqcService {
       )
       .innerJoin(items, eq(items.id, qualityInspections.itemId))
       .innerJoin(units, eq(units.id, items.unitId))
+      .leftJoin(
+        files,
+        eq(
+          files.id,
+          sql`coalesce(${productionJobBomItems.imageFileId}, ${items.imageFileId})`,
+        ),
+      )
       .leftJoin(creatorUsers, eq(creatorUsers.id, qualityInspections.createdBy))
       .leftJoin(
         confirmerUsers,

@@ -18,6 +18,8 @@ import {
 import { ProductionJobOperationRefResDto } from '../../production-jobs/dto/production-job-operation-ref.res.dto';
 import { ProductionJobRefResDto } from '../../production-jobs/dto/production-job-ref.res.dto';
 import { UnitRefResDto } from '../../units/dto/unit-ref.res.dto';
+import { FileField } from '../../files/dto/file.field';
+import { FileResDto } from '../../files/dto/file.res.dto';
 import { ItemRefResDto } from '../../items/dto/item-ref.res.dto';
 import { OqcBomItemResDto } from './oqc.res.dto';
 
@@ -50,6 +52,10 @@ export class PageOqcResDto {
   @Expose()
   @ClassField(() => ItemRefResDto)
   item!: ItemRefResDto;
+
+  @Expose()
+  @FileField('imageFile', 'Ảnh sản phẩm / chi tiết')
+  image!: FileResDto | null;
 
   @Expose()
   @StringFieldOptional({
