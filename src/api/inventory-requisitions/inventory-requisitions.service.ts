@@ -378,7 +378,7 @@ export class InventoryRequisitionsService {
       await tx
         .update(inventoryRequisitions)
         .set({
-          status: InventoryRequisitionStatus.CANCELLED,
+          status: InventoryRequisitionStatus.REJECTED,
           rejectedBy: userId,
           rejectedAt: new Date(),
           rejectionReason: reqDto.reason,
@@ -437,7 +437,7 @@ export class InventoryRequisitionsService {
     return issue.id;
   }
 
-  /** `DRAFT`/`PENDING_APPROVAL`/`APPROVED → CANCELLED`. Từ `APPROVED` luôn kèm 1 PXK `DRAFT`
+  /** `DRAFT`/`PENDING_APPROVAL`/`APPROVED`/`REJECTED → CANCELLED`. Từ `APPROVED` luôn kèm 1 PXK `DRAFT`
    * (`inventoryIssueId`, sinh lúc `approve`) — huỷ theo, nếu không PXK mồ côi đó vẫn `post` được
    * và trừ tồn cho một phiếu lãnh đã huỷ. */
   async cancelInventoryRequisition(requisitionId: string): Promise<void> {
@@ -672,8 +672,18 @@ export class InventoryRequisitionsService {
       throw new AppException(ErrorCode.E223, HttpStatus.NOT_FOUND);
     }
 
-    if (inventoryRequisition.status !== InventoryRequisitionStatus.DRAFT) {
+    if (
+      inventoryRequisition.status !== InventoryRequisitionStatus.DRAFT &&
+      inventoryRequisition.status !== InventoryRequisitionStatus.REJECTED
+    ) {
       throw new AppException(ErrorCode.E224, HttpStatus.CONFLICT);
+    }
+
+    if (inventoryRequisition.status === InventoryRequisitionStatus.REJECTED) {
+      await tx
+        .update(inventoryRequisitions)
+        .set({ status: InventoryRequisitionStatus.DRAFT })
+        .where(eq(inventoryRequisitions.id, requisitionId));
     }
 
     return inventoryRequisition;
@@ -695,7 +705,10 @@ export class InventoryRequisitionsService {
       throw new AppException(ErrorCode.E223, HttpStatus.NOT_FOUND);
     }
 
-    if (inventoryRequisition.status !== InventoryRequisitionStatus.DRAFT) {
+    if (
+      inventoryRequisition.status !== InventoryRequisitionStatus.DRAFT &&
+      inventoryRequisition.status !== InventoryRequisitionStatus.REJECTED
+    ) {
       throw new AppException(ErrorCode.E224, HttpStatus.CONFLICT);
     }
   }

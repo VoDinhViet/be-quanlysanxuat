@@ -182,7 +182,7 @@ export class InventoryRequisitionsController {
   @Permissions('inventory-requisitions:update')
   @ApiAuth({
     summary:
-      'Huỷ — DRAFT/PENDING_APPROVAL/APPROVED → CANCELLED, không đảo được từ ISSUED. Huỷ từ ' +
+      'Huỷ — DRAFT/PENDING_APPROVAL/APPROVED/REJECTED → CANCELLED, không đảo được từ ISSUED. Huỷ từ ' +
       'APPROVED kéo theo huỷ luôn phiếu xuất kho DRAFT đã tự sinh lúc duyệt',
     statusCode: HttpStatus.NO_CONTENT,
   })
