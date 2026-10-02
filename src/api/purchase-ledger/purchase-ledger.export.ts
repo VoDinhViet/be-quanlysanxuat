@@ -10,7 +10,8 @@ export interface PurchaseLedgerExport {
   itemCode: string;
   itemName: string;
   unitName: string;
-  productionOrderCode: string | null;
+  buyerPoNo: string | null;
+  requestNote: string | null;
   quantity: number;
   quotedQuantity?: number;
   orderedQuantity: number;
@@ -35,7 +36,11 @@ export const PURCHASE_LEDGER_EXPORT_COLUMNS: ExcelColumn<PurchaseLedgerExport>[]
     { header: 'Mã vật tư', value: (row) => row.itemCode },
     { header: 'Tên vật tư', value: (row) => row.itemName, width: 30 },
     { header: 'Đơn vị tính', value: (row) => row.unitName },
-    { header: 'Mã LSX', value: (row) => row.productionOrderCode },
+    {
+      header: 'PO liên quan / Lý do',
+      value: (row) => row.buyerPoNo ?? row.requestNote,
+      width: 30,
+    },
     {
       header: 'SL cần mua',
       value: (row) => row.quantity,

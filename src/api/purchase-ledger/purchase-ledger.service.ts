@@ -25,6 +25,7 @@ import { DRIZZLE } from '../../database/database.module';
 import type { Database } from '../../database/database.type';
 import {
   items,
+  orders,
   productionOrders,
   purchaseRequestItems,
   purchaseRequests,
@@ -118,6 +119,8 @@ export class PurchaseLedgerService {
           unit: getTableColumns(units),
           purchaseRequest: getTableColumns(purchaseRequests),
           productionOrder: getTableColumns(productionOrders),
+          buyerPoNo: orders.buyerPoNo,
+          requestNote: purchaseRequests.note,
           neededDate: purchaseRequests.neededDate,
           createdAt: purchaseRequests.createdAt,
           orderedQuantity: refs.orderedQuantity,
@@ -136,6 +139,7 @@ export class PurchaseLedgerService {
           productionOrders,
           eq(productionOrders.id, purchaseRequests.productionOrderId),
         )
+        .leftJoin(orders, eq(orders.id, productionOrders.orderId))
         .leftJoin(
           orderedAgg,
           eq(orderedAgg.purchaseRequestItemId, purchaseRequestItems.id),
@@ -239,7 +243,8 @@ export class PurchaseLedgerService {
         itemCode: items.code,
         itemName: items.name,
         unitName: units.name,
-        productionOrderCode: productionOrders.code,
+        buyerPoNo: orders.buyerPoNo,
+        requestNote: purchaseRequests.note,
         quantity: purchaseRequestItems.quantity,
         quotedQuantity: refs.quotedQuantity,
         orderedQuantity: refs.orderedQuantity,
@@ -260,6 +265,7 @@ export class PurchaseLedgerService {
         productionOrders,
         eq(productionOrders.id, purchaseRequests.productionOrderId),
       )
+      .leftJoin(orders, eq(orders.id, productionOrders.orderId))
       .leftJoin(
         orderedAgg,
         eq(orderedAgg.purchaseRequestItemId, purchaseRequestItems.id),

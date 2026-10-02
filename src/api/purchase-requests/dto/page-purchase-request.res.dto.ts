@@ -75,6 +75,14 @@ export class PagePurchaseRequestResDto {
   rejectionReason!: string | null;
 
   @Expose()
+  @StringFieldOptional({
+    nullable: true,
+    description:
+      'Ghi chú / lý do đề xuất — cột "PO liên quan / Lý do" hiển thị khi đề xuất không gắn LSX (productionOrder null)',
+  })
+  note!: string | null;
+
+  @Expose()
   @ClassFieldOptional(() => ProductionOrderRefResDto, { nullable: true })
   productionOrder!: ProductionOrderRefResDto | null;
 

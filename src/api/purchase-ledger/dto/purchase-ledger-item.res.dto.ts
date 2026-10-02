@@ -42,10 +42,25 @@ export class PurchaseLedgerItemResDto {
   @Expose()
   @StringFieldOptional({
     nullable: true,
-    description:
-      'Lý do — hiển thị khi đề xuất không gắn LSX (productionOrder null)',
+    description: 'Ghi chú của dòng vật tư trong đề xuất',
   })
   note!: string | null;
+
+  @Expose()
+  @StringFieldOptional({
+    nullable: true,
+    description:
+      'Số PO khách hàng của đơn hàng gốc (orders.buyerPoNo, qua LSX gắn với đề xuất) — cột "PO liên quan / Lý do" ưu tiên hiện số này',
+  })
+  buyerPoNo!: string | null;
+
+  @Expose()
+  @StringFieldOptional({
+    nullable: true,
+    description:
+      'Lý do / ghi chú ở đầu phiếu đề xuất — cột "PO liên quan / Lý do" hiện khi không có buyerPoNo',
+  })
+  requestNote!: string | null;
 
   @Expose()
   @NumberField({ description: 'SL cần mua (từ đề xuất)' })
