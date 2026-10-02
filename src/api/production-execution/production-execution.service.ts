@@ -92,29 +92,22 @@ export class ProductionExecutionService {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
     const today = vnToday().toISOString().slice(0, 10);
 
-    const rows = await this.db
+    // Trạng thái công đoạn tính theo từng cặp Job × công đoạn (gộp qua mọi Part), cùng luật với
+    // `operationStatus` ở `getJobs` — để số trên thẻ khớp đúng badge "Trạng thái" của từng dòng.
+    const isDoneExpr = sql`count(*) filter (where ${productionJobOperations.completedDate} is not null) = count(*)`;
+    const jobOperationStatus = this.db
       .select({
-        operationId: operations.id,
-        code: operations.code,
-        name: operations.name,
-        type: operations.type,
-        jobCount: sql<number>`count(distinct ${productionJobs.id})`.mapWith(
-          Number,
-        ),
-        inProgressCount:
-          sql<number>`count(distinct ${productionJobs.id}) filter (where ${productionJobs.status} = ${ProductionJobStatus.IN_PROGRESS})`.mapWith(
-            Number,
-          ),
-        overdueCount:
-          sql<number>`count(distinct ${productionJobs.id}) filter (where ${productionJobOperations.completedDate} is null and ${productionJobOperations.dueDate} < ${today}::date)`.mapWith(
-            Number,
-          ),
+        operationId: productionJobOperations.operationId,
+        progress: sql<JobOperationProgress>`
+          case
+            when ${isDoneExpr} then ${JobOperationProgress.DONE}
+            when max(${productionJobOperations.dueDate}) < ${today}::date then ${JobOperationProgress.OVERDUE}
+            when coalesce(sum(${productionJobOperations.completedQuantity}), 0) > 0 or ${productionJobs.status} = ${ProductionJobStatus.IN_PROGRESS} then ${JobOperationProgress.IN_PROGRESS}
+            else ${JobOperationProgress.NOT_STARTED}
+          end
+        `.as('progress'),
       })
-      .from(operations)
-      .innerJoin(
-        productionJobOperations,
-        eq(productionJobOperations.operationId, operations.id),
-      )
+      .from(productionJobOperations)
       .innerJoin(
         productionJobs,
         eq(productionJobs.id, productionJobOperations.productionJobId),
@@ -128,7 +121,7 @@ export class ProductionExecutionService {
       .where(
         and(
           allowedOperationIds
-            ? inArray(operations.id, allowedOperationIds)
+            ? inArray(productionJobOperations.operationId, allowedOperationIds)
             : undefined,
           reqDto.status ? eq(productionJobs.status, reqDto.status) : undefined,
           reqDto.clientId ? eq(orders.clientId, reqDto.clientId) : undefined,
@@ -144,6 +137,36 @@ export class ProductionExecutionService {
               )
             : undefined,
         ),
+      )
+      .groupBy(
+        productionJobOperations.operationId,
+        productionJobs.id,
+        productionJobs.status,
+      )
+      .as('job_operation_status');
+
+    const countJobs = (status: JobOperationProgress) =>
+      sql<number>`count(*) filter (where ${jobOperationStatus.progress} = ${status})`.mapWith(
+        Number,
+      );
+
+    const rows = await this.db
+      .select({
+        operationId: operations.id,
+        code: operations.code,
+        name: operations.name,
+        type: operations.type,
+        remainingJobCount:
+          sql<number>`count(*) filter (where ${jobOperationStatus.progress} <> ${JobOperationProgress.DONE})`.mapWith(
+            Number,
+          ),
+        inProgressJobCount: countJobs(JobOperationProgress.IN_PROGRESS),
+        overdueJobCount: countJobs(JobOperationProgress.OVERDUE),
+      })
+      .from(operations)
+      .innerJoin(
+        jobOperationStatus,
+        eq(jobOperationStatus.operationId, operations.id),
       )
       .groupBy(operations.id)
       .orderBy(asc(operations.code));
