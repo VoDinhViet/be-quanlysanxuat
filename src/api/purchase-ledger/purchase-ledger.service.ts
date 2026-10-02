@@ -24,6 +24,7 @@ import { unaccentILike } from '../../common/utils/search.util';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database } from '../../database/database.type';
 import {
+  files,
   items,
   orders,
   productionOrders,
@@ -116,6 +117,7 @@ export class PurchaseLedgerService {
           quantity: purchaseRequestItems.quantity,
           note: purchaseRequestItems.note,
           item: getTableColumns(items),
+          imageFile: getTableColumns(files),
           unit: getTableColumns(units),
           purchaseRequest: getTableColumns(purchaseRequests),
           productionOrder: getTableColumns(productionOrders),
@@ -135,6 +137,7 @@ export class PurchaseLedgerService {
         )
         .innerJoin(items, eq(items.id, purchaseRequestItems.itemId))
         .innerJoin(units, eq(units.id, items.unitId))
+        .leftJoin(files, eq(files.id, items.imageFileId))
         .leftJoin(
           productionOrders,
           eq(productionOrders.id, purchaseRequests.productionOrderId),
@@ -153,7 +156,7 @@ export class PurchaseLedgerService {
           eq(quotedAgg.purchaseRequestItemId, purchaseRequestItems.id),
         )
         .where(where)
-        .orderBy(asc(items.code))
+        .orderBy(desc(purchaseRequests.code), asc(items.code))
         .limit(reqDto.limit)
         .offset(reqDto.offset),
       this.db
@@ -279,7 +282,7 @@ export class PurchaseLedgerService {
         eq(quotedAgg.purchaseRequestItemId, purchaseRequestItems.id),
       )
       .where(where)
-      .orderBy(desc(purchaseRequests.createdAt))
+      .orderBy(desc(purchaseRequests.code), asc(items.code))
       .limit(PurchaseLedgerService.MAX_EXPORT_ROWS);
 
     const buffer = await buildXlsxBuffer(

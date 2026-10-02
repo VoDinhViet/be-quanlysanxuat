@@ -9,6 +9,8 @@ import {
   StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
+import { FileField } from '../../files/dto/file.field';
+import { FileResDto } from '../../files/dto/file.res.dto';
 import { ItemRefResDto } from '../../items/dto/item-ref.res.dto';
 import { ProductionOrderRefResDto } from '../../production-orders/dto/production-order-ref.res.dto';
 import { PurchaseRequestRefResDto } from '../../purchase-requests/dto/purchase-request-ref.res.dto';
@@ -30,6 +32,10 @@ export class PurchaseLedgerItemResDto {
   @Expose()
   @ClassField(() => ItemRefResDto)
   item!: ItemRefResDto;
+
+  @Expose()
+  @FileField('imageFile', 'Ảnh vật tư')
+  image!: FileResDto | null;
 
   @Expose()
   @ClassField(() => UnitRefResDto)
