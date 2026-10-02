@@ -1,5 +1,6 @@
 import { IqcResult, OqcDisposition } from '../../../database/schemas';
 import {
+  DateFieldOptional,
   EnumField,
   EnumFieldOptional,
   StringFieldOptional,
@@ -7,6 +8,12 @@ import {
 } from '../../../decorators/field.decorators';
 
 export class ConfirmOqcReqDto {
+  @DateFieldOptional({
+    description:
+      'Thời điểm kiểm thực tế — bỏ trống là giữ nguyên ngày kiểm lúc tạo',
+  })
+  readonly inspectionDate?: Date;
+
   @EnumField(() => IqcResult, {
     description: 'Kết quả QC — QC tự chọn',
   })

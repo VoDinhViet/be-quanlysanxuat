@@ -548,6 +548,7 @@ export class OqcService {
     const oqcInspection = await this.ensureOqcConfirmable(oqcId);
 
     const isPass = reqDto.result === IqcResult.PASS;
+    const inspectionDate = reqDto.inspectionDate ?? oqcInspection.requestedAt;
     const decision = {
       decision: reqDto.result,
       decisionNote: reqDto.resultNote ?? null,
@@ -587,7 +588,7 @@ export class OqcService {
           inspectionType: QualityInspectionType.OQC,
           quantity: oqcInspection.quantity,
           attemptNo,
-          inspectedAt: oqcInspection.requestedAt,
+          inspectedAt: inspectionDate,
           resultingStatus: dbStatus,
           inspectedBy: userId,
         })
@@ -598,6 +599,7 @@ export class OqcService {
         .set({
           ...decision,
           decision: dbDecision,
+          requestedAt: inspectionDate,
           status: dbStatus,
           attemptCount: attemptNo,
           ...audit,
