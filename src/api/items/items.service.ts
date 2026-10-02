@@ -261,6 +261,10 @@ export class ItemsService {
       );
     }
 
+    if (type === ItemType.FG && !reqDto.clientId) {
+      throw new AppException(ErrorCode.E295, HttpStatus.UNPROCESSABLE_ENTITY);
+    }
+
     await this.ensureUnitExists(reqDto.unitId);
     if (reqDto.clientId) {
       await this.ensureClientExists(reqDto.clientId);

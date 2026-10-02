@@ -30,7 +30,8 @@ export const uploadPolicies: Record<UploadType, UploadPolicy> = {
   [UploadType.SUPPLIER_LOGO]: { kind: FileKind.IMAGE },
   [UploadType.SUPPLIER_DOCUMENT]: { kind: FileKind.DOCUMENT },
   [UploadType.BOM_ITEM_DRAWING]: { kind: FileKind.DOCUMENT },
-  [UploadType.ORDER_DOCUMENT]: { kind: FileKind.DOCUMENT },
+  // Ảnh + tài liệu — đơn hàng đính kèm cả ảnh chụp PO/hàng mẫu lẫn file PO của khách.
+  [UploadType.ORDER_DOCUMENT]: { kind: FileKind.EVIDENCE },
   [UploadType.IQC_EVIDENCE]: { kind: FileKind.EVIDENCE },
   [UploadType.IQC_DISPOSITION_EVIDENCE]: { kind: FileKind.EVIDENCE },
   [UploadType.OQC_EVIDENCE]: { kind: FileKind.EVIDENCE },

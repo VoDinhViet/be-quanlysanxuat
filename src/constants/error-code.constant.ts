@@ -667,6 +667,8 @@ export enum ErrorCode {
   E293 = 'inventory_receipt.error.other_reason_required',
   // Phiếu nhập `OTHER` không được gắn PO, NCC, khách hàng, dòng PO hay Job — đó là nhập từ đối tác, thuộc loại khác.
   E294 = 'inventory_receipt.error.other_no_partner',
+  // Tạo sản phẩm (FG) mà không chọn khách hàng — vật tư (DIRECT) dùng chung bảng nên không bị ràng buộc này.
+  E295 = 'item.error.client_required',
   V003 = 'common.error.too_many_requests',
   // `GlobalExceptionFilter` bắt chuỗi "No values to set" của drizzle-orm — mọi `PATCH` khi
   // `ValidationPipe` whitelist đã loại sạch field lạ, còn lại payload rỗng cho `.set()`. Trước đây

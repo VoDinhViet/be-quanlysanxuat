@@ -610,6 +610,8 @@ export class OrdersService {
         .insert(orders)
         .values({
           ...orderFields,
+          // Nhân viên kinh doanh mặc định là người tạo đơn nếu không chọn ai khác.
+          assignedUserId: orderFields.assignedUserId ?? userId,
           exchangeRate: this.enforceExchangeRate(
             currency,
             orderFields.exchangeRate,
