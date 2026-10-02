@@ -116,6 +116,26 @@ export interface ParsedItemImportRow {
   note?: string;
 }
 
+/** Lỗi một ô của file import; giữ `rowNumber` có cấu trúc để sắp theo dòng trước khi dựng `details`. */
+export interface ImportRowError {
+  rowNumber: number;
+  header: string;
+  code: string;
+  message: string;
+}
+
+export function toImportErrorDetails(
+  errors: ImportRowError[],
+): ErrorDetailDto[] {
+  return [...errors]
+    .sort((a, b) => a.rowNumber - b.rowNumber)
+    .map(({ rowNumber, header, code, message }) => ({
+      property: `Dòng ${rowNumber} - ${header}`,
+      code,
+      message,
+    }));
+}
+
 export function hasMatchingImportHeader(headerCells: string[]): boolean {
   return ITEM_IMPORT_FIELDS.every(
     (field, index) => headerCells[index] === field.header,
@@ -125,10 +145,10 @@ export function hasMatchingImportHeader(headerCells: string[]): boolean {
 /** Kiểm từng ô theo định nghĩa cột (bắt buộc, độ dài, số ≥ 0). Chưa tra DB — phần đó ở service. */
 export function parseImportRows(rows: XlsxRow[]): {
   parsed: ParsedItemImportRow[];
-  errors: ErrorDetailDto[];
+  errors: ImportRowError[];
 } {
   const parsed: ParsedItemImportRow[] = [];
-  const errors: ErrorDetailDto[] = [];
+  const errors: ImportRowError[] = [];
 
   for (const { rowNumber, cells } of rows) {
     const values: Record<string, string | number | undefined> = {};
@@ -138,11 +158,7 @@ export function parseImportRows(rows: XlsxRow[]): {
       const raw = cells[index];
       const fail = (code: string, message: string) => {
         rowValid = false;
-        errors.push({
-          property: `Dòng ${rowNumber} - ${field.header}`,
-          code,
-          message,
-        });
+        errors.push({ rowNumber, header: field.header, code, message });
       };
 
       if (raw === '') {

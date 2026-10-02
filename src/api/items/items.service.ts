@@ -23,7 +23,6 @@ import {
   DocumentType,
   generateDocumentSequence,
 } from '../../common/utils/document-sequence.util';
-import type { ErrorDetailDto } from '../../common/dto/error-detail.dto';
 import {
   buildXlsxBuffer,
   readXlsxRows,
@@ -77,7 +76,18 @@ import {
   ITEM_IMPORT_TEMPLATE_DOWNLOAD_NAME,
   ITEM_IMPORT_TEMPLATE_FILE,
   parseImportRows,
+  toImportErrorDetails,
+  type ImportRowError,
+  type ParsedItemImportRow,
 } from './items.import';
+
+interface ImportMasterData {
+  unitIdByCode: Map<string, string>;
+  supplierIdByCode: Map<string, string>;
+  clientIdByCode: Map<string, string>;
+  /** Cặp mã+phiên bản đã có trong DB (chưa xoá mềm), dạng `codeRevisionKey`. */
+  existingCodeRevisions: Set<string>;
+}
 
 @Injectable()
 export class ItemsService {
@@ -318,48 +328,102 @@ export class ItemsService {
     const rows = await this.readImportRows(file);
     const { parsed, errors } = parseImportRows(rows);
 
-    const [unitRows, supplierRows, clientRows] = await Promise.all([
-      this.db.select({ id: units.id, code: units.code }).from(units),
-      this.db
-        .select({ id: suppliers.id, code: suppliers.code })
-        .from(suppliers)
-        .where(isNull(suppliers.deletedAt)),
-      this.db
-        .select({ id: clients.id, code: clients.code })
-        .from(clients)
-        .where(isNull(clients.deletedAt)),
-    ]);
-    const unitIdByCode = new Map(unitRows.map((row) => [row.code, row.id]));
-    const supplierIdByCode = new Map(
-      supplierRows.map((row) => [row.code, row.id]),
+    const masterData = await this.loadImportMasterData(parsed);
+    const values = this.prepareItemsToCreate(
+      parsed,
+      masterData,
+      userId,
+      errors,
     );
-    const clientIdByCode = new Map(clientRows.map((row) => [row.code, row.id]));
 
-    const existingRows = await this.db
-      .select({ code: items.code, revision: items.revision })
-      .from(items)
-      .where(
-        and(
-          isNull(items.deletedAt),
-          inArray(
-            items.code,
-            parsed.map((row) => row.code),
-          ),
-        ),
+    if (errors.length > 0) {
+      throw new AppException(
+        ErrorCode.E292,
+        HttpStatus.UNPROCESSABLE_ENTITY,
+        `File có ${errors.length} lỗi, chưa có vật tư nào được nhập`,
+        toImportErrorDetails(errors),
       );
-    const existingKeys = new Set(
-      existingRows.map((row) => `${row.code}\u0000${row.revision}`),
-    );
+    }
 
-    const seenRowByKey = new Map<string, number>();
+    await this.createItemsInBulk(values);
+  }
+
+  /** Tra id theo mã cho đơn vị / NCC / khách hàng và các cặp mã+phiên bản đã có — chỉ các mã xuất
+   * hiện trong file, bỏ query khi không có mã nào để tra. */
+  private async loadImportMasterData(
+    parsed: ParsedItemImportRow[],
+  ): Promise<ImportMasterData> {
+    const distinct = (
+      pick: (row: ParsedItemImportRow) => string | undefined,
+    ) => [
+      ...new Set(parsed.map(pick).filter((code): code is string => !!code)),
+    ];
+    const unitCodes = distinct((row) => row.unitCode);
+    const supplierCodes = distinct((row) => row.supplierCode);
+    const clientCodes = distinct((row) => row.clientCode);
+    const itemCodes = distinct((row) => row.code);
+    const noIds = Promise.resolve([] as { id: string; code: string }[]);
+
+    const [unitRows, supplierRows, clientRows, existingRows] =
+      await Promise.all([
+        unitCodes.length
+          ? this.db
+              .select({ id: units.id, code: units.code })
+              .from(units)
+              .where(inArray(units.code, unitCodes))
+          : noIds,
+        supplierCodes.length
+          ? this.db
+              .select({ id: suppliers.id, code: suppliers.code })
+              .from(suppliers)
+              .where(
+                and(
+                  isNull(suppliers.deletedAt),
+                  inArray(suppliers.code, supplierCodes),
+                ),
+              )
+          : noIds,
+        clientCodes.length
+          ? this.db
+              .select({ id: clients.id, code: clients.code })
+              .from(clients)
+              .where(
+                and(
+                  isNull(clients.deletedAt),
+                  inArray(clients.code, clientCodes),
+                ),
+              )
+          : noIds,
+        itemCodes.length
+          ? this.db
+              .select({ code: items.code, revision: items.revision })
+              .from(items)
+              .where(
+                and(isNull(items.deletedAt), inArray(items.code, itemCodes)),
+              )
+          : Promise.resolve([] as { code: string; revision: string }[]),
+      ]);
+
+    return {
+      unitIdByCode: new Map(unitRows.map((row) => [row.code, row.id])),
+      supplierIdByCode: new Map(supplierRows.map((row) => [row.code, row.id])),
+      clientIdByCode: new Map(clientRows.map((row) => [row.code, row.id])),
+      existingCodeRevisions: new Set(
+        existingRows.map((row) => this.codeRevisionKey(row.code, row.revision)),
+      ),
+    };
+  }
+
+  /** Kiểm từng dòng với dữ liệu đã tra, đẩy lỗi vào `errors`, trả các dòng hợp lệ sẵn sàng insert. */
+  private prepareItemsToCreate(
+    parsed: ParsedItemImportRow[],
+    masterData: ImportMasterData,
+    userId: string,
+    errors: ImportRowError[],
+  ): (typeof items.$inferInsert)[] {
+    const { unitIdByCode, supplierIdByCode, clientIdByCode } = masterData;
+    const firstRowByCodeRevision = new Map<string, number>();
     const values: (typeof items.$inferInsert)[] = [];
-    const addError = (
-      rowNumber: number,
-      header: string,
-      code: string,
-      message: string,
-    ) =>
-      errors.push({ property: `Dòng ${rowNumber} - ${header}`, code, message });
 
     for (const row of parsed) {
       const unitId = unitIdByCode.get(row.unitCode);
@@ -369,82 +433,115 @@ export class ItemsService {
       const clientId = row.clientCode
         ? clientIdByCode.get(row.clientCode)
         : undefined;
-      let rowValid = true;
 
-      if (!unitId) {
-        rowValid = false;
-        addError(row.rowNumber, 'Mã đơn vị tính', 'not_found', 'Không tồn tại');
-      }
-      if (row.supplierCode && !supplierId) {
-        rowValid = false;
-        addError(
-          row.rowNumber,
-          'Mã nhà cung cấp',
-          'not_found',
-          'Không tồn tại',
+      const errorCountBefore = errors.length;
+      this.validateRowMasterData(row, { unitId, supplierId, clientId }, errors);
+      this.validateRowCodeRevisionUnique(
+        row,
+        masterData,
+        firstRowByCodeRevision,
+        errors,
+      );
+
+      if (errors.length === errorCountBefore && unitId) {
+        values.push(
+          this.buildDirectItem(row, unitId, supplierId, clientId, userId),
         );
       }
-      if (row.clientCode && !clientId) {
-        rowValid = false;
-        addError(row.rowNumber, 'Mã khách hàng', 'not_found', 'Không tồn tại');
+    }
+
+    return values;
+  }
+
+  /** Mã bắt buộc (đơn vị) hoặc đã điền (NCC, khách hàng) mà không tra ra id thì báo lỗi dòng. */
+  private validateRowMasterData(
+    row: ParsedItemImportRow,
+    ids: { unitId?: string; supplierId?: string; clientId?: string },
+    errors: ImportRowError[],
+  ): void {
+    const checks = [
+      [row.unitCode, ids.unitId, 'Mã đơn vị tính'],
+      [row.supplierCode, ids.supplierId, 'Mã nhà cung cấp'],
+      [row.clientCode, ids.clientId, 'Mã khách hàng'],
+    ] as const;
+
+    for (const [code, id, header] of checks) {
+      if (code && !id) {
+        errors.push({
+          rowNumber: row.rowNumber,
+          header,
+          code: 'not_found',
+          message: 'Không tồn tại',
+        });
       }
+    }
+  }
 
-      const key = `${row.code}\u0000${row.revision ?? ItemsService.DEFAULT_REVISION}`;
-      const firstRow = seenRowByKey.get(key);
-      if (existingKeys.has(key)) {
-        rowValid = false;
-        addError(
-          row.rowNumber,
-          'Mã vật tư',
-          'duplicate',
-          'Mã vật tư và phiên bản đã tồn tại trong hệ thống',
-        );
-      } else if (firstRow !== undefined) {
-        rowValid = false;
-        addError(
-          row.rowNumber,
-          'Mã vật tư',
-          'duplicate',
-          `Trùng mã vật tư và phiên bản với dòng ${firstRow}`,
-        );
-      } else {
-        seenRowByKey.set(key, row.rowNumber);
-      }
+  /** Trùng mã+phiên bản với DB hoặc với dòng trước đó trong cùng file. */
+  private validateRowCodeRevisionUnique(
+    row: ParsedItemImportRow,
+    masterData: ImportMasterData,
+    firstRowByCodeRevision: Map<string, number>,
+    errors: ImportRowError[],
+  ): void {
+    const key = this.codeRevisionKey(
+      row.code,
+      row.revision ?? ItemsService.DEFAULT_REVISION,
+    );
+    const firstRow = firstRowByCodeRevision.get(key);
 
-      if (!rowValid || !unitId) continue;
+    let message: string | undefined;
+    if (masterData.existingCodeRevisions.has(key)) {
+      message = 'Mã vật tư và phiên bản đã tồn tại trong hệ thống';
+    } else if (firstRow !== undefined) {
+      message = `Trùng mã vật tư và phiên bản với dòng ${firstRow}`;
+    } else {
+      firstRowByCodeRevision.set(key, row.rowNumber);
+    }
 
-      // `status`/`minStock`/`revision` bỏ trống thì DB tự điền default ở cột.
-      values.push({
-        code: row.code,
-        revision: row.revision,
-        name: row.name,
-        type: ItemType.DIRECT,
-        unitId,
-        supplierId,
-        clientId,
-        minStock: row.minStock,
-        specificWeight: row.specificWeight,
-        directGrade: row.directGrade,
-        technicalStandard: row.technicalStandard,
-        dimensions: row.dimensions,
-        colorSurface: row.colorSurface,
-        origin: row.origin,
-        leadTime: row.leadTime,
-        description: row.description,
-        note: row.note,
-        createdBy: userId,
+    if (message) {
+      errors.push({
+        rowNumber: row.rowNumber,
+        header: 'Mã vật tư',
+        code: 'duplicate',
+        message,
       });
     }
+  }
 
-    if (errors.length > 0) {
-      throw new AppException(
-        ErrorCode.E292,
-        HttpStatus.UNPROCESSABLE_ENTITY,
-        `File có ${errors.length} lỗi, chưa có vật tư nào được nhập`,
-        this.sortImportErrors(errors),
-      );
-    }
+  /** `status`/`minStock`/`revision` bỏ trống thì DB tự điền default ở cột. */
+  private buildDirectItem(
+    row: ParsedItemImportRow,
+    unitId: string,
+    supplierId: string | undefined,
+    clientId: string | undefined,
+    userId: string,
+  ): typeof items.$inferInsert {
+    return {
+      code: row.code,
+      revision: row.revision,
+      name: row.name,
+      type: ItemType.DIRECT,
+      unitId,
+      supplierId,
+      clientId,
+      minStock: row.minStock,
+      specificWeight: row.specificWeight,
+      directGrade: row.directGrade,
+      technicalStandard: row.technicalStandard,
+      dimensions: row.dimensions,
+      colorSurface: row.colorSurface,
+      origin: row.origin,
+      leadTime: row.leadTime,
+      description: row.description,
+      note: row.note,
+      createdBy: userId,
+    };
+  }
 
+  private async createItemsInBulk(
+    values: (typeof items.$inferInsert)[],
+  ): Promise<void> {
     try {
       await this.db.insert(items).values(values);
     } catch (error) {
@@ -456,14 +553,15 @@ export class ItemsService {
     }
   }
 
+  private codeRevisionKey(code: string, revision: string): string {
+    return `${code}\u0000${revision}`;
+  }
+
   private async readImportRows(file: Express.Multer.File) {
     const invalid = (message: string) =>
       new AppException(ErrorCode.E291, HttpStatus.BAD_REQUEST, message);
 
     if (!file) throw invalid('Thiếu file Excel');
-    if (file.mimetype !== XLSX_MIME) {
-      throw invalid('Chỉ nhận file Excel .xlsx');
-    }
 
     let rows: Awaited<ReturnType<typeof readXlsxRows>>;
     try {
@@ -482,13 +580,6 @@ export class ItemsService {
     }
 
     return dataRows;
-  }
-
-  private sortImportErrors(errors: ErrorDetailDto[]): ErrorDetailDto[] {
-    const rowOf = (detail: ErrorDetailDto) =>
-      Number(/^Dòng (\d+)/.exec(detail.property)?.[1] ?? 0);
-
-    return [...errors].sort((a, b) => rowOf(a) - rowOf(b));
   }
 
   async updateItem(itemId: string, reqDto: UpdateItemReqDto): Promise<void> {
