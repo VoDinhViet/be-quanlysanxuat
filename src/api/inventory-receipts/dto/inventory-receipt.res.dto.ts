@@ -87,6 +87,13 @@ export class InventoryReceiptResDto {
   note!: string | null;
 
   @Expose()
+  @StringFieldOptional({
+    nullable: true,
+    description: 'Lý do nhập — chỉ có khi receiptType=OTHER',
+  })
+  reason!: string | null;
+
+  @Expose()
   @ClassFieldOptional(() => InventoryReceiptItemResDto, { each: true })
   items!: InventoryReceiptItemResDto[];
 

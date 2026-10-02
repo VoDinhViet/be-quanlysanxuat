@@ -63,6 +63,14 @@ export class CreateInventoryReceiptReqDto {
   @StringFieldOptional({ maxLength: 1000, nullable: true })
   readonly note?: string | null;
 
+  @StringFieldOptional({
+    maxLength: 500,
+    nullable: true,
+    description:
+      'Lý do nhập — bắt buộc khi receiptType=OTHER (E293), không dùng cho các loại khác',
+  })
+  readonly reason?: string | null;
+
   @ClassField(() => InventoryReceiptItemReqDto, { each: true, minItems: 1 })
   readonly items!: InventoryReceiptItemReqDto[];
 }

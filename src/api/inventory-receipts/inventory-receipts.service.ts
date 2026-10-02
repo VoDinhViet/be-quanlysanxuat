@@ -85,6 +85,7 @@ const receiptTypeTransactionType: Record<
   [InventoryReceiptType.PURCHASE]: InventoryTransactionType.RECEIPT,
   [InventoryReceiptType.RETURN]: InventoryTransactionType.RECEIPT,
   [InventoryReceiptType.PRODUCTION]: InventoryTransactionType.PRODUCTION_IN,
+  [InventoryReceiptType.OTHER]: InventoryTransactionType.RECEIPT,
 };
 
 type IqcSourceIds = {
@@ -351,6 +352,7 @@ export class InventoryReceiptsService {
       reqDto.purchaseOrderId,
       reqDto.items,
     );
+    this.ensureOtherReceiptShape(reqDto, reqDto.items);
 
     const { items: itemsToCreate, ...receiptFields } = reqDto;
     await this.ensureReceiptQuantitiesWithinOrdered(this.db, itemsToCreate);
@@ -360,7 +362,12 @@ export class InventoryReceiptsService {
 
       const [inventoryReceipt] = await tx
         .insert(inventoryReceipts)
-        .values({ ...receiptFields, code, createdBy: userId })
+        .values({
+          ...receiptFields,
+          reason: this.effectiveReason(reqDto.receiptType, reqDto.reason),
+          code,
+          createdBy: userId,
+        })
         .returning();
 
       await tx.insert(inventoryReceiptItems).values(
@@ -399,13 +406,29 @@ export class InventoryReceiptsService {
       reqDto.items,
     );
 
+    const effective = {
+      receiptType: reqDto.receiptType ?? inventoryReceipt.receiptType,
+      reason:
+        reqDto.reason !== undefined ? reqDto.reason : inventoryReceipt.reason,
+      purchaseOrderId:
+        reqDto.purchaseOrderId ?? inventoryReceipt.purchaseOrderId,
+      supplierId: reqDto.supplierId ?? inventoryReceipt.supplierId,
+      clientId: reqDto.clientId ?? inventoryReceipt.clientId,
+      productionJobId:
+        reqDto.productionJobId ?? inventoryReceipt.productionJobId,
+    };
+    this.ensureOtherReceiptShape(effective, reqDto.items);
+
     const { items: itemsToReplace, ...receiptFields } = reqDto;
     await this.ensureReceiptQuantitiesWithinOrdered(this.db, itemsToReplace);
 
     await this.db.transaction(async (tx) => {
       await tx
         .update(inventoryReceipts)
-        .set(receiptFields)
+        .set({
+          ...receiptFields,
+          reason: this.effectiveReason(effective.receiptType, effective.reason),
+        })
         .where(eq(inventoryReceipts.id, receiptId));
 
       await tx
@@ -828,6 +851,48 @@ export class InventoryReceiptsService {
     }
   }
 
+  /** `reason` chỉ có nghĩa với `OTHER`; loại khác luôn lưu `null`. */
+  private effectiveReason(
+    receiptType: InventoryReceiptType,
+    reason: string | null | undefined,
+  ): string | null {
+    return receiptType === InventoryReceiptType.OTHER
+      ? (reason?.trim() ?? null)
+      : null;
+  }
+
+  /** `receiptType = OTHER` ("Nhập từ khác"): bắt buộc `reason` (`E293`); không có đối tác nên cấm gắn
+   * PO / NCC / khách hàng / dòng PO / Job (`E294`). `update` truyền giá trị **hiệu lực** (payload mới nếu
+   * có, giữ giá trị cũ nếu không). */
+  private ensureOtherReceiptShape(
+    receipt: {
+      receiptType: InventoryReceiptType;
+      reason?: string | null;
+      purchaseOrderId?: string | null;
+      supplierId?: string | null;
+      clientId?: string | null;
+      productionJobId?: string | null;
+    },
+    lines: { purchaseOrderItemId?: string | null }[],
+  ): void {
+    if (receipt.receiptType !== InventoryReceiptType.OTHER) {
+      return;
+    }
+
+    if (!receipt.reason?.trim()) {
+      throw new AppException(ErrorCode.E293, HttpStatus.BAD_REQUEST);
+    }
+    if (
+      receipt.purchaseOrderId ||
+      receipt.supplierId ||
+      receipt.clientId ||
+      receipt.productionJobId ||
+      lines.some((line) => line.purchaseOrderItemId)
+    ) {
+      throw new AppException(ErrorCode.E294, HttpStatus.BAD_REQUEST);
+    }
+  }
+
   private ensureSupplierClientExclusive(reqDto: {
     supplierId?: string | null;
     clientId?: string | null;
@@ -1069,7 +1134,7 @@ export class InventoryReceiptsService {
 
   /** Nguồn (NCC/khách hàng) của phiếu IQC sinh ra khi `confirm` — ưu tiên `inventoryReceipt.supplierId`,
    * rồi `inventoryReceipt.clientId` (RETURN gắn khách hàng, BUG-038/065), rồi rơi về NCC của PO gắn
-   * với phiếu. Không suy được nguồn nào → `E152`. */
+   * với phiếu. Không suy được nguồn nào → `E152`; riêng `OTHER` (không đối tác) trả cả hai `null`. */
   private async resolveIqcSourceIds(
     tx: DbTransaction,
     inventoryReceipt: Pick<
@@ -1077,6 +1142,11 @@ export class InventoryReceiptsService {
       'receiptType' | 'supplierId' | 'clientId' | 'purchaseOrderId'
     >,
   ): Promise<IqcSourceIds> {
+    // "Nhập từ khác" không có đối tác — phiếu IQC không gắn NCC/khách (cột nullable), thay vì `E152`.
+    if (inventoryReceipt.receiptType === InventoryReceiptType.OTHER) {
+      return { supplierId: null, clientId: null };
+    }
+
     if (inventoryReceipt.supplierId) {
       return {
         supplierId: inventoryReceipt.supplierId,

@@ -25,16 +25,21 @@ import { purchaseRequests } from '../purchase-requests/purchase-requests';
 import { suppliers } from '../suppliers/suppliers';
 import { users } from '../identity-access/users';
 
+/** Nguồn nhập (cột `receipt_type`). `OTHER` = "Nhập từ khác": không có đối tác bên ngoài (không PO,
+ * không NCC, không khách, không Job) — thu hồi, nhập hàng khác; bắt buộc `reason`.
+ * Kiểm kê thừa KHÔNG đi qua đây mà ở phiếu Điều chỉnh tồn (INCREASE + STOCKTAKE). */
 export enum InventoryReceiptType {
   PURCHASE = 'PURCHASE',
   PRODUCTION = 'PRODUCTION',
   RETURN = 'RETURN',
+  OTHER = 'OTHER',
 }
 
 export const inventoryReceiptTypeEnum = pgEnum('inventory_receipt_type', [
   InventoryReceiptType.PURCHASE,
   InventoryReceiptType.PRODUCTION,
   InventoryReceiptType.RETURN,
+  InventoryReceiptType.OTHER,
 ]);
 
 export enum InventoryReceiptAssetType {
@@ -101,6 +106,8 @@ export const inventoryReceipts = pgTable(
       { onDelete: 'set null' },
     ),
     note: varchar('note', { length: 1000 }),
+    // Lý do nhập — bắt buộc khi `receiptType = OTHER` (service-enforced, `E293`), các loại khác để trống.
+    reason: varchar('reason', { length: 500 }),
     // Ghi ở `confirm` — khác `postedBy`/`postedAt` (ghi ở `post`), hai mốc/hai người có thể khác
     // nhau (`docs/workflows/receipt-confirmation.md`).
     confirmedBy: uuid('confirmed_by').references(() => users.id, {

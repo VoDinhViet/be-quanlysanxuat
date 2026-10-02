@@ -663,6 +663,10 @@ export enum ErrorCode {
   E291 = 'item.error.import_file_invalid',
   // `POST /items/import`: có dòng dữ liệu không hợp lệ — `details` liệt kê từng lỗi theo số dòng, không ghi gì vào DB.
   E292 = 'item.error.import_rows_invalid',
+  // Phiếu nhập `OTHER` ("Nhập từ khác") thiếu `reason` — lý do nhập là bắt buộc vì không có PO/NCC/khách để truy nguồn.
+  E293 = 'inventory_receipt.error.other_reason_required',
+  // Phiếu nhập `OTHER` không được gắn PO, NCC, khách hàng, dòng PO hay Job — đó là nhập từ đối tác, thuộc loại khác.
+  E294 = 'inventory_receipt.error.other_no_partner',
   V003 = 'common.error.too_many_requests',
   // `GlobalExceptionFilter` bắt chuỗi "No values to set" của drizzle-orm — mọi `PATCH` khi
   // `ValidationPipe` whitelist đã loại sạch field lạ, còn lại payload rỗng cho `.set()`. Trước đây
