@@ -647,36 +647,9 @@ export class PurchaseQuotationsService {
       throw new AppException(ErrorCode.E133, HttpStatus.CONFLICT);
     }
 
-    const items = await this.db.query.purchaseQuotationItems.findMany({
-      columns: { id: true },
-      where: eq(purchaseQuotationItems.quotationId, quotationId),
-    });
-    const itemIds = items.map((item) => item.id);
-
-    await this.db.transaction(async (tx) => {
-      await this.purchaseOrdersService.deletePendingOrdersByQuotation(
-        tx,
-        quotationId,
-      );
-
-      if (itemIds.length) {
-        await tx
-          .update(purchaseQuotationItemSuppliers)
-          .set({ selectedBy: null, selectedAt: null })
-          .where(
-            inArray(purchaseQuotationItemSuppliers.quotationItemId, itemIds),
-          );
-      }
-
-      await tx
-        .update(purchaseQuotations)
-        .set({
-          status: PurchaseQuotationStatus.DRAFT,
-          approvedBy: null,
-          approvedAt: null,
-        })
-        .where(eq(purchaseQuotations.id, quotationId));
-    });
+    await this.db.transaction((tx) =>
+      this.purchaseOrdersService.revertQuotationToDraft(tx, quotationId),
+    );
   }
 
   private async createQuotationItems(

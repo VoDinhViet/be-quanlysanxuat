@@ -289,9 +289,10 @@ export class PurchaseLedgerService {
   }
 
   /** Điều kiện lọc `WHERE` khớp đúng một giá trị `PurchaseLedgerStatus` — mỗi nhánh vừa loại trừ,
-   * vừa gộp đủ, cùng thứ tự ưu tiên với CASE tính `status` ở `getPurchaseLedgers`. COMPLETED đòi đặt
-   * đủ SL đề xuất (`orderedQuantity >= quantity`) rồi mới xét nhận đủ — đặt thiếu rồi nhận hết phần
-   * đã đặt vẫn là ORDERED, không phải COMPLETED. */
+   * vừa gộp đủ, cùng thứ tự ưu tiên với CASE tính `status` ở `buildLedgerStatus`. COMPLETED đòi đặt
+   * đủ SL đề xuất (`orderedQuantity >= quantity`) rồi mới xét nhận đủ. Đã đặt mà đã có hàng nhập về
+   * nhưng chưa COMPLETED (nhận thiếu, hoặc đặt thiếu so với đề xuất) là RECEIVING; chưa nhập gì là
+   * ORDERED. */
   private buildStatusCondition(
     refs: LedgerQuantityRefs,
     status: PurchaseLedgerStatus,
@@ -299,12 +300,14 @@ export class PurchaseLedgerService {
     switch (status) {
       case PurchaseLedgerStatus.COMPLETED:
         return sql`(${refs.orderedQuantity} >= ${purchaseRequestItems.quantity} and ${refs.receivedQuantity} >= ${refs.orderedQuantity})`;
+      case PurchaseLedgerStatus.RECEIVING:
+        return sql`(${refs.orderedQuantity} > 0 and ${refs.receivedQuantity} > 0 and not (${refs.orderedQuantity} >= ${purchaseRequestItems.quantity} and ${refs.receivedQuantity} >= ${refs.orderedQuantity}))`;
       case PurchaseLedgerStatus.ORDERED:
-        return sql`(${refs.orderedQuantity} > 0 and (${refs.orderedQuantity} < ${purchaseRequestItems.quantity} or ${refs.receivedQuantity} < ${refs.orderedQuantity}))`;
+        return sql`(${refs.orderedQuantity} > 0 and ${refs.receivedQuantity} = 0)`;
       case PurchaseLedgerStatus.QUOTING:
         return sql`(${refs.orderedQuantity} = 0 and ${refs.quotedQuantity} > 0)`;
       case PurchaseLedgerStatus.WAITING_TO_PURCHASE:
-        return sql`(${refs.orderedQuantity} = 0 and ${refs.quotedQuantity} < ${purchaseRequestItems.quantity})`;
+        return sql`(${refs.orderedQuantity} = 0 and ${refs.quotedQuantity} = 0)`;
     }
   }
 
@@ -336,6 +339,9 @@ export class PurchaseLedgerService {
         when ${refs.orderedQuantity} >= ${purchaseRequestItems.quantity}
           and ${refs.receivedQuantity} >= ${refs.orderedQuantity}
           then ${PurchaseLedgerStatus.COMPLETED}
+
+        when ${refs.orderedQuantity} > 0 and ${refs.receivedQuantity} > 0
+          then ${PurchaseLedgerStatus.RECEIVING}
 
         when ${refs.orderedQuantity} > 0
           then ${PurchaseLedgerStatus.ORDERED}

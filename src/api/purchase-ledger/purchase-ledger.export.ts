@@ -25,6 +25,7 @@ const PURCHASE_LEDGER_STATUS_LABELS: Record<PurchaseLedgerStatus, string> = {
   [PurchaseLedgerStatus.WAITING_TO_PURCHASE]: 'Chờ mua',
   [PurchaseLedgerStatus.QUOTING]: 'Đang báo giá',
   [PurchaseLedgerStatus.ORDERED]: 'Đã đặt hàng',
+  [PurchaseLedgerStatus.RECEIVING]: 'Nhập một phần',
   [PurchaseLedgerStatus.COMPLETED]: 'Hoàn tất',
 };
 

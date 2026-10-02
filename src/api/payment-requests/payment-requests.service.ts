@@ -321,24 +321,9 @@ export class PaymentRequestsService {
   ): Promise<void> {
     await this.ensurePaymentRequestPending(paymentRequestId);
 
-    await this.db.transaction(async (tx) => {
-      await tx
-        .update(paymentRequests)
-        .set({
-          status: PaymentRequestStatus.CANCELLED,
-          cancelledBy: userId,
-          cancelledAt: new Date(),
-          cancellationReason: reqDto.reason,
-        })
-        .where(eq(paymentRequests.id, paymentRequestId));
-
-      await tx.insert(paymentRequestLogs).values({
-        paymentRequestId,
-        action: PaymentRequestLogAction.CANCELLED,
-        content: `Hủy yêu cầu — lý do: ${reqDto.reason}`,
-        performedBy: userId,
-      });
-    });
+    await this.db.transaction((tx) =>
+      this.markCancelled(tx, paymentRequestId, userId, reqDto.reason),
+    );
   }
 
   async getPaymentRequestLogs(
@@ -384,7 +369,7 @@ export class PaymentRequestsService {
 
     const [existing, orderRows] = await Promise.all([
       tx.query.paymentRequests.findFirst({
-        columns: { id: true },
+        columns: { id: true, status: true },
         where: eq(paymentRequests.purchaseOrderId, purchaseOrderId),
       }),
       tx
@@ -412,7 +397,8 @@ export class PaymentRequestsService {
         )
         .where(eq(purchaseOrders.id, purchaseOrderId)),
     ]);
-    if (existing) {
+    // YCTT đã huỷ (phiếu nhập bị huỷ rồi nhận lại đủ hàng) thì hồi sinh bên dưới; `PENDING`/`PAID` giữ nguyên.
+    if (existing && existing.status !== PaymentRequestStatus.CANCELLED) {
       return;
     }
 
@@ -437,6 +423,29 @@ export class PaymentRequestsService {
       order.orderDate.getTime() +
         PAYMENT_TERM_DAYS[order.paymentTerm] * 24 * 60 * 60 * 1000,
     );
+
+    // `purchase_order_id` unique → không chèn dòng mới, đưa bản ghi đã huỷ về `PENDING` với số liệu hiện tại.
+    if (existing) {
+      await tx
+        .update(paymentRequests)
+        .set({
+          status: PaymentRequestStatus.PENDING,
+          requestValue: order.totalAmount,
+          dueDate,
+          cancelledBy: null,
+          cancelledAt: null,
+          cancellationReason: null,
+        })
+        .where(eq(paymentRequests.id, existing.id));
+
+      await tx.insert(paymentRequestLogs).values({
+        paymentRequestId: existing.id,
+        action: PaymentRequestLogAction.CREATED,
+        content: `Tự động sinh lại yêu cầu thanh toán khi PO ${order.code} nhận đủ hàng`,
+        performedBy: null,
+      });
+      return;
+    }
 
     const code = await this.generatePaymentRequestCode(tx);
     try {
@@ -466,6 +475,55 @@ export class PaymentRequestsService {
         throw error;
       }
     }
+  }
+
+  /** Huỷ YCTT của PO khi nguồn của nó bị huỷ (phiếu nhập đã ghi sổ, hoặc chính PO) — chạy trong
+   * transaction của bên gọi. Không có YCTT hoặc đã huỷ thì bỏ qua; `PAID` thì chặn (`E284`) vì tiền
+   * đã chi. Nguồn gọi truyền `reason` để log nêu rõ vì sao. */
+  async cancelForOrder(
+    tx: DbTransaction,
+    purchaseOrderId: string,
+    userId: string,
+    reason: string,
+  ): Promise<void> {
+    const existing = await tx.query.paymentRequests.findFirst({
+      columns: { id: true, status: true },
+      where: eq(paymentRequests.purchaseOrderId, purchaseOrderId),
+    });
+
+    if (!existing || existing.status === PaymentRequestStatus.CANCELLED) {
+      return;
+    }
+    if (existing.status === PaymentRequestStatus.PAID) {
+      throw new AppException(ErrorCode.E284, HttpStatus.CONFLICT);
+    }
+
+    await this.markCancelled(tx, existing.id, userId, reason);
+  }
+
+  /** Đổi YCTT sang `CANCELLED` và ghi log — dùng chung cho huỷ tay và huỷ theo PO/phiếu nhập. */
+  private async markCancelled(
+    tx: DbTransaction,
+    paymentRequestId: string,
+    userId: string,
+    reason: string,
+  ): Promise<void> {
+    await tx
+      .update(paymentRequests)
+      .set({
+        status: PaymentRequestStatus.CANCELLED,
+        cancelledBy: userId,
+        cancelledAt: new Date(),
+        cancellationReason: reason,
+      })
+      .where(eq(paymentRequests.id, paymentRequestId));
+
+    await tx.insert(paymentRequestLogs).values({
+      paymentRequestId,
+      action: PaymentRequestLogAction.CANCELLED,
+      content: `Hủy yêu cầu — lý do: ${reason}`,
+      performedBy: userId,
+    });
   }
 
   private async ensurePaymentRequestExists(

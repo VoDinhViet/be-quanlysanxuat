@@ -18,6 +18,7 @@ import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
 import { PurchaseChainNotesResDto } from '../purchase-notes/dto/purchase-chain-notes.res.dto';
 import { PurchaseNotesService } from '../purchase-notes/purchase-notes.service';
 import { CancelPurchaseOrderReqDto } from './dto/cancel-purchase-order.req.dto';
+import { ClosePurchaseOrderReqDto } from './dto/close-purchase-order.req.dto';
 import { GetPurchaseOrdersReqDto } from './dto/get-purchase-orders.req.dto';
 import { PagePurchaseOrderResDto } from './dto/page-purchase-order.res.dto';
 import { PurchaseOrderResDto } from './dto/purchase-order.res.dto';
@@ -114,7 +115,7 @@ export class PurchaseOrdersController {
   @Permissions('purchasing:approve')
   @ApiAuth({
     summary:
-      'Huỷ PO — PENDING_CONFIRMATION/ORDERED → CANCELLED, lý do bắt buộc',
+      'Huỷ PO — PENDING_CONFIRMATION/ORDERED → CANCELLED, lý do bắt buộc. `reopenQuotation: true` thì mở lại RFQ sinh ra PO (APPROVED → DRAFT, xoá PO chờ xác nhận khác của RFQ) để sửa giá và duyệt lại; chặn nếu RFQ còn PO ORDERED khác (E133). Không mở lại mà PO này là PO hoạt động cuối cùng của RFQ APPROVED thì RFQ cũng chuyển CANCELLED để nhả SL đã báo giá',
     statusCode: HttpStatus.NO_CONTENT,
   })
   cancelPurchaseOrder(
@@ -123,6 +124,25 @@ export class PurchaseOrdersController {
     @CurrentUser() payload: JwtPayloadType,
   ): Promise<void> {
     return this.purchaseOrdersService.cancelPurchaseOrder(
+      purchaseOrderId,
+      reqDto,
+      payload.userId,
+    );
+  }
+
+  @Post(':purchaseOrderId/close')
+  @Permissions('purchasing:approve')
+  @ApiAuth({
+    summary:
+      'Đóng sớm PO nhận một phần — hạ SL từng dòng về số đã nhập, bỏ dòng chưa nhận, sinh YCTT theo số đã nhập. Chặn khi còn phiếu nhập chưa ghi sổ (E285) hoặc không có gì để đóng (E286); lý do bắt buộc',
+    statusCode: HttpStatus.NO_CONTENT,
+  })
+  closePurchaseOrder(
+    @UUIDParam('purchaseOrderId') purchaseOrderId: string,
+    @Body() reqDto: ClosePurchaseOrderReqDto,
+    @CurrentUser() payload: JwtPayloadType,
+  ): Promise<void> {
+    return this.purchaseOrdersService.closePurchaseOrder(
       purchaseOrderId,
       reqDto,
       payload.userId,

@@ -14,7 +14,7 @@ Quy ước chung (lệnh chạy, quy tắc viết code, cảnh báo database) n�
 | 2b | [domains/partners.md](domains/partners.md) | clients, client-groups, suppliers, supplier-groups, countries | Xong |
 | 3 | domains/sales.md | orders, outbound-orders | Chưa viết |
 | 4 | domains/production.md | production-orders, production-jobs, production-execution | Chưa viết |
-| 5 | domains/purchasing.md | purchase-requests, purchase-quotations, purchase-orders, purchase-notes, purchase-ledger, payment-requests | Chưa viết |
+| 5 | [domains/purchasing.md](domains/purchasing.md) | purchase-requests, purchase-quotations, purchase-orders, purchase-notes, purchase-ledger, payment-requests | Xong |
 | 6 | domains/inventory.md | inventory, inventory-receipts, inventory-issues, inventory-requisitions, inventory-adjustments, inventory-directs, inventory-products, supplier-returns | Chưa viết |
 | 7 | domains/quality.md | iqc, oqc | Chưa viết |
 | 8 | domains/outsourcing.md | outsourcing-orders, outsourcing-receipts | Chưa viết |

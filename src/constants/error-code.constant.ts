@@ -645,6 +645,12 @@ export enum ErrorCode {
   E282 = 'production_job_issue.error.not_found',
   // Vật tư thêm vào Job phải là DIRECT (không phải FG).
   E283 = 'production_job_issue.error.item_not_direct',
+  // Huỷ phiếu nhập/đơn mua khi yêu cầu thanh toán của PO đã `PAID` — tiền đã chi, không tự đảo.
+  E284 = 'payment_request.error.already_paid',
+  // Đóng sớm PO khi còn phiếu nhập chưa ghi sổ (DRAFT/PENDING_RECEIPT/PENDING_IQC/IQC_COMPLETED).
+  E285 = 'purchase_order.error.has_unposted_receipts',
+  // Đóng sớm PO không có gì để đóng: chưa nhận gì (dùng Huỷ) hoặc đã nhận đủ mọi dòng.
+  E286 = 'purchase_order.error.nothing_to_close',
   V003 = 'common.error.too_many_requests',
   // `GlobalExceptionFilter` bắt chuỗi "No values to set" của drizzle-orm — mọi `PATCH` khi
   // `ValidationPipe` whitelist đã loại sạch field lạ, còn lại payload rỗng cho `.set()`. Trước đây

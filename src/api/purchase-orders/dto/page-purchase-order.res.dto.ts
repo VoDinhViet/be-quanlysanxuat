@@ -76,6 +76,13 @@ export class PagePurchaseOrderResDto {
   quotation!: QuotationRefResDto | null;
 
   @Expose()
+  @DateFieldOptional({
+    nullable: true,
+    description: 'Có giá trị = PO đã đóng sớm',
+  })
+  closedAt!: Date | null;
+
+  @Expose()
   @ClassFieldOptional(() => UserRefResDto, { nullable: true })
   ordererBy!: UserRefResDto | null;
 

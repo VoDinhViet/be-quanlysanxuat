@@ -9,6 +9,7 @@ import {
   gte,
   inArray,
   lt,
+  ne,
   or,
   sql,
   type SQL,
@@ -32,13 +33,19 @@ import {
   items,
   purchaseOrderItems,
   purchaseOrders,
+  PurchaseQuotationStatus,
+  purchaseQuotationItemSuppliers,
+  purchaseQuotationItems,
+  purchaseQuotations,
   purchaseRequestItems,
   purchaseRequests,
   PurchaseOrderStatus,
   users,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
+import { PaymentRequestsService } from '../payment-requests/payment-requests.service';
 import { CancelPurchaseOrderReqDto } from './dto/cancel-purchase-order.req.dto';
+import { ClosePurchaseOrderReqDto } from './dto/close-purchase-order.req.dto';
 import { GetPurchaseOrdersReqDto } from './dto/get-purchase-orders.req.dto';
 import { PagePurchaseOrderResDto } from './dto/page-purchase-order.res.dto';
 import { PurchaseOrderResDto } from './dto/purchase-order.res.dto';
@@ -60,9 +67,46 @@ type OrderProgressRefs = {
   receivedQuantity: SQL<number>;
 };
 
+type PurchaseOrderDetailRow = Awaited<
+  ReturnType<PurchaseOrdersService['findPurchaseOrderDetail']>
+>;
+
+/** Một hành động trên PO có cho phép không, và nếu không thì chứng từ nào đang chặn. */
+type ActionAvailability = {
+  isAllowed: boolean;
+  blockingDocuments: { id: string; code: string }[];
+};
+
+type CancellableOrder = {
+  id: string;
+  code: string;
+  quotationId: string | null;
+  quotation: { status: PurchaseQuotationStatus } | null;
+};
+
+/** Dòng nhận thiếu (nhận < đặt) và tổng SL đã nhận — dùng chung cho `canClose` ở chi tiết và
+ * điều kiện đóng sớm, để UI và ghi không lệch nhau. */
+function summarizeReceivedQuantities(
+  lines: { id: string; quantity: number }[],
+  receivedQuantityByItemId: Map<string, number>,
+) {
+  return {
+    underReceivedLines: lines.filter(
+      (line) => (receivedQuantityByItemId.get(line.id) ?? 0) < line.quantity,
+    ),
+    totalReceivedQuantity: lines.reduce(
+      (sum, line) => sum + (receivedQuantityByItemId.get(line.id) ?? 0),
+      0,
+    ),
+  };
+}
+
 @Injectable()
 export class PurchaseOrdersService {
-  constructor(@Inject(DRIZZLE) private readonly db: Database) {}
+  constructor(
+    @Inject(DRIZZLE) private readonly db: Database,
+    private readonly paymentRequestsService: PaymentRequestsService,
+  ) {}
 
   async getPurchaseOrders(
     reqDto: GetPurchaseOrdersReqDto,
@@ -370,6 +414,42 @@ export class PurchaseOrdersService {
   async getPurchaseOrder(
     purchaseOrderId: string,
   ): Promise<PurchaseOrderResDto> {
+    const order = await this.findPurchaseOrderDetail(purchaseOrderId);
+
+    const receivedQuantityByItemId =
+      await getReceivedQuantityByPurchaseOrderItemId(this.db, {
+        purchaseOrderItemIds: order.items.map((item) => item.id),
+        statuses: [InventoryDocumentStatus.POSTED],
+      });
+    const actions = await this.resolveAvailableActions(
+      order,
+      receivedQuantityByItemId,
+    );
+
+    return plainToInstance(
+      PurchaseOrderResDto,
+      {
+        ...order,
+        ...actions,
+        progress: this.resolveOrderProgress(
+          order.status,
+          order.items.reduce((sum, item) => sum + item.quantity, 0),
+          order.items.reduce(
+            (sum, item) => sum + (receivedQuantityByItemId.get(item.id) ?? 0),
+            0,
+          ),
+        ),
+        quotationStatus: order.quotation?.status ?? null,
+        items: order.items.map((item) => ({
+          ...item,
+          receivedQuantity: receivedQuantityByItemId.get(item.id) ?? 0,
+        })),
+      },
+      { excludeExtraneousValues: true },
+    );
+  }
+
+  private async findPurchaseOrderDetail(purchaseOrderId: string) {
     const order = await this.db.query.purchaseOrders.findFirst({
       where: eq(purchaseOrders.id, purchaseOrderId),
       with: {
@@ -378,6 +458,7 @@ export class PurchaseOrdersService {
         assignedUser: true,
         ordererBy: true,
         cancellerBy: true,
+        closerBy: true,
         creatorBy: true,
         items: {
           with: {
@@ -393,25 +474,69 @@ export class PurchaseOrdersService {
       throw new AppException(ErrorCode.E121, HttpStatus.NOT_FOUND);
     }
 
-    const receivedByItemId = await getReceivedQuantityByPurchaseOrderItemId(
-      this.db,
-      {
-        purchaseOrderItemIds: order.items.map((item) => item.id),
-        statuses: [InventoryDocumentStatus.POSTED],
-      },
-    );
+    return order;
+  }
 
-    return plainToInstance(
-      PurchaseOrderResDto,
-      {
-        ...order,
-        items: order.items.map((item) => ({
-          ...item,
-          receivedQuantity: receivedByItemId.get(item.id) ?? 0,
-        })),
-      },
-      { excludeExtraneousValues: true },
+  /** Cho UI biết PO này có đóng sớm / huỷ kèm mở lại RFQ được không và cái gì đang chặn. Dùng đúng
+   * các hàm kiểm của bước ghi (`summarizeReceivedQuantities`, `findUnpostedReceipts`, `findOtherOrderedOrders`)
+   * để UI và bước ghi không lệch nhau. */
+  private async resolveAvailableActions(
+    order: PurchaseOrderDetailRow,
+    receivedQuantityByItemId: Map<string, number>,
+  ) {
+    const close = await this.resolveEarlyCloseAvailability(
+      order,
+      receivedQuantityByItemId,
     );
+    const reopen = await this.resolveQuotationReopenAvailability(order);
+
+    return {
+      canClose: close.isAllowed,
+      closeBlockedBy: close.blockingDocuments,
+      canReopenQuotation: reopen.isAllowed,
+      reopenBlockedBy: reopen.blockingDocuments,
+    };
+  }
+
+  /** Đóng sớm: PO `ORDERED` chưa đóng, nhận một phần, và không còn phiếu nhập chưa ghi sổ. */
+  private async resolveEarlyCloseAvailability(
+    order: PurchaseOrderDetailRow,
+    receivedQuantityByItemId: Map<string, number>,
+  ): Promise<ActionAvailability> {
+    const { underReceivedLines, totalReceivedQuantity } =
+      summarizeReceivedQuantities(order.items, receivedQuantityByItemId);
+    const isOrderOpen =
+      order.status === PurchaseOrderStatus.ORDERED && !order.closedAt;
+    const isPartiallyReceived =
+      underReceivedLines.length > 0 && totalReceivedQuantity > 0;
+    if (!isOrderOpen || !isPartiallyReceived) {
+      return { isAllowed: false, blockingDocuments: [] };
+    }
+
+    const blockingDocuments = await this.findUnpostedReceipts(
+      this.db,
+      order.id,
+    );
+    return { isAllowed: blockingDocuments.length === 0, blockingDocuments };
+  }
+
+  /** Huỷ kèm mở lại RFQ: PO chưa huỷ, RFQ nguồn còn `APPROVED`, và không còn PO `ORDERED` khác. */
+  private async resolveQuotationReopenAvailability(
+    order: PurchaseOrderDetailRow,
+  ): Promise<ActionAvailability> {
+    const isQuotationReopenable =
+      order.status !== PurchaseOrderStatus.CANCELLED &&
+      order.quotation?.status === PurchaseQuotationStatus.APPROVED;
+    if (!order.quotationId || !isQuotationReopenable) {
+      return { isAllowed: false, blockingDocuments: [] };
+    }
+
+    const blockingDocuments = await this.findOtherOrderedOrders(
+      this.db,
+      order.quotationId,
+      order.id,
+    );
+    return { isAllowed: blockingDocuments.length === 0, blockingDocuments };
   }
 
   /** Sinh PO Chờ xác nhận từ NCC thắng thầu của một RFQ — một NCC nhiều vật tư gộp chung một PO. Bắt
@@ -544,23 +669,310 @@ export class PurchaseOrdersService {
     reqDto: CancelPurchaseOrderReqDto,
     userId: string,
   ): Promise<void> {
-    await this.ensurePurchaseOrderCancellable(purchaseOrderId);
+    const order = await this.ensurePurchaseOrderCancellable(purchaseOrderId);
 
-    const hasPostedReceipts =
-      await this.hasPostedReceiptsForOrder(purchaseOrderId);
-    if (hasPostedReceipts) {
+    if (await this.hasPostedReceiptsForOrder(purchaseOrderId)) {
       throw new AppException(ErrorCode.E124, HttpStatus.CONFLICT);
     }
 
-    await this.db
-      .update(purchaseOrders)
+    await this.db.transaction(async (tx) => {
+      await this.cancelLinkedDocuments(tx, order, userId);
+
+      await tx
+        .update(purchaseOrders)
+        .set({
+          status: PurchaseOrderStatus.CANCELLED,
+          cancelledBy: userId,
+          cancelledAt: new Date(),
+          cancellationReason: reqDto.reason,
+        })
+        .where(eq(purchaseOrders.id, purchaseOrderId));
+
+      await this.settleQuotationAfterCancel(tx, order, reqDto, userId);
+    });
+  }
+
+  /** YCTT còn `PENDING` huỷ theo (đã `PAID` thì `E284`); phiếu nhập nháp chưa chạm kho/IQC cũng huỷ
+   * theo. Phiếu đã `confirm` giữ nguyên nhưng không còn `confirm`/`post` được (`E145`). */
+  private async cancelLinkedDocuments(
+    tx: DbTransaction,
+    order: { id: string; code: string },
+    userId: string,
+  ): Promise<void> {
+    await this.paymentRequestsService.cancelForOrder(
+      tx,
+      order.id,
+      userId,
+      `PO ${order.code} bị huỷ`,
+    );
+
+    await tx
+      .update(inventoryReceipts)
+      .set({ status: InventoryDocumentStatus.CANCELLED })
+      .where(
+        and(
+          eq(inventoryReceipts.purchaseOrderId, order.id),
+          eq(inventoryReceipts.status, InventoryDocumentStatus.DRAFT),
+        ),
+      );
+  }
+
+  /** Số phận của RFQ sinh ra PO vừa huỷ — chỉ xét khi RFQ còn `APPROVED`: mở lại để sửa giá
+   * (`reopenQuotation`), hoặc "không mua nữa" thì huỷ RFQ nếu đây là PO hoạt động cuối cùng. */
+  private async settleQuotationAfterCancel(
+    tx: DbTransaction,
+    order: CancellableOrder,
+    reqDto: CancelPurchaseOrderReqDto,
+    userId: string,
+  ): Promise<void> {
+    const quotationId = order.quotationId;
+    if (
+      !quotationId ||
+      order.quotation?.status !== PurchaseQuotationStatus.APPROVED
+    ) {
+      return;
+    }
+
+    if (reqDto.reopenQuotation === true) {
+      // Kiểm trong transaction; throw → rollback cả việc huỷ PO.
+      const blockers = await this.findOtherOrderedOrders(
+        tx,
+        quotationId,
+        order.id,
+      );
+      if (blockers.length) {
+        throw new AppException(ErrorCode.E133, HttpStatus.CONFLICT);
+      }
+      await this.revertQuotationToDraft(tx, quotationId);
+      return;
+    }
+
+    // Nếu RFQ cứ `APPROVED`, `quotedQuantity` vẫn tính nó và dòng đề xuất kẹt ở "Đang báo giá".
+    if (await this.hasActiveOrders(tx, quotationId)) {
+      return;
+    }
+    await tx
+      .update(purchaseQuotations)
       .set({
-        status: PurchaseOrderStatus.CANCELLED,
+        status: PurchaseQuotationStatus.CANCELLED,
         cancelledBy: userId,
         cancelledAt: new Date(),
-        cancellationReason: reqDto.reason,
+        cancellationReason: `Huỷ đơn mua ${order.code}: ${reqDto.reason}`,
       })
-      .where(eq(purchaseOrders.id, purchaseOrderId));
+      .where(eq(purchaseQuotations.id, quotationId));
+  }
+
+  /** RFQ còn PO nào chưa huỷ (chờ xác nhận hoặc đã đặt). */
+  private async hasActiveOrders(
+    executor: Database | DbTransaction,
+    quotationId: string,
+  ): Promise<boolean> {
+    const [{ total }] = await executor
+      .select({ total: count() })
+      .from(purchaseOrders)
+      .where(
+        and(
+          eq(purchaseOrders.quotationId, quotationId),
+          ne(purchaseOrders.status, PurchaseOrderStatus.CANCELLED),
+        ),
+      );
+
+    return total > 0;
+  }
+
+  /** Đưa RFQ `APPROVED` về `DRAFT`: xoá PO chờ xác nhận còn lại, bỏ chọn NCC thắng thầu. Dùng chung
+   * cho `PurchaseQuotationsService.recallQuotation` và huỷ PO kèm `reopenQuotation` (nằm ở đây vì
+   * `PurchaseQuotationsService` đã phụ thuộc service này, chiều ngược lại sẽ thành vòng). */
+  async revertQuotationToDraft(
+    tx: DbTransaction,
+    quotationId: string,
+  ): Promise<void> {
+    await this.deletePendingOrdersByQuotation(tx, quotationId);
+
+    await tx
+      .update(purchaseQuotationItemSuppliers)
+      .set({ selectedBy: null, selectedAt: null })
+      .where(
+        inArray(
+          purchaseQuotationItemSuppliers.quotationItemId,
+          tx
+            .select({ id: purchaseQuotationItems.id })
+            .from(purchaseQuotationItems)
+            .where(eq(purchaseQuotationItems.quotationId, quotationId)),
+        ),
+      );
+
+    await tx
+      .update(purchaseQuotations)
+      .set({
+        status: PurchaseQuotationStatus.DRAFT,
+        approvedBy: null,
+        approvedAt: null,
+      })
+      .where(eq(purchaseQuotations.id, quotationId));
+  }
+
+  /** PO `ORDERED` khác của cùng RFQ — chặn mở lại RFQ (`E133`) và cho UI biết đơn nào đang chặn. */
+  private findOtherOrderedOrders(
+    executor: Database | DbTransaction,
+    quotationId: string,
+    excludeOrderId: string,
+  ): Promise<{ id: string; code: string }[]> {
+    return executor
+      .select({ id: purchaseOrders.id, code: purchaseOrders.code })
+      .from(purchaseOrders)
+      .where(
+        and(
+          eq(purchaseOrders.quotationId, quotationId),
+          eq(purchaseOrders.status, PurchaseOrderStatus.ORDERED),
+          ne(purchaseOrders.id, excludeOrderId),
+        ),
+      );
+  }
+
+  /** Đóng sớm PO nhận một phần — hạ SL từng dòng về số đã nhập thực (đã trừ hàng trả NCC) để mọi nơi
+   * tính theo SL đặt (tiến độ PO, sổ cái, tổng tiền) tự đúng; dòng nhận 0 bị xoá (FK phiếu nhập
+   * `set null`). PO giữ `ORDERED`, đánh dấu bằng `closedAt`. Sau đó thử sinh YCTT theo số đã nhập.
+   * Chặn khi còn phiếu nhập chưa ghi sổ (`E285`) hoặc không có gì để đóng (`E286`). */
+  async closePurchaseOrder(
+    purchaseOrderId: string,
+    reqDto: ClosePurchaseOrderReqDto,
+    userId: string,
+  ): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      await this.lockOrderForEarlyClose(tx, purchaseOrderId);
+
+      const { lines, receivedQuantityByItemId } =
+        await this.loadLinesWithReceivedQuantity(tx, purchaseOrderId);
+      const { underReceivedLines, totalReceivedQuantity } =
+        summarizeReceivedQuantities(lines, receivedQuantityByItemId);
+      if (!underReceivedLines.length || totalReceivedQuantity <= 0) {
+        throw new AppException(ErrorCode.E286, HttpStatus.BAD_REQUEST);
+      }
+
+      await this.reduceLinesToReceivedQuantity(
+        tx,
+        underReceivedLines,
+        receivedQuantityByItemId,
+        reqDto.reason,
+      );
+
+      await tx
+        .update(purchaseOrders)
+        .set({
+          closedBy: userId,
+          closedAt: new Date(),
+          closureReason: reqDto.reason,
+        })
+        .where(eq(purchaseOrders.id, purchaseOrderId));
+
+      await this.paymentRequestsService.createIfOrderCompleted(
+        tx,
+        purchaseOrderId,
+      );
+    });
+  }
+
+  /** Khoá dòng PO rồi kiểm điều kiện đóng: `ORDERED`, chưa đóng (`E122`), không còn phiếu nhập
+   * chưa ghi sổ (`E285`). */
+  private async lockOrderForEarlyClose(
+    tx: DbTransaction,
+    purchaseOrderId: string,
+  ): Promise<void> {
+    const [order] = await tx
+      .select({
+        status: purchaseOrders.status,
+        closedAt: purchaseOrders.closedAt,
+      })
+      .from(purchaseOrders)
+      .where(eq(purchaseOrders.id, purchaseOrderId))
+      .for('update');
+
+    if (!order) {
+      throw new AppException(ErrorCode.E121, HttpStatus.NOT_FOUND);
+    }
+    if (order.status !== PurchaseOrderStatus.ORDERED || order.closedAt) {
+      throw new AppException(ErrorCode.E122, HttpStatus.CONFLICT);
+    }
+    if ((await this.findUnpostedReceipts(tx, purchaseOrderId)).length) {
+      throw new AppException(ErrorCode.E285, HttpStatus.CONFLICT);
+    }
+  }
+
+  /** Dòng PO kèm SL đã nhận (phiếu `POSTED`, đã trừ hàng trả NCC). */
+  private async loadLinesWithReceivedQuantity(
+    tx: DbTransaction,
+    purchaseOrderId: string,
+  ) {
+    const lines = await tx
+      .select({
+        id: purchaseOrderItems.id,
+        quantity: purchaseOrderItems.quantity,
+      })
+      .from(purchaseOrderItems)
+      .where(eq(purchaseOrderItems.purchaseOrderId, purchaseOrderId));
+
+    const receivedQuantityByItemId =
+      await getReceivedQuantityByPurchaseOrderItemId(tx, {
+        purchaseOrderItemIds: lines.map((line) => line.id),
+        statuses: [InventoryDocumentStatus.POSTED],
+      });
+
+    return { lines, receivedQuantityByItemId };
+  }
+
+  /** Dòng chưa nhận gì bị xoá (FK phiếu nhập `set null`); dòng nhận một phần hạ SL về số đã nhận
+   * và ghi lý do vào `quantityAdjustmentReason` (cột 500 ký tự, cắt nếu dài). */
+  private async reduceLinesToReceivedQuantity(
+    tx: DbTransaction,
+    underReceivedLines: { id: string; quantity: number }[],
+    receivedQuantityByItemId: Map<string, number>,
+    reason: string,
+  ): Promise<void> {
+    const notReceivedLineIds = underReceivedLines
+      .filter((line) => !receivedQuantityByItemId.get(line.id))
+      .map((line) => line.id);
+    if (notReceivedLineIds.length) {
+      await tx
+        .delete(purchaseOrderItems)
+        .where(inArray(purchaseOrderItems.id, notReceivedLineIds));
+    }
+
+    for (const line of underReceivedLines) {
+      const received = receivedQuantityByItemId.get(line.id);
+      if (!received) continue;
+
+      const note = `Đóng sớm: đặt ${line.quantity}, nhận ${received}. ${reason}`;
+      await tx
+        .update(purchaseOrderItems)
+        .set({
+          quantity: received,
+          quantityAdjustmentReason: note.slice(0, 500),
+        })
+        .where(eq(purchaseOrderItems.id, line.id));
+    }
+  }
+
+  /** Phiếu nhập của PO chưa ghi sổ cũng chưa huỷ — chặn đóng sớm vì SL chốt phải dựa trên hàng đã
+   * ghi sổ. */
+  private async findUnpostedReceipts(
+    executor: Database | DbTransaction,
+    purchaseOrderId: string,
+  ): Promise<{ id: string; code: string }[]> {
+    return executor
+      .select({ id: inventoryReceipts.id, code: inventoryReceipts.code })
+      .from(inventoryReceipts)
+      .where(
+        and(
+          eq(inventoryReceipts.purchaseOrderId, purchaseOrderId),
+          inArray(inventoryReceipts.status, [
+            InventoryDocumentStatus.DRAFT,
+            InventoryDocumentStatus.PENDING_RECEIPT,
+            InventoryDocumentStatus.PENDING_IQC,
+            InventoryDocumentStatus.IQC_COMPLETED,
+          ]),
+        ),
+      );
   }
 
   private async ensurePurchaseOrderPendingConfirmation(
@@ -584,7 +996,8 @@ export class PurchaseOrdersService {
    * `CANCELLED`), khớp lifecycle `docs/domains/purchasing.md`. */
   private async ensurePurchaseOrderCancellable(purchaseOrderId: string) {
     const order = await this.db.query.purchaseOrders.findFirst({
-      columns: { id: true, status: true },
+      columns: { id: true, status: true, code: true, quotationId: true },
+      with: { quotation: { columns: { status: true } } },
       where: eq(purchaseOrders.id, purchaseOrderId),
     });
 
@@ -595,6 +1008,8 @@ export class PurchaseOrdersService {
     if (order.status === PurchaseOrderStatus.CANCELLED) {
       throw new AppException(ErrorCode.E122, HttpStatus.CONFLICT);
     }
+
+    return order;
   }
 
   private async ensureAssignedUserExists(

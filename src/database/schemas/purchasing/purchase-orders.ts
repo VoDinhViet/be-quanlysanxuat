@@ -63,6 +63,13 @@ export const purchaseOrders = pgTable(
     }),
     cancelledAt: timestamp('cancelled_at'),
     cancellationReason: varchar('cancellation_reason', { length: 1000 }),
+    // Đóng sớm: PO nhận một phần, phần còn lại không về nữa — SL dòng bị hạ về số đã nhận (xem
+    // `PurchaseOrdersService.closePurchaseOrder`). `closedAt != null` là dấu hiệu duy nhất, `status` vẫn `ORDERED`.
+    closedBy: uuid('closed_by').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    closedAt: timestamp('closed_at'),
+    closureReason: varchar('closure_reason', { length: 1000 }),
     createdBy: uuid('created_by').references(() => users.id, {
       onDelete: 'set null',
     }),
@@ -80,6 +87,7 @@ export const purchaseOrders = pgTable(
     index('idx_purchase_orders_assigned_user_id').on(table.assignedUserId),
     index('idx_purchase_orders_ordered_by').on(table.orderedBy),
     index('idx_purchase_orders_cancelled_by').on(table.cancelledBy),
+    index('idx_purchase_orders_closed_by').on(table.closedBy),
   ],
 );
 
@@ -104,6 +112,10 @@ export const purchaseOrdersRelations = relations(
     }),
     cancellerBy: one(users, {
       fields: [purchaseOrders.cancelledBy],
+      references: [users.id],
+    }),
+    closerBy: one(users, {
+      fields: [purchaseOrders.closedBy],
       references: [users.id],
     }),
     creatorBy: one(users, {

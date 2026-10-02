@@ -449,6 +449,12 @@ export class InventoryReceiptsService {
         throw new AppException(ErrorCode.E098, HttpStatus.CONFLICT);
       }
 
+      // PO có thể bị huỷ sau khi phiếu nháp được tạo — `create`/`update` đã kiểm, `confirm`/`post` phải kiểm lại.
+      await this.ensurePurchaseOrderOrdered(
+        inventoryReceipt.purchaseOrderId,
+        tx,
+      );
+
       const itemsToConfirm = await tx.query.inventoryReceiptItems.findMany({
         where: eq(inventoryReceiptItems.receiptId, receiptId),
       });
@@ -523,6 +529,11 @@ export class InventoryReceiptsService {
       ) {
         throw new AppException(ErrorCode.E098, HttpStatus.CONFLICT);
       }
+
+      await this.ensurePurchaseOrderOrdered(
+        inventoryReceipt.purchaseOrderId,
+        tx,
+      );
 
       const itemsToPost = await tx.query.inventoryReceiptItems.findMany({
         where: eq(inventoryReceiptItems.receiptId, receiptId),
@@ -720,6 +731,17 @@ export class InventoryReceiptsService {
           transactionDate: vnToday(),
           createdBy: userId,
         });
+
+        // Phiếu đã ghi sổ bị huỷ thì PO không còn nhận đủ hàng → yêu cầu thanh toán sinh từ đó cũng huỷ
+        // (đã `PAID` thì `E284` chặn, rollback cả việc huỷ phiếu). Nhận lại đủ hàng sẽ sinh lại.
+        if (inventoryReceipt.purchaseOrderId) {
+          await this.paymentRequestsService.cancelForOrder(
+            tx,
+            inventoryReceipt.purchaseOrderId,
+            userId,
+            `Phiếu nhập ${inventoryReceipt.code} bị huỷ`,
+          );
+        }
       }
 
       await tx
@@ -845,13 +867,14 @@ export class InventoryReceiptsService {
   }
 
   private async ensurePurchaseOrderOrdered(
-    purchaseOrderId?: string,
+    purchaseOrderId?: string | null,
+    executor: Database | DbTransaction = this.db,
   ): Promise<void> {
     if (!purchaseOrderId) {
       return;
     }
 
-    const purchaseOrder = await this.db.query.purchaseOrders.findFirst({
+    const purchaseOrder = await executor.query.purchaseOrders.findFirst({
       columns: { status: true },
       where: eq(purchaseOrders.id, purchaseOrderId),
     });
