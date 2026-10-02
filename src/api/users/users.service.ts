@@ -215,6 +215,7 @@ export class UsersService {
     const [row] = await this.db
       .select({
         id: credentials.id,
+        userId: users.id,
         username: credentials.username,
         email: credentials.email,
         fullName: users.fullName,

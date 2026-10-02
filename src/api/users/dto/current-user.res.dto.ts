@@ -19,6 +19,12 @@ export class CurrentUserResDto {
   id!: string;
 
   @Expose()
+  @UUIDField({
+    description: 'Linked user profile id (users.id), not the credential id',
+  })
+  userId!: string;
+
+  @Expose()
   @StringFieldOptional({ description: 'Username', nullable: true })
   username!: string | null;
 
