@@ -1,3 +1,6 @@
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+
 import { HttpStatus, Inject, Injectable, StreamableFile } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import {
@@ -20,7 +23,12 @@ import {
   DocumentType,
   generateDocumentSequence,
 } from '../../common/utils/document-sequence.util';
-import { buildXlsxBuffer, XLSX_MIME } from '../../common/utils/excel.util';
+import type { ErrorDetailDto } from '../../common/dto/error-detail.dto';
+import {
+  buildXlsxBuffer,
+  readXlsxRows,
+  XLSX_MIME,
+} from '../../common/utils/excel.util';
 import { extractPostgresError } from '../../common/utils/postgres-error.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
@@ -62,6 +70,14 @@ import { UpdateItemReqDto } from './dto/update-item.req.dto';
 import type { ItemCopyIdentity } from './types/item-copy-identity.type';
 import type { ItemBomStructure } from './types/item-bom-structure.type';
 import { ITEM_EXPORT_COLUMNS } from './items.export';
+import {
+  hasMatchingImportHeader,
+  ITEM_IMPORT_FIELDS,
+  ITEM_IMPORT_MAX_ROWS,
+  ITEM_IMPORT_TEMPLATE_DOWNLOAD_NAME,
+  ITEM_IMPORT_TEMPLATE_FILE,
+  parseImportRows,
+} from './items.import';
 
 @Injectable()
 export class ItemsService {
@@ -283,6 +299,196 @@ export class ItemsService {
       }
       throw error;
     }
+  }
+
+  /** File mẫu lưu sẵn trong repo (`templates/`), không sinh lại mỗi lần gọi. */
+  async downloadImportTemplate(): Promise<StreamableFile> {
+    const buffer = await readFile(
+      join(__dirname, 'templates', ITEM_IMPORT_TEMPLATE_FILE),
+    );
+
+    return new StreamableFile(buffer, {
+      type: XLSX_MIME,
+      disposition: `attachment; filename="${ITEM_IMPORT_TEMPLATE_DOWNLOAD_NAME}"`,
+    });
+  }
+
+  /** Nhập vật tư (DIRECT) từ Excel — tất cả hoặc không: gom lỗi mọi dòng, chỉ ghi khi sạch lỗi. */
+  async importItems(file: Express.Multer.File, userId: string): Promise<void> {
+    const rows = await this.readImportRows(file);
+    const { parsed, errors } = parseImportRows(rows);
+
+    const [unitRows, supplierRows, clientRows] = await Promise.all([
+      this.db.select({ id: units.id, code: units.code }).from(units),
+      this.db
+        .select({ id: suppliers.id, code: suppliers.code })
+        .from(suppliers)
+        .where(isNull(suppliers.deletedAt)),
+      this.db
+        .select({ id: clients.id, code: clients.code })
+        .from(clients)
+        .where(isNull(clients.deletedAt)),
+    ]);
+    const unitIdByCode = new Map(unitRows.map((row) => [row.code, row.id]));
+    const supplierIdByCode = new Map(
+      supplierRows.map((row) => [row.code, row.id]),
+    );
+    const clientIdByCode = new Map(clientRows.map((row) => [row.code, row.id]));
+
+    const existingRows = await this.db
+      .select({ code: items.code, revision: items.revision })
+      .from(items)
+      .where(
+        and(
+          isNull(items.deletedAt),
+          inArray(
+            items.code,
+            parsed.map((row) => row.code),
+          ),
+        ),
+      );
+    const existingKeys = new Set(
+      existingRows.map((row) => `${row.code}\u0000${row.revision}`),
+    );
+
+    const seenRowByKey = new Map<string, number>();
+    const values: (typeof items.$inferInsert)[] = [];
+    const addError = (
+      rowNumber: number,
+      header: string,
+      code: string,
+      message: string,
+    ) =>
+      errors.push({ property: `Dòng ${rowNumber} - ${header}`, code, message });
+
+    for (const row of parsed) {
+      const unitId = unitIdByCode.get(row.unitCode);
+      const supplierId = row.supplierCode
+        ? supplierIdByCode.get(row.supplierCode)
+        : undefined;
+      const clientId = row.clientCode
+        ? clientIdByCode.get(row.clientCode)
+        : undefined;
+      let rowValid = true;
+
+      if (!unitId) {
+        rowValid = false;
+        addError(row.rowNumber, 'Mã đơn vị tính', 'not_found', 'Không tồn tại');
+      }
+      if (row.supplierCode && !supplierId) {
+        rowValid = false;
+        addError(
+          row.rowNumber,
+          'Mã nhà cung cấp',
+          'not_found',
+          'Không tồn tại',
+        );
+      }
+      if (row.clientCode && !clientId) {
+        rowValid = false;
+        addError(row.rowNumber, 'Mã khách hàng', 'not_found', 'Không tồn tại');
+      }
+
+      const key = `${row.code}\u0000${row.revision ?? ItemsService.DEFAULT_REVISION}`;
+      const firstRow = seenRowByKey.get(key);
+      if (existingKeys.has(key)) {
+        rowValid = false;
+        addError(
+          row.rowNumber,
+          'Mã vật tư',
+          'duplicate',
+          'Mã vật tư và phiên bản đã tồn tại trong hệ thống',
+        );
+      } else if (firstRow !== undefined) {
+        rowValid = false;
+        addError(
+          row.rowNumber,
+          'Mã vật tư',
+          'duplicate',
+          `Trùng mã vật tư và phiên bản với dòng ${firstRow}`,
+        );
+      } else {
+        seenRowByKey.set(key, row.rowNumber);
+      }
+
+      if (!rowValid || !unitId) continue;
+
+      // `status`/`minStock`/`revision` bỏ trống thì DB tự điền default ở cột.
+      values.push({
+        code: row.code,
+        revision: row.revision,
+        name: row.name,
+        type: ItemType.DIRECT,
+        unitId,
+        supplierId,
+        clientId,
+        minStock: row.minStock,
+        specificWeight: row.specificWeight,
+        directGrade: row.directGrade,
+        technicalStandard: row.technicalStandard,
+        dimensions: row.dimensions,
+        colorSurface: row.colorSurface,
+        origin: row.origin,
+        leadTime: row.leadTime,
+        description: row.description,
+        note: row.note,
+        createdBy: userId,
+      });
+    }
+
+    if (errors.length > 0) {
+      throw new AppException(
+        ErrorCode.E292,
+        HttpStatus.UNPROCESSABLE_ENTITY,
+        `File có ${errors.length} lỗi, chưa có vật tư nào được nhập`,
+        this.sortImportErrors(errors),
+      );
+    }
+
+    try {
+      await this.db.insert(items).values(values);
+    } catch (error) {
+      // Race với `POST /items` cùng lúc giữa lần kiểm trùng và `INSERT`.
+      if (extractPostgresError(error)?.code === '23505') {
+        throw new AppException(ErrorCode.E008, HttpStatus.CONFLICT);
+      }
+      throw error;
+    }
+  }
+
+  private async readImportRows(file: Express.Multer.File) {
+    const invalid = (message: string) =>
+      new AppException(ErrorCode.E291, HttpStatus.BAD_REQUEST, message);
+
+    if (!file) throw invalid('Thiếu file Excel');
+    if (file.mimetype !== XLSX_MIME) {
+      throw invalid('Chỉ nhận file Excel .xlsx');
+    }
+
+    let rows: Awaited<ReturnType<typeof readXlsxRows>>;
+    try {
+      rows = await readXlsxRows(file.buffer, ITEM_IMPORT_FIELDS.length);
+    } catch {
+      throw invalid('Không đọc được file Excel');
+    }
+
+    const [header, ...dataRows] = rows;
+    if (!header || !hasMatchingImportHeader(header.cells)) {
+      throw invalid('Tiêu đề cột không khớp file mẫu, hãy tải lại file mẫu');
+    }
+    if (dataRows.length === 0) throw invalid('File không có dòng dữ liệu');
+    if (dataRows.length > ITEM_IMPORT_MAX_ROWS) {
+      throw invalid(`Tối đa ${ITEM_IMPORT_MAX_ROWS} dòng mỗi lần nhập`);
+    }
+
+    return dataRows;
+  }
+
+  private sortImportErrors(errors: ErrorDetailDto[]): ErrorDetailDto[] {
+    const rowOf = (detail: ErrorDetailDto) =>
+      Number(/^Dòng (\d+)/.exec(detail.property)?.[1] ?? 0);
+
+    return [...errors].sort((a, b) => rowOf(a) - rowOf(b));
   }
 
   async updateItem(itemId: string, reqDto: UpdateItemReqDto): Promise<void> {

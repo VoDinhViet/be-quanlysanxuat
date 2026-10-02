@@ -61,3 +61,31 @@ export async function buildXlsxBuffer<T>(
 
   return Buffer.from(await workbook.xlsx.writeBuffer());
 }
+
+export interface XlsxRow {
+  /** Số dòng trong file (1-based, header là dòng 1) — để báo lỗi đúng dòng người dùng thấy. */
+  rowNumber: number;
+  cells: string[];
+}
+
+/** Đọc sheet đầu tiên thành ma trận chuỗi (đã trim), `columnCount` ô mỗi dòng. Bỏ dòng trống hoàn toàn. */
+export async function readXlsxRows(
+  buffer: Buffer,
+  columnCount: number,
+): Promise<XlsxRow[]> {
+  const workbook = new Workbook();
+  await workbook.xlsx.load(buffer as unknown as ArrayBuffer);
+
+  const worksheet = workbook.worksheets[0];
+  if (!worksheet) return [];
+
+  const rows: XlsxRow[] = [];
+  worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+    const cells = Array.from({ length: columnCount }, (_, index) =>
+      row.getCell(index + 1).text.trim(),
+    );
+    if (cells.some((cell) => cell !== '')) rows.push({ rowNumber, cells });
+  });
+
+  return rows;
+}

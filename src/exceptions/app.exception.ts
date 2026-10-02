@@ -1,4 +1,5 @@
 import { HttpException, HttpStatus } from '@nestjs/common';
+import { ErrorDetailDto } from '../common/dto/error-detail.dto';
 import { ErrorCode } from '../constants/error-code.constant';
 
 /**
@@ -10,7 +11,8 @@ export class AppException extends HttpException {
     errorCode: ErrorCode,
     status: HttpStatus = HttpStatus.BAD_REQUEST,
     message?: string,
+    details?: ErrorDetailDto[],
   ) {
-    super({ errorCode, message }, status);
+    super({ errorCode, message, details }, status);
   }
 }

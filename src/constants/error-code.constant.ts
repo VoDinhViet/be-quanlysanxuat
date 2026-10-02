@@ -659,6 +659,10 @@ export enum ErrorCode {
   E290 = 'inventory_receipt.error.has_posted_supplier_returns',
   // Thêm vật tư vào đề xuất mua hàng đã có dòng vật tư đó — muốn đổi số lượng thì sửa dòng hiện có.
   E287 = 'purchase_request.error.item_already_in_request',
+  // `POST /items/import`: file không đọc được, sai header so với file mẫu, không có dòng dữ liệu hoặc quá số dòng cho phép.
+  E291 = 'item.error.import_file_invalid',
+  // `POST /items/import`: có dòng dữ liệu không hợp lệ — `details` liệt kê từng lỗi theo số dòng, không ghi gì vào DB.
+  E292 = 'item.error.import_rows_invalid',
   V003 = 'common.error.too_many_requests',
   // `GlobalExceptionFilter` bắt chuỗi "No values to set" của drizzle-orm — mọi `PATCH` khi
   // `ValidationPipe` whitelist đã loại sạch field lạ, còn lại payload rỗng cho `.set()`. Trước đây

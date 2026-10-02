@@ -9,6 +9,11 @@
         "include": "templates/**/*.html",
         "outDir": "dist/src",
         "watchAssets": true
+      },
+      {
+        "include": "api/items/templates/**/*.xlsx",
+        "outDir": "dist/src",
+        "watchAssets": true
       }
     ]
   }

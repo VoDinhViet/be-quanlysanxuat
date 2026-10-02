@@ -8,8 +8,12 @@ import {
   Post,
   Query,
   StreamableFile,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiBody, ApiConsumes, ApiTags } from '@nestjs/swagger';
+import { memoryStorage } from 'multer';
 
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
@@ -29,6 +33,7 @@ import { ItemOptionResDto } from './dto/item-option.res.dto';
 import { ItemResDto } from './dto/item.res.dto';
 import { PageItemResDto } from './dto/page-item.res.dto';
 import { UpdateItemReqDto } from './dto/update-item.req.dto';
+import { ITEM_IMPORT_MAX_FILE_SIZE } from './items.import';
 import { ItemsService } from './items.service';
 
 @ApiTags('Items')
@@ -71,6 +76,44 @@ export class ItemsController {
   })
   exportItems(@Query() reqDto: ExportItemsReqDto): Promise<StreamableFile> {
     return this.itemsService.exportItems(reqDto);
+  }
+
+  @Get('import-template')
+  @Permissions('items:create')
+  @ApiAuth({
+    summary: 'Tải file Excel mẫu để nhập vật tư',
+    fileType: XLSX_MIME,
+  })
+  downloadImportTemplate(): Promise<StreamableFile> {
+    return this.itemsService.downloadImportTemplate();
+  }
+
+  @Post('import')
+  @Permissions('items:create')
+  @ApiAuth({
+    summary:
+      'Nhập vật tư (DIRECT) từ Excel — tất cả hoặc không; lỗi trả về theo từng dòng',
+    statusCode: HttpStatus.NO_CONTENT,
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['file'],
+      properties: { file: { type: 'string', format: 'binary' } },
+    },
+  })
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: ITEM_IMPORT_MAX_FILE_SIZE },
+    }),
+  )
+  importItems(
+    @UploadedFile() file: Express.Multer.File,
+    @CurrentUser() payload: JwtPayloadType,
+  ): Promise<void> {
+    return this.itemsService.importItems(file, payload.userId);
   }
 
   @Get(':itemId')

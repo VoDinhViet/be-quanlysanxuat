@@ -80,6 +80,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       error: STATUS_CODES[statusCode] || 'Error',
       errorCode: r.errorCode as string,
       message: (r.message as string) || 'Error',
+      details: r.details as ErrorDetailDto[] | undefined,
     };
 
     this.logger.debug(exception);
