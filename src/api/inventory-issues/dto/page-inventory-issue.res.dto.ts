@@ -14,6 +14,7 @@ import {
   UUIDField,
 } from '../../../decorators/field.decorators';
 import { DepartmentResDto } from '../../departments/dto/department.res.dto';
+import { InventoryRequisitionRefResDto } from '../../inventory-requisitions/dto/inventory-requisition-ref.res.dto';
 import { ProductionJobRefResDto } from '../../production-jobs/dto/production-job-ref.res.dto';
 import { ProductionOrderRefResDto } from '../../production-orders/dto/production-order-ref.res.dto';
 import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
@@ -40,6 +41,10 @@ export class PageInventoryIssueResDto {
   @Expose()
   @DateField({ description: 'Ngày chứng từ' })
   issueDate!: Date;
+
+  @Expose()
+  @ClassFieldOptional(() => InventoryRequisitionRefResDto, { nullable: true })
+  requisition!: InventoryRequisitionRefResDto | null;
 
   @Expose()
   @ClassFieldOptional(() => ProductionOrderRefResDto, { nullable: true })

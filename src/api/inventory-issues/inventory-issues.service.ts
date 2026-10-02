@@ -1,6 +1,16 @@
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
-import { and, count, desc, eq, gte, inArray, isNull, lt } from 'drizzle-orm';
+import {
+  and,
+  count,
+  desc,
+  eq,
+  gte,
+  inArray,
+  isNull,
+  lt,
+  or,
+} from 'drizzle-orm';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
@@ -61,7 +71,42 @@ export class InventoryIssuesService {
   ): Promise<OffsetPaginatedDto<PageInventoryIssueResDto>> {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
     const where = and(
-      keyword ? unaccentILike(inventoryIssues.code, keyword) : undefined,
+      // Tìm theo mã phiếu, lý do/PO (note), mã LSX/Job hoặc mã/tên vật tư trong dòng phiếu. Dùng
+      // `inArray` + subquery độc lập: relational query đặt alias cho bảng chính nên `exists` tương
+      // quan sẽ vỡ SQL.
+      keyword
+        ? or(
+            unaccentILike(inventoryIssues.code, keyword),
+            unaccentILike(inventoryIssues.note, keyword),
+            inArray(
+              inventoryIssues.productionOrderId,
+              this.db
+                .select({ id: productionOrders.id })
+                .from(productionOrders)
+                .where(unaccentILike(productionOrders.code, keyword)),
+            ),
+            inArray(
+              inventoryIssues.productionJobId,
+              this.db
+                .select({ id: productionJobs.id })
+                .from(productionJobs)
+                .where(unaccentILike(productionJobs.code, keyword)),
+            ),
+            inArray(
+              inventoryIssues.id,
+              this.db
+                .select({ issueId: inventoryIssueItems.issueId })
+                .from(inventoryIssueItems)
+                .innerJoin(items, eq(items.id, inventoryIssueItems.itemId))
+                .where(
+                  or(
+                    unaccentILike(items.code, keyword),
+                    unaccentILike(items.name, keyword),
+                  ),
+                ),
+            ),
+          )
+        : undefined,
       reqDto.issueType
         ? eq(inventoryIssues.issueType, reqDto.issueType)
         : undefined,
@@ -109,11 +154,44 @@ export class InventoryIssuesService {
       this.db.select({ total: count() }).from(inventoryIssues).where(where),
     ]);
 
+    // Phiếu lãnh sinh ra phiếu xuất này (`inventory_requisitions.inventory_issue_id`) — cột "Phiếu lãnh".
+    const requisitionByIssueId = await this.getRequisitionsByIssueIds(
+      entities.map((entity) => entity.id),
+    );
+
     return new OffsetPaginatedDto(
-      plainToInstance(PageInventoryIssueResDto, entities, {
-        excludeExtraneousValues: true,
-      }),
+      plainToInstance(
+        PageInventoryIssueResDto,
+        entities.map((entity) => ({
+          ...entity,
+          requisition: requisitionByIssueId.get(entity.id) ?? null,
+        })),
+        {
+          excludeExtraneousValues: true,
+        },
+      ),
       new OffsetPaginationDto(total, reqDto),
+    );
+  }
+
+  private async getRequisitionsByIssueIds(
+    issueIds: string[],
+  ): Promise<Map<string, { id: string; code: string }>> {
+    if (!issueIds.length) return new Map();
+
+    const rows = await this.db
+      .select({
+        id: inventoryRequisitions.id,
+        code: inventoryRequisitions.code,
+        issueId: inventoryRequisitions.inventoryIssueId,
+      })
+      .from(inventoryRequisitions)
+      .where(inArray(inventoryRequisitions.inventoryIssueId, issueIds));
+
+    return new Map(
+      rows.flatMap((row) =>
+        row.issueId ? [[row.issueId, { id: row.id, code: row.code }]] : [],
+      ),
     );
   }
 
@@ -135,9 +213,18 @@ export class InventoryIssuesService {
       throw new AppException(ErrorCode.E096, HttpStatus.NOT_FOUND);
     }
 
-    return plainToInstance(InventoryIssueResDto, inventoryIssue, {
-      excludeExtraneousValues: true,
-    });
+    const requisitionByIssueId = await this.getRequisitionsByIssueIds([
+      issueId,
+    ]);
+
+    return plainToInstance(
+      InventoryIssueResDto,
+      {
+        ...inventoryIssue,
+        requisition: requisitionByIssueId.get(issueId) ?? null,
+      },
+      { excludeExtraneousValues: true },
+    );
   }
 
   async createInventoryIssue(
