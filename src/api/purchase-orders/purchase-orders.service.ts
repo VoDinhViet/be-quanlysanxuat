@@ -43,6 +43,7 @@ import {
   users,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
+import { getOnHandQuantityByItemId } from '../inventory/item-stock.query';
 import { PaymentRequestsService } from '../payment-requests/payment-requests.service';
 import { CancelPurchaseOrderReqDto } from './dto/cancel-purchase-order.req.dto';
 import { ClosePurchaseOrderReqDto } from './dto/close-purchase-order.req.dto';
@@ -402,11 +403,16 @@ export class PurchaseOrdersService {
   ): Promise<PurchaseOrderResDto> {
     const order = await this.findPurchaseOrderDetail(purchaseOrderId);
 
-    const receivedQuantityByItemId =
-      await getReceivedQuantityByPurchaseOrderItemId(this.db, {
+    const [receivedQuantityByItemId, onHandByItemId] = await Promise.all([
+      getReceivedQuantityByPurchaseOrderItemId(this.db, {
         purchaseOrderItemIds: order.items.map((item) => item.id),
         statuses: [InventoryDocumentStatus.POSTED],
-      });
+      }),
+      getOnHandQuantityByItemId(
+        this.db,
+        order.items.map((item) => item.purchaseRequestItem.item.id),
+      ),
+    ]);
     const actions = await this.resolveAvailableActions(
       order,
       receivedQuantityByItemId,
@@ -430,6 +436,7 @@ export class PurchaseOrdersService {
         items: order.items.map((item) => ({
           ...item,
           receivedQuantity: receivedQuantityByItemId.get(item.id) ?? 0,
+          onHand: onHandByItemId.get(item.purchaseRequestItem.item.id) ?? 0,
         })),
       },
       { excludeExtraneousValues: true },

@@ -56,6 +56,7 @@ import {
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { FilesService } from '../files/files.service';
+import { getOnHandQuantityByItemId } from '../inventory/item-stock.query';
 import { CopyItemReqDto } from './dto/copy-item.req.dto';
 import { CreateItemReqDto } from './dto/create-item.req.dto';
 import { ExportItemsReqDto } from './dto/export-items.req.dto';
@@ -125,8 +126,21 @@ export class ItemsService {
       this.db.select({ total: count() }).from(items).where(where),
     ]);
 
+    const onHandByItemId = reqDto.withOnHand
+      ? await getOnHandQuantityByItemId(
+          this.db,
+          entities.map((entity) => entity.id),
+        )
+      : undefined;
+    const pageItems = onHandByItemId
+      ? entities.map((entity) => ({
+          ...entity,
+          onHand: onHandByItemId.get(entity.id) ?? 0,
+        }))
+      : entities;
+
     return new OffsetPaginatedDto(
-      plainToInstance(PageItemResDto, entities, {
+      plainToInstance(PageItemResDto, pageItems, {
         excludeExtraneousValues: true,
       }),
       new OffsetPaginationDto(total, reqDto),

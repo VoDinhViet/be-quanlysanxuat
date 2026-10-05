@@ -24,6 +24,13 @@ export class PurchaseOrderItemResDto {
   receivedQuantity!: number;
 
   @Expose()
+  @NumberField({
+    description:
+      'Tồn thực tế hiện tại của vật tư (gộp mọi kho), để Kho tham chiếu khi nhập',
+  })
+  onHand!: number;
+
+  @Expose()
   @StringFieldOptional({ nullable: true, description: 'Lý do điều chỉnh SL' })
   quantityAdjustmentReason!: string | null;
 

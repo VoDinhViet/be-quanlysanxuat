@@ -108,6 +108,13 @@ export class PageItemResDto {
   leadTime!: string | null;
 
   @Expose()
+  @NumberFieldOptional({
+    description:
+      'Tồn thực tế hiện tại (gộp mọi kho) — chỉ có khi gọi với withOnHand=true',
+  })
+  onHand?: number;
+
+  @Expose()
   @ClassFieldOptional(() => UserRefResDto, { nullable: true })
   creatorBy!: UserRefResDto | null;
 

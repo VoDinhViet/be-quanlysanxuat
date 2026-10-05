@@ -46,6 +46,28 @@ export function onHandQuantityByItemSubquery(db: Database) {
     .as('item_on_hand');
 }
 
+/** Tồn hiện tại (gộp mọi kho) của đúng `itemIds`; vật tư chưa có dòng tồn vắng trong `Map` (coi là 0).
+ * Dùng cho relational query không join được `onHandQuantityByItemSubquery`. */
+export async function getOnHandQuantityByItemId(
+  db: Database | DbTransaction,
+  itemIds: string[],
+): Promise<Map<string, number>> {
+  if (!itemIds.length) {
+    return new Map();
+  }
+
+  const balances = await db
+    .select({
+      itemId: inventoryBalances.itemId,
+      onHand: sql<number>`sum(${inventoryBalances.quantity})`.mapWith(Number),
+    })
+    .from(inventoryBalances)
+    .where(inArray(inventoryBalances.itemId, itemIds))
+    .groupBy(inventoryBalances.itemId);
+
+  return new Map(balances.map((balance) => [balance.itemId, balance.onHand]));
+}
+
 /** Nhu cầu vật tư của đúng Job liên quan, hoặc mọi Job của LSX nếu không có Job cụ thể — dùng
  * `sql\`false\`` thay vì join có điều kiện để câu lệnh luôn chỉ một hình dạng. Không có cả hai
  * scope → subquery rỗng, nơi gọi `coalesce` về 0. */
