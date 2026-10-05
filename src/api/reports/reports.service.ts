@@ -687,13 +687,17 @@ export class ReportsService {
     );
   }
 
-  // Phiếu nhập đã xong IQC, chờ kho ghi sổ.
+  // Phiếu nhập chờ kho ghi sổ: `IQC_COMPLETED` (đã xong IQC) và `PENDING_RECEIPT` (đã xác nhận, không
+  // qua IQC). `PENDING_IQC` còn nằm ở IQC nên không tính.
   private async getInventoryReceiptsToPostCount(): Promise<number> {
     const [row] = await this.db
       .select({ count: sql<number>`count(*)`.mapWith(Number) })
       .from(inventoryReceipts)
       .where(
-        eq(inventoryReceipts.status, InventoryDocumentStatus.IQC_COMPLETED),
+        inArray(inventoryReceipts.status, [
+          InventoryDocumentStatus.IQC_COMPLETED,
+          InventoryDocumentStatus.PENDING_RECEIPT,
+        ]),
       );
 
     return row.count;
