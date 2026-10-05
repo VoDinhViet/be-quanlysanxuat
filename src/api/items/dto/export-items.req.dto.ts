@@ -1,19 +1,16 @@
-import { Transform } from 'class-transformer';
-
 import { ItemStatus, ItemType } from '../../../database/schemas';
 import {
   EnumFieldOptional,
   StringFieldOptional,
   UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
+import { ToArrayFromCsv } from '../../../decorators/transform.decorators';
 
 export class ExportItemsReqDto {
   @StringFieldOptional()
   readonly q?: string;
 
-  @Transform(({ value }: { value: unknown }) =>
-    typeof value === 'string' ? value.split(',') : value,
-  )
+  @ToArrayFromCsv()
   @EnumFieldOptional(() => ItemType, {
     each: true,
     description:

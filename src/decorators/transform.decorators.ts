@@ -17,6 +17,16 @@ export function ToBoolean(): PropertyDecorator {
   );
 }
 
+/** Query string dạng CSV (`?type=FG,DIRECT`) → mảng; giá trị đã là mảng (JSON body, `?a=1&a=2`) giữ
+ * nguyên. Đặt trên field có `each: true`. */
+export function ToArrayFromCsv(): PropertyDecorator {
+  return Transform(
+    ({ value }: { value: unknown }) =>
+      typeof value === 'string' ? value.split(',') : value,
+    { toClassOnly: true },
+  );
+}
+
 export function ToLowerCase(): PropertyDecorator {
   return Transform(
     (params) => {

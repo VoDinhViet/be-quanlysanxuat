@@ -1,4 +1,3 @@
-import { Transform } from 'class-transformer';
 import { PageOptionsDto } from '../../../common/dto/offset-pagination/page-options.dto';
 import { ProductionJobStatus } from '../../../database/schemas';
 import {
@@ -6,6 +5,7 @@ import {
   EnumFieldOptional,
   UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
+import { ToArrayFromCsv } from '../../../decorators/transform.decorators';
 
 export class GetProductionJobsReqDto extends PageOptionsDto {
   @UUIDFieldOptional({ description: 'Filter by source order id' })
@@ -14,9 +14,7 @@ export class GetProductionJobsReqDto extends PageOptionsDto {
   @EnumFieldOptional(() => ProductionJobStatus)
   readonly status?: ProductionJobStatus;
 
-  @Transform(({ value }: { value: unknown }) =>
-    typeof value === 'string' ? value.split(',') : value,
-  )
+  @ToArrayFromCsv()
   @EnumFieldOptional(() => ProductionJobStatus, { each: true })
   readonly statuses?: ProductionJobStatus[];
 
