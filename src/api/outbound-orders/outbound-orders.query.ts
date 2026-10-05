@@ -88,7 +88,7 @@ export async function getOutboundHeldQuantities(
   return new Map(rows.map((row) => [row.itemId, row.heldQuantity]));
 }
 
-/** Σ SL + danh sách mã đơn hàng nguồn của từng phiếu, cho list — mọi dòng, không lọc trạng thái
+/** Σ SL + danh sách mã đơn hàng (SO) và số PO khách nguồn của từng phiếu, cho list — mọi dòng, không lọc trạng thái
  * (khác `outboundHeldQuantityByItemSubquery` chỉ tính phiếu đang giữ chỗ). `orderCodes` là mảng vì
  * 1 phiếu gộp được nhiều dòng PO khác đơn (`outbound_order_items.orderItemId` không unique). */
 export function outboundOrderSummarySubquery(db: Database) {
@@ -100,6 +100,12 @@ export function outboundOrderSummarySubquery(db: Database) {
         .as('total_quantity'),
       orderCodes: sql<string[]>`array_agg(distinct ${orders.code})`.as(
         'order_codes',
+      ),
+      // Số PO của khách (`orders.buyerPoNo`) — đơn chưa nhập PO thì không có phần tử.
+      buyerPoNos: sql<
+        string[]
+      >`array_agg(distinct ${orders.buyerPoNo}) filter (where ${orders.buyerPoNo} is not null)`.as(
+        'buyer_po_nos',
       ),
     })
     .from(outboundOrderItems)

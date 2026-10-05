@@ -1,3 +1,4 @@
+import { PickType } from '@nestjs/swagger';
 import { Exclude, Expose } from 'class-transformer';
 
 import {
@@ -7,11 +8,20 @@ import {
   StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
+import { FileField } from '../../files/dto/file.field';
+import { FileResDto } from '../../files/dto/file.res.dto';
 import { ClientRefResDto } from '../../clients/dto/client-ref.res.dto';
 import { ItemRefResDto } from '../../items/dto/item-ref.res.dto';
-import { OrderRefResDto } from '../../orders/dto/order-ref.res.dto';
+import { OrderResDto } from '../../orders/dto/order.res.dto';
 import { ProductionJobRefResDto } from '../../production-jobs/dto/production-job-ref.res.dto';
 import { UnitRefResDto } from '../../units/dto/unit-ref.res.dto';
+
+@Exclude()
+class UnfulfilledOrderRefResDto extends PickType(OrderResDto, [
+  'id',
+  'code',
+  'buyerPoNo',
+] as const) {}
 
 @Exclude()
 export class UnfulfilledOrderItemResDto {
@@ -26,8 +36,8 @@ export class UnfulfilledOrderItemResDto {
   client!: ClientRefResDto;
 
   @Expose()
-  @ClassField(() => OrderRefResDto)
-  order!: OrderRefResDto;
+  @ClassField(() => UnfulfilledOrderRefResDto)
+  order!: UnfulfilledOrderRefResDto;
 
   @Expose()
   @ClassFieldOptional(() => ProductionJobRefResDto, { nullable: true })
@@ -36,6 +46,10 @@ export class UnfulfilledOrderItemResDto {
   @Expose()
   @ClassField(() => ItemRefResDto)
   item!: ItemRefResDto;
+
+  @Expose()
+  @FileField('imageFile', 'Ảnh thành phẩm')
+  image!: FileResDto | null;
 
   @Expose()
   @StringFieldOptional({ nullable: true, description: 'Phiên bản (revision)' })

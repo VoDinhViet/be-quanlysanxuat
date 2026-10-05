@@ -13,6 +13,7 @@ export interface OutboundOrderExport {
   fulfillmentType: FulfillmentType;
   status: OutboundOrderStatus;
   orderCodes: string[];
+  buyerPoNos: string[];
   totalQuantity: number;
   note: string | null;
   creatorName: string | null;
@@ -54,6 +55,11 @@ export const OUTBOUND_ORDER_EXPORT_COLUMNS: ExcelColumn<OutboundOrderExport>[] =
     {
       header: 'Mã đơn hàng nguồn',
       value: (row) => row.orderCodes.join(', ') || null,
+      width: 30,
+    },
+    {
+      header: 'Số PO',
+      value: (row) => row.buyerPoNos.join(', ') || null,
       width: 30,
     },
     {

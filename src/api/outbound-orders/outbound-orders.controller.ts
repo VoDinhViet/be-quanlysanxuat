@@ -53,7 +53,7 @@ export class OutboundOrdersController {
   @ApiAuth({
     type: UnfulfilledOrderItemResDto,
     summary:
-      'Popup "Chọn PO/Job cần giao" — dòng PO của đơn chưa hoàn thành, chưa lọc theo SL đã giao',
+      'Bước "Chọn PO/Job cần giao" — dòng PO còn SL chưa giao của đơn đang sản xuất, lọc theo khách hàng / PO / Job / thành phẩm / còn có thể giao',
     isPaginated: true,
   })
   getUnfulfilledOrderItems(

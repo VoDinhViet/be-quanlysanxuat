@@ -11,6 +11,7 @@ import {
   inArray,
   isNull,
   lte,
+  or,
   sql,
 } from 'drizzle-orm';
 import { DateTime } from 'luxon';
@@ -28,6 +29,7 @@ import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
   clients,
+  files,
   InventoryDocumentStatus,
   InventoryIssueType,
   inventoryIssueItems,
@@ -121,6 +123,7 @@ export class OutboundOrdersService {
           client: getTableColumns(clients),
           creatorBy: getTableColumns(users),
           orderCodes: sql<string[]>`coalesce(${summary.orderCodes}, '{}')`,
+          buyerPoNos: sql<string[]>`coalesce(${summary.buyerPoNos}, '{}')`,
           totalQuantity:
             sql<number>`coalesce(${summary.totalQuantity}, 0)`.mapWith(Number),
         })
@@ -304,14 +307,39 @@ export class OutboundOrdersService {
     const issuedQtySql = () =>
       sql<number>`coalesce(${issuedQty.issuedQty}, 0)`.mapWith(Number);
 
+    const availableQtySql = sql<number>`coalesce(${onHand.onHand}, 0) - coalesce(${held.heldQuantity}, 0)`;
+    const poKeyword = reqDto.poNo ? `%${reqDto.poNo}%` : undefined;
+    const itemKeyword = reqDto.itemKeyword
+      ? `%${reqDto.itemKeyword}%`
+      : undefined;
+
     const where = and(
       isNull(orders.deletedAt),
       inArray(orders.status, OutboundOrdersService.UNFULFILLED_ORDER_STATUSES),
       eq(orderItems.status, OrderItemStatus.NORMAL),
       reqDto.clientId ? eq(orders.clientId, reqDto.clientId) : undefined,
+      poKeyword
+        ? or(
+            unaccentILike(orders.buyerPoNo, poKeyword),
+            unaccentILike(orders.code, poKeyword),
+          )
+        : undefined,
+      reqDto.jobCode
+        ? unaccentILike(productionJobs.code, `%${reqDto.jobCode}%`)
+        : undefined,
+      itemKeyword
+        ? or(
+            unaccentILike(items.code, itemKeyword),
+            unaccentILike(items.name, itemKeyword),
+            unaccentILike(items.revision, itemKeyword),
+          )
+        : undefined,
+      reqDto.deliverableOnly ? sql`${availableQtySql} > 0` : undefined,
       sql`${issuedQtySql()} < ${orderItems.quantity}`,
     );
 
+    // Danh sách và đếm dùng chung `where` tham chiếu cả khách hàng/thành phẩm/Job/tồn kho — truy vấn
+    // đếm phải join đủ các bảng đó, thiếu thì `total` lệch hoặc lỗi cột.
     const [rows, [{ total }]] = await Promise.all([
       this.db
         .select({
@@ -320,6 +348,7 @@ export class OutboundOrdersService {
           order: getTableColumns(orders),
           job: getTableColumns(productionJobs),
           item: getTableColumns(items),
+          imageFile: getTableColumns(files),
           revision: items.revision,
           unit: getTableColumns(units),
           orderedQuantity: orderItems.quantity,
@@ -330,16 +359,14 @@ export class OutboundOrdersService {
           heldQuantity: sql<number>`coalesce(${held.heldQuantity}, 0)`.mapWith(
             Number,
           ),
-          availableQuantity:
-            sql<number>`coalesce(${onHand.onHand}, 0) - coalesce(${held.heldQuantity}, 0)`.mapWith(
-              Number,
-            ),
+          availableQuantity: availableQtySql.mapWith(Number),
         })
         .from(orderItems)
         .innerJoin(orders, eq(orders.id, orderItems.orderId))
         .innerJoin(clients, eq(clients.id, orders.clientId))
         .innerJoin(items, eq(items.id, orderItems.itemId))
         .innerJoin(units, eq(units.id, items.unitId))
+        .leftJoin(files, eq(files.id, items.imageFileId))
         .leftJoin(productionOrders, eq(productionOrders.orderId, orders.id))
         .leftJoin(
           productionJobs,
@@ -359,7 +386,18 @@ export class OutboundOrdersService {
         .select({ total: count() })
         .from(orderItems)
         .innerJoin(orders, eq(orders.id, orderItems.orderId))
+        .innerJoin(items, eq(items.id, orderItems.itemId))
+        .leftJoin(productionOrders, eq(productionOrders.orderId, orders.id))
+        .leftJoin(
+          productionJobs,
+          and(
+            eq(productionJobs.productionOrderId, productionOrders.id),
+            eq(productionJobs.itemId, orderItems.itemId),
+          ),
+        )
         .leftJoin(issuedQty, eq(issuedQty.orderItemId, orderItems.id))
+        .leftJoin(onHand, eq(onHand.itemId, orderItems.itemId))
+        .leftJoin(held, eq(held.itemId, orderItems.itemId))
         .where(where),
     ]);
 

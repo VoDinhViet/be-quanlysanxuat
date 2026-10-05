@@ -47,9 +47,17 @@ export class PageOutboundOrderResDto {
   @StringField({
     each: true,
     description:
-      'Mã đơn hàng nguồn (PO / Lý do) — 1 phiếu giao gộp được nhiều đơn, rỗng khi chưa có dòng nào',
+      'Mã đơn hàng nguồn (SO) — 1 phiếu giao gộp được nhiều đơn, rỗng khi chưa có dòng nào',
   })
   orderCodes!: string[];
+
+  @Expose()
+  @StringField({
+    each: true,
+    description:
+      'Số PO của khách hàng (orders.buyerPoNo) của các đơn nguồn — bỏ qua đơn chưa nhập PO',
+  })
+  buyerPoNos!: string[];
 
   @Expose()
   @NumberField({ description: 'Tổng SL giao (Σ SL mọi dòng của phiếu)' })
