@@ -75,6 +75,10 @@ import {
 import { PaymentRequestsService } from '../payment-requests/payment-requests.service';
 import { getReceivedQuantityByPurchaseOrderItemId } from '../purchase-orders/purchase-orders.query';
 import { getReturnedQuantityByReceiptItemId } from '../supplier-returns/supplier-returns.query';
+import {
+  getPurchaseSourcesByReceiptId,
+  purchaseRequestSource,
+} from './inventory-receipts.query';
 import { CreateInventoryReceiptReqDto } from './dto/create-inventory-receipt.req.dto';
 import { GetInventoryReceiptsReqDto } from './dto/get-inventory-receipts.req.dto';
 import { InventoryReceiptItemReqDto } from './dto/inventory-receipt-item.req.dto';
@@ -186,8 +190,12 @@ export class InventoryReceiptsService {
         with: {
           supplier: true,
           client: true,
-          purchaseRequest: true,
-          productionOrder: true,
+          purchaseRequest: {
+            with: {
+              productionOrder: { with: { order: true } },
+            },
+          },
+          productionOrder: { with: { order: true } },
           productionJob: true,
           purchaseOrder: true,
           posterBy: true,
@@ -198,12 +206,52 @@ export class InventoryReceiptsService {
       this.db.select({ total: count() }).from(inventoryReceipts).where(where),
     ]);
 
+    const purchaseSources = await getPurchaseSourcesByReceiptId(
+      this.db,
+      entities.map((entity) => entity.id),
+    );
+
     return new OffsetPaginatedDto(
-      plainToInstance(PageInventoryReceiptResDto, entities, {
-        excludeExtraneousValues: true,
-      }),
+      plainToInstance(
+        PageInventoryReceiptResDto,
+        entities.map((entity) => ({
+          ...entity,
+          poOrReason: this.resolvePoOrReason(
+            entity,
+            purchaseSources.get(entity.id),
+          ),
+        })),
+        { excludeExtraneousValues: true },
+      ),
       new OffsetPaginationDto(total, reqDto),
     );
+  }
+
+  /** Cột "PO / Lý do" của danh sách phiếu nhập — trả lời "hàng này nhập về cho cái gì": phiếu mua hàng
+   * lấy theo các đề xuất mua hàng của những dòng đã nhập (số PO khách, hoặc lý do nếu đề xuất tạo
+   * tay; nhiều nguồn thì nối bằng ", "); phiếu nhập từ LSX lấy PO của đơn hàng; "Nhập từ khác" lấy
+   * lý do nhập. Phiếu mua hàng không có dòng gắn đơn mua thì dùng đề xuất gắn trên phiếu. */
+  private resolvePoOrReason(
+    receipt: {
+      receiptType: InventoryReceiptType;
+      reason: string | null;
+      purchaseRequest: Parameters<typeof purchaseRequestSource>[0] | null;
+      productionOrder: {
+        order: { buyerPoNo: string | null } | null;
+      } | null;
+    },
+    purchaseSources: string[] | undefined,
+  ): string | null {
+    if (receipt.receiptType === InventoryReceiptType.OTHER) {
+      return receipt.reason;
+    }
+    if (purchaseSources?.length) {
+      return purchaseSources.join(', ');
+    }
+
+    return receipt.purchaseRequest
+      ? purchaseRequestSource(receipt.purchaseRequest)
+      : (receipt.productionOrder?.order?.buyerPoNo ?? null);
   }
 
   /** Kho/Warehouse và các ô ký để trống cho người dùng điền tay — hệ thống chỉ có 1 kho

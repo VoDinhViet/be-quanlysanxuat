@@ -94,6 +94,14 @@ export class PageInventoryReceiptResDto {
   reason!: string | null;
 
   @Expose()
+  @StringFieldOptional({
+    nullable: true,
+    description:
+      'PO / Lý do — phiếu mua hàng: số PO khách (hoặc lý do mua nếu đề xuất tạo tay) của các đề xuất mua hàng, nối bằng ", "; phiếu từ LSX: PO của đơn hàng; nhập từ khác: lý do nhập',
+  })
+  poOrReason!: string | null;
+
+  @Expose()
   @ClassFieldOptional(() => PageInventoryReceiptItemResDto, { each: true })
   items!: PageInventoryReceiptItemResDto[];
 
