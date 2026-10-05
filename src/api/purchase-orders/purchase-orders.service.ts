@@ -44,6 +44,7 @@ import {
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { PaymentRequestsService } from '../payment-requests/payment-requests.service';
+import { releaseAllocationsOnEarlyClose } from '../purchase-quotations/purchase-quotation-allocations.write';
 import { CancelPurchaseOrderReqDto } from './dto/cancel-purchase-order.req.dto';
 import { ClosePurchaseOrderReqDto } from './dto/close-purchase-order.req.dto';
 import { GetPurchaseOrdersReqDto } from './dto/get-purchase-orders.req.dto';
@@ -83,23 +84,6 @@ type CancellableOrder = {
   quotationId: string | null;
   quotation: { status: PurchaseQuotationStatus } | null;
 };
-
-/** Dòng nhận thiếu (nhận < đặt) và tổng SL đã nhận — dùng chung cho `canClose` ở chi tiết và
- * điều kiện đóng sớm, để UI và ghi không lệch nhau. */
-function summarizeReceivedQuantities(
-  lines: { id: string; quantity: number }[],
-  receivedQuantityByItemId: Map<string, number>,
-) {
-  return {
-    underReceivedLines: lines.filter(
-      (line) => (receivedQuantityByItemId.get(line.id) ?? 0) < line.quantity,
-    ),
-    totalReceivedQuantity: lines.reduce(
-      (sum, line) => sum + (receivedQuantityByItemId.get(line.id) ?? 0),
-      0,
-    ),
-  };
-}
 
 @Injectable()
 export class PurchaseOrdersService {
@@ -481,7 +465,7 @@ export class PurchaseOrdersService {
   }
 
   /** Cho UI biết PO này có đóng sớm / huỷ kèm mở lại RFQ được không và cái gì đang chặn. Dùng đúng
-   * các hàm kiểm của bước ghi (`summarizeReceivedQuantities`, `findUnpostedReceipts`, `findOtherOrderedOrders`)
+   * các hàm kiểm của bước ghi (`findUnpostedReceipts`, `findOtherOrderedOrders`)
    * để UI và bước ghi không lệch nhau. */
   private async resolveAvailableActions(
     order: PurchaseOrderDetailRow,
@@ -506,12 +490,15 @@ export class PurchaseOrdersService {
     order: PurchaseOrderDetailRow,
     receivedQuantityByItemId: Map<string, number>,
   ): Promise<ActionAvailability> {
-    const { underReceivedLines, totalReceivedQuantity } =
-      summarizeReceivedQuantities(order.items, receivedQuantityByItemId);
     const isOrderOpen =
       order.status === PurchaseOrderStatus.ORDERED && !order.closedAt;
     const isPartiallyReceived =
-      underReceivedLines.length > 0 && totalReceivedQuantity > 0;
+      order.items.some(
+        (line) => (receivedQuantityByItemId.get(line.id) ?? 0) > 0,
+      ) &&
+      order.items.some(
+        (line) => (receivedQuantityByItemId.get(line.id) ?? 0) < line.quantity,
+      );
     if (!isOrderOpen || !isPartiallyReceived) {
       return { isAllowed: false, blockingDocuments: [] };
     }
@@ -843,18 +830,23 @@ export class PurchaseOrdersService {
     userId: string,
   ): Promise<void> {
     await this.db.transaction(async (tx) => {
-      await this.lockOrderForEarlyClose(tx, purchaseOrderId);
+      const order = await this.lockOrderForEarlyClose(tx, purchaseOrderId);
 
       const { lines, receivedQuantityByItemId } =
         await this.loadLinesWithReceivedQuantity(tx, purchaseOrderId);
-      const { underReceivedLines, totalReceivedQuantity } =
-        summarizeReceivedQuantities(lines, receivedQuantityByItemId);
-      if (!underReceivedLines.length || totalReceivedQuantity <= 0) {
+      const underReceivedLines = lines.filter(
+        (line) => (receivedQuantityByItemId.get(line.id) ?? 0) < line.quantity,
+      );
+      const hasReceivedAny = lines.some(
+        (line) => (receivedQuantityByItemId.get(line.id) ?? 0) > 0,
+      );
+      if (!underReceivedLines.length || !hasReceivedAny) {
         throw new AppException(ErrorCode.E286, HttpStatus.BAD_REQUEST);
       }
 
       await this.reduceLinesToReceivedQuantity(
         tx,
+        order.quotationId,
         underReceivedLines,
         receivedQuantityByItemId,
         reqDto.reason,
@@ -881,11 +873,12 @@ export class PurchaseOrdersService {
   private async lockOrderForEarlyClose(
     tx: DbTransaction,
     purchaseOrderId: string,
-  ): Promise<void> {
+  ): Promise<{ quotationId: string | null }> {
     const [order] = await tx
       .select({
         status: purchaseOrders.status,
         closedAt: purchaseOrders.closedAt,
+        quotationId: purchaseOrders.quotationId,
       })
       .from(purchaseOrders)
       .where(eq(purchaseOrders.id, purchaseOrderId))
@@ -900,6 +893,8 @@ export class PurchaseOrdersService {
     if ((await this.findUnpostedReceipts(tx, purchaseOrderId)).length) {
       throw new AppException(ErrorCode.E285, HttpStatus.CONFLICT);
     }
+
+    return { quotationId: order.quotationId };
   }
 
   /** Dòng PO kèm SL đã nhận (phiếu `POSTED`, đã trừ hàng trả NCC). */
@@ -911,6 +906,7 @@ export class PurchaseOrdersService {
       .select({
         id: purchaseOrderItems.id,
         quantity: purchaseOrderItems.quantity,
+        purchaseRequestItemId: purchaseOrderItems.purchaseRequestItemId,
       })
       .from(purchaseOrderItems)
       .where(eq(purchaseOrderItems.purchaseOrderId, purchaseOrderId));
@@ -925,10 +921,17 @@ export class PurchaseOrdersService {
   }
 
   /** Dòng chưa nhận gì bị xoá (FK phiếu nhập `set null`); dòng nhận một phần hạ SL về số đã nhận
-   * và ghi lý do vào `quantityAdjustmentReason` (cột 500 ký tự, cắt nếu dài). */
+   * và ghi lý do vào `quantityAdjustmentReason` (cột 500 ký tự, cắt nếu dài). Cùng lúc nhả SL
+   * tương ứng ở báo giá nguồn (`releaseAllocationsOnEarlyClose`) để phần thiếu hiện lại ở sổ cái mà
+   * lập RFQ mới. */
   private async reduceLinesToReceivedQuantity(
     tx: DbTransaction,
-    underReceivedLines: { id: string; quantity: number }[],
+    quotationId: string | null,
+    underReceivedLines: {
+      id: string;
+      quantity: number;
+      purchaseRequestItemId: string;
+    }[],
     receivedQuantityByItemId: Map<string, number>,
     reason: string,
   ): Promise<void> {
@@ -953,6 +956,18 @@ export class PurchaseOrdersService {
           quantityAdjustmentReason: note.slice(0, 500),
         })
         .where(eq(purchaseOrderItems.id, line.id));
+    }
+
+    if (quotationId) {
+      await releaseAllocationsOnEarlyClose(
+        tx,
+        quotationId,
+        underReceivedLines.map((line) => ({
+          purchaseRequestItemId: line.purchaseRequestItemId,
+          receivedQuantity: receivedQuantityByItemId.get(line.id) ?? 0,
+        })),
+        `Đóng sớm PO: ${reason}`.slice(0, 500),
+      );
     }
   }
 

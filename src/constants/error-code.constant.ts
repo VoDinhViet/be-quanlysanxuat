@@ -669,6 +669,10 @@ export enum ErrorCode {
   E294 = 'inventory_receipt.error.other_no_partner',
   // Tạo sản phẩm (FG) mà không chọn khách hàng — vật tư (DIRECT) dùng chung bảng nên không bị ràng buộc này.
   E295 = 'item.error.client_required',
+  // Duyệt báo giá một phần: `allocationId` không thuộc báo giá, lặp, hoặc SL duyệt vượt SL báo giá (chỉ được giảm).
+  E296 = 'purchase_quotation.error.approved_quantity_invalid',
+  // Duyệt báo giá một phần: giảm SL so với SL báo giá mà không ghi lý do.
+  E297 = 'purchase_quotation.error.approved_quantity_reason_required',
   V003 = 'common.error.too_many_requests',
   // `GlobalExceptionFilter` bắt chuỗi "No values to set" của drizzle-orm — mọi `PATCH` khi
   // `ValidationPipe` whitelist đã loại sạch field lạ, còn lại payload rỗng cho `.set()`. Trước đây
