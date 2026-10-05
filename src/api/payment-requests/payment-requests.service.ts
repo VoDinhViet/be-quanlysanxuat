@@ -39,8 +39,10 @@ import {
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import {
+  computePurchaseOrderAmounts,
   getReceivedQuantityByPurchaseOrderItemId,
   orderAggregateSubquery,
+  purchaseOrderGrandTotalSql,
   orderReceivedQuantitySubquery,
 } from '../purchase-orders/purchase-orders.query';
 import { CancelPaymentRequestReqDto } from './dto/cancel-payment-request.req.dto';
@@ -280,6 +282,14 @@ export class PaymentRequestsService {
         ...row,
         supplier: row.purchaseOrder.supplier,
         poValue: row.requestValue,
+        ...computePurchaseOrderAmounts({
+          items: row.purchaseOrder.items,
+          vatPercent: row.purchaseOrder.vatPercent,
+          otherCost: row.purchaseOrder.otherCost,
+        }),
+        vatPercent: row.purchaseOrder.vatPercent,
+        otherCost: row.purchaseOrder.otherCost,
+        otherCostNote: row.purchaseOrder.otherCostNote,
         items,
         createdBy: row.creatorBy,
         paidBy: row.paidByUser,
@@ -382,8 +392,9 @@ export class PaymentRequestsService {
             sql<number>`coalesce(${orderedAgg.orderedQuantity}, 0)`.mapWith(
               Number,
             ),
-          totalAmount:
-            sql<number>`coalesce(${orderedAgg.totalAmount}, 0)`.mapWith(Number),
+          totalAmount: purchaseOrderGrandTotalSql(
+            sql<number>`coalesce(${orderedAgg.totalAmount}, 0)`,
+          ),
           receivedQuantity:
             sql<number>`coalesce(${receivedAgg.receivedQuantity}, 0)`.mapWith(
               Number,

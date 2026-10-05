@@ -1,7 +1,9 @@
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 import {
+  check,
   date,
   index,
+  numeric,
   pgEnum,
   pgTable,
   timestamp,
@@ -54,6 +56,24 @@ export const purchaseOrders = pgTable(
     }),
     paymentTerm: paymentTermEnum('payment_term'),
     note: varchar('note', { length: 1000 }),
+    // Thuế VAT (% trên tiền hàng) và chi phí khác (vận chuyển, bốc xếp...) của cả đơn. Chỉ lưu đầu
+    // vào; tiền VAT/tổng tiền tính lúc đọc từ Σ dòng (`purchase-orders.query.ts`), vì dòng còn
+    // sửa được khi PO chưa xác nhận. Yêu cầu thanh toán chốt tổng tiền lúc tự sinh.
+    vatPercent: numeric('vat_percent', {
+      precision: 5,
+      scale: 2,
+      mode: 'number',
+    })
+      .notNull()
+      .default(0),
+    otherCost: numeric('other_cost', {
+      precision: 18,
+      scale: 2,
+      mode: 'number',
+    })
+      .notNull()
+      .default(0),
+    otherCostNote: varchar('other_cost_note', { length: 255 }),
     orderedBy: uuid('ordered_by').references(() => users.id, {
       onDelete: 'set null',
     }),
@@ -88,6 +108,11 @@ export const purchaseOrders = pgTable(
     index('idx_purchase_orders_ordered_by').on(table.orderedBy),
     index('idx_purchase_orders_cancelled_by').on(table.cancelledBy),
     index('idx_purchase_orders_closed_by').on(table.closedBy),
+    check(
+      'chk_purchase_orders_vat_percent',
+      sql`vat_percent >= 0 AND vat_percent <= 100`,
+    ),
+    check('chk_purchase_orders_other_cost', sql`other_cost >= 0`),
   ],
 );
 

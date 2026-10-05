@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, sql, type SQL } from 'drizzle-orm';
 
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
@@ -6,8 +6,43 @@ import {
   inventoryReceiptItems,
   inventoryReceipts,
   purchaseOrderItems,
+  purchaseOrders,
   supplierReturns,
 } from '../../database/schemas';
+
+/** Tiền VAT của PO = tiền hàng × `vat_percent` / 100, làm tròn 2 số lẻ (cùng cột `numeric(18,2)`). */
+export function purchaseOrderVatAmountSql(subtotal: SQL<number>) {
+  return sql<number>`round(${subtotal} * ${purchaseOrders.vatPercent} / 100, 2)`;
+}
+
+/** Tổng tiền PO = tiền hàng + VAT + chi phí khác. `subtotal` là Σ SL đặt × đơn giá của các dòng
+ * (`orderAggregateSubquery().totalAmount`); PO có `vat_percent`/`other_cost` nên phải join bảng
+ * `purchase_orders` ở truy vấn gọi. */
+export function purchaseOrderGrandTotalSql(subtotal: SQL<number>) {
+  return sql<number>`${subtotal} + ${purchaseOrderVatAmountSql(subtotal)} + ${purchaseOrders.otherCost}`.mapWith(
+    Number,
+  );
+}
+
+/** Cách tính ở JS của `purchaseOrderGrandTotalSql`, cho màn chi tiết đã có sẵn các dòng. Dòng chưa
+ * có đơn giá tính 0 (xác nhận PO đã chặn thiếu giá, `E135`). */
+export function computePurchaseOrderAmounts(order: {
+  items: { quantity: number; unitPrice: number | null }[];
+  vatPercent: number;
+  otherCost: number;
+}) {
+  const subtotal = order.items.reduce(
+    (sum, item) => sum + item.quantity * (item.unitPrice ?? 0),
+    0,
+  );
+  const vatAmount = Math.round(subtotal * order.vatPercent) / 100;
+
+  return {
+    subtotal,
+    vatAmount,
+    totalAmount: subtotal + vatAmount + order.otherCost,
+  };
+}
 
 /** Aggregate theo PO — Σ số dòng, Σ giá trị (SL đặt × đơn giá), Σ SL đặt của mọi dòng. Dùng cho cả
  * lọc theo tiến độ (`orderedQuantity`) lẫn hiển thị (`itemCount`/`totalAmount`). */

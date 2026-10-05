@@ -43,8 +43,34 @@ export class PaymentRequestResDto {
   poValue!: number;
 
   @Expose()
-  @NumberField({ description: 'Giá trị yêu cầu thanh toán' })
+  @NumberField({
+    description:
+      'Giá trị yêu cầu thanh toán = tổng tiền PO (tiền hàng + VAT + chi phí khác) chốt lúc sinh',
+  })
   requestValue!: number;
+
+  @Expose()
+  @NumberField({ description: 'Tiền hàng chưa thuế của PO' })
+  subtotal!: number;
+
+  @Expose()
+  @NumberField({ description: 'Thuế VAT của PO (%)' })
+  vatPercent!: number;
+
+  @Expose()
+  @NumberField({ description: 'Tiền VAT của PO' })
+  vatAmount!: number;
+
+  @Expose()
+  @NumberField({ description: 'Chi phí khác của PO' })
+  otherCost!: number;
+
+  @Expose()
+  @StringFieldOptional({
+    nullable: true,
+    description: 'Diễn giải chi phí khác',
+  })
+  otherCostNote!: string | null;
 
   @Expose()
   @DateField({ description: 'Hạn thanh toán = orderDate của PO + paymentTerm' })

@@ -93,7 +93,9 @@ Sai trạng thái ở mọi thao tác trên trả `E118`.
 
 ## Đơn mua (PO) — `/purchase-orders`
 
-Bảng `purchase_orders` (đầu đơn: `code`, `supplierId`, `quotationId` có thể rỗng, `status`, `orderDate`, `expectedDate`, `assignedUserId`, `paymentTerm`, thông tin đặt/huỷ/đóng) và `purchase_order_items` (`purchaseRequestItemId` bắt buộc, `quotationItemSupplierId` trỏ dòng NCC thắng, `quantity`, `unitPrice`, `quantityAdjustmentReason`).
+Bảng `purchase_orders` (đầu đơn: `code`, `supplierId`, `quotationId` có thể rỗng, `status`, `orderDate`, `expectedDate`, `assignedUserId`, `paymentTerm`, `vatPercent`, `otherCost`, `otherCostNote`, thông tin đặt/huỷ/đóng) và `purchase_order_items` (`purchaseRequestItemId` bắt buộc, `quotationItemSupplierId` trỏ dòng NCC thắng, `quantity`, `unitPrice`, `quantityAdjustmentReason`).
+
+Tổng tiền PO = Σ SL × đơn giá (tiền hàng) + VAT (`vatPercent`% trên tiền hàng, làm tròn 2 số lẻ) + `otherCost`. Chỉ lưu `vatPercent`/`otherCost`/`otherCostNote` (sửa qua `PATCH /purchase-orders/:id` khi PO còn `PENDING_CONFIRMATION`); tiền VAT và tổng tiền tính lúc đọc (`purchaseOrderGrandTotalSql`, `computePurchaseOrderAmounts`), nên `totalAmount` ở danh sách và chi tiết đã gồm VAT và chi phí khác.
 
 **Cột `status` chỉ có 3 giá trị** (`PENDING_CONFIRMATION`, `ORDERED`, `CANCELLED`). "Đang nhận hàng" và "Hoàn tất" là **tiến độ suy ra** lúc đọc (`PurchaseOrderProgress`, mục Tiến độ suy ra), không có cột nào lưu chúng. Đóng sớm cũng không có trạng thái riêng: PO vẫn `ORDERED`, đánh dấu bằng `closedAt`.
 
@@ -147,7 +149,7 @@ Phiếu nhập thuộc nhóm inventory; ở đây chỉ nêu phần nối vào m
 
 ### Yêu cầu thanh toán (YCTT) — `/payment-requests`
 
-Bảng `payment_requests`: một dòng đúng một PO (`purchaseOrderId` unique), `requestValue` là ảnh chụp Σ SL × đơn giá lúc tạo, `dueDate` = ngày đặt + kỳ hạn của PO (`IMMEDIATE` 0 ngày, `NET_15`, `NET_30`, `NET_60`). Nhật ký ở `payment_request_logs` (`CREATED`, `PAID`, `CANCELLED`).
+Bảng `payment_requests`: một dòng đúng một PO (`purchaseOrderId` unique), `requestValue` là ảnh chụp tổng tiền PO (tiền hàng + VAT + chi phí khác) lúc tạo, `dueDate` = ngày đặt + kỳ hạn của PO (`IMMEDIATE` 0 ngày, `NET_15`, `NET_30`, `NET_60`). Nhật ký ở `payment_request_logs` (`CREATED`, `PAID`, `CANCELLED`).
 
 Tự sinh khi ghi sổ một phiếu nhập làm PO **nhận đủ** (`createIfOrderCompleted`): PO phải còn `ORDERED`, có `paymentTerm`, có dòng, và SL nhận ≥ SL đặt. Khi đóng sớm PO cũng gọi hàm này. Đã có YCTT `PENDING` hoặc `PAID` thì bỏ qua; có YCTT `CANCELLED` thì **hồi sinh** bản ghi đó (về `PENDING`, cập nhật giá trị và hạn, ghi log `CREATED`).
 

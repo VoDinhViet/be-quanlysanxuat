@@ -53,8 +53,10 @@ import { UpdatePurchaseOrderItemReqDto } from './dto/update-purchase-order-item.
 import { UpdatePurchaseOrderReqDto } from './dto/update-purchase-order.req.dto';
 import { PurchaseOrderProgress } from './purchase-orders.constant';
 import {
+  computePurchaseOrderAmounts,
   getReceivedQuantityByPurchaseOrderItemId,
   orderAggregateSubquery,
+  purchaseOrderGrandTotalSql,
   orderReceivedQuantitySubquery,
 } from './purchase-orders.query';
 import type {
@@ -211,8 +213,9 @@ export class PurchaseOrdersService {
           itemCount: sql<number>`coalesce(${orderedAgg.itemCount}, 0)`.mapWith(
             Number,
           ),
-          totalAmount:
-            sql<number>`coalesce(${orderedAgg.totalAmount}, 0)`.mapWith(Number),
+          totalAmount: purchaseOrderGrandTotalSql(
+            sql<number>`coalesce(${orderedAgg.totalAmount}, 0)`,
+          ),
           orderedQuantity: refs.orderedQuantity,
           receivedQuantity: refs.receivedQuantity,
         })
@@ -414,6 +417,7 @@ export class PurchaseOrdersService {
       {
         ...order,
         ...actions,
+        ...computePurchaseOrderAmounts(order),
         progress: this.resolveOrderProgress(
           order.status,
           order.items.reduce((sum, item) => sum + item.quantity, 0),
