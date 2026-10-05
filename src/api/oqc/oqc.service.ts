@@ -8,9 +8,7 @@ import {
   eq,
   getTableColumns,
   gte,
-  isNull,
   lt,
-  ne,
   or,
 } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
@@ -31,12 +29,10 @@ import {
   files,
   IqcResult,
   items,
-  OperationType,
   OqcDisposition,
   OqcStatus,
   orders,
   productionJobBomItems,
-  ProductionJobBomItemType,
   productionJobOperations,
   productionJobs,
   productionOrders,
@@ -52,6 +48,7 @@ import {
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { FilesService } from '../files/files.service';
+import { createProductionReceiptForJob } from '../inventory-receipts/inventory-receipts.write';
 import { linkQcFiles } from '../iqc/iqc.write';
 import { mapToQualityInspectionStatus } from '../iqc/quality-inspection-status.util';
 import { ConfirmOqcReqDto } from './dto/confirm-oqc.req.dto';
@@ -59,11 +56,14 @@ import { ExportOqcReqDto } from './dto/export-oqc.req.dto';
 import { GetOqcsReqDto } from './dto/get-oqcs.req.dto';
 import { OqcResDto } from './dto/oqc.res.dto';
 import { PageOqcResDto } from './dto/page-oqc.res.dto';
+import { RequestJobOqcReqDto } from './dto/request-job-oqc.req.dto';
 import { OQC_EXPORT_COLUMNS } from './oqc.export';
 import {
   closeJobIfQcCovered,
   getInspectedQuantityByBomItemId,
   getInspectedQuantityByOperationId,
+  getJobFinalOperation,
+  getPassedOqcQuantityByJobId,
 } from './oqc.query';
 
 const creatorUsers = alias(users, 'oqc_creator');
@@ -426,57 +426,28 @@ export class OqcService {
     });
   }
 
-  /** "Yêu cầu QC" cấp Job — 1 cú bấm, không cần nhập gì. Một câu `SELECT` gộp phần lớn điều kiện:
-   * Job tồn tại + `IN_PROGRESS` (`E082`/`E175`), có node Cấp 0 hợp lệ (`itemType='FG'`, `type ≠
-   * OUTSOURCE` — gia công ngoài chỉ QC qua IQC, không qua OQC, thiếu thì `E213`), còn `itemId` để
-   * snapshot (`E199`). Node Cấp 0 có thể nhiều công đoạn (BUG-079) nên `completedDate` của riêng
-   * dòng `sortOrder` cao nhất không đại diện được cả node — readiness (`E214`) đếm lại RIÊNG, xem
-   * mọi công đoạn FG (không OUTSOURCE) của Job còn dòng nào chưa `completedDate` không. `uq_
-   * production_job_bom_items_final_assembly` đảm bảo tối đa 1 node Cấp 0/Job. Hai `LEFT JOIN`
-   * (không phải `INNER`) để phân biệt đúng "Job không tồn tại" khỏi "Job tồn tại nhưng thiếu
-   * node/công đoạn hợp lệ" — cả hai ca sau vẫn phải trả về 1 dòng, không phải 0. `quantity` lấy
-   * thẳng `completedQuantity` của công đoạn `sortOrder` cao nhất (bước cuối cùng của node) — lô
-   * kiểm luôn là toàn bộ SL đã hoàn thành, không phải một phần. */
-  async createOqcForJob(jobId: string, userId: string): Promise<void> {
-    const [finalOperation] = await this.db
-      .select({
-        jobStatus: productionJobs.status,
-        operationId: productionJobOperations.id,
-        completedDate: productionJobOperations.completedDate,
-        completedQuantity: productionJobOperations.completedQuantity,
-        bomItemId: productionJobBomItems.id,
-        itemId: productionJobBomItems.itemId,
-        plannedQuantity: productionJobBomItems.plannedQuantity,
-      })
-      .from(productionJobs)
-      .leftJoin(
-        productionJobBomItems,
-        and(
-          eq(productionJobBomItems.productionJobId, productionJobs.id),
-          eq(productionJobBomItems.itemType, ProductionJobBomItemType.FG),
-        ),
-      )
-      .leftJoin(
-        productionJobOperations,
-        and(
-          eq(
-            productionJobOperations.productionJobBomItemId,
-            productionJobBomItems.id,
-          ),
-          ne(productionJobOperations.type, OperationType.OUTSOURCE),
-        ),
-      )
-      .where(eq(productionJobs.id, jobId))
-      .orderBy(desc(productionJobOperations.sortOrder))
-      .limit(1);
+  /** "Yêu cầu QC" cấp Job — OQC theo lô một phần (PH-111): xưởng làm xong bao nhiêu ở công đoạn cuối
+   * thì xin kiểm bấy nhiêu, không chờ cả Job. `quantity` (mặc định = toàn bộ SL chưa kiểm) tối đa
+   * là SL hoàn thành lũy kế của công đoạn cuối trừ Σ các lô đã xin (trừ lô `SCRAP`, trả SL về),
+   * quá thì `E198`. Job tồn tại + `IN_PROGRESS`/`WAITING_QC` (`E082`/`E175`), có node Cấp 0 hợp lệ
+   * (`itemType='FG'`, `type ≠ OUTSOURCE` — gia công ngoài chỉ QC qua IQC, không qua OQC, thiếu thì
+   * `E213`), còn `itemId` để snapshot (`E199`). Node Cấp 0 có thể nhiều công đoạn (BUG-079) —
+   * `getJobFinalOperation` lấy bước cuối, SL hoàn thành của nó là SL thành phẩm. Phiếu nhập kho TP
+   * của lô sinh lúc OQC được xác nhận (`confirmOqc`). */
+  async createOqcForJob(
+    jobId: string,
+    reqDto: RequestJobOqcReqDto,
+    userId: string,
+  ): Promise<void> {
+    const finalOperation = await getJobFinalOperation(this.db, jobId);
 
     if (!finalOperation) {
       throw new AppException(ErrorCode.E082, HttpStatus.NOT_FOUND);
     }
 
-    // Job đã tự chuyển `WAITING_QC` ngay khi công đoạn Cấp 0 hoàn thành (cùng transaction sinh ra
-    // `completedDate` ở dưới) — chấp nhận cả hai để không khoá Job cũ (trước bản vá này) còn đứng ở
-    // `IN_PROGRESS`. Xem `docs/decisions/production-lifecycle-closing.md`.
+    // Job tự chuyển `WAITING_QC` khi công đoạn Cấp 0 hoàn thành hết — chấp nhận cả hai trạng thái:
+    // lô một phần được xin khi Job còn `IN_PROGRESS`. Xem
+    // `docs/decisions/production-lifecycle-closing.md`.
     const allowedJobStatuses: ProductionJobStatus[] = [
       ProductionJobStatus.IN_PROGRESS,
       ProductionJobStatus.WAITING_QC,
@@ -489,56 +460,32 @@ export class OqcService {
       throw new AppException(ErrorCode.E213, HttpStatus.BAD_REQUEST);
     }
 
-    const [{ pendingFinalAssemblyCount }] = await this.db
-      .select({ pendingFinalAssemblyCount: count() })
-      .from(productionJobOperations)
-      .innerJoin(
-        productionJobBomItems,
-        eq(
-          productionJobBomItems.id,
-          productionJobOperations.productionJobBomItemId,
-        ),
-      )
-      .where(
-        and(
-          eq(productionJobBomItems.productionJobId, jobId),
-          eq(productionJobBomItems.itemType, ProductionJobBomItemType.FG),
-          ne(productionJobOperations.type, OperationType.OUTSOURCE),
-          isNull(productionJobOperations.completedDate),
-        ),
-      );
-
-    if (pendingFinalAssemblyCount > 0) {
-      throw new AppException(ErrorCode.E214, HttpStatus.BAD_REQUEST);
-    }
-
     if (!finalOperation.itemId) {
       throw new AppException(ErrorCode.E199, HttpStatus.CONFLICT);
     }
 
-    // LEFT JOIN khiến các cột trên khiến kiểu nullable, nhưng đã qua đủ 4 kiểm phía trên nghĩa là
-    // đúng có 1 công đoạn khớp — bomItemId/itemId/completedQuantity/plannedQuantity (đều NOT NULL)
-    // chắc chắn có giá trị.
+    // LEFT JOIN khiến các cột trên khiến kiểu nullable, nhưng đã qua đủ các kiểm phía trên nghĩa là
+    // đúng có 1 công đoạn khớp — bomItemId/completedQuantity/plannedQuantity (đều NOT NULL) chắc
+    // chắn có giá trị.
     const operationId = finalOperation.operationId;
     const itemId = finalOperation.itemId;
-    const quantity = finalOperation.completedQuantity!;
 
     const [inspectedByBomItem, inspectedByOperation] = await Promise.all([
       getInspectedQuantityByBomItemId(this.db, finalOperation.bomItemId!),
       getInspectedQuantityByOperationId(this.db, operationId),
     ]);
 
+    const requestableQuantity =
+      finalOperation.completedQuantity! - inspectedByOperation;
+    const quantity = reqDto.quantity ?? requestableQuantity;
+    if (quantity <= 0 || quantity > requestableQuantity) {
+      throw new AppException(ErrorCode.E198, HttpStatus.BAD_REQUEST);
+    }
+
     // Σ SL đã xin QC của mọi công đoạn as-used cùng node BOM (1 node có thể nhiều bước, cùng 1 part
     // vật lý) + lô mới không vượt `plannedQuantity` đã đóng băng của node.
     if (inspectedByBomItem + quantity > finalOperation.plannedQuantity!) {
       throw new AppException(ErrorCode.E176, HttpStatus.BAD_REQUEST);
-    }
-
-    // `quantity` luôn là toàn bộ `completedQuantity`, không phải một phần — nên còn dòng nào đã xin
-    // QC trước đó cho đúng công đoạn này (`inspectedByOperation > 0`) nghĩa là xin lại lần hai, chắc
-    // chắn vượt trần.
-    if (inspectedByOperation > 0) {
-      throw new AppException(ErrorCode.E198, HttpStatus.BAD_REQUEST);
     }
 
     await this.db.transaction(async (tx) => {
@@ -548,7 +495,6 @@ export class OqcService {
       await tx.insert(qualityInspections).values({
         quantity,
         requestedAt: inspectionDate,
-        note: null,
         inspectionNo: code,
         inspectionType: QualityInspectionType.OQC,
         productionJobOperationId: operationId,
@@ -641,6 +587,17 @@ export class OqcService {
         status === OqcStatus.COMPLETED &&
         lockedOqcInspection.productionJobId
       ) {
+        // Lô vừa đạt vào kho ngay, không chờ cả Job (PH-111): phiếu nhập TP cho phần chênh giữa
+        // Σ SL OQC đạt và SL đã có phiếu (lô `SCRAP` không đổi Σ nên không sinh gì).
+        await createProductionReceiptForJob(
+          tx,
+          lockedOqcInspection.productionJobId,
+          userId,
+          await getPassedOqcQuantityByJobId(
+            tx,
+            lockedOqcInspection.productionJobId,
+          ),
+        );
         await closeJobIfQcCovered(
           tx,
           lockedOqcInspection.productionJobId,

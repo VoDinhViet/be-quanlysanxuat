@@ -54,7 +54,7 @@ import {
   getInventoryBalancesForUpdate,
   onHandQuantityByItemSubquery,
 } from '../inventory/item-stock.query';
-import { getJobQcCoverage } from '../oqc/oqc.query';
+import { getJobFinalOperation, getJobQcCoverage } from '../oqc/oqc.query';
 import { issuedQuantityByOrderItemIdSubquery } from '../orders/orders.query';
 import { CreateOutboundOrderReqDto } from './dto/create-outbound-order.req.dto';
 import { ExportOutboundOrdersReqDto } from './dto/export-outbound-orders.req.dto';
@@ -657,8 +657,11 @@ export class OutboundOrdersService {
   }
 
   /** Chặn (`E205`) nếu còn Job nào (suy từ `productionJobId` distinct trong các dòng, bỏ qua dòng
-   * `null`) chưa có dòng QC nào hoặc còn dòng chưa `COMPLETED` (`getJobQcCoverage`, tái dùng gate
-   * `E196`). Chỉ gọi ở `sendOutboundOrder` — `approve` không kiểm lại. */
+   * `null`) chưa có lô QC nào qua (`getJobQcCoverage`) hoặc còn IQC chưa `COMPLETED`. OQC thành phẩm
+   * theo lô một phần (PH-111): Job có OQC chỉ cần ≥1 lô đã `COMPLETED` — lô khác đang dở không chặn
+   * giao phần đã đạt, SL giao còn bị chặn bởi tồn thực (`ensureOutboundLinesIssuable`, `E194`) vì
+   * thành phẩm chỉ vào kho sau khi lô qua OQC và được nhập; Job không có OQC vẫn chặn khi còn bất
+   * kỳ dòng QC nào chưa `COMPLETED`. Chỉ gọi ở `sendOutboundOrder` — `approve` không kiểm lại. */
   private async ensureAllJobsQcCompleted(
     tx: DbTransaction,
     outboundOrderId: string,
@@ -673,8 +676,14 @@ export class OutboundOrdersService {
       .filter((jobId): jobId is string => jobId !== null);
 
     for (const jobId of jobIds) {
-      const coverage = await getJobQcCoverage(tx, jobId);
-      if (coverage.total === 0 || coverage.open > 0) {
+      const [coverage, finalOperation] = await Promise.all([
+        getJobQcCoverage(tx, jobId),
+        getJobFinalOperation(tx, jobId),
+      ]);
+      const hasPassedLot = finalOperation?.operationId
+        ? coverage.finalCompleted > 0
+        : coverage.open === 0;
+      if (coverage.total === 0 || coverage.openIqc > 0 || !hasPassedLot) {
         throw new AppException(ErrorCode.E205, HttpStatus.CONFLICT);
       }
     }

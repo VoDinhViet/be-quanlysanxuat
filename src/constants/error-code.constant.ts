@@ -424,8 +424,8 @@ export enum ErrorCode {
   // phiếu này) vượt `production_jobs.quantity` (SL kế hoạch) — khác `E154` (vượt SL đặt dòng PO) và
   // `E172` (vượt SL gửi OS-OUT).
   E197 = 'inventory_receipt.error.job_planned_quantity_exceeded',
-  // Công đoạn Cấp 0 đã có dòng OQC khác (chưa `SCRAP`) — lô kiểm luôn lấy trọn `completedQuantity`
-  // (không phải một phần), nên xin QC lần hai cho cùng công đoạn chắc chắn là trùng.
+  // SL lô OQC yêu cầu ≤ 0 hoặc vượt phần đã hoàn thành ở công đoạn Cấp 0 mà chưa xin kiểm (trừ lô
+  // `SCRAP`) — OQC theo lô một phần (PH-111).
   E198 = 'oqc_inspection.error.operation_completed_quantity_insufficient',
   // Node BOM chứa công đoạn đã mất `itemId` (item gốc bị xoá, `set null`) — không có gì để
   // snapshot vào `qc_requests.itemId` (NOT NULL) khi tạo OQC.
@@ -486,9 +486,6 @@ export enum ErrorCode {
   // `itemType = 'FG'`, xem `docs/decisions/oqc-per-operation.md` mục "QC cho Cấp 0") — route này
   // chỉ áp dụng cho Job có bước lắp ráp/thành phẩm riêng.
   E213 = 'production_job.error.no_final_assembly',
-  // `POST /production-jobs/:jobId/qc` khi còn công đoạn nào của Job chưa `completedDate` (kể cả
-  // chính công đoạn Cấp 0) — phải xong toàn bộ mới được yêu cầu QC thành phẩm cho cả Job.
-  E214 = 'production_job.error.operations_not_completed',
   // Nghỉ hưu — `confirmOqc` không còn bắt buộc `dispositionNote` khi `disposition ∈ {ACCEPT, SCRAP}`;
   // QC toàn quyền quyết định phương án xử lý. Giữ comment, không tái sử dụng số.
   E215 = 'oqc_inspection.error.disposition_reason_required',

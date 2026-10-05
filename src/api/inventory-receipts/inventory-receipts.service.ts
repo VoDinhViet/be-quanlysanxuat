@@ -67,7 +67,11 @@ import { availableQuantityByItemSubquery } from '../inventory/available-quantity
 import { areReceiptIqcInspectionsCompleted } from '../iqc/iqc.query';
 import { cancelReceiptInspections } from '../iqc/iqc.write';
 import { IqcService } from '../iqc/iqc.service';
-import { getJobQcCoverage } from '../oqc/oqc.query';
+import {
+  getJobFinalOperation,
+  getJobQcCoverage,
+  getPassedOqcQuantityByJobId,
+} from '../oqc/oqc.query';
 import { PaymentRequestsService } from '../payment-requests/payment-requests.service';
 import { getReceivedQuantityByPurchaseOrderItemId } from '../purchase-orders/purchase-orders.query';
 import { getReturnedQuantityByReceiptItemId } from '../supplier-returns/supplier-returns.query';
@@ -77,7 +81,10 @@ import { InventoryReceiptItemReqDto } from './dto/inventory-receipt-item.req.dto
 import { InventoryReceiptResDto } from './dto/inventory-receipt.res.dto';
 import { PageInventoryReceiptResDto } from './dto/page-inventory-receipt.res.dto';
 import { UpdateInventoryReceiptReqDto } from './dto/update-inventory-receipt.req.dto';
-import { generateReceiptCode } from './inventory-receipts.write';
+import {
+  CONFIRMED_RECEIPT_STATUSES,
+  generateReceiptCode,
+} from './inventory-receipts.write';
 
 /** Loại phiếu → loại bút toán lúc `post` — bảng đầy đủ ở `docs/domains/inventory.md`. */
 const receiptTypeTransactionType: Record<
@@ -98,12 +105,7 @@ type IqcSourceIds = {
 @Injectable()
 export class InventoryReceiptsService {
   /** Phiếu coi như đã `confirm` — `DRAFT` không tính. */
-  private static readonly CONFIRMED_STATUSES = [
-    InventoryDocumentStatus.PENDING_IQC,
-    InventoryDocumentStatus.IQC_COMPLETED,
-    InventoryDocumentStatus.PENDING_RECEIPT,
-    InventoryDocumentStatus.POSTED,
-  ];
+  private static readonly CONFIRMED_STATUSES = CONFIRMED_RECEIPT_STATUSES;
 
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
@@ -1063,16 +1065,14 @@ export class InventoryReceiptsService {
    * DB, chỉ service-enforced) — vẫn chặn bằng `E179` thay vì bỏ qua. Mọi dòng phải cùng `itemId`
    * với Job (`E107`, tái dùng — cùng ngữ nghĩa `inventory_issues` dùng cho `orderItemId` lệch
    * item). Job phải có ≥1 dòng QC (OQC công đoạn `INHOUSE` + IQC công đoạn `OUTSOURCE`, hợp nhất
-   * qua `getJobQcCoverage`) và không còn dòng nào chưa `COMPLETED` (`E196`) — không còn so SL như
-   * `E180` cũ vì QC giờ ở đơn vị part theo công đoạn, không cùng đơn vị FG của phiếu nhập; công
-   * đoạn `OUTSOURCE` chưa từng `requiresIqc` (không có dòng QC nào) không tự nó chặn `E196` — xem
-   * comment `getJobQcCoverage` (`E212` cũ đã khai tử, điều kiện của nó nay là tập con của `E196`).
-   * Riêng công đoạn Cấp 0 (bước Lắp ráp, node `itemType = 'FG'`) phải có ≥1 phiếu OQC `COMPLETED`
-   * (`E209`) — Job chưa từng QC thành phẩm thì không cho nhập, dù mọi dòng QC khác đã xong hết (đó
-   * là điều kiện của `E196`, khác điều kiện này); bỏ qua gate này nếu Job không có node Cấp 0 (item
-   * không khai routing Cấp 0 — lỗ hổng đã biết, `docs/decisions/oqc-per-operation.md`). SL nhập
-   * (cộng dồn mọi phiếu `PRODUCTION` khác đã `confirm` cùng Job, trừ chính phiếu này) vẫn chặn trần
-   * theo `production_jobs.quantity` (`E197`). */
+   * qua `getJobQcCoverage`) và không còn IQC nào chưa `COMPLETED` (`E196`). OQC thành phẩm theo lô
+   * một phần (PH-111): Job có node Cấp 0 phải có ≥1 phiếu QC `COMPLETED` (`E209`); nếu công đoạn
+   * cuối đi qua OQC thì SL nhập (cộng dồn mọi phiếu `PRODUCTION` khác đã `confirm`, cộng phiếu này)
+   * không vượt Σ SL các lô OQC đã đạt (`E196`) — lô OQC khác đang dở không chặn phần đã đạt; Job
+   * không có OQC (thành phẩm gia công ngoài, hoặc item không khai routing Cấp 0 — lỗ hổng đã biết,
+   * `docs/decisions/oqc-per-operation.md`) vẫn chặn khi còn bất kỳ dòng QC nào chưa `COMPLETED`
+   * (`E196`). SL nhập còn chặn trần theo
+   * `production_jobs.quantity` (`E197`). */
   private async ensureProductionReceiptOqcCleared(
     tx: DbTransaction,
     inventoryReceipt: Pick<InventoryReceiptSelect, 'id' | 'productionJobId'>,
@@ -1099,8 +1099,9 @@ export class InventoryReceiptsService {
       thisReceiptQuantity += item.quantity;
     }
 
-    const [coverage, receivedSoFar] = await Promise.all([
+    const [coverage, finalOperation, receivedSoFar] = await Promise.all([
       getJobQcCoverage(tx, inventoryReceipt.productionJobId),
+      getJobFinalOperation(tx, inventoryReceipt.productionJobId),
       this.getConfirmedProductionQuantityByJobId(
         tx,
         inventoryReceipt.productionJobId,
@@ -1108,12 +1109,24 @@ export class InventoryReceiptsService {
       ),
     ]);
 
-    if (coverage.total === 0 || coverage.open > 0) {
+    if (coverage.total === 0 || coverage.openIqc > 0) {
       throw new AppException(ErrorCode.E196, HttpStatus.BAD_REQUEST);
     }
 
     if (coverage.hasFinalAssembly && coverage.finalCompleted === 0) {
       throw new AppException(ErrorCode.E209, HttpStatus.BAD_REQUEST);
+    }
+
+    if (finalOperation?.operationId) {
+      const passedQuantity = await getPassedOqcQuantityByJobId(
+        tx,
+        inventoryReceipt.productionJobId,
+      );
+      if (receivedSoFar + thisReceiptQuantity > passedQuantity) {
+        throw new AppException(ErrorCode.E196, HttpStatus.BAD_REQUEST);
+      }
+    } else if (coverage.open > 0) {
+      throw new AppException(ErrorCode.E196, HttpStatus.BAD_REQUEST);
     }
 
     if (receivedSoFar + thisReceiptQuantity > job.quantity) {

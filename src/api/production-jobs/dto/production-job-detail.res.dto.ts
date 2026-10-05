@@ -6,7 +6,6 @@ import { ItemUnitField } from '../../items/dto/item-unit.field';
 import { ItemUnitRefResDto } from '../../items/dto/item-unit-ref.res.dto';
 import { OrderBaseResDto } from '../../orders/dto/order-base.res.dto';
 import {
-  BooleanField,
   ClassField,
   ClassFieldOptional,
   DateField,
@@ -101,11 +100,11 @@ export class ProductionJobDetailResDto {
   operationsApprovedAt!: Date | null;
 
   @Expose()
-  @BooleanField({
+  @NumberField({
     description:
-      'Job này đã có phiếu OQC (Cấp 0) hay chưa — true thì nút "Yêu cầu OQC" khoá lại',
+      'SL thành phẩm đã hoàn thành ở công đoạn cuối mà chưa xin OQC (trừ lô SCRAP) — 0 thì nút "Yêu cầu OQC" khoá lại',
   })
-  oqcRequested!: boolean;
+  oqcRequestableQuantity!: number;
 
   @Expose()
   @DateField({ description: 'Thời điểm tạo Job' })

@@ -42,11 +42,10 @@ import {
   ProductionJobStatus,
   productionJobUnits,
   productionOrders,
-  qualityInspections,
   units,
-  QualityInspectionType,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
+import { getOqcRequestableQuantity } from '../oqc/oqc.query';
 import { FormTemplateType } from '../../templates/form-templates.registry';
 import { PdfRendererService } from '../../templates/pdf-renderer.service';
 import { issuedQuantityByJobItemSubquery } from '../inventory-requisitions/inventory-requisitions.query';
@@ -278,20 +277,14 @@ export class ProductionJobsService {
       throw new AppException(ErrorCode.E082, HttpStatus.NOT_FOUND);
     }
 
-    const [oqcRequest] = await this.db
-      .select({ id: qualityInspections.id })
-      .from(qualityInspections)
-      .where(
-        and(
-          eq(qualityInspections.productionJobId, jobId),
-          eq(qualityInspections.inspectionType, QualityInspectionType.OQC),
-        ),
-      )
-      .limit(1);
+    const oqcRequestableQuantity = await getOqcRequestableQuantity(
+      this.db,
+      jobId,
+    );
 
     return plainToInstance(
       ProductionJobDetailResDto,
-      { ...job, oqcRequested: !!oqcRequest },
+      { ...job, oqcRequestableQuantity },
       { excludeExtraneousValues: true },
     );
   }

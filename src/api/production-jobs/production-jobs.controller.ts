@@ -19,6 +19,7 @@ import { Permissions } from '../../decorators/permissions.decorator';
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
 import { OperationAccessService } from '../operations/operation-access.service';
 import { OqcService } from '../oqc/oqc.service';
+import { RequestJobOqcReqDto } from '../oqc/dto/request-job-oqc.req.dto';
 import { ExportProductionJobsPlanReqDto } from './dto/export-production-jobs-plan.req.dto';
 import { CreateProductionJobIssuesReqDto } from './dto/create-production-job-issues.req.dto';
 import { UpdateProductionJobIssueReqDto } from './dto/update-production-job-issue.req.dto';
@@ -307,14 +308,15 @@ export class ProductionJobsController {
   @Permissions('oqc:create')
   @ApiAuth({
     summary:
-      'Yêu cầu QC thành phẩm cho cả Job — 1 cú bấm, không cần nhập gì; chỉ chạy được khi mọi công ' +
-      'đoạn đã hoàn thành và Job có node Cấp 0',
+      'Yêu cầu OQC thành phẩm theo lô — SL (mặc định toàn bộ phần đã hoàn thành ở công đoạn cuối ' +
+      'mà chưa xin kiểm), không cần chờ cả Job xong; Job phải có node Cấp 0',
     statusCode: HttpStatus.NO_CONTENT,
   })
   requestJobQc(
     @UUIDParam('jobId') jobId: string,
+    @Body() reqDto: RequestJobOqcReqDto,
     @CurrentUser() payload: JwtPayloadType,
   ): Promise<void> {
-    return this.oqcService.createOqcForJob(jobId, payload.userId);
+    return this.oqcService.createOqcForJob(jobId, reqDto, payload.userId);
   }
 }
