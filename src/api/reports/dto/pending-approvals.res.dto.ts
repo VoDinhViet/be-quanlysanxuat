@@ -67,4 +67,12 @@ export class PendingApprovalsResDto {
       'Count of outbound orders (DO) with status PENDING_APPROVAL — 0 if the current user lacks outbound:approve',
   })
   outboundOrders!: number;
+
+  @Expose()
+  @NumberField({
+    int: true,
+    description:
+      'Count of inventory receipts with status IQC_COMPLETED (IQC done, waiting for the warehouse to post) — visible to every user, no permission gate',
+  })
+  inventoryReceiptsToPost!: number;
 }

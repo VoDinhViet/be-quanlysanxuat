@@ -22,6 +22,8 @@ import {
 import { DRIZZLE } from '../../database/database.module';
 import type { Database } from '../../database/database.type';
 import {
+  InventoryDocumentStatus,
+  inventoryReceipts,
   InventoryRequisitionStatus,
   inventoryRequisitions,
   IqcResult,
@@ -622,6 +624,7 @@ export class ReportsService {
       productionOrdersCount,
       inventoryRequisitionsCount,
       outboundOrdersCount,
+      inventoryReceiptsToPostCount,
     ] = await Promise.all([
       canApprove('purchase-requests:approve')
         ? this.getPurchaseRequestsPendingCount()
@@ -643,6 +646,8 @@ export class ReportsService {
         ? this.getInventoryRequisitionsPendingCount()
         : 0,
       canApprove('outbound:approve') ? this.getOutboundOrdersPendingCount() : 0,
+      // Việc chờ của Kho — theo yêu cầu khách mọi người dùng đều thấy, không gate theo quyền.
+      this.getInventoryReceiptsToPostCount(),
     ]);
 
     return plainToInstance(
@@ -656,9 +661,22 @@ export class ReportsService {
         productionOrders: productionOrdersCount,
         inventoryRequisitions: inventoryRequisitionsCount,
         outboundOrders: outboundOrdersCount,
+        inventoryReceiptsToPost: inventoryReceiptsToPostCount,
       },
       { excludeExtraneousValues: true },
     );
+  }
+
+  // Phiếu nhập đã xong IQC, chờ kho ghi sổ.
+  private async getInventoryReceiptsToPostCount(): Promise<number> {
+    const [row] = await this.db
+      .select({ count: sql<number>`count(*)`.mapWith(Number) })
+      .from(inventoryReceipts)
+      .where(
+        eq(inventoryReceipts.status, InventoryDocumentStatus.IQC_COMPLETED),
+      );
+
+    return row.count;
   }
 
   private async getPurchaseRequestsPendingCount(): Promise<number> {
