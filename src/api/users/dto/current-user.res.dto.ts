@@ -37,6 +37,13 @@ export class CurrentUserResDto {
   fullName!: string;
 
   @Expose()
+  @UUIDField({
+    description:
+      'Phòng ban của người dùng (users.departmentId) — dùng làm giá trị mặc định khi lập chứng từ',
+  })
+  departmentId!: string;
+
+  @Expose()
   @FileField(
     'avatarFile',
     'Avatar file from the linked user (employee) profile, or null if none is linked',

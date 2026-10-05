@@ -219,6 +219,7 @@ export class UsersService {
         username: credentials.username,
         email: credentials.email,
         fullName: users.fullName,
+        departmentId: users.departmentId,
         avatarFile: getTableColumns(files),
         role: getTableColumns(roles),
         createdAt: credentials.createdAt,
