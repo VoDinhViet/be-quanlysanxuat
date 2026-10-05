@@ -540,6 +540,7 @@ export class InventoryReceiptsService {
           lines: itemsToConfirm.map((item) => ({
             itemId: item.itemId,
             quantity: item.quantity,
+            note: item.note,
           })),
           userId,
         });

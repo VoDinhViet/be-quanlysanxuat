@@ -411,7 +411,7 @@ export class IqcService {
       supplierId: string | null;
       clientId: string | null;
       inspectionDate: Date;
-      lines: { itemId: string; quantity: number }[];
+      lines: { itemId: string; quantity: number; note: string | null }[];
       userId: string;
     },
   ): Promise<void> {
@@ -436,6 +436,7 @@ export class IqcService {
         clientId: params.clientId,
         itemId: line.itemId,
         quantity: line.quantity,
+        note: line.note,
         requestedAt: params.inspectionDate,
         status: QualityInspectionStatus.DRAFT,
         createdBy: params.userId,
