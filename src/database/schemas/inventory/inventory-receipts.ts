@@ -106,7 +106,7 @@ export const inventoryReceipts = pgTable(
       { onDelete: 'set null' },
     ),
     note: varchar('note', { length: 1000 }),
-    // Lý do nhập — bắt buộc khi `receiptType = OTHER` (service-enforced, `E293`), các loại khác để trống.
+    // PO / Lý do nhập — bắt buộc khi `receiptType = OTHER` (service-enforced, `E293`); `RETURN` có thể nhập (FE yêu cầu khi tạo); loại khác để trống.
     reason: varchar('reason', { length: 500 }),
     // Ghi ở `confirm` — khác `postedBy`/`postedAt` (ghi ở `post`), hai mốc/hai người có thể khác
     // nhau (`docs/workflows/receipt-confirmation.md`).

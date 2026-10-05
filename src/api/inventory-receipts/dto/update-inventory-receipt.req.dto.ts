@@ -50,7 +50,7 @@ export class UpdateInventoryReceiptReqDto {
     maxLength: 500,
     nullable: true,
     description:
-      'Lý do nhập — bắt buộc khi receiptType=OTHER (E293), không dùng cho các loại khác',
+      'PO / Lý do nhập — bắt buộc khi receiptType=OTHER (E293), có thể nhập khi RETURN (nhập từ khách hàng; FE yêu cầu khi tạo), không dùng cho các loại khác',
   })
   readonly reason?: string | null;
 

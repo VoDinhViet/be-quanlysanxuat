@@ -101,6 +101,12 @@ const receiptTypeTransactionType: Record<
   [InventoryReceiptType.OTHER]: InventoryTransactionType.RECEIPT,
 };
 
+/** Loại phiếu có `reason` ("PO / Lý do" Kho ghi tay): lưu ở `effectiveReason`, hiện ở cột danh sách ở `resolvePoOrReason`. */
+const RECEIPT_TYPES_WITH_REASON: ReadonlySet<InventoryReceiptType> = new Set([
+  InventoryReceiptType.OTHER,
+  InventoryReceiptType.RETURN,
+]);
+
 type IqcSourceIds = {
   supplierId: string | null;
   clientId: string | null;
@@ -229,8 +235,9 @@ export class InventoryReceiptsService {
 
   /** Cột "PO / Lý do" của danh sách phiếu nhập — trả lời "hàng này nhập về cho cái gì": phiếu mua hàng
    * lấy theo các đề xuất mua hàng của những dòng đã nhập (số PO khách, hoặc lý do nếu đề xuất tạo
-   * tay; nhiều nguồn thì nối bằng ", "); phiếu nhập từ LSX lấy PO của đơn hàng; "Nhập từ khác" lấy
-   * lý do nhập. Phiếu mua hàng không có dòng gắn đơn mua thì dùng đề xuất gắn trên phiếu. */
+   * tay; nhiều nguồn thì nối bằng ", "); phiếu nhập từ LSX lấy PO của đơn hàng; "Nhập từ khác" và
+   * "Nhập từ khách hàng" lấy PO / lý do nhập do Kho ghi. Phiếu mua hàng không có dòng gắn đơn mua
+   * thì dùng đề xuất gắn trên phiếu. */
   private resolvePoOrReason(
     receipt: {
       receiptType: InventoryReceiptType;
@@ -242,7 +249,7 @@ export class InventoryReceiptsService {
     },
     purchaseSources: string[] | undefined,
   ): string | null {
-    if (receipt.receiptType === InventoryReceiptType.OTHER) {
+    if (RECEIPT_TYPES_WITH_REASON.has(receipt.receiptType)) {
       return receipt.reason;
     }
     if (purchaseSources?.length) {
@@ -929,12 +936,12 @@ export class InventoryReceiptsService {
     }
   }
 
-  /** `reason` chỉ có nghĩa với `OTHER`; loại khác luôn lưu `null`. */
+  /** `reason` chỉ có nghĩa với loại trong `RECEIPT_TYPES_WITH_REASON`; loại khác luôn lưu `null`. */
   private effectiveReason(
     receiptType: InventoryReceiptType,
     reason: string | null | undefined,
   ): string | null {
-    return receiptType === InventoryReceiptType.OTHER
+    return RECEIPT_TYPES_WITH_REASON.has(receiptType)
       ? (reason?.trim() ?? null)
       : null;
   }

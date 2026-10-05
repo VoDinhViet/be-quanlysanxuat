@@ -89,7 +89,7 @@ export class PageInventoryReceiptResDto {
   @Expose()
   @StringFieldOptional({
     nullable: true,
-    description: 'Lý do nhập — chỉ có khi receiptType=OTHER',
+    description: 'PO / Lý do nhập — chỉ có khi receiptType=OTHER hoặc RETURN',
   })
   reason!: string | null;
 
@@ -97,7 +97,7 @@ export class PageInventoryReceiptResDto {
   @StringFieldOptional({
     nullable: true,
     description:
-      'PO / Lý do — phiếu mua hàng: số PO khách (hoặc lý do mua nếu đề xuất tạo tay) của các đề xuất mua hàng, nối bằng ", "; phiếu từ LSX: PO của đơn hàng; nhập từ khác: lý do nhập',
+      'PO / Lý do — phiếu mua hàng: số PO khách (hoặc lý do mua nếu đề xuất tạo tay) của các đề xuất mua hàng, nối bằng ", "; phiếu từ LSX: PO của đơn hàng; nhập từ khác / từ khách hàng: PO / lý do nhập do Kho ghi',
   })
   poOrReason!: string | null;
 

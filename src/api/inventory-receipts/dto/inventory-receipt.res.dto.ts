@@ -89,7 +89,7 @@ export class InventoryReceiptResDto {
   @Expose()
   @StringFieldOptional({
     nullable: true,
-    description: 'Lý do nhập — chỉ có khi receiptType=OTHER',
+    description: 'PO / Lý do nhập — chỉ có khi receiptType=OTHER hoặc RETURN',
   })
   reason!: string | null;
 
