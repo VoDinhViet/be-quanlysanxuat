@@ -9,6 +9,7 @@ import {
   getTableColumns,
   gte,
   inArray,
+  isNotNull,
   isNull,
   lt,
   or,
@@ -438,6 +439,7 @@ export class PurchaseQuotationsService {
       quotationId,
       PurchaseQuotationStatus.DRAFT,
     );
+    await this.ensureRequestItemsPurchasable(quotationId);
 
     // LEFT JOIN để dòng vật tư chưa NCC nào chào giá vẫn còn trong kết quả — INNER JOIN nuốt mất
     // dòng đó, không còn gì để ném E130. `count(cột)` bỏ qua NULL, nên `pricedSupplierCount` nhỏ
@@ -490,6 +492,7 @@ export class PurchaseQuotationsService {
       quotationId,
       PurchaseQuotationStatus.PENDING_APPROVAL,
     );
+    await this.ensureRequestItemsPurchasable(quotationId);
 
     // Tách 2 join phẳng riêng cho `allocations` và `suppliers` (cả hai 1-nhiều với
     // purchaseQuotationItems) rồi gộp lại bằng tay — join gộp chung 1 câu sẽ nhân tích Descartes,
@@ -920,6 +923,41 @@ export class PurchaseQuotationsService {
     );
     if (hasInvalidQuantity) {
       throw new AppException(ErrorCode.E265, HttpStatus.BAD_REQUEST);
+    }
+  }
+
+  /** Dòng ĐXMH bị đánh dấu "không mua" sau khi RFQ đã lập (hoặc RFQ được mở lại sau khi huỷ PO)
+   * không được đi tiếp — duyệt sẽ sinh PO cho dòng đó. */
+  private async ensureRequestItemsPurchasable(
+    quotationId: string,
+  ): Promise<void> {
+    const [notPurchasableLine] = await this.db
+      .select({ id: purchaseRequestItems.id })
+      .from(purchaseQuotationItemAllocations)
+      .innerJoin(
+        purchaseQuotationItems,
+        eq(
+          purchaseQuotationItems.id,
+          purchaseQuotationItemAllocations.quotationItemId,
+        ),
+      )
+      .innerJoin(
+        purchaseRequestItems,
+        eq(
+          purchaseRequestItems.id,
+          purchaseQuotationItemAllocations.purchaseRequestItemId,
+        ),
+      )
+      .where(
+        and(
+          eq(purchaseQuotationItems.quotationId, quotationId),
+          isNotNull(purchaseRequestItems.cancelledAt),
+        ),
+      )
+      .limit(1);
+
+    if (notPurchasableLine) {
+      throw new AppException(ErrorCode.E125, HttpStatus.CONFLICT);
     }
   }
 

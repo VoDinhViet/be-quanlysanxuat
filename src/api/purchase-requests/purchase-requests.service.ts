@@ -38,6 +38,10 @@ import {
   PurchaseOrderStatus,
   purchaseOrderItems,
   purchaseOrders,
+  purchaseQuotationItemAllocations,
+  purchaseQuotationItems,
+  purchaseQuotations,
+  PurchaseQuotationStatus,
   PurchaseRequestStatus,
   purchaseRequestItems,
   purchaseRequests,
@@ -340,6 +344,10 @@ export class PurchaseRequestsService {
         .where(eq(purchaseRequestItems.id, purchaseRequestItemId));
     });
   }
+  /** Mua/không mua một dòng — chỉ sau khi đề xuất `APPROVED`. Không mua bị chặn khi dòng còn trong
+   * PO đang mở (`E125`; PO đã đóng sớm hoặc đã huỷ thì không tính) hoặc trong RFQ nháp/chờ duyệt
+   * (`E299`, nếu không duyệt RFQ vẫn sinh PO cho dòng này). Đã không mua thì giữ nguyên người và
+   * thời điểm gốc. */
   async updatePurchaseRequestItemPurchasable(
     purchaseRequestId: string,
     purchaseRequestItemId: string,
@@ -347,62 +355,37 @@ export class PurchaseRequestsService {
     userId: string,
   ): Promise<void> {
     await this.db.transaction(async (tx) => {
-      const pr = await tx.query.purchaseRequests.findFirst({
-        columns: { id: true, status: true },
-        where: eq(purchaseRequests.id, purchaseRequestId),
-      });
+      const [pr] = await tx
+        .select({ status: purchaseRequests.status })
+        .from(purchaseRequests)
+        .where(eq(purchaseRequests.id, purchaseRequestId))
+        .limit(1);
 
       if (!pr) {
         throw new AppException(ErrorCode.E112, HttpStatus.NOT_FOUND);
       }
 
-      if (pr.status === PurchaseRequestStatus.DRAFT) {
-        throw new AppException(ErrorCode.E114, HttpStatus.CONFLICT);
+      if (pr.status !== PurchaseRequestStatus.APPROVED) {
+        throw new AppException(ErrorCode.E298, HttpStatus.CONFLICT);
       }
 
-      const item = await tx.query.purchaseRequestItems.findFirst({
-        columns: { id: true, cancelledAt: true },
-        where: and(
-          eq(purchaseRequestItems.id, purchaseRequestItemId),
-          eq(purchaseRequestItems.purchaseRequestId, purchaseRequestId),
-        ),
-      });
+      const [item] = await tx
+        .select({ cancelledAt: purchaseRequestItems.cancelledAt })
+        .from(purchaseRequestItems)
+        .where(
+          and(
+            eq(purchaseRequestItems.id, purchaseRequestItemId),
+            eq(purchaseRequestItems.purchaseRequestId, purchaseRequestId),
+          ),
+        )
+        .limit(1)
+        .for('update');
 
       if (!item) {
         throw new AppException(ErrorCode.E113, HttpStatus.NOT_FOUND);
       }
 
-      if (!reqDto.requiresPurchase) {
-        const activePoItem = await tx
-          .select({ id: purchaseOrderItems.id })
-          .from(purchaseOrderItems)
-          .innerJoin(
-            purchaseOrders,
-            eq(purchaseOrders.id, purchaseOrderItems.purchaseOrderId),
-          )
-          .where(
-            and(
-              eq(
-                purchaseOrderItems.purchaseRequestItemId,
-                purchaseRequestItemId,
-              ),
-              ne(purchaseOrders.status, PurchaseOrderStatus.CANCELLED),
-            ),
-          )
-          .limit(1);
-
-        if (activePoItem.length > 0) {
-          throw new AppException(ErrorCode.E125, HttpStatus.CONFLICT);
-        }
-
-        await tx
-          .update(purchaseRequestItems)
-          .set({
-            cancelledAt: new Date(),
-            cancelledBy: userId,
-          })
-          .where(eq(purchaseRequestItems.id, purchaseRequestItemId));
-      } else {
+      if (reqDto.requiresPurchase) {
         await tx
           .update(purchaseRequestItems)
           .set({
@@ -411,7 +394,72 @@ export class PurchaseRequestsService {
             cancellationReason: null,
           })
           .where(eq(purchaseRequestItems.id, purchaseRequestItemId));
+        return;
       }
+
+      if (item.cancelledAt) {
+        return;
+      }
+
+      const [openOrderLine] = await tx
+        .select({ id: purchaseOrderItems.id })
+        .from(purchaseOrderItems)
+        .innerJoin(
+          purchaseOrders,
+          eq(purchaseOrders.id, purchaseOrderItems.purchaseOrderId),
+        )
+        .where(
+          and(
+            eq(purchaseOrderItems.purchaseRequestItemId, purchaseRequestItemId),
+            ne(purchaseOrders.status, PurchaseOrderStatus.CANCELLED),
+            isNull(purchaseOrders.closedAt),
+          ),
+        )
+        .limit(1);
+
+      if (openOrderLine) {
+        throw new AppException(ErrorCode.E125, HttpStatus.CONFLICT);
+      }
+
+      const [pendingQuotationLine] = await tx
+        .select({ id: purchaseQuotationItemAllocations.id })
+        .from(purchaseQuotationItemAllocations)
+        .innerJoin(
+          purchaseQuotationItems,
+          eq(
+            purchaseQuotationItems.id,
+            purchaseQuotationItemAllocations.quotationItemId,
+          ),
+        )
+        .innerJoin(
+          purchaseQuotations,
+          eq(purchaseQuotations.id, purchaseQuotationItems.quotationId),
+        )
+        .where(
+          and(
+            eq(
+              purchaseQuotationItemAllocations.purchaseRequestItemId,
+              purchaseRequestItemId,
+            ),
+            inArray(purchaseQuotations.status, [
+              PurchaseQuotationStatus.DRAFT,
+              PurchaseQuotationStatus.PENDING_APPROVAL,
+            ]),
+          ),
+        )
+        .limit(1);
+
+      if (pendingQuotationLine) {
+        throw new AppException(ErrorCode.E299, HttpStatus.CONFLICT);
+      }
+
+      await tx
+        .update(purchaseRequestItems)
+        .set({
+          cancelledAt: new Date(),
+          cancelledBy: userId,
+        })
+        .where(eq(purchaseRequestItems.id, purchaseRequestItemId));
     });
   }
 

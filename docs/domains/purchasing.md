@@ -56,11 +56,11 @@ stateDiagram-v2
 | `POST .../reject` | `purchase-requests:approve` | `PENDING_APPROVAL → REJECTED`, lý do bắt buộc. |
 | `POST .../items` | `purchase-requests:update` | Thêm dòng vật tư vào phiếu có sẵn. Chỉ `DRAFT`/`REJECTED` (`E114`, `REJECTED` tự về `DRAFT`); cùng luật `E146`/`E147`/`E148` như lập tay, và không trùng vật tư đã có trong phiếu (`E287`). |
 | `PATCH .../items/:itemId`, `DELETE .../items/:itemId` | `purchase-requests:update` | Chỉ `DRAFT`/`REJECTED` (`E114`); `REJECTED` tự về `DRAFT`. Xoá phải còn ≥ 1 dòng (`E115`). |
-| `PATCH .../items/:itemId/purchasable` | `purchase-requests:update` | Đánh dấu mua/không mua một dòng **sau khi duyệt**. Không mua bị chặn (`E125`) nếu dòng còn nằm trong PO chưa huỷ. |
+| `PATCH .../items/:itemId/purchasable` | `purchase-requests:update` | Đánh dấu mua/không mua một dòng, **chỉ khi PR `APPROVED`** (`E298`). Không mua bị chặn nếu dòng còn nằm trong PO chưa huỷ và chưa đóng sớm (`E125`) hoặc trong RFQ `DRAFT`/`PENDING_APPROVAL` (`E299`); đã không mua thì giữ nguyên người và thời điểm gốc. Lý do không mua ghi ở ghi chú của dòng. |
 | `PATCH .../note` | `purchase-requests:update` | Sửa ghi chú chung, ở mọi trạng thái. |
 | `GET .../related-notes` | `purchase-requests:read` | Gộp ghi chú của cả chuỗi (xem mục Ghi chú chuỗi). |
 
-Chỉ dòng của PR `APPROVED` và chưa bị đánh dấu không mua mới được đưa vào báo giá.
+Chỉ dòng của PR `APPROVED` và chưa bị đánh dấu không mua mới được đưa vào báo giá. Gửi duyệt (`send`) và duyệt (`approve`) RFQ kiểm lại điều này (`E125`), để RFQ được mở lại sau khi huỷ PO không sinh PO cho dòng đã bị đánh dấu không mua.
 
 ## Báo giá (RFQ) — `/purchase-quotations`
 
@@ -246,7 +246,7 @@ Mỗi cột là ảnh hưởng lên chứng từ đó (— là không đổi).
 | E117 | 404 | Không thấy RFQ (`E119`, dòng RFQ, có trong danh sách mã nhưng hiện không nơi nào ném) |
 | E118 | 409 | RFQ sai trạng thái cho thao tác |
 | E120 | 400 | RFQ có dòng thiếu đơn giá khi gửi duyệt |
-| E125 | 409 | Dòng đề xuất không mua được (PR chưa duyệt, dòng bị huỷ, hoặc còn trong PO chưa huỷ) |
+| E125 | 409 | Dòng đề xuất không mua được: PR chưa duyệt hoặc dòng đã bị đánh dấu không mua (tạo/gửi/duyệt RFQ), hoặc còn trong PO chưa huỷ và chưa đóng sớm (đánh dấu không mua) |
 | E128 / E129 | 409 | RFQ: trùng dòng PR / trùng NCC trong một vật tư |
 | E130 / E131 | 400 | RFQ gửi duyệt: vật tư chưa có NCC / không có vật tư |
 | E132 | 409 | Duyệt RFQ: chưa chọn đúng một NCC thắng cho mỗi vật tư |
@@ -269,3 +269,5 @@ Mỗi cột là ảnh hưởng lên chứng từ đó (— là không đổi).
 | E288 | 409 | Xác nhận hoặc sửa phiếu IQC đã huỷ (phiếu nhập nguồn đã bị huỷ) |
 | E289 | 409 | Huỷ phiếu nhập đã ghi sổ |
 | E290 | 409 | Huỷ phiếu nhập khi một phiếu trả NCC của phiếu đã `POSTED` |
+| E298 | 409 | Đánh dấu mua/không mua khi PR chưa `APPROVED` |
+| E299 | 409 | Đánh dấu không mua khi dòng đang nằm trong RFQ nháp hoặc chờ duyệt |
