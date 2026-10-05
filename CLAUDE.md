@@ -44,6 +44,7 @@ Before changing a flow that touches several modules, read `docs/architecture.md`
 Detailed rules live in `.claude/rules/` and load by topic:
 
 - `testing.md`: do not write tests unless asked (always loaded).
+- `naming.md`: variable naming, no generic `rows`/`data`/`result` (always loaded).
 - `api-conventions.md`: authorization, controllers, DTOs, pagination (when working in `src/api`, `src/decorators`, `src/common`).
 - `database.md`: Drizzle, soft delete, enums, dates, migrations (when working in `src/database`, `drizzle`, services and `*.query.ts`).
 - `config.md`: config validation, Redis, uploads.

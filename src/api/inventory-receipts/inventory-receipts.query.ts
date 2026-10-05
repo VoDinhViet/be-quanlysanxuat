@@ -31,7 +31,7 @@ export async function getPurchaseSourcesByReceiptId(
     return new Map();
   }
 
-  const rows = await db
+  const receiptPurchaseSources = await db
     .selectDistinct({
       receiptId: inventoryReceiptItems.receiptId,
       note: purchaseRequests.note,
@@ -63,15 +63,15 @@ export async function getPurchaseSourcesByReceiptId(
     );
 
   const sourcesByReceiptId = new Map<string, string[]>();
-  for (const row of rows) {
-    const source = row.buyerPoNo || row.note;
+  for (const receiptSource of receiptPurchaseSources) {
+    const source = receiptSource.buyerPoNo || receiptSource.note;
     if (!source) continue;
 
-    const sources = sourcesByReceiptId.get(row.receiptId) ?? [];
+    const sources = sourcesByReceiptId.get(receiptSource.receiptId) ?? [];
     if (!sources.includes(source)) {
       sources.push(source);
     }
-    sourcesByReceiptId.set(row.receiptId, sources);
+    sourcesByReceiptId.set(receiptSource.receiptId, sources);
   }
   return sourcesByReceiptId;
 }

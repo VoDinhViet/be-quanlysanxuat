@@ -212,7 +212,7 @@ export class InventoryIssuesService {
   ): Promise<Map<string, RequisitionOfIssue>> {
     if (!issueIds.length) return new Map();
 
-    const rows = await this.db
+    const requisitions = await this.db
       .select({
         id: inventoryRequisitions.id,
         code: inventoryRequisitions.code,
@@ -224,7 +224,9 @@ export class InventoryIssuesService {
       .where(inArray(inventoryRequisitions.inventoryIssueId, issueIds));
 
     return new Map(
-      rows.flatMap((row) => (row.issueId ? [[row.issueId, row]] : [])),
+      requisitions.flatMap((requisition) =>
+        requisition.issueId ? [[requisition.issueId, requisition]] : [],
+      ),
     );
   }
 

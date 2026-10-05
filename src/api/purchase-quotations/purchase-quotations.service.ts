@@ -300,23 +300,30 @@ export class PurchaseQuotationsService {
   async getLastPurchases(
     reqDto: GetQuotationLastPurchasesReqDto,
   ): Promise<QuotationLastPurchaseResDto[]> {
-    const rows = await lastPurchaseQuery(this.db, reqDto.itemIds);
-    if (!rows.length) {
+    const lastPurchases = await lastPurchaseQuery(this.db, reqDto.itemIds);
+    if (!lastPurchases.length) {
       return [];
     }
 
-    const supplierRows = await this.db
+    const purchasedSuppliers = await this.db
       .select()
       .from(suppliers)
       .where(
-        inArray(suppliers.id, [...new Set(rows.map((row) => row.supplierId))]),
+        inArray(suppliers.id, [
+          ...new Set(lastPurchases.map((purchase) => purchase.supplierId)),
+        ]),
       );
-    const supplierById = new Map(supplierRows.map((row) => [row.id, row]));
+    const supplierById = new Map(
+      purchasedSuppliers.map((supplier) => [supplier.id, supplier]),
+    );
 
     return plainToInstance(
       QuotationLastPurchaseResDto,
-      rows
-        .map((row) => ({ ...row, supplier: supplierById.get(row.supplierId) }))
+      lastPurchases
+        .map((purchase) => ({
+          ...purchase,
+          supplier: supplierById.get(purchase.supplierId),
+        }))
         .sort((a, b) => b.orderDate.getTime() - a.orderDate.getTime()),
       { excludeExtraneousValues: true },
     );
