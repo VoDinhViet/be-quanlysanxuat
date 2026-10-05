@@ -75,4 +75,12 @@ export class PendingApprovalsResDto {
       'Count of inventory receipts with status IQC_COMPLETED (IQC done, waiting for the warehouse to post) — visible to every user, no permission gate',
   })
   inventoryReceiptsToPost!: number;
+
+  @Expose()
+  @NumberField({
+    int: true,
+    description:
+      'Count of payment requests (YCTT) with status PENDING (waiting to be paid or cancelled) — visible to every user, no permission gate',
+  })
+  paymentRequestsPending!: number;
 }

@@ -24,6 +24,8 @@ import type { Database } from '../../database/database.type';
 import {
   InventoryDocumentStatus,
   inventoryReceipts,
+  paymentRequests,
+  PaymentRequestStatus,
   InventoryRequisitionStatus,
   inventoryRequisitions,
   IqcResult,
@@ -625,6 +627,7 @@ export class ReportsService {
       inventoryRequisitionsCount,
       outboundOrdersCount,
       inventoryReceiptsToPostCount,
+      paymentRequestsPendingCount,
     ] = await Promise.all([
       canApprove('purchase-requests:approve')
         ? this.getPurchaseRequestsPendingCount()
@@ -648,6 +651,8 @@ export class ReportsService {
       canApprove('outbound:approve') ? this.getOutboundOrdersPendingCount() : 0,
       // Việc chờ của Kho — theo yêu cầu khách mọi người dùng đều thấy, không gate theo quyền.
       this.getInventoryReceiptsToPostCount(),
+      // Việc chờ của YCTT — cũng mọi người dùng đều thấy (menu tự ẩn với người không vào được màn).
+      this.getPaymentRequestsPendingCount(),
     ]);
 
     return plainToInstance(
@@ -662,6 +667,7 @@ export class ReportsService {
         inventoryRequisitions: inventoryRequisitionsCount,
         outboundOrders: outboundOrdersCount,
         inventoryReceiptsToPost: inventoryReceiptsToPostCount,
+        paymentRequestsPending: paymentRequestsPendingCount,
       },
       { excludeExtraneousValues: true },
     );
@@ -675,6 +681,17 @@ export class ReportsService {
       .where(
         eq(inventoryReceipts.status, InventoryDocumentStatus.IQC_COMPLETED),
       );
+
+    return row.count;
+  }
+
+  // Yêu cầu thanh toán đang chờ xử lý (chưa chi, chưa huỷ) — tự sinh khi phiếu nhập kho hoàn tất đủ
+  // hàng của đơn mua.
+  private async getPaymentRequestsPendingCount(): Promise<number> {
+    const [row] = await this.db
+      .select({ count: sql<number>`count(*)`.mapWith(Number) })
+      .from(paymentRequests)
+      .where(eq(paymentRequests.status, PaymentRequestStatus.PENDING));
 
     return row.count;
   }

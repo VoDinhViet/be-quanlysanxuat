@@ -169,6 +169,8 @@ stateDiagram-v2
 
 Sai trạng thái ở `mark-paid`/`cancel` trả `E158`.
 
+**Việc chờ ở menu.** YCTT `PENDING` chính là "việc chờ" của người phụ trách thanh toán: `GET /reports/pending-approvals` trả thêm `paymentRequestsPending` = số YCTT `PENDING`, **không gate theo quyền** (cùng cách `inventoryReceiptsToPost`) — menu "Yêu cầu thanh toán" hiện số này cho mọi người vào được màn đó. Số giảm khi YCTT chuyển `PAID`/`CANCELLED`, tăng khi PO nhận đủ làm sinh (hoặc hồi sinh) YCTT; FE làm mới số này theo chu kỳ 60 giây và ngay sau mark-paid/cancel.
+
 ## Tiến độ suy ra
 
 **Tiến độ PO** (`PurchaseOrderProgress`, `PurchaseOrdersService.resolveOrderProgress`), tính từ `status`, SL đặt (Σ `quantity` các dòng) và SL nhận:
