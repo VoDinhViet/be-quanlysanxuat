@@ -83,4 +83,12 @@ export class PendingApprovalsResDto {
       'Count of payment requests (YCTT) with status PENDING (waiting to be paid or cancelled) — visible to every user, no permission gate',
   })
   paymentRequestsPending!: number;
+
+  @Expose()
+  @NumberField({
+    int: true,
+    description:
+      'Count of supplier returns with status DRAFT (auto-created when IQC confirms NG goods to return, waiting for the warehouse to post) — visible to every user, no permission gate',
+  })
+  supplierReturnsToPost!: number;
 }

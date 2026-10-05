@@ -52,6 +52,7 @@ import {
   QualityInspectionType,
   qualityInspectionResults,
   qualityInspections,
+  supplierReturns,
   suppliers,
 } from '../../database/schemas';
 import { PermissionsService } from '../auth/permissions.service';
@@ -628,6 +629,7 @@ export class ReportsService {
       outboundOrdersCount,
       inventoryReceiptsToPostCount,
       paymentRequestsPendingCount,
+      supplierReturnsToPostCount,
     ] = await Promise.all([
       canApprove('purchase-requests:approve')
         ? this.getPurchaseRequestsPendingCount()
@@ -653,6 +655,8 @@ export class ReportsService {
       this.getInventoryReceiptsToPostCount(),
       // Việc chờ của YCTT — cũng mọi người dùng đều thấy (menu tự ẩn với người không vào được màn).
       this.getPaymentRequestsPendingCount(),
+      // Việc chờ của Kho khi IQC xác nhận hàng NG cần trả NCC — cũng mọi người dùng đều thấy.
+      this.getSupplierReturnsToPostCount(),
     ]);
 
     return plainToInstance(
@@ -668,6 +672,7 @@ export class ReportsService {
         outboundOrders: outboundOrdersCount,
         inventoryReceiptsToPost: inventoryReceiptsToPostCount,
         paymentRequestsPending: paymentRequestsPendingCount,
+        supplierReturnsToPost: supplierReturnsToPostCount,
       },
       { excludeExtraneousValues: true },
     );
@@ -681,6 +686,17 @@ export class ReportsService {
       .where(
         eq(inventoryReceipts.status, InventoryDocumentStatus.IQC_COMPLETED),
       );
+
+    return row.count;
+  }
+
+  // Phiếu trả NCC nháp — tự sinh khi IQC xác nhận hàng NG cần trả (SORT/RETURN), chờ kho xác nhận
+  // xuất trả (`post`).
+  private async getSupplierReturnsToPostCount(): Promise<number> {
+    const [row] = await this.db
+      .select({ count: sql<number>`count(*)`.mapWith(Number) })
+      .from(supplierReturns)
+      .where(eq(supplierReturns.status, InventoryDocumentStatus.DRAFT));
 
     return row.count;
   }
