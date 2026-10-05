@@ -1548,6 +1548,13 @@
       "when": 1790936026214,
       "tag": "0220_backfill_from_stock_qty",
       "breakpoints": true
+    },
+    {
+      "idx": 221,
+      "version": "7",
+      "when": 1791166409174,
+      "tag": "0221_job_code_from_lsx",
+      "breakpoints": true
     }
   ]
 }

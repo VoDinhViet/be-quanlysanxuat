@@ -19,15 +19,12 @@ import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-p
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { groupBy } from '../../common/utils/array.util';
 import { selectOperations } from './production-job-operations.util';
-import {
-  DocumentType,
-  generateDocumentSequences,
-} from '../../common/utils/document-sequence.util';
 import { formatVnDate } from '../../common/utils/excel.util';
 import { formatQuantity } from '../../common/utils/vnd.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
+import { vnToday } from '../../database/vn-date.util';
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
   clients,
@@ -706,7 +703,7 @@ export class ProductionJobsService {
    * (`PENDING`) kèm snapshot BOM/công đoạn/vật tư (`createJobSnapshot`) trong cùng transaction. */
   async createJobs(
     tx: DbTransaction,
-    productionOrderId: string,
+    productionOrder: { id: string; code: string },
     quantityByItem: Map<string, number>,
     userId: string,
   ): Promise<void> {
@@ -715,13 +712,12 @@ export class ProductionJobsService {
     }
 
     const itemIds = [...quantityByItem.keys()];
-    const codes = await this.generateJobCodes(tx, itemIds.length);
     const jobRows = await tx
       .insert(productionJobs)
       .values(
         itemIds.map((itemId, index) => ({
-          code: codes[index],
-          productionOrderId,
+          code: this.buildJobCode(productionOrder.code, index),
+          productionOrderId: productionOrder.id,
           itemId,
           quantity: quantityByItem.get(itemId)!,
         })),
@@ -980,19 +976,13 @@ export class ProductionJobsService {
     }
   }
 
-  private async generateJobCodes(
-    tx: DbTransaction,
-    howMany: number,
-  ): Promise<string[]> {
-    const sequences = await generateDocumentSequences(
-      tx,
-      DocumentType.PRODUCTION_JOB,
-      0,
-      howMany,
-    );
+  /** Mã Job `xx-yyyyy-zzz`: `xx` 2 số cuối của năm (giờ VN) lúc sinh Job, `yyyyy` số trong mã LSX
+   * (`LSX0011` → `00011`), `zzz` thứ tự Job trong LSX. Mã duy nhất theo LSX nên không cần bộ đếm;
+   * Job của một LSX luôn sinh trọn trong một lượt duyệt (`createJobs`). */
+  private buildJobCode(lsxCode: string, index: number): string {
+    const year = String(vnToday().getUTCFullYear() % 100).padStart(2, '0');
+    const lsxNumber = lsxCode.replace(/\D/g, '').padStart(5, '0');
 
-    return sequences.map(
-      (sequence) => `JOB${String(sequence).padStart(4, '0')}`,
-    );
+    return `${year}-${lsxNumber}-${String(index + 1).padStart(3, '0')}`;
   }
 }

@@ -46,8 +46,9 @@ Bảng `document_sequences` giữ bộ đếm cho `(documentType, year)`; `year 
 - Bắt buộc gọi trong transaction đang mở của chính lượt tạo chứng từ. Dòng đếm bị khoá đến khi transaction kết thúc, nên hai request cùng loại đợi nhau.
 - Rollback thì số đó được trả lại, khác với sequence của Postgres.
 - `generateDocumentSequences` cấp một cụm số liên tiếp trong một câu (dùng cho IQC).
-- Các loại hiện có (`DocumentType`): ITEM_DIRECT, ITEM_FG, PURCHASE_REQUEST, OQC, IQC, INVENTORY_RECEIPT, INVENTORY_ISSUE, INVENTORY_ADJUSTMENT, INVENTORY_REQUISITION, PURCHASE_QUOTATION, PURCHASE_ORDER, OUTSOURCING_ORDER, OUTSOURCING_RECEIPT, USER, SUPPLIER, ORDER, PRODUCTION_ORDER, PRODUCTION_JOB, OUTBOUND_ORDER, SUPPLIER_RETURN, PAYMENT_REQUEST, UNIT, OPERATION.
+- Các loại hiện có (`DocumentType`): ITEM_DIRECT, ITEM_FG, PURCHASE_REQUEST, OQC, IQC, INVENTORY_RECEIPT, INVENTORY_ISSUE, INVENTORY_ADJUSTMENT, INVENTORY_REQUISITION, PURCHASE_QUOTATION, PURCHASE_ORDER, OUTSOURCING_ORDER, OUTSOURCING_RECEIPT, USER, SUPPLIER, ORDER, PRODUCTION_ORDER, OUTBOUND_ORDER, SUPPLIER_RETURN, PAYMENT_REQUEST, UNIT, OPERATION.
 - Trong danh sách trên, `ITEM_DIRECT`, `SUPPLIER`, `UNIT` và `OPERATION` hiện **không có nơi nào gọi** (mã vật tư, nhà cung cấp, đơn vị và công đoạn do người dùng tự đặt).
+- Mã Job (`production_jobs.code`) không dùng bộ đếm: `xx-yyyyy-zzz` ghép trong `ProductionJobsService.createJobs` từ năm (giờ VN) lúc duyệt LSX, số trong mã LSX (`LSX0011` → `00011`) và thứ tự Job trong LSX. Mã cũ `JOB0001` được đổi sang định dạng này bằng migration 0221.
 - Định dạng chuỗi mã do từng service tự ghép (ví dụ nhân sự `NV0001`, thành phẩm `SP0001`), nên xem trong doc của domain tương ứng.
 
 ### Transaction

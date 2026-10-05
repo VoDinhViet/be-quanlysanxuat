@@ -492,7 +492,7 @@ export class ProductionOrdersService {
       if (jobCount > 0) {
         await this.productionJobsService.createJobs(
           tx,
-          productionOrdersId,
+          { id: productionOrdersId, code },
           quantityByItem,
           userId,
         );
