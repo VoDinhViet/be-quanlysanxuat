@@ -267,8 +267,21 @@ export class InventoryRequisitionsService {
     });
   }
 
+  /** Chỉ xoá được phiếu `DRAFT` — phiếu `REJECTED` đã từng qua duyệt nên đi đường `cancel`. */
   async deleteInventoryRequisition(requisitionId: string): Promise<void> {
-    await this.ensureRequisitionDraftOrRejected(requisitionId);
+    const [inventoryRequisition] = await this.db
+      .select({ status: inventoryRequisitions.status })
+      .from(inventoryRequisitions)
+      .where(eq(inventoryRequisitions.id, requisitionId))
+      .limit(1);
+
+    if (!inventoryRequisition) {
+      throw new AppException(ErrorCode.E223, HttpStatus.NOT_FOUND);
+    }
+
+    if (inventoryRequisition.status !== InventoryRequisitionStatus.DRAFT) {
+      throw new AppException(ErrorCode.E224, HttpStatus.CONFLICT);
+    }
 
     await this.db
       .delete(inventoryRequisitions)
@@ -690,8 +703,7 @@ export class InventoryRequisitionsService {
   }
 
   /** Sibling read-only của `ensureRequisitionEditable`: cùng cửa `DRAFT`/`REJECTED` nhưng không mở
-   * `REJECTED → DRAFT` — dùng cho `send` (đích đến `PENDING_APPROVAL`) và `delete` (phiếu bị xoá
-   * ngay sau đó). */
+   * `REJECTED → DRAFT` — dùng cho `send` (đích đến `PENDING_APPROVAL`). */
   private async ensureRequisitionDraftOrRejected(
     requisitionId: string,
   ): Promise<void> {

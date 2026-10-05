@@ -115,7 +115,7 @@ export class InventoryRequisitionsController {
   @Delete(':requisitionId')
   @Permissions('inventory-requisitions:delete')
   @ApiAuth({
-    summary: 'Xoá phiếu — chỉ khi DRAFT/REJECTED',
+    summary: 'Xoá phiếu — chỉ khi DRAFT',
     statusCode: HttpStatus.NO_CONTENT,
   })
   deleteInventoryRequisition(
