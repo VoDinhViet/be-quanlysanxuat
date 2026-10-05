@@ -38,8 +38,15 @@ export class PageOqcResDto {
   productionJob!: ProductionJobRefResDto;
 
   @Expose()
-  @StringFieldOptional({ nullable: true, description: 'Mã đơn hàng (PO)' })
+  @StringFieldOptional({ nullable: true, description: 'Mã đơn hàng (SO)' })
   orderCode!: string | null;
+
+  @Expose()
+  @StringFieldOptional({
+    nullable: true,
+    description: 'Số PO của khách hàng (orders.buyerPoNo)',
+  })
+  buyerPoNo!: string | null;
 
   @Expose()
   @ClassField(() => ProductionJobOperationRefResDto)

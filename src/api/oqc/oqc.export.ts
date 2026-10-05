@@ -12,6 +12,7 @@ export interface OqcExport {
   code: string;
   jobCode: string;
   orderCode: string | null;
+  buyerPoNo: string | null;
   operationCode: string;
   operationName: string;
   itemCode: string;
@@ -60,6 +61,7 @@ export const OQC_EXPORT_COLUMNS: ExcelColumn<OqcExport>[] = [
   { header: 'Mã OQC', value: (row) => row.code },
   { header: 'Mã LSX', value: (row) => row.jobCode },
   { header: 'Mã đơn hàng', value: (row) => row.orderCode },
+  { header: 'Số PO', value: (row) => row.buyerPoNo },
   { header: 'Mã công đoạn', value: (row) => row.operationCode },
   { header: 'Tên công đoạn', value: (row) => row.operationName, width: 25 },
   { header: 'Mã thành phẩm', value: (row) => row.itemCode },
