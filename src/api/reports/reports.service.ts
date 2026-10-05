@@ -23,6 +23,7 @@ import { DRIZZLE } from '../../database/database.module';
 import type { Database } from '../../database/database.type';
 import {
   InventoryDocumentStatus,
+  inventoryIssues,
   inventoryReceipts,
   paymentRequests,
   PaymentRequestStatus,
@@ -630,6 +631,7 @@ export class ReportsService {
       inventoryReceiptsToPostCount,
       paymentRequestsPendingCount,
       supplierReturnsToPostCount,
+      inventoryIssuesToPostCount,
     ] = await Promise.all([
       canApprove('purchase-requests:approve')
         ? this.getPurchaseRequestsPendingCount()
@@ -657,6 +659,8 @@ export class ReportsService {
       this.getPaymentRequestsPendingCount(),
       // Việc chờ của Kho khi IQC xác nhận hàng NG cần trả NCC — cũng mọi người dùng đều thấy.
       this.getSupplierReturnsToPostCount(),
+      // Việc chờ của Kho khi phiếu lãnh vật tư được duyệt — cũng mọi người dùng đều thấy.
+      this.getInventoryIssuesToPostCount(),
     ]);
 
     return plainToInstance(
@@ -673,6 +677,7 @@ export class ReportsService {
         inventoryReceiptsToPost: inventoryReceiptsToPostCount,
         paymentRequestsPending: paymentRequestsPendingCount,
         supplierReturnsToPost: supplierReturnsToPostCount,
+        inventoryIssuesToPost: inventoryIssuesToPostCount,
       },
       { excludeExtraneousValues: true },
     );
@@ -686,6 +691,16 @@ export class ReportsService {
       .where(
         eq(inventoryReceipts.status, InventoryDocumentStatus.IQC_COMPLETED),
       );
+
+    return row.count;
+  }
+
+  // Phiếu xuất kho nháp — tự sinh khi phiếu lãnh vật tư được duyệt, chờ kho ghi sổ xuất.
+  private async getInventoryIssuesToPostCount(): Promise<number> {
+    const [row] = await this.db
+      .select({ count: sql<number>`count(*)`.mapWith(Number) })
+      .from(inventoryIssues)
+      .where(eq(inventoryIssues.status, InventoryDocumentStatus.DRAFT));
 
     return row.count;
   }

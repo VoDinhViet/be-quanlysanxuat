@@ -91,4 +91,12 @@ export class PendingApprovalsResDto {
       'Count of supplier returns with status DRAFT (auto-created when IQC confirms NG goods to return, waiting for the warehouse to post) — visible to every user, no permission gate',
   })
   supplierReturnsToPost!: number;
+
+  @Expose()
+  @NumberField({
+    int: true,
+    description:
+      'Count of inventory issues with status DRAFT (auto-created when a requisition is approved, waiting for the warehouse to post) — visible to every user, no permission gate',
+  })
+  inventoryIssuesToPost!: number;
 }
