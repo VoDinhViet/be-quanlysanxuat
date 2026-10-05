@@ -225,7 +225,7 @@ export class PaymentRequestsService {
   async getPaymentRequest(
     paymentRequestId: string,
   ): Promise<PaymentRequestResDto> {
-    const found = await this.db.query.paymentRequests.findFirst({
+    const paymentRequest = await this.db.query.paymentRequests.findFirst({
       where: eq(paymentRequests.id, paymentRequestId),
       with: {
         purchaseOrder: {
@@ -247,22 +247,21 @@ export class PaymentRequestsService {
       },
     });
 
-    if (!found) {
+    if (!paymentRequest) {
       throw new AppException(ErrorCode.E157, HttpStatus.NOT_FOUND);
     }
 
-    const row = found;
-    const order = row.purchaseOrder;
+    const purchaseOrder = paymentRequest.purchaseOrder;
 
     const receivedByItemId = await getReceivedQuantityByPurchaseOrderItemId(
       this.db,
       {
-        purchaseOrderItemIds: row.purchaseOrder.items.map((item) => item.id),
+        purchaseOrderItemIds: purchaseOrder.items.map((item) => item.id),
         statuses: [InventoryDocumentStatus.POSTED],
       },
     );
 
-    const items = row.purchaseOrder.items.map((item) => {
+    const items = purchaseOrder.items.map((item) => {
       const unitPrice = item.unitPrice ?? 0;
 
       return {
@@ -280,17 +279,17 @@ export class PaymentRequestsService {
     return plainToInstance(
       PaymentRequestResDto,
       {
-        ...row,
-        supplier: row.purchaseOrder.supplier,
-        poValue: row.requestValue,
-        ...computePurchaseOrderAmounts(order),
-        vatPercent: order.vatPercent,
-        otherCost: order.otherCost,
-        otherCostNote: order.otherCostNote,
+        ...paymentRequest,
+        supplier: purchaseOrder.supplier,
+        poValue: paymentRequest.requestValue,
+        ...computePurchaseOrderAmounts(purchaseOrder),
+        vatPercent: purchaseOrder.vatPercent,
+        otherCost: purchaseOrder.otherCost,
+        otherCostNote: purchaseOrder.otherCostNote,
         items,
-        createdBy: row.creatorBy,
-        paidBy: row.paidByUser,
-        cancelledBy: row.cancelledByUser,
+        createdBy: paymentRequest.creatorBy,
+        paidBy: paymentRequest.paidByUser,
+        cancelledBy: paymentRequest.cancelledByUser,
       },
       { excludeExtraneousValues: true },
     );
@@ -374,7 +373,7 @@ export class PaymentRequestsService {
     const orderedAgg = orderAggregateSubquery(tx);
     const receivedAgg = orderReceivedQuantitySubquery(tx);
 
-    const [existing, orderRows] = await Promise.all([
+    const [existing, purchaseOrderRows] = await Promise.all([
       tx.query.paymentRequests.findFirst({
         columns: { id: true, status: true },
         where: eq(paymentRequests.purchaseOrderId, purchaseOrderId),
@@ -410,26 +409,26 @@ export class PaymentRequestsService {
       return;
     }
 
-    const order = orderRows[0];
+    const purchaseOrder = purchaseOrderRows[0];
     // PO còn treo phiếu nhập DRAFT lúc bị huỷ (`cancelPurchaseOrder` chỉ chặn khi đã có phiếu
     // `POSTED`, `E124`) vẫn có thể `post` sau đó — không sinh YCTT cho PO không còn `ORDERED`.
-    if (order?.status !== PurchaseOrderStatus.ORDERED) {
+    if (purchaseOrder?.status !== PurchaseOrderStatus.ORDERED) {
       return;
     }
-    if (!order.paymentTerm) {
+    if (!purchaseOrder.paymentTerm) {
       return;
     }
     // PO 0 dòng: received(0) < ordered(0) là false nên lọt qua guard cuối — phải chặn tay riêng.
-    if (order.orderedQuantity <= 0) {
+    if (purchaseOrder.orderedQuantity <= 0) {
       return;
     }
-    if (order.receivedQuantity < order.orderedQuantity) {
+    if (purchaseOrder.receivedQuantity < purchaseOrder.orderedQuantity) {
       return;
     }
 
     const dueDate = new Date(
-      order.orderDate.getTime() +
-        PAYMENT_TERM_DAYS[order.paymentTerm] * 24 * 60 * 60 * 1000,
+      purchaseOrder.orderDate.getTime() +
+        PAYMENT_TERM_DAYS[purchaseOrder.paymentTerm] * 24 * 60 * 60 * 1000,
     );
 
     // `purchase_order_id` unique → không chèn dòng mới, đưa bản ghi đã huỷ về `PENDING` với số liệu hiện tại.
@@ -438,7 +437,7 @@ export class PaymentRequestsService {
         .update(paymentRequests)
         .set({
           status: PaymentRequestStatus.PENDING,
-          requestValue: order.totalAmount,
+          requestValue: purchaseOrder.totalAmount,
           dueDate,
           cancelledBy: null,
           cancelledAt: null,
@@ -449,7 +448,7 @@ export class PaymentRequestsService {
       await tx.insert(paymentRequestLogs).values({
         paymentRequestId: existing.id,
         action: PaymentRequestLogAction.CREATED,
-        content: `Tự động sinh lại yêu cầu thanh toán khi PO ${order.code} nhận đủ hàng`,
+        content: `Tự động sinh lại yêu cầu thanh toán khi PO ${purchaseOrder.code} nhận đủ hàng`,
         performedBy: null,
       });
       return;
@@ -462,7 +461,7 @@ export class PaymentRequestsService {
         .values({
           code,
           purchaseOrderId,
-          requestValue: order.totalAmount,
+          requestValue: purchaseOrder.totalAmount,
           dueDate,
         })
         .returning({ id: paymentRequests.id });
@@ -471,7 +470,7 @@ export class PaymentRequestsService {
         await tx.insert(paymentRequestLogs).values({
           paymentRequestId: created.id,
           action: PaymentRequestLogAction.CREATED,
-          content: `Tự động sinh yêu cầu thanh toán khi PO ${order.code} nhận đủ hàng`,
+          content: `Tự động sinh yêu cầu thanh toán khi PO ${purchaseOrder.code} nhận đủ hàng`,
           performedBy: null,
         });
       }
