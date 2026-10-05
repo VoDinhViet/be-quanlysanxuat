@@ -99,4 +99,12 @@ export class PendingApprovalsResDto {
       'Count of inventory issues with status DRAFT (auto-created when a requisition is approved, waiting for the warehouse to post) — visible to every user, no permission gate',
   })
   inventoryIssuesToPost!: number;
+
+  @Expose()
+  @NumberField({
+    int: true,
+    description:
+      'Count of IQC inspections waiting for IQC (status DRAFT = not inspected yet, or PENDING = FAIL waiting for a disposition) — visible to every user, no permission gate',
+  })
+  iqcToInspect!: number;
 }

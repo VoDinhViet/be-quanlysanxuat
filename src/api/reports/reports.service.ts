@@ -632,6 +632,7 @@ export class ReportsService {
       paymentRequestsPendingCount,
       supplierReturnsToPostCount,
       inventoryIssuesToPostCount,
+      iqcToInspectCount,
     ] = await Promise.all([
       canApprove('purchase-requests:approve')
         ? this.getPurchaseRequestsPendingCount()
@@ -661,6 +662,8 @@ export class ReportsService {
       this.getSupplierReturnsToPostCount(),
       // Việc chờ của Kho khi phiếu lãnh vật tư được duyệt — cũng mọi người dùng đều thấy.
       this.getInventoryIssuesToPostCount(),
+      // Việc chờ của IQC khi kho gửi hàng vào kiểm — cũng mọi người dùng đều thấy.
+      this.getIqcToInspectCount(),
     ]);
 
     return plainToInstance(
@@ -678,6 +681,7 @@ export class ReportsService {
         paymentRequestsPending: paymentRequestsPendingCount,
         supplierReturnsToPost: supplierReturnsToPostCount,
         inventoryIssuesToPost: inventoryIssuesToPostCount,
+        iqcToInspect: iqcToInspectCount,
       },
       { excludeExtraneousValues: true },
     );
@@ -690,6 +694,25 @@ export class ReportsService {
       .from(inventoryReceipts)
       .where(
         eq(inventoryReceipts.status, InventoryDocumentStatus.IQC_COMPLETED),
+      );
+
+    return row.count;
+  }
+
+  // Dòng IQC cần IQC xử lý: `DRAFT` (kho đã gửi hàng vào kiểm, chưa nhập kết quả) và `PENDING` (kiểm
+  // FAIL, chờ chọn hướng xử lý). `IN_PROGRESS` (chờ trả NCC) là việc của Kho, không tính.
+  private async getIqcToInspectCount(): Promise<number> {
+    const [row] = await this.db
+      .select({ count: sql<number>`count(*)`.mapWith(Number) })
+      .from(qualityInspections)
+      .where(
+        and(
+          eq(qualityInspections.inspectionType, QualityInspectionType.IQC),
+          inArray(qualityInspections.status, [
+            QualityInspectionStatus.DRAFT,
+            QualityInspectionStatus.PENDING,
+          ]),
+        ),
       );
 
     return row.count;
