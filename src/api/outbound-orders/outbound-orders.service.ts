@@ -254,6 +254,7 @@ export class OutboundOrdersService {
       .select({
         ...getTableColumns(outboundOrderItems),
         item: getTableColumns(items),
+        imageFile: getTableColumns(files),
         revision: items.revision,
         unit: getTableColumns(units),
         productionJob: getTableColumns(productionJobs),
@@ -275,6 +276,7 @@ export class OutboundOrdersService {
       .from(outboundOrderItems)
       .innerJoin(items, eq(items.id, outboundOrderItems.itemId))
       .innerJoin(units, eq(units.id, items.unitId))
+      .leftJoin(files, eq(files.id, items.imageFileId))
       .leftJoin(
         productionJobs,
         eq(productionJobs.id, outboundOrderItems.productionJobId),

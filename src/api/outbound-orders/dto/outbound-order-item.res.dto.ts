@@ -7,6 +7,8 @@ import {
   StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
+import { FileField } from '../../files/dto/file.field';
+import { FileResDto } from '../../files/dto/file.res.dto';
 import { ItemRefResDto } from '../../items/dto/item-ref.res.dto';
 import { OrderRefResDto } from '../../orders/dto/order-ref.res.dto';
 import { ProductionJobRefResDto } from '../../production-jobs/dto/production-job-ref.res.dto';
@@ -35,6 +37,10 @@ export class OutboundOrderItemResDto {
   @Expose()
   @ClassField(() => ItemRefResDto)
   item!: ItemRefResDto;
+
+  @Expose()
+  @FileField('imageFile', 'Ảnh thành phẩm')
+  image!: FileResDto | null;
 
   @Expose()
   @StringFieldOptional({ nullable: true, description: 'Phiên bản (revision)' })
