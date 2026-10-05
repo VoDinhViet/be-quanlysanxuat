@@ -12,13 +12,14 @@ import {
   StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
+import { PurchaseOrderAmountsResDto } from '../../purchase-orders/dto/purchase-order-amounts.res.dto';
 import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
 import { PaymentRequestItemResDto } from './payment-request-item.res.dto';
 import { PaymentRequestPurchaseOrderRefResDto } from './payment-request-purchase-order-ref.res.dto';
 import { PaymentRequestSupplierRefResDto } from './payment-request-supplier-ref.res.dto';
 
 @Exclude()
-export class PaymentRequestResDto {
+export class PaymentRequestResDto extends PurchaseOrderAmountsResDto {
   @Expose()
   @UUIDField()
   id!: string;
@@ -48,29 +49,6 @@ export class PaymentRequestResDto {
       'Giá trị yêu cầu thanh toán = tổng tiền PO (tiền hàng + VAT + chi phí khác) chốt lúc sinh',
   })
   requestValue!: number;
-
-  @Expose()
-  @NumberField({ description: 'Tiền hàng chưa thuế của PO' })
-  subtotal!: number;
-
-  @Expose()
-  @NumberField({ description: 'Thuế VAT của PO (%)' })
-  vatPercent!: number;
-
-  @Expose()
-  @NumberField({ description: 'Tiền VAT của PO' })
-  vatAmount!: number;
-
-  @Expose()
-  @NumberField({ description: 'Chi phí khác của PO' })
-  otherCost!: number;
-
-  @Expose()
-  @StringFieldOptional({
-    nullable: true,
-    description: 'Diễn giải chi phí khác',
-  })
-  otherCostNote!: string | null;
 
   @Expose()
   @DateField({ description: 'Hạn thanh toán = orderDate của PO + paymentTerm' })

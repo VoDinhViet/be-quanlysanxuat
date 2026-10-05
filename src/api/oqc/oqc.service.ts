@@ -92,6 +92,8 @@ export class OqcService {
             unaccentILike(items.code, keyword),
             unaccentILike(items.revision, keyword),
             unaccentILike(items.name, keyword),
+            unaccentILike(orders.code, keyword),
+            unaccentILike(orders.buyerPoNo, keyword),
           )
         : undefined,
       reqDto.productionJobId
@@ -194,6 +196,15 @@ export class OqcService {
         .select({ total: count() })
         .from(qualityInspections)
         .innerJoin(items, eq(items.id, qualityInspections.itemId))
+        .innerJoin(
+          productionJobs,
+          eq(productionJobs.id, qualityInspections.productionJobId),
+        )
+        .leftJoin(
+          productionOrders,
+          eq(productionOrders.id, productionJobs.productionOrderId),
+        )
+        .leftJoin(orders, eq(orders.id, productionOrders.orderId))
         .where(where),
     ]);
 
@@ -216,6 +227,8 @@ export class OqcService {
             unaccentILike(items.code, keyword),
             unaccentILike(items.revision, keyword),
             unaccentILike(items.name, keyword),
+            unaccentILike(orders.code, keyword),
+            unaccentILike(orders.buyerPoNo, keyword),
           )
         : undefined,
       reqDto.productionJobId

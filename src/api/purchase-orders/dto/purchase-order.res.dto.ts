@@ -22,6 +22,7 @@ import { QuotationRefResDto } from '../../purchase-quotations/dto/quotation-ref.
 import { SupplierRefResDto } from '../../suppliers/dto/supplier-ref.res.dto';
 import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
 import { PurchaseOrderProgress } from '../purchase-orders.constant';
+import { PurchaseOrderAmountsResDto } from './purchase-order-amounts.res.dto';
 import { PurchaseOrderItemResDto } from './purchase-order-item.res.dto';
 
 @Exclude()
@@ -36,7 +37,7 @@ export class OrderBlockerResDto {
 }
 
 @Exclude()
-export class PurchaseOrderResDto {
+export class PurchaseOrderResDto extends PurchaseOrderAmountsResDto {
   @Expose()
   @UUIDField()
   id!: string;
@@ -72,29 +73,6 @@ export class PurchaseOrderResDto {
   @Expose()
   @StringFieldOptional({ nullable: true })
   note!: string | null;
-
-  @Expose()
-  @NumberField({ description: 'Tiền hàng chưa thuế (Σ SL đặt × đơn giá)' })
-  subtotal!: number;
-
-  @Expose()
-  @NumberField({ description: 'Thuế VAT (% trên tiền hàng)' })
-  vatPercent!: number;
-
-  @Expose()
-  @NumberField({ description: 'Tiền VAT = tiền hàng × vatPercent / 100' })
-  vatAmount!: number;
-
-  @Expose()
-  @NumberField({ description: 'Chi phí khác (vận chuyển, bốc xếp...)' })
-  otherCost!: number;
-
-  @Expose()
-  @StringFieldOptional({
-    nullable: true,
-    description: 'Diễn giải chi phí khác',
-  })
-  otherCostNote!: string | null;
 
   @Expose()
   @NumberField({

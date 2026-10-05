@@ -252,6 +252,7 @@ export class PaymentRequestsService {
     }
 
     const row = found;
+    const order = row.purchaseOrder;
 
     const receivedByItemId = await getReceivedQuantityByPurchaseOrderItemId(
       this.db,
@@ -282,14 +283,10 @@ export class PaymentRequestsService {
         ...row,
         supplier: row.purchaseOrder.supplier,
         poValue: row.requestValue,
-        ...computePurchaseOrderAmounts({
-          items: row.purchaseOrder.items,
-          vatPercent: row.purchaseOrder.vatPercent,
-          otherCost: row.purchaseOrder.otherCost,
-        }),
-        vatPercent: row.purchaseOrder.vatPercent,
-        otherCost: row.purchaseOrder.otherCost,
-        otherCostNote: row.purchaseOrder.otherCostNote,
+        ...computePurchaseOrderAmounts(order),
+        vatPercent: order.vatPercent,
+        otherCost: order.otherCost,
+        otherCostNote: order.otherCostNote,
         items,
         createdBy: row.creatorBy,
         paidBy: row.paidByUser,

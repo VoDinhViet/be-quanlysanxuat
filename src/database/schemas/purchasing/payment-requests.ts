@@ -42,7 +42,7 @@ export const paymentRequests = pgTable(
       .notNull()
       .unique()
       .references(() => purchaseOrders.id, { onDelete: 'restrict' }),
-    // Snapshot Σ quantity*unitPrice của PO lúc tạo — an toàn vì PO đã ORDERED nên items bất biến
+    // Snapshot tổng tiền PO (tiền hàng + VAT + chi phí khác) lúc tạo — an toàn vì PO đã ORDERED nên items bất biến
     // (PATCH chỉ cho phép khi DRAFT), không phải lựa chọn thẩm mỹ.
     requestValue: numeric('request_value', {
       precision: 18,

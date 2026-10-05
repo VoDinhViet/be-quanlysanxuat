@@ -56,9 +56,7 @@ export const purchaseOrders = pgTable(
     }),
     paymentTerm: paymentTermEnum('payment_term'),
     note: varchar('note', { length: 1000 }),
-    // Thuế VAT (% trên tiền hàng) và chi phí khác (vận chuyển, bốc xếp...) của cả đơn. Chỉ lưu đầu
-    // vào; tiền VAT/tổng tiền tính lúc đọc từ Σ dòng (`purchase-orders.query.ts`), vì dòng còn
-    // sửa được khi PO chưa xác nhận. Yêu cầu thanh toán chốt tổng tiền lúc tự sinh.
+    // Chỉ lưu đầu vào; tiền VAT và tổng tiền tính lúc đọc (`purchase-orders.query.ts`).
     vatPercent: numeric('vat_percent', {
       precision: 5,
       scale: 2,

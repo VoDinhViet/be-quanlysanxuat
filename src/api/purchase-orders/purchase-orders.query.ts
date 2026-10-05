@@ -10,22 +10,15 @@ import {
   supplierReturns,
 } from '../../database/schemas';
 
-/** Tiền VAT của PO = tiền hàng × `vat_percent` / 100, làm tròn 2 số lẻ (cùng cột `numeric(18,2)`). */
-export function purchaseOrderVatAmountSql(subtotal: SQL<number>) {
-  return sql<number>`round(${subtotal} * ${purchaseOrders.vatPercent} / 100, 2)`;
-}
-
-/** Tổng tiền PO = tiền hàng + VAT + chi phí khác. `subtotal` là Σ SL đặt × đơn giá của các dòng
- * (`orderAggregateSubquery().totalAmount`); PO có `vat_percent`/`other_cost` nên phải join bảng
- * `purchase_orders` ở truy vấn gọi. */
+/** Tổng tiền PO = tiền hàng + VAT (`vat_percent`% trên tiền hàng, làm tròn 2 số lẻ) + chi phí khác.
+ * `subtotal` là `orderAggregateSubquery().totalAmount`; truy vấn gọi phải có bảng `purchase_orders`. */
 export function purchaseOrderGrandTotalSql(subtotal: SQL<number>) {
-  return sql<number>`${subtotal} + ${purchaseOrderVatAmountSql(subtotal)} + ${purchaseOrders.otherCost}`.mapWith(
+  return sql<number>`${subtotal} + round(${subtotal} * ${purchaseOrders.vatPercent} / 100, 2) + ${purchaseOrders.otherCost}`.mapWith(
     Number,
   );
 }
 
-/** Cách tính ở JS của `purchaseOrderGrandTotalSql`, cho màn chi tiết đã có sẵn các dòng. Dòng chưa
- * có đơn giá tính 0 (xác nhận PO đã chặn thiếu giá, `E135`). */
+/** Cùng công thức với `purchaseOrderGrandTotalSql`, cho màn chi tiết đã có sẵn các dòng. */
 export function computePurchaseOrderAmounts(order: {
   items: { quantity: number; unitPrice: number | null }[];
   vatPercent: number;
