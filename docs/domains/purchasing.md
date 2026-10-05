@@ -85,7 +85,7 @@ stateDiagram-v2
 | `PATCH .../:id` | `purchasing:update` | Thay toàn bộ vật tư và NCC, chỉ khi `DRAFT`. |
 | `DELETE .../:id` | `purchasing:delete` | Chỉ `DRAFT`. |
 | `POST .../:id/send` | `purchasing:update` | `DRAFT → PENDING_APPROVAL`. Không có vật tư (`E131`), vật tư không có NCC (`E130`), thiếu đơn giá (`E120`). |
-| `POST .../:id/approve` | `purchasing:approve` | Chọn đúng một NCC thắng cho **mỗi** vật tư (`E132` nếu thiếu/sai). Body có thể kèm `allocations[]` (`{ allocationId, quantity, reason? }`) để **duyệt một phần**: NCC chỉ đáp ứng một phần thì giảm SL của dòng phân bổ (chỉ được giảm, `E296` nếu vượt SL báo giá, không thuộc báo giá hoặc lặp; giảm phải có lý do, `E297`). Dòng không gửi được duyệt nguyên SL. Trong một transaction: hạ SL các dòng phân bổ bị giảm (lý do ghi "Duyệt một phần: …"), đánh dấu NCC thắng, RFQ → `APPROVED`, gom các dòng theo NCC và sinh PO theo SL đã duyệt. Phần chưa duyệt tự quay về sổ cái (`quotedQuantity` là Σ SL phân bổ của RFQ chưa huỷ) để lập RFQ mới. |
+| `POST .../:id/approve` | `purchasing:approve` | Chọn đúng một NCC thắng cho **mỗi** vật tư (`E132` nếu thiếu/sai). Trong một transaction: đánh dấu NCC thắng, RFQ → `APPROVED`, gom các dòng theo NCC và sinh PO. |
 | `POST .../:id/reject` | `purchasing:approve` | `PENDING_APPROVAL → CANCELLED`, lý do bắt buộc. |
 | `POST .../:id/recall` | `purchasing:update` | `APPROVED → DRAFT`. Chặn (`E133`) nếu có PO `ORDERED`. Xoá các PO `PENDING_CONFIRMATION`, bỏ chọn NCC thắng, xoá `approvedBy`/`approvedAt`. |
 
@@ -136,11 +136,10 @@ Dùng khi PO nhận một phần và hàng còn lại **không về nữa**. `PO
 2. Không còn phiếu nhập `DRAFT`, `PENDING_RECEIPT`, `PENDING_IQC`, `IQC_COMPLETED` của PO, ngược lại `E285`.
 3. SL đã nhận từng dòng lấy từ phiếu `POSTED` đã trừ hàng trả NCC. Không có dòng nào nhận thiếu, hoặc chưa nhận gì, thì `E286` (nhận đủ thì PO đã hoàn tất; chưa nhận gì thì dùng Huỷ).
 4. Dòng nhận thiếu: `quantity` hạ về số đã nhận và `quantityAdjustmentReason` ghi "Đóng sớm: đặt X, nhận Y. <lý do>". Dòng nhận 0: **xoá dòng** (khoá ngoại từ phiếu nhập là `set null`).
-   Cùng transaction, nhả SL ở RFQ nguồn (`PO.quotationId` khác null): dòng phân bổ cùng `purchaseRequestItemId` được hạ về số đã nhận, dòng nhận 0 thì xoá phân bổ (CHECK `quantity > 0`).
 5. Ghi `closedBy`, `closedAt`, `closureReason`.
 6. Thử sinh YCTT theo số đã nhập × đơn giá.
 
-Vì SL dòng được hạ về số đã nhận nên mọi nơi tính theo SL đặt (tiến độ PO, tổng tiền, sổ cái) tự đúng, không cần nhánh xử lý riêng. Phần thiếu muốn mua tiếp thì lập RFQ mới từ dòng đề xuất: SL phân bổ của RFQ nguồn đã được hạ cùng lúc nên `quotedQuantity` giảm theo và dòng đề xuất hiện lại ở màn chọn dòng với SL còn lại; dòng đề xuất lúc này hiện "Nhập một phần".
+Vì SL dòng được hạ về số đã nhận nên mọi nơi tính theo SL đặt (tiến độ PO, tổng tiền, sổ cái) tự đúng, không cần nhánh xử lý riêng. Phần thiếu muốn mua tiếp thì lập RFQ mới từ dòng đề xuất: `quotedQuantity` của sổ cái với RFQ `APPROVED` là Σ SL các dòng PO sinh ra từ nó (RFQ nháp / chờ duyệt vẫn tính theo SL phân bổ), nên dòng PO bị hạ/xoá tự trả phần thiếu về sổ cái mà không sửa RFQ gốc; dòng đề xuất lúc này hiện "Nhập một phần".
 
 ## Phiếu nhập kho và yêu cầu thanh toán
 
@@ -270,5 +269,3 @@ Mỗi cột là ảnh hưởng lên chứng từ đó (— là không đổi).
 | E288 | 409 | Xác nhận hoặc sửa phiếu IQC đã huỷ (phiếu nhập nguồn đã bị huỷ) |
 | E289 | 409 | Huỷ phiếu nhập đã ghi sổ |
 | E290 | 409 | Huỷ phiếu nhập khi một phiếu trả NCC của phiếu đã `POSTED` |
-| E296 | 400 | Duyệt RFQ một phần: `allocationId` không thuộc RFQ, lặp, hoặc SL duyệt vượt SL báo giá |
-| E297 | 400 | Duyệt RFQ một phần: giảm SL nhưng không ghi lý do |

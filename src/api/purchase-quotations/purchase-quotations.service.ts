@@ -45,7 +45,6 @@ import {
 import { AppException } from '../../exceptions/app.exception';
 import { PurchaseOrdersService } from '../purchase-orders/purchase-orders.service';
 import type { PurchaseOrderPendingLine } from '../purchase-orders/types/pending-order.type';
-import { ApproveQuotationAllocationReqDto } from './dto/approve-quotation-allocation.req.dto';
 import { ApproveQuotationSelectedSupplierReqDto } from './dto/approve-quotation-selected-supplier.req.dto';
 import { ApproveQuotationReqDto } from './dto/approve-quotation.req.dto';
 import { CreateQuotationItemReqDto } from './dto/create-quotation-item.req.dto';
@@ -503,7 +502,6 @@ export class PurchaseQuotationsService {
           .where(eq(purchaseQuotationItems.quotationId, quotationId)),
         this.db
           .select({
-            id: purchaseQuotationItemAllocations.id,
             quotationItemId: purchaseQuotationItemAllocations.quotationItemId,
             purchaseRequestItemId:
               purchaseQuotationItemAllocations.purchaseRequestItemId,
@@ -560,11 +558,6 @@ export class PurchaseQuotationsService {
 
     this.validateSelectedSuppliers(items, reqDto.selectedSuppliers);
 
-    const reductions = this.resolveAllocationReductions(
-      itemAllocations,
-      reqDto.allocations ?? [],
-    );
-
     const supplierRowById = new Map(
       itemSuppliers.map((supplier) => [supplier.id, supplier]),
     );
@@ -579,15 +572,13 @@ export class PurchaseQuotationsService {
       )!;
       const lines = linesBySupplierId.get(selectedSupplierRow.supplierId) ?? [];
       for (const allocation of item.allocations) {
-        const reduction = reductions.get(allocation.id);
         lines.push({
           purchaseRequestItemId: allocation.purchaseRequestItemId,
           quotationItemSupplierId: selectedSupplierRow.id,
-          quantity: reduction?.quantity ?? allocation.quantity,
+          quantity: allocation.quantity,
           unitPrice: selectedSupplierRow.unitPrice,
           leadTimeDays: selectedSupplierRow.leadTimeDays,
-          quantityAdjustmentReason:
-            reduction?.reason ?? allocation.quantityAdjustmentReason,
+          quantityAdjustmentReason: allocation.quantityAdjustmentReason,
         });
       }
       linesBySupplierId.set(selectedSupplierRow.supplierId, lines);
@@ -598,16 +589,6 @@ export class PurchaseQuotationsService {
     );
 
     await this.db.transaction(async (tx) => {
-      for (const [allocationId, reduction] of reductions) {
-        await tx
-          .update(purchaseQuotationItemAllocations)
-          .set({
-            quantity: reduction.quantity,
-            quantityAdjustmentReason: reduction.reason,
-          })
-          .where(eq(purchaseQuotationItemAllocations.id, allocationId));
-      }
-
       await tx
         .update(purchaseQuotationItemSuppliers)
         .set({ selectedBy: userId, selectedAt: new Date() })
@@ -876,45 +857,6 @@ export class PurchaseQuotationsService {
     }
 
     return [...bySupplierId.values()];
-  }
-
-  /** Duyệt một phần: chỉ giữ dòng thật sự giảm SL. Mỗi `allocationId` phải thuộc báo giá và không
-   * lặp, SL duyệt không vượt SL báo giá (E296); giảm phải kèm lý do (E297). Trả `reason` đã gắn tiền
-   * tố để ghi thẳng vào `quantityAdjustmentReason` của phân bổ và dòng PO. */
-  private resolveAllocationReductions(
-    itemAllocations: { id: string; quantity: number }[],
-    approvedAllocations: ApproveQuotationAllocationReqDto[],
-  ): Map<string, { quantity: number; reason: string }> {
-    const quotedQuantityById = new Map(
-      itemAllocations.map((allocation) => [allocation.id, allocation.quantity]),
-    );
-    const reductions = new Map<string, { quantity: number; reason: string }>();
-    const seenAllocationIds = new Set<string>();
-
-    for (const approved of approvedAllocations) {
-      const quotedQuantity = quotedQuantityById.get(approved.allocationId);
-      if (
-        quotedQuantity === undefined ||
-        seenAllocationIds.has(approved.allocationId) ||
-        approved.quantity > quotedQuantity
-      ) {
-        throw new AppException(ErrorCode.E296, HttpStatus.BAD_REQUEST);
-      }
-      seenAllocationIds.add(approved.allocationId);
-
-      if (approved.quantity === quotedQuantity) continue;
-
-      const reason = approved.reason?.trim();
-      if (!reason) {
-        throw new AppException(ErrorCode.E297, HttpStatus.BAD_REQUEST);
-      }
-      reductions.set(approved.allocationId, {
-        quantity: approved.quantity,
-        reason: `Duyệt một phần: ${reason}`,
-      });
-    }
-
-    return reductions;
   }
 
   /** Mỗi vật tư phải có ≥1 phân bổ (E150); không dòng ĐXMH nào lặp trong toàn payload kể cả khác vật

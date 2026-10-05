@@ -44,7 +44,6 @@ import {
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { PaymentRequestsService } from '../payment-requests/payment-requests.service';
-import { releaseAllocationsOnEarlyClose } from '../purchase-quotations/purchase-quotation-allocations.write';
 import { CancelPurchaseOrderReqDto } from './dto/cancel-purchase-order.req.dto';
 import { ClosePurchaseOrderReqDto } from './dto/close-purchase-order.req.dto';
 import { GetPurchaseOrdersReqDto } from './dto/get-purchase-orders.req.dto';
@@ -830,7 +829,7 @@ export class PurchaseOrdersService {
     userId: string,
   ): Promise<void> {
     await this.db.transaction(async (tx) => {
-      const order = await this.lockOrderForEarlyClose(tx, purchaseOrderId);
+      await this.lockOrderForEarlyClose(tx, purchaseOrderId);
 
       const { lines, receivedQuantityByItemId } =
         await this.loadLinesWithReceivedQuantity(tx, purchaseOrderId);
@@ -846,7 +845,6 @@ export class PurchaseOrdersService {
 
       await this.reduceLinesToReceivedQuantity(
         tx,
-        order.quotationId,
         underReceivedLines,
         receivedQuantityByItemId,
         reqDto.reason,
@@ -873,12 +871,11 @@ export class PurchaseOrdersService {
   private async lockOrderForEarlyClose(
     tx: DbTransaction,
     purchaseOrderId: string,
-  ): Promise<{ quotationId: string | null }> {
+  ): Promise<void> {
     const [order] = await tx
       .select({
         status: purchaseOrders.status,
         closedAt: purchaseOrders.closedAt,
-        quotationId: purchaseOrders.quotationId,
       })
       .from(purchaseOrders)
       .where(eq(purchaseOrders.id, purchaseOrderId))
@@ -893,8 +890,6 @@ export class PurchaseOrdersService {
     if ((await this.findUnpostedReceipts(tx, purchaseOrderId)).length) {
       throw new AppException(ErrorCode.E285, HttpStatus.CONFLICT);
     }
-
-    return { quotationId: order.quotationId };
   }
 
   /** Dòng PO kèm SL đã nhận (phiếu `POSTED`, đã trừ hàng trả NCC). */
@@ -906,7 +901,6 @@ export class PurchaseOrdersService {
       .select({
         id: purchaseOrderItems.id,
         quantity: purchaseOrderItems.quantity,
-        purchaseRequestItemId: purchaseOrderItems.purchaseRequestItemId,
       })
       .from(purchaseOrderItems)
       .where(eq(purchaseOrderItems.purchaseOrderId, purchaseOrderId));
@@ -921,17 +915,10 @@ export class PurchaseOrdersService {
   }
 
   /** Dòng chưa nhận gì bị xoá (FK phiếu nhập `set null`); dòng nhận một phần hạ SL về số đã nhận
-   * và ghi lý do vào `quantityAdjustmentReason` (cột 500 ký tự, cắt nếu dài). Cùng lúc nhả SL
-   * tương ứng ở báo giá nguồn (`releaseAllocationsOnEarlyClose`) để phần thiếu hiện lại ở sổ cái mà
-   * lập RFQ mới. */
+   * và ghi lý do vào `quantityAdjustmentReason` (cột 500 ký tự, cắt nếu dài). */
   private async reduceLinesToReceivedQuantity(
     tx: DbTransaction,
-    quotationId: string | null,
-    underReceivedLines: {
-      id: string;
-      quantity: number;
-      purchaseRequestItemId: string;
-    }[],
+    underReceivedLines: { id: string; quantity: number }[],
     receivedQuantityByItemId: Map<string, number>,
     reason: string,
   ): Promise<void> {
@@ -956,18 +943,6 @@ export class PurchaseOrdersService {
           quantityAdjustmentReason: note.slice(0, 500),
         })
         .where(eq(purchaseOrderItems.id, line.id));
-    }
-
-    if (quotationId) {
-      await releaseAllocationsOnEarlyClose(
-        tx,
-        quotationId,
-        underReceivedLines.map((line) => ({
-          purchaseRequestItemId: line.purchaseRequestItemId,
-          receivedQuantity: receivedQuantityByItemId.get(line.id) ?? 0,
-        })),
-        `Đóng sớm PO: ${reason}`.slice(0, 500),
-      );
     }
   }
 

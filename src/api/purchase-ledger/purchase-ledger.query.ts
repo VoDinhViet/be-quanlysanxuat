@@ -99,16 +99,39 @@ export function receivedQuantitySubquery(db: Database) {
     .as('received_quantity_aggregate');
 }
 
-/** SL báo giá theo dòng đề xuất — Σ `quantity` của **mọi** phân bổ thuộc báo giá chưa `CANCELLED`,
- * kể cả chưa được chọn giá (`selectedAt` không xét ở đây). Một dòng báo giá có thể gộp nhiều dòng
- * ĐXMH cùng vật tư (`purchase_quotation_item_allocations`, `docs/domains/purchasing.md`). */
+/** SL báo giá theo dòng đề xuất, tính trên báo giá chưa `CANCELLED` (kể cả chưa được chọn giá,
+ * `selectedAt` không xét ở đây). Báo giá nháp / chờ duyệt: Σ `quantity` phân bổ
+ * (`purchase_quotation_item_allocations`). Báo giá `APPROVED`: Σ `quantity` các dòng đơn mua sinh ra
+ * từ nó (trừ PO đã huỷ), vì sau khi duyệt nguồn sự thật là đơn mua — đóng sớm PO (hạ/xoá dòng về
+ * số đã nhận) tự trả phần thiếu về sổ cái để lập báo giá mới, báo giá gốc không bị sửa
+ * (`docs/domains/purchasing.md`). */
 export function quotedQuantitySubquery(db: Database) {
+  const orderedByQuotation = db
+    .select({
+      quotationId: purchaseOrders.quotationId,
+      purchaseRequestItemId: purchaseOrderItems.purchaseRequestItemId,
+      orderedQuantity: sql<number>`sum(${purchaseOrderItems.quantity})`
+        .mapWith(Number)
+        .as('ordered_quantity'),
+    })
+    .from(purchaseOrderItems)
+    .innerJoin(
+      purchaseOrders,
+      eq(purchaseOrders.id, purchaseOrderItems.purchaseOrderId),
+    )
+    .where(ne(purchaseOrders.status, PurchaseOrderStatus.CANCELLED))
+    .groupBy(
+      purchaseOrders.quotationId,
+      purchaseOrderItems.purchaseRequestItemId,
+    )
+    .as('ordered_by_quotation');
+
   return db
     .select({
       purchaseRequestItemId:
         purchaseQuotationItemAllocations.purchaseRequestItemId,
       quotedQuantity:
-        sql<number>`sum(${purchaseQuotationItemAllocations.quantity})`
+        sql<number>`sum(case when ${purchaseQuotations.status} = ${PurchaseQuotationStatus.APPROVED} then coalesce(${orderedByQuotation.orderedQuantity}, 0) else ${purchaseQuotationItemAllocations.quantity} end)`
           .mapWith(Number)
           .as('quoted_quantity'),
     })
@@ -123,6 +146,16 @@ export function quotedQuantitySubquery(db: Database) {
     .innerJoin(
       purchaseQuotations,
       eq(purchaseQuotations.id, purchaseQuotationItems.quotationId),
+    )
+    .leftJoin(
+      orderedByQuotation,
+      and(
+        eq(orderedByQuotation.quotationId, purchaseQuotations.id),
+        eq(
+          orderedByQuotation.purchaseRequestItemId,
+          purchaseQuotationItemAllocations.purchaseRequestItemId,
+        ),
+      ),
     )
     .where(ne(purchaseQuotations.status, PurchaseQuotationStatus.CANCELLED))
     .groupBy(purchaseQuotationItemAllocations.purchaseRequestItemId)
