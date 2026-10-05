@@ -31,6 +31,7 @@ import {
   InventoryReferenceType,
   inventoryRequisitions,
   InventoryRequisitionStatus,
+  InventoryRequisitionType,
   InventoryTransactionType,
   items,
   ItemType,
@@ -58,6 +59,27 @@ const issueTypeTransactionType: Record<
   [InventoryIssueType.RETURN]: InventoryTransactionType.ISSUE,
   [InventoryIssueType.PRODUCTION]: InventoryTransactionType.PRODUCTION_OUT,
 };
+
+type RequisitionOfIssue = {
+  id: string;
+  code: string;
+  type: InventoryRequisitionType;
+  reason: string | null;
+};
+
+/** Cột "PO / Lý do" của danh sách phiếu xuất, theo phiếu lãnh sinh ra phiếu: lãnh từ LSX → số PO của
+ * đơn hàng; lãnh khác → lý do lãnh. Phiếu không có phiếu lãnh (tạo tay) → ghi chú phiếu. */
+function resolvePoOrReason(
+  requisition: RequisitionOfIssue | null,
+  buyerPoNo: string | null,
+  note: string | null,
+): string | null {
+  if (!requisition) return note;
+
+  return requisition.type === InventoryRequisitionType.PRODUCTION
+    ? buyerPoNo
+    : requisition.reason;
+}
 
 @Injectable()
 export class InventoryIssuesService {
@@ -142,7 +164,9 @@ export class InventoryIssuesService {
           desc(inventoryIssues.createdAt),
         ],
         with: {
-          productionOrder: true,
+          productionOrder: {
+            with: { order: { columns: { buyerPoNo: true } } },
+          },
           productionJob: true,
           department: true,
           requesterBy: true,
@@ -162,10 +186,19 @@ export class InventoryIssuesService {
     return new OffsetPaginatedDto(
       plainToInstance(
         PageInventoryIssueResDto,
-        entities.map((entity) => ({
-          ...entity,
-          requisition: requisitionByIssueId.get(entity.id) ?? null,
-        })),
+        entities.map((entity) => {
+          const requisition = requisitionByIssueId.get(entity.id) ?? null;
+
+          return {
+            ...entity,
+            requisition,
+            poOrReason: resolvePoOrReason(
+              requisition,
+              entity.productionOrder?.order.buyerPoNo ?? null,
+              entity.note,
+            ),
+          };
+        }),
         {
           excludeExtraneousValues: true,
         },
@@ -176,22 +209,22 @@ export class InventoryIssuesService {
 
   private async getRequisitionsByIssueIds(
     issueIds: string[],
-  ): Promise<Map<string, { id: string; code: string }>> {
+  ): Promise<Map<string, RequisitionOfIssue>> {
     if (!issueIds.length) return new Map();
 
     const rows = await this.db
       .select({
         id: inventoryRequisitions.id,
         code: inventoryRequisitions.code,
+        type: inventoryRequisitions.type,
+        reason: inventoryRequisitions.reason,
         issueId: inventoryRequisitions.inventoryIssueId,
       })
       .from(inventoryRequisitions)
       .where(inArray(inventoryRequisitions.inventoryIssueId, issueIds));
 
     return new Map(
-      rows.flatMap((row) =>
-        row.issueId ? [[row.issueId, { id: row.id, code: row.code }]] : [],
-      ),
+      rows.flatMap((row) => (row.issueId ? [[row.issueId, row]] : [])),
     );
   }
 

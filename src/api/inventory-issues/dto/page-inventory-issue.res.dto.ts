@@ -47,6 +47,14 @@ export class PageInventoryIssueResDto {
   requisition!: InventoryRequisitionRefResDto | null;
 
   @Expose()
+  @StringFieldOptional({
+    nullable: true,
+    description:
+      'PO / Lý do theo phiếu lãnh: lãnh từ LSX → số PO khách của đơn hàng; lãnh khác → lý do lãnh; không có phiếu lãnh → ghi chú phiếu',
+  })
+  poOrReason!: string | null;
+
+  @Expose()
   @ClassFieldOptional(() => ProductionOrderRefResDto, { nullable: true })
   productionOrder!: ProductionOrderRefResDto | null;
 
