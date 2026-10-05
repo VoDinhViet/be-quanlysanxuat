@@ -8,13 +8,14 @@ import {
   purchaseRequestItems,
 } from '../../database/schemas';
 
-/** Giá + ngày đặt mua gần nhất cho mỗi cặp (vật tư, NCC) trong `itemIds`/`supplierIds` — chỉ đơn
+/** Giá + ngày đặt mua gần nhất cho mỗi cặp (vật tư, NCC) trong `itemIds`/`supplierIds` (bỏ trống
+ * `supplierIds` = mọi NCC) — chỉ đơn
  * mua đã `ORDERED` và có `unitPrice`, `DISTINCT ON` lấy đúng dòng mới nhất/cặp. Dùng để hiện "Giá
  * gần nhất"/"Ngày mua gần nhất" khi khai báo NCC cho một RFQ (`docs/domains/purchasing.md`). */
 export function lastPurchaseQuery(
   db: Database,
   itemIds: string[],
-  supplierIds: string[],
+  supplierIds?: string[],
 ) {
   return db
     .selectDistinctOn(
@@ -40,7 +41,9 @@ export function lastPurchaseQuery(
         eq(purchaseOrders.status, PurchaseOrderStatus.ORDERED),
         isNotNull(purchaseOrderItems.unitPrice),
         inArray(purchaseRequestItems.itemId, itemIds),
-        inArray(purchaseOrders.supplierId, supplierIds),
+        supplierIds
+          ? inArray(purchaseOrders.supplierId, supplierIds)
+          : undefined,
       ),
     )
     .orderBy(

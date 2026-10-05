@@ -20,6 +20,8 @@ import { PurchaseChainNotesResDto } from '../purchase-notes/dto/purchase-chain-n
 import { PurchaseNotesService } from '../purchase-notes/purchase-notes.service';
 import { ApproveQuotationReqDto } from './dto/approve-quotation.req.dto';
 import { CreateQuotationReqDto } from './dto/create-quotation.req.dto';
+import { GetQuotationLastPurchasesReqDto } from './dto/get-quotation-last-purchases.req.dto';
+import { QuotationLastPurchaseResDto } from './dto/quotation-last-purchase.res.dto';
 import { GetQuotationsReqDto } from './dto/get-quotations.req.dto';
 import { PageQuotationResDto } from './dto/page-quotation.res.dto';
 import { QuotationItemResDto } from './dto/quotation-item.res.dto';
@@ -48,6 +50,20 @@ export class PurchaseQuotationsController {
     @Query() reqDto: GetQuotationsReqDto,
   ): Promise<OffsetPaginatedDto<PageQuotationResDto>> {
     return this.purchaseQuotationsService.getQuotations(reqDto);
+  }
+
+  @Get('last-purchases')
+  @Permissions('purchasing:read')
+  @ApiAuth({
+    type: QuotationLastPurchaseResDto,
+    summary:
+      'Giá mua gần nhất của vật tư theo từng NCC (mới nhất trước), để tham khảo khi khai báo NCC',
+    isArray: true,
+  })
+  getLastPurchases(
+    @Query() reqDto: GetQuotationLastPurchasesReqDto,
+  ): Promise<QuotationLastPurchaseResDto[]> {
+    return this.purchaseQuotationsService.getLastPurchases(reqDto);
   }
 
   @Get(':quotationId')

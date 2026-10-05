@@ -58,6 +58,8 @@ import { QuotationResDto } from './dto/quotation.res.dto';
 import { CancelQuotationReqDto } from './dto/cancel-quotation.req.dto';
 import { RejectQuotationReqDto } from './dto/reject-quotation.req.dto';
 import { UpdateQuotationReqDto } from './dto/update-quotation.req.dto';
+import { GetQuotationLastPurchasesReqDto } from './dto/get-quotation-last-purchases.req.dto';
+import { QuotationLastPurchaseResDto } from './dto/quotation-last-purchase.res.dto';
 import { lastPurchaseQuery } from './purchase-quotations.query';
 import { FilesService } from '../files/files.service';
 
@@ -291,6 +293,33 @@ export class PurchaseQuotationsService {
     return plainToInstance(QuotationItemResDto, comparisonItems, {
       excludeExtraneousValues: true,
     });
+  }
+
+  /** Giá mua gần nhất của từng vật tư với từng NCC từng bán nó (mỗi cặp một dòng, mới nhất trước) —
+   * để màn khai báo NCC hiện giá tham khảo kể cả khi NCC đang chọn chưa từng bán vật tư đó. */
+  async getLastPurchases(
+    reqDto: GetQuotationLastPurchasesReqDto,
+  ): Promise<QuotationLastPurchaseResDto[]> {
+    const rows = await lastPurchaseQuery(this.db, reqDto.itemIds);
+    if (!rows.length) {
+      return [];
+    }
+
+    const supplierRows = await this.db
+      .select()
+      .from(suppliers)
+      .where(
+        inArray(suppliers.id, [...new Set(rows.map((row) => row.supplierId))]),
+      );
+    const supplierById = new Map(supplierRows.map((row) => [row.id, row]));
+
+    return plainToInstance(
+      QuotationLastPurchaseResDto,
+      rows
+        .map((row) => ({ ...row, supplier: supplierById.get(row.supplierId) }))
+        .sort((a, b) => b.orderDate.getTime() - a.orderDate.getTime()),
+      { excludeExtraneousValues: true },
+    );
   }
 
   private async getLastPurchaseMap(
