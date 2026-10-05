@@ -26,7 +26,12 @@ import {
   NotEquals,
   ValidateNested,
 } from 'class-validator';
-import { ToBoolean, ToLowerCase, ToUpperCase } from './transform.decorators';
+import {
+  ToBoolean,
+  ToLowerCase,
+  ToUpperCase,
+  Trim,
+} from './transform.decorators';
 import { IsNullable } from './validators/is-nullable.decorator';
 
 interface IFieldOptions {
@@ -47,6 +52,7 @@ interface INumberFieldOptions extends IFieldOptions {
 interface IStringFieldOptions extends IFieldOptions {
   minLength?: number;
   maxLength?: number;
+  trim?: boolean;
   toLowerCase?: boolean;
   toUpperCase?: boolean;
   pattern?: RegExp;
@@ -160,6 +166,12 @@ export function StringField(
         message: options.patternMessage,
       }),
     );
+  }
+
+  // Cắt khoảng trắng đầu/cuối trước khi validate — chuỗi toàn khoảng trắng thành rỗng và bị `MinLength`
+  // chặn. Chủ động bật từng field (không mặc định): mật khẩu và các giá trị cần giữ nguyên không được cắt.
+  if (options.trim) {
+    decorators.push(Trim());
   }
 
   if (options.toLowerCase) {

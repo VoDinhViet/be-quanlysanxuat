@@ -1,7 +1,7 @@
 import {
   ClassField,
   DateField,
-  StringFieldOptional,
+  StringField,
   UUIDField,
 } from '../../../decorators/field.decorators';
 import { CreatePurchaseRequestItemReqDto } from './create-purchase-request-item.req.dto';
@@ -16,11 +16,12 @@ export class CreatePurchaseRequestReqDto {
   })
   readonly departmentId!: string;
 
-  @StringFieldOptional({
-    nullable: true,
-    description: 'Ghi chú chung của phiếu',
+  @StringField({
+    trim: true,
+    maxLength: 1000,
+    description: 'Lý do đề xuất mua hàng — bắt buộc khi lập tay',
   })
-  readonly note?: string | null;
+  readonly note!: string;
 
   @ClassField(() => CreatePurchaseRequestItemReqDto, {
     each: true,
