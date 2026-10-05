@@ -39,6 +39,7 @@ import {
   PurchaseOrderStatus,
   purchaseQuotations,
   PurchaseQuotationStatus,
+  purchaseRequestItems,
   purchaseRequests,
   PurchaseRequestStatus,
   QcKind,
@@ -50,6 +51,7 @@ import {
   suppliers,
 } from '../../database/schemas';
 import { PermissionsService } from '../auth/permissions.service';
+import { quotedQuantitySubquery } from '../purchase-ledger/purchase-ledger.query';
 import { GetProductionProgressReqDto } from './dto/get-production-progress.req.dto';
 import { GetReportStatsReqDto } from './dto/get-report-stats.req.dto';
 import { JobDueDateResDto } from './dto/job-due-date.res.dto';
@@ -614,6 +616,7 @@ export class ReportsService {
     const [
       purchaseRequestsCount,
       purchaseQuotationsCount,
+      purchaseQuotationsToQuoteCount,
       purchaseOrdersCount,
       ordersCount,
       productionOrdersCount,
@@ -625,6 +628,9 @@ export class ReportsService {
         : 0,
       canApprove('purchasing:approve')
         ? this.getPurchaseQuotationsPendingCount()
+        : 0,
+      canApprove('purchasing:create')
+        ? this.getPurchaseQuotationsToQuoteCount()
         : 0,
       canApprove('purchasing:update')
         ? this.getPurchaseOrdersPendingCount()
@@ -644,6 +650,7 @@ export class ReportsService {
       {
         purchaseRequests: purchaseRequestsCount,
         purchaseQuotations: purchaseQuotationsCount,
+        purchaseQuotationsToQuote: purchaseQuotationsToQuoteCount,
         purchaseOrders: purchaseOrdersCount,
         orders: ordersCount,
         productionOrders: productionOrdersCount,
@@ -671,6 +678,31 @@ export class ReportsService {
       .from(purchaseQuotations)
       .where(
         eq(purchaseQuotations.status, PurchaseQuotationStatus.PENDING_APPROVAL),
+      );
+
+    return row.count;
+  }
+
+  // Dòng ĐXMH đã duyệt còn SL chưa lên báo giá — cùng điều kiện `hasRemainingQuotation` của sổ cái.
+  private async getPurchaseQuotationsToQuoteCount(): Promise<number> {
+    const quotedAgg = quotedQuantitySubquery(this.db);
+    const [row] = await this.db
+      .select({ count: sql<number>`count(*)`.mapWith(Number) })
+      .from(purchaseRequestItems)
+      .innerJoin(
+        purchaseRequests,
+        eq(purchaseRequests.id, purchaseRequestItems.purchaseRequestId),
+      )
+      .leftJoin(
+        quotedAgg,
+        eq(quotedAgg.purchaseRequestItemId, purchaseRequestItems.id),
+      )
+      .where(
+        and(
+          eq(purchaseRequests.status, PurchaseRequestStatus.APPROVED),
+          isNull(purchaseRequestItems.cancelledAt),
+          sql`coalesce(${quotedAgg.quotedQuantity}, 0) < ${purchaseRequestItems.quantity}`,
+        ),
       );
 
     return row.count;

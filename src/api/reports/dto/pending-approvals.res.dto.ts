@@ -24,6 +24,14 @@ export class PendingApprovalsResDto {
   @NumberField({
     int: true,
     description:
+      'Count of approved purchase request lines that still have quantity not on any quotation (waiting to be quoted) — 0 if the current user lacks purchasing:create',
+  })
+  purchaseQuotationsToQuote!: number;
+
+  @Expose()
+  @NumberField({
+    int: true,
+    description:
       'Count of purchase orders (PO) with status PENDING_CONFIRMATION — 0 if the current user lacks purchasing:update',
   })
   purchaseOrders!: number;
