@@ -513,7 +513,7 @@ export class PurchaseRequestsService {
     purchaseRequestId: string,
     userId: string,
   ): Promise<void> {
-    await this.ensurePurchaseRequestDraft(purchaseRequestId);
+    await this.ensurePurchaseRequestSendable(purchaseRequestId);
 
     await this.db
       .update(purchaseRequests)
@@ -541,8 +541,8 @@ export class PurchaseRequestsService {
       .where(eq(purchaseRequests.id, purchaseRequestId));
   }
 
-  /** `REJECTED` là điểm dừng — không có route đưa lại `DRAFT`. Chỉ sửa/xoá dòng vật tư
-   * (`ensurePurchaseRequestEditable`) mới mở lại được, coi như làm lại từ đầu. */
+  /** `REJECTED` gửi duyệt lại thẳng (`sendPurchaseRequest`), hoặc sửa/xoá dòng vật tư
+   * (`ensurePurchaseRequestEditable`) để tự về `DRAFT`, hoặc xoá phiếu. */
   async rejectPurchaseRequest(
     purchaseRequestId: string,
     reqDto: RejectPurchaseRequestReqDto,
@@ -561,9 +561,9 @@ export class PurchaseRequestsService {
       .where(eq(purchaseRequests.id, purchaseRequestId));
   }
 
-  /** Chỉ dùng cho `sendPurchaseRequest` — bắt buộc đúng `DRAFT`, không tự mở lại như
-   * `ensurePurchaseRequestEditable`. */
-  private async ensurePurchaseRequestDraft(purchaseRequestId: string) {
+  /** Chỉ dùng cho `sendPurchaseRequest` — `DRAFT` hoặc `REJECTED` (gửi duyệt lại), không đổi trạng
+   * trước khi gửi như `ensurePurchaseRequestEditable`. */
+  private async ensurePurchaseRequestSendable(purchaseRequestId: string) {
     const purchaseRequest = await this.db.query.purchaseRequests.findFirst({
       columns: { id: true, status: true },
       where: eq(purchaseRequests.id, purchaseRequestId),
@@ -573,7 +573,10 @@ export class PurchaseRequestsService {
       throw new AppException(ErrorCode.E112, HttpStatus.NOT_FOUND);
     }
 
-    if (purchaseRequest.status !== PurchaseRequestStatus.DRAFT) {
+    if (
+      purchaseRequest.status !== PurchaseRequestStatus.DRAFT &&
+      purchaseRequest.status !== PurchaseRequestStatus.REJECTED
+    ) {
       throw new AppException(ErrorCode.E114, HttpStatus.CONFLICT);
     }
 
@@ -636,7 +639,7 @@ export class PurchaseRequestsService {
     return purchaseRequest;
   }
 
-  /** `approve`/`reject` chỉ hợp lệ từ `PENDING_APPROVAL` — sibling của `ensurePurchaseRequestDraft`. */
+  /** `approve`/`reject` chỉ hợp lệ từ `PENDING_APPROVAL` — sibling của `ensurePurchaseRequestSendable`. */
   private async ensurePendingApproval(purchaseRequestId: string) {
     const purchaseRequest = await this.db.query.purchaseRequests.findFirst({
       columns: { id: true, status: true },

@@ -39,6 +39,7 @@ Bảng `purchase_requests` (đầu phiếu: `code`, `departmentId`, `neededDate`
 stateDiagram-v2
   [*] --> DRAFT: lập tay / Job thiếu vật tư
   DRAFT --> PENDING_APPROVAL: send
+  REJECTED --> PENDING_APPROVAL: send (gửi duyệt lại)
   PENDING_APPROVAL --> APPROVED: approve
   PENDING_APPROVAL --> REJECTED: reject (lý do bắt buộc)
   REJECTED --> DRAFT: sửa hoặc xoá một dòng vật tư
@@ -51,7 +52,7 @@ stateDiagram-v2
 | `GET /purchase-requests`, `GET /purchase-requests/:id` | `purchase-requests:read` | Danh sách phân trang, chi tiết. `E112` nếu không thấy. |
 | `POST /purchase-requests` | `purchase-requests:create` | Lập tay, luôn `DRAFT`. Kiểm phòng ban (`E014`), không rỗng (`E146`), không trùng vật tư (`E147`), vật tư phải `DIRECT` (`E148`). |
 | `DELETE /purchase-requests/:id` | `purchase-requests:delete` | Chỉ `DRAFT`/`REJECTED`, xoá luôn các dòng. |
-| `POST .../send` | `purchase-requests:update` | `DRAFT → PENDING_APPROVAL`. |
+| `POST .../send` | `purchase-requests:update` | `DRAFT`/`REJECTED → PENDING_APPROVAL` (`REJECTED` là gửi duyệt lại, giữ lịch sử từ chối); trạng thái khác `E114`. |
 | `POST .../approve` | `purchase-requests:approve` | `PENDING_APPROVAL → APPROVED`. `E116` nếu sai trạng thái. |
 | `POST .../reject` | `purchase-requests:approve` | `PENDING_APPROVAL → REJECTED`, lý do bắt buộc. |
 | `POST .../items` | `purchase-requests:update` | Thêm dòng vật tư vào phiếu có sẵn. Chỉ `DRAFT`/`REJECTED` (`E114`, `REJECTED` tự về `DRAFT`); cùng luật `E146`/`E147`/`E148` như lập tay, và không trùng vật tư đã có trong phiếu (`E287`). |

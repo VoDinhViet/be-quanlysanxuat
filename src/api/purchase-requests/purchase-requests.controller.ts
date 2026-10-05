@@ -98,7 +98,8 @@ export class PurchaseRequestsController {
   @Post(':purchaseRequestId/send')
   @Permissions('purchase-requests:update')
   @ApiAuth({
-    summary: 'Gửi duyệt — DRAFT → PENDING_APPROVAL',
+    summary:
+      'Gửi duyệt — DRAFT/REJECTED → PENDING_APPROVAL (REJECTED = gửi duyệt lại)',
     statusCode: HttpStatus.NO_CONTENT,
   })
   sendPurchaseRequest(
