@@ -1,18 +1,29 @@
 import { Exclude, Expose } from 'class-transformer';
 
 import {
+  ClassField,
   NumberField,
   BooleanField,
   NumberFieldOptional,
 } from '../../../decorators/field.decorators';
-import { ItemUnitField } from '../../items/dto/item-unit.field';
-import { ItemUnitRefResDto } from '../../items/dto/item-unit-ref.res.dto';
+import { FileField } from '../../files/dto/file.field';
+import { FileResDto } from '../../files/dto/file.res.dto';
+import { ItemRefResDto } from '../../items/dto/item-ref.res.dto';
+import { UnitRefResDto } from '../../units/dto/unit-ref.res.dto';
 
 @Exclude()
 export class RequisitionLineResDto {
   @Expose()
-  @ItemUnitField()
-  item!: ItemUnitRefResDto;
+  @ClassField(() => ItemRefResDto)
+  item!: ItemRefResDto;
+
+  @Expose()
+  @ClassField(() => UnitRefResDto)
+  unit!: UnitRefResDto;
+
+  @Expose()
+  @FileField('imageFile', 'Ảnh vật tư')
+  image!: FileResDto | null;
 
   @Expose()
   @NumberFieldOptional({

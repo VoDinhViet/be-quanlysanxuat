@@ -18,6 +18,7 @@ import { unaccentILike } from '../../common/utils/search.util';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database } from '../../database/database.type';
 import {
+  files,
   inventoryBalances,
   inventoryRequisitionItems,
   items,
@@ -68,6 +69,7 @@ export class InventoryRequisitionLinesService {
         note: inventoryRequisitionItems.note,
         item: getTableColumns(items),
         unit: getTableColumns(units),
+        imageFile: getTableColumns(files),
         bomQuantity: demand.bomDemand,
         issuedQuantity: issued.issuedQuantity,
         ...requisitionStockColumns(reserved),
@@ -76,6 +78,7 @@ export class InventoryRequisitionLinesService {
       .from(inventoryRequisitionItems)
       .innerJoin(items, eq(items.id, inventoryRequisitionItems.itemId))
       .innerJoin(units, eq(units.id, items.unitId))
+      .leftJoin(files, eq(files.id, items.imageFileId))
       .leftJoin(demand, eq(demand.itemId, items.id))
       .leftJoin(
         issued,
@@ -140,6 +143,7 @@ export class InventoryRequisitionLinesService {
         .select({
           item: getTableColumns(items),
           unit: getTableColumns(units),
+          imageFile: getTableColumns(files),
           bomQuantity: productionJobIssues.requiredQty,
           issuedQuantity: issued.issuedQuantity,
           ...requisitionStockColumns(reserved),
@@ -147,6 +151,7 @@ export class InventoryRequisitionLinesService {
         })
         .from(items)
         .innerJoin(units, eq(units.id, items.unitId))
+        .leftJoin(files, eq(files.id, items.imageFileId))
         .leftJoin(
           productionJobIssues,
           productionJobId

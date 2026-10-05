@@ -2,8 +2,8 @@ import { Exclude, Expose } from 'class-transformer';
 
 import { ProductionJobStatus } from '../../../database/schemas';
 import { ClientBaseResDto } from '../../clients/dto/client-base.res.dto';
-import { ItemUnitField } from '../../items/dto/item-unit.field';
-import { ItemUnitRefResDto } from '../../items/dto/item-unit-ref.res.dto';
+import { ItemRefResDto } from '../../items/dto/item-ref.res.dto';
+import { UnitRefResDto } from '../../units/dto/unit-ref.res.dto';
 import { OrderBaseResDto } from '../../orders/dto/order-base.res.dto';
 import {
   ClassField,
@@ -45,8 +45,12 @@ export class ProductionJobDetailResDto {
   itemId!: string;
 
   @Expose()
-  @ItemUnitField()
-  item!: ItemUnitRefResDto;
+  @ClassField(() => ItemRefResDto)
+  item!: ItemRefResDto;
+
+  @Expose()
+  @ClassFieldOptional(() => UnitRefResDto, { nullable: true })
+  unit!: UnitRefResDto | null;
 
   @Expose()
   @StringFieldOptional({ nullable: true, description: 'Phiên bản (revision)' })
