@@ -73,6 +73,8 @@ import { OUTBOUND_ORDER_EXPORT_COLUMNS } from './outbound-orders.export';
 import {
   getOutboundHeldQuantities,
   outboundHeldQuantityByItemSubquery,
+  orderPoNoMatch,
+  outboundOrderLineMatchExists,
   outboundOrderSummarySubquery,
 } from './outbound-orders.query';
 
@@ -112,6 +114,7 @@ export class OutboundOrdersService {
       reqDto.endDate
         ? lte(outboundOrders.fulfillmentDate, reqDto.endDate)
         : undefined,
+      outboundOrderLineMatchExists(this.db, reqDto),
     );
 
     const summary = outboundOrderSummarySubquery(this.db);
@@ -147,7 +150,8 @@ export class OutboundOrdersService {
   }
 
   /** Cắt im lặng ở `MAX_EXPORT_ROWS`, không báo lỗi khi vượt trần. Bộ lọc tách riêng khỏi
-   * `getOutboundOrders` dù trông giống nhau — hai route độc lập, sửa filter route nào chỉ route đó đổi. */
+   * `getOutboundOrders` dù trông giống nhau — hai route độc lập, sửa filter route nào chỉ route đó đổi;
+   * riêng bộ lọc theo dòng (`outboundOrderLineMatchExists`) dùng chung có chủ đích. */
   async exportOutboundOrders(
     reqDto: ExportOutboundOrdersReqDto,
   ): Promise<StreamableFile> {
@@ -168,6 +172,7 @@ export class OutboundOrdersService {
       reqDto.endDate
         ? lte(outboundOrders.fulfillmentDate, reqDto.endDate)
         : undefined,
+      outboundOrderLineMatchExists(this.db, reqDto),
     );
 
     const summary = outboundOrderSummarySubquery(this.db);
@@ -308,7 +313,6 @@ export class OutboundOrdersService {
       sql<number>`coalesce(${issuedQty.issuedQty}, 0)`.mapWith(Number);
 
     const availableQtySql = sql<number>`coalesce(${onHand.onHand}, 0) - coalesce(${held.heldQuantity}, 0)`;
-    const poKeyword = reqDto.poNo ? `%${reqDto.poNo}%` : undefined;
     const itemKeyword = reqDto.itemKeyword
       ? `%${reqDto.itemKeyword}%`
       : undefined;
@@ -318,12 +322,7 @@ export class OutboundOrdersService {
       inArray(orders.status, OutboundOrdersService.UNFULFILLED_ORDER_STATUSES),
       eq(orderItems.status, OrderItemStatus.NORMAL),
       reqDto.clientId ? eq(orders.clientId, reqDto.clientId) : undefined,
-      poKeyword
-        ? or(
-            unaccentILike(orders.buyerPoNo, poKeyword),
-            unaccentILike(orders.code, poKeyword),
-          )
-        : undefined,
+      reqDto.poNo ? orderPoNoMatch(reqDto.poNo) : undefined,
       reqDto.jobCode
         ? unaccentILike(productionJobs.code, `%${reqDto.jobCode}%`)
         : undefined,

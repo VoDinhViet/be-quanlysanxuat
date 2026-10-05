@@ -1,7 +1,9 @@
-import { and, eq, inArray, ne, sql } from 'drizzle-orm';
+import { and, eq, exists, inArray, ne, or, sql } from 'drizzle-orm';
 
+import { unaccentILike } from '../../common/utils/search.util';
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
+  items,
   orderItems,
   orders,
   outboundOrderItems,
@@ -113,4 +115,47 @@ export function outboundOrderSummarySubquery(db: Database) {
     .innerJoin(orders, eq(orders.id, orderItems.orderId))
     .groupBy(outboundOrderItems.outboundOrderId)
     .as('outbound_order_summary');
+}
+
+/** PO của khách hoặc mã đơn hàng (SO) khớp `poNo` — dùng chung cho bộ lọc danh sách DO và bộ chọn
+ * dòng đơn hàng chưa giao, để hai nơi cùng một luật khớp. */
+export function orderPoNoMatch(poNo: string) {
+  return or(
+    unaccentILike(orders.buyerPoNo, `%${poNo}%`),
+    unaccentILike(orders.code, `%${poNo}%`),
+  );
+}
+
+/** Điều kiện `EXISTS` cho bộ lọc danh sách DO theo dòng: PO của khách / mã SO (`poNo`), mã hoặc tên
+ * thành phẩm (`itemCode`/`itemName`) — cả ba phải khớp trên CÙNG một dòng. Lọc ở cấp phiếu bằng
+ * `EXISTS` (không `JOIN`) nên không nhân bản phiếu và `count` vẫn đúng. Không có tiêu chí nào thì
+ * trả `undefined` để bỏ vào `and(...)` như các điều kiện tuỳ chọn khác. */
+export function outboundOrderLineMatchExists(
+  db: Database,
+  filter: { poNo?: string; itemCode?: string; itemName?: string },
+) {
+  if (!filter.poNo && !filter.itemCode && !filter.itemName) {
+    return undefined;
+  }
+
+  return exists(
+    db
+      .select({ one: sql`1` })
+      .from(outboundOrderItems)
+      .innerJoin(orderItems, eq(orderItems.id, outboundOrderItems.orderItemId))
+      .innerJoin(orders, eq(orders.id, orderItems.orderId))
+      .innerJoin(items, eq(items.id, outboundOrderItems.itemId))
+      .where(
+        and(
+          eq(outboundOrderItems.outboundOrderId, outboundOrders.id),
+          filter.poNo ? orderPoNoMatch(filter.poNo) : undefined,
+          filter.itemCode
+            ? unaccentILike(items.code, `%${filter.itemCode}%`)
+            : undefined,
+          filter.itemName
+            ? unaccentILike(items.name, `%${filter.itemName}%`)
+            : undefined,
+        ),
+      ),
+  );
 }

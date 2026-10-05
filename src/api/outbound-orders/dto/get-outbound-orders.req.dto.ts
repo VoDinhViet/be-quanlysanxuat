@@ -6,6 +6,7 @@ import {
 import {
   DateFieldOptional,
   EnumFieldOptional,
+  StringFieldOptional,
   UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
 
@@ -24,4 +25,20 @@ export class GetOutboundOrdersReqDto extends PageOptionsDto {
 
   @DateFieldOptional({ description: 'Filter: fulfillmentDate <= endDate' })
   readonly endDate?: Date;
+
+  @StringFieldOptional({
+    description:
+      'Filter: PO của khách hoặc mã đơn hàng (SO) của một dòng trong phiếu',
+  })
+  readonly poNo?: string;
+
+  @StringFieldOptional({
+    description: 'Filter: mã thành phẩm của một dòng trong phiếu',
+  })
+  readonly itemCode?: string;
+
+  @StringFieldOptional({
+    description: 'Filter: tên thành phẩm của một dòng trong phiếu',
+  })
+  readonly itemName?: string;
 }
