@@ -298,7 +298,13 @@ export class ProductionExecutionService {
           items.id,
           files.id,
         )
-        .orderBy(desc(productionJobs.createdAt), desc(orders.createdAt))
+        .orderBy(
+          // Job mới (mã lớn) lên trước; cùng mã thì hạn hoàn thành gần nhất trước, chưa đặt hạn
+          // xuống cuối. Mã Job cố định độ rộng (YY-NNNNN-NNN) nên so chuỗi giảm dần = mới nhất.
+          desc(productionJobs.code),
+          sql`${operationDueDateExpr} asc nulls last`,
+          asc(operations.code),
+        )
         .limit(reqDto.limit)
         .offset(reqDto.offset),
       this.db
