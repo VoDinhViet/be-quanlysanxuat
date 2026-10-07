@@ -28,10 +28,10 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --prod --frozen-lockfile
 COPY --from=build /app/dist ./dist
 
-# --create-home: Chromium (crashpad) cần HOME ghi được, không có thì Puppeteer không launch được.
-RUN groupadd --system nestjs && useradd --system --gid nestjs --create-home nestjs \
-  && chown -R nestjs:nestjs /app
-USER nestjs
+# User `node` (uid 1000) có sẵn trong image và có HOME ghi được (/home/node) — Chromium (crashpad)
+# cần HOME ghi được, không có thì Puppeteer không launch được.
+RUN chown -R node:node /app
+USER node
 
 EXPOSE 8003
 

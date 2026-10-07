@@ -13,10 +13,11 @@ services:
     ports:
       - "${HOST_PORT:-8003}:8003"
     volumes:
-      # Bind mount ra thư mục cố định trên VPS (ngoài repo) để dễ backup. Thư mục phải cho user `nestjs`
-      # trong container ghi được: sudo chown -R <uid>:<gid> <thư mục> (uid/gid lấy bằng `docker run --rm
-      # quanlysanxuat-be:latest id nestjs`).
-      - ${UPLOADS_HOST_DIR:-/srv/quanlysanxuat/uploads}:/app/uploads
+      # Bind mount ra thư mục cố định trên VPS (ngoài repo) để dễ backup. Thư mục phải cho user `node`
+      # (uid 1000) trong container ghi được: sudo chown -R 1000:1000 <thư mục>.
+      # UPLOADS_DIR đọc từ shell hoặc file `.env` cạnh compose, KHÔNG phải .env.production (khác UPLOAD_DIR
+      # — đường dẫn trong container).
+      - ${UPLOADS_DIR:-/var/lib/quanlysanxuat/uploads}:/app/uploads
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:8003/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
       interval: 30s

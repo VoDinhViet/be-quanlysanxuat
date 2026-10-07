@@ -44,7 +44,9 @@ docker compose up -d --build
 ```
 
 Kiểm tra: `GET http://localhost:8003/health` (kiểm tra cả DB lẫn Redis). Dữ liệu `uploads/`
-(`UPLOAD_DRIVER=local`) giữ qua named volume `uploads_data`.
+(`UPLOAD_DRIVER=local`) giữ qua bind mount ra `${UPLOADS_DIR:-/var/lib/quanlysanxuat/uploads}` trên host.
+Tạo thư mục trước và cho user `node` (uid 1000) trong container ghi được:
+`sudo mkdir -p /var/lib/quanlysanxuat/uploads && sudo chown -R 1000:1000 /var/lib/quanlysanxuat/uploads`.
 
 ## Scripts
 
