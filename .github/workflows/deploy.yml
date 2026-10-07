@@ -1,0 +1,138 @@
+name: Deploy
+
+# Push lên main → kiểm tra (tsc + eslint) → build image đẩy lên GHCR → migrate DB prod → deploy lên VPS.
+# Không dùng pull_request_target: repo public, secret không được phép lộ ra fork.
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '.claude/**'
+      - '**/*.md'
+  workflow_dispatch:
+
+# Các lần deploy xếp hàng, không chạy chồng lên nhau và không bị huỷ giữa chừng.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Typecheck và lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: npx tsc --noEmit
+      - run: pnpm exec eslint "{src,test}/**/*.ts"
+
+  build:
+    name: Build và push image
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.name.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+      # GHCR yêu cầu tên repository viết thường, còn owner của repo là `VoDinhViet`.
+      - id: name
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.name.outputs.image }}:${{ github.sha }}
+            ${{ steps.name.outputs.image }}:latest
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Migrate và deploy lên VPS
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    permissions:
+      contents: read
+      packages: read
+    env:
+      IMAGE: ${{ needs.build.outputs.image }}:${{ github.sha }}
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Chuẩn bị SSH
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+
+      - name: Copy compose và script lên VPS
+        run: |
+          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes \
+            docker-compose.yml deploy/remote-deploy.sh \
+            "root@${VPS_HOST}:/opt/quanlysanxuat/"
+
+      # Bật Postgres + Redis và dừng nếu DB chưa có schema (xem comment trong remote-deploy.sh).
+      - name: Bật Postgres và Redis
+        run: ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes "root@${VPS_HOST}" 'bash /opt/quanlysanxuat/remote-deploy.sh infra'
+
+      # Postgres chỉ lắng nghe trên loopback của VPS nên runner đi qua SSH tunnel. Thông tin đăng nhập
+      # lấy thẳng từ container Postgres trên VPS (một nguồn duy nhất, không lưu thành secret thứ hai).
+      # Migrate trước khi deploy: lỗi thì dừng ở đây, app cũ vẫn chạy. Vì app cũ có thể phải chạy tiếp
+      # trên schema mới (khi rollback), migration cần giữ tương thích ngược (chỉ thêm, không xoá/đổi tên).
+      - name: Migrate DB prod
+        run: |
+          mapfile -t db < <(ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes "root@${VPS_HOST}" \
+            'cd /opt/quanlysanxuat && docker compose exec -T postgres sh -c '\''printf "%s\n%s\n%s\n" "$POSTGRES_USER" "$POSTGRES_PASSWORD" "$POSTGRES_DB"'\'' && docker compose port postgres 5432 | sed "s/.*://"')
+          echo "::add-mask::${db[1]}"
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o ExitOnForwardFailure=yes \
+            -f -N -L "15432:127.0.0.1:${db[3]}" "root@${VPS_HOST}"
+          DATABASE_URL="postgresql://${db[0]}:${db[1]}@127.0.0.1:15432/${db[2]}" pnpm db:migrate
+        env:
+          NODE_ENV: production
+
+      # Token GHCR đi qua stdin, không nằm trên dòng lệnh. Script tự rollback nếu bản mới không healthy.
+      - name: Deploy
+        run: |
+          printf '%s' "$GITHUB_TOKEN" | ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes \
+            "root@${VPS_HOST}" \
+            "GHCR_USER='${GITHUB_ACTOR}' bash /opt/quanlysanxuat/remote-deploy.sh app '${IMAGE}'"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Kiểm tra từ bên ngoài
+        run: curl -fsS --retry 5 --retry-delay 3 --retry-connrefused "http://${VPS_HOST}:8003/health"
