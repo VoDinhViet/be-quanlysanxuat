@@ -20,8 +20,10 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    # Chỉ nghe trên loopback: Caddy (deploy/proxy) cấp HTTPS và chuyển tiếp vào 127.0.0.1:8003, không mở
+    # thẳng cổng này ra internet.
     ports:
-      - "${HOST_PORT:-8003}:8003"
+      - "127.0.0.1:${HOST_PORT:-8003}:8003"
     volumes:
       # Bind mount ra thư mục cố định trên VPS (ngoài repo) để dễ backup. Thư mục phải cho user `node`
       # (uid 1000) trong container ghi được: sudo chown -R 1000:1000 <thư mục>.

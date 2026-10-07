@@ -55,6 +55,10 @@ Kiểm tra: `GET http://localhost:8003/health` (kiểm tra cả DB lẫn Redis).
 container ghi được: `sudo mkdir -p /var/lib/quanlysanxuat/uploads && sudo chown -R 1000:1000 /var/lib/quanlysanxuat/uploads`.
 Postgres và Redis tự tạo thư mục dữ liệu của chúng.
 
+**Chép ảnh/tài liệu vào `uploads` bằng root (rsync, scp, `cp`) xong phải chạy lại `chown -R 1000:1000 /var/lib/quanlysanxuat/uploads`.**
+Nếu không, thư mục và file thuộc root, BE (user `node`, uid 1000) vẫn đọc được ảnh cũ nhưng không ghi được ảnh mới và
+báo `EACCES: permission denied, mkdir 'uploads/...'` khi upload.
+
 ### Deploy tự động (GitHub Actions)
 
 Push lên `main` chạy `.github/workflows/deploy.yml`, gồm ba job:
@@ -106,6 +110,21 @@ Lưu ý:
   `bash /opt/quanlysanxuat/remote-deploy.sh app ghcr.io/vodinhviet/be-quanlysanxuat:v<số>`
   (đăng nhập GHCR trước nếu image chưa có trên máy).
 - Push chỉ đổi `docs/`, `.claude/`, file `*.md` hoặc `deploy/backup.sh` thì không kích hoạt deploy.
+
+### HTTPS và tên miền (Caddy)
+
+BE và FE chỉ nghe trên `127.0.0.1` của VPS. Caddy (`deploy/proxy/`, chạy ở `/opt/qlsx-proxy/`, container `qlsx-proxy`)
+là cổng 80/443 duy nhất: cấp và gia hạn chứng chỉ Let's Encrypt tự động, rồi chuyển tiếp
+`be-qlsx.thomi.com.vn` vào `127.0.0.1:8003` (BE) và `web-qlsx.thomi.com.vn` vào `127.0.0.1:3000` (FE).
+Tên miền nằm trong `/opt/qlsx-proxy/.env` (`WEB_DOMAIN`, `API_DOMAIN`), không ghi cứng trong repo. Caddy không
+nằm trong pipeline CI vì hiếm khi đổi; cập nhật bằng cách copy `deploy/proxy/*` lên VPS rồi `docker compose up -d`.
+
+- Biến `BACKEND_DOMAIN` (URL công khai của BE, dùng để dựng link file), `FRONTEND_DOMAIN` và `APP_CORS_ORIGIN` (chỉ
+  cho phép origin của FE, nhiều origin thì ngăn cách bằng dấu phẩy) đặt trong `.env.production`.
+- Hai tên miền đang đi qua Cloudflare (proxy bật). Chế độ **SSL/TLS phải là `Full (strict)`**. Ở chế độ `Flexible`,
+  Cloudflare nối tới VPS bằng HTTP rồi Caddy chuyển sang HTTPS, gây vòng lặp chuyển hướng 308.
+- Workflow kiểm tra `/health` ngay trong VPS (`127.0.0.1:8003`) và, nếu biến repo `API_DOMAIN` được đặt, cả địa chỉ
+  HTTPS công khai.
 
 ## Scripts
 

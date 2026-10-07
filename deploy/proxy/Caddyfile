@@ -1,0 +1,41 @@
+# Caddy: HTTPS (certificates from Let's Encrypt, issued and renewed automatically) in front of the
+# frontend and the backend. Both apps listen on 127.0.0.1 only; Caddy runs on the host network.
+# Domain names come from the environment (see docker-compose.yml), so nothing is hard-coded here.
+#
+# Each site is served on both https:// and an explicit http:// address. An explicit http:// address turns off
+# Caddy's automatic HTTP -> HTTPS redirect, which matters because the domains sit behind Cloudflare:
+#   - SSL mode "Full (strict)": Cloudflare connects to the origin over HTTPS (443). Preferred, end to end encrypted.
+#   - SSL mode "Flexible": Cloudflare connects over plain HTTP (80). With the redirect on, Caddy would answer
+#     308 -> https and Cloudflare would call it again over http: an endless redirect loop (ERR_TOO_MANY_REDIRECTS).
+# Visitors are still sent to HTTPS by Cloudflare itself ("Always Use HTTPS"). Once the mode is Full (strict) the
+# http:// addresses below can be removed.
+
+(web_app) {
+	# Access log (JSON, to the container log): method, path, status, duration. Caddy redacts the Cookie and
+	# Authorization headers by default.
+	log {
+		output stdout
+	}
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:3000
+}
+
+(api_app) {
+	log {
+		output stdout
+	}
+	encode zstd gzip
+	# The backend accepts uploads up to 10 MB (UPLOAD_MAX_DOCUMENT_SIZE); leave some headroom for multipart overhead.
+	request_body {
+		max_size 20MB
+	}
+	reverse_proxy 127.0.0.1:8003
+}
+
+{$WEB_DOMAIN}, http://{$WEB_DOMAIN} {
+	import web_app
+}
+
+{$API_DOMAIN}, http://{$API_DOMAIN} {
+	import api_app
+}

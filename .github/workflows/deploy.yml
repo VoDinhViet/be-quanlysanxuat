@@ -171,10 +171,16 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Kiểm tra từ bên ngoài
-        run: curl -fsS --retry 5 --retry-delay 3 --retry-connrefused "http://${VPS_HOST}:8003/health"
+      # App chỉ nghe trên loopback của VPS nên kiểm tra từ bên trong VPS.
+      - name: Kiểm tra app trên VPS
+        run: ssh vps 'curl -fsS --retry 5 --retry-delay 2 --retry-connrefused http://127.0.0.1:8003/health > /dev/null && echo "app trả lời ở 127.0.0.1:8003"'
+
+      # Chỉ chạy khi đã khai báo tên miền công khai (biến repo API_DOMAIN, ví dụ be-qlsx.thomi.com.vn).
+      - name: Kiểm tra địa chỉ HTTPS công khai
+        if: ${{ vars.API_DOMAIN != '' }}
+        run: curl -fsS --retry 5 --retry-delay 3 --retry-connrefused "https://${API_DOMAIN}/health"
         env:
-          VPS_HOST: ${{ secrets.VPS_HOST }}
+          API_DOMAIN: ${{ vars.API_DOMAIN }}
 
       # Hiện bản vừa deploy ngay trên trang kết quả của lần chạy.
       - name: Tóm tắt

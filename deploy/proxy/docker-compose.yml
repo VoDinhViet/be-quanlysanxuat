@@ -1,0 +1,24 @@
+# Reverse proxy for the VPS, deployed by hand to /opt/qlsx-proxy/ (it rarely changes, so CI does not touch it).
+#
+#   cd /opt/qlsx-proxy && cp /path/to/this/dir/* . && docker compose up -d
+#
+# Reads /opt/qlsx-proxy/.env:
+#   WEB_DOMAIN   e.g. app.example.com   (the frontend)
+#   API_DOMAIN   e.g. api.example.com   (the backend)
+# Both names must already have an A record pointing at the VPS, and ports 80/443 must be open, otherwise
+# Let's Encrypt cannot issue the certificates.
+
+services:
+  caddy:
+    container_name: qlsx-proxy
+    image: caddy:2
+    restart: unless-stopped
+    # Host network so Caddy reaches the apps on 127.0.0.1 and owns ports 80/443 directly.
+    network_mode: host
+    environment:
+      WEB_DOMAIN: ${WEB_DOMAIN:?set WEB_DOMAIN in .env}
+      API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates and ACME account: keep them, re-issuing too often hits Let's Encrypt rate limits.
+      - ${CADDY_DATA_DIR:-/var/lib/quanlysanxuat/caddy}:/data
