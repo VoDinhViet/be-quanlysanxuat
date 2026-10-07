@@ -436,10 +436,7 @@ export class PurchaseQuotationsService {
     );
 
     const { items: itemsReq, ...quotationFields } = reqDto;
-    const quotationItems = await this.prepareQuotationItems(
-      itemsReq,
-      quotationId,
-    );
+    const quotationItems = await this.prepareQuotationItems(itemsReq);
 
     await this.linkQuotationSupplierFiles(quotationItems);
 
@@ -807,14 +804,13 @@ export class PurchaseQuotationsService {
    * `updateQuotation`, cả hai đều cần đúng 3 bước này theo đúng thứ tự trước khi ghi. */
   private async prepareQuotationItems(
     itemsReq: CreateQuotationItemReqDto[],
-    quotationId?: string,
   ): Promise<CreateQuotationItemReqDto[]> {
     const quotationItems = this.mergeItemsByItemId(itemsReq);
 
     await this.ensureSuppliersExist(
       quotationItems.flatMap((item) => item.suppliers.map((s) => s.supplierId)),
     );
-    await this.validateAllocations(quotationItems, quotationId);
+    await this.validateAllocations(quotationItems);
 
     return quotationItems;
   }
@@ -904,7 +900,6 @@ export class PurchaseQuotationsService {
    * không giới hạn trên so với SL đề xuất mua. */
   private async validateAllocations(
     itemsReq: CreateQuotationItemReqDto[],
-    _quotationId?: string,
   ): Promise<void> {
     if (itemsReq.some((item) => !item.allocations.length)) {
       throw new AppException(ErrorCode.E150, HttpStatus.BAD_REQUEST);

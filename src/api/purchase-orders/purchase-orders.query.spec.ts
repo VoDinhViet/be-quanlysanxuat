@@ -1,3 +1,4 @@
+import type { Database } from '../../database/database.type';
 import { InventoryDocumentStatus } from '../../database/schemas';
 import {
   getReceivedQuantityByPurchaseOrderItemId,
@@ -7,7 +8,7 @@ import {
 describe('purchase-orders.query', () => {
   describe('orderReceivedQuantitySubquery', () => {
     it('builds subquery with receipt and return aggregations', () => {
-      const mockChain: any = {
+      const mockChain: Record<string, jest.Mock> = {
         select: jest.fn().mockReturnThis(),
         from: jest.fn().mockReturnThis(),
         innerJoin: jest.fn().mockReturnThis(),
@@ -16,19 +17,19 @@ describe('purchase-orders.query', () => {
         groupBy: jest.fn().mockReturnThis(),
         as: jest.fn().mockImplementation((alias: string) => ({ alias })),
       };
-      const mockDb = {
-        select: jest.fn().mockReturnValue(mockChain),
-      } as any;
+      const select = jest.fn().mockReturnValue(mockChain);
+      const mockDb = { select } as unknown as Database;
 
       const subquery = orderReceivedQuantitySubquery(mockDb);
 
-      expect(mockDb.select).toHaveBeenCalled();
+      expect(select).toHaveBeenCalled();
       expect(subquery).toBeDefined();
     });
   });
   describe('getReceivedQuantityByPurchaseOrderItemId', () => {
     it('returns empty Map when purchaseOrderItemIds is empty', async () => {
-      const mockDb = { select: jest.fn() } as any;
+      const select = jest.fn();
+      const mockDb = { select } as unknown as Database;
 
       const result = await getReceivedQuantityByPurchaseOrderItemId(mockDb, {
         purchaseOrderItemIds: [],
@@ -36,7 +37,7 @@ describe('purchase-orders.query', () => {
       });
 
       expect(result.size).toBe(0);
-      expect(mockDb.select).not.toHaveBeenCalled();
+      expect(select).not.toHaveBeenCalled();
     });
 
     it('deducts returned quantity from received quantity for each purchase order item', async () => {
@@ -47,26 +48,25 @@ describe('purchase-orders.query', () => {
       const returnedRows = [{ purchaseOrderItemId: 'poi-1', returned: 30 }];
 
       let callCount = 0;
-      const mockDb = {
-        select: jest.fn().mockImplementation(() => {
-          callCount++;
-          const currentCall = callCount;
-          return {
-            from: jest.fn().mockReturnValue({
-              innerJoin: jest.fn().mockReturnValue({
-                where: jest.fn().mockReturnValue({
-                  groupBy: jest.fn().mockImplementation(() => {
-                    if (currentCall === 1) {
-                      return Promise.resolve(receivedRows);
-                    }
-                    return Promise.resolve(returnedRows);
-                  }),
+      const select = jest.fn().mockImplementation(() => {
+        callCount++;
+        const currentCall = callCount;
+        return {
+          from: jest.fn().mockReturnValue({
+            innerJoin: jest.fn().mockReturnValue({
+              where: jest.fn().mockReturnValue({
+                groupBy: jest.fn().mockImplementation(() => {
+                  if (currentCall === 1) {
+                    return Promise.resolve(receivedRows);
+                  }
+                  return Promise.resolve(returnedRows);
                 }),
               }),
             }),
-          };
-        }),
-      } as any;
+          }),
+        };
+      });
+      const mockDb = { select } as unknown as Database;
 
       const result = await getReceivedQuantityByPurchaseOrderItemId(mockDb, {
         purchaseOrderItemIds: ['poi-1', 'poi-2'],
@@ -84,26 +84,25 @@ describe('purchase-orders.query', () => {
       const returnedRows = [{ purchaseOrderItemId: 'poi-1', returned: 30 }];
 
       let callCount = 0;
-      const mockDb = {
-        select: jest.fn().mockImplementation(() => {
-          callCount++;
-          const currentCall = callCount;
-          return {
-            from: jest.fn().mockReturnValue({
-              innerJoin: jest.fn().mockReturnValue({
-                where: jest.fn().mockReturnValue({
-                  groupBy: jest.fn().mockImplementation(() => {
-                    if (currentCall === 1) {
-                      return Promise.resolve(receivedRows);
-                    }
-                    return Promise.resolve(returnedRows);
-                  }),
+      const select = jest.fn().mockImplementation(() => {
+        callCount++;
+        const currentCall = callCount;
+        return {
+          from: jest.fn().mockReturnValue({
+            innerJoin: jest.fn().mockReturnValue({
+              where: jest.fn().mockReturnValue({
+                groupBy: jest.fn().mockImplementation(() => {
+                  if (currentCall === 1) {
+                    return Promise.resolve(receivedRows);
+                  }
+                  return Promise.resolve(returnedRows);
                 }),
               }),
             }),
-          };
-        }),
-      } as any;
+          }),
+        };
+      });
+      const mockDb = { select } as unknown as Database;
 
       const result = await getReceivedQuantityByPurchaseOrderItemId(mockDb, {
         purchaseOrderItemIds: ['poi-1'],

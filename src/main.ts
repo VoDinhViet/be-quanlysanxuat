@@ -89,7 +89,7 @@ async function getServer(): Promise<Express> {
 
 export default async function handler(req: Request, res: Response) {
   const server = await getServer();
-  return server(req, res);
+  server(req, res);
 }
 
 if (require.main === module) {

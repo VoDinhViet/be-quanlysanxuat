@@ -1,10 +1,5 @@
 import { type Type, applyDecorators } from '@nestjs/common';
-import {
-  ApiExtraModels,
-  ApiOkResponse,
-  type ApiResponseOptions,
-  getSchemaPath,
-} from '@nestjs/swagger';
+import { ApiExtraModels, ApiOkResponse, getSchemaPath } from '@nestjs/swagger';
 import { CursorPaginatedDto } from '../common/dto/cursor-pagination/paginated.dto';
 import { OffsetPaginatedDto } from '../common/dto/offset-pagination/paginated.dto';
 
