@@ -1,5 +1,7 @@
 services:
   app:
+    # Tên cố định để `docker ps` dễ đọc; phiên bản nằm ở tag của image (v<số>), xem `docker ps`.
+    container_name: qlsx-backend
     build:
       context: .
       dockerfile: Dockerfile
@@ -31,9 +33,12 @@ services:
       interval: 30s
       timeout: 5s
       start_period: 20s
+      # Trong start_period kiểm tra mỗi 3 giây để `up --wait` xong ngay khi app sẵn sàng, không chờ 30 giây.
+      start_interval: 3s
       retries: 3
 
   postgres:
+    container_name: qlsx-postgres
     image: postgres:18
     restart: unless-stopped
     environment:
@@ -56,6 +61,7 @@ services:
       retries: 5
 
   redis:
+    container_name: qlsx-redis
     image: redis:7-alpine
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]

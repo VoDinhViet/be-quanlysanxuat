@@ -16,3 +16,5 @@ drizzle
 Dockerfile
 docker-compose.yml
 .dockerignore
+.github
+deploy

@@ -7,7 +7,8 @@
 #
 # CI chạy `infra` → migrate DB (qua SSH tunnel tới Postgres) → `app`.
 # `app`: pull image mới → khởi động lại app → chờ healthcheck → lỗi thì quay về image cũ.
-# Rollback tay: chạy lại `app` với tag của bản muốn quay về (tag là commit SHA).
+# Rollback tay: chạy lại `app` với tag của bản muốn quay về (tag là v<số lần chạy>, ví dụ v42; xem danh sách
+# bằng `docker images ghcr.io/vodinhviet/be-quanlysanxuat` hoặc tab Packages của repo).
 set -euo pipefail
 
 COMMAND="${1:?Cách dùng: remote-deploy.sh infra | app <image>}"
