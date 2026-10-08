@@ -109,7 +109,7 @@ Lưu ý:
 - Deploy lại hoặc quay về bản cũ bằng tay: chạy workflow bằng `workflow_dispatch`, hoặc trên VPS
   `bash /opt/quanlysanxuat/remote-deploy.sh app ghcr.io/vodinhviet/be-quanlysanxuat:v<số>`
   (đăng nhập GHCR trước nếu image chưa có trên máy).
-- Push chỉ đổi `docs/`, `.claude/`, file `*.md` hoặc `deploy/backup.sh` thì không kích hoạt deploy.
+- Push chỉ đổi `docs/`, `.claude/`, file `*.md`, `deploy/backup.sh`, `deploy/restore.sh`, `deploy/proxy/` hoặc `deploy/monitor/` thì không kích hoạt deploy.
 
 ### HTTPS và tên miền (Caddy)
 
@@ -125,6 +125,37 @@ nằm trong pipeline CI vì hiếm khi đổi; cập nhật bằng cách copy `d
   Cloudflare nối tới VPS bằng HTTP rồi Caddy chuyển sang HTTPS, gây vòng lặp chuyển hướng 308.
 - Workflow kiểm tra `/health` ngay trong VPS (`127.0.0.1:8003`) và, nếu biến repo `API_DOMAIN` được đặt, cả địa chỉ
   HTTPS công khai.
+
+### Backup và khôi phục
+
+Cron 02:00 chạy `backup.sh` (cài tay ở `/opt/quanlysanxuat`), chia hai nhánh riêng, giống nhau ở VPS và Cloudflare R2:
+
+- `db/YYYY/MM/DD/qlsx-HHMM.dump` + `.json` (thông tin bản dump): giữ 3 bản gần nhất.
+- `files/YYYY/MM/DD/<uuid>.<ext>`: ảnh/tài liệu, chỉ thêm, không xoá.
+- `RESTORE.md`: hướng dẫn khôi phục, đẩy kèm mỗi lần backup.
+
+Khôi phục bằng `restore.sh` (`list`, `db [--r2] [--test]`, `files`), hướng dẫn từng tình huống và mẫu lệnh nhờ AI
+trong [deploy/RESTORE.md](deploy/RESTORE.md). `bash restore.sh db --test` khôi phục thử vào DB tạm, nên chạy mỗi tháng.
+Cập nhật script: `scp deploy/{backup.sh,restore.sh,RESTORE.md} root@<vps>:/opt/quanlysanxuat/`.
+
+### Giám sát (Beszel và Uptime Kuma)
+
+Cài tay một lần vào `/opt/qlsx-monitor` (file `deploy/monitor/docker-compose.yml`, CI không đụng tới):
+
+- **Beszel** (`https://beszel-qlsx.thomi.com.vn`): CPU, RAM, ổ đĩa, mạng và mức dùng của từng container, có cảnh báo.
+  Hub và agent nói chuyện qua unix socket, agent không mở cổng nào. Hub đã có sẵn máy `AIC-QLSX`.
+- **Uptime Kuma** (`https://uptime-qlsx.thomi.com.vn`): kiểm tra web, API, `/health` còn trả lời không, có trang status.
+
+Cả hai chỉ mở ở `127.0.0.1`, Caddy đưa ra HTTPS. Cần hai bản ghi DNS (A, proxied) về IP VPS. Tài khoản Beszel đầu tiên
+lấy từ `BESZEL_USER_EMAIL` / `BESZEL_USER_PASSWORD` trong `/opt/qlsx-monitor/.env` (đổi mật khẩu sau khi đăng nhập).
+Uptime Kuma tự tạo tài khoản admin ở lần mở đầu tiên.
+
+Gửi cảnh báo sang Discord: tạo webhook (Server Settings, Integrations, Webhooks), rồi dán URL trong giao diện,
+không ghi vào file nào trong repo.
+
+- Beszel: Settings, Notifications, thêm `discord://<token>@<webhook_id>` (dạng shoutrrr; webhook
+  `https://discord.com/api/webhooks/<id>/<token>`), rồi bật cảnh báo cho máy ở biểu tượng chuông.
+- Uptime Kuma: Settings, Notifications, Setup Notification, loại Discord, dán Webhook URL, chọn "Default enabled".
 
 ## Scripts
 

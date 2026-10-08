@@ -12,6 +12,9 @@ on:
       - '**/*.md'
       # Không do CI copy lên VPS, đổi nó không cần build hay deploy.
       - 'deploy/backup.sh'
+      - 'deploy/restore.sh'
+      - 'deploy/proxy/**'
+      - 'deploy/monitor/**'
   workflow_dispatch:
 
 # Các lần deploy xếp hàng, không chạy chồng lên nhau và không bị huỷ giữa chừng.
