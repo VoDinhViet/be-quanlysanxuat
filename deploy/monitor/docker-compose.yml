@@ -1,0 +1,65 @@
+# Monitoring for the VPS, deployed by hand to /opt/qlsx-monitor/ (CI does not touch it).
+#
+#   cd /opt/qlsx-monitor && docker compose up -d
+#
+#   Beszel       server metrics (CPU, RAM, disk, per-container usage) + alerts.  https://$BESZEL_DOMAIN
+#   Uptime Kuma  "is it answering" checks for the web, API and /health + alerts.  https://$UPTIME_DOMAIN
+#
+# Both open on 127.0.0.1 only; the Caddy proxy (deploy/proxy) publishes them over HTTPS.
+# Reads /opt/qlsx-monitor/.env:
+#   BESZEL_DOMAIN, UPTIME_DOMAIN   public names (also set in /opt/qlsx-proxy/.env)
+#   BESZEL_USER_EMAIL, BESZEL_USER_PASSWORD   first Beszel user, created on the first start only
+#   BESZEL_KEY    hub public key for the agent (cat /var/lib/quanlysanxuat/beszel/data/id_ed25519.pub)
+# Notifications go to Discord: add the webhook in each web UI (see README), never in this file.
+
+services:
+  beszel:
+    container_name: qlsx-beszel
+    image: henrygd/beszel:latest
+    restart: unless-stopped
+    environment:
+      APP_URL: https://${BESZEL_DOMAIN:?set BESZEL_DOMAIN in .env}
+      USER_EMAIL: ${BESZEL_USER_EMAIL:-}
+      USER_PASSWORD: ${BESZEL_USER_PASSWORD:-}
+    ports:
+      - "127.0.0.1:8090:8090"
+    volumes:
+      - ${MONITOR_DATA_DIR:-/var/lib/quanlysanxuat}/beszel/data:/beszel_data
+      # Unix socket shared with the agent, so the agent needs no network port.
+      - ${MONITOR_DATA_DIR:-/var/lib/quanlysanxuat}/beszel/socket:/beszel_socket
+    healthcheck:
+      test: ["CMD", "/beszel", "health", "--url", "http://localhost:8090"]
+      interval: 60s
+      timeout: 5s
+      start_period: 10s
+      start_interval: 3s
+
+  beszel-agent:
+    container_name: qlsx-beszel-agent
+    image: henrygd/beszel-agent:latest
+    restart: unless-stopped
+    # Host network: it must see the real network interfaces and disks of the VPS.
+    network_mode: host
+    environment:
+      LISTEN: /beszel_socket/beszel.sock
+      KEY: ${BESZEL_KEY:?set BESZEL_KEY in .env (the hub public key)}
+    volumes:
+      - ${MONITOR_DATA_DIR:-/var/lib/quanlysanxuat}/beszel/agent:/var/lib/beszel-agent
+      - ${MONITOR_DATA_DIR:-/var/lib/quanlysanxuat}/beszel/socket:/beszel_socket
+      # Read-only: lets the agent report per-container CPU and memory.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  uptime-kuma:
+    container_name: qlsx-uptime
+    image: louislam/uptime-kuma:2
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3001:3001"
+    volumes:
+      - ${MONITOR_DATA_DIR:-/var/lib/quanlysanxuat}/uptime-kuma:/app/data
+    healthcheck:
+      test: ["CMD", "node", "extra/healthcheck.js"]
+      interval: 60s
+      timeout: 10s
+      start_period: 30s
+      start_interval: 3s

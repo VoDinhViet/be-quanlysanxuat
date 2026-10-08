@@ -32,10 +32,28 @@
 	reverse_proxy 127.0.0.1:8003
 }
 
+# Takes the upstream address as its argument: `import monitor_app 127.0.0.1:3001`.
+(monitor_app) {
+	log {
+		output stdout
+	}
+	encode zstd gzip
+	reverse_proxy {args[0]}
+}
+
 {$WEB_DOMAIN}, http://{$WEB_DOMAIN} {
 	import web_app
 }
 
 {$API_DOMAIN}, http://{$API_DOMAIN} {
 	import api_app
+}
+
+# Monitoring (deploy/monitor): Beszel (server metrics) and Uptime Kuma (uptime checks and status page).
+{$BESZEL_DOMAIN}, http://{$BESZEL_DOMAIN} {
+	import monitor_app 127.0.0.1:8090
+}
+
+{$UPTIME_DOMAIN}, http://{$UPTIME_DOMAIN} {
+	import monitor_app 127.0.0.1:3001
 }
