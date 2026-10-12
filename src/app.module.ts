@@ -15,7 +15,9 @@ import { RolesModule } from './api/roles/roles.module';
 import { SupplierGroupsModule } from './api/supplier-groups/supplier-groups.module';
 import { SuppliersModule } from './api/suppliers/suppliers.module';
 import appConfig from './config/app.config';
+import integrationConfig from './config/integration.config';
 import uploadConfig from './config/upload.config';
+import { IntegrationModule } from './api/integration/integration.module';
 import authConfig from './api/auth/config/auth.config';
 import databaseConfig from './database/config/database.config';
 import redisConfig from './redis/redis.config';
@@ -64,7 +66,14 @@ import { UsersModule } from './api/users/users.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
-      load: [appConfig, authConfig, databaseConfig, redisConfig, uploadConfig],
+      load: [
+        appConfig,
+        authConfig,
+        databaseConfig,
+        redisConfig,
+        uploadConfig,
+        integrationConfig,
+      ],
       isGlobal: true,
     }),
 
@@ -135,6 +144,7 @@ import { UsersModule } from './api/users/users.module';
     PurchaseNotesModule,
     PaymentRequestsModule,
     ReportsModule,
+    IntegrationModule,
   ],
 
   controllers: [AppController],
