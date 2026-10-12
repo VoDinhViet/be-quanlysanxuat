@@ -3,6 +3,9 @@ import { ConfigService } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
 
 import { AllConfigType } from '../../config/config.type';
+import { AuthModule } from '../auth/auth.module';
+import { IntegrationOnBehalfGuard } from './guards/integration-on-behalf.guard';
+import { IntegrationIdentityController } from './integration-identity.controller';
 import { IntegrationApiKeyGuard } from './guards/integration-api-key.guard';
 import { IntegrationOrdersController } from './integration-orders.controller';
 import { IntegrationOrdersService } from './integration-orders.service';
@@ -23,6 +26,7 @@ const ONE_MINUTE_MS = 60_000;
  */
 @Module({
   imports: [
+    AuthModule,
     ThrottlerModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (configService: ConfigService<AllConfigType>) => ({
@@ -38,6 +42,7 @@ const ONE_MINUTE_MS = 60_000;
     }),
   ],
   controllers: [
+    IntegrationIdentityController,
     IntegrationOrdersController,
     IntegrationProductionController,
     IntegrationPurchasingController,
@@ -50,6 +55,7 @@ const ONE_MINUTE_MS = 60_000;
     IntegrationPurchasingService,
     IntegrationQualityService,
     IntegrationApiKeyGuard,
+    IntegrationOnBehalfGuard,
   ],
 })
 export class IntegrationModule {}

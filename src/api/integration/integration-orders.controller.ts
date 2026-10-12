@@ -2,6 +2,7 @@ import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ApiSecurity, ApiTags } from '@nestjs/swagger';
 import { ThrottlerGuard } from '@nestjs/throttler';
 
+import { Permissions } from '../../decorators/permissions.decorator';
 import { ApiPublic } from '../../decorators/http.decorators';
 import { IntegrationResultResDto } from './dto/integration-common.dto';
 import {
@@ -14,12 +15,13 @@ import {
   TopClientsReqDto,
 } from './dto/integration-orders.req.dto';
 import { IntegrationApiKeyGuard } from './guards/integration-api-key.guard';
+import { IntegrationOnBehalfGuard } from './guards/integration-on-behalf.guard';
 import { IntegrationOrdersService } from './integration-orders.service';
 
 // `ApiPublic` chỉ để bỏ qua JWT toàn cục; quyền vào route do `IntegrationApiKeyGuard` quyết định
 @ApiTags('Integration')
 @ApiSecurity('Api-Key')
-@UseGuards(IntegrationApiKeyGuard, ThrottlerGuard)
+@UseGuards(IntegrationApiKeyGuard, IntegrationOnBehalfGuard, ThrottlerGuard)
 @Controller({ path: 'integration', version: '1' })
 export class IntegrationOrdersController {
   constructor(private readonly ordersService: IntegrationOrdersService) {}
@@ -37,6 +39,7 @@ export class IntegrationOrdersController {
   }
 
   @Get('order-value-over-time')
+  @Permissions('orders:read')
   @ApiPublic({
     type: IntegrationResultResDto,
     summary:
@@ -49,6 +52,7 @@ export class IntegrationOrdersController {
   }
 
   @Get('top-clients-by-order-value')
+  @Permissions('orders:read')
   @ApiPublic({
     type: IntegrationResultResDto,
     summary: 'Khách hàng có tổng giá trị đơn lớn nhất',
@@ -60,6 +64,7 @@ export class IntegrationOrdersController {
   }
 
   @Get('overdue-orders')
+  @Permissions('orders:read')
   @ApiPublic({
     type: IntegrationResultResDto,
     summary: 'Đơn bán quá hạn giao (hoặc đến hạn trong N ngày tới)',
@@ -71,6 +76,7 @@ export class IntegrationOrdersController {
   }
 
   @Get('pending-deliveries')
+  @Permissions('orders:read')
   @ApiPublic({
     type: IntegrationResultResDto,
     summary:
@@ -83,6 +89,7 @@ export class IntegrationOrdersController {
   }
 
   @Get('order-progress')
+  @Permissions('orders:read')
   @ApiPublic({
     type: IntegrationResultResDto,
     summary: 'Tiến độ sản xuất theo đơn bán: số job xong trên tổng số job',
@@ -94,6 +101,7 @@ export class IntegrationOrdersController {
   }
 
   @Get('count-clients')
+  @Permissions('clients:read')
   @ApiPublic({
     type: IntegrationResultResDto,
     summary: 'Số khách hàng (theo một trạng thái hoặc gộp theo trạng thái)',

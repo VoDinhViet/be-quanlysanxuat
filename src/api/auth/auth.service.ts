@@ -190,6 +190,32 @@ export class AuthService {
   }
 
   /**
+   * Xác minh access token cho hệ thống ngoài (AI platform): chữ ký, phiên chưa bị đăng xuất,
+   * credential còn bật và người dùng chưa nghỉ việc. Trả danh tính tối thiểu, không trả token.
+   */
+  async getActiveIdentity(token: string): Promise<{
+    credentialId: string;
+    userId: string;
+    username: string;
+    displayName: string;
+  }> {
+    const payload = await this.verifyAccessToken(token);
+    await this.ensureCredentialEnabled(payload.sub, payload.userId);
+
+    const user = await this.db.query.users.findFirst({
+      where: eq(users.id, payload.userId),
+      columns: { fullName: true },
+    });
+
+    return {
+      credentialId: payload.sub,
+      userId: payload.userId,
+      username: payload.username,
+      displayName: user?.fullName ?? payload.username,
+    };
+  }
+
+  /**
    * Checks whether credential is enabled (`credentialEnabled === true`) and user status is active.
    * If `credentialEnabled` is false or `users.status` is `RESIGNED`, rejects login/refresh with E018 (FORBIDDEN).
    */

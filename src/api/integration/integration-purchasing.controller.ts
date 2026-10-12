@@ -2,6 +2,7 @@ import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ApiSecurity, ApiTags } from '@nestjs/swagger';
 import { ThrottlerGuard } from '@nestjs/throttler';
 
+import { Permissions } from '../../decorators/permissions.decorator';
 import { ApiPublic } from '../../decorators/http.decorators';
 import {
   IntegrationResultResDto,
@@ -13,11 +14,12 @@ import {
   PurchaseValueBySupplierReqDto,
 } from './dto/integration-purchasing.req.dto';
 import { IntegrationApiKeyGuard } from './guards/integration-api-key.guard';
+import { IntegrationOnBehalfGuard } from './guards/integration-on-behalf.guard';
 import { IntegrationPurchasingService } from './integration-purchasing.service';
 
 @ApiTags('Integration')
 @ApiSecurity('Api-Key')
-@UseGuards(IntegrationApiKeyGuard, ThrottlerGuard)
+@UseGuards(IntegrationApiKeyGuard, IntegrationOnBehalfGuard, ThrottlerGuard)
 @Controller({ path: 'integration', version: '1' })
 export class IntegrationPurchasingController {
   constructor(
@@ -25,6 +27,7 @@ export class IntegrationPurchasingController {
   ) {}
 
   @Get('inventory-ranking')
+  @Permissions('inventory:read')
   @ApiPublic({
     type: IntegrationResultResDto,
     summary:
@@ -37,6 +40,7 @@ export class IntegrationPurchasingController {
   }
 
   @Get('purchase-value-by-supplier')
+  @Permissions('purchasing:read')
   @ApiPublic({
     type: IntegrationResultResDto,
     summary: 'Giá trị đơn mua theo nhà cung cấp',
@@ -48,6 +52,7 @@ export class IntegrationPurchasingController {
   }
 
   @Get('overdue-purchase-orders')
+  @Permissions('purchasing:read')
   @ApiPublic({
     type: IntegrationResultResDto,
     summary: 'Đơn mua đã đặt, quá ngày dự kiến và chưa nhận đủ hàng',
@@ -59,6 +64,7 @@ export class IntegrationPurchasingController {
   }
 
   @Get('stuck-purchase-requests')
+  @Permissions('purchase-requests:read')
   @ApiPublic({
     type: IntegrationResultResDto,
     summary: 'Đề nghị mua đã duyệt nhưng còn dòng chưa lên đơn mua',
@@ -70,6 +76,7 @@ export class IntegrationPurchasingController {
   }
 
   @Get('overdue-payment-requests')
+  @Permissions('purchasing:read')
   @ApiPublic({
     type: IntegrationResultResDto,
     summary: 'Đề nghị thanh toán đang chờ và đã quá hạn',
@@ -81,6 +88,7 @@ export class IntegrationPurchasingController {
   }
 
   @Get('payment-request-value')
+  @Permissions('purchasing:read')
   @ApiPublic({
     type: IntegrationResultResDto,
     summary:

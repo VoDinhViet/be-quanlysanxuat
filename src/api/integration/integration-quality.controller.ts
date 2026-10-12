@@ -2,6 +2,7 @@ import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ApiSecurity, ApiTags } from '@nestjs/swagger';
 import { ThrottlerGuard } from '@nestjs/throttler';
 
+import { Permissions } from '../../decorators/permissions.decorator';
 import { ApiPublic } from '../../decorators/http.decorators';
 import { IntegrationResultResDto } from './dto/integration-common.dto';
 import {
@@ -10,16 +11,18 @@ import {
   QualityInspectionRateReqDto,
 } from './dto/integration-quality.req.dto';
 import { IntegrationApiKeyGuard } from './guards/integration-api-key.guard';
+import { IntegrationOnBehalfGuard } from './guards/integration-on-behalf.guard';
 import { IntegrationQualityService } from './integration-quality.service';
 
 @ApiTags('Integration')
 @ApiSecurity('Api-Key')
-@UseGuards(IntegrationApiKeyGuard, ThrottlerGuard)
+@UseGuards(IntegrationApiKeyGuard, IntegrationOnBehalfGuard, ThrottlerGuard)
 @Controller({ path: 'integration', version: '1' })
 export class IntegrationQualityController {
   constructor(private readonly qualityService: IntegrationQualityService) {}
 
   @Get('quality-inspection-rate')
+  @Permissions('iqc:read')
   @ApiPublic({
     type: IntegrationResultResDto,
     summary:
@@ -32,6 +35,7 @@ export class IntegrationQualityController {
   }
 
   @Get('iqc-fail-by-supplier')
+  @Permissions('iqc:read')
   @ApiPublic({
     type: IntegrationResultResDto,
     summary:
@@ -44,6 +48,7 @@ export class IntegrationQualityController {
   }
 
   @Get('open-ncr')
+  @Permissions('iqc:read')
   @ApiPublic({
     type: IntegrationResultResDto,
     summary:
