@@ -171,7 +171,7 @@ export class PurchaseQuotationsController {
   @Post(':quotationId/reject')
   @Permissions('purchasing:approve')
   @ApiAuth({
-    summary: 'Từ chối — PENDING_APPROVAL → CANCELLED, lý do bắt buộc',
+    summary: 'Từ chối — PENDING_APPROVAL → REJECTED, lý do bắt buộc',
     statusCode: HttpStatus.NO_CONTENT,
   })
   rejectQuotation(

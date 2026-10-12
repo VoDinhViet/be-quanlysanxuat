@@ -662,7 +662,7 @@ export class PurchaseQuotationsService {
     await this.db
       .update(purchaseQuotations)
       .set({
-        status: PurchaseQuotationStatus.CANCELLED,
+        status: PurchaseQuotationStatus.REJECTED,
         cancelledBy: userId,
         cancelledAt: new Date(),
         cancellationReason: reqDto.reason,

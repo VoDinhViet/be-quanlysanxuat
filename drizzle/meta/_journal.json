@@ -1562,6 +1562,13 @@
       "when": 1791171454650,
       "tag": "0222_solid_elektra",
       "breakpoints": true
+    },
+    {
+      "idx": 223,
+      "version": "7",
+      "when": 1791767604831,
+      "tag": "0223_left_earthquake",
+      "breakpoints": true
     }
   ]
 }

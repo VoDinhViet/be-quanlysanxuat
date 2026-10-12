@@ -1,4 +1,4 @@
-import { and, eq, ne, sql } from 'drizzle-orm';
+import { and, eq, ne, notInArray, sql } from 'drizzle-orm';
 
 import type { Database } from '../../database/database.type';
 import {
@@ -99,7 +99,7 @@ export function receivedQuantitySubquery(db: Database) {
     .as('received_quantity_aggregate');
 }
 
-/** SL báo giá theo dòng đề xuất, tính trên báo giá chưa `CANCELLED` (kể cả chưa được chọn giá,
+/** SL báo giá theo dòng đề xuất, tính trên báo giá chưa `CANCELLED`/`REJECTED` (kể cả chưa được chọn giá,
  * `selectedAt` không xét ở đây). Báo giá nháp / chờ duyệt: Σ `quantity` phân bổ
  * (`purchase_quotation_item_allocations`). Báo giá `APPROVED`: Σ `quantity` các dòng đơn mua sinh ra
  * từ nó (trừ PO đã huỷ), vì sau khi duyệt nguồn sự thật là đơn mua — đóng sớm PO (hạ/xoá dòng về
@@ -157,7 +157,12 @@ export function quotedQuantitySubquery(db: Database) {
         ),
       ),
     )
-    .where(ne(purchaseQuotations.status, PurchaseQuotationStatus.CANCELLED))
+    .where(
+      notInArray(purchaseQuotations.status, [
+        PurchaseQuotationStatus.REJECTED,
+        PurchaseQuotationStatus.CANCELLED,
+      ]),
+    )
     .groupBy(purchaseQuotationItemAllocations.purchaseRequestItemId)
     .as('quoted_quantity_aggregate');
 }

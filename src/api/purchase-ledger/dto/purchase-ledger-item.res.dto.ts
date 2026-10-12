@@ -74,7 +74,8 @@ export class PurchaseLedgerItemResDto {
 
   @Expose()
   @NumberField({
-    description: 'SL báo giá — Σ quantity mọi dòng báo giá chưa CANCELLED',
+    description:
+      'SL báo giá — Σ quantity mọi dòng báo giá chưa CANCELLED/REJECTED',
   })
   quotedQuantity!: number;
 

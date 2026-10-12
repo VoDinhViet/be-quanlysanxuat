@@ -72,7 +72,7 @@ stateDiagram-v2
   [*] --> DRAFT: lập RFQ
   DRAFT --> PENDING_APPROVAL: send
   PENDING_APPROVAL --> APPROVED: approve (tự sinh PO)
-  PENDING_APPROVAL --> CANCELLED: reject
+  PENDING_APPROVAL --> REJECTED: reject
   APPROVED --> DRAFT: recall / huỷ PO kèm mở lại
   APPROVED --> CANCELLED: huỷ PO cuối cùng, không mua nữa
   DRAFT --> [*]: xoá
@@ -87,7 +87,7 @@ stateDiagram-v2
 | `DELETE .../:id` | `purchasing:delete` | Chỉ `DRAFT`. |
 | `POST .../:id/send` | `purchasing:update` | `DRAFT → PENDING_APPROVAL`. Không có vật tư (`E131`), vật tư không có NCC (`E130`), thiếu đơn giá (`E120`). |
 | `POST .../:id/approve` | `purchasing:approve` | Chọn đúng một NCC thắng cho **mỗi** vật tư (`E132` nếu thiếu/sai). Trong một transaction: đánh dấu NCC thắng, RFQ → `APPROVED`, gom các dòng theo NCC và sinh PO. |
-| `POST .../:id/reject` | `purchasing:approve` | `PENDING_APPROVAL → CANCELLED`, lý do bắt buộc. |
+| `POST .../:id/reject` | `purchasing:approve` | `PENDING_APPROVAL → REJECTED` (không duyệt), lý do bắt buộc. |
 | `POST .../:id/recall` | `purchasing:update` | `APPROVED → DRAFT`. Chặn (`E133`) nếu có PO `ORDERED`. Xoá các PO `PENDING_CONFIRMATION`, bỏ chọn NCC thắng, xoá `approvedBy`/`approvedAt`. |
 
 Sai trạng thái ở mọi thao tác trên trả `E118`.
@@ -198,7 +198,7 @@ Cùng cách đó, menu "Trả NCC" hiện `supplierReturnsToPost` = số phiếu
 | đã báo giá > 0 | `QUOTING` |
 | còn lại | `WAITING_TO_PURCHASE` |
 
-Trong đó: *đã đặt* = Σ SL dòng của PO `ORDERED` (PO chờ xác nhận và PO huỷ không tính); *đã báo giá* = Σ SL phân bổ của RFQ **chưa `CANCELLED`** (kể cả RFQ nháp và chưa chọn NCC); *đã nhận* như trên. Bộ lọc `status` của API dùng đúng các điều kiện loại trừ nhau này (mỗi dòng chỉ thuộc một trạng thái). Hệ quả: RFQ `APPROVED` mà mọi PO của nó đã huỷ vẫn giữ dòng đề xuất ở `QUOTING`, vì vậy huỷ PO cuối cùng theo kiểu "không mua nữa" huỷ luôn RFQ.
+Trong đó: *đã đặt* = Σ SL dòng của PO `ORDERED` (PO chờ xác nhận và PO huỷ không tính); *đã báo giá* = Σ SL phân bổ của RFQ **chưa `CANCELLED`/`REJECTED`** (kể cả RFQ nháp và chưa chọn NCC); *đã nhận* như trên. Bộ lọc `status` của API dùng đúng các điều kiện loại trừ nhau này (mỗi dòng chỉ thuộc một trạng thái). Hệ quả: RFQ `APPROVED` mà mọi PO của nó đã huỷ vẫn giữ dòng đề xuất ở `QUOTING`, vì vậy huỷ PO cuối cùng theo kiểu "không mua nữa" huỷ luôn RFQ.
 
 ## Ghi chú chuỗi (`purchase-notes`)
 
