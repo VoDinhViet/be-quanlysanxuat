@@ -28,6 +28,7 @@ export enum OrderValueGroupBy {
   MONTH = 'month',
   CLIENT = 'client',
   STATUS = 'status',
+  SALESPERSON = 'salesperson',
 }
 
 export enum OrderValueMetric {
@@ -69,9 +70,34 @@ export class OrderValueReqDto extends DateRangeReqDto {
     int: true,
     min: 1,
     max: INTEGRATION_MAX_LIMIT,
-    description: 'Số dòng khi groupBy=client, mặc định 10',
+    description: 'Số dòng khi groupBy=client hoặc salesperson, mặc định 10',
   })
   readonly limit?: number;
+}
+
+export class TopOrdersReqDto extends DateRangeReqDto {
+  @StringFieldOptional({
+    ...STATUS_FIELD,
+    description: 'Chỉ đơn ở trạng thái này',
+  })
+  readonly status?: string;
+
+  @NumberFieldOptional({
+    min: 0,
+    description: 'Chỉ đơn có tổng giá trị từ mức này trở lên',
+  })
+  readonly minTotal?: number;
+
+  @NumberFieldOptional({
+    int: true,
+    min: 1,
+    max: INTEGRATION_MAX_LIMIT,
+    description: 'Mặc định 10',
+  })
+  readonly limit?: number;
+
+  @BooleanFieldOptional({ description: 'Bỏ đơn REJECTED, mặc định true' })
+  readonly excludeRejected?: boolean;
 }
 
 export class TopClientsReqDto extends DateRangeReqDto {

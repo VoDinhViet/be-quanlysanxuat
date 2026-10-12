@@ -8,6 +8,7 @@ import {
   outboundOrders,
   productionJobs,
   productionOrders,
+  users,
 } from '../../database/schemas';
 
 import { IntegrationResultResDto } from './dto/integration-common.dto';
@@ -22,6 +23,7 @@ import {
   PendingDeliveriesReqDto,
   StatusCountEntity,
   TopClientsReqDto,
+  TopOrdersReqDto,
 } from './dto/integration-orders.req.dto';
 import {
   dateRangeConditions,
@@ -34,6 +36,7 @@ const REJECTED_STATUS = 'REJECTED';
 const DEFAULT_OVERDUE_STATUSES = ['IN_PROGRESS', 'AWAITING_PRODUCTION'];
 const DEFAULT_ORDER_VALUE_LIMIT = 10;
 const DEFAULT_TOP_CLIENTS_LIMIT = 5;
+const DEFAULT_TOP_ORDERS_LIMIT = 10;
 const DEFAULT_LIST_LIMIT = 20;
 const DEFAULT_DAYS_AHEAD = 7;
 
@@ -115,7 +118,7 @@ export class IntegrationOrdersService {
   }
 
   private orderConditions(
-    range: TopClientsReqDto | OrderValueReqDto,
+    range: TopClientsReqDto | OrderValueReqDto | TopOrdersReqDto,
     options: { status?: string; excludeRejected: boolean },
   ): SQL[] {
     const conditions: SQL[] = [sql`${orders.deletedAt} IS NULL`];
@@ -127,7 +130,7 @@ export class IntegrationOrdersService {
     }
     return [
       ...conditions,
-      ...dateRangeConditions(sql.raw('o.order_date'), range),
+      ...dateRangeConditions(sql`${orders.orderDate}`, range),
     ];
   }
 
@@ -164,6 +167,17 @@ export class IntegrationOrdersService {
           FROM ${orders} ${where} GROUP BY ${orders.status} ORDER BY ${aliasSql} DESC`,
       );
     }
+    if (groupBy === OrderValueGroupBy.SALESPERSON) {
+      // Đơn chưa có người phụ trách (assigned_user_id NULL) không vào nhóm nào
+      return this.queryService.run(
+        'order_value_over_time',
+        ['nhan_vien', alias],
+        sql`SELECT ${users.fullName} AS nhan_vien, ${metric} AS ${aliasSql} FROM ${orders}
+          JOIN ${users} ON ${users.id} = ${orders.assignedUserId} ${where}
+          GROUP BY ${users.fullName} ORDER BY ${aliasSql} DESC
+          LIMIT ${reqDto.limit ?? DEFAULT_ORDER_VALUE_LIMIT}`,
+      );
+    }
     return this.queryService.run(
       'order_value_over_time',
       ['name', alias],
@@ -189,6 +203,26 @@ export class IntegrationOrdersService {
         JOIN ${clients} ON ${clients.id} = ${orders.clientId} ${where}
         GROUP BY ${clients.name} ORDER BY tong_gia_tri DESC
         LIMIT ${reqDto.limit ?? DEFAULT_TOP_CLIENTS_LIMIT}`,
+    );
+  }
+
+  topOrdersByValue(reqDto: TopOrdersReqDto): Promise<IntegrationResultResDto> {
+    const conditions = this.orderConditions(reqDto, {
+      status: reqDto.status,
+      excludeRejected: reqDto.excludeRejected ?? true,
+    });
+    if (reqDto.minTotal !== undefined) {
+      conditions.push(sql`${orders.total} >= ${reqDto.minTotal}`);
+    }
+    return this.queryService.run(
+      'top_orders_by_value',
+      ['don_hang', 'khach_hang', 'status', 'due_date', 'tong_gia_tri'],
+      sql`SELECT ${orders.code} AS don_hang, ${clients.name} AS khach_hang,
+        ${orders.status}::text AS status, ${orders.dueDate}::text AS due_date,
+        ${orders.total}::float8 AS tong_gia_tri
+        FROM ${orders} JOIN ${clients} ON ${clients.id} = ${orders.clientId}
+        ${whereClause(conditions)}
+        ORDER BY ${orders.total} DESC LIMIT ${reqDto.limit ?? DEFAULT_TOP_ORDERS_LIMIT}`,
     );
   }
 

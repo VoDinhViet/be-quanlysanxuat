@@ -13,6 +13,7 @@ import {
   OverdueOrdersReqDto,
   PendingDeliveriesReqDto,
   TopClientsReqDto,
+  TopOrdersReqDto,
 } from './dto/integration-orders.req.dto';
 import { IntegrationApiKeyGuard } from './guards/integration-api-key.guard';
 import { IntegrationOnBehalfGuard } from './guards/integration-on-behalf.guard';
@@ -43,7 +44,7 @@ export class IntegrationOrdersController {
   @ApiPublic({
     type: IntegrationResultResDto,
     summary:
-      'Giá trị hoặc số lượng đơn bán theo tháng, khách hàng hoặc trạng thái',
+      'Giá trị hoặc số lượng đơn bán theo tháng, khách hàng, nhân viên phụ trách hoặc trạng thái',
   })
   orderValueOverTime(
     @Query() reqDto: OrderValueReqDto,
@@ -61,6 +62,19 @@ export class IntegrationOrdersController {
     @Query() reqDto: TopClientsReqDto,
   ): Promise<IntegrationResultResDto> {
     return this.ordersService.topClientsByOrderValue(reqDto);
+  }
+
+  @Get('top-orders-by-value')
+  @Permissions('orders:read')
+  @ApiPublic({
+    type: IntegrationResultResDto,
+    summary:
+      'Từng đơn bán có giá trị lớn nhất, lọc theo trạng thái và mức tối thiểu',
+  })
+  topOrdersByValue(
+    @Query() reqDto: TopOrdersReqDto,
+  ): Promise<IntegrationResultResDto> {
+    return this.ordersService.topOrdersByValue(reqDto);
   }
 
   @Get('overdue-orders')
