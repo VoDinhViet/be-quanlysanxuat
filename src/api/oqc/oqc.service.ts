@@ -16,10 +16,6 @@ import { DateTime } from 'luxon';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
-import {
-  DocumentType,
-  generateDocumentSequence,
-} from '../../common/utils/document-sequence.util';
 import { buildXlsxBuffer, XLSX_MIME } from '../../common/utils/excel.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
@@ -50,6 +46,7 @@ import { AppException } from '../../exceptions/app.exception';
 import { FilesService } from '../files/files.service';
 import { createProductionReceiptForJob } from '../inventory-receipts/inventory-receipts.write';
 import { linkQcFiles } from '../iqc/iqc.write';
+import { closeNcrAfterOqc, createNcrFromOqc } from '../ncrs/ncrs.write';
 import { mapToQualityInspectionStatus } from '../iqc/quality-inspection-status.util';
 import { ConfirmOqcReqDto } from './dto/confirm-oqc.req.dto';
 import { ExportOqcReqDto } from './dto/export-oqc.req.dto';
@@ -60,6 +57,7 @@ import { RequestJobOqcReqDto } from './dto/request-job-oqc.req.dto';
 import { OQC_EXPORT_COLUMNS } from './oqc.export';
 import {
   closeJobIfQcCovered,
+  generateOqcCode,
   getInspectedQuantityByBomItemId,
   getInspectedQuantityByOperationId,
   getJobFinalOperation,
@@ -348,6 +346,8 @@ export class OqcService {
         resultNote: qualityInspections.decisionNote,
         disposition: qualityInspections.disposition,
         dispositionNote: qualityInspections.dispositionNote,
+        sortOkQty: qualityInspections.sortOkQty,
+        sortNgQty: qualityInspections.sortNgQty,
         confirmedAt: qualityInspections.startedAt,
         resolvedAt: qualityInspections.approvedAt,
         createdAt: qualityInspections.createdAt,
@@ -506,7 +506,7 @@ export class OqcService {
 
     await this.db.transaction(async (tx) => {
       const inspectionDate = new Date();
-      const code = await this.generateOqcCode(tx, inspectionDate);
+      const code = await generateOqcCode(tx, inspectionDate);
 
       await tx.insert(qualityInspections).values({
         quantity,
@@ -536,11 +536,16 @@ export class OqcService {
 
     const isPass = reqDto.result === IqcResult.PASS;
     const inspectionDate = reqDto.inspectionDate ?? oqcInspection.requestedAt;
+    this.validateSortSplit(reqDto, oqcInspection.quantity);
+    const disposition = isPass ? null : (reqDto.disposition ?? null);
+    const isSort = disposition === OqcDisposition.SORT;
     const decision = {
       decision: reqDto.result,
       decisionNote: reqDto.resultNote ?? null,
-      disposition: isPass ? null : (reqDto.disposition ?? null),
+      disposition,
       dispositionNote: isPass ? null : (reqDto.dispositionNote ?? null),
+      sortOkQty: isSort ? (reqDto.sortOkQty ?? null) : null,
+      sortNgQty: isSort ? (reqDto.sortNgQty ?? null) : null,
     };
     const status = this.resolveOqcStatus(decision.decision, reqDto.disposition);
     const dbStatus = mapToQualityInspectionStatus(status);
@@ -619,6 +624,25 @@ export class OqcService {
           lockedOqcInspection.productionJobId,
           userId,
         );
+      }
+
+      if (status === OqcStatus.COMPLETED) {
+        await closeNcrAfterOqc(tx, oqcId, userId);
+      }
+
+      // Sàng lọc có hàng NG: phần NG chuyển sang NCR-NB để QC/Giám đốc quyết định hướng xử lý.
+      if (
+        isSort &&
+        lockedOqcInspection.productionJobId &&
+        (decision.sortNgQty ?? 0) > 0
+      ) {
+        await createNcrFromOqc(tx, {
+          qualityInspectionId: oqcId,
+          productionJobId: lockedOqcInspection.productionJobId,
+          ngQty: decision.sortNgQty ?? 0,
+          defectDescription: decision.dispositionNote,
+          userId,
+        });
       }
     });
   }
@@ -737,6 +761,31 @@ export class OqcService {
       .where(eq(qualityInspections.id, oqcId));
   }
 
+  /** Cùng luật với IQC (`E160`/`E161`/`E162`): SL OK/NG chỉ đi kèm `SORT`, bắt buộc cả hai khi
+   * `SORT`, và cộng đúng SL lô. */
+  private validateSortSplit(reqDto: ConfirmOqcReqDto, quantity: number): void {
+    const hasSplit = reqDto.sortOkQty != null || reqDto.sortNgQty != null;
+    const isSort =
+      reqDto.result === IqcResult.FAIL &&
+      reqDto.disposition === OqcDisposition.SORT;
+
+    if (!isSort) {
+      if (hasSplit && reqDto.result === IqcResult.FAIL) {
+        throw new AppException(ErrorCode.E161, HttpStatus.BAD_REQUEST);
+      }
+      return;
+    }
+
+    if (reqDto.sortOkQty == null || reqDto.sortNgQty == null) {
+      throw new AppException(ErrorCode.E162, HttpStatus.BAD_REQUEST);
+    }
+
+    const scale = (value: number) => Math.round(value * 1000);
+    if (scale(reqDto.sortOkQty) + scale(reqDto.sortNgQty) !== scale(quantity)) {
+      throw new AppException(ErrorCode.E160, HttpStatus.BAD_REQUEST);
+    }
+  }
+
   private resolveOqcStatus(
     result: IqcResult,
     disposition: OqcDisposition | undefined,
@@ -771,15 +820,5 @@ export class OqcService {
     }
 
     return oqcInspection;
-  }
-
-  private async generateOqcCode(
-    tx: DbTransaction,
-    inspectionDate: Date,
-  ): Promise<string> {
-    const year = inspectionDate.getFullYear();
-    const sequence = await generateDocumentSequence(tx, DocumentType.OQC, year);
-
-    return `OQC-${year}-${String(sequence).padStart(5, '0')}`;
   }
 }

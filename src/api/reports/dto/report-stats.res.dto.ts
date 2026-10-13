@@ -84,20 +84,4 @@ export class ReportStatsResDto {
       'jobsWaitingQc minus jobsWaitingQc as of yesterday; null when a startDate/endDate filter is applied',
   })
   jobsWaitingQcTrendCount!: number | null;
-
-  @Expose()
-  @NumberField({
-    int: true,
-    description:
-      'QC requests (IQC + OQC) with result FAIL and status not COMPLETED — open non-conformances',
-  })
-  openNcr!: number;
-
-  @Expose()
-  @NumberFieldOptional({
-    nullable: true,
-    description:
-      'openNcr minus openNcr as of yesterday (reconstructed from qc_inspections history — can be negative when more NCRs were resolved than raised); null when a startDate/endDate filter is applied',
-  })
-  openNcrTrendCount!: number | null;
 }

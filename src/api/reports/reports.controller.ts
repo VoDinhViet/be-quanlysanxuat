@@ -8,7 +8,6 @@ import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
 import { GetProductionProgressReqDto } from './dto/get-production-progress.req.dto';
 import { GetReportStatsReqDto } from './dto/get-report-stats.req.dto';
 import { JobDueDateResDto } from './dto/job-due-date.res.dto';
-import { OpenNcrResDto } from './dto/open-ncr.res.dto';
 import { OutsourcingOrderDueDateResDto } from './dto/outsourcing-order-due-date.res.dto';
 import { PendingApprovalsResDto } from './dto/pending-approvals.res.dto';
 import { ProductionProgressResDto } from './dto/production-progress.res.dto';
@@ -66,18 +65,6 @@ export class ReportsController {
   })
   getOutsourcingOrderDueDate(): Promise<OutsourcingOrderDueDateResDto[]> {
     return this.reportsService.getOutsourcingOrderDueDate();
-  }
-
-  @Get('open-ncr')
-  @Permissions('reports:read')
-  @ApiAuth({
-    type: OpenNcrResDto,
-    isArray: true,
-    summary:
-      'Top 5 NCR chưa xử lý cũ nhất (createdAt sớm nhất trước) cho widget "NCR chưa xử lý" — không phân trang, không lọc',
-  })
-  getOpenNcr(): Promise<OpenNcrResDto[]> {
-    return this.reportsService.getOpenNcr();
   }
 
   @Get('qc-pass-rate')

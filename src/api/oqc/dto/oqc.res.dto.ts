@@ -13,6 +13,7 @@ import {
   EnumField,
   EnumFieldOptional,
   NumberField,
+  NumberFieldOptional,
   StringField,
   StringFieldOptional,
   UUIDField,
@@ -122,6 +123,14 @@ export class OqcResDto {
   @Expose()
   @StringFieldOptional({ nullable: true, description: 'Ghi chú xử lý' })
   dispositionNote!: string | null;
+
+  @Expose()
+  @NumberFieldOptional({ nullable: true, description: 'SL OK khi sàng lọc' })
+  sortOkQty!: number | null;
+
+  @Expose()
+  @NumberFieldOptional({ nullable: true, description: 'SL NG khi sàng lọc' })
+  sortNgQty!: number | null;
 
   @Expose()
   @ClassField(() => QcFileResDto, { each: true })

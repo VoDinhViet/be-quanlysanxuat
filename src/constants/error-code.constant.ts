@@ -670,6 +670,30 @@ export enum ErrorCode {
   E298 = 'purchase_request.error.not_approved',
   // Đánh dấu không mua một dòng đề xuất đang nằm trong báo giá nháp/chờ duyệt — huỷ hoặc sửa RFQ trước.
   E299 = 'purchase_request_item.error.in_active_quotation',
+  // NCR không tồn tại.
+  E300 = 'ncr.error.not_found',
+  // Thao tác NCR không hợp lệ với trạng thái hiện tại (sửa/gửi duyệt/duyệt/đóng…).
+  E301 = 'ncr.error.invalid_status',
+  // Gửi duyệt NCR khi chưa chọn bộ phận phát sinh.
+  E302 = 'ncr.error.department_required',
+  // `reworkQty + remakeQty` vượt `ngQty` của NCR.
+  E303 = 'ncr.error.quantity_exceeds_ng',
+  // NCR khách hàng (NCR-KH) thiếu khách hàng.
+  E304 = 'ncr.error.client_required',
+  // Tạo LSX phụ từ NCR không có đơn hàng liên quan (NCR-KH phải chọn SO).
+  E305 = 'ncr.error.order_required',
+  // NCR đã có LSX phụ cho hướng xử lý này.
+  E306 = 'ncr.error.production_order_exists',
+  // Hướng xử lý có SL = 0 nên không tạo LSX / OQC lại được.
+  E307 = 'ncr.error.no_processing_quantity',
+  // SL OQC lại vượt SL sửa chữa + làm mới của NCR.
+  E308 = 'ncr.error.oqc_quantity_exceeds',
+  // Gửi duyệt NCR khi chưa nhập nguyên nhân / biện pháp.
+  E309 = 'ncr.error.analysis_required',
+  // NCR sửa chữa (rework) chưa chọn công đoạn cần sửa.
+  E310 = 'ncr.error.rework_operations_required',
+  // NCR không gắn Job nên không yêu cầu OQC lại được.
+  E311 = 'ncr.error.job_required',
   V003 = 'common.error.too_many_requests',
   // `GlobalExceptionFilter` bắt chuỗi "No values to set" của drizzle-orm — mọi `PATCH` khi
   // `ValidationPipe` whitelist đã loại sạch field lạ, còn lại payload rỗng cho `.set()`. Trước đây

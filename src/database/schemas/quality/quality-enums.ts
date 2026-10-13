@@ -116,6 +116,7 @@ export enum OqcDisposition {
   ACCEPT = 'ACCEPT',
   REWORK = 'REWORK',
   SCRAP = 'SCRAP',
+  SORT = 'SORT',
 }
 
 /**

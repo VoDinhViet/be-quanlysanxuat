@@ -3,6 +3,7 @@ import {
   DateFieldOptional,
   EnumField,
   EnumFieldOptional,
+  NumberFieldOptional,
   StringFieldOptional,
   UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
@@ -48,4 +49,18 @@ export class ConfirmOqcReqDto {
     description: 'File bằng chứng quyết định xử lý',
   })
   readonly dispositionEvidenceFileIds?: string[];
+
+  @NumberFieldOptional({
+    min: 0,
+    description:
+      'SL đạt sau sàng lọc — bắt buộc khi disposition = SORT, tổng với sortNgQty phải bằng SL lô',
+  })
+  readonly sortOkQty?: number;
+
+  @NumberFieldOptional({
+    min: 0,
+    description:
+      'SL không đạt sau sàng lọc — bắt buộc khi disposition = SORT; > 0 thì tự sinh NCR-NB',
+  })
+  readonly sortNgQty?: number;
 }

@@ -1,5 +1,9 @@
 import { and, desc, eq, inArray, isNull, ne, or, sql } from 'drizzle-orm';
 
+import {
+  DocumentType,
+  generateDocumentSequence,
+} from '../../common/utils/document-sequence.util';
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
   OperationType,
@@ -158,8 +162,9 @@ export async function getOqcRequestableQuantity(
   return Math.max(0, (finalOperation.completedQuantity ?? 0) - inspected);
 }
 
-/** Σ `quantity` lô OQC của Job đã `COMPLETED` và không `SCRAP` (đạt, hoặc không đạt nhưng chấp nhận)
- * — SL thành phẩm đủ điều kiện nhập kho / giao hàng. */
+/** Σ SL đạt của các lô OQC của Job đã `COMPLETED` và không `SCRAP` — lô đạt / chấp nhận tính cả
+ * `quantity`, lô sàng lọc (`SORT`) chỉ tính phần `sort_ok_qty` (phần NG chuyển sang NCR). Là SL
+ * thành phẩm đủ điều kiện nhập kho / giao hàng. */
 export async function getPassedOqcQuantityByJobId(
   db: Database | DbTransaction,
   productionJobId: string,
@@ -167,7 +172,7 @@ export async function getPassedOqcQuantityByJobId(
   const [row] = await db
     .select({
       total:
-        sql<number>`coalesce(sum(${qualityInspections.quantity}), 0)`.mapWith(
+        sql<number>`coalesce(sum(coalesce(${qualityInspections.sortOkQty}, ${qualityInspections.quantity})), 0)`.mapWith(
           Number,
         ),
     })
@@ -348,4 +353,15 @@ async function isFinalQuantityInspected(
   );
 
   return inspected >= (finalOperation.completedQuantity ?? 0);
+}
+
+/** Mã phiếu OQC `OQC-<năm>-<số 5 chữ số>`, đánh số theo năm của ngày kiểm. */
+export async function generateOqcCode(
+  tx: DbTransaction,
+  inspectionDate: Date,
+): Promise<string> {
+  const year = inspectionDate.getFullYear();
+  const sequence = await generateDocumentSequence(tx, DocumentType.OQC, year);
+
+  return `OQC-${year}-${String(sequence).padStart(5, '0')}`;
 }

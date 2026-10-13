@@ -47,8 +47,6 @@ import {
   purchaseRequestItems,
   purchaseRequests,
   PurchaseRequestStatus,
-  QcKind,
-  QualityInspectionDecision,
   QualityInspectionStatus,
   QualityInspectionType,
   qualityInspectionResults,
@@ -61,7 +59,6 @@ import { quotedQuantitySubquery } from '../purchase-ledger/purchase-ledger.query
 import { GetProductionProgressReqDto } from './dto/get-production-progress.req.dto';
 import { GetReportStatsReqDto } from './dto/get-report-stats.req.dto';
 import { JobDueDateResDto } from './dto/job-due-date.res.dto';
-import { OpenNcrResDto } from './dto/open-ncr.res.dto';
 import { OutsourcingOrderDueDateResDto } from './dto/outsourcing-order-due-date.res.dto';
 import { PendingApprovalsResDto } from './dto/pending-approvals.res.dto';
 import { ProductionProgressResDto } from './dto/production-progress.res.dto';
@@ -113,16 +110,6 @@ function withinDaysFromToday<TColumn extends Column>(
   )!;
 }
 
-// Định nghĩa "NCR chưa xử lý", dùng chung cho `/reports/stats` lẫn `/reports/alerts` — hai endpoint
-// cùng trả field `openNcr` nên phải cùng một định nghĩa, không khai lại ở mỗi nơi.
-const OPEN_NCR = and(
-  eq(
-    qualityInspections.decision,
-    IqcResult.FAIL as string as QualityInspectionDecision,
-  ),
-  ne(qualityInspections.status, QualityInspectionStatus.COMPLETED),
-)!;
-
 // "Job trễ hạn" — jobDueDate (orders.dueDate của đơn hàng gốc, qua productionOrders) đã qua hôm
 // nay và Job chưa COMPLETED. Dùng chung cho getJobDueDateCount lẫn getJobDueDate — không khai lại
 // rule ở 2 nơi. Xem `docs/domains/production.md` (mục jobDueDate).
@@ -137,8 +124,7 @@ const JOB_DUE_DATE_PASSED = and(
  * hiện tại. Có `startDate`/`endDate` → mỗi nhóm lọc thêm theo đúng 1 cột mốc ngày của domain nó
  * (giao với điều kiện trạng thái sẵn có, không thay thế), và mọi field trend/window trả `null` —
  * so với "hôm qua"/"tuần trước" không còn nghĩa khi đang xem một khoảng ngày tuỳ ý. Trend không
- * filter tính lúc đọc, không có bảng lịch sử trạng thái nên hầu hết chỉ ra delta ≥ 0 — ngoại lệ
- * `openNcrTrendCount` (dựng lại từ `qc_inspections`, có thể âm). Xem
+ * filter tính lúc đọc, không có bảng lịch sử trạng thái nên chỉ ra delta ≥ 0. Xem
  * `docs/decisions/report-trends-derived.md`. */
 @Injectable()
 export class ReportsService {
@@ -146,7 +132,6 @@ export class ReportsService {
   private static readonly UPCOMING_DELIVERY_DAYS = 3;
   private static readonly JOB_DUE_DATE_LIMIT = 5;
   private static readonly OUTSOURCING_ORDER_DUE_DATE_LIMIT = 5;
-  private static readonly OPEN_NCR_LIMIT = 5;
   private static readonly QC_PASS_RATE_WINDOW_DAYS = 7;
 
   constructor(
@@ -169,11 +154,10 @@ export class ReportsService {
   }
 
   async getAlerts(): Promise<ReportAlertsResDto> {
-    const [jobDueDate, outsourcingOrderDueDate, openNcr, upcomingDeliveries] =
+    const [jobDueDate, outsourcingOrderDueDate, upcomingDeliveries] =
       await Promise.all([
         this.getJobDueDateCount(),
         this.getOutsourcingOrderDueDateCount(),
-        this.getOpenNcrCount(),
         this.getUpcomingDeliveriesCount(),
       ]);
 
@@ -182,7 +166,6 @@ export class ReportsService {
       {
         jobDueDate,
         outsourcingOrderDueDate,
-        openNcr,
         upcomingDeliveries,
       },
       { excludeExtraneousValues: true },
@@ -234,38 +217,6 @@ export class ReportsService {
     return plainToInstance(OutsourcingOrderDueDateResDto, rows, {
       excludeExtraneousValues: true,
     });
-  }
-
-  // Top OPEN_NCR_LIMIT NCR chưa xử lý cũ nhất (createdAt sớm nhất trước), cho widget "NCR chưa xử
-  // lý" ở Bảng điều khiển — không phân trang, cùng khuôn `getJobDueDate`/`getOutsourcingOrderDueDate`.
-  async getOpenNcr(): Promise<OpenNcrResDto[]> {
-    const rows = await this.db
-      .select({
-        id: qualityInspections.id,
-        code: qualityInspections.inspectionNo,
-        inspectionType: qualityInspections.inspectionType,
-        createdAt: qualityInspections.createdAt,
-        status: qualityInspections.status,
-      })
-      .from(qualityInspections)
-      .where(OPEN_NCR)
-      .orderBy(asc(qualityInspections.createdAt))
-      .limit(ReportsService.OPEN_NCR_LIMIT);
-
-    // `kind` là vocabulary API cũ (`QcKind`) — dịch theo đúng inspectionType của từng dòng.
-    // `status` trả thẳng `quality_inspections.status` (`QualityInspectionStatus`) — OPEN_NCR đảm
-    // bảo chỉ còn PENDING/IN_PROGRESS ở đây (decision=FAIL nên khác DRAFT, ne COMPLETED loại nốt).
-    return plainToInstance(
-      OpenNcrResDto,
-      rows.map((row) => ({
-        ...row,
-        kind:
-          row.inspectionType === QualityInspectionType.IQC
-            ? QcKind.INCOMING
-            : QcKind.OUTGOING,
-      })),
-      { excludeExtraneousValues: true },
-    );
   }
 
   // Duy nhất trong module đọc `qc_inspections` (append-only, mỗi lần kiểm 1 dòng) thay vì
@@ -496,32 +447,6 @@ export class ReportsService {
       waitingQc,
       lt(qualityInspections.createdAt, sql`now() - interval '1 day'`),
     )!;
-    // Cả IQC lẫn OQC — `PENDING` (FAIL chưa chọn disposition) không tính vào đây, đã thuộc `openNcr`.
-    const openNcr = and(OPEN_NCR, createdInRange)!;
-    // Có filter → `openNcrTrendCount` bị null-hoá ở cuối hàm, nên bỏ hẳn việc dựng subquery tương
-    // quan bên dưới cho mỗi dòng `quality_inspections` — `sql\`false\`` để Postgres hằng-số-hoá
-    // FILTER, không eval cho dòng nào.
-    //
-    // Không filter: "trạng thái tại thời điểm T trong quá khứ" — không đọc
-    // `quality_inspections.status` (chỉ mirror trạng thái HIỆN TẠI) mà dò lại
-    // `quality_inspection_results`: `resultingStatus` của attempt gần nhất có `createdAt < T`. Hai
-    // giá trị PENDING/IN_PROGRESS (gộp WAITING_RETURN/REWORK cũ, D2) tương đương "FAIL, chưa xử lý
-    // xong" — đúng định nghĩa `openNcr` ở trên nhưng nhìn từ quá khứ. Không có attempt nào trước T
-    // (request tạo sau T, hoặc còn DRAFT lúc đó) → subquery trả NULL → tự động không tính, không
-    // cần xử lý riêng.
-    const openNcrAsOfYesterday = isFiltered
-      ? sql`false`
-      : and(
-          createdInRange,
-          sql`(
-            select ${qualityInspectionResults.resultingStatus}
-            from ${qualityInspectionResults}
-            where ${qualityInspectionResults.qualityInspectionId} = ${qualityInspections.id}
-              and ${qualityInspectionResults.createdAt} < now() - interval '1 day'
-            order by ${qualityInspectionResults.createdAt} desc
-            limit 1
-          ) in (${QualityInspectionStatus.PENDING}, ${QualityInspectionStatus.IN_PROGRESS})`,
-        )!;
 
     const [row] = await this.db
       .select({
@@ -532,18 +457,10 @@ export class ReportsService {
           count(distinct ${qualityInspections.productionJobId}) filter (where ${waitingQc})
           - count(distinct ${qualityInspections.productionJobId}) filter (where ${waitingQcAsOfYesterday})
         `.mapWith(Number),
-        openNcr: sql<number>`count(*) filter (where ${openNcr})`.mapWith(
-          Number,
-        ),
-        openNcrTrendCount: sql<number>`
-          count(*) filter (where ${openNcr}) - count(*) filter (where ${openNcrAsOfYesterday})
-        `.mapWith(Number),
       })
       .from(qualityInspections);
 
-    return isFiltered
-      ? { ...row, jobsWaitingQcTrendCount: null, openNcrTrendCount: null }
-      : row;
+    return isFiltered ? { ...row, jobsWaitingQcTrendCount: null } : row;
   }
 
   private async getJobDueDateCount(): Promise<number> {
@@ -579,15 +496,6 @@ export class ReportsService {
       .select({ count: sql<number>`count(*)`.mapWith(Number) })
       .from(outsourcingOrders)
       .where(this.outsourcingOrderDuePassed());
-
-    return row.count;
-  }
-
-  private async getOpenNcrCount(): Promise<number> {
-    const [row] = await this.db
-      .select({ count: sql<number>`count(*)`.mapWith(Number) })
-      .from(qualityInspections)
-      .where(OPEN_NCR);
 
     return row.count;
   }

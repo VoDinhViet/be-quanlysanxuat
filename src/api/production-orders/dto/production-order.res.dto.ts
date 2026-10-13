@@ -1,6 +1,9 @@
 import { Exclude, Expose } from 'class-transformer';
 
-import { ProductionOrderStatus } from '../../../database/schemas';
+import {
+  ProductionOrderSourceType,
+  ProductionOrderStatus,
+} from '../../../database/schemas';
 import { OrderBaseResDto } from '../../orders/dto/order-base.res.dto';
 import {
   ClassField,
@@ -32,6 +35,19 @@ export class ProductionOrderResDto {
   @Expose()
   @EnumField(() => ProductionOrderStatus)
   status!: ProductionOrderStatus;
+
+  @Expose()
+  @EnumField(() => ProductionOrderSourceType, {
+    description: 'ORDER = LSX từ đơn hàng, NCR = LSX phụ sửa chữa / làm mới',
+  })
+  sourceType!: ProductionOrderSourceType;
+
+  @Expose()
+  @StringFieldOptional({
+    nullable: true,
+    description: 'Mã NCR nguồn — chỉ có với LSX phụ (sourceType = NCR)',
+  })
+  ncrCode!: string | null;
 
   @Expose()
   @StringFieldOptional({

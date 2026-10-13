@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import {
+  type AnyPgColumn,
   check,
   index,
   integer,
@@ -18,6 +19,7 @@ import { purchaseOrders } from '../purchasing/purchase-orders';
 import { suppliers } from '../suppliers/suppliers';
 import { clients } from '../clients/clients';
 import { users } from '../identity-access/users';
+import { ncrs } from './ncrs';
 import {
   IqcDisposition,
   OqcDisposition,
@@ -117,6 +119,10 @@ export const qualityInspections = pgTable(
       mode: 'number',
     }),
     attemptCount: integer('attempt_count').notNull().default(0),
+    // OQC lại do NCR yêu cầu (`NcrsService.requestOqc`); NULL với mọi phiếu khác.
+    ncrId: uuid('ncr_id').references((): AnyPgColumn => ncrs.id, {
+      onDelete: 'set null',
+    }),
     createdBy: uuid('created_by').references(() => users.id, {
       onDelete: 'set null',
     }),
@@ -143,6 +149,7 @@ export const qualityInspections = pgTable(
       table.productionJobOperationId,
     ),
     index('idx_quality_inspections_item_id').on(table.itemId),
+    index('idx_quality_inspections_ncr_id').on(table.ncrId),
     index('idx_quality_inspections_type').on(table.inspectionType),
     index('idx_quality_inspections_status').on(table.status),
     index('idx_quality_inspections_decision').on(table.decision),
@@ -200,9 +207,7 @@ export const qualityInspections = pgTable(
     ),
     check(
       'chk_quality_inspections_oqc_no_iqc_fields',
-      sql`inspection_type <> 'OQC' OR (
-        reason IS NULL AND sort_ok_qty IS NULL AND sort_ng_qty IS NULL
-      )`,
+      sql`inspection_type <> 'OQC' OR reason IS NULL`,
     ),
     check(
       'chk_quality_inspections_oqc_job',

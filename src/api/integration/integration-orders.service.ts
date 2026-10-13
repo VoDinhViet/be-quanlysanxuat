@@ -298,6 +298,7 @@ export class IntegrationOrdersService {
         SUM(CASE WHEN ${productionJobs.status}::text = 'COMPLETED' THEN 1 ELSE 0 END)::int AS so_cong_viec_xong
         FROM ${orders} JOIN ${clients} ON ${clients.id} = ${orders.clientId}
         LEFT JOIN ${productionOrders} ON ${productionOrders.orderId} = ${orders.id}
+          AND ${productionOrders.sourceType} = 'ORDER'
         LEFT JOIN ${productionJobs} ON ${productionJobs.productionOrderId} = ${productionOrders.id}
         WHERE ${orders.deletedAt} IS NULL AND ${condition}
         GROUP BY ${orders.code}, ${clients.name}, ${orders.status}, ${orders.dueDate}

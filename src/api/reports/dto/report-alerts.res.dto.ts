@@ -24,14 +24,6 @@ export class ReportAlertsResDto {
   @NumberField({
     int: true,
     description:
-      'QC requests (IQC + OQC) with result FAIL and status not COMPLETED — open non-conformances',
-  })
-  openNcr!: number;
-
-  @Expose()
-  @NumberField({
-    int: true,
-    description:
       'Outbound orders (DO) with status PENDING_DELIVERY and fulfillmentDate within the next 3 days from today, inclusive of today',
   })
   upcomingDeliveries!: number;

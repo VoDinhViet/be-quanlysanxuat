@@ -103,6 +103,32 @@ export async function buildJobPlan(
   };
 }
 
+/** Job sửa chữa từ NCR: không cấp vật tư mới, chỉ chạy các công đoạn đã chọn (cộng công đoạn cuối
+ * của node FG để Job vẫn xin OQC được). */
+export type ReworkSnapshotOptions = { operationIds: string[] };
+
+function keepReworkOperations(
+  plan: JobPlan,
+  operationIds: string[],
+): JobPlanOperation[] {
+  const finalBomItemIds = new Set(
+    plan.bomItems
+      .filter((bomItem) => bomItem.itemType === ProductionJobBomItemType.FG)
+      .map((bomItem) => bomItem.id),
+  );
+  const finalOperation = plan.operations
+    .filter((operation) =>
+      finalBomItemIds.has(operation.productionJobBomItemId),
+    )
+    .sort((a, b) => b.sortOrder - a.sortOrder)[0];
+
+  return plan.operations.filter(
+    (operation) =>
+      operationIds.includes(operation.operationId) ||
+      operation.id === finalOperation?.id,
+  );
+}
+
 /**
  * Ghi kế hoạch vào các bảng `production_job_*` và đóng dấu `snapshotLoadedAt`. Gọi trong
  * transaction tạo Job (`createJobs`) hoặc tải lại (`reloadSnapshot`, sau `clearJobSnapshot`).
@@ -110,8 +136,16 @@ export async function buildJobPlan(
 export async function createJobSnapshot(
   tx: DbTransaction,
   job: SnapshotJob,
+  rework?: ReworkSnapshotOptions,
 ): Promise<void> {
-  const plan = await buildJobPlan(tx, job);
+  const fullPlan = await buildJobPlan(tx, job);
+  const plan: JobPlan = rework
+    ? {
+        ...fullPlan,
+        operations: keepReworkOperations(fullPlan, rework.operationIds),
+        issues: [],
+      }
+    : fullPlan;
 
   if (plan.bomItems.length) {
     await tx

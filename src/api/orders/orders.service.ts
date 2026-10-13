@@ -53,6 +53,7 @@ import {
   OrderStatus,
   productionOrderItems,
   productionOrders,
+  ProductionOrderSourceType,
   ProductionOrderStatus,
   items,
   units,
@@ -703,7 +704,12 @@ export class OrdersService {
       if (reqDto.status === OrderStatus.CANCELLED) {
         await tx
           .delete(productionOrders)
-          .where(eq(productionOrders.orderId, orderId));
+          .where(
+            and(
+              eq(productionOrders.orderId, orderId),
+              eq(productionOrders.sourceType, ProductionOrderSourceType.ORDER),
+            ),
+          );
       }
       if (items !== undefined) {
         await this.replaceOrderItems(tx, orderId, items);
@@ -948,7 +954,10 @@ export class OrdersService {
   ): Promise<void> {
     const existingPo = await this.db.query.productionOrders.findFirst({
       columns: { id: true },
-      where: eq(productionOrders.orderId, orderId),
+      where: and(
+        eq(productionOrders.orderId, orderId),
+        eq(productionOrders.sourceType, ProductionOrderSourceType.ORDER),
+      ),
     });
 
     if (existingPo) {
@@ -966,6 +975,7 @@ export class OrdersService {
       columns: { id: true },
       where: and(
         eq(productionOrders.orderId, orderId),
+        eq(productionOrders.sourceType, ProductionOrderSourceType.ORDER),
         eq(productionOrders.status, ProductionOrderStatus.APPROVED),
       ),
     });

@@ -40,7 +40,9 @@ import {
   productionOrderItems,
   productionOrderLogs,
   ProductionOrderLogAction,
+  ncrs,
   productionOrders,
+  ProductionOrderSourceType,
   ProductionOrderStatus,
   units,
   users,
@@ -115,12 +117,15 @@ export class ProductionOrdersService {
           code: productionOrders.code,
           productionOrderNote: productionOrders.note,
           status: productionOrders.status,
+          sourceType: productionOrders.sourceType,
+          ncrCode: ncrs.code,
           order: getTableColumns(orders),
           client: getTableColumns(clients),
         })
         .from(productionOrders)
         .innerJoin(orders, eq(orders.id, productionOrders.orderId))
         .leftJoin(clients, eq(clients.id, orders.clientId))
+        .leftJoin(ncrs, eq(ncrs.id, productionOrders.ncrId))
         .where(where)
         .orderBy(desc(productionOrders.createdAt), desc(orders.createdAt))
         .limit(reqDto.limit)
@@ -209,6 +214,7 @@ export class ProductionOrdersService {
       where: eq(productionOrders.id, productionOrdersId),
       with: {
         order: { with: { client: true } },
+        ncr: { columns: { code: true } },
         items: {
           with: {
             item: {
@@ -231,6 +237,7 @@ export class ProductionOrdersService {
       ProductionOrderDetailResDto,
       {
         ...productionOrder,
+        ncrCode: productionOrder.ncr?.code ?? null,
         productionOrderNote: productionOrder.note,
         items: productionOrder.items.map((item) => ({
           ...item,
@@ -586,6 +593,14 @@ export class ProductionOrdersService {
     });
   }
 
+  /** LSX thường của một đơn — loại trừ LSX phụ sinh từ NCR cùng `orderId`. */
+  private orderLsxCondition(orderId: string) {
+    return and(
+      eq(productionOrders.orderId, orderId),
+      eq(productionOrders.sourceType, ProductionOrderSourceType.ORDER),
+    );
+  }
+
   /** Ghi header (`PENDING`) + các dòng quyết định sản xuất — replace-all theo `orderId`, nên duyệt
    * lại một PO từng bị từ chối sẽ ghi đè kế hoạch cũ, không đụng unique constraint. Bắt buộc
    * truyền `tx` — chỉ chạy được trong transaction đang mở của `OrdersService.approveOrder`. */
@@ -598,10 +613,8 @@ export class ProductionOrdersService {
     const [previous] = await tx
       .select({ code: productionOrders.code })
       .from(productionOrders)
-      .where(eq(productionOrders.orderId, orderId));
-    await tx
-      .delete(productionOrders)
-      .where(eq(productionOrders.orderId, orderId));
+      .where(this.orderLsxCondition(orderId));
+    await tx.delete(productionOrders).where(this.orderLsxCondition(orderId));
 
     // Mã LSX cấp ngay khi sinh kế hoạch; duyệt lại đơn từng bị từ chối giữ nguyên mã cũ.
     const code = previous?.code ?? (await this.generateProductionOrderCode(tx));

@@ -42,6 +42,7 @@ import { IqcModule } from './api/iqc/iqc.module';
 import { ItemUnitsModule } from './api/item-units/item-units.module';
 import { ItemsModule } from './api/items/items.module';
 import { OperationsModule } from './api/operations/operations.module';
+import { NcrsModule } from './api/ncrs/ncrs.module';
 import { OqcModule } from './api/oqc/oqc.module';
 import { OrdersModule } from './api/orders/orders.module';
 import { OutboundOrdersModule } from './api/outbound-orders/outbound-orders.module';
@@ -133,6 +134,7 @@ import { UsersModule } from './api/users/users.module';
     OutboundOrdersModule,
     IqcModule,
     OqcModule,
+    NcrsModule,
     ProductionExecutionModule,
     ProductionJobsModule,
     ProductionOrdersModule,

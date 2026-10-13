@@ -82,6 +82,7 @@ import {
 import {
   clearJobSnapshot,
   createJobSnapshot,
+  type ReworkSnapshotOptions,
 } from './production-job-snapshot.query';
 
 /** Job sản xuất — 1 sản phẩm (FG) = 1 Job trong một LSX. Chỉ tạo được qua `createJobs`, gọi từ
@@ -699,6 +700,7 @@ export class ProductionJobsService {
     productionOrder: { id: string; code: string },
     quantityByItem: Map<string, number>,
     userId: string,
+    rework?: ReworkSnapshotOptions,
   ): Promise<void> {
     if (!quantityByItem.size) {
       return;
@@ -722,7 +724,7 @@ export class ProductionJobsService {
       });
 
     for (const job of jobRows) {
-      await createJobSnapshot(tx, job);
+      await createJobSnapshot(tx, job, rework);
     }
 
     await tx.insert(productionJobLogs).values(

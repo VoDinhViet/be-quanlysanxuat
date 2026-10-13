@@ -46,6 +46,7 @@ import {
   OutboundOrderStatus,
   productionJobs,
   productionOrders,
+  ProductionOrderSourceType,
   units,
   users,
 } from '../../database/schemas';
@@ -368,7 +369,13 @@ export class OutboundOrdersService {
         .innerJoin(items, eq(items.id, orderItems.itemId))
         .innerJoin(units, eq(units.id, items.unitId))
         .leftJoin(files, eq(files.id, items.imageFileId))
-        .leftJoin(productionOrders, eq(productionOrders.orderId, orders.id))
+        .leftJoin(
+          productionOrders,
+          and(
+            eq(productionOrders.orderId, orders.id),
+            eq(productionOrders.sourceType, ProductionOrderSourceType.ORDER),
+          ),
+        )
         .leftJoin(
           productionJobs,
           and(
@@ -388,7 +395,13 @@ export class OutboundOrdersService {
         .from(orderItems)
         .innerJoin(orders, eq(orders.id, orderItems.orderId))
         .innerJoin(items, eq(items.id, orderItems.itemId))
-        .leftJoin(productionOrders, eq(productionOrders.orderId, orders.id))
+        .leftJoin(
+          productionOrders,
+          and(
+            eq(productionOrders.orderId, orders.id),
+            eq(productionOrders.sourceType, ProductionOrderSourceType.ORDER),
+          ),
+        )
         .leftJoin(
           productionJobs,
           and(

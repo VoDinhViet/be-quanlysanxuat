@@ -72,6 +72,8 @@ import {
   getJobQcCoverage,
   getPassedOqcQuantityByJobId,
 } from '../oqc/oqc.query';
+import { getNcrTransferredQtyByJobId } from '../ncrs/ncrs.query';
+import { closeNcrIfProductionOrdersDone } from '../ncrs/ncrs.write';
 import { PaymentRequestsService } from '../payment-requests/payment-requests.service';
 import { getReceivedQuantityByPurchaseOrderItemId } from '../purchase-orders/purchase-orders.query';
 import { getReturnedQuantityByReceiptItemId } from '../supplier-returns/supplier-returns.query';
@@ -716,7 +718,13 @@ export class InventoryReceiptsService {
       productionJobId,
     );
 
-    if (receivedTotal < job.quantity) {
+    // Phần NG đã chuyển sang NCR (sàng lọc OQC) không bao giờ nhập kho TP của Job này — tính vào
+    // SL "đã xử lý" để Job gốc không kẹt `WAITING_DELIVERY`.
+    const transferredToNcr = await getNcrTransferredQtyByJobId(
+      tx,
+      productionJobId,
+    );
+    if (receivedTotal + transferredToNcr < job.quantity) {
       return;
     }
 
@@ -775,6 +783,18 @@ export class InventoryReceiptsService {
       content: 'Tất cả Job đã hoàn thành — tự động đóng LSX.',
       performedBy: userId,
     });
+
+    const [closedProductionOrder] = await tx
+      .select({ ncrId: productionOrders.ncrId })
+      .from(productionOrders)
+      .where(eq(productionOrders.id, job.productionOrderId));
+    if (closedProductionOrder?.ncrId) {
+      await closeNcrIfProductionOrdersDone(
+        tx,
+        closedProductionOrder.ncrId,
+        userId,
+      );
+    }
   }
 
   /** Bù trừ SL đã trả NCC (`supplier_returns` đã `POSTED`) khỏi từng dòng trước khi ghi bút toán

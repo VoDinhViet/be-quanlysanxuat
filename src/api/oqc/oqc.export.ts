@@ -45,6 +45,7 @@ const OQC_DISPOSITION_LABELS: Record<OqcDisposition, string> = {
   [OqcDisposition.ACCEPT]: 'Chấp nhận đặc biệt',
   [OqcDisposition.REWORK]: 'Trả xưởng sửa lại',
   [OqcDisposition.SCRAP]: 'Loại bỏ (Scrap)',
+  [OqcDisposition.SORT]: 'Sàng lọc',
 };
 
 // Nhãn riêng cho OQC — cùng enum DB với IQC (`QualityInspectionStatus`) nhưng ý nghĩa nghiệp vụ
