@@ -246,6 +246,7 @@ export class ProductionJobsService {
         id: productionJobs.id,
         code: productionJobs.code,
         productionOrderId: productionJobs.productionOrderId,
+        ncrAction: productionOrders.ncrAction,
         order: getTableColumns(orders),
         client: getTableColumns(clients),
         itemId: productionJobs.itemId,

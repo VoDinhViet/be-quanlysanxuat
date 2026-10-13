@@ -1,6 +1,9 @@
 import { Exclude, Expose } from 'class-transformer';
 
-import { ProductionJobStatus } from '../../../database/schemas';
+import {
+  ProductionJobStatus,
+  ProductionOrderNcrAction,
+} from '../../../database/schemas';
 import { ClientBaseResDto } from '../../clients/dto/client-base.res.dto';
 import { ItemRefResDto } from '../../items/dto/item-ref.res.dto';
 import { UnitRefResDto } from '../../units/dto/unit-ref.res.dto';
@@ -11,6 +14,7 @@ import {
   DateField,
   DateFieldOptional,
   EnumField,
+  EnumFieldOptional,
   NumberField,
   StringField,
   StringFieldOptional,
@@ -39,6 +43,14 @@ export class ProductionJobDetailResDto {
   @Expose()
   @ClassFieldOptional(() => ClientBaseResDto, { nullable: true })
   client!: ClientBaseResDto | null;
+
+  @Expose()
+  @EnumFieldOptional(() => ProductionOrderNcrAction, {
+    nullable: true,
+    description:
+      'Loại LSX phụ từ NCR (REWORK sửa chữa / REMAKE làm mới); null = Job từ LSX đơn hàng',
+  })
+  ncrAction!: ProductionOrderNcrAction | null;
 
   @Expose()
   @UUIDField({ description: 'Id sản phẩm (FG)' })

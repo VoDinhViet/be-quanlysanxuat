@@ -102,6 +102,7 @@ export class NcrsService {
       where: eq(ncrs.id, ncrId),
       with: {
         ...ncrListRelations,
+        item: { with: { imageFile: true } },
         costLines: { orderBy: ncrCostLines.sortOrder },
         productionOrders: true,
         logs: { with: { performerBy: true }, orderBy: desc(ncrLogs.createdAt) },

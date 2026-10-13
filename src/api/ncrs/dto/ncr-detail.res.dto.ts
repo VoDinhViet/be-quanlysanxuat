@@ -17,6 +17,7 @@ import {
   UUIDField,
   UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
+import { ItemImageRefResDto } from '../../items/dto/item-image-ref.res.dto';
 import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
 import { NcrResDto } from './ncr.res.dto';
 
@@ -99,6 +100,10 @@ export class NcrLogResDto {
 
 @Exclude()
 export class NcrDetailResDto extends NcrResDto {
+  @Expose()
+  @ClassField(() => ItemImageRefResDto)
+  declare item: ItemImageRefResDto;
+
   @Expose()
   @UUIDField({ each: true })
   reworkOperationIds!: string[];
