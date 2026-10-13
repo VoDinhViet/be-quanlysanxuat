@@ -67,6 +67,21 @@ import { UpdatePurchaseRequestNeededDateReqDto } from './dto/update-purchase-req
 import { UpdatePurchaseRequestNoteReqDto } from './dto/update-purchase-request-note.req.dto';
 import { CreateShortageRequestInput } from './types/shortage-request.type';
 
+/** Đưa `productionOrder.order.buyerPoNo` lên `productionOrder.buyerPoNo` cho ref DTO phẳng. */
+function flattenBuyerPoNo(purchaseRequest: {
+  productionOrder: { order: { buyerPoNo: string | null } | null } | null;
+}) {
+  const { productionOrder } = purchaseRequest;
+
+  return {
+    ...purchaseRequest,
+    productionOrder: productionOrder && {
+      ...productionOrder,
+      buyerPoNo: productionOrder.order?.buyerPoNo ?? null,
+    },
+  };
+}
+
 @Injectable()
 export class PurchaseRequestsService {
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
@@ -150,9 +165,13 @@ export class PurchaseRequestsService {
     ]);
 
     return new OffsetPaginatedDto(
-      plainToInstance(PagePurchaseRequestResDto, entities, {
-        excludeExtraneousValues: true,
-      }),
+      plainToInstance(
+        PagePurchaseRequestResDto,
+        entities.map(flattenBuyerPoNo),
+        {
+          excludeExtraneousValues: true,
+        },
+      ),
       new OffsetPaginationDto(total, reqDto),
     );
   }
@@ -190,7 +209,11 @@ export class PurchaseRequestsService {
 
     return plainToInstance(
       PurchaseRequestResDto,
-      { ...purchaseRequest, items: lines, receipts },
+      {
+        ...flattenBuyerPoNo(purchaseRequest),
+        items: lines,
+        receipts,
+      },
       { excludeExtraneousValues: true },
     );
   }
