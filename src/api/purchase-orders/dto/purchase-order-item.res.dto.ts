@@ -2,6 +2,7 @@ import { Exclude, Expose } from 'class-transformer';
 
 import {
   ClassField,
+  DateField,
   NumberField,
   NumberFieldOptional,
   StringFieldOptional,
@@ -41,6 +42,10 @@ export class PurchaseOrderItemResDto {
   @Expose()
   @StringFieldOptional({ nullable: true })
   note!: string | null;
+
+  @Expose()
+  @DateField({ description: 'Ngày cần của ĐXMH nguồn của dòng này' })
+  neededDate!: Date;
 
   @Expose()
   @ClassField(() => PurchaseRequestItemRefResDto)

@@ -112,7 +112,7 @@ stateDiagram-v2
 
 | Route | Quyền | Điều kiện / ghi chú |
 |---|---|---|
-| `GET /purchase-orders`, `GET .../:id` | `purchasing:read` | Chi tiết trả thêm `quotationStatus`, `canReopenQuotation`, `reopenBlockedBy`, `canClose`, `closeBlockedBy`, `closerBy`/`closedAt`/`closureReason`. `E121` nếu không thấy. |
+| `GET /purchase-orders`, `GET .../:id` | `purchasing:read` | Chi tiết trả thêm `quotationStatus`, `canReopenQuotation`, `reopenBlockedBy`, `canClose`, `closeBlockedBy`, `closerBy`/`closedAt`/`closureReason`. Mỗi dòng `items[]` có `neededDate` lấy từ ĐXMH nguồn của dòng đó (chỉ đọc, không lưu ở PO; PO gom nhiều ĐXMH thì mỗi dòng một ngày). `E121` nếu không thấy. |
 | `PATCH .../:id` | `purchasing:update` | Sửa người phụ trách (`E136`), điều khoản thanh toán, ngày giao, ghi chú. Chỉ `PENDING_CONFIRMATION` (`E122`). |
 | `PATCH .../:id/items/:itemId` | `purchasing:update` | Sửa SL, đơn giá, lý do điều chỉnh SL một dòng. Chỉ `PENDING_CONFIRMATION`. `E123` nếu dòng không thuộc PO. |
 | `POST .../:id/confirm` | `purchasing:update` | `PENDING_CONFIRMATION → ORDERED`. Cần ngày giao (`E134`), điều khoản thanh toán (`E156`), mọi dòng có đơn giá (`E135`). Nếu chưa có người phụ trách thì gán người xác nhận. |

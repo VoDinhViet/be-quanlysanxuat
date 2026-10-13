@@ -437,6 +437,7 @@ export class PurchaseOrdersService {
           ...item,
           receivedQuantity: receivedQuantityByItemId.get(item.id) ?? 0,
           onHand: onHandByItemId.get(item.purchaseRequestItem.item.id) ?? 0,
+          neededDate: item.purchaseRequestItem.purchaseRequest.neededDate,
         })),
       },
       { excludeExtraneousValues: true },
