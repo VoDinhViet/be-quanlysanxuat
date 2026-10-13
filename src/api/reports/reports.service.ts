@@ -541,6 +541,7 @@ export class ReportsService {
       supplierReturnsToPostCount,
       inventoryIssuesToPostCount,
       iqcToInspectCount,
+      oqcToInspectCount,
     ] = await Promise.all([
       canApprove('purchase-requests:approve')
         ? this.getPurchaseRequestsPendingCount()
@@ -572,6 +573,8 @@ export class ReportsService {
       this.getInventoryIssuesToPostCount(),
       // Việc chờ của IQC khi kho gửi hàng vào kiểm — cũng mọi người dùng đều thấy.
       this.getIqcToInspectCount(),
+      // Việc chờ của QC khi sản xuất yêu cầu OQC — cũng mọi người dùng đều thấy.
+      this.getOqcToInspectCount(),
     ]);
 
     return plainToInstance(
@@ -590,6 +593,7 @@ export class ReportsService {
         supplierReturnsToPost: supplierReturnsToPostCount,
         inventoryIssuesToPost: inventoryIssuesToPostCount,
         iqcToInspect: iqcToInspectCount,
+        oqcToInspect: oqcToInspectCount,
       },
       { excludeExtraneousValues: true },
     );
@@ -628,6 +632,25 @@ export class ReportsService {
       );
 
     return row.count;
+  }
+
+  // Dòng OQC cần QC xử lý: `DRAFT` (sản xuất đã yêu cầu QC, chưa nhập kết quả) và `PENDING` (kiểm
+  // FAIL, chờ chọn hướng xử lý).
+  private async getOqcToInspectCount(): Promise<number> {
+    const [oqcCount] = await this.db
+      .select({ count: sql<number>`count(*)`.mapWith(Number) })
+      .from(qualityInspections)
+      .where(
+        and(
+          eq(qualityInspections.inspectionType, QualityInspectionType.OQC),
+          inArray(qualityInspections.status, [
+            QualityInspectionStatus.DRAFT,
+            QualityInspectionStatus.PENDING,
+          ]),
+        ),
+      );
+
+    return oqcCount.count;
   }
 
   // Phiếu xuất kho nháp — tự sinh khi phiếu lãnh vật tư được duyệt, chờ kho ghi sổ xuất.

@@ -107,4 +107,12 @@ export class PendingApprovalsResDto {
       'Count of IQC inspections waiting for IQC (status DRAFT = not inspected yet, or PENDING = FAIL waiting for a disposition) — visible to every user, no permission gate',
   })
   iqcToInspect!: number;
+
+  @Expose()
+  @NumberField({
+    int: true,
+    description:
+      'Count of OQC inspections waiting for QC (status DRAFT = production requested QC, not inspected yet, or PENDING = FAIL waiting for a disposition) — visible to every user, no permission gate',
+  })
+  oqcToInspect!: number;
 }
