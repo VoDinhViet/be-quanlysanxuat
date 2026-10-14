@@ -42,13 +42,22 @@ export const paymentRequests = pgTable(
       .notNull()
       .unique()
       .references(() => purchaseOrders.id, { onDelete: 'restrict' }),
-    // Snapshot tổng tiền PO (tiền hàng + VAT + chi phí khác) lúc tạo — an toàn vì PO đã ORDERED nên items bất biến
+    // Số đề nghị chi = tổng tiền PO (tiền hàng + VAT + chi phí khác) − tạm ứng, chốt lúc tạo — an toàn vì PO đã ORDERED nên items bất biến
     // (PATCH chỉ cho phép khi DRAFT), không phải lựa chọn thẩm mỹ.
-    requestValue: numeric('request_value', {
+    requestedAmount: numeric('request_value', {
       precision: 18,
       scale: 2,
       mode: 'number',
     }).notNull(),
+    // Snapshot tiền tạm ứng của PO lúc sinh/cập nhật — `requestedAmount` đã là phần còn lại phải trả
+    // (tổng tiền PO − tạm ứng), cột này chỉ để hiển thị cách ra số.
+    advancePaymentAmount: numeric('advance_payment_amount', {
+      precision: 18,
+      scale: 2,
+      mode: 'number',
+    })
+      .notNull()
+      .default(0),
     dueDate: date('due_date', { mode: 'date' }).notNull(),
     status: paymentRequestStatusEnum('status')
       .notNull()

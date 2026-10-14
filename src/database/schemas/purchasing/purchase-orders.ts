@@ -72,6 +72,16 @@ export const purchaseOrders = pgTable(
       .notNull()
       .default(0),
     otherCostNote: varchar('other_cost_note', { length: 255 }),
+    // Tiền đã tạm ứng/thanh toán trước cho NCC (PH-128) — trừ vào tổng tiền khi ra số phải thanh
+    // toán ("còn lại"); sửa được tới khi yêu cầu thanh toán của PO đã chi.
+    advancePaymentAmount: numeric('advance_payment_amount', {
+      precision: 18,
+      scale: 2,
+      mode: 'number',
+    })
+      .notNull()
+      .default(0),
+    advancePaymentNote: varchar('advance_payment_note', { length: 255 }),
     orderedBy: uuid('ordered_by').references(() => users.id, {
       onDelete: 'set null',
     }),
@@ -111,6 +121,10 @@ export const purchaseOrders = pgTable(
       sql`vat_percent >= 0 AND vat_percent <= 100`,
     ),
     check('chk_purchase_orders_other_cost', sql`other_cost >= 0`),
+    check(
+      'chk_purchase_orders_advance_payment_amount',
+      sql`advance_payment_amount >= 0`,
+    ),
   ],
 );
 

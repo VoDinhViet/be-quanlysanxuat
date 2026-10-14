@@ -39,7 +39,7 @@ import {
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import {
-  computePurchaseOrderAmounts,
+  calculatePurchaseOrderAmounts,
   getReceivedQuantityByPurchaseOrderItemId,
   orderAggregateSubquery,
   purchaseOrderGrandTotalSql,
@@ -111,8 +111,12 @@ export class PaymentRequestsService {
           code: paymentRequests.code,
           purchaseOrder: getTableColumns(purchaseOrders),
           supplier: getTableColumns(suppliers),
-          poValue: paymentRequests.requestValue,
-          requestValue: paymentRequests.requestValue,
+          purchaseOrderTotalAmount:
+            sql<number>`${paymentRequests.requestedAmount} + ${paymentRequests.advancePaymentAmount}`.mapWith(
+              Number,
+            ),
+          advancePaymentAmount: paymentRequests.advancePaymentAmount,
+          requestedAmount: paymentRequests.requestedAmount,
           status: paymentRequests.status,
           createdAt: paymentRequests.createdAt,
         })
@@ -186,7 +190,7 @@ export class PaymentRequestsService {
         poCode: purchaseOrders.code,
         supplierName: suppliers.name,
         supplierCode: suppliers.code,
-        requestValue: paymentRequests.requestValue,
+        requestedAmount: paymentRequests.requestedAmount,
         dueDate: paymentRequests.dueDate,
         status: paymentRequests.status,
         paidAt: paymentRequests.paidAt,
@@ -281,8 +285,11 @@ export class PaymentRequestsService {
       {
         ...paymentRequest,
         supplier: purchaseOrder.supplier,
-        poValue: paymentRequest.requestValue,
-        ...computePurchaseOrderAmounts(purchaseOrder),
+        purchaseOrderTotalAmount:
+          paymentRequest.requestedAmount + paymentRequest.advancePaymentAmount,
+        ...calculatePurchaseOrderAmounts(purchaseOrder),
+        advancePaymentAmount: paymentRequest.advancePaymentAmount,
+        advancePaymentNote: purchaseOrder.advancePaymentNote,
         vatPercent: purchaseOrder.vatPercent,
         otherCost: purchaseOrder.otherCost,
         otherCostNote: purchaseOrder.otherCostNote,
@@ -384,6 +391,7 @@ export class PaymentRequestsService {
           status: purchaseOrders.status,
           orderDate: purchaseOrders.orderDate,
           paymentTerm: purchaseOrders.paymentTerm,
+          advancePaymentAmount: purchaseOrders.advancePaymentAmount,
           orderedQuantity:
             sql<number>`coalesce(${orderedAgg.orderedQuantity}, 0)`.mapWith(
               Number,
@@ -426,6 +434,12 @@ export class PaymentRequestsService {
       return;
     }
 
+    // Số đề nghị chi = tổng tiền PO − tiền đã tạm ứng cho NCC (PH-128).
+    const balanceDue = Math.max(
+      purchaseOrder.totalAmount - purchaseOrder.advancePaymentAmount,
+      0,
+    );
+
     const dueDate = new Date(
       purchaseOrder.orderDate.getTime() +
         PAYMENT_TERM_DAYS[purchaseOrder.paymentTerm] * 24 * 60 * 60 * 1000,
@@ -437,7 +451,8 @@ export class PaymentRequestsService {
         .update(paymentRequests)
         .set({
           status: PaymentRequestStatus.PENDING,
-          requestValue: purchaseOrder.totalAmount,
+          requestedAmount: balanceDue,
+          advancePaymentAmount: purchaseOrder.advancePaymentAmount,
           dueDate,
           cancelledBy: null,
           cancelledAt: null,
@@ -461,7 +476,8 @@ export class PaymentRequestsService {
         .values({
           code,
           purchaseOrderId,
-          requestValue: purchaseOrder.totalAmount,
+          requestedAmount: balanceDue,
+          advancePaymentAmount: purchaseOrder.advancePaymentAmount,
           dueDate,
         })
         .returning({ id: paymentRequests.id });
@@ -482,6 +498,46 @@ export class PaymentRequestsService {
         throw error;
       }
     }
+  }
+
+  /** Đồng bộ tiền tạm ứng của PO sang YCTT (PH-128) — chạy trong transaction của
+   * `PurchaseOrdersService.updatePurchaseOrderAdvancePayment`. Không có YCTT hoặc đã huỷ thì bỏ qua
+   * (YCTT huỷ sẽ sinh lại theo số PO lúc đó); `PAID` thì chặn (`E284`) vì tiền đã chi. */
+  async applyAdvancePayment(
+    tx: DbTransaction,
+    input: {
+      purchaseOrderId: string;
+      advancePaymentAmount: number;
+      balanceDue: number;
+      userId: string;
+    },
+  ): Promise<void> {
+    const existing = await tx.query.paymentRequests.findFirst({
+      columns: { id: true, status: true },
+      where: eq(paymentRequests.purchaseOrderId, input.purchaseOrderId),
+    });
+
+    if (!existing || existing.status === PaymentRequestStatus.CANCELLED) {
+      return;
+    }
+    if (existing.status === PaymentRequestStatus.PAID) {
+      throw new AppException(ErrorCode.E284, HttpStatus.CONFLICT);
+    }
+
+    await tx
+      .update(paymentRequests)
+      .set({
+        advancePaymentAmount: input.advancePaymentAmount,
+        requestedAmount: input.balanceDue,
+      })
+      .where(eq(paymentRequests.id, existing.id));
+
+    await tx.insert(paymentRequestLogs).values({
+      paymentRequestId: existing.id,
+      action: PaymentRequestLogAction.ADVANCE_PAYMENT_UPDATED,
+      content: `Cập nhật tiền tạm ứng ${input.advancePaymentAmount.toLocaleString('vi-VN')} đ, còn lại phải thanh toán ${input.balanceDue.toLocaleString('vi-VN')} đ`,
+      performedBy: input.userId,
+    });
   }
 
   /** Huỷ YCTT của PO khi nguồn của nó bị huỷ (phiếu nhập đã ghi sổ, hoặc chính PO) — chạy trong

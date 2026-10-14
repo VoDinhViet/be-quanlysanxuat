@@ -30,4 +30,18 @@ export class PurchaseOrderAmountsResDto {
     description: 'Diễn giải chi phí khác',
   })
   otherCostNote!: string | null;
+
+  @Expose()
+  @NumberField({
+    description:
+      'Tiền đã tạm ứng/thanh toán trước cho NCC — trừ vào tổng tiền khi ra số còn phải thanh toán',
+  })
+  advancePaymentAmount!: number;
+
+  @Expose()
+  @StringFieldOptional({
+    nullable: true,
+    description: 'Diễn giải tạm ứng (vd: chuyển khoản đợt 1 ngày …)',
+  })
+  advancePaymentNote!: string | null;
 }

@@ -10,7 +10,7 @@ export interface PaymentRequestExport {
   poCode: string;
   supplierName: string;
   supplierCode: string;
-  requestValue: number;
+  requestedAmount: number;
   dueDate: Date;
   status: PaymentRequestStatus;
   paidAt: Date | null;
@@ -34,7 +34,7 @@ export const PAYMENT_REQUEST_EXPORT_COLUMNS: ExcelColumn<PaymentRequestExport>[]
     { header: 'Mã NCC', value: (row) => row.supplierCode },
     {
       header: 'Giá trị thanh toán',
-      value: (row) => row.requestValue,
+      value: (row) => row.requestedAmount,
       numFmt: '#,##0',
     },
     { header: 'Hạn thanh toán', value: (row) => formatVnDate(row.dueDate) },

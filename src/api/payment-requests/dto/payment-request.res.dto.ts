@@ -39,16 +39,16 @@ export class PaymentRequestResDto extends PurchaseOrderAmountsResDto {
   @Expose()
   @NumberField({
     description:
-      'Giá trị PO — bằng requestValue ở v1 (chưa hỗ trợ thanh toán từng phần)',
+      'Giá trị PO = số đề nghị chi + tiền đã tạm ứng cho NCC (tổng tiền PO lúc chốt)',
   })
-  poValue!: number;
+  purchaseOrderTotalAmount!: number;
 
   @Expose()
   @NumberField({
     description:
-      'Giá trị yêu cầu thanh toán = tổng tiền PO (tiền hàng + VAT + chi phí khác) chốt lúc sinh',
+      'Số đề nghị chi = tổng tiền PO (tiền hàng + VAT + chi phí khác) − tạm ứng, chốt lúc sinh/cập nhật tạm ứng',
   })
-  requestValue!: number;
+  requestedAmount!: number;
 
   @Expose()
   @DateField({ description: 'Hạn thanh toán = orderDate của PO + paymentTerm' })

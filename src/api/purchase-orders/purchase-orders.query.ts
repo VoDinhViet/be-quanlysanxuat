@@ -19,10 +19,11 @@ export function purchaseOrderGrandTotalSql(subtotal: SQL<number>) {
 }
 
 /** Cùng công thức với `purchaseOrderGrandTotalSql`, cho màn chi tiết đã có sẵn các dòng. */
-export function computePurchaseOrderAmounts(purchaseOrder: {
+export function calculatePurchaseOrderAmounts(purchaseOrder: {
   items: { quantity: number; unitPrice: number | null }[];
   vatPercent: number;
   otherCost: number;
+  advancePaymentAmount: number;
 }) {
   const subtotal = purchaseOrder.items.reduce(
     (sum, item) => sum + item.quantity * (item.unitPrice ?? 0),
@@ -30,10 +31,14 @@ export function computePurchaseOrderAmounts(purchaseOrder: {
   );
   const vatAmount = Math.round(subtotal * purchaseOrder.vatPercent) / 100;
 
+  const totalAmount = subtotal + vatAmount + purchaseOrder.otherCost;
+
   return {
     subtotal,
     vatAmount,
-    totalAmount: subtotal + vatAmount + purchaseOrder.otherCost,
+    totalAmount,
+    // Còn lại phải thanh toán sau khi trừ tạm ứng — kẹp 0 (đóng sớm PO làm tổng giảm dưới tạm ứng).
+    balanceDue: Math.max(totalAmount - purchaseOrder.advancePaymentAmount, 0),
   };
 }
 

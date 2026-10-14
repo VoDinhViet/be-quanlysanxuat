@@ -50,11 +50,12 @@ import { ClosePurchaseOrderReqDto } from './dto/close-purchase-order.req.dto';
 import { GetPurchaseOrdersReqDto } from './dto/get-purchase-orders.req.dto';
 import { PagePurchaseOrderResDto } from './dto/page-purchase-order.res.dto';
 import { PurchaseOrderResDto } from './dto/purchase-order.res.dto';
+import { UpdatePurchaseOrderAdvancePaymentReqDto } from './dto/update-purchase-order-advance-payment.req.dto';
 import { UpdatePurchaseOrderItemReqDto } from './dto/update-purchase-order-item.req.dto';
 import { UpdatePurchaseOrderReqDto } from './dto/update-purchase-order.req.dto';
 import { PurchaseOrderProgress } from './purchase-orders.constant';
 import {
-  computePurchaseOrderAmounts,
+  calculatePurchaseOrderAmounts,
   getReceivedQuantityByPurchaseOrderItemId,
   orderAggregateSubquery,
   purchaseOrderGrandTotalSql,
@@ -423,7 +424,7 @@ export class PurchaseOrdersService {
       {
         ...order,
         ...actions,
-        ...computePurchaseOrderAmounts(order),
+        ...calculatePurchaseOrderAmounts(order),
         progress: this.resolveOrderProgress(
           order.status,
           order.items.reduce((sum, item) => sum + item.quantity, 0),
@@ -591,6 +592,57 @@ export class PurchaseOrdersService {
         .set(reqDto)
         .where(eq(purchaseOrders.id, purchaseOrderId));
     }
+  }
+
+  /** Ghi nhận tiền tạm ứng cho NCC (PH-128). Chạy trong một transaction cùng việc đồng bộ YCTT:
+   * YCTT `PENDING` đổi `requestedAmount` theo số còn lại mới, `PAID` thì chặn (`E284`, tiền đã chi),
+   * `CANCELLED` bỏ qua (sẽ sinh lại theo số PO hiện tại). Tạm ứng không được vượt tổng tiền PO. */
+  async updatePurchaseOrderAdvancePayment(
+    purchaseOrderId: string,
+    reqDto: UpdatePurchaseOrderAdvancePaymentReqDto,
+    userId: string,
+  ): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      const purchaseOrder = await tx.query.purchaseOrders.findFirst({
+        columns: {
+          status: true,
+          vatPercent: true,
+          otherCost: true,
+        },
+        with: { items: { columns: { quantity: true, unitPrice: true } } },
+        where: eq(purchaseOrders.id, purchaseOrderId),
+      });
+
+      if (!purchaseOrder) {
+        throw new AppException(ErrorCode.E121, HttpStatus.NOT_FOUND);
+      }
+      if (purchaseOrder.status === PurchaseOrderStatus.CANCELLED) {
+        throw new AppException(ErrorCode.E313, HttpStatus.CONFLICT);
+      }
+
+      const { totalAmount, balanceDue } = calculatePurchaseOrderAmounts({
+        ...purchaseOrder,
+        advancePaymentAmount: reqDto.advancePaymentAmount,
+      });
+      if (reqDto.advancePaymentAmount > totalAmount) {
+        throw new AppException(ErrorCode.E312, HttpStatus.UNPROCESSABLE_ENTITY);
+      }
+
+      await this.paymentRequestsService.applyAdvancePayment(tx, {
+        purchaseOrderId,
+        advancePaymentAmount: reqDto.advancePaymentAmount,
+        balanceDue,
+        userId,
+      });
+
+      await tx
+        .update(purchaseOrders)
+        .set({
+          advancePaymentAmount: reqDto.advancePaymentAmount,
+          advancePaymentNote: reqDto.advancePaymentNote ?? null,
+        })
+        .where(eq(purchaseOrders.id, purchaseOrderId));
+    });
   }
 
   async updatePurchaseOrderItem(

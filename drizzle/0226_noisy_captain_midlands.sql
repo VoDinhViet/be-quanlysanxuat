@@ -1,0 +1,1 @@
+ALTER TYPE "public"."payment_request_log_action" ADD VALUE 'ADVANCE_PAYMENT_UPDATED';

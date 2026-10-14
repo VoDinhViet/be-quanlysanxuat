@@ -12,11 +12,12 @@ import { users } from '../identity-access/users';
 import { paymentRequests } from './payment-requests';
 
 /** Mốc ghi log của một yêu cầu thanh toán — 1 dòng đời chỉ rời PENDING đúng 1 lần (PAID hoặc
- * CANCELLED), cộng mốc CREATED lúc tự sinh. */
+ * CANCELLED), cộng mốc CREATED lúc tự sinh và mỗi lần PO đổi tiền tạm ứng khi còn PENDING. */
 export enum PaymentRequestLogAction {
   CREATED = 'CREATED',
   PAID = 'PAID',
   CANCELLED = 'CANCELLED',
+  ADVANCE_PAYMENT_UPDATED = 'ADVANCE_PAYMENT_UPDATED',
 }
 
 export const paymentRequestLogActionEnum = pgEnum(
@@ -25,6 +26,7 @@ export const paymentRequestLogActionEnum = pgEnum(
     PaymentRequestLogAction.CREATED,
     PaymentRequestLogAction.PAID,
     PaymentRequestLogAction.CANCELLED,
+    PaymentRequestLogAction.ADVANCE_PAYMENT_UPDATED,
   ],
 );
 

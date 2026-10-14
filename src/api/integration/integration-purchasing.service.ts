@@ -160,7 +160,7 @@ export class IntegrationPurchasingService {
       ['de_nghi_thanh_toan', 'nha_cung_cap', 'han', 'so_ngay_tre', 'gia_tri'],
       sql`SELECT ${paymentRequests.code} AS de_nghi_thanh_toan, ${suppliers.name} AS nha_cung_cap,
         ${paymentRequests.dueDate}::text AS han, (${TODAY} - ${paymentRequests.dueDate})::int AS so_ngay_tre,
-        ${paymentRequests.requestValue}::float8 AS gia_tri
+        ${paymentRequests.requestedAmount}::float8 AS gia_tri
         FROM ${paymentRequests}
         JOIN ${purchaseOrders} ON ${purchaseOrders.id} = ${paymentRequests.purchaseOrderId}
         JOIN ${suppliers} ON ${suppliers.id} = ${purchaseOrders.supplierId}

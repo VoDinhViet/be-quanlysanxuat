@@ -96,7 +96,7 @@ Sai trạng thái ở mọi thao tác trên trả `E118`.
 
 Bảng `purchase_orders` (đầu đơn: `code`, `supplierId`, `quotationId` có thể rỗng, `status`, `orderDate`, `expectedDate`, `assignedUserId`, `paymentTerm`, `vatPercent`, `otherCost`, `otherCostNote`, thông tin đặt/huỷ/đóng) và `purchase_order_items` (`purchaseRequestItemId` bắt buộc, `quotationItemSupplierId` trỏ dòng NCC thắng, `quantity`, `unitPrice`, `quantityAdjustmentReason`).
 
-Tổng tiền PO = Σ SL × đơn giá (tiền hàng) + VAT (`vatPercent`% trên tiền hàng, làm tròn 2 số lẻ) + `otherCost`. Chỉ lưu `vatPercent`/`otherCost`/`otherCostNote` (sửa qua `PATCH /purchase-orders/:id` khi PO còn `PENDING_CONFIRMATION`); tiền VAT và tổng tiền tính lúc đọc (`purchaseOrderGrandTotalSql`, `computePurchaseOrderAmounts`), nên `totalAmount` ở danh sách và chi tiết đã gồm VAT và chi phí khác.
+Tổng tiền PO = Σ SL × đơn giá (tiền hàng) + VAT (`vatPercent`% trên tiền hàng, làm tròn 2 số lẻ) + `otherCost`. Chỉ lưu `vatPercent`/`otherCost`/`otherCostNote` (sửa qua `PATCH /purchase-orders/:id` khi PO còn `PENDING_CONFIRMATION`); tiền VAT và tổng tiền tính lúc đọc (`purchaseOrderGrandTotalSql`, `calculatePurchaseOrderAmounts`), nên `totalAmount` ở danh sách và chi tiết đã gồm VAT và chi phí khác.
 
 **Cột `status` chỉ có 3 giá trị** (`PENDING_CONFIRMATION`, `ORDERED`, `CANCELLED`). "Đang nhận hàng" và "Hoàn tất" là **tiến độ suy ra** lúc đọc (`PurchaseOrderProgress`, mục Tiến độ suy ra), không có cột nào lưu chúng. Đóng sớm cũng không có trạng thái riêng: PO vẫn `ORDERED`, đánh dấu bằng `closedAt`.
 
@@ -144,13 +144,26 @@ Dùng khi PO nhận một phần và hàng còn lại **không về nữa**. `PO
 
 Vì SL dòng được hạ về số đã nhận nên mọi nơi tính theo SL đặt (tiến độ PO, tổng tiền, sổ cái) tự đúng, không cần nhánh xử lý riêng. Phần thiếu muốn mua tiếp thì lập RFQ mới từ dòng đề xuất: `quotedQuantity` của sổ cái với RFQ `APPROVED` là Σ SL các dòng PO sinh ra từ nó (RFQ nháp / chờ duyệt vẫn tính theo SL phân bổ), nên dòng PO bị hạ/xoá tự trả phần thiếu về sổ cái mà không sửa RFQ gốc; dòng đề xuất lúc này hiện "Nhập một phần".
 
+### Tạm ứng NCC
+
+PO có `advancePaymentAmount` (mặc định 0) và `advancePaymentNote`. Công thức: `balanceDue = max(totalAmount − advancePaymentAmount, 0)` (`calculatePurchaseOrderAmounts`); PO chi tiết trả thêm `balanceDue`.
+
+`PATCH /purchase-orders/:purchaseOrderId/advance-payment` (`purchasing:update`, 204), body `{ advancePaymentAmount ≥ 0, advancePaymentNote? ≤ 255 }`, trong một transaction:
+
+1. Không thấy PO: `E121`; PO `CANCELLED`: `E313`.
+2. `advancePaymentAmount` > tổng tiền PO: `E312`.
+3. YCTT của PO `PAID`: `E284` (đã chi thì khoá). YCTT `PENDING`: cập nhật `advancePaymentAmount` và `requestedAmount = balanceDue`, ghi log `ADVANCE_PAYMENT_UPDATED`. Không có YCTT hoặc `CANCELLED`: bỏ qua.
+4. Cập nhật PO.
+
+Khi YCTT sinh hoặc hồi sinh, `requestedAmount` = `balanceDue` và `advancePaymentAmount` được chụp từ PO; `purchaseOrderTotalAmount` trả về = `requestedAmount + advancePaymentAmount`. Đóng sớm PO làm tổng giảm dưới tạm ứng thì `balanceDue` kẹp 0, không chặn.
+
 ## Phiếu nhập kho và yêu cầu thanh toán
 
 Phiếu nhập thuộc nhóm inventory; ở đây chỉ nêu phần nối vào mua hàng. Phiếu nhập gắn PO chỉ tạo/sửa được khi PO đang `ORDERED` (`E145`), SL nhận cộng dồn các phiếu đã xác nhận không vượt SL đặt của dòng (`E154`). `confirm` và `post` kiểm lại PO còn `ORDERED`. **Phiếu đã ghi sổ (`POSTED`) không huỷ được** (`E289`): ghi sổ xong phiếu bất biến, muốn đảo hàng đã nhập thì dùng phiếu trả NCC. Huỷ phiếu chưa ghi sổ thì **huỷ luôn các phiếu IQC sinh từ phiếu** (chuyển `CANCELLED`, giữ lại để truy vết, không xác nhận hay sửa được nữa: `E288`) và các phiếu trả NCC nháp của phiếu; đã có phiếu trả NCC `POSTED` thì `E290`.
 
 ### Yêu cầu thanh toán (YCTT) — `/payment-requests`
 
-Bảng `payment_requests`: một dòng đúng một PO (`purchaseOrderId` unique), `requestValue` là ảnh chụp tổng tiền PO (tiền hàng + VAT + chi phí khác) lúc tạo, `dueDate` = ngày đặt + kỳ hạn của PO (`IMMEDIATE` 0 ngày, `NET_15`, `NET_30`, `NET_60`). Nhật ký ở `payment_request_logs` (`CREATED`, `PAID`, `CANCELLED`).
+Bảng `payment_requests`: một dòng đúng một PO (`purchaseOrderId` unique), `requestedAmount` là ảnh chụp số còn phải thanh toán lúc tạo (tiền hàng + VAT + chi phí khác − tạm ứng NCC), `dueDate` = ngày đặt + kỳ hạn của PO (`IMMEDIATE` 0 ngày, `NET_15`, `NET_30`, `NET_60`). Nhật ký ở `payment_request_logs` (`CREATED`, `PAID`, `CANCELLED`, `ADVANCE_PAYMENT_UPDATED`).
 
 Tự sinh khi ghi sổ một phiếu nhập làm PO **nhận đủ** (`createIfOrderCompleted`): PO phải còn `ORDERED`, có `paymentTerm`, có dòng, và SL nhận ≥ SL đặt. Khi đóng sớm PO cũng gọi hàm này. Đã có YCTT `PENDING` hoặc `PAID` thì bỏ qua; có YCTT `CANCELLED` thì **hồi sinh** bản ghi đó (về `PENDING`, cập nhật giá trị và hạn, ghi log `CREATED`).
 
@@ -234,7 +247,7 @@ Mỗi cột là ảnh hưởng lên chứng từ đó (— là không đổi).
 ## Ghi chú (chỗ code chưa khớp nhau, chưa sửa)
 
 - `E249` (`POST /purchase-orders`) và `E265` ("vượt SL cần mua còn lại") còn trong `error-code.constant.ts` nhưng không có route tương ứng và `validateAllocations` chỉ chặn SL ≤ 0 (không giới hạn trên); chú thích của `purchase_quotation_item_allocations` cũng nói vậy.
-- Chú thích trong `payment_requests.ts` cho rằng dòng PO bất biến sau khi `ORDERED` nên `requestValue` là ảnh chụp an toàn. Đóng sớm hạ SL dòng của PO `ORDERED`, nhưng chỉ chạy **trước khi** YCTT sinh (hoặc khi YCTT đã huỷ và được hồi sinh với giá trị tính lại), nên giá trị YCTT vẫn đúng.
+- Chú thích trong `payment_requests.ts` cho rằng dòng PO bất biến sau khi `ORDERED` nên `requestedAmount` là ảnh chụp an toàn. Đóng sớm hạ SL dòng của PO `ORDERED`, nhưng chỉ chạy **trước khi** YCTT sinh (hoặc khi YCTT đã huỷ và được hồi sinh với giá trị tính lại), nên giá trị YCTT vẫn đúng.
 - Mô tả route `PATCH /purchase-orders/:id` còn nhắc "kho nhập" dù khái niệm kho đã bỏ.
 - `recallQuotation` xoá `approvedBy`/`approvedAt`, trong khi chú thích kiểu FE nói các trường này được giữ lại làm lịch sử khi thu hồi.
 - Nhiều chú thích trong code trỏ tới `docs/workflows/*.md` và `docs/decisions/*.md` của bộ tài liệu cũ đã xoá; theo [README](../README.md) những file chưa có là phần chưa viết, không phải liên kết hỏng.

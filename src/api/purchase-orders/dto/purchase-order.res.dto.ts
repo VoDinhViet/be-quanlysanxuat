@@ -81,6 +81,12 @@ export class PurchaseOrderResDto extends PurchaseOrderAmountsResDto {
   totalAmount!: number;
 
   @Expose()
+  @NumberField({
+    description: 'Còn lại phải thanh toán = tổng tiền − tạm ứng (tối thiểu 0)',
+  })
+  balanceDue!: number;
+
+  @Expose()
   @ClassFieldOptional(() => QuotationRefResDto, { nullable: true })
   quotation!: QuotationRefResDto | null;
 

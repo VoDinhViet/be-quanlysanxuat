@@ -694,6 +694,10 @@ export enum ErrorCode {
   E310 = 'ncr.error.rework_operations_required',
   // NCR không gắn Job nên không yêu cầu OQC lại được.
   E311 = 'ncr.error.job_required',
+  // Tạm ứng của PO lớn hơn tổng tiền PO hiện tại.
+  E312 = 'purchase_order.error.advance_payment_exceeds_total',
+  // Sửa tạm ứng khi PO đã huỷ (YCTT đã chi thì dùng E284).
+  E313 = 'purchase_order.error.advance_payment_locked',
   V003 = 'common.error.too_many_requests',
   // `GlobalExceptionFilter` bắt chuỗi "No values to set" của drizzle-orm — mọi `PATCH` khi
   // `ValidationPipe` whitelist đã loại sạch field lạ, còn lại payload rỗng cho `.set()`. Trước đây

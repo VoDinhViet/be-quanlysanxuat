@@ -33,13 +33,19 @@ export class PagePaymentRequestResDto {
   @Expose()
   @NumberField({
     description:
-      'Giá trị PO — bằng requestValue ở v1 (chưa hỗ trợ thanh toán từng phần)',
+      'Giá trị PO = số đề nghị chi + tiền đã tạm ứng cho NCC (tổng tiền PO lúc chốt)',
   })
-  poValue!: number;
+  purchaseOrderTotalAmount!: number;
+
+  @Expose()
+  @NumberField({
+    description: 'Tiền đã tạm ứng cho NCC (đã trừ khỏi requestedAmount)',
+  })
+  advancePaymentAmount!: number;
 
   @Expose()
   @NumberField({ description: 'Giá trị yêu cầu thanh toán' })
-  requestValue!: number;
+  requestedAmount!: number;
 
   @Expose()
   @EnumField(() => PaymentRequestStatus)

@@ -52,7 +52,7 @@ export const supplierPaymentInfo = pgTable(
     defaultPaymentTerm: paymentTermEnum('default_payment_term'),
     // VND — không có đơn vị phụ (không phải cent), khớp `int: true` trên
     // `SupplierPaymentReqDto.creditLimit`. `numeric` thay `bigint` cho đồng nhất với mọi cột tiền
-    // khác trong repo (`unitPrice`, `requestValue`...) — vẫn scale 2 dù app luôn ghi số nguyên, để
+    // khác trong repo (`unitPrice`, `requestedAmount`...) — vẫn scale 2 dù app luôn ghi số nguyên, để
     // không phải một loại kiểu cột riêng.
     creditLimit: numeric('credit_limit', {
       precision: 18,
