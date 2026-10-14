@@ -8,6 +8,8 @@ import {
   UUIDField,
   UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
+import { FileField } from '../../files/dto/file.field';
+import { FileResDto } from '../../files/dto/file.res.dto';
 import { ProductionJobRefResDto } from '../../production-jobs/dto/production-job-ref.res.dto';
 import { UnitRefResDto } from '../../units/dto/unit-ref.res.dto';
 
@@ -78,6 +80,10 @@ export class OutsourceableOperationResDto {
   @Expose()
   @ClassField(() => OutsourceableOperationSnapshotResDto)
   operation!: OutsourceableOperationSnapshotResDto;
+
+  @Expose()
+  @FileField('imageFile', 'Ảnh hình minh họa (node BOM của Job)')
+  image!: FileResDto | null;
 
   @Expose()
   @ClassFieldOptional(() => UnitRefResDto, {

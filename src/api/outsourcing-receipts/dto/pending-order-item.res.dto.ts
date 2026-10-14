@@ -9,6 +9,8 @@ import {
   StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
+import { FileField } from '../../files/dto/file.field';
+import { FileResDto } from '../../files/dto/file.res.dto';
 import { ItemRefResDto } from '../../items/dto/item-ref.res.dto';
 import { OutsourcingOrderRefResDto } from '../../outsourcing-orders/dto/outsourcing-order-ref.res.dto';
 import { SupplierRefResDto } from '../../suppliers/dto/supplier-ref.res.dto';
@@ -50,6 +52,10 @@ export class PendingOrderItemResDto {
       'Vật tư tham khảo — chỉ khi node là DIRECT; null với node COMPONENT',
   })
   item!: ItemRefResDto | null;
+
+  @Expose()
+  @FileField('imageFile', 'Ảnh hình minh họa (node BOM của Job)')
+  image!: FileResDto | null;
 
   @Expose()
   @ClassFieldOptional(() => UnitRefResDto, {

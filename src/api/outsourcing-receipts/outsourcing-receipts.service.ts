@@ -27,7 +27,9 @@ import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
+  files,
   items,
+  productionJobBomItems,
   outsourcingOrderItems,
   outsourcingOrders,
   OutsourcingOrderStatus,
@@ -203,7 +205,7 @@ export class OutsourcingReceiptsService {
   ): Promise<OutsourcingReceiptItemResDto[]> {
     await this.ensureOutsourcingReceiptExists(outsourcingReceiptId);
 
-    const rows = await this.db
+    const receiptItemRows = await this.db
       .select({
         ...getTableColumns(outsourcingReceiptItems),
         operationCode: outsourcingOrderItems.operationCode,
@@ -211,6 +213,7 @@ export class OutsourcingReceiptsService {
         outsourcingOrder: getTableColumns(outsourcingOrders),
         item: getTableColumns(items),
         unit: getTableColumns(units),
+        imageFile: getTableColumns(files),
       })
       .from(outsourcingReceiptItems)
       .innerJoin(
@@ -226,12 +229,20 @@ export class OutsourcingReceiptsService {
       )
       .leftJoin(items, eq(items.id, outsourcingReceiptItems.itemId))
       .leftJoin(units, eq(units.id, items.unitId))
+      .leftJoin(
+        productionJobBomItems,
+        eq(
+          productionJobBomItems.id,
+          outsourcingOrderItems.productionJobBomItemId,
+        ),
+      )
+      .leftJoin(files, eq(files.id, productionJobBomItems.imageFileId))
       .where(
         eq(outsourcingReceiptItems.outsourcingReceiptId, outsourcingReceiptId),
       )
       .orderBy(asc(outsourcingReceiptItems.sortOrder));
 
-    return plainToInstance(OutsourcingReceiptItemResDto, rows, {
+    return plainToInstance(OutsourcingReceiptItemResDto, receiptItemRows, {
       excludeExtraneousValues: true,
     });
   }
@@ -261,7 +272,7 @@ export class OutsourcingReceiptsService {
       this.db,
     );
 
-    const [rows, [{ total }]] = await Promise.all([
+    const [pendingOrderItemRows, [{ total }]] = await Promise.all([
       this.db
         .select({
           id: outsourcingOrderItems.id,
@@ -272,6 +283,7 @@ export class OutsourcingReceiptsService {
           itemName: outsourcingOrderItems.itemName,
           item: getTableColumns(items),
           unit: getTableColumns(units),
+          imageFile: getTableColumns(files),
           operationCode: outsourcingOrderItems.operationCode,
           operationName: outsourcingOrderItems.operationName,
           quantity: outsourcingOrderItems.quantity,
@@ -295,6 +307,14 @@ export class OutsourcingReceiptsService {
         .leftJoin(items, eq(items.id, outsourcingOrderItems.itemId))
         .leftJoin(units, eq(units.id, items.unitId))
         .leftJoin(
+          productionJobBomItems,
+          eq(
+            productionJobBomItems.id,
+            outsourcingOrderItems.productionJobBomItemId,
+          ),
+        )
+        .leftJoin(files, eq(files.id, productionJobBomItems.imageFileId))
+        .leftJoin(
           receivedQuantityByItem,
           eq(
             receivedQuantityByItem.outsourcingOrderItemId,
@@ -316,7 +336,7 @@ export class OutsourcingReceiptsService {
     ]);
 
     return new OffsetPaginatedDto(
-      plainToInstance(PendingOrderItemResDto, rows, {
+      plainToInstance(PendingOrderItemResDto, pendingOrderItemRows, {
         excludeExtraneousValues: true,
       }),
       new OffsetPaginationDto(total, reqDto),

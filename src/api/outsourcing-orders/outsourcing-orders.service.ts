@@ -33,6 +33,7 @@ import {
   productionJobOperations,
   productionJobs,
   ProductionJobStatus,
+  files,
   suppliers,
   units,
   users,
@@ -179,12 +180,13 @@ export class OutsourcingOrdersService {
       this.db,
     );
 
-    const rows = await this.db
+    const outsourcingOrderItemRows = await this.db
       .select({
         ...getTableColumns(outsourcingOrderItems),
         item: getTableColumns(items),
         unit: getTableColumns(units),
         productionJob: getTableColumns(productionJobs),
+        imageFile: getTableColumns(files),
         receivedQuantity:
           sql<number>`coalesce(${receivedQuantityByItem.receivedQuantity}, 0)`.mapWith(
             Number,
@@ -193,6 +195,14 @@ export class OutsourcingOrdersService {
       .from(outsourcingOrderItems)
       .leftJoin(items, eq(items.id, outsourcingOrderItems.itemId))
       .leftJoin(units, eq(units.id, items.unitId))
+      .leftJoin(
+        productionJobBomItems,
+        eq(
+          productionJobBomItems.id,
+          outsourcingOrderItems.productionJobBomItemId,
+        ),
+      )
+      .leftJoin(files, eq(files.id, productionJobBomItems.imageFileId))
       .leftJoin(
         productionJobs,
         eq(productionJobs.id, outsourcingOrderItems.productionJobId),
@@ -207,9 +217,13 @@ export class OutsourcingOrdersService {
       .where(eq(outsourcingOrderItems.outsourcingOrderId, outsourcingOrderId))
       .orderBy(asc(outsourcingOrderItems.sortOrder));
 
-    return plainToInstance(OutsourcingOrderItemResDto, rows, {
-      excludeExtraneousValues: true,
-    });
+    return plainToInstance(
+      OutsourcingOrderItemResDto,
+      outsourcingOrderItemRows,
+      {
+        excludeExtraneousValues: true,
+      },
+    );
   }
 
   async getOutsourceableOperations(
@@ -253,6 +267,7 @@ export class OutsourcingOrdersService {
           bomItem: getTableColumns(productionJobBomItems),
           operation: getTableColumns(productionJobOperations),
           unit: getTableColumns(units),
+          imageFile: getTableColumns(files),
           plannedQuantity: productionJobBomItems.plannedQuantity,
           sentQuantity:
             sql<number>`coalesce(${sentQuantityByJobOperation.sentQuantity}, 0)`.mapWith(
@@ -283,6 +298,7 @@ export class OutsourcingOrdersService {
           ),
         )
         .leftJoin(units, eq(units.id, items.unitId))
+        .leftJoin(files, eq(files.id, productionJobBomItems.imageFileId))
         .leftJoin(
           sentQuantityByJobOperation,
           eq(
