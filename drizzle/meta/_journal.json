@@ -1590,6 +1590,13 @@
       "when": 1791941425720,
       "tag": "0226_noisy_captain_midlands",
       "breakpoints": true
+    },
+    {
+      "idx": 227,
+      "version": "7",
+      "when": 1791942659733,
+      "tag": "0227_sturdy_pepper_potts",
+      "breakpoints": true
     }
   ]
 }

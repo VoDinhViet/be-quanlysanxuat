@@ -71,6 +71,8 @@ export const paymentRequests = pgTable(
     }),
     cancelledAt: timestamp('cancelled_at'),
     cancellationReason: varchar('cancellation_reason', { length: 1000 }),
+    // Số hóa đơn của NCC do người dùng tự nhập (PH-130), để đối chiếu/truy xuất hóa đơn.
+    supplierInvoiceNo: varchar('supplier_invoice_no', { length: 100 }),
     note: varchar('note', { length: 1000 }),
     createdBy: uuid('created_by').references(() => users.id, {
       onDelete: 'set null',

@@ -7,6 +7,7 @@ import {
   EnumField,
   NumberField,
   StringField,
+  StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
 import { PaymentRequestPurchaseOrderRefResDto } from './payment-request-purchase-order-ref.res.dto';
@@ -46,6 +47,13 @@ export class PagePaymentRequestResDto {
   @Expose()
   @NumberField({ description: 'Giá trị yêu cầu thanh toán' })
   requestedAmount!: number;
+
+  @Expose()
+  @StringFieldOptional({
+    nullable: true,
+    description: 'Số hóa đơn của NCC do người dùng nhập',
+  })
+  supplierInvoiceNo!: string | null;
 
   @Expose()
   @EnumField(() => PaymentRequestStatus)

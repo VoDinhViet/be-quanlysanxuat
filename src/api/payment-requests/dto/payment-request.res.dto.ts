@@ -66,6 +66,16 @@ export class PaymentRequestResDto extends PurchaseOrderAmountsResDto {
   @StringFieldOptional({ nullable: true })
   note!: string | null;
 
+  /** Số hóa đơn của NCC do người dùng nhập. */
+  @Expose()
+  @StringFieldOptional({ nullable: true })
+  supplierInvoiceNo!: string | null;
+
+  /** Ghi chú chung của đơn mua, đọc trực tiếp từ PO nên đổi theo khi PO sửa ghi chú. */
+  @Expose()
+  @StringFieldOptional({ nullable: true })
+  purchaseOrderNote!: string | null;
+
   @Expose()
   @ClassFieldOptional(() => UserRefResDto, { nullable: true })
   createdBy!: UserRefResDto | null;

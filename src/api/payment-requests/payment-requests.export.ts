@@ -8,14 +8,14 @@ import { PaymentRequestStatus } from '../../database/schemas';
 export interface PaymentRequestExport {
   code: string;
   poCode: string;
-  supplierName: string;
-  supplierCode: string;
+  supplier: { name: string; code: string };
   requestedAmount: number;
   dueDate: Date;
   status: PaymentRequestStatus;
   paidAt: Date | null;
   cancellationReason: string | null;
-  note: string | null;
+  supplierInvoiceNo: string | null;
+  purchaseOrderNote: string | null;
   creatorName: string | null;
   createdAt: Date;
 }
@@ -30,8 +30,9 @@ export const PAYMENT_REQUEST_EXPORT_COLUMNS: ExcelColumn<PaymentRequestExport>[]
   [
     { header: 'Mã YCTT', value: (row) => row.code },
     { header: 'Mã PO', value: (row) => row.poCode },
-    { header: 'Nhà cung cấp', value: (row) => row.supplierName, width: 25 },
-    { header: 'Mã NCC', value: (row) => row.supplierCode },
+    { header: 'Nhà cung cấp', value: (row) => row.supplier.name, width: 25 },
+    { header: 'Mã NCC', value: (row) => row.supplier.code },
+    { header: 'Số hóa đơn', value: (row) => row.supplierInvoiceNo },
     {
       header: 'Giá trị thanh toán',
       value: (row) => row.requestedAmount,
@@ -47,7 +48,7 @@ export const PAYMENT_REQUEST_EXPORT_COLUMNS: ExcelColumn<PaymentRequestExport>[]
       value: (row) => formatVnDateTime(row.paidAt),
     },
     { header: 'Lý do huỷ', value: (row) => row.cancellationReason },
-    { header: 'Ghi chú', value: (row) => row.note, width: 30 },
+    { header: 'Ghi chú PO', value: (row) => row.purchaseOrderNote, width: 30 },
     { header: 'Người tạo', value: (row) => row.creatorName },
     { header: 'Ngày tạo', value: (row) => formatVnDateTime(row.createdAt) },
   ];

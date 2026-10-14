@@ -1,0 +1,1 @@
+ALTER TABLE "payment_requests" ADD COLUMN "supplier_invoice_no" varchar(100);

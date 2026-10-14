@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   HttpStatus,
+  Patch,
   Post,
   Query,
   StreamableFile,
@@ -23,6 +24,7 @@ import { GetPaymentRequestsReqDto } from './dto/get-payment-requests.req.dto';
 import { PagePaymentRequestResDto } from './dto/page-payment-request.res.dto';
 import { PaymentRequestLogResDto } from './dto/payment-request-log.res.dto';
 import { PaymentRequestResDto } from './dto/payment-request.res.dto';
+import { UpdatePaymentRequestInvoiceReqDto } from './dto/update-payment-request-invoice.req.dto';
 import { PaymentRequestsService } from './payment-requests.service';
 
 @ApiTags('Payment Requests')
@@ -84,6 +86,23 @@ export class PaymentRequestsController {
     return this.paymentRequestsService.markPaymentRequestPaid(
       paymentRequestId,
       payload.userId,
+    );
+  }
+
+  @Patch(':paymentRequestId/invoice')
+  @Permissions('purchasing:update')
+  @ApiAuth({
+    summary:
+      'Nhập/sửa số hóa đơn NCC của yêu cầu thanh toán — mọi trạng thái trừ CANCELLED',
+    statusCode: HttpStatus.NO_CONTENT,
+  })
+  updatePaymentRequestInvoice(
+    @UUIDParam('paymentRequestId') paymentRequestId: string,
+    @Body() reqDto: UpdatePaymentRequestInvoiceReqDto,
+  ): Promise<void> {
+    return this.paymentRequestsService.updatePaymentRequestInvoice(
+      paymentRequestId,
+      reqDto,
     );
   }
 

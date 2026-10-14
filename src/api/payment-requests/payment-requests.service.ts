@@ -46,6 +46,7 @@ import {
   orderReceivedQuantitySubquery,
 } from '../purchase-orders/purchase-orders.query';
 import { CancelPaymentRequestReqDto } from './dto/cancel-payment-request.req.dto';
+import { UpdatePaymentRequestInvoiceReqDto } from './dto/update-payment-request-invoice.req.dto';
 import { ExportPaymentRequestsReqDto } from './dto/export-payment-requests.req.dto';
 import { GetPaymentRequestLogsReqDto } from './dto/get-payment-request-logs.req.dto';
 import { GetPaymentRequestsReqDto } from './dto/get-payment-requests.req.dto';
@@ -80,6 +81,7 @@ export class PaymentRequestsService {
         ? or(
             unaccentILike(paymentRequests.code, keyword),
             unaccentILike(purchaseOrders.code, keyword),
+            unaccentILike(paymentRequests.supplierInvoiceNo, keyword),
           )
         : undefined,
       poCodeKeyword
@@ -117,6 +119,7 @@ export class PaymentRequestsService {
             ),
           advancePaymentAmount: paymentRequests.advancePaymentAmount,
           requestedAmount: paymentRequests.requestedAmount,
+          supplierInvoiceNo: paymentRequests.supplierInvoiceNo,
           status: paymentRequests.status,
           createdAt: paymentRequests.createdAt,
         })
@@ -164,6 +167,7 @@ export class PaymentRequestsService {
         ? or(
             unaccentILike(paymentRequests.code, keyword),
             unaccentILike(purchaseOrders.code, keyword),
+            unaccentILike(paymentRequests.supplierInvoiceNo, keyword),
           )
         : undefined,
       poCodeKeyword
@@ -184,18 +188,18 @@ export class PaymentRequestsService {
         : undefined,
     );
 
-    const rows = await this.db
+    const exportedPaymentRequests = await this.db
       .select({
         code: paymentRequests.code,
         poCode: purchaseOrders.code,
-        supplierName: suppliers.name,
-        supplierCode: suppliers.code,
+        supplier: getTableColumns(suppliers),
         requestedAmount: paymentRequests.requestedAmount,
         dueDate: paymentRequests.dueDate,
         status: paymentRequests.status,
         paidAt: paymentRequests.paidAt,
         cancellationReason: paymentRequests.cancellationReason,
-        note: paymentRequests.note,
+        supplierInvoiceNo: paymentRequests.supplierInvoiceNo,
+        purchaseOrderNote: purchaseOrders.note,
         creatorName: users.fullName,
         createdAt: paymentRequests.createdAt,
       })
@@ -213,7 +217,7 @@ export class PaymentRequestsService {
     const buffer = await buildXlsxBuffer(
       'Yêu cầu thanh toán',
       PAYMENT_REQUEST_EXPORT_COLUMNS,
-      rows,
+      exportedPaymentRequests,
     );
     const fileName = `yeu-cau-thanh-toan-${DateTime.now().toFormat('yyyyLLdd-HHmm')}.xlsx`;
 
@@ -290,6 +294,7 @@ export class PaymentRequestsService {
         ...calculatePurchaseOrderAmounts(purchaseOrder),
         advancePaymentAmount: paymentRequest.advancePaymentAmount,
         advancePaymentNote: purchaseOrder.advancePaymentNote,
+        purchaseOrderNote: purchaseOrder.note,
         vatPercent: purchaseOrder.vatPercent,
         otherCost: purchaseOrder.otherCost,
         otherCostNote: purchaseOrder.otherCostNote,
@@ -337,6 +342,31 @@ export class PaymentRequestsService {
     await this.db.transaction((tx) =>
       this.markCancelled(tx, paymentRequestId, userId, reqDto.reason),
     );
+  }
+
+  /** Số hóa đơn NCC do người dùng tự nhập; sửa được ở mọi trạng thái trừ `CANCELLED` (hóa đơn
+   * thường về sau khi đã chi). Chuỗi rỗng coi như xoá. */
+  async updatePaymentRequestInvoice(
+    paymentRequestId: string,
+    reqDto: UpdatePaymentRequestInvoiceReqDto,
+  ): Promise<void> {
+    const [paymentRequest] = await this.db
+      .select({ status: paymentRequests.status })
+      .from(paymentRequests)
+      .where(eq(paymentRequests.id, paymentRequestId))
+      .limit(1);
+
+    if (!paymentRequest) {
+      throw new AppException(ErrorCode.E157, HttpStatus.NOT_FOUND);
+    }
+    if (paymentRequest.status === PaymentRequestStatus.CANCELLED) {
+      throw new AppException(ErrorCode.E158, HttpStatus.CONFLICT);
+    }
+
+    await this.db
+      .update(paymentRequests)
+      .set({ supplierInvoiceNo: reqDto.supplierInvoiceNo?.trim() || null })
+      .where(eq(paymentRequests.id, paymentRequestId));
   }
 
   async getPaymentRequestLogs(
