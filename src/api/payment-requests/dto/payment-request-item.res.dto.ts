@@ -65,7 +65,7 @@ export class PaymentRequestItemResDto {
   @Expose()
   @NumberField({
     description:
-      'Đơn giá × SL ĐVBG thực nhập nếu có ĐVBG, ngược lại đơn giá × SL đặt',
+      'Đơn giá × SL ĐVBG thực nhập nếu có ĐVBG, ngược lại đơn giá × SL thực nhập',
   })
   lineTotal!: number;
 }

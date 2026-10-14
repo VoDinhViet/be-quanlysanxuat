@@ -262,24 +262,18 @@ export class PaymentRequestsService {
 
     const purchaseOrder = paymentRequest.purchaseOrder;
 
-    const receivedByItemId = await getReceivedQuantityByPurchaseOrderItemId(
-      this.db,
-      {
-        purchaseOrderItemIds: purchaseOrder.items.map((item) => item.id),
-        statuses: [InventoryDocumentStatus.POSTED],
-      },
-    );
-
     const settledAmounts = await this.calculateSettledAmounts(
       this.db,
       purchaseOrder,
     );
+    const receivedByItemId = settledAmounts.receivedQuantityByItemId;
 
     const items = purchaseOrder.items.map((item) => {
       const unitPrice = item.unitPrice ?? 0;
       const receivedQuotationQty = item.quotationUnit
         ? (settledAmounts.billedQuotationQuantityByItemId.get(item.id) ?? 0)
         : null;
+      const receivedQty = receivedByItemId.get(item.id) ?? 0;
 
       return {
         id: item.id,
@@ -287,12 +281,12 @@ export class PaymentRequestsService {
         directName: item.purchaseRequestItem.item.name,
         unit: item.purchaseRequestItem.item.unit.name,
         orderedQty: item.quantity,
-        receivedQty: receivedByItemId.get(item.id) ?? 0,
+        receivedQty,
         quotationUnit: item.quotationUnit ?? null,
         orderedQuotationQty: item.quotationQuantity,
         receivedQuotationQty,
         unitPrice,
-        lineTotal: (receivedQuotationQty ?? item.quantity) * unitPrice,
+        lineTotal: (receivedQuotationQty ?? receivedQty) * unitPrice,
       };
     });
 
@@ -552,8 +546,8 @@ export class PaymentRequestsService {
   }
 
   /** Số tiền chốt của YCTT theo số thực nhập (PH-135): dòng PO có ĐVBG tính đơn giá × SL ĐVBG thực
-   * nhập (đã trừ hàng trả NCC theo tỉ lệ), dòng còn lại đơn giá × SL đặt; rồi cộng VAT, chi phí
-   * khác, trừ tạm ứng. Trả thêm SL ĐVBG thực nhập theo từng dòng để hiển thị đối chiếu. */
+   * nhập (đã trừ hàng trả NCC theo tỉ lệ), dòng còn lại đơn giá × SL thực nhập (đã trừ hàng trả NCC);
+   * rồi cộng VAT, chi phí khác, trừ tạm ứng. Trả thêm SL ĐVBG thực nhập theo từng dòng để hiển thị đối chiếu. */
   private async calculateSettledAmounts(
     executor: Database | DbTransaction,
     purchaseOrder: {
@@ -568,23 +562,29 @@ export class PaymentRequestsService {
       }[];
     },
   ) {
-    const billedQuotationQuantityByItemId =
-      await getBilledQuotationQuantityByPurchaseOrderItemId(
-        executor,
-        purchaseOrder.items.map((item) => item.id),
-      );
+    const [billedQuotationQuantityByItemId, receivedQuantityByItemId] =
+      await Promise.all([
+        getBilledQuotationQuantityByPurchaseOrderItemId(
+          executor,
+          purchaseOrder.items.map((item) => item.id),
+        ),
+        getReceivedQuantityByPurchaseOrderItemId(executor, {
+          purchaseOrderItemIds: purchaseOrder.items.map((item) => item.id),
+          statuses: [InventoryDocumentStatus.POSTED],
+        }),
+      ]);
 
     const amounts = calculatePurchaseOrderAmounts({
       ...purchaseOrder,
       items: purchaseOrder.items.map((item) => ({
         quantity: item.quotationUnit
           ? (billedQuotationQuantityByItemId.get(item.id) ?? 0)
-          : item.quantity,
+          : (receivedQuantityByItemId.get(item.id) ?? 0),
         unitPrice: item.unitPrice,
       })),
     });
 
-    return { ...amounts, billedQuotationQuantityByItemId };
+    return { ...amounts, billedQuotationQuantityByItemId, receivedQuantityByItemId };
   }
 
   /** Tổng tiền đã chốt (đề nghị chi + tạm ứng) của YCTT chưa huỷ của PO; null khi chưa có YCTT. */
