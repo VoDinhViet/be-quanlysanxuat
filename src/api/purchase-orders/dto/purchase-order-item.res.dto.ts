@@ -2,12 +2,14 @@ import { Exclude, Expose } from 'class-transformer';
 
 import {
   ClassField,
+  ClassFieldOptional,
   DateField,
   NumberField,
   NumberFieldOptional,
   StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
+import { UnitRefResDto } from '../../units/dto/unit-ref.res.dto';
 import { PurchaseRequestItemRefResDto } from '../../purchase-requests/dto/purchase-request-item-ref.res.dto';
 
 @Exclude()
@@ -30,6 +32,20 @@ export class PurchaseOrderItemResDto {
       'Tồn thực tế hiện tại của vật tư (gộp mọi kho), để Kho tham chiếu khi nhập',
   })
   onHand!: number;
+
+  @Expose()
+  @StringFieldOptional({
+    nullable: true,
+    description: 'Đơn vị báo giá (null = báo theo đơn vị chính)',
+  })
+  quotationUnit!: string | null;
+
+  @Expose()
+  @NumberFieldOptional({
+    nullable: true,
+    description: 'SL báo giá theo ĐVBG; thành tiền ước tính = đơn giá × SL này',
+  })
+  quotationQuantity!: number | null;
 
   @Expose()
   @StringFieldOptional({ nullable: true, description: 'Lý do điều chỉnh SL' })

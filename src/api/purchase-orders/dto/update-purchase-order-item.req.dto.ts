@@ -10,6 +10,12 @@ export class UpdatePurchaseOrderItemReqDto {
   @NumberFieldOptional({ isPositive: true, description: 'Đơn giá' })
   readonly unitPrice?: number;
 
+  @NumberFieldOptional({
+    isPositive: true,
+    description: 'SL báo giá theo ĐVBG; chỉ dòng PO có ĐVBG mới sửa được',
+  })
+  readonly quotationQuantity?: number;
+
   @StringFieldOptional({
     nullable: true,
     maxLength: 500,

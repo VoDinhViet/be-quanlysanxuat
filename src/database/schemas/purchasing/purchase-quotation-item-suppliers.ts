@@ -13,6 +13,7 @@ import {
 } from 'drizzle-orm/pg-core';
 
 import { suppliers } from '../suppliers/suppliers';
+import { units } from '../units/units';
 import { users } from '../identity-access/users';
 import { purchaseQuotationItems } from './purchase-quotation-items';
 import { purchaseQuotationItemSupplierFiles } from './purchase-quotation-item-supplier-files';
@@ -37,6 +38,14 @@ export const purchaseQuotationItemSuppliers = pgTable(
       scale: 2,
       mode: 'number',
     }),
+    // Đơn vị + SL báo giá của NCC (PH-135) — NCC có thể báo theo đơn vị khác ĐVT kho (vd kg thay vì
+    // tấm). Cùng null (báo theo đơn vị chính) hoặc cùng có; thành tiền = đơn giá × SL báo giá.
+    quotationUnit: varchar('quotation_unit', { length: 50 }),
+    quotationQuantity: numeric('quotation_quantity', {
+      precision: 18,
+      scale: 3,
+      mode: 'number',
+    }),
     leadTimeDays: integer('lead_time_days'),
     note: varchar('note', { length: 500 }),
     selectedBy: uuid('selected_by').references(() => users.id, {
@@ -51,6 +60,7 @@ export const purchaseQuotationItemSuppliers = pgTable(
     index('idx_purchase_quotation_item_suppliers_supplier_id').on(
       table.supplierId,
     ),
+    
     index('idx_purchase_quotation_item_suppliers_selected_by').on(
       table.selectedBy,
     ),
@@ -66,6 +76,10 @@ export const purchaseQuotationItemSuppliers = pgTable(
     check(
       'chk_purchase_quotation_item_suppliers_unit_price',
       sql`unit_price IS NULL OR unit_price >= 0`,
+    ),
+    check(
+      'chk_purchase_quotation_item_suppliers_quotation_unit',
+      sql`(quotation_unit IS NULL AND quotation_quantity IS NULL) OR (quotation_unit IS NOT NULL AND quotation_quantity > 0)`,
     ),
   ],
 );

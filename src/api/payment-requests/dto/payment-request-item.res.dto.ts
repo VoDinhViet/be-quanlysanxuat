@@ -2,7 +2,9 @@ import { Exclude, Expose } from 'class-transformer';
 
 import {
   NumberField,
+  NumberFieldOptional,
   StringField,
+  StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
 
@@ -35,10 +37,35 @@ export class PaymentRequestItemResDto {
   receivedQty!: number;
 
   @Expose()
+  @StringFieldOptional({
+    nullable: true,
+    description: 'Đơn vị báo giá của dòng (null = báo theo đơn vị chính)',
+  })
+  quotationUnit!: string | null;
+
+  @Expose()
+  @NumberFieldOptional({
+    nullable: true,
+    description: 'SL báo giá theo ĐVBG ghi trên PO',
+  })
+  orderedQuotationQty!: number | null;
+
+  @Expose()
+  @NumberFieldOptional({
+    nullable: true,
+    description:
+      'SL ĐVBG thực nhập kho (đã trừ hàng trả NCC theo tỉ lệ); null khi dòng không có ĐVBG',
+  })
+  receivedQuotationQty!: number | null;
+
+  @Expose()
   @NumberField()
   unitPrice!: number;
 
   @Expose()
-  @NumberField({ description: 'orderedQty * unitPrice' })
+  @NumberField({
+    description:
+      'Đơn giá × SL ĐVBG thực nhập nếu có ĐVBG, ngược lại đơn giá × SL đặt',
+  })
   lineTotal!: number;
 }

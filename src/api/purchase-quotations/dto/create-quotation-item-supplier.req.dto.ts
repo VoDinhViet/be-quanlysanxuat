@@ -15,6 +15,19 @@ export class CreateQuotationItemSupplierReqDto {
   })
   readonly unitPrice?: number;
 
+  @StringFieldOptional({
+    maxLength: 50,
+    description:
+      'Đơn vị báo giá (ĐVBG) khi NCC báo khác đơn vị chính; đi cùng quotationQuantity',
+  })
+  readonly quotationUnit?: string;
+
+  @NumberFieldOptional({
+    min: 0,
+    description: 'SL báo giá theo ĐVBG; thành tiền = đơn giá × SL báo giá',
+  })
+  readonly quotationQuantity?: number;
+
   @NumberFieldOptional({
     min: 0,
     int: true,

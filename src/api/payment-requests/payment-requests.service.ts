@@ -32,6 +32,7 @@ import {
   PaymentRequestStatus,
   PaymentTerm,
   paymentRequests,
+  purchaseOrderItems,
   PurchaseOrderStatus,
   purchaseOrders,
   suppliers,
@@ -40,9 +41,9 @@ import {
 import { AppException } from '../../exceptions/app.exception';
 import {
   calculatePurchaseOrderAmounts,
+  getBilledQuotationQuantityByPurchaseOrderItemId,
   getReceivedQuantityByPurchaseOrderItemId,
   orderAggregateSubquery,
-  purchaseOrderGrandTotalSql,
   orderReceivedQuantitySubquery,
 } from '../purchase-orders/purchase-orders.query';
 import { CancelPaymentRequestReqDto } from './dto/cancel-payment-request.req.dto';
@@ -269,8 +270,16 @@ export class PaymentRequestsService {
       },
     );
 
+    const settledAmounts = await this.calculateSettledAmounts(
+      this.db,
+      purchaseOrder,
+    );
+
     const items = purchaseOrder.items.map((item) => {
       const unitPrice = item.unitPrice ?? 0;
+      const receivedQuotationQty = item.quotationUnit
+        ? (settledAmounts.billedQuotationQuantityByItemId.get(item.id) ?? 0)
+        : null;
 
       return {
         id: item.id,
@@ -279,8 +288,11 @@ export class PaymentRequestsService {
         unit: item.purchaseRequestItem.item.unit.name,
         orderedQty: item.quantity,
         receivedQty: receivedByItemId.get(item.id) ?? 0,
+        quotationUnit: item.quotationUnit ?? null,
+        orderedQuotationQty: item.quotationQuantity,
+        receivedQuotationQty,
         unitPrice,
-        lineTotal: item.quantity * unitPrice,
+        lineTotal: (receivedQuotationQty ?? item.quantity) * unitPrice,
       };
     });
 
@@ -291,7 +303,8 @@ export class PaymentRequestsService {
         supplier: purchaseOrder.supplier,
         purchaseOrderTotalAmount:
           paymentRequest.requestedAmount + paymentRequest.advancePaymentAmount,
-        ...calculatePurchaseOrderAmounts(purchaseOrder),
+        subtotal: settledAmounts.subtotal,
+        vatAmount: settledAmounts.vatAmount,
         advancePaymentAmount: paymentRequest.advancePaymentAmount,
         advancePaymentNote: purchaseOrder.advancePaymentNote,
         purchaseOrderNote: purchaseOrder.note,
@@ -426,9 +439,8 @@ export class PaymentRequestsService {
             sql<number>`coalesce(${orderedAgg.orderedQuantity}, 0)`.mapWith(
               Number,
             ),
-          totalAmount: purchaseOrderGrandTotalSql(
-            sql<number>`coalesce(${orderedAgg.totalAmount}, 0)`,
-          ),
+          vatPercent: purchaseOrders.vatPercent,
+          otherCost: purchaseOrders.otherCost,
           receivedQuantity:
             sql<number>`coalesce(${receivedAgg.receivedQuantity}, 0)`.mapWith(
               Number,
@@ -464,11 +476,20 @@ export class PaymentRequestsService {
       return;
     }
 
-    // Số đề nghị chi = tổng tiền PO − tiền đã tạm ứng cho NCC (PH-128).
-    const balanceDue = Math.max(
-      purchaseOrder.totalAmount - purchaseOrder.advancePaymentAmount,
-      0,
-    );
+    // Số đề nghị chi = tổng tiền theo số thực nhập − tiền đã tạm ứng cho NCC (PH-128, PH-135).
+    const orderItems = await tx
+      .select({
+        id: purchaseOrderItems.id,
+        quantity: purchaseOrderItems.quantity,
+        unitPrice: purchaseOrderItems.unitPrice,
+        quotationUnit: purchaseOrderItems.quotationUnit,
+      })
+      .from(purchaseOrderItems)
+      .where(eq(purchaseOrderItems.purchaseOrderId, purchaseOrderId));
+    const { balanceDue } = await this.calculateSettledAmounts(tx, {
+      ...purchaseOrder,
+      items: orderItems,
+    });
 
     const dueDate = new Date(
       purchaseOrder.orderDate.getTime() +
@@ -528,6 +549,66 @@ export class PaymentRequestsService {
         throw error;
       }
     }
+  }
+
+  /** Số tiền chốt của YCTT theo số thực nhập (PH-135): dòng PO có ĐVBG tính đơn giá × SL ĐVBG thực
+   * nhập (đã trừ hàng trả NCC theo tỉ lệ), dòng còn lại đơn giá × SL đặt; rồi cộng VAT, chi phí
+   * khác, trừ tạm ứng. Trả thêm SL ĐVBG thực nhập theo từng dòng để hiển thị đối chiếu. */
+  private async calculateSettledAmounts(
+    executor: Database | DbTransaction,
+    purchaseOrder: {
+      vatPercent: number;
+      otherCost: number;
+      advancePaymentAmount: number;
+      items: {
+        id: string;
+        quantity: number;
+        unitPrice: number | null;
+        quotationUnit: string | null;
+      }[];
+    },
+  ) {
+    const billedQuotationQuantityByItemId =
+      await getBilledQuotationQuantityByPurchaseOrderItemId(
+        executor,
+        purchaseOrder.items.map((item) => item.id),
+      );
+
+    const amounts = calculatePurchaseOrderAmounts({
+      ...purchaseOrder,
+      items: purchaseOrder.items.map((item) => ({
+        quantity: item.quotationUnit
+          ? (billedQuotationQuantityByItemId.get(item.id) ?? 0)
+          : item.quantity,
+        unitPrice: item.unitPrice,
+      })),
+    });
+
+    return { ...amounts, billedQuotationQuantityByItemId };
+  }
+
+  /** Tổng tiền đã chốt (đề nghị chi + tạm ứng) của YCTT chưa huỷ của PO; null khi chưa có YCTT. */
+  async getSettledTotalAmount(
+    tx: DbTransaction,
+    purchaseOrderId: string,
+  ): Promise<number | null> {
+    const [paymentRequest] = await tx
+      .select({
+        requestedAmount: paymentRequests.requestedAmount,
+        advancePaymentAmount: paymentRequests.advancePaymentAmount,
+        status: paymentRequests.status,
+      })
+      .from(paymentRequests)
+      .where(eq(paymentRequests.purchaseOrderId, purchaseOrderId))
+      .limit(1);
+
+    if (
+      !paymentRequest ||
+      paymentRequest.status === PaymentRequestStatus.CANCELLED
+    ) {
+      return null;
+    }
+    return paymentRequest.requestedAmount + paymentRequest.advancePaymentAmount;
   }
 
   /** Đồng bộ tiền tạm ứng của PO sang YCTT (PH-128) — chạy trong transaction của

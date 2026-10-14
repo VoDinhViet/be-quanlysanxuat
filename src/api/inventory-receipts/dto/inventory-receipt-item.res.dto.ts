@@ -35,6 +35,28 @@ export class InventoryReceiptItemResDto {
   unitPrice!: number | null;
 
   @Expose()
+  @ClassFieldOptional(() => UnitRefResDto, {
+    nullable: true,
+    description:
+      'ĐVBG của dòng PO tương ứng (null = không báo giá theo đơn vị khác)',
+  })
+  quotationUnit!: UnitRefResDto | null;
+
+  @Expose()
+  @NumberFieldOptional({
+    nullable: true,
+    description: 'SL thực tế theo ĐVBG do kho nhập',
+  })
+  quotationQuantity!: number | null;
+
+  @Expose()
+  @NumberFieldOptional({
+    nullable: true,
+    description: 'SL báo giá theo ĐVBG ghi trên dòng PO',
+  })
+  orderedQuotationQuantity!: number | null;
+
+  @Expose()
   @StringFieldOptional({ nullable: true })
   note!: string | null;
 

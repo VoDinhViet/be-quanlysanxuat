@@ -560,6 +560,8 @@ export class PurchaseQuotationsService {
             id: purchaseQuotationItemSuppliers.id,
             supplierId: purchaseQuotationItemSuppliers.supplierId,
             unitPrice: purchaseQuotationItemSuppliers.unitPrice,
+            quotationUnit: purchaseQuotationItemSuppliers.quotationUnit,
+            quotationQuantity: purchaseQuotationItemSuppliers.quotationQuantity,
             leadTimeDays: purchaseQuotationItemSuppliers.leadTimeDays,
           })
           .from(purchaseQuotationItemSuppliers)
@@ -607,16 +609,22 @@ export class PurchaseQuotationsService {
         selection.quotationItemSupplierId,
       )!;
       const lines = linesBySupplierId.get(selectedSupplierRow.supplierId) ?? [];
-      for (const allocation of item.allocations) {
+      const quotationQuantityByAllocation = this.splitQuotationQuantity(
+        selectedSupplierRow.quotationQuantity,
+        item.allocations.map((allocation) => allocation.quantity),
+      );
+      item.allocations.forEach((allocation, allocationIndex) => {
         lines.push({
           purchaseRequestItemId: allocation.purchaseRequestItemId,
           quotationItemSupplierId: selectedSupplierRow.id,
           quantity: allocation.quantity,
           unitPrice: selectedSupplierRow.unitPrice,
+          quotationUnit: selectedSupplierRow.quotationUnit,
+          quotationQuantity: quotationQuantityByAllocation[allocationIndex],
           leadTimeDays: selectedSupplierRow.leadTimeDays,
           quantityAdjustmentReason: allocation.quantityAdjustmentReason,
         });
-      }
+      });
       linesBySupplierId.set(selectedSupplierRow.supplierId, lines);
     }
 
@@ -1017,5 +1025,32 @@ export class PurchaseQuotationsService {
     );
 
     return `RFQ-${String(sequence).padStart(5, '0')}`;
+  }
+
+  /** Chia SL báo giá của NCC cho các phân bổ theo tỉ lệ SL đặt của từng phân bổ, làm tròn 3 số;
+   * phân bổ cuối nhận phần dư để tổng đúng bằng SL báo giá. Không có SL báo giá thì mọi phần null. */
+  private splitQuotationQuantity(
+    quotationQuantity: number | null,
+    allocationQuantities: number[],
+  ): (number | null)[] {
+    if (quotationQuantity === null) {
+      return allocationQuantities.map(() => null);
+    }
+
+    const totalQuantity = allocationQuantities.reduce(
+      (sum, quantity) => sum + quantity,
+      0,
+    );
+    let assignedQuantity = 0;
+
+    return allocationQuantities.map((quantity, index) => {
+      const isLast = index === allocationQuantities.length - 1;
+      const share = isLast
+        ? quotationQuantity - assignedQuantity
+        : Math.round((quotationQuantity * quantity * 1000) / totalQuantity) /
+          1000;
+      assignedQuantity += share;
+      return Math.round(share * 1000) / 1000;
+    });
   }
 }

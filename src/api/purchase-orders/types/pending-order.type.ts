@@ -8,6 +8,9 @@ export type PurchaseOrderPendingLine = {
   quotationItemSupplierId: string;
   quantity: number;
   unitPrice: number | null;
+  /** ĐVBG + SL báo giá của phần phân bổ này (PH-135); null khi NCC báo theo đơn vị chính. */
+  quotationUnit: string | null;
+  quotationQuantity: number | null;
   leadTimeDays: number | null;
   quantityAdjustmentReason: string | null;
 };

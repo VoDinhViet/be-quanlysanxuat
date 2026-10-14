@@ -46,6 +46,13 @@ export const inventoryReceiptItems = pgTable(
       scale: 2,
       mode: 'number',
     }),
+    // SL thực tế theo ĐVBG của dòng PO (PH-135) — kho cân/đếm lại theo đơn vị NCC báo giá. Chỉ có
+    // khi dòng PO có ĐVBG; YCTT tính tiền theo số này, `quantity` vẫn là SL đơn vị chính.
+    quotationQuantity: numeric('quotation_quantity', {
+      precision: 18,
+      scale: 3,
+      mode: 'number',
+    }),
     note: varchar('note', { length: 500 }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at')
@@ -61,6 +68,10 @@ export const inventoryReceiptItems = pgTable(
     ),
     index('idx_inventory_receipt_items_unit_id').on(table.unitId),
     check('chk_inventory_receipt_items_quantity_positive', sql`quantity > 0`),
+    check(
+      'chk_inventory_receipt_items_quotation_quantity',
+      sql`quotation_quantity IS NULL OR quotation_quantity > 0`,
+    ),
     check(
       'chk_inventory_receipt_items_unit_price',
       sql`unit_price IS NULL OR unit_price >= 0`,

@@ -25,6 +25,13 @@ export class InventoryReceiptItemReqDto {
   readonly quantity!: number;
 
   @NumberFieldOptional({
+    isPositive: true,
+    description:
+      'SL thực tế theo ĐVBG của dòng PO (bắt buộc khi dòng PO có ĐVBG, bỏ qua nếu không)',
+  })
+  readonly quotationQuantity?: number;
+
+  @NumberFieldOptional({
     min: 0,
     description: 'Đơn giá — chỉ để ghi kèm, không tổng hợp',
   })

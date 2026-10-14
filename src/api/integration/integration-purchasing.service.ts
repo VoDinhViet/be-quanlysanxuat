@@ -84,7 +84,7 @@ export class IntegrationPurchasingService {
     return this.queryService.run(
       'purchase_value_by_supplier',
       columns,
-      sql`SELECT ${suppliers.name}, SUM(${purchaseOrderItems.quantity} * ${purchaseOrderItems.unitPrice})::float8 AS gia_tri${countColumn}
+      sql`SELECT ${suppliers.name}, SUM(coalesce(${purchaseOrderItems.quotationQuantity}, ${purchaseOrderItems.quantity}) * ${purchaseOrderItems.unitPrice})::float8 AS gia_tri${countColumn}
         FROM ${purchaseOrders}
         JOIN ${purchaseOrderItems} ON ${purchaseOrderItems.purchaseOrderId} = ${purchaseOrders.id}
         JOIN ${suppliers} ON ${suppliers.id} = ${purchaseOrders.supplierId}

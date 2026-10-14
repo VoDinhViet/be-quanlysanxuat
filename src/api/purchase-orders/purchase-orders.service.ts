@@ -56,6 +56,7 @@ import { UpdatePurchaseOrderReqDto } from './dto/update-purchase-order.req.dto';
 import { PurchaseOrderProgress } from './purchase-orders.constant';
 import {
   calculatePurchaseOrderAmounts,
+  getBilledQuotationQuantityByPurchaseOrderItemId,
   getReceivedQuantityByPurchaseOrderItemId,
   orderAggregateSubquery,
   purchaseOrderGrandTotalSql,
@@ -570,6 +571,8 @@ export class PurchaseOrdersService {
           quotationItemSupplierId: line.quotationItemSupplierId,
           quantity: line.quantity,
           unitPrice: line.unitPrice,
+          quotationUnit: line.quotationUnit,
+          quotationQuantity: line.quotationQuantity,
           quantityAdjustmentReason: line.quantityAdjustmentReason,
         })),
       );
@@ -609,7 +612,15 @@ export class PurchaseOrdersService {
           vatPercent: true,
           otherCost: true,
         },
-        with: { items: { columns: { quantity: true, unitPrice: true } } },
+        with: {
+          items: {
+            columns: {
+              quantity: true,
+              unitPrice: true,
+              quotationQuantity: true,
+            },
+          },
+        },
         where: eq(purchaseOrders.id, purchaseOrderId),
       });
 
@@ -620,10 +631,18 @@ export class PurchaseOrdersService {
         throw new AppException(ErrorCode.E313, HttpStatus.CONFLICT);
       }
 
-      const { totalAmount, balanceDue } = calculatePurchaseOrderAmounts({
+      const estimatedAmounts = calculatePurchaseOrderAmounts({
         ...purchaseOrder,
         advancePaymentAmount: reqDto.advancePaymentAmount,
       });
+      // YCTT đã sinh thì tổng tiền chốt theo số thực nhập (PH-135), không theo số ước tính của PO.
+      const settledTotalAmount =
+        await this.paymentRequestsService.getSettledTotalAmount(
+          tx,
+          purchaseOrderId,
+        );
+      const totalAmount = settledTotalAmount ?? estimatedAmounts.totalAmount;
+      const balanceDue = Math.max(totalAmount - reqDto.advancePaymentAmount, 0);
       if (reqDto.advancePaymentAmount > totalAmount) {
         throw new AppException(ErrorCode.E312, HttpStatus.UNPROCESSABLE_ENTITY);
       }
@@ -653,7 +672,7 @@ export class PurchaseOrdersService {
     await this.ensurePurchaseOrderPendingConfirmation(purchaseOrderId);
 
     const item = await this.db.query.purchaseOrderItems.findFirst({
-      columns: { id: true },
+      columns: { id: true, quotationUnit: true },
       where: and(
         eq(purchaseOrderItems.id, purchaseOrderItemId),
         eq(purchaseOrderItems.purchaseOrderId, purchaseOrderId),
@@ -662,6 +681,10 @@ export class PurchaseOrdersService {
 
     if (!item) {
       throw new AppException(ErrorCode.E123, HttpStatus.NOT_FOUND);
+    }
+    // SL báo giá chỉ có nghĩa khi dòng đã có ĐVBG (đặt từ báo giá của NCC).
+    if (reqDto.quotationQuantity !== undefined && !item.quotationUnit) {
+      throw new AppException(ErrorCode.E316, HttpStatus.UNPROCESSABLE_ENTITY);
     }
 
     if (hasFields(reqDto)) {
@@ -895,8 +918,11 @@ export class PurchaseOrdersService {
     await this.db.transaction(async (tx) => {
       await this.lockOrderForEarlyClose(tx, purchaseOrderId);
 
-      const { lines, receivedQuantityByItemId } =
-        await this.loadLinesWithReceivedQuantity(tx, purchaseOrderId);
+      const {
+        lines,
+        receivedQuantityByItemId,
+        billedQuotationQuantityByItemId,
+      } = await this.loadLinesWithReceivedQuantity(tx, purchaseOrderId);
       const underReceivedLines = lines.filter(
         (line) => (receivedQuantityByItemId.get(line.id) ?? 0) < line.quantity,
       );
@@ -911,6 +937,7 @@ export class PurchaseOrdersService {
         tx,
         underReceivedLines,
         receivedQuantityByItemId,
+        billedQuotationQuantityByItemId,
         reqDto.reason,
       );
 
@@ -974,8 +1001,17 @@ export class PurchaseOrdersService {
         purchaseOrderItemIds: lines.map((line) => line.id),
         statuses: [InventoryDocumentStatus.POSTED],
       });
+    const billedQuotationQuantityByItemId =
+      await getBilledQuotationQuantityByPurchaseOrderItemId(
+        tx,
+        lines.map((line) => line.id),
+      );
 
-    return { lines, receivedQuantityByItemId };
+    return {
+      lines,
+      receivedQuantityByItemId,
+      billedQuotationQuantityByItemId,
+    };
   }
 
   /** Dòng chưa nhận gì bị xoá (FK phiếu nhập `set null`); dòng nhận một phần hạ SL về số đã nhận
@@ -984,6 +1020,7 @@ export class PurchaseOrdersService {
     tx: DbTransaction,
     underReceivedLines: { id: string; quantity: number }[],
     receivedQuantityByItemId: Map<string, number>,
+    billedQuotationQuantityByItemId: Map<string, number>,
     reason: string,
   ): Promise<void> {
     const notReceivedLineIds = underReceivedLines
@@ -1000,10 +1037,17 @@ export class PurchaseOrdersService {
       if (!received) continue;
 
       const note = `Đóng sớm: đặt ${line.quantity}, nhận ${received}. ${reason}`;
+      const billedQuotationQuantity = billedQuotationQuantityByItemId.get(
+        line.id,
+      );
       await tx
         .update(purchaseOrderItems)
         .set({
           quantity: received,
+          // Dòng có ĐVBG: SL báo giá hạ theo SL ĐVBG thực nhận để tổng ước tính khớp.
+          ...(billedQuotationQuantity
+            ? { quotationQuantity: billedQuotationQuantity }
+            : {}),
           quantityAdjustmentReason: note.slice(0, 500),
         })
         .where(eq(purchaseOrderItems.id, line.id));

@@ -698,6 +698,12 @@ export enum ErrorCode {
   E312 = 'purchase_order.error.advance_payment_exceeds_total',
   // Sửa tạm ứng khi PO đã huỷ (YCTT đã chi thì dùng E284).
   E313 = 'purchase_order.error.advance_payment_locked',
+  // NCC báo giá có ĐVBG mà thiếu SL báo giá (hoặc ngược lại), hoặc ĐVBG không tồn tại.
+  E314 = 'purchase_quotation.error.quotation_unit_invalid',
+  // Dòng nhập kho của dòng PO có ĐVBG nhưng chưa nhập SL thực tế theo ĐVBG.
+  E315 = 'inventory_receipt.error.quotation_quantity_required',
+  // Sửa SL báo giá trên dòng PO không có ĐVBG.
+  E316 = 'purchase_order.error.quotation_unit_missing',
   V003 = 'common.error.too_many_requests',
   // `GlobalExceptionFilter` bắt chuỗi "No values to set" của drizzle-orm — mọi `PATCH` khi
   // `ValidationPipe` whitelist đã loại sạch field lạ, còn lại payload rỗng cho `.set()`. Trước đây

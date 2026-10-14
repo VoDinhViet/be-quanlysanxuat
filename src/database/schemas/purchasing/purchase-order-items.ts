@@ -8,6 +8,7 @@ import {
   varchar,
 } from 'drizzle-orm/pg-core';
 
+import { units } from '../units/units';
 import { purchaseRequestItems } from '../purchase-requests/purchase-request-items';
 import { purchaseOrders } from './purchase-orders';
 import { purchaseQuotationItemSuppliers } from './purchase-quotation-item-suppliers';
@@ -41,6 +42,14 @@ export const purchaseOrderItems = pgTable(
       scale: 2,
       mode: 'number',
     }),
+    // ĐVBG + SL báo giá chép từ NCC trúng thầu (PH-135). `quantity` vẫn là SL theo đơn vị chính
+    // (tồn kho, tiến độ); thành tiền ước tính = đơn giá × (quotationQuantity ?? quantity).
+    quotationUnit: varchar('quotation_unit', { length: 50 }),
+    quotationQuantity: numeric('quotation_quantity', {
+      precision: 18,
+      scale: 3,
+      mode: 'number',
+    }),
     // Lý do khi SL đặt khác SL báo giá RFQ (vd mua gộp, tồn tối thiểu NCC) — text tự do. Khi PO
     // sinh từ duyệt RFQ, copy 1:1 từ `purchase_quotation_item_allocations.quantityAdjustmentReason`
     // của đúng phân bổ đó (`PurchaseOrdersService.createPendingOrdersFromQuotation`); PO lập thẳng
@@ -60,7 +69,12 @@ export const purchaseOrderItems = pgTable(
     index('idx_purchase_order_items_quotation_item_supplier_id').on(
       table.quotationItemSupplierId,
     ),
+    
     check('chk_purchase_order_items_quantity_positive', sql`quantity > 0`),
+    check(
+      'chk_purchase_order_items_quotation_unit',
+      sql`(quotation_unit IS NULL AND quotation_quantity IS NULL) OR (quotation_unit IS NOT NULL AND quotation_quantity > 0)`,
+    ),
     check(
       'chk_purchase_order_items_unit_price',
       sql`unit_price IS NULL OR unit_price >= 0`,

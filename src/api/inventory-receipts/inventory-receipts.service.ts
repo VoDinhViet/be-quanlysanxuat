@@ -15,6 +15,7 @@ import {
   or,
   sql,
 } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { DateTime } from 'luxon';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
@@ -379,6 +380,7 @@ export class InventoryReceiptsService {
     // Số "khả dụng" của hệ thống (cùng màn Tồn kho vật tư): join subquery chung vào câu select bên dưới,
     // không phải `onHand − bomDemand` của riêng Job này.
     const available = availableQuantityByItemSubquery(this.db);
+    // ĐVBG của dòng PO tương ứng (PH-135) — alias vì `units` đã join cho đơn vị của dòng phiếu.
 
     const [rows, returnedByItemId] = await Promise.all([
       this.db
@@ -386,11 +388,13 @@ export class InventoryReceiptsService {
           id: inventoryReceiptItems.id,
           quantity: inventoryReceiptItems.quantity,
           unitPrice: inventoryReceiptItems.unitPrice,
+          quotationQuantity: inventoryReceiptItems.quotationQuantity,
           note: inventoryReceiptItems.note,
           item: getTableColumns(items),
           imageFile: getTableColumns(files),
           unit: getTableColumns(units),
           purchaseOrderItem: getTableColumns(purchaseOrderItems),
+          quotationUnit: purchaseOrderItems.quotationUnit,
           ...itemStockColumns(balance, demand),
           available: available.availableQuantity,
         })
@@ -402,6 +406,7 @@ export class InventoryReceiptsService {
           purchaseOrderItems,
           eq(purchaseOrderItems.id, inventoryReceiptItems.purchaseOrderItemId),
         )
+
         .leftJoin(balance, eq(balance.itemId, items.id))
         .leftJoin(demand, eq(demand.itemId, items.id))
         .innerJoin(available, eq(available.itemId, items.id))
@@ -416,6 +421,8 @@ export class InventoryReceiptsService {
       return {
         ...row,
         item: { ...row.item, imageFile },
+        orderedQuotationQuantity:
+          row.purchaseOrderItem?.quotationQuantity ?? null,
         returnedQuantity,
         actualQuantity,
       };
@@ -434,10 +441,11 @@ export class InventoryReceiptsService {
       reqDto.productionJobId,
     );
     await this.ensurePurchaseOrderOrdered(reqDto.purchaseOrderId);
-    await this.ensurePurchaseOrderItemsValid(
-      reqDto.purchaseOrderId,
-      reqDto.items,
-    );
+    const quotationUnitPurchaseOrderItemIds =
+      await this.ensurePurchaseOrderItemsValid(
+        reqDto.purchaseOrderId,
+        reqDto.items,
+      );
     this.ensureOtherReceiptShape(reqDto, reqDto.items);
 
     const { items: itemsToCreate, ...receiptFields } = reqDto;
@@ -461,6 +469,11 @@ export class InventoryReceiptsService {
           ...item,
           receiptId: inventoryReceipt.id,
           unitId: item.unitId ?? baseUnitByItemId.get(item.itemId)!,
+          quotationQuantity:
+            item.purchaseOrderItemId &&
+            quotationUnitPurchaseOrderItemIds.has(item.purchaseOrderItemId)
+              ? item.quotationQuantity
+              : undefined,
         })),
       );
 
@@ -487,10 +500,11 @@ export class InventoryReceiptsService {
       reqDto.productionJobId ?? inventoryReceipt.productionJobId,
     );
     await this.ensurePurchaseOrderOrdered(reqDto.purchaseOrderId);
-    await this.ensurePurchaseOrderItemsValid(
-      reqDto.purchaseOrderId ?? inventoryReceipt.purchaseOrderId,
-      reqDto.items,
-    );
+    const quotationUnitPurchaseOrderItemIds =
+      await this.ensurePurchaseOrderItemsValid(
+        reqDto.purchaseOrderId ?? inventoryReceipt.purchaseOrderId,
+        reqDto.items,
+      );
 
     const effective = {
       receiptType: reqDto.receiptType ?? inventoryReceipt.receiptType,
@@ -526,6 +540,11 @@ export class InventoryReceiptsService {
           ...item,
           receiptId,
           unitId: item.unitId ?? baseUnitByItemId.get(item.itemId)!,
+          quotationQuantity:
+            item.purchaseOrderItemId &&
+            quotationUnitPurchaseOrderItemIds.has(item.purchaseOrderItemId)
+              ? item.quotationQuantity
+              : undefined,
         })),
       );
     });
@@ -1047,7 +1066,7 @@ export class InventoryReceiptsService {
   private async ensurePurchaseOrderItemsValid(
     purchaseOrderId: string | null | undefined,
     itemsToValidate: InventoryReceiptItemReqDto[],
-  ): Promise<void> {
+  ): Promise<Set<string>> {
     const purchaseOrderItemIds = [
       ...new Set(
         itemsToValidate
@@ -1057,14 +1076,14 @@ export class InventoryReceiptsService {
     ];
 
     if (!purchaseOrderItemIds.length) {
-      return;
+      return new Set();
     }
     if (!purchaseOrderId) {
       throw new AppException(ErrorCode.E127, HttpStatus.BAD_REQUEST);
     }
 
     const found = await this.db.query.purchaseOrderItems.findMany({
-      columns: { id: true, purchaseOrderId: true },
+      columns: { id: true, purchaseOrderId: true, quotationUnit: true },
       where: inArray(purchaseOrderItems.id, purchaseOrderItemIds),
     });
     const foundById = new Map(found.map((item) => [item.id, item]));
@@ -1078,6 +1097,22 @@ export class InventoryReceiptsService {
         throw new AppException(ErrorCode.E127, HttpStatus.BAD_REQUEST);
       }
     }
+
+    // Dòng PO có ĐVBG thì dòng phiếu nhập phải ghi SL thực tế theo ĐVBG (PH-135, E315).
+    const quotationUnitPurchaseOrderItemIds = new Set(
+      found.filter((item) => item.quotationUnit).map((item) => item.id),
+    );
+    for (const item of itemsToValidate) {
+      if (
+        item.purchaseOrderItemId &&
+        quotationUnitPurchaseOrderItemIds.has(item.purchaseOrderItemId) &&
+        item.quotationQuantity === undefined
+      ) {
+        throw new AppException(ErrorCode.E315, HttpStatus.UNPROCESSABLE_ENTITY);
+      }
+    }
+
+    return quotationUnitPurchaseOrderItemIds;
   }
 
   /** SL cộng dồn mọi phiếu đã `confirm` (`PENDING_IQC`/`IQC_COMPLETED`/`PENDING_RECEIPT`/`POSTED`,
