@@ -17,6 +17,7 @@ export interface PaymentRequestExport {
   paidAt: Date | null;
   cancellationReason: string | null;
   supplierInvoiceNo: string | null;
+  isUrgent: boolean;
   note: string | null;
   creatorName: string | null;
   createdAt: Date;
@@ -47,6 +48,10 @@ export const PAYMENT_REQUEST_EXPORT_COLUMNS: ExcelColumn<PaymentRequestExport>[]
     },
     { header: 'Lý do phát sinh', value: (row) => row.extraCostNote ?? '' },
     { header: 'Hạn thanh toán', value: (row) => formatVnDate(row.dueDate) },
+    {
+      header: 'Mức độ',
+      value: (row) => (row.isUrgent ? 'Gấp' : 'Bình thường'),
+    },
     {
       header: 'Trạng thái',
       value: (row) => PAYMENT_REQUEST_STATUS_LABELS[row.status],

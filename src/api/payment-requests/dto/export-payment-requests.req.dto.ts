@@ -1,5 +1,6 @@
 import { PaymentRequestStatus } from '../../../database/schemas';
 import {
+  BooleanFieldOptional,
   DateFieldOptional,
   EnumFieldOptional,
   StringFieldOptional,
@@ -18,6 +19,11 @@ export class ExportPaymentRequestsReqDto {
 
   @EnumFieldOptional(() => PaymentRequestStatus)
   readonly status?: PaymentRequestStatus;
+
+  @BooleanFieldOptional({
+    description: 'Filter: true = chỉ YCTT gấp, false = chỉ YCTT bình thường',
+  })
+  readonly isUrgent?: boolean;
 
   @DateFieldOptional({ description: 'Filter: ngày tạo >= startDate' })
   readonly startDate?: Date;

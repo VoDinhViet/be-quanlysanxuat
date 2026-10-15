@@ -1,6 +1,7 @@
 import { PaymentRequestStatus } from '../../../database/schemas';
 import { PageOptionsDto } from '../../../common/dto/offset-pagination/page-options.dto';
 import {
+  BooleanFieldOptional,
   DateFieldOptional,
   EnumFieldOptional,
   StringFieldOptional,
@@ -16,6 +17,11 @@ export class GetPaymentRequestsReqDto extends PageOptionsDto {
 
   @EnumFieldOptional(() => PaymentRequestStatus)
   readonly status?: PaymentRequestStatus;
+
+  @BooleanFieldOptional({
+    description: 'Filter: true = chỉ YCTT gấp, false = chỉ YCTT bình thường',
+  })
+  readonly isUrgent?: boolean;
 
   @DateFieldOptional({ description: 'Filter: ngày tạo >= startDate' })
   readonly startDate?: Date;

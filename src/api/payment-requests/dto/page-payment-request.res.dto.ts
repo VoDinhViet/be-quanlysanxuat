@@ -2,6 +2,7 @@ import { Exclude, Expose } from 'class-transformer';
 
 import { PaymentRequestStatus } from '../../../database/schemas';
 import {
+  BooleanField,
   ClassField,
   DateField,
   EnumField,
@@ -67,6 +68,12 @@ export class PagePaymentRequestResDto {
     description: 'Số hóa đơn của NCC do người dùng nhập',
   })
   supplierInvoiceNo!: string | null;
+
+  @Expose()
+  @BooleanField({
+    description: 'true = yêu cầu thanh toán gấp, false = bình thường',
+  })
+  isUrgent!: boolean;
 
   @Expose()
   @EnumField(() => PaymentRequestStatus)

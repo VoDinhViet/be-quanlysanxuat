@@ -1,5 +1,6 @@
 import { relations, sql } from 'drizzle-orm';
 import {
+  boolean,
   check,
   date,
   index,
@@ -83,6 +84,8 @@ export const paymentRequests = pgTable(
     // Số hóa đơn của NCC do người dùng tự nhập (PH-130), để đối chiếu/truy xuất hóa đơn.
     supplierInvoiceNo: varchar('supplier_invoice_no', { length: 100 }),
     note: varchar('note', { length: 1000 }),
+    // Đánh dấu YCTT gấp (PH-133) để kế toán ưu tiên thanh toán trước; mặc định bình thường.
+    isUrgent: boolean('is_urgent').notNull().default(false),
     createdBy: uuid('created_by').references(() => users.id, {
       onDelete: 'set null',
     }),

@@ -24,6 +24,7 @@ import { GetPaymentRequestsReqDto } from './dto/get-payment-requests.req.dto';
 import { PagePaymentRequestResDto } from './dto/page-payment-request.res.dto';
 import { PaymentRequestLogResDto } from './dto/payment-request-log.res.dto';
 import { PaymentRequestResDto } from './dto/payment-request.res.dto';
+import { UpdatePaymentRequestUrgencyReqDto } from './dto/update-payment-request-urgency.req.dto';
 import { UpdatePaymentRequestInvoiceReqDto } from './dto/update-payment-request-invoice.req.dto';
 import { UpdatePaymentRequestNoteReqDto } from './dto/update-payment-request-note.req.dto';
 import { UpdatePaymentRequestExtraCostReqDto } from './dto/update-payment-request-extra-cost.req.dto';
@@ -120,6 +121,22 @@ export class PaymentRequestsController {
     @Body() reqDto: UpdatePaymentRequestNoteReqDto,
   ): Promise<void> {
     return this.paymentRequestsService.updatePaymentRequestNote(
+      paymentRequestId,
+      reqDto,
+    );
+  }
+
+  @Patch(':paymentRequestId/urgency')
+  @Permissions('purchasing:update')
+  @ApiAuth({
+    summary: 'Đánh dấu yêu cầu thanh toán gấp / bình thường — chỉ khi PENDING',
+    statusCode: HttpStatus.NO_CONTENT,
+  })
+  updatePaymentRequestUrgency(
+    @UUIDParam('paymentRequestId') paymentRequestId: string,
+    @Body() reqDto: UpdatePaymentRequestUrgencyReqDto,
+  ): Promise<void> {
+    return this.paymentRequestsService.updatePaymentRequestUrgency(
       paymentRequestId,
       reqDto,
     );

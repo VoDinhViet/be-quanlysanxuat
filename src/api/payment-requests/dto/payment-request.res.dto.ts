@@ -2,6 +2,7 @@ import { Exclude, Expose } from 'class-transformer';
 
 import { PaymentRequestStatus } from '../../../database/schemas';
 import {
+  BooleanField,
   ClassField,
   ClassFieldOptional,
   DateField,
@@ -83,6 +84,11 @@ export class PaymentRequestResDto extends PurchaseOrderAmountsResDto {
   @Expose()
   @StringFieldOptional({ nullable: true })
   supplierInvoiceNo!: string | null;
+
+  /** Đánh dấu yêu cầu thanh toán gấp (PH-133). */
+  @Expose()
+  @BooleanField()
+  isUrgent!: boolean;
 
   /** Ghi chú chung của đơn mua, đọc trực tiếp từ PO nên đổi theo khi PO sửa ghi chú. */
   @Expose()

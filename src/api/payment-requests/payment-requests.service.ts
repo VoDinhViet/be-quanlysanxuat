@@ -48,6 +48,7 @@ import {
 } from '../purchase-orders/purchase-orders.query';
 import { CancelPaymentRequestReqDto } from './dto/cancel-payment-request.req.dto';
 import { UpdatePaymentRequestInvoiceReqDto } from './dto/update-payment-request-invoice.req.dto';
+import { UpdatePaymentRequestUrgencyReqDto } from './dto/update-payment-request-urgency.req.dto';
 import { UpdatePaymentRequestNoteReqDto } from './dto/update-payment-request-note.req.dto';
 import { UpdatePaymentRequestExtraCostReqDto } from './dto/update-payment-request-extra-cost.req.dto';
 import { ExportPaymentRequestsReqDto } from './dto/export-payment-requests.req.dto';
@@ -94,6 +95,9 @@ export class PaymentRequestsService {
         ? eq(purchaseOrders.supplierId, reqDto.supplierId)
         : undefined,
       reqDto.status ? eq(paymentRequests.status, reqDto.status) : undefined,
+      reqDto.isUrgent !== undefined
+        ? eq(paymentRequests.isUrgent, reqDto.isUrgent)
+        : undefined,
       reqDto.startDate
         ? gte(paymentRequests.createdAt, reqDto.startDate)
         : undefined,
@@ -125,6 +129,7 @@ export class PaymentRequestsService {
           extraCost: paymentRequests.extraCost,
           extraCostNote: paymentRequests.extraCostNote,
           supplierInvoiceNo: paymentRequests.supplierInvoiceNo,
+          isUrgent: paymentRequests.isUrgent,
           status: paymentRequests.status,
           createdAt: paymentRequests.createdAt,
         })
@@ -182,6 +187,9 @@ export class PaymentRequestsService {
         ? eq(purchaseOrders.supplierId, reqDto.supplierId)
         : undefined,
       reqDto.status ? eq(paymentRequests.status, reqDto.status) : undefined,
+      reqDto.isUrgent !== undefined
+        ? eq(paymentRequests.isUrgent, reqDto.isUrgent)
+        : undefined,
       reqDto.startDate
         ? gte(paymentRequests.createdAt, reqDto.startDate)
         : undefined,
@@ -206,6 +214,7 @@ export class PaymentRequestsService {
         paidAt: paymentRequests.paidAt,
         cancellationReason: paymentRequests.cancellationReason,
         supplierInvoiceNo: paymentRequests.supplierInvoiceNo,
+        isUrgent: paymentRequests.isUrgent,
         note: sql<
           string | null
         >`coalesce(${paymentRequests.note}, ${purchaseOrders.note})`,
@@ -457,6 +466,20 @@ export class PaymentRequestsService {
     await this.db
       .update(paymentRequests)
       .set({ note: reqDto.note?.trim() || null })
+      .where(eq(paymentRequests.id, paymentRequestId));
+  }
+
+  /** Đánh dấu YCTT gấp / bình thường (PH-133); chỉ đổi được khi còn `PENDING` vì sau khi chi hoặc huỷ
+   * thì mức độ ưu tiên không còn ý nghĩa. */
+  async updatePaymentRequestUrgency(
+    paymentRequestId: string,
+    reqDto: UpdatePaymentRequestUrgencyReqDto,
+  ): Promise<void> {
+    await this.ensurePaymentRequestPending(paymentRequestId);
+
+    await this.db
+      .update(paymentRequests)
+      .set({ isUrgent: reqDto.isUrgent })
       .where(eq(paymentRequests.id, paymentRequestId));
   }
 

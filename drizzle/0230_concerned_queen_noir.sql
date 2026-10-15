@@ -1,0 +1,1 @@
+ALTER TABLE "payment_requests" ADD COLUMN "is_urgent" boolean DEFAULT false NOT NULL;
