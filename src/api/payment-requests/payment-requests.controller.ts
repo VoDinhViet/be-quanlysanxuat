@@ -25,6 +25,7 @@ import { PagePaymentRequestResDto } from './dto/page-payment-request.res.dto';
 import { PaymentRequestLogResDto } from './dto/payment-request-log.res.dto';
 import { PaymentRequestResDto } from './dto/payment-request.res.dto';
 import { UpdatePaymentRequestInvoiceReqDto } from './dto/update-payment-request-invoice.req.dto';
+import { UpdatePaymentRequestExtraCostReqDto } from './dto/update-payment-request-extra-cost.req.dto';
 import { PaymentRequestsService } from './payment-requests.service';
 
 @ApiTags('Payment Requests')
@@ -103,6 +104,25 @@ export class PaymentRequestsController {
     return this.paymentRequestsService.updatePaymentRequestInvoice(
       paymentRequestId,
       reqDto,
+    );
+  }
+
+  @Patch(':paymentRequestId/extra-cost')
+  @Permissions('purchasing:update')
+  @ApiAuth({
+    summary:
+      'Nhập/sửa chi phí phát sinh sau đặt hàng của yêu cầu thanh toán — chỉ khi PENDING',
+    statusCode: HttpStatus.NO_CONTENT,
+  })
+  updatePaymentRequestExtraCost(
+    @UUIDParam('paymentRequestId') paymentRequestId: string,
+    @Body() reqDto: UpdatePaymentRequestExtraCostReqDto,
+    @CurrentUser() payload: JwtPayloadType,
+  ): Promise<void> {
+    return this.paymentRequestsService.updatePaymentRequestExtraCost(
+      paymentRequestId,
+      reqDto,
+      payload.userId,
     );
   }
 

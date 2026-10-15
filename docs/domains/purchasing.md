@@ -152,10 +152,10 @@ PO có `advancePaymentAmount` (mặc định 0) và `advancePaymentNote`. Công 
 
 1. Không thấy PO: `E121`; PO `CANCELLED`: `E313`.
 2. `advancePaymentAmount` > tổng tiền PO: `E312`.
-3. YCTT của PO `PAID`: `E284` (đã chi thì khoá). YCTT `PENDING`: cập nhật `advancePaymentAmount` và `requestedAmount = balanceDue`, ghi log `ADVANCE_PAYMENT_UPDATED`. Không có YCTT hoặc `CANCELLED`: bỏ qua.
+3. YCTT của PO `PAID`: `E284` (đã chi thì khoá). YCTT `PENDING`: cập nhật `advancePaymentAmount` và `requestedAmount = balanceDue + extraCost` (chi phí phát sinh PH-131 giữ nguyên), ghi log `ADVANCE_PAYMENT_UPDATED`. Không có YCTT hoặc `CANCELLED`: bỏ qua.
 4. Cập nhật PO.
 
-Khi YCTT sinh hoặc hồi sinh, `requestedAmount` = `balanceDue` và `advancePaymentAmount` được chụp từ PO; `purchaseOrderTotalAmount` trả về = `requestedAmount + advancePaymentAmount`. Đóng sớm PO làm tổng giảm dưới tạm ứng thì `balanceDue` kẹp 0, không chặn.
+Khi YCTT sinh hoặc hồi sinh, `requestedAmount` = `balanceDue` và `advancePaymentAmount` được chụp từ PO; `purchaseOrderTotalAmount` trả về = `requestedAmount + advancePaymentAmount − extraCost` (tổng tiền hàng, không gồm phát sinh; kiểm `E312` cũng theo số này). Đóng sớm PO làm tổng giảm dưới tạm ứng thì `balanceDue` kẹp 0, không chặn.
 
 ## Phiếu nhập kho và yêu cầu thanh toán
 
@@ -163,9 +163,9 @@ Phiếu nhập thuộc nhóm inventory; ở đây chỉ nêu phần nối vào m
 
 ### Yêu cầu thanh toán (YCTT) — `/payment-requests`
 
-Bảng `payment_requests`: một dòng đúng một PO (`purchaseOrderId` unique), `requestedAmount` là ảnh chụp số còn phải thanh toán lúc tạo (tiền hàng + VAT + chi phí khác − tạm ứng NCC), `dueDate` = ngày đặt + kỳ hạn của PO (`IMMEDIATE` 0 ngày, `NET_15`, `NET_30`, `NET_60`). Nhật ký ở `payment_request_logs` (`CREATED`, `PAID`, `CANCELLED`, `ADVANCE_PAYMENT_UPDATED`).
+Bảng `payment_requests`: một dòng đúng một PO (`purchaseOrderId` unique), `requestedAmount` là ảnh chụp số còn phải thanh toán lúc tạo (tiền hàng + VAT + chi phí khác − tạm ứng NCC), `dueDate` = ngày đặt + kỳ hạn của PO (`IMMEDIATE` 0 ngày, `NET_15`, `NET_30`, `NET_60`). Nhật ký ở `payment_request_logs` (`CREATED`, `PAID`, `CANCELLED`, `ADVANCE_PAYMENT_UPDATED`, `EXTRA_COST_UPDATED`).
 
-Tự sinh khi ghi sổ một phiếu nhập làm PO **nhận đủ** (`createIfOrderCompleted`): PO phải còn `ORDERED`, có `paymentTerm`, có dòng, và SL nhận ≥ SL đặt. Khi đóng sớm PO cũng gọi hàm này. Đã có YCTT `PENDING` hoặc `PAID` thì bỏ qua; có YCTT `CANCELLED` thì **hồi sinh** bản ghi đó (về `PENDING`, cập nhật giá trị và hạn, ghi log `CREATED`).
+Tự sinh khi ghi sổ một phiếu nhập làm PO **nhận đủ** (`createIfOrderCompleted`): PO phải còn `ORDERED`, có `paymentTerm`, có dòng, và SL nhận ≥ SL đặt. Khi đóng sớm PO cũng gọi hàm này. Đã có YCTT `PENDING` hoặc `PAID` thì bỏ qua; có YCTT `CANCELLED` thì **hồi sinh** bản ghi đó (về `PENDING`, cập nhật giá trị và hạn, xoá chi phí phát sinh về 0, ghi log `CREATED`).
 
 ```mermaid
 stateDiagram-v2
@@ -184,6 +184,8 @@ stateDiagram-v2
 Sai trạng thái ở `mark-paid`/`cancel` trả `E158`.
 
 **Số hóa đơn NCC (PH-130).** `payment_requests.supplierInvoiceNo` (varchar 100) do người dùng tự nhập để truy xuất hóa đơn. `PATCH /payment-requests/:id/invoice` (`purchasing:update`, 204), body `{ supplierInvoiceNo? }` (rỗng hoặc null là xoá, tự trim); sửa được ở mọi trạng thái trừ `CANCELLED` (`E158`), không thấy YCTT thì `E157`. Không ghi `payment_request_logs`. Trả ở list và chi tiết, tìm được bằng `q` của list/export, có cột "Số hóa đơn" trong Excel. Ghi chú chung của PO (`purchaseOrderNote`) đọc trực tiếp từ `purchase_orders.note` ở chi tiết, bản in và Excel (PH-129).
+
+**Chi phí phát sinh sau đặt hàng (PH-131).** `payment_requests.extraCost` (numeric, mặc định 0) và `extraCostNote` (varchar 1000) cho khoản phát sinh như giao ngoài giờ, bốc dỡ. `PATCH /payment-requests/:id/extra-cost` (`purchasing:update`, 204), body `{ extraCost? ≥ 0, extraCostNote? ≤ 1000 }` (bỏ trống `extraCost` coi như 0), chỉ khi YCTT `PENDING` (sai trạng thái `E158`, không thấy `E157`). Tính lại `requestedAmount = max(tổng tiền hàng theo số thực nhập − tạm ứng, 0) + extraCost` và ghi log `EXTRA_COST_UPDATED`. Trả ở list, chi tiết và Excel (cột "Chi phí phát sinh", "Lý do phát sinh").
 
 **Việc chờ ở menu.** YCTT `PENDING` chính là "việc chờ" của người phụ trách thanh toán: `GET /reports/pending-approvals` trả thêm `paymentRequestsPending` = số YCTT `PENDING`, **không gate theo quyền** (cùng cách `inventoryReceiptsToPost`) — menu "Yêu cầu thanh toán" hiện số này cho mọi người vào được màn đó. Số giảm khi YCTT chuyển `PAID`/`CANCELLED`, tăng khi PO nhận đủ làm sinh (hoặc hồi sinh) YCTT; FE làm mới số này theo chu kỳ 60 giây và ngay sau mark-paid/cancel.
 

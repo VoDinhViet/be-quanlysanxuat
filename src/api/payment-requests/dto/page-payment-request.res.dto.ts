@@ -49,6 +49,19 @@ export class PagePaymentRequestResDto {
   requestedAmount!: number;
 
   @Expose()
+  @NumberField({
+    description: 'Chi phí phát sinh thêm sau khi đặt hàng (VND)',
+  })
+  extraCost!: number;
+
+  @Expose()
+  @StringFieldOptional({
+    nullable: true,
+    description: 'Diễn giải / lý do chi phí phát sinh sau đặt hàng',
+  })
+  extraCostNote?: string | null;
+
+  @Expose()
   @StringFieldOptional({
     nullable: true,
     description: 'Số hóa đơn của NCC do người dùng nhập',

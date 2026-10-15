@@ -58,6 +58,15 @@ export const paymentRequests = pgTable(
     })
       .notNull()
       .default(0),
+    // Chi phí phát sinh sau khi đặt hàng (giao hàng ngoài giờ, bốc dỡ, lưu bãi...); mặc định 0.
+    extraCost: numeric('extra_cost', {
+      precision: 18,
+      scale: 2,
+      mode: 'number',
+    })
+      .notNull()
+      .default(0),
+    extraCostNote: varchar('extra_cost_note', { length: 1000 }),
     dueDate: date('due_date', { mode: 'date' }).notNull(),
     status: paymentRequestStatusEnum('status')
       .notNull()

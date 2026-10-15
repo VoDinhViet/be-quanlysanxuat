@@ -10,6 +10,8 @@ export interface PaymentRequestExport {
   poCode: string;
   supplier: { name: string; code: string };
   requestedAmount: number;
+  extraCost: number;
+  extraCostNote?: string | null;
   dueDate: Date;
   status: PaymentRequestStatus;
   paidAt: Date | null;
@@ -38,6 +40,12 @@ export const PAYMENT_REQUEST_EXPORT_COLUMNS: ExcelColumn<PaymentRequestExport>[]
       value: (row) => row.requestedAmount,
       numFmt: '#,##0',
     },
+    {
+      header: 'Chi phí phát sinh',
+      value: (row) => row.extraCost,
+      numFmt: '#,##0',
+    },
+    { header: 'Lý do phát sinh', value: (row) => row.extraCostNote ?? '' },
     { header: 'Hạn thanh toán', value: (row) => formatVnDate(row.dueDate) },
     {
       header: 'Trạng thái',

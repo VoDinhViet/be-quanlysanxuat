@@ -46,9 +46,22 @@ export class PaymentRequestResDto extends PurchaseOrderAmountsResDto {
   @Expose()
   @NumberField({
     description:
-      'Số đề nghị chi = tổng tiền PO (tiền hàng + VAT + chi phí khác) − tạm ứng, chốt lúc sinh/cập nhật tạm ứng',
+      'Số đề nghị chi = tổng tiền PO (tiền hàng + VAT + chi phí khác) − tạm ứng + phát sinh',
   })
   requestedAmount!: number;
+
+  @Expose()
+  @NumberField({
+    description: 'Chi phí phát sinh thêm sau khi đặt hàng (VND)',
+  })
+  extraCost!: number;
+
+  @Expose()
+  @StringFieldOptional({
+    nullable: true,
+    description: 'Diễn giải / lý do chi phí phát sinh sau đặt hàng',
+  })
+  extraCostNote?: string | null;
 
   @Expose()
   @DateField({ description: 'Hạn thanh toán = orderDate của PO + paymentTerm' })
