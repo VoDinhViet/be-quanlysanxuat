@@ -64,10 +64,9 @@ export function deliveredQuantityByOrderItemSubquery(db: Database) {
 }
 
 /** Với mỗi item, phần nhu cầu đơn đang mở chưa giao. "Mở" nghĩa là đã qua cổng duyệt
- * (`AWAITING_PRODUCTION`/`IN_PROGRESS`) — đơn `DRAFT`/`PENDING_CONFIRMATION` chưa được Giám đốc
- * duyệt nên chưa tính vào đây. `excludeOrderId` loại một đơn khỏi nhu cầu khi tính Khả dụng cho
- * chính đơn đó — đơn này đã tự tính vào nhu cầu nên không loại trừ sẽ bị trừ hai lần; chỉ
- * `ProductionOrdersService` truyền tham số này. Tên hàm cố ý không dùng chữ "reserved" — khác khái
+ * (`AWAITING_PRODUCTION`/`IN_PROGRESS`); đơn `DRAFT`/`PENDING_CONFIRMATION` chưa tính.
+ * `excludeOrderId` loại một đơn khỏi nhu cầu khi tính khả dụng cho chính đơn đó, nếu không sẽ bị
+ * trừ hai lần (chỉ `ProductionOrdersService` truyền). Tên không dùng chữ "reserved" vì khác khái
  * niệm "đã có chứng từ giữ" ở `inventory-products.service.ts` (`docs/CODEMAPS/inventory.md`). */
 export function openOrderDemandByItemSubquery(
   db: Database,

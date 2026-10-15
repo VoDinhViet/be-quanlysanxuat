@@ -7,9 +7,8 @@ import {
 } from '../../../decorators/field.decorators';
 import { OutboundOrderItemReqDto } from './outbound-order-item.req.dto';
 
-// Chỉ hợp lệ khi phiếu còn DRAFT (E259, BUG-090). `clientId` không có ở đây — bất biến ("1 phiếu
-// = 1 khách hàng", xem entity `outbound_orders`). Tái dùng nguyên `OutboundOrderItemReqDto` cho
-// items — replace-all, phải gửi lại toàn bộ dòng.
+// Chỉ hợp lệ khi phiếu còn DRAFT (`E259`). Không có `clientId` vì bất biến (1 phiếu = 1 khách
+// hàng, xem `outbound_orders`). `items` là replace-all, phải gửi lại toàn bộ dòng.
 export class UpdateOutboundOrderReqDto {
   @DateFieldOptional({ description: 'Ngày giao' })
   readonly fulfillmentDate?: Date;

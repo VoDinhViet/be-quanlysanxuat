@@ -15,14 +15,13 @@ import { productionJobOperationReportFiles } from './production-job-operation-re
 import { productionJobOperations } from './production-job-operations';
 
 /**
- * Nhật ký báo cáo hoàn thành **từng lần** của một công đoạn (`production_job_operations`),
- * append-only — ghi bởi `ProductionExecutionService.createJobOperationReport`. Business rule (cộng
- * dồn, vì sao có thể lệch cột cộng dồn): `docs/CODEMAPS/production.md`.
+ * Nhật ký từng lần báo cáo hoàn thành của một công đoạn (`production_job_operations`),
+ * append-only, ghi bởi `ProductionExecutionService.createJobOperationReport`. Xem
+ * `docs/CODEMAPS/production.md`.
  *
- * Rules:
- * - `completedQuantityDelta`/`rejectedQuantityDelta` là số **cộng thêm** của riêng lần báo cáo
- *   này, không phải giá trị tuyệt đối — khác hẳn `production_job_operations.completedQuantity`/
- *   `rejectedQuantity` (giá trị cộng dồn tại thời điểm đọc).
+ * `completedQuantityDelta`/`rejectedQuantityDelta` là số **cộng thêm** của riêng lần báo cáo này,
+ * không phải giá trị tuyệt đối như `production_job_operations.completedQuantity`/`rejectedQuantity`
+ * (cộng dồn).
  */
 export const productionJobOperationReports = pgTable(
   'production_job_operation_reports',

@@ -29,8 +29,8 @@ export const ncrCostKindEnum = pgEnum('ncr_cost_kind', [
   NcrCostKind.OTHER,
 ]);
 
-/** Dòng dự toán chi phí của NCR — vật tư gợi ý từ BOM × đơn giá mua gần nhất, các khoản còn lại
- * nhập tay; `amount` = `quantity × unitPrice` do service tính. */
+/** Dòng dự toán chi phí của NCR, nhập tay; `amount` = `quantity × unitPrice` do `saveCostLines`
+ * tính. `isSuggested` chưa có đường ghi nào đặt `true`. */
 export const ncrCostLines = pgTable(
   'ncr_cost_lines',
   {

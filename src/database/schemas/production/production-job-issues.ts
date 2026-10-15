@@ -16,38 +16,34 @@ import { productionJobs } from './production-jobs';
 import { productionJobUnits } from './production-job-units';
 
 /**
- * Danh sách vật tư của một Job — khởi tạo bằng cách gộp `production_job_bom_items.plannedQuantity`
- * (đã nổ cấp) theo vật tư, dựng lúc tạo Job (`ProductionJobsService.createJobs` →
- * `createJobSnapshot`) và chụp lại được khi còn `PENDING` (`reloadSnapshot`). Job `PENDING` còn
- * sửa tay được: thêm/sửa/xoá dòng (`production-job-issues.query.ts`, chỉ tác động Job đó,
+ * Danh sách vật tư của một Job — gộp `production_job_bom_items.plannedQuantity` (đã nổ cấp) theo
+ * vật tư, dựng lúc tạo Job (`createJobs` → `createJobSnapshot`) và chụp lại được khi còn `PENDING`
+ * (`reloadSnapshot`). Job `PENDING` còn sửa tay thêm/sửa/xoá dòng (`production-job-issues.query.ts`,
  * đóng dấu `production_jobs.snapshotEditedAt`); từ `IN_PROGRESS` khoá hẳn. Sau snapshot đây là
- * nguồn duy nhất cho nhu cầu vật tư: `startJob` (vật tư thiếu), `bomDemand` của Inventory/Purchase
- * Requests, phiếu lãnh và `GET /production-jobs/:jobId/bom` — cây `production_job_bom_items` có
- * thể lệch với bảng này sau khi sửa tay. Xem `docs/CODEMAPS/production.md`, "Chuẩn nổ cấp BOM" ở
+ * nguồn duy nhất cho nhu cầu vật tư (`startJob` tính thiếu, `bomDemand` của Inventory/Purchase
+ * Requests, phiếu lãnh, `GET /production-jobs/:jobId/bom`); cây `production_job_bom_items` có thể
+ * lệch với bảng này sau khi sửa tay. Xem `docs/CODEMAPS/production.md`,
  * `docs/CODEMAPS/product-structure.md`.
  *
  * Rules:
- * - `unitQty` là định mức BOM lúc duyệt, **bất biến**. NULL cho dòng người dùng thêm tay
- *   (ngoài BOM) — không có định mức gốc.
- * - Mã/tên vật tư và mã/tên ĐVT **không nằm trên dòng này** — tách sang hai bảng chiều dùng chung
- *   `productionJobItems`/`productionJobUnits` (SCD type-2, khoá theo bộ ba nội dung, xem doc
- *   comment hai bảng đó). Hai FK **song song**, hai bảng chiều không tham chiếu nhau: đổi tên vật
- *   tư chỉ sinh dòng mới bên `productionJobItems`, đổi tên ĐVT chỉ sinh dòng mới bên
- *   `productionJobUnits`. Cả hai `NOT NULL` + `restrict` — dòng chiều đang được dòng này (và có
- *   thể nhiều Job khác) trỏ tới, không được xoá, và tuyệt đối không được `UPDATE`.
- * - `itemId` vẫn là liên kết tham khảo tới item **sống** (`set null` khi bị xoá) — cố ý khác
- *   `productionJobItems.itemId` (`restrict`): ở đây nó là liên kết, ở kia nó là một phần khoá định
- *   danh. `getShortageItems`/`jobIssueDemandSubquery` đọc cột này, tự bỏ qua dòng NULL.
- * - `imageFileId` copy thẳng ảnh vật tư lúc duyệt và **ở lại dòng này**, không lên bảng chiều — ảnh
- *   không nằm trong khoá bộ ba, đưa lên đó sẽ vô định khi hai Job cùng bộ ba mà khác ảnh. `files`
- *   là registry ghi-một-lần nên an toàn giữ dạng liên kết sống.
- * - Unique `(productionJobId, itemId)` giữ theo item **sống**, không theo `productionJobItemId` —
- *   hai dòng chiều khác nhau của cùng một item (hai phiên bản tên) sẽ lọt qua khoá kia, không lọt
- *   qua khoá này. "Một vật tư đúng một dòng cho mỗi Job". `itemId` nullable (`set null`) về lý
- *   thuyết làm unique mất hiệu lực nếu có ≥ 2 dòng cùng item bị NULL hoá (Postgres coi NULL là
- *   distinct) — chấp nhận được vì `items` **không có route hard-delete** (chỉ soft-delete qua
- *   `deletedAt`), nên nhánh `set null` trên thực tế không bao giờ chạy.
- * - Không `updatedAt` — sửa số lượng ghi vết ở `production_job_logs` (`ITEMS_EDITED`).
+ * - `unitQty` là định mức BOM lúc dựng snapshot, **bất biến**; NULL cho dòng người dùng thêm tay
+ *   (ngoài BOM).
+ * - Mã/tên vật tư và ĐVT không nằm trên dòng này mà ở hai bảng chiều dùng chung
+ *   `productionJobItems`/`productionJobUnits` (SCD type-2). Hai FK **song song** (hai bảng chiều
+ *   không tham chiếu nhau): đổi tên vật tư chỉ sinh dòng mới ở bảng vật tư, đổi tên ĐVT chỉ sinh
+ *   dòng mới ở bảng ĐVT. Cả hai `NOT NULL` + `restrict`: dòng chiều đang được tham chiếu không
+ *   được xoá hay `UPDATE`.
+ * - `itemId` là liên kết tham khảo tới item **sống** (`set null` khi bị xoá), cố ý khác
+ *   `productionJobItems.itemId` (`restrict`, là một phần khoá định danh). `getShortageItems` đọc
+ *   cột này và bỏ qua dòng NULL.
+ * - `imageFileId` copy ảnh vật tư lúc dựng và **ở lại dòng này**, không lên bảng chiều: ảnh không
+ *   nằm trong khoá bộ ba, đưa lên đó sẽ vô định khi hai Job cùng bộ ba mà khác ảnh.
+ * - Unique `(productionJobId, itemId)` theo item **sống**, không theo `productionJobItemId`: hai
+ *   dòng chiều khác nhau của cùng một item (hai phiên bản tên) lọt qua khoá kia, không lọt qua khoá
+ *   này. `itemId` nullable nên về lý thuyết unique mất hiệu lực nếu ≥ 2 dòng bị `set null` (NULL là
+ *   distinct); chấp nhận được vì `items` không có route hard-delete (chỉ soft-delete), nhánh
+ *   `set null` thực tế không chạy.
+ * - Không `updatedAt`: sửa số lượng ghi vết ở `production_job_logs` (`ITEMS_EDITED`).
  */
 export const productionJobIssues = pgTable(
   'production_job_issues',

@@ -13,9 +13,8 @@ class RequisitionOrderResDto extends PickType(OrderResDto, [
   'buyerPoNo',
 ] as const) {}
 
-/** `ProductionOrderRefResDto` (dùng chung) chỉ có `id`/`code` (mã LSX) — phiếu lãnh cần thêm đơn
- * hàng nguồn (mã SO + số PO khách), nên không tái dùng được, phải khai riêng ở đây thay vì đè lên
- * DTO dùng chung. */
+/** `ProductionOrderRefResDto` chỉ có `id`/`code` (mã LSX); phiếu lãnh cần thêm đơn hàng nguồn nên
+ * khai riêng ở đây, không đè lên DTO dùng chung. */
 @Exclude()
 export class RequisitionProductionOrderResDto extends PickType(
   ProductionOrderResDto,

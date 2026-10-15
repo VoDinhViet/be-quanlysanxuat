@@ -18,32 +18,22 @@ import { productionJobs } from './production-jobs';
 
 /**
  * Snapshot công đoạn as-used của từng node BOM trong một Job — copy `bom_operations` (khoá theo
- * `bomItemId`). Dựng đúng một lần trong transaction `start` (`ProductionJobsService.startJob` →
- * `createJobSnapshot`) — Job còn `PENDING` không có dòng nào ở đây.
- * Đóng băng ngay từ lúc đó — sửa
- * routing/`operations` gốc sau đó không ảnh hưởng Job đã `start`. `dueDate` là ngoại lệ duy nhất:
- * cột kế hoạch, sửa tay qua `PATCH /production-jobs/:jobId/operations/:jobOperationId/due-date`.
- * Công đoạn Cấp 0
- * của chính FG (lắp ráp/đóng gói) **cũng snapshot ở đây** — copy từ đúng `bom_operations` của node
- * ROOT thuộc FG (không còn bảng `routings`/`routing_operations`
- * riêng), gắn vào node `production_job_bom_items.itemType = 'FG'` (xem doc comment bảng đó)
- * — không phải một bảng riêng.
+ * `bomItemId`). Dựng lúc tạo Job (`createJobs` → `createJobSnapshot`) hoặc chụp lại khi Job còn
+ * `PENDING`; sửa routing/`operations` gốc sau đó không ảnh hưởng Job. Công đoạn Cấp 0 của chính FG
+ * copy từ `routing_operations` và gắn vào node `production_job_bom_items.itemType = 'FG'`.
  *
  * Rules:
- * - `code`/`name`/`type` (của công đoạn) là **snapshot text**, nguồn hiển thị chính — đóng băng
- *   lúc duyệt, độc lập `operations` sống. `operationId` chỉ còn là liên kết tham khảo (`set null`
- *   khi bị xoá).
- * - Không unique `(productionJobBomItemId, operationId)` — một routing được phép lặp lại cùng
- *   công đoạn (`bom_operations` cũng vậy), ép unique sẽ nuốt mất bước khi copy.
- * - `code`/`name`/`type`/`sortOrder`/`note`/`operationId` vẫn đóng băng lúc duyệt.
- *   `completedQuantity`/`rejectedQuantity`/`completedDate` sửa qua đúng một đường tay — `POST
- *   .../reports` (cộng dồn, `ProductionExecutionService`, ghi thêm một dòng
- *   `production_job_operation_reports`, chỉ chạy khi Job `IN_PROGRESS`, `E087`) — công đoạn
- *   `OUTSOURCE` bị chặn ở đường đó (`E260`), tự ghi qua `recomputeOutsourcedOperationProgress`
- *   khi OS-IN post/cancel thay vì nhập tay.
- * - `dueDate` sửa qua `PATCH .../operations/:jobOperationId/due-date` (`ProductionJobsService`) —
- *   ghi đè thẳng (không cộng dồn), chỉ chạy khi Job `IN_PROGRESS` (`E087`), không phân biệt
- *   `OUTSOURCE` (hạn là kế hoạch điều độ, không phải số liệu OS-IN tự ghi như tiến độ).
+ * - `code`/`name`/`type` là **snapshot text**, nguồn hiển thị chính, độc lập `operations` sống.
+ *   `operationId` chỉ là liên kết tham khảo (`set null` khi bị xoá).
+ * - Không unique `(productionJobBomItemId, operationId)`: một routing được lặp lại cùng công đoạn
+ *   (`bom_operations` cũng vậy), ép unique sẽ nuốt mất bước khi copy.
+ * - `completedQuantity`/`rejectedQuantity`/`completedDate` chỉ sửa tay qua `POST .../reports`
+ *   (`ProductionExecutionService`, cộng dồn và ghi thêm một dòng `production_job_operation_reports`;
+ *   chỉ khi Job `IN_PROGRESS`, `E087`). Công đoạn `OUTSOURCE` bị chặn ở đó (`E260`), tự ghi qua
+ *   `recomputeOutsourcedOperationProgress` khi OS-IN post/cancel.
+ * - `dueDate` là cột kế hoạch điều độ, sửa qua `PATCH .../due-date` và `PATCH .../operations/plan`
+ *   (`ProductionJobsService`): ghi đè thẳng, chỉ khi Job `IN_PROGRESS` (`E087`), không phân biệt
+ *   `OUTSOURCE` vì không phải số liệu OS-IN tự ghi.
  */
 export const productionJobOperations = pgTable(
   'production_job_operations',

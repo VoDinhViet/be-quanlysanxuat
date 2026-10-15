@@ -5,10 +5,10 @@ import { files } from '../files';
 import { supplierReturns } from './supplier-returns';
 
 /**
- * File đính kèm lúc xác nhận xuất trả (`post`) của một phiếu trả NCC — nhiều file/phiếu, cùng
- * khuôn `production_job_operation_report_files` (không có cột `kind`, chỉ một mục đích duy nhất).
- * `fileId` dùng `restrict` (không `cascade`) — file là bằng chứng đã xuất trả, xoá `files` không
- * được kéo theo mất dấu vết.
+ * File đính kèm lúc xác nhận xuất trả (`post`) của một phiếu trả NCC — nhiều file/phiếu, cùng khuôn
+ * `production_job_operation_report_files` (không có cột `kind`, chỉ một mục đích). `fileId` dùng
+ * `restrict` (không `cascade`): file là bằng chứng đã xuất trả, xoá `files` không được kéo theo
+ * mất dấu vết.
  */
 export const supplierReturnFiles = pgTable(
   'supplier_return_files',

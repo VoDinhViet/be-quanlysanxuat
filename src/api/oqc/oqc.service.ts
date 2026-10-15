@@ -129,14 +129,9 @@ export class OqcService {
         : undefined,
     );
 
-    // Một `.select()` phẳng — join tường minh thay vì `db.query` quan hệ + hydrate riêng.
-    // `productionJobOperations`/`productionJobBomItems`/
-    // `items` dùng `innerJoin` — `chk_quality_inspections_oqc_job` đảm bảo mọi dòng
-    // `inspectionType = OQC` (đã lọc ở `where`) luôn có cả hai, nên Drizzle tự suy kiểu non-null,
-    // không cần assertion. `items` chỉ join để lấy `unitId` (cột `unit` bên dưới) — không select
-    // nguyên `item`, danh sách không có cột nào cần nó (`getOqc` mới trả `item` đầy đủ). Join qua
-    // `qualityInspections.itemId` (snapshot riêng, `NOT NULL`) — KHÔNG PHẢI
-    // `productionJobBomItems.itemId` (cột đó nullable, `bomItem` chỉ cho `code`/`name`).
+    // Công đoạn/node BOM dùng `innerJoin` vì `chk_quality_inspections_oqc_job` bắt mọi dòng OQC
+    // có job + công đoạn. `items` join qua `qualityInspections.itemId` (OQC luôn có, `E199`), KHÔNG
+    // qua `productionJobBomItems.itemId` (nullable, `set null` khi item gốc bị xoá).
     const [rows, [{ total }]] = await Promise.all([
       this.db
         .select({
@@ -335,10 +330,8 @@ export class OqcService {
   }
 
   async getOqc(oqcId: string): Promise<OqcResDto> {
-    // Cùng khuôn `getOqcs` — `.select()` phẳng + join tường minh, không qua `db.query` quan hệ.
-    // `productionJobOperations`/`productionJobBomItems`/`items` dùng `innerJoin`
-    // (`chk_quality_inspections_oqc_job` đảm bảo non-null cho `inspectionType = OQC`), 3 alias
-    // `users` riêng cho `creatorBy`/`confirmerBy`/`resolverBy` (ba FK độc lập, cùng bảng đích).
+    // Cùng khuôn join với `getOqcs`; thêm 3 alias `users` riêng cho `creatorBy`/`confirmerBy`/
+    // `resolverBy` (ba FK độc lập trỏ cùng bảng).
     const [oqcInspection] = await this.db
       .select({
         id: qualityInspections.id,
@@ -441,7 +434,6 @@ export class OqcService {
     );
   }
 
-  /** Bằng chứng (kèm file) của lần kiểm mới nhất của phiếu OQC — chỉ phục vụ `getOqc`. */
   private async getLatestAttemptEvidences(qualityInspectionId: string) {
     const latestAttempt =
       await this.db.query.qualityInspectionResults.findFirst({
@@ -457,14 +449,18 @@ export class OqcService {
     return latestAttempt?.evidences ?? [];
   }
 
-  /** "Yêu cầu QC" cấp Job — OQC theo lô một phần (PH-111): xưởng làm xong bao nhiêu ở công đoạn cuối
-   * thì xin kiểm bấy nhiêu, không chờ cả Job. `quantity` (mặc định = toàn bộ SL chưa kiểm) tối đa
-   * là SL hoàn thành lũy kế của công đoạn cuối trừ Σ các lô đã xin (trừ lô `SCRAP`, trả SL về),
-   * quá thì `E198`. Job tồn tại + `IN_PROGRESS`/`WAITING_QC` (`E082`/`E175`), có node Cấp 0 hợp lệ
-   * (`itemType='FG'`, `type ≠ OUTSOURCE` — gia công ngoài chỉ QC qua IQC, không qua OQC, thiếu thì
-   * `E213`), còn `itemId` để snapshot (`E199`). Node Cấp 0 có thể nhiều công đoạn (BUG-079) —
-   * `getJobFinalOperation` lấy bước cuối, SL hoàn thành của nó là SL thành phẩm. Phiếu nhập kho TP
-   * của lô sinh lúc OQC được xác nhận (`confirmOqc`). */
+  /** "Yêu cầu QC" cấp Job, OQC theo lô một phần: xưởng làm xong bao nhiêu ở công đoạn cuối thì xin
+   * kiểm bấy nhiêu, không chờ cả Job.
+   *
+   * Rules:
+   * - Job phải tồn tại (`E082`) và `IN_PROGRESS`/`WAITING_QC` (`E175`).
+   * - Cần node Cấp 0 (`itemType = 'FG'`) có công đoạn không `OUTSOURCE` (gia công ngoài chỉ QC qua
+   *   IQC), thiếu thì `E213`; và còn `itemId` để snapshot (`E199`).
+   * - `quantity` mặc định là toàn bộ SL chưa kiểm; tối đa là SL hoàn thành lũy kế của công đoạn
+   *   cuối trừ Σ các lô đã xin (trừ lô `SCRAP`, trả SL về), quá thì `E198`.
+   * - Σ lô theo cả node BOM không vượt `plannedQuantity` (`E176`).
+   *
+   * Phiếu nhập kho TP của lô sinh lúc `confirmOqc`. */
   async createOqcForJob(
     jobId: string,
     reqDto: RequestJobOqcReqDto,
@@ -478,7 +474,6 @@ export class OqcService {
 
     // Job tự chuyển `WAITING_QC` khi công đoạn Cấp 0 hoàn thành hết — chấp nhận cả hai trạng thái:
     // lô một phần được xin khi Job còn `IN_PROGRESS`.
-    //
     const allowedJobStatuses: ProductionJobStatus[] = [
       ProductionJobStatus.IN_PROGRESS,
       ProductionJobStatus.WAITING_QC,
@@ -495,9 +490,8 @@ export class OqcService {
       throw new AppException(ErrorCode.E199, HttpStatus.CONFLICT);
     }
 
-    // LEFT JOIN khiến các cột trên khiến kiểu nullable, nhưng đã qua đủ các kiểm phía trên nghĩa là
-    // đúng có 1 công đoạn khớp — bomItemId/completedQuantity/plannedQuantity (đều NOT NULL) chắc
-    // chắn có giá trị.
+    // LEFT JOIN làm kiểu nullable, nhưng qua các kiểm trên là đã có đúng 1 công đoạn khớp nên
+    // `bomItemId`/`completedQuantity`/`plannedQuantity` (NOT NULL) chắc chắn có giá trị.
     const operationId = finalOperation.operationId;
     const itemId = finalOperation.itemId;
 
@@ -513,8 +507,8 @@ export class OqcService {
       throw new AppException(ErrorCode.E198, HttpStatus.BAD_REQUEST);
     }
 
-    // Σ SL đã xin QC của mọi công đoạn as-used cùng node BOM (1 node có thể nhiều bước, cùng 1 part
-    // vật lý) + lô mới không vượt `plannedQuantity` đã đóng băng của node.
+    // Σ SL đã xin QC của mọi công đoạn cùng node BOM (cùng một part vật lý) + lô mới không vượt
+    // `plannedQuantity` đã đóng băng của node.
     if (inspectedByBomItem + quantity > finalOperation.plannedQuantity!) {
       throw new AppException(ErrorCode.E176, HttpStatus.BAD_REQUEST);
     }
@@ -539,9 +533,9 @@ export class OqcService {
 
   /** Nút "Lưu" duy nhất của trang chi tiết OQC — mỗi lần gọi ghi 3 nơi trong 1 transaction: 1 dòng
    * attempt mới (`quality_inspection_results`), mirror trên `quality_inspections`, và đính kèm.
-   * `linkFiles` chạy trước khi mở transaction (`.claude/rules/transactions.md`) nên
-   * `dispositionEvidenceFileIds` vẫn bị validate/stamp `linkedAt` kể cả khi PASS — chỉ dòng
-   * `quality_inspection_evidences` bị bỏ qua. Xem `docs/CODEMAPS/quality.md`. */
+   * `linkFiles` chạy trước khi mở transaction nên `dispositionEvidenceFileIds` vẫn bị
+   * validate/stamp `linkedAt` kể cả khi PASS — chỉ dòng `quality_inspection_evidences` bị bỏ qua.
+   * Xem `docs/CODEMAPS/quality.md`. */
   async confirmOqc(
     oqcId: string,
     reqDto: ConfirmOqcReqDto,
@@ -564,9 +558,9 @@ export class OqcService {
     };
     const status = this.resolveOqcStatus(decision.decision, reqDto.disposition);
     const dbStatus = mapToQualityInspectionStatus(status);
-    // `IqcResult` (PASS/FAIL) là API vocabulary cũ, `decision` cột mới union rộng hơn
-    // (`quality_inspection_decision`) — ép kiểu tại 2 điểm ghi dưới, giữ nguyên `decision.decision`
-    // kiểu `IqcResult` cho `resolveOqcStatus`/`linkOqcEvidence` phía trên.
+    // `IqcResult` (PASS/FAIL) hẹp hơn enum cột `decision` (`quality_inspection_decision`) — ép kiểu
+    // tại 2 điểm ghi dưới, giữ `decision.decision` kiểu `IqcResult` cho `resolveOqcStatus`/
+    // `linkOqcEvidence`.
     const dbDecision = decision.decision as string as QualityInspectionDecision;
 
     await this.filesService.linkFiles([
@@ -615,16 +609,15 @@ export class OqcService {
 
       await this.linkOqcEvidence(tx, attempt.id, reqDto, decision.decision);
 
-      // Job đứng yên ở `WAITING_QC` cho tới khi QC xử lý xong hết (không chỉ lần confirm này) —
-      // `closeJobIfQcCovered` đếm lại toàn bộ dòng QC của Job (IQC lẫn OQC), mở khoá khi hết dở
-      // dang. Ghi thẳng bằng drizzle, không qua `ProductionJobsService` — tránh vòng import
-      // (`production-jobs` đã import `oqc`).
+      // Job đứng yên ở `WAITING_QC` cho tới khi QC xử lý xong hết (không chỉ lần confirm này):
+      // `closeJobIfQcCovered` đếm lại toàn bộ dòng QC của Job. Ghi thẳng bằng drizzle, không qua
+      // `ProductionJobsService` — tránh vòng import (`production-jobs` đã import `oqc`).
       if (
         status === OqcStatus.COMPLETED &&
         lockedOqcInspection.productionJobId
       ) {
-        // Lô vừa đạt vào kho ngay, không chờ cả Job (PH-111): phiếu nhập TP cho phần chênh giữa
-        // Σ SL OQC đạt và SL đã có phiếu (lô `SCRAP` không đổi Σ nên không sinh gì).
+        // Lô vừa đạt vào kho ngay, không chờ cả Job: phiếu nhập TP cho phần chênh giữa Σ SL OQC
+        // đạt và SL đã có phiếu (lô `SCRAP` không đổi Σ nên không sinh gì).
         await createProductionReceiptForJob(
           tx,
           lockedOqcInspection.productionJobId,

@@ -9,11 +9,9 @@ import {
   supplierReturns,
 } from '../../database/schemas';
 
-/** Σ SL đã nhận theo từng dòng OS-OUT (`outsourcingOrderItemId`) — dùng cho popup "chọn hàng cần
- * nhận", validate `E172` (create OS-IN), và tính tiến độ dòng OS-OUT. Chỉ tính phiếu `POSTED`, tự
- * động khấu trừ SL hàng lỗi đã xuất trả NCC (`supplier_returns` đã `POSTED`, nối qua FK
- * `supplierReturns.outsourcingReceiptItemId` tới đúng dòng OS-IN), cùng
- * pattern `getReceivedQuantityByPurchaseOrderItemId` (`purchase-orders.query.ts`). */
+/** Σ SL đã nhận theo từng dòng OS-OUT (`outsourcingOrderItemId`), dùng để validate `E172` khi tạo
+ * OS-IN. Chỉ cộng phiếu `POSTED`, trừ SL `supplier_returns` `POSTED` nối qua
+ * `supplierReturns.outsourcingReceiptItemId`, sàn 0. */
 export async function getReceivedQuantityByOrderItemIds(
   db: Database | DbTransaction,
   orderItemIds: string[],
@@ -88,11 +86,9 @@ export async function getReceivedQuantityByOrderItemIds(
   );
 }
 
-/** Bản subquery-table của `getReceivedQuantityByOrderItemIds` — cùng logic SUM trừ hao hụt trả NCC,
- * cố định `POSTED` — để LEFT JOIN thẳng vào SELECT hiển thị
- * (`OutsourcingOrdersService.getOrderItems`, `OutsourcingReceiptsService.getPendingOrderItems`)
- * thay vì round-trip `Map` riêng. Nơi validate `E172` (create OS-IN) vẫn dùng bản `Map` vì không có
- * SELECT nào để join vào. */
+/** Bản subquery của `getReceivedQuantityByOrderItemIds` (cùng cách tính) để LEFT JOIN thẳng vào
+ * SELECT hiển thị: `OutsourcingOrdersService.getOrderItems` và
+ * `OutsourcingReceiptsService.getPendingOrderItems`. */
 export function receivedQuantityByOrderItemIdSubquery(db: Database) {
   const receipts = db
     .select({
@@ -143,10 +139,8 @@ export function receivedQuantityByOrderItemIdSubquery(db: Database) {
     .as('received_quantity_by_order_item');
 }
 
-/** Bản subquery-table Σ SL nhận theo từng phiếu OS-IN (`totalQuantity`) — không lọc `status` phiếu,
- * cộng thẳng `quantity` mọi dòng của chính phiếu, khớp cách `sentQuantityByOrderIdSubquery`
- * (`outsourcing-orders.query.ts`) cộng SL gửi theo phiếu OS-OUT. LEFT JOIN thẳng vào
- * `getOutsourcingReceipts` (list), không round-trip `Map` riêng. */
+/** Σ SL theo từng phiếu OS-IN (`totalQuantity`) cho `getOutsourcingReceipts`. Không lọc `status`,
+ * nên phiếu `CANCELLED` vẫn hiện đủ SL (giống `sentQuantityByOrderIdSubquery` bên OS-OUT). */
 export function totalQuantityByReceiptIdSubquery(db: Database) {
   return db
     .select({

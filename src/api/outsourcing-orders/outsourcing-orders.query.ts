@@ -16,12 +16,9 @@ import {
   supplierReturns,
 } from '../../database/schemas';
 
-/** Σ SL đã gửi theo từng công đoạn Job — dùng cho popup "chọn part cần gia công"
- * (`getOutsourceableOperations`), LEFT JOIN thẳng vào SELECT hiển thị thay vì round-trip `Map`
- * riêng. Tính mọi phiếu chưa `CANCELLED` (4 trạng thái sống — không còn chỉ `POSTED`, status đã gộp
- * tiến độ). Không còn dùng để validate
- * — `createOutsourcingOrder` nhận dòng do client gửi đủ cột, không tự tính lại số đã gửi.
- */
+/** Σ SL đã gửi theo từng công đoạn Job, LEFT JOIN thẳng vào popup `getOutsourceableOperations`.
+ * Tính mọi phiếu chưa `CANCELLED`. Chỉ để hiển thị: `createOutsourcingOrder` không dùng nó để chặn
+ * gửi vượt định mức. */
 export function sentQuantityByJobOperationSubquery(db: Database) {
   return db
     .select({
@@ -41,10 +38,8 @@ export function sentQuantityByJobOperationSubquery(db: Database) {
     .as('sent_quantity_by_job_operation');
 }
 
-/** Bản subquery-table Σ SL gửi theo từng phiếu OS-OUT (`totalQuantity`) — không lọc `status` phiếu
- * (khác bản trên theo `productionJobOperationId`, chỉ tính `POSTED`), khớp cách `getOutsourcingOrder`
- * (chi tiết) cộng thẳng `quantity` mọi dòng của chính phiếu, kể cả phiếu đã `CANCELLED`. LEFT JOIN
- * thẳng vào `getOutsourcingOrders` (list), không round-trip `Map` riêng. */
+/** Σ SL gửi theo từng phiếu OS-OUT (`totalQuantity`) cho list và detail. Không lọc `status`, nên
+ * phiếu `CANCELLED` vẫn hiện đủ SL (khác bản theo công đoạn Job ở trên, bỏ phiếu `CANCELLED`). */
 export function sentQuantityByOrderIdSubquery(db: Database) {
   return db
     .select({
@@ -58,11 +53,14 @@ export function sentQuantityByOrderIdSubquery(db: Database) {
     .as('sent_quantity_by_order');
 }
 
-/** Bản subquery-table Σ SL đã nhận theo từng phiếu OS-OUT (`receivedQuantity`) — gộp mọi dòng OS-IN
- * `POSTED` trỏ tới bất kỳ dòng nào của phiếu, khớp cách lọc `status` của
- * `getReceivedQuantityByOrderItemIds` (`outsourcing-receipts.query.ts`), chỉ khác gom theo phiếu
- * OS-OUT thay vì theo từng dòng — kể cả khấu trừ SL trả NCC (`supplier_returns` đã `POSTED`, nối
- * qua `(outsourcingReceiptId, itemId)`). LEFT JOIN thẳng vào `getOutsourcingOrders` (list). */
+/** Σ SL đã nhận theo từng phiếu OS-OUT (`receivedQuantity`) cho list và detail.
+ *
+ * Rules:
+ * - Chỉ cộng OS-IN `POSTED`, trừ SL `supplier_returns` `POSTED` nối qua `outsourcingReceiptItemId`,
+ *   sàn 0.
+ * - Cùng cách tính với `getReceivedQuantityByOrderItemIds` (`outsourcing-receipts.query.ts`), chỉ
+ *   khác gom theo phiếu thay vì theo dòng.
+ */
 export function receivedQuantityByOrderIdSubquery(db: Database) {
   const receipts = db
     .select({
@@ -132,11 +130,9 @@ export function receivedQuantityByOrderIdSubquery(db: Database) {
     .as('received_quantity_by_order');
 }
 
-/** Còn ≥ 1 dòng IQC (sinh từ OS-IN `POSTED` của chính phiếu này) chưa `COMPLETED` không — dùng
- * trong `recomputeOutsourcingOrderStatus` để quyết định `WAITING_QC` hay `COMPLETED`. Origin
- * polymorphic (`quality_inspections.originType = OUTSOURCING_RECEIPT_ITEM`) khớp thẳng
- * `outsourcing_receipt_items.id`, chính xác tới từng dòng OS-IN — cùng join pattern
- * `OutsourcingReceiptsService.hasLinkedIqc`. */
+/** Còn IQC chưa `COMPLETED` nào sinh từ OS-IN `POSTED` của phiếu này không;
+ * `recomputeOutsourcingOrderStatus` dùng để chọn `WAITING_QC` hay `COMPLETED`. Nối qua
+ * `quality_inspections.originId = outsourcing_receipt_items.id` (`originType` polymorphic). */
 async function hasPendingIqcForOrder(
   tx: DbTransaction,
   outsourcingOrderId: string,
@@ -180,15 +176,16 @@ async function hasPendingIqcForOrder(
 }
 
 /**
- * Tính lại `status` (= tiến độ nhận hàng) của 1 phiếu OS-OUT từ dữ liệu thật (SL gửi/nhận/IQC còn
- * treo) rồi `UPDATE` — nguồn ghi duy nhất cho 3 giá trị `PARTIAL`/`WAITING_QC`/`COMPLETED`.
- * SL nhận đã trừ hàng QC fail bị trả
- * NCC (`supplier_returns` `POSTED`) nên phiếu trả về hàng lỗi tự lùi status về `PARTIAL`/`SENT`,
- * mở lại hạn mức cho NCC giao bù (`docs/CODEMAPS/inventory.md`, Side effects). Gọi từ
- * `OutsourcingReceiptsService.createOutsourcingReceipt`/`cancelOutsourcingReceipt` (SL nhận đổi),
- * `IqcService.confirmIqc` (IQC treo đổi), và `SupplierReturnsService.postSupplierReturn` (SL trả
- * đổi) — luôn trong cùng `tx` với thao tác vừa gây ra thay đổi đó, không phải cron/job riêng. Bỏ
- * qua nếu phiếu đã `CANCELLED` — không hồi sinh phiếu đã huỷ.
+ * Tính lại `status` (= tiến độ nhận hàng) của một phiếu OS-OUT từ SL gửi/nhận và IQC còn treo, rồi
+ * `UPDATE`. Nguồn ghi duy nhất cho `PARTIAL`/`WAITING_QC`/`COMPLETED`.
+ *
+ * Rules:
+ * - SL nhận đã trừ `supplier_returns` `POSTED`, nên trả hàng lỗi có thể lùi status về
+ *   `PARTIAL`/`SENT` và mở lại hạn mức cho NCC giao bù (`docs/CODEMAPS/inventory.md`, State flows).
+ * - Gọi trong cùng `tx` với thao tác làm đổi dữ liệu: `OutsourcingReceiptsService`
+ *   (`createOutsourcingReceipt`, `cancelOutsourcingReceipt`), `IqcService.confirmIqc`,
+ *   `SupplierReturnsService.postSupplierReturn`.
+ * - Phiếu `CANCELLED` bị bỏ qua, không hồi sinh.
  */
 export async function recomputeOutsourcingOrderStatus(
   tx: DbTransaction,
@@ -204,11 +201,9 @@ export async function recomputeOutsourcingOrderStatus(
     return;
   }
 
-  // Không tái dùng sentQuantityByOrderIdSubquery/receivedQuantityByOrderIdSubquery ở trên — 2 hàm đó
-  // GROUP BY toàn bộ bảng (khớp shape LEFT JOIN của list/detail), quét cả những phiếu không liên
-  // quan; ở đây chỉ cần đúng 1 phiếu nên lọc WHERE trước khi SUM rẻ hơn. Ba truy vấn độc lập, chạy
-  // song song — trừ luôn SL đã trả NCC (`supplier_returns` `POSTED`, cùng lý do
-  // `receivedQuantityByOrderIdSubquery`) để hàng QC fail bị trả không bị tính là "đã nhận".
+  // Không tái dùng `sentQuantityByOrderIdSubquery`/`receivedQuantityByOrderIdSubquery`: chúng GROUP
+  // BY cả bảng, còn ở đây chỉ cần một phiếu nên lọc WHERE trước khi SUM rẻ hơn. SL trả NCC được
+  // trừ để hàng QC fail bị trả không tính là "đã nhận".
   const [
     [{ sentQuantity }],
     [{ receivedQuantity: rawReceivedQuantity }],
@@ -300,8 +295,8 @@ export async function recomputeOutsourcingOrderStatus(
     .where(eq(outsourcingOrders.id, outsourcingOrderId));
 }
 
-/** Huỷ OS-OUT chưa `CANCELLED` bị chặn (`E169`) nếu còn dòng OS-IN nào chưa `CANCELLED` trỏ tới bất
- * kỳ dòng nào của phiếu — phải huỷ hết OS-IN con trước. */
+/** Còn OS-IN chưa `CANCELLED` nào trỏ tới dòng của phiếu không; `cancelOutsourcingOrder` chặn huỷ
+ * (`E169`) cho tới khi huỷ hết OS-IN con. */
 export async function hasActiveReceiptsForOrder(
   db: Database | DbTransaction,
   outsourcingOrderId: string,

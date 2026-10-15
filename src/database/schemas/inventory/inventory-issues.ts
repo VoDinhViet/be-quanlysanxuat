@@ -34,7 +34,8 @@ export const inventoryIssueTypeEnum = pgEnum('inventory_issue_type', [
 
 /**
  * Phiếu xuất kho — header, cùng khuôn `inventory_receipts` (status/postedBy/postedAt/createdBy)
- * nhưng vòng đời ngắn hơn — chỉ 3 trạng thái, không có nhánh IQC (`docs/CODEMAPS/inventory.md`).
+ * nhưng vòng đời ngắn hơn: chỉ `DRAFT`/`POSTED`/`CANCELLED`, không có nhánh IQC
+ * (`docs/CODEMAPS/inventory.md`).
  */
 export const inventoryIssues = pgTable(
   'inventory_issues',
@@ -46,8 +47,8 @@ export const inventoryIssues = pgTable(
       .notNull()
       .default(InventoryDocumentStatus.DRAFT),
     issueDate: date('issue_date', { mode: 'date' }).notNull(),
-    // `set null` cho cả hai — LSX/Job có thể bị hard-delete khi LSX chứa nó được duyệt lại
-    // (`ProductionOrdersService.seedPlan`); phiếu đã post phải sống sót qua việc đó.
+    // `set null` cho cả hai: LSX/Job có thể bị hard-delete (huỷ SO,
+    // `ProductionOrdersService.seedPlan`); phiếu đã post phải sống sót qua việc đó.
     productionOrderId: uuid('production_order_id').references(
       () => productionOrders.id,
       { onDelete: 'set null' },
@@ -56,9 +57,9 @@ export const inventoryIssues = pgTable(
       () => productionJobs.id,
       { onDelete: 'set null' },
     ),
-    // Chỉ `OutboundOrdersService.deliver` (issueType = SALES) ghi cột này — phiếu xuất tự sinh lúc
-    // giao hàng, dùng để thẻ kho trace ngược về DO. `set null`, không backfill phiếu cũ trước
-    // migration này (`docs/CODEMAPS/inventory.md`).
+    // Chỉ `OutboundOrdersService.postOutboundOrder` (`issueType = SALES`) ghi cột này: phiếu xuất tự
+    // sinh lúc giao hàng, để thẻ kho trace ngược về DO. `set null`, không backfill phiếu cũ
+    // (`docs/CODEMAPS/sales.md`).
     outboundOrderId: uuid('outbound_order_id').references(
       () => outboundOrders.id,
       { onDelete: 'set null' },

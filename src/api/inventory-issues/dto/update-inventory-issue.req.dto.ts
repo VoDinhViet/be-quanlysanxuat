@@ -8,7 +8,6 @@ import {
 } from '../../../decorators/field.decorators';
 import { InventoryIssueItemReqDto } from './inventory-issue-item.req.dto';
 
-/** Chỉ hợp lệ khi phiếu còn `DRAFT` (`E098`). */
 export class UpdateInventoryIssueReqDto {
   @EnumFieldOptional(() => InventoryIssueType)
   readonly issueType?: InventoryIssueType;

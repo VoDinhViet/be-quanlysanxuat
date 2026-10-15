@@ -57,10 +57,10 @@ import {
 } from './inventory-requisitions.query';
 
 /**
- * Phiếu lãnh vật tư — chứng từ duy nhất đưa DIRECT ra khỏi kho cho sản xuất. Đọc (tab chi tiết + 2
- * popup chọn vật tư) sống ở `InventoryRequisitionLinesService`, tách riêng vì cùng một bộ join
- * tính "6 số" lặp lại ba lần. Xem `docs/CODEMAPS/inventory.md` mục "Phiếu lãnh vật tư".
+ * Phiếu lãnh vật tư — chứng từ duy nhất đưa DIRECT ra khỏi kho cho sản xuất. Phần đọc (tab chi tiết
+ * + popup chọn vật tư) nằm ở `InventoryRequisitionLinesService`.
  *
+ * See `docs/CODEMAPS/inventory.md`, mục "State flows" (Requisition).
  */
 @Injectable()
 export class InventoryRequisitionsService {
@@ -227,10 +227,9 @@ export class InventoryRequisitionsService {
     });
   }
 
-  /** Reopen (`REJECTED → DRAFT`) là một write — chạy toàn bộ validate + reopen + update trong
-   * **cùng một** transaction (khác `create`, không tách pha ngoài/trong) để tránh nửa-vời: validate
-   * fail sau khi đã reopen sẽ để phiếu kẹt ở `DRAFT` dù update không thành công. Cùng khuôn
-   * `PurchaseRequestsService.updatePurchaseRequestItem`. */
+  /** Reopen `REJECTED → DRAFT` là một write nên validate + reopen + update chạy trong cùng một
+   * transaction (khác `create`, validate ở ngoài): nếu validate fail sau khi đã reopen, phiếu sẽ
+   * kẹt ở `DRAFT` dù update không thành công. */
   async updateInventoryRequisition(
     requisitionId: string,
     reqDto: UpdateInventoryRequisitionReqDto,
@@ -288,8 +287,8 @@ export class InventoryRequisitionsService {
       .where(eq(inventoryRequisitions.id, requisitionId));
   }
 
-  /** `DRAFT`/`REJECTED → PENDING_APPROVAL` — khác `purchase-requests` (chỉ nhận `DRAFT`), ở đây
-   * `REJECTED` gửi lại được thẳng, không bắt sửa dòng trước. */
+  /** `DRAFT`/`REJECTED → PENDING_APPROVAL`; phiếu `REJECTED` gửi lại được thẳng, không bắt sửa
+   * dòng trước. */
   async sendInventoryRequisition(
     requisitionId: string,
     userId: string,
@@ -306,14 +305,16 @@ export class InventoryRequisitionsService {
       .where(eq(inventoryRequisitions.id, requisitionId));
   }
 
-  /** `PENDING_APPROVAL → APPROVED` — mốc giữ chỗ thật (`HOLDING_STATUS` chỉ tính `APPROVED`), nên
-   * lượt `validateRequisitionLines` ở đây mới là chốt `E231`/`E232` chịu trách nhiệm chính. Cũng là
-   * nơi sinh PXK `DRAFT` (`createIssueForRequisition`) — duyệt không đụng
-   * `inventory_balances`/`inventory_transactions`, tồn chỉ thật sự bị trừ khi kho `post` phiếu PXK
-   * đó (`InventoryIssuesService.postInventoryIssue`). Khoá trước các dòng `inventory_balances` liên
-   * quan (`itemIds` sort tăng dần, tránh deadlock với phiếu khác đang duyệt chồng vật tư) — nếu
-   * không, hai phiếu duyệt đồng thời cùng `(kho, vật tư)` có thể cùng đọc "Đã giữ" y hệt nhau và
-   * cùng qua được `E231`. */
+  /** `PENDING_APPROVAL → APPROVED`, đồng thời sinh PXK `DRAFT` (`createIssueForRequisition`).
+   *
+   * Rules:
+   * - Đây là mốc giữ chỗ thật (`HOLDING_STATUS` chỉ tính `APPROVED`), nên `validateRequisitionLines`
+   *   ở đây là chốt `E231`/`E232` chính thức.
+   * - Khoá `inventory_balances` của các vật tư trước khi validate (`getInventoryBalancesForUpdate`
+   *   sort theo `itemId` để khỏi deadlock): thiếu thì hai phiếu duyệt đồng thời cùng vật tư đọc
+   *   cùng một "Đã giữ" và cùng qua `E231`.
+   * - Duyệt không ghi `inventory_balances`/`inventory_transactions`; tồn chỉ bị trừ khi kho `post`
+   *   PXK (`InventoryIssuesService.postInventoryIssue`). */
   async approveInventoryRequisition(
     requisitionId: string,
     userId: string,
@@ -400,10 +401,8 @@ export class InventoryRequisitionsService {
     });
   }
 
-  /** Sinh 1 `inventory_issues` (`DRAFT`) + copy dòng — gọi trong transaction của `approve`. Kho
-   * `post` phiếu này mới thật sự trừ tồn (`InventoryIssuesService.postInventoryIssue`, cùng gate
-   * IQC `E203` áp cho `issueType = PRODUCTION`). Trả về id phiếu vừa sinh để `approve` gán ngược
-   * vào `inventoryIssueId`. */
+  /** Sinh `inventory_issues` `DRAFT` (`issueType = PRODUCTION`) + copy dòng, trong transaction của
+   * `approve`. Gate IQC `E203` áp lúc kho `post` phiếu này, không phải lúc duyệt. */
   private async createIssueForRequisition(
     tx: DbTransaction,
     inventoryRequisition: InventoryRequisitionSelect,
@@ -450,8 +449,8 @@ export class InventoryRequisitionsService {
     return issue.id;
   }
 
-  /** `DRAFT`/`PENDING_APPROVAL`/`APPROVED`/`REJECTED → CANCELLED`. Từ `APPROVED` luôn kèm 1 PXK `DRAFT`
-   * (`inventoryIssueId`, sinh lúc `approve`) — huỷ theo, nếu không PXK mồ côi đó vẫn `post` được
+  /** `DRAFT`/`PENDING_APPROVAL`/`APPROVED`/`REJECTED → CANCELLED`. Từ `APPROVED` phiếu luôn có PXK
+   * `DRAFT` (`inventoryIssueId`, sinh lúc `approve`); PXK đó phải huỷ theo, nếu không vẫn `post` được
    * và trừ tồn cho một phiếu lãnh đã huỷ. */
   async cancelInventoryRequisition(requisitionId: string): Promise<void> {
     await this.db.transaction(async (tx) => {
@@ -524,13 +523,15 @@ export class InventoryRequisitionsService {
     }
   }
 
-  /** Chốt chặn dùng chung cho `create`/`update` (chưa khoá dòng tồn, lại chỉ thấy "Đã giữ" của các
-   * phiếu đã `APPROVED` nên nhiều phiếu nháp cùng vượt tồn một vật tư vẫn lọt — cảnh báo sớm) và
-   * `approve` (sau `FOR UPDATE`, chốt thật vì đó mới là mốc giữ chỗ). Bốn bước: không trùng `itemId`
-   * (`E228`) → mọi item tồn tại + là DIRECT (`E229`) → (`type = PRODUCTION`) mọi item nằm trong định mức
-   * BOM của Job (`E230`) → từng dòng `SL lãnh ≤ Có thể lãnh` (`E231`) và, nếu có Job,
-   * `SL lãnh ≤ SL BOM còn lại` (`E232`). Trả về `itemId → unitId gốc`, dùng bởi `create`/`update` để
-   * mặc định `unitId` hiển thị khi payload không gửi. */
+  /** Validate dòng phiếu, dùng ở `create`/`update` và `approve`. Trả về `itemId → unitId gốc` để
+   * `create`/`update` mặc định `unitId` khi payload không gửi.
+   *
+   * Rules:
+   * - `create`/`update` chỉ là cảnh báo sớm: chưa khoá tồn và chỉ thấy "Đã giữ" của phiếu `APPROVED`,
+   *   nên nhiều phiếu nháp vẫn có thể cùng vượt tồn. `approve` (sau `FOR UPDATE`) mới là chốt thật.
+   * - Thứ tự kiểm: không trùng `itemId` (`E228`) -> item tồn tại và là DIRECT (`E229`) -> với
+   *   `type = PRODUCTION`, item nằm trong BOM của Job (`E230`) -> `SL lãnh <= Có thể lãnh` (`E231`)
+   *   -> có Job thì `SL lãnh <= SL BOM còn lại` (`E232`). */
   private async validateRequisitionLines(
     db: Database | DbTransaction,
     params: {
@@ -628,8 +629,8 @@ export class InventoryRequisitionsService {
     return new Map(foundItems.map((item) => [item.id, item.unitId]));
   }
 
-  /** Dùng cho cả mã phiếu lãnh (`MR`) lẫn mã phiếu xuất tự sinh lúc `approve` (`PXK`) — `PXK` phải
-   * giữ đúng khuôn của `InventoryIssuesService.generateIssueCode`, hai nơi cùng ăn một
+  /** Sinh mã `MR` (phiếu lãnh) và `PXK` (phiếu xuất sinh lúc `approve`). `PXK` phải giữ đúng khuôn
+   * `InventoryIssuesService.generateIssueCode` vì hai nơi cùng dùng
    * `DocumentType.INVENTORY_ISSUE`. */
   private async generateDocumentCode(
     tx: DbTransaction,
@@ -643,8 +644,6 @@ export class InventoryRequisitionsService {
     return `${prefix}-${year}-${String(sequence).padStart(5, '0')}`;
   }
 
-  /** Khoá phiếu (`FOR UPDATE`) rồi trả về — chỉ gọi bên trong transaction, cùng khuôn
-   * `InventoryIssuesService.getInventoryIssueForUpdate`. */
   private async getInventoryRequisitionForUpdate(
     tx: DbTransaction,
     requisitionId: string,
@@ -662,10 +661,9 @@ export class InventoryRequisitionsService {
     return inventoryRequisition;
   }
 
-  /** Sửa hợp lệ khi `DRAFT`/`REJECTED` (`E224`) — `REJECTED` tự đưa về `DRAFT` ngay trong
-   * transaction của nơi gọi (coi như sửa lại từ đầu), cùng khuôn
-   * `PurchaseRequestsService.ensurePurchaseRequestEditable`. Bắt buộc nhận `tx` — reopen là một
-   * write, phải cùng transaction với phần update còn lại (xem `updateInventoryRequisition`). */
+  /** Sửa hợp lệ khi `DRAFT`/`REJECTED` (`E224`); `REJECTED` được đưa về `DRAFT` luôn. Bắt buộc nhận
+   * `tx` vì reopen là một write, phải cùng transaction với phần update (xem
+   * `updateInventoryRequisition`). */
   private async ensureRequisitionEditable(
     tx: DbTransaction,
     requisitionId: string,
@@ -702,8 +700,8 @@ export class InventoryRequisitionsService {
     return inventoryRequisition;
   }
 
-  /** Sibling read-only của `ensureRequisitionEditable`: cùng cửa `DRAFT`/`REJECTED` nhưng không mở
-   * `REJECTED → DRAFT` — dùng cho `send` (đích đến `PENDING_APPROVAL`). */
+  /** Bản chỉ đọc của `ensureRequisitionEditable` cho `send`: cùng cửa `DRAFT`/`REJECTED` nhưng không
+   * reopen. */
   private async ensureRequisitionDraftOrRejected(
     requisitionId: string,
   ): Promise<void> {

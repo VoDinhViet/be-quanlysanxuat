@@ -35,10 +35,9 @@ export interface PostDocumentInput extends InventoryPostingContext {
 
 export type ReverseDocumentInput = InventoryPostingContext;
 
-/** Nơi duy nhất ghi `inventory_transactions`/`inventory_balances` — cả phiếu nhập lẫn phiếu xuất
- * đều đi qua đây lúc `post`/`cancel`, tránh chép công thức tồn ra hai chỗ (bug đã có ở thiết kế
- * cũ: `InventoryDirectsService` và `StockReceiptsService.ensureSufficientStock` từng lệch
- * nhau). Xem `docs/CODEMAPS/inventory.md`. */
+/** Nơi duy nhất ghi `inventory_transactions`/`inventory_balances` — phiếu nhập, xuất, điều chỉnh
+ * đều đi qua đây lúc `post`/`cancel`, để công thức tồn không bị chép ra nhiều chỗ.
+ * Xem `docs/CODEMAPS/inventory.md`. */
 @Injectable()
 export class InventoryPostingService {
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}

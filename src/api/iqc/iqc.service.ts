@@ -68,10 +68,10 @@ import { IQC_EXPORT_COLUMNS } from './iqc.export';
 import { linkQcFiles } from './iqc.write';
 import { mapToQualityInspectionStatus } from './quality-inspection-status.util';
 
-// `supplierId` có thể null từ BUG-065 (dòng IQC sinh từ phiếu RETURN gắn khách hàng dùng `clientId`
-// thay thế, loại trừ lẫn nhau — `chk_quality_inspections_supplier_client_exclusive`). `confirmIqc`
-// tự chặn (`E254`) disposition SORT/RETURN khi không có `supplierId`, nên `supplierReturnsService
-// .createFromIqcDisposition` chỉ bao giờ được gọi với `supplierId` đã biết chắc khác null.
+// `supplierId` có thể null: dòng IQC sinh từ phiếu RETURN gắn khách hàng dùng `clientId` thay thế,
+// loại trừ lẫn nhau (`chk_quality_inspections_supplier_client_exclusive`). `confirmIqc` chặn
+// (`E254`) disposition SORT/RETURN khi không có `supplierId`, nên
+// `SupplierReturnsService.createFromIqcDisposition` luôn nhận `supplierId` khác null.
 type IqcSavableInspection = Pick<
   QualityInspectionSelect,
   | 'quantity'
@@ -91,8 +91,8 @@ const creatorUsers = alias(users, 'iqc_creator');
 const confirmerUsers = alias(users, 'iqc_confirmer');
 const resolverUsers = alias(users, 'iqc_resolver');
 
-// `items` là left join — lô kiểm node COMPONENT (từ OS-IN) không trỏ item, đọc snapshot ghi trên chính
-// dòng `quality_inspections` lúc tạo.
+// `items` là left join: lô kiểm node COMPONENT (từ OS-IN) không trỏ item, đọc snapshot ghi trên
+// chính dòng `quality_inspections` lúc tạo.
 const inspectedItemCode = sql<string>`coalesce(${items.code}, ${qualityInspections.itemCode})`;
 const inspectedItemName = sql<string>`coalesce(${items.name}, ${qualityInspections.itemName})`;
 
@@ -315,10 +315,10 @@ export class IqcService {
     });
   }
 
-  /** `POST /iqc` cho phép gửi thẳng `result` (khác `POST /oqc`, luôn tách 2 bước) — có `result` thì
-   * tạo cả case row lẫn attempt #1 cùng lúc, thiếu `result` thì chỉ tạo case row `NOT_INSPECTED`
-   * (chưa có lần kiểm nào). Không có bằng chứng ở route này — attempt #1 sinh ra đây chỉ mang đúng
-   * `result`/`disposition`/`reason`/`note`. */
+  /** `POST /iqc` cho phép gửi thẳng `result` (OQC thì luôn tạo `DRAFT` rồi mới `confirm`) — có
+   * `result` thì tạo cả case row lẫn attempt #1 cùng lúc, thiếu `result` thì chỉ tạo case row
+   * `NOT_INSPECTED` (chưa có lần kiểm nào). Route này không nhận bằng chứng, `sortOkQty`/
+   * `sortNgQty` hay ghi chú quyết định. */
   async createIqc(reqDto: CreateIqcReqDto, userId: string): Promise<void> {
     await this.ensureSupplierExists(reqDto.supplierId);
     await this.ensureItemExists(reqDto.itemId);
@@ -346,9 +346,8 @@ export class IqcService {
       reason,
       note,
     } = reqDto;
-    // `IqcResult` (PASS/FAIL) là API vocabulary cũ, `decision` cột mới union rộng hơn
-    // (`quality_inspection_decision`) — 2 vocabulary cùng giá trị string, ép kiểu tại điểm ghi
-    // duy nhất thay vì đổi cột schema hẹp lại theo route này (xem `quality-inspections.ts`).
+    // `IqcResult` (PASS/FAIL) hẹp hơn enum cột `decision` (`quality_inspection_decision`); cùng giá
+    // trị string nên ép kiểu tại điểm ghi, không thu hẹp cột schema theo route này.
     const decision = result as QualityInspectionDecision | undefined;
     const origin = {
       originType: inventoryReceiptId
@@ -399,10 +398,9 @@ export class IqcService {
     });
   }
 
-  /** Sinh phiếu IQC cho từng dòng phiếu nhập khi phiếu được xác nhận có yêu cầu QC — đường ghi tự
-   *  động duy nhất vào `quality_inspections` (`inspectionType = IQC`), luôn `DRAFT` nên không sinh
-   *  attempt nào. Gọi trong transaction của `InventoryReceiptsService.confirmInventoryReceipt`; xem
-   *  `docs/CODEMAPS/inventory.md`. */
+  /** Sinh phiếu IQC cho từng dòng phiếu nhập khi phiếu được xác nhận có yêu cầu QC — luôn `DRAFT`
+   *  nên không sinh attempt nào. Gọi trong transaction của
+   *  `InventoryReceiptsService.confirmInventoryReceipt`; xem `docs/CODEMAPS/inventory.md`. */
   async createInspectionsFromReceipt(
     tx: DbTransaction,
     params: {
@@ -444,16 +442,19 @@ export class IqcService {
     );
   }
 
-  /** Sinh 1 phiếu IQC cho MỖI dòng phiếu nhận gia công ngoài có `requiresIqc = true` — đường tạo
-   *  tự động thứ ba (song sinh `createInspectionsFromReceipt`), gọi trong transaction của
-   *  `OutsourcingReceiptsService.createOutsourcingReceipt`. **Không** gate `create` — hàng đã về nhà
-   *  máy vật lý trước khi các dòng IQC này được kiểm (không phải ghi tồn — gia công ngoài không đụng
-   *  `inventory_balances`). Mỗi dòng neo thẳng vào công đoạn
-   *  `OUTSOURCE` sinh ra nó (`productionJobOperationId`/`productionJobId`, denormalize từ dòng
-   *  OS-OUT nguồn qua `outsourcingOrderItemId`) — đây là neo mà `getJobQcCoverage` dùng để gộp
-   *  chung với OQC, thay vì suy mờ qua `(outsourcingReceiptId, itemId)` như trước (một OS-IN gộp
-   *  được nhiều Job khác nhau cùng NCC, suy theo cặp đó có thể lẫn Job). Xem
-   *  `docs/CODEMAPS/production.md`. */
+  /** Sinh 1 phiếu IQC cho MỖI dòng phiếu nhận gia công ngoài có `requiresIqc = true` (song sinh
+   *  `createInspectionsFromReceipt`), gọi trong transaction của
+   *  `OutsourcingReceiptsService.createOutsourcingReceipt`.
+   *
+   *  Rules:
+   *  - **Không** gate `create`: hàng đã về nhà máy trước khi các dòng IQC này được kiểm (gia công
+   *    ngoài không đụng `inventory_balances`).
+   *  - Mỗi dòng neo thẳng vào công đoạn `OUTSOURCE` sinh ra nó (`productionJobOperationId`/
+   *    `productionJobId`, denormalize từ dòng OS-OUT nguồn): đây là neo `getJobQcCoverage` dùng để
+   *    gộp với OQC. Không suy qua `(outsourcingReceiptId, itemId)` vì một OS-IN có thể gộp nhiều
+   *    Job cùng NCC.
+   *
+   *  Xem `docs/CODEMAPS/production.md`. */
   async createInspectionsFromOutsourcingReceipt(
     tx: DbTransaction,
     params: {
@@ -635,7 +636,6 @@ export class IqcService {
     );
   }
 
-  /** Lần kiểm mới nhất của một case row, kèm bằng chứng — chỉ phục vụ `getIqc`. */
   private async getLatestAttempt(qualityInspectionId: string) {
     return this.db.query.qualityInspectionResults.findFirst({
       where: eq(
@@ -647,7 +647,7 @@ export class IqcService {
     });
   }
 
-  /** Xem `docs/CODEMAPS/quality.md` — quy tắc suy `status`, dùng chung cho tạo lẫn lưu kết quả QC. */
+  /** Quy tắc suy `status`, dùng chung cho tạo lẫn lưu kết quả QC; xem `docs/CODEMAPS/quality.md`. */
   private resolveIqcStatus(
     result: IqcResult | undefined,
     disposition: IqcDisposition | undefined,
@@ -666,12 +666,10 @@ export class IqcService {
       : IqcStatus.WAITING_RETURN;
   }
 
-  /** Nút "Lưu" duy nhất của trang chi tiết IQC — gộp cả phần lưu kết quả QC lẫn phần chọn phương án
-   * xử lý FAIL (route `POST /iqc/:iqcId/resolve` cũ đã xoá). Gọi lại được nhiều lần trừ khi request
-   * đã ở trạng thái tương đương `WAITING_RETURN` cũ (`E159`) — mỗi lần gọi sinh **1 dòng
-   * `quality_inspection_results` mới** (attempt), không còn `UPDATE` đè lên chính nó như trước khi
-   * tách case row/attempt; `quality_inspections` chỉ giữ
-   * mirror của attempt mới nhất — nguồn duy nhất mọi gate/list/detail khác đang đọc. */
+  /** Nút "Lưu" duy nhất của trang chi tiết IQC — gộp cả lưu kết quả QC lẫn chọn phương án xử lý
+   * FAIL. Gọi lại được nhiều lần trừ khi dòng đã `IN_PROGRESS` (chờ trả NCC, `E159`). Mỗi lần gọi
+   * sinh **1 dòng `quality_inspection_results` mới** (attempt, append-only); `quality_inspections`
+   * chỉ giữ mirror của attempt mới nhất — nguồn mà mọi gate/list/detail khác đọc. */
   async confirmIqc(
     iqcId: string,
     reqDto: ConfirmIqcReqDto,
@@ -688,9 +686,9 @@ export class IqcService {
 
     const status = this.resolveIqcStatus(reqDto.result, reqDto.disposition);
 
-    // Disposition SORT/RETURN tự sinh phiếu trả NCC (`supplierReturnsService
-    // .createFromIqcDisposition`, đòi `supplierId` khác null) — dòng sinh từ phiếu RETURN gắn
-    // khách hàng không có NCC nào để trả, chưa có phương án trả-lại-khách (BUG-065).
+    // Disposition SORT/RETURN tự sinh phiếu trả NCC (`createFromIqcDisposition`, đòi `supplierId`
+    // khác null) — dòng sinh từ phiếu RETURN gắn khách hàng không có NCC nào để trả, và chưa có
+    // phương án trả-lại-khách.
     if (status === IqcStatus.WAITING_RETURN && !inspection.supplierId) {
       throw new AppException(ErrorCode.E254, HttpStatus.BAD_REQUEST);
     }
@@ -720,10 +718,10 @@ export class IqcService {
         : null;
 
     await this.db.transaction(async (tx) => {
-      // Khoá case row để cấp `attemptNo` tuần tự và đọc đúng `startedAt`/`approvedAt` hiện hành —
-      // không có lock, hai lần confirm song song có thể tính trùng `attemptNo`
-      // (`uq_quality_inspection_results_inspection_attempt` biến đua thành lỗi constraint thay vì
-      // ghi trùng, nhưng lock tránh luôn ca đó) hoặc cùng nghĩ mình là "lần confirm đầu tiên".
+      // Khoá case row để cấp `attemptNo` tuần tự và đọc đúng `startedAt`/`approvedAt` hiện hành.
+      // Không có lock, hai lần confirm song song có thể tính trùng `attemptNo` (unique index
+      // `uq_quality_inspection_results_inspection_attempt` chỉ biến đua thành lỗi) hoặc cùng nghĩ
+      // mình là "lần confirm đầu tiên".
       const [locked] = await tx
         .select({
           startedAt: qualityInspections.startedAt,
@@ -744,9 +742,9 @@ export class IqcService {
 
       const attemptNo = locked.attemptCount + 1;
 
-      // Bỏ trống (`undefined`) = Drizzle giữ nguyên cột: người/lúc confirm chỉ ghi ở lần confirm
-      // đầu tiên, người/lúc chốt phương án chỉ ghi ở lần chốt đầu tiên — nhưng bị xoá hẳn nếu lần
-      // confirm này không còn phương án nào.
+      // Bỏ trống (`undefined`) = Drizzle giữ nguyên cột: người/lúc confirm chỉ ghi ở lần đầu,
+      // người/lúc chốt phương án chỉ ghi ở lần chốt đầu — nhưng xoá hẳn nếu lần này không còn
+      // phương án nào.
       const audit: {
         inspectedBy?: string;
         startedAt?: Date;
@@ -794,9 +792,8 @@ export class IqcService {
         })
         .where(eq(qualityInspections.id, iqcId));
 
-      // Công đoạn `OUTSOURCE` neo IQC vào `productionJobId` (`getJobQcCoverage` gộp chung IQC/OQC)
-      // — dòng IQC này có thể là dòng QC cuối cùng đóng Job,
-      // không chỉ OQC mới làm được việc đó.
+      // Công đoạn `OUTSOURCE` neo IQC vào `productionJobId` (`getJobQcCoverage` gộp chung IQC/OQC):
+      // dòng IQC này có thể là dòng QC cuối cùng đóng Job, không chỉ OQC.
       if (status === IqcStatus.COMPLETED && inspection.productionJobId) {
         await closeJobIfQcCovered(tx, inspection.productionJobId, userId);
       }
@@ -814,10 +811,9 @@ export class IqcService {
         isPass ? [] : (reqDto.dispositionEvidenceFileIds ?? []),
       );
 
-      // Đây là nơi DUY NHẤT một request IQC chuyển sang WAITING_RETURN (IN_PROGRESS ở DB) — khoá
-      // lại mọi lần confirm sau đó (E159), nên không cần guard chống tạo phiếu trả trùng.
-      // `returnTarget` khác null chỉ khi `status = WAITING_RETURN`, guard E254 ở trên đã đảm bảo
-      // `supplierId` khác null lúc đó.
+      // Chỉ `confirmIqc` sinh phiếu trả NCC. Sang WAITING_RETURN (IN_PROGRESS ở DB) là khoá mọi lần
+      // confirm sau (E159), nên không cần guard chống tạo phiếu trả trùng. `returnTarget` khác null
+      // chỉ khi `status = WAITING_RETURN`, guard E254 ở trên đã đảm bảo `supplierId` khác null.
       if (returnTarget) {
         const inventoryReceiptId =
           inspection.originType ===
@@ -830,8 +826,8 @@ export class IqcService {
             ? inspection.originId
             : null;
         // `supplier_returns.outsourcingReceiptId` là FK riêng của bảng đó (không thuộc origin
-        // polymorphic của QC) — dòng IQC sinh từ OS-IN chỉ giữ `outsourcingReceiptItemId` qua
-        // `originId`, phải suy ngược `outsourcingReceiptId` qua join.
+        // polymorphic của QC); dòng IQC sinh từ OS-IN chỉ giữ `outsourcingReceiptItemId` qua
+        // `originId`, nên phải tra ngược `outsourcingReceiptId`.
         const outsourcingReceiptId = outsourcingReceiptItemId
           ? ((
               await tx.query.outsourcingReceiptItems.findFirst({
@@ -858,9 +854,9 @@ export class IqcService {
         });
       }
 
-      // IQC sinh từ OS-IN — lần confirm này có thể vừa xoá nốt IQC treo cuối cùng của OS-OUT nguồn
-      // (WAITING_QC → COMPLETED) hoặc vẫn còn treo (giữ nguyên WAITING_QC); gọi vô điều kiện, để
-      // `recomputeOutsourcingOrderStatus` tự quyết theo dữ liệu thật, không suy trước ở đây.
+      // IQC sinh từ OS-IN: lần confirm này có thể vừa xong IQC treo cuối cùng của OS-OUT nguồn
+      // (WAITING_QC → COMPLETED) hoặc vẫn còn treo; gọi vô điều kiện để
+      // `recomputeOutsourcingOrderStatus` tự quyết theo dữ liệu thật.
       if (
         inspection.originType ===
         QualityInspectionOriginType.OUTSOURCING_RECEIPT_ITEM
@@ -965,8 +961,8 @@ export class IqcService {
   }
 
   /** Đường gỡ cho phiếu tạo nhầm — chỉ xoá được khi còn `NOT_INSPECTED` (DRAFT, chưa từng
-   * `confirm`, nên chưa có attempt nào để mồ côi), khuôn `OqcService.deleteOqc` nhưng mint riêng
-   * `E206` vì hai domain khác nhau. */
+   * `confirm`, nên chưa có attempt nào để mồ côi). Cùng khuôn `OqcService.deleteOqc` nhưng mã lỗi
+   * riêng `E206`. */
   async deleteIqc(iqcId: string): Promise<void> {
     const inspection = await this.db.query.qualityInspections.findFirst({
       columns: { status: true, originType: true, originId: true },
@@ -992,9 +988,8 @@ export class IqcService {
     });
   }
 
-  /** Sửa lại ngày kiểm sau khi đã confirm — không đụng `result`, field quyết định PASS/FAIL vẫn
-   * khoá cứng sau confirm. Chỉ sửa `quality_inspections` (bản "hiện hành") — không sinh attempt
-   * mới, đây không phải một lần kiểm. */
+  /** Sửa lại ngày kiểm sau khi đã confirm — không đụng `result` (khoá cứng sau confirm). Chỉ sửa
+   * `quality_inspections`, không sinh attempt mới vì đây không phải một lần kiểm. */
   async updateIqc(iqcId: string, reqDto: UpdateIqcReqDto): Promise<void> {
     await this.ensureIqcConfirmed(iqcId);
 
@@ -1036,8 +1031,7 @@ export class IqcService {
   }
 
   /** Cấp `quantity` mã liên tiếp trong năm của `inspectionDate` qua `generateDocumentSequences` —
-   *  dùng được từ cả `generateIqcCode` (đơn, `quantity = 1`) lẫn `createInspectionsFromReceipt`/
-   *  `createInspectionsFromOutsourcingReceipt` (N phiếu/lượt). */
+   *  dùng cho cả `generateIqcCode` (1 mã) lẫn hai hàm `createInspectionsFrom*` (N phiếu/lượt). */
   private async generateIqcCodes(
     tx: DbTransaction,
     inspectionDate: Date,

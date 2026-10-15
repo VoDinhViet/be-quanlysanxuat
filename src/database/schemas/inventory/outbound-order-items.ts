@@ -16,11 +16,10 @@ import { orderItems } from '../orders/order-items';
 import { productionJobs } from '../production/production-jobs';
 
 /**
- * Dòng phiếu giao hàng (DO) — mỗi dòng trỏ 1 `order_items` (dòng PO nguồn), **không unique**: một
- * dòng PO được chọn lại ở nhiều phiếu DO khác nhau qua nhiều lần giao (`docs/CODEMAPS/inventory.md`,
- * mục "Giao hàng"). `itemId` denormalize từ `orderItem.itemId` (khuôn
- * `outsourcing_receipt_items.itemId`); `productionJobId` là snapshot Job hiển thị, suy 1 lần lúc
- * tạo dòng — không dùng để validate.
+ * Dòng phiếu giao hàng (DO) — mỗi dòng trỏ 1 `order_items` (dòng SO nguồn), **không unique**: một
+ * dòng SO được chọn lại ở nhiều phiếu DO qua nhiều lần giao (`docs/CODEMAPS/sales.md`). `itemId`
+ * denormalize từ `orderItem.itemId` (khuôn `outsourcing_receipt_items.itemId`); `productionJobId`
+ * là Job suy 1 lần lúc tạo dòng, `ensureAllJobsQcCompleted` đọc cột này để chặn `E205` lúc gửi duyệt.
  */
 export const outboundOrderItems = pgTable(
   'outbound_order_items',
@@ -35,8 +34,8 @@ export const outboundOrderItems = pgTable(
     itemId: uuid('item_id')
       .notNull()
       .references(() => items.id, { onDelete: 'restrict' }),
-    // `set null` — Job có thể bị hard-delete khi LSX chứa nó được duyệt lại
-    // (`ProductionOrdersService.seedPlan`), cùng lý do `outsourcing_order_items.productionJobId`.
+    // `set null`: Job có thể bị hard-delete (huỷ SO, `ProductionOrdersService.seedPlan`), cùng lý do
+    // `outsourcing_order_items.productionJobId`.
     productionJobId: uuid('production_job_id').references(
       () => productionJobs.id,
       { onDelete: 'set null' },

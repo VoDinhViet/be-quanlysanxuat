@@ -49,9 +49,9 @@ export const inventoryRequisitionStatusEnum = pgEnum(
 
 /**
  * Phiếu lãnh vật tư — chứng từ duy nhất đưa DIRECT ra khỏi kho cho sản xuất
- * (`docs/CODEMAPS/inventory.md`, mục "Phiếu lãnh vật tư"). `status` cố ý không dùng chung
- * `inventory_document_status` với `inventory_receipts`/`inventory_issues`/`supplier_returns` —
- * ba bảng đó sẽ nhận 3 giá trị duyệt chúng không bao giờ dùng.
+ * (`docs/CODEMAPS/inventory.md`). `status` cố ý không dùng chung `inventory_document_status` với
+ * `inventory_receipts`/`inventory_issues`/`supplier_returns`: ba bảng đó sẽ nhận 3 giá trị duyệt
+ * chúng không bao giờ dùng.
  */
 export const inventoryRequisitions = pgTable(
   'inventory_requisitions',
@@ -67,9 +67,9 @@ export const inventoryRequisitions = pgTable(
       () => productionOrders.id,
       { onDelete: 'set null' },
     ),
-    // Job bị hard-delete khi LSX chứa nó được duyệt lại (`ProductionOrdersService.seedPlan`) —
-    // `set null` để phiếu đã ISSUED sống sót qua việc đó. Bắt buộc-khi-type=PRODUCTION nằm ở
-    // service (`E233`), không phải CHECK: CHECK cộng `set null` sẽ chặn luôn lệnh xoá Job.
+    // Job có thể bị hard-delete (LSX chứa nó bị xoá, `ProductionOrdersService.seedPlan`) — `set null`
+    // để phiếu đã ISSUED sống sót. Bắt buộc-khi-type=PRODUCTION nằm ở service (`E233`), không phải
+    // CHECK: CHECK cộng `set null` sẽ chặn luôn lệnh xoá Job.
     productionJobId: uuid('production_job_id').references(
       () => productionJobs.id,
       { onDelete: 'set null' },

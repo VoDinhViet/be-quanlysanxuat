@@ -14,11 +14,10 @@ import { items } from '../items/items';
 import { purchaseOrderItems } from '../purchasing/purchase-order-items';
 import { units } from '../units/units';
 
-/** Một dòng phiếu nhập. `quantity` luôn dương — dấu chỉ xuất hiện ở bút toán sinh ra lúc `post`,
- * không ở đây. `purchaseOrderItemId` là nguồn duy nhất để sổ cái mua hàng tính "SL đã nhập kho"
- * theo từng dòng vật tư (`docs/CODEMAPS/purchasing.md`) — chỉ đọc khi phiếu `POSTED`. `unitId` chỉ
- * để hiển thị — không quy đổi, mọi bút toán/so sánh định mức
- * đọc thẳng `quantity`. */
+/** Một dòng phiếu nhập. `quantity` luôn dương — dấu chỉ có ở bút toán sinh ra lúc `post`.
+ * `purchaseOrderItemId` là nguồn để tính "SL đã nhập" theo từng dòng đơn mua (chặn vượt lúc
+ * `confirm`; hiển thị trên PO chỉ tính phiếu `POSTED`, `docs/CODEMAPS/purchasing.md`). `unitId`
+ * chỉ để hiển thị, không quy đổi: mọi bút toán/so sánh định mức đọc thẳng `quantity`. */
 export const inventoryReceiptItems = pgTable(
   'inventory_receipt_items',
   {
@@ -46,8 +45,8 @@ export const inventoryReceiptItems = pgTable(
       scale: 2,
       mode: 'number',
     }),
-    // SL thực tế theo ĐVBG của dòng PO (PH-135) — kho cân/đếm lại theo đơn vị NCC báo giá. Chỉ có
-    // khi dòng PO có ĐVBG; YCTT tính tiền theo số này, `quantity` vẫn là SL đơn vị chính.
+    // SL thực tế theo ĐVBG của dòng PO: kho cân/đếm lại theo đơn vị NCC báo giá. Chỉ có khi dòng PO có
+    // ĐVBG; YCTT tính tiền theo số này, `quantity` vẫn là SL đơn vị chính.
     quotationQuantity: numeric('quotation_quantity', {
       precision: 18,
       scale: 3,

@@ -19,17 +19,14 @@ import { productionJobOperations } from '../production/production-job-operations
 import { productionJobs } from '../production/production-jobs';
 
 /**
- * Dòng phiếu gửi gia công ngoài (OS-OUT) — client gửi đủ cột (`productionJobBomItemId`/
- * `itemCode`/`itemName`/`productionJobId`/`operationCode`/...) lấy từ popup
- * `GET .../outsourceable-operations`, server không resolve/validate lại — chỉ FK + `.notNull()`
- * ràng buộc. Xem
- * `docs/CODEMAPS/production.md`.
+ * Dòng phiếu gửi gia công ngoài (OS-OUT) — client gửi đủ cột snapshot (`productionJobBomItemId`,
+ * `itemCode`/`itemName`, `productionJobId`, `operationCode`...) lấy từ popup
+ * `GET .../outsourceable-operations`, server không resolve lại. Xem `docs/CODEMAPS/production.md`.
  *
- * Không unique trên `(outsourcingOrderId, productionJobOperationId)` (từng có, đã bỏ) — gửi cùng
- * một công đoạn ở nhiều phiếu OS-OUT khác nhau qua nhiều đợt là luồng thật (`sentQuantity` cộng
- * dồn qua mọi phiếu, so với `plannedQuantity`, xem popup `outsourceable-operations`); ép unique
- * trong cùng một phiếu không có ErrorCode/doc nào đòi hỏi, và tự mất hiệu lực khi `production_job_operations`
- * bị hard-delete (`productionJobOperationId` về NULL, Postgres coi NULL là distinct).
+ * Không unique DB trên `(outsourcingOrderId, productionJobOperationId)`: gửi cùng một công đoạn ở
+ * nhiều phiếu qua nhiều đợt là luồng thật (`sentQuantity` cộng dồn qua mọi phiếu, so với
+ * `plannedQuantity`). Trùng công đoạn trong cùng một phiếu bị chặn ở service (`E183`); unique DB
+ * cũng mất hiệu lực khi `productionJobOperationId` về NULL (Postgres coi NULL là distinct).
  */
 export const outsourcingOrderItems = pgTable(
   'outsourcing_order_items',
@@ -38,9 +35,8 @@ export const outsourcingOrderItems = pgTable(
     outsourcingOrderId: uuid('outsourcing_order_id')
       .notNull()
       .references(() => outsourcingOrders.id, { onDelete: 'cascade' }),
-    // `set null` cho cả ba — Job có thể bị hard-delete khi LSX chứa nó được duyệt lại
-    // (`ProductionOrdersService.seedPlan`); phiếu đã post phải sống sót qua việc đó, xem
-    // `inventory_issues.productionJobId`.
+    // `set null` cho cả ba: Job có thể bị hard-delete (huỷ SO, `ProductionOrdersService.seedPlan`);
+    // phiếu phải sống sót, xem `inventory_issues.productionJobId`.
     productionJobId: uuid('production_job_id').references(
       () => productionJobs.id,
       { onDelete: 'set null' },
@@ -52,13 +48,12 @@ export const outsourcingOrderItems = pgTable(
     operationId: uuid('operation_id').references(() => operations.id, {
       onDelete: 'set null',
     }),
-    // Snapshot bắt buộc (không nullable) — `productionJobOperationId` có thể về null (Job bị
-    // hard-delete), operationCode/Name là nguồn hiển thị chính lúc đó, cùng lý do snapshot trên
-    // `production_job_operations`.
+    // Snapshot bắt buộc: `productionJobOperationId` có thể về null (Job bị hard-delete), khi đó
+    // `operationCode`/`operationName` là nguồn hiển thị chính.
     operationCode: varchar('operation_code', { length: 50 }).notNull(),
     operationName: varchar('operation_name', { length: 255 }).notNull(),
-    // Node Job cụ thể được gửi đi — `set null` cùng lý do
-    // `productionJobId`; `itemCode`/`itemName` là snapshot bắt buộc thay thế lúc đó.
+    // Node Job cụ thể được gửi đi; `set null` cùng lý do `productionJobId`, `itemCode`/`itemName` là
+    // snapshot bắt buộc thay thế.
     productionJobBomItemId: uuid('production_job_bom_item_id').references(
       () => productionJobBomItems.id,
       { onDelete: 'set null' },

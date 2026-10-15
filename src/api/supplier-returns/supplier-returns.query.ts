@@ -6,14 +6,12 @@ import {
   supplierReturns,
 } from '../../database/schemas';
 
-/** SL đã trả NCC theo từng vật tư của một phiếu nhập, chỉ tính phiếu trả đã `POSTED` — dùng bởi
+/** SL đã trả NCC theo từng vật tư của một phiếu nhập, chỉ tính phiếu trả `POSTED` — dùng bởi
  *  `InventoryReceiptsService.postInventoryReceipt` để bù trừ trước khi ghi bút toán `RECEIPT`
- *  (xem `docs/CODEMAPS/inventory.md`, mục "bù trừ tồn"). Tại thời điểm `post` phiếu nhập
- *  chạy, mọi phiếu trả liên quan chắc chắn đã `POSTED` — phiếu nhập chỉ `post` được sau khi mọi
- *  IQC liên quan `COMPLETED`, và một IQC `WAITING_RETURN` chỉ `COMPLETED` sau khi phiếu trả của
- *  nó đã `POSTED` (`SupplierReturnsService.postSupplierReturn` →
- *  `completeIqcAfterSupplierReturn`). Plain function, không qua DI — cùng khuôn
- *  `purchase-orders.query.ts`. */
+ *  (`docs/CODEMAPS/inventory.md`). Lúc `post` phiếu nhập, mọi phiếu trả liên quan đã `POSTED`:
+ *  phiếu nhập chỉ `post` được khi mọi IQC liên quan `COMPLETED`, và IQC chờ trả hàng chỉ
+ *  `COMPLETED` sau khi phiếu trả `POSTED` (`completeIqcAfterSupplierReturn`). Plain function,
+ *  không qua DI. */
 export async function getReturnedQuantityByReceiptItemId(
   db: Database | DbTransaction,
   inventoryReceiptId: string,
@@ -34,7 +32,7 @@ export async function getReturnedQuantityByReceiptItemId(
     )
     .groupBy(supplierReturns.itemId);
 
-  // Phiếu trả từ kho luôn có `itemId` (chỉ nhánh OS-IN mới NULL), `where` trên
+  // Phiếu trả từ kho luôn có `itemId` (chỉ nhánh OS-IN mới NULL); `where` trên
   // `inventoryReceiptId` đã loại nhánh đó.
   return new Map(rows.map((row) => [row.itemId!, row.returned]));
 }

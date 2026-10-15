@@ -31,8 +31,8 @@ export interface OqcExport {
   createdAt: Date;
 }
 
-// Cột `decision` DB rộng hơn vocabulary API `IqcResult` — nhãn dưới đây phủ đủ mọi giá trị enum để
-// Record exhaustive, dù dòng OQC trên thực tế chỉ rơi vào null/PASS/FAIL.
+// Enum `decision` DB rộng hơn `IqcResult` — nhãn dưới đây phủ đủ mọi giá trị để Record exhaustive,
+// dù dòng OQC trên thực tế chỉ rơi vào null/PASS/FAIL.
 const OQC_RESULT_LABELS: Record<QualityInspectionDecision, string> = {
   [QualityInspectionDecision.PENDING]: '',
   [QualityInspectionDecision.PASS]: 'PASS',
@@ -49,7 +49,8 @@ const OQC_DISPOSITION_LABELS: Record<OqcDisposition, string> = {
 };
 
 // Nhãn riêng cho OQC — cùng enum DB với IQC (`QualityInspectionStatus`) nhưng ý nghĩa nghiệp vụ
-// khác (IN_PROGRESS = "đang rework", không phải "chờ trả NCC"), không tái dùng nhãn của iqc.export.ts.
+// khác (IN_PROGRESS = "đang rework", không phải "chờ trả NCC"): không tái dùng nhãn của
+// `iqc.export.ts`.
 const OQC_STATUS_LABELS: Record<QualityInspectionStatus, string> = {
   [QualityInspectionStatus.DRAFT]: 'Chờ kiểm',
   [QualityInspectionStatus.PENDING]: 'FAIL - chờ xử lý',

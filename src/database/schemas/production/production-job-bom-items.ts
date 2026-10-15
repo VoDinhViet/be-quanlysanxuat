@@ -19,9 +19,9 @@ import { productionJobOperations } from './production-job-operations';
 import { productionJobs } from './production-jobs';
 
 /**
- * `FG` — node "Cấp 0" đại diện chính thành phẩm (đúng 1 mỗi Job); `COMPONENT`/`DIRECT` — nhân
- * bản từ `bom_items.type`. Enum riêng, không dùng chung
- * `ItemType`: `items.type` không còn giá trị nào cho node cấu trúc con.
+ * `FG` — node "Cấp 0" đại diện chính thành phẩm (đúng 1 mỗi Job); `COMPONENT`/`DIRECT` — nhân bản
+ * từ `bom_items.type`. Enum riêng, không dùng `ItemType`: `items.type` không có giá trị cho node
+ * cấu trúc con.
  */
 export enum ProductionJobBomItemType {
   FG = 'FG',
@@ -39,38 +39,26 @@ export const productionJobBomItemTypeEnum = pgEnum(
 );
 
 /**
- * Snapshot cây BOM của một Job — nhân bản `bom_items` (cả node COMPONENT lẫn lá DIRECT), id
- * hoàn toàn mới. Dựng đúng một lần trong transaction `start` (`ProductionJobsService.startJob` →
- * `createJobSnapshot`) — Job còn `PENDING` không có dòng nào ở đây.
- * Đóng băng ngay từ lúc đó, không có route sửa — sửa/xoá
- * BOM gốc sau đó không ảnh hưởng Job đã `start`.
+ * Snapshot cây BOM của một Job — nhân bản `bom_items` (node `COMPONENT` lẫn lá `DIRECT`) với id
+ * mới, dựng một lần lúc tạo Job (`createJobs` → `createJobSnapshot`) hoặc chụp lại khi Job còn
+ * `PENDING` (`reloadSnapshot`). Không có route sửa; sửa/xoá BOM gốc sau đó không ảnh hưởng Job.
  *
  * Rules:
- * - `code`/`name` là **snapshot text**, nguồn hiển thị chính — KHÔNG đọc qua `itemId` lúc render.
- *   `itemId` chỉ còn là liên kết tham khảo tới item gốc (`set null` khi bị xoá), không phải nguồn
- *   dữ liệu — và luôn NULL với node `COMPONENT` (node đó không phải một item).
- * - `itemType` chủ yếu `COMPONENT`/`DIRECT` (nhân bản từ `bom_items`), cộng **đúng một** node
- *   `FG` mỗi Job —
- *   node "Cấp 0" đại diện chính thành phẩm, mang routing lắp ráp/đóng gói của FG
- *   (`createJobBomItems`).
- *   Node FG luôn `parentId = null`, `sortOrder` lớn nhất trong Job (đứng cuối bảng "Công
- *   đoạn sản xuất") — snapshot riêng của Job này, không lẫn với node ROOT thật của `bom_items`
- *   (cây gốc đã có `parentId` cho mọi node khác ROOT nên không
- *   còn node nào khác trùng `parentId = null` để phân biệt); chỉ tạo khi node ROOT của FG có
- *   `bom_operations` (routing Cấp 0).
- * - `level` là snapshot copy nguyên từ `bom_items.level` lúc duyệt LSX, cùng quy ước 1-based (node
- *   FG dùng `0`, ngoài quy ước này có chủ ý — không phải một cấp của cây con) — cây Job nhỏ, dựng
- *   trong bộ nhớ lúc đọc qua `parentId` (`ProductionJobsService`, mirror `BomsService`), không cần
- *   cột path riêng.
+ * - `code`/`name` là **snapshot text**, nguồn hiển thị chính — không đọc qua `itemId` lúc render.
+ *   `itemId` chỉ là liên kết tham khảo tới item gốc (`set null` khi bị xoá) và luôn NULL với node
+ *   `COMPONENT` (node đó không phải một item).
+ * - Mỗi Job có **đúng một** node `FG` (nếu BOM của FG có `routing_operations`): node "Cấp 0" mang
+ *   routing lắp ráp/đóng gói của thành phẩm. Luôn `parentId = null`, `quantity = 1`,
+ *   `plannedQuantity = job.quantity`, `sortOrder` lớn nhất trong Job (đứng cuối bảng "Công đoạn
+ *   sản xuất").
+ * - `level` copy từ `bom_items.level` (quy ước 1-based); node `FG` dùng `0`, ngoài quy ước có chủ ý.
  * - `plannedQuantity` là giá trị **dẫn xuất** (nhân luỹ kế `quantity` theo cây × SL Job), tính một
- *   lần cùng lúc `createJobBomItems` và đóng băng — không có CHECK `> 0` vì định mức lẻ nhiều cấp có thể
- *   tròn về 0 ở scale 6. Node FG dùng thẳng `quantity = 1`, `plannedQuantity = job.quantity`.
- * - `imageFileId` copy thẳng ảnh item lúc duyệt, cùng lý lẽ `productionJobIssues.imageFileId` —
- *   `files` là registry ghi-một-lần nên giữ dạng liên kết sống (`set null` khi bị xoá) là an toàn,
- *   khác `itemId`/`code`/`name` vốn phải đóng băng.
- * - Không `updatedAt` — append-only lúc `createJobBomItems` sinh cây, chưa có route ghi nào khác (kể cả
- *   `completedQuantity`/`completedDate` sửa được đều nằm trên `production_job_operations`, không
- *   phải bảng này).
+ *   lần lúc dựng snapshot rồi đóng băng. Không có CHECK `> 0` vì định mức lẻ nhiều cấp có thể tròn
+ *   về 0 ở scale 6.
+ * - `imageFileId` copy ảnh item lúc dựng, cùng lý lẽ `productionJobIssues.imageFileId`: `files` là
+ *   registry ghi-một-lần nên giữ liên kết sống (`set null` khi bị xoá) là an toàn, khác
+ *   `itemId`/`code`/`name` phải đóng băng.
+ * - Không `updatedAt`: append-only, tiến độ sửa được nằm ở `production_job_operations`.
  */
 export const productionJobBomItems = pgTable(
   'production_job_bom_items',
@@ -119,10 +107,8 @@ export const productionJobBomItems = pgTable(
     ),
     check('chk_production_job_bom_items_quantity_positive', sql`quantity > 0`),
     // Mỗi Job nhiều nhất một node Cấp 0 (FG) — cắm routing lắp ráp/đóng gói của thành phẩm.
-    // Literal 'FG' (không interpolate `${ProductionJobBomItemType.FG}`) — một partial index
-    // predicate không được là bound parameter, `drizzle-kit generate` sẽ sinh ra `$1` không hợp lệ
-    // trong DDL đứng một mình (khác `uq_items_code_revision_active` không dính vấn đề này vì vế nó
-    // không có biến).
+    // Literal 'FG' (không interpolate enum): predicate của partial index không được là bound
+    // parameter, `drizzle-kit generate` sẽ sinh `$1` không hợp lệ trong DDL.
     uniqueIndex('uq_production_job_bom_items_final_assembly')
       .on(table.productionJobId)
       .where(sql`item_type = 'FG'`),

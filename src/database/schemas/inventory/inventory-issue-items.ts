@@ -15,9 +15,9 @@ import { orderItems } from '../orders/order-items';
 import { units } from '../units/units';
 
 /** Một dòng phiếu xuất — cùng khuôn `inventory_receipt_items`, không có `unitPrice`. `orderItemId`
- * là mối nối duy nhất sang Orders (cơ sở tính `reserved`) — chỉ hợp lệ khi item là FG,
- * service-enforced (`InventoryIssuesService.ensureItemsValid`). `unitId` chỉ để hiển thị
- * — không quy đổi, mọi bút toán đọc thẳng `quantity`. */
+ * là mối nối duy nhất sang Orders (cơ sở tính `reserved`), chỉ hợp lệ khi item là FG
+ * (service-enforced, `InventoryIssuesService.ensureItemsValid`). `unitId` chỉ để hiển thị, không
+ * quy đổi: mọi bút toán đọc thẳng `quantity`. */
 export const inventoryIssueItems = pgTable(
   'inventory_issue_items',
   {

@@ -29,7 +29,6 @@ import { InventoryAdjustmentResDto } from './dto/inventory-adjustment.res.dto';
 import { PageInventoryAdjustmentResDto } from './dto/page-inventory-adjustment.res.dto';
 import { UpdateInventoryAdjustmentReqDto } from './dto/update-inventory-adjustment.req.dto';
 
-/** Loại điều chỉnh → loại bút toán lúc `post`. */
 const adjustmentTypeTransactionType: Record<
   InventoryAdjustmentType,
   InventoryTransactionType
@@ -179,9 +178,8 @@ export class InventoryAdjustmentsService {
   }
 
   /** `DRAFT → POSTED` — sinh bút toán + cập nhật tồn qua `InventoryPostingService`, sau đó phiếu
-   * bất biến. Đọc trạng thái nằm trong cùng transaction, sau `getInventoryAdjustmentForUpdate`.
-   * Rỗng dòng (`E151`) dùng lại mã của `inventory_receipts confirm` — phiếu điều chỉnh không có
-   * bước `confirm` riêng. Xem `docs/CODEMAPS/inventory.md`. */
+   * bất biến. Phiếu rỗng dòng báo `E151`, dùng lại mã của `inventory_receipts confirm` vì phiếu
+   * điều chỉnh không có bước `confirm` riêng. Xem `docs/CODEMAPS/inventory.md`. */
   async postInventoryAdjustment(
     adjustmentId: string,
     userId: string,
@@ -234,8 +232,7 @@ export class InventoryAdjustmentsService {
     });
   }
 
-  /** `DRAFT`/`POSTED → CANCELLED`. Từ `POSTED` thì đảo bút toán trước khi đổi trạng thái — xem
-   * `InventoryPostingService.reverseDocument`. */
+  /** `DRAFT`/`POSTED → CANCELLED`. Từ `POSTED` thì đảo bút toán trước (`reverseDocument`). */
   async cancelInventoryAdjustment(
     adjustmentId: string,
     userId: string,

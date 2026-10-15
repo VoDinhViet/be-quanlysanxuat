@@ -86,11 +86,12 @@ import {
   type ReworkSnapshotOptions,
 } from './production-job-snapshot.query';
 
-/** Job sản xuất — 1 sản phẩm (FG) = 1 Job trong một LSX. Chỉ tạo được qua `createJobs`, gọi từ
- * transaction duyệt LSX (`ProductionOrdersService.approveProductionOrder`) — không có route tạo
- * Job riêng. Snapshot dựng ngay lúc tạo Job (`createJobs`), chụp lại được khi còn `PENDING`
- * (`reloadSnapshot`); Job không bao giờ đọc sống từ sản phẩm. Vòng đời, business rule:
- * `docs/CODEMAPS/production.md`. */
+/**
+ * Job sản xuất: 1 sản phẩm (FG) = 1 Job trong một LSX. Không có route tạo Job; `createJobs` chỉ
+ * được gọi từ transaction duyệt LSX và tạo LSX phụ của NCR. Snapshot dựng ngay lúc tạo Job, chụp
+ * lại được khi còn `PENDING` (`reloadSnapshot`); Job không đọc sống từ sản phẩm. Vòng đời và rule:
+ * `docs/CODEMAPS/production.md`.
+ */
 @Injectable()
 export class ProductionJobsService {
   constructor(
@@ -100,8 +101,7 @@ export class ProductionJobsService {
     private readonly pdfRendererService: PdfRendererService,
   ) {}
 
-  /** Kế hoạch sản xuất (BM 08-01): mỗi dòng là 1 Job. "Yêu cầu kỹ thuật" và Ghi chú để trống cho
-   * người dùng điền tay; ô ký cũng để trống. */
+  /** Kế hoạch sản xuất (BM 08-01): mỗi dòng 1 Job; "Yêu cầu kỹ thuật", Ghi chú và ô ký để trống. */
   async exportProductionPlanPdf(
     reqDto: ExportProductionJobsPlanReqDto,
   ): Promise<StreamableFile> {
@@ -162,8 +162,7 @@ export class ProductionJobsService {
     });
   }
 
-  /** `.select()` thủ công — `q` lọc trên `productionOrders`/`orders`/`items` (bảng join),
-   * relational query API không biểu diễn được. */
+  /** `.select()` thủ công vì `q` lọc trên bảng join (`productionOrders`/`orders`/`items`). */
   async getProductionJobs(
     reqDto: GetProductionJobsReqDto,
   ): Promise<OffsetPaginatedDto<ProductionJobResDto>> {
@@ -295,15 +294,17 @@ export class ProductionJobsService {
     );
   }
 
-  /** `GET /production-jobs/:jobId/bom` — nhu cầu vật tư của Job. Đọc `production_job_issues`
-   * (1 dòng/vật tư, `requiredQty` = định mức BOM × SL Job, chụp lúc tạo Job hoặc khi tải lại từ sản phẩm lúc
-   * `PENDING`) join hai bảng chiều
-   * `productionJobItems`/`productionJobUnits`, trả nguyên cả hai qua `getTableColumns` lồng dưới
-   * `item`/`unit` — `code`/`name` trùng tên giữa hai bảng nên không spread phẳng được, và DTO
-   * (`@Expose()` trên `ProductionJobItemResDto`/`ProductionJobUnitResDto`) tự lọc chỉ còn
-   * `code`/`name`. `.select()` thủ công vì `q` lẫn `orderBy` chạm bảng join — relational query API
-   * không biểu diễn được. Hai `innerJoin` an toàn vì cả hai FK đều `NOT NULL` (quan hệ 1-1, không
-   * rơi dòng nào, `count()` khớp đúng trang). */
+  /**
+   * Nhu cầu vật tư của Job: đọc `production_job_issues` (1 dòng/vật tư, `requiredQty` = định mức
+   * BOM × SL Job, chụp lúc tạo Job hoặc tải lại snapshot) join `productionJobItems` và
+   * `productionJobUnits`.
+   *
+   * Rules:
+   * - `getTableColumns` lồng dưới `item`/`unit` vì `code`/`name` trùng tên giữa hai bảng; DTO
+   *   (`@Expose()`) lọc chỉ còn `code`/`name`.
+   * - `.select()` thủ công vì `q` và `orderBy` chạm bảng join.
+   * - Hai `innerJoin` không rơi dòng nào vì cả hai FK đều `NOT NULL`, nên `count()` khớp trang.
+   */
   async getProductionJobBom(
     jobId: string,
     reqDto: GetProductionJobBomReqDto,
@@ -398,15 +399,12 @@ export class ProductionJobsService {
     );
   }
 
-  /** `GET /production-jobs/:jobId/operations` — công đoạn as-used của Job (cả `INHOUSE` lẫn
-   * `OUTSOURCE`), nhóm theo BOM item chứa nó; nguồn duy nhất để lấy id công đoạn
-   * (`production_job_operations.id`) cho `POST
-   * /production-execution/operations/:jobOperationId/reports`. `plannedQuantity` đọc thẳng cột đã
-   * đóng băng lúc `start` (`production-job-snapshot.query.ts`,
-   * Job `PENDING` trả kế hoạch sống, `id` null), gắn xuống từng
-   * công đoạn của node. `operationId` optional lọc chỉ trả BOM item nào chứa đúng công đoạn đó —
-   * dùng bởi "Thực hiện sản xuất" (`ProductionExecutionService` đọc qua route này, không có route
-   * riêng). Mảng thường, không phân trang — số BOM item của một Job luôn nhỏ. */
+  /**
+   * Công đoạn của Job (cả `INHOUSE` lẫn `OUTSOURCE`) nhóm theo BOM item chứa nó; nguồn duy nhất để
+   * lấy `production_job_operations.id` cho báo cáo sản lượng. `plannedQuantity` lấy từ BOM item
+   * snapshot. `operationId` lọc chỉ giữ BOM item có đúng công đoạn đó (màn "Thực hiện sản xuất").
+   * Không phân trang vì số BOM item của một Job nhỏ.
+   */
   async getProductionJobOperations(
     jobId: string,
     operationId?: string,
@@ -480,10 +478,11 @@ export class ProductionJobsService {
     });
   }
 
-  /** Đặt/sửa hạn công đoạn — cột kế hoạch duy nhất sửa được trên snapshot đã đóng băng; không
-   * chạm tiến độ (`completedQuantity`/`completedDate` vẫn chỉ đi qua `POST .../reports`). Cho
-   * phép cả công đoạn OUTSOURCE (khác `createJobOperationReport` chặn E260) — hạn là kế hoạch,
-   * không phải số liệu tự ghi từ OS-IN. */
+  /**
+   * Đặt/sửa hạn công đoạn — cột kế hoạch duy nhất sửa được trên snapshot; không chạm tiến độ.
+   * Cho phép cả công đoạn `OUTSOURCE` (khác `createJobOperationReport` chặn `E260`) vì hạn là kế
+   * hoạch, không phải số liệu OS-IN tự ghi.
+   */
   async updateProductionJobOperationDueDate(
     jobId: string,
     jobOperationId: string,
@@ -508,8 +507,6 @@ export class ProductionJobsService {
       throw new AppException(ErrorCode.E082, HttpStatus.NOT_FOUND);
     }
   }
-
-  /** Lập kế hoạch / cập nhật hàng loạt hạn cần hoàn thành của các công đoạn trong Job — chỉ khi Job IN_PROGRESS */
 
   async getProductionJobPlanOperations(
     jobId: string,
@@ -591,10 +588,9 @@ export class ProductionJobsService {
       }
     }
 
-    // `sortOrder` chỉ có nghĩa trong routing của một node, không so sánh được giữa các node — nên
-    // thứ tự mặc định đi theo cấp BOM: chi tiết sâu nhất làm trước, thành phẩm (Cấp 0: lắp ráp,
-    // đóng gói) làm sau cùng. Kế hoạch đã lưu giữ nguyên thứ tự người dùng xếp (hạn tăng dần,
-    // mỗi công đoạn tối thiểu 1 ngày làm việc nên không trùng hạn); chưa có hạn thì xếp sau.
+    // Hạn tăng dần (chưa có hạn xếp sau). `sortOrder` chỉ có nghĩa trong routing của một node nên
+    // không so sánh được giữa các node: khi hạn bằng nhau thì đi theo cấp BOM, chi tiết sâu nhất
+    // làm trước, thành phẩm (Cấp 0: lắp ráp, đóng gói) làm sau cùng.
     const result = Array.from(groupedMap.values()).sort(
       (a, b) =>
         (a.dueDate?.getTime() ?? Infinity) -
@@ -608,6 +604,7 @@ export class ProductionJobsService {
     });
   }
 
+  /** Cập nhật hàng loạt hạn của các công đoạn trong Job — chỉ khi Job `IN_PROGRESS`. */
   async updateProductionJobOperationsPlan(
     jobId: string,
     reqDto: UpdateProductionJobOperationsPlanReqDto,
@@ -642,8 +639,7 @@ export class ProductionJobsService {
     });
   }
 
-  /** Sắp `asc(createdAt)` — đọc xuôi như luồng trao đổi, khác `getProductionOrderLogs` (đọc ngược
-   * lịch sử) một cách có chủ đích. */
+  /** Sắp `asc(createdAt)` như luồng trao đổi; khác `getProductionOrderLogs` (mới nhất trước). */
   async getProductionJobNotes(
     jobId: string,
     reqDto: GetProductionJobNotesReqDto,
@@ -696,10 +692,11 @@ export class ProductionJobsService {
     );
   }
 
-  /** Sinh Job cho một LSX vừa duyệt — 1 Job/item FG (SL > 0), gộp mọi dòng
-   * `production_order_items` cùng `itemId`. Bắt buộc truyền `tx` — chỉ gọi được từ transaction
-   * duyệt của `ProductionOrdersService.approveProductionOrder`. Sinh header `production_jobs`
-   * (`PENDING`) kèm snapshot BOM/công đoạn/vật tư (`createJobSnapshot`) trong cùng transaction. */
+  /**
+   * Sinh Job cho một LSX: 1 Job mỗi item FG trong `quantityByItem`, trạng thái `PENDING`, kèm
+   * snapshot BOM/công đoạn/vật tư (`createJobSnapshot`) trong cùng `tx`. Chỉ gọi từ transaction
+   * duyệt LSX (`ProductionOrdersService`) hoặc tạo LSX phụ của NCR (`NcrsService`).
+   */
   async createJobs(
     tx: DbTransaction,
     productionOrder: { id: string; code: string },
@@ -742,8 +739,7 @@ export class ProductionJobsService {
     );
   }
 
-  /** Tải lại BOM/công đoạn/vật tư từ sản phẩm gốc — chỉ khi Job còn `PENDING` (`E087` nếu không).
-   * Xoá snapshot hiện có rồi chụp lại, ghi đè mọi thay đổi trên Job. */
+  /** Chụp lại BOM/công đoạn/vật tư từ sản phẩm gốc, ghi đè chỉnh sửa — chỉ khi `PENDING`. */
   async reloadSnapshot(jobId: string): Promise<void> {
     await this.db.transaction(async (tx) => {
       const job = await this.getProductionJobForUpdate(tx, jobId);
@@ -754,10 +750,12 @@ export class ProductionJobsService {
     });
   }
 
-  /** Thêm/sửa/xoá vật tư riêng của Job — chỉ khi `PENDING` (`E087` nếu không), không đụng sản phẩm
-   * gốc. Khoá hàng Job để không chồng với `startJob`/`reloadSnapshot`. Sau snapshot,
-   * `production_job_issues` là nguồn duy nhất cho nhu cầu vật tư (tab BOM, đề xuất mua, phiếu
-   * lãnh); cây `production_job_bom_items` chỉ phục vụ công đoạn nên có thể lệch. */
+  /**
+   * Thêm/sửa/xoá vật tư riêng của Job — chỉ khi `PENDING` (`E087`), không đụng sản phẩm gốc. Khoá
+   * hàng Job để không chồng với `startJob`/`reloadSnapshot`. Sau snapshot, `production_job_issues`
+   * là nguồn duy nhất cho nhu cầu vật tư (tab BOM, đề xuất mua, phiếu lãnh); cây
+   * `production_job_bom_items` chỉ phục vụ công đoạn nên có thể lệch.
+   */
   async addIssues(
     jobId: string,
     reqDto: CreateProductionJobIssuesReqDto,
@@ -800,11 +798,12 @@ export class ProductionJobsService {
     this.ensureStatus(job.status, [ProductionJobStatus.PENDING]);
   }
 
-  /** `PENDING` → `IN_PROGRESS` (`E087` nếu không), ghi `startedBy`/`startedAt`. Dùng snapshot đang
-   * có của Job (chỉ chụp bù cho Job cũ tạo trước khi có snapshot lúc tạo). Cùng transaction: vật
-   * tư nào của Job thiếu tồn thì sinh một đề xuất mua hàng cho đúng phần thiếu
-   * (`PurchaseRequestsService.createShortageRequest`) — không thiếu gì thì không tạo phiếu.
-   * Trình tự đầy đủ: `docs/CODEMAPS/production.md`. */
+  /**
+   * `PENDING` → `IN_PROGRESS` (`E087` nếu không). Dùng snapshot đang có của Job, chỉ chụp bù khi
+   * `snapshotLoadedAt` null (Job cũ). Cùng transaction: vật tư thiếu tồn sinh một đề xuất mua cho
+   * đúng phần thiếu (`PurchaseRequestsService.createShortageRequest`); không thiếu thì không tạo.
+   * Trình tự đầy đủ: `docs/CODEMAPS/production.md`.
+   */
   async startJob(jobId: string, userId: string): Promise<void> {
     await this.db.transaction(async (tx) => {
       // Tính thiếu đọc nhu cầu của mọi Job đã start, mà Job vừa start chỉ hiện ra sau khi commit —
@@ -856,12 +855,12 @@ export class ProductionJobsService {
     });
   }
 
-  /** Vật tư của Job thiếu tồn tại thời điểm bấm start: `requiredQty` (snapshot vừa chốt) trừ tồn
-   * **khả dụng** (tồn thực tế − phiếu lãnh đã duyệt giữ chỗ − nhu cầu các Job khác, không tính
-   * chính Job này), chỉ giữ phần dương — trừ tồn thực tế sẽ bỏ sót vật tư đã bị giữ chỗ. Dòng
-   * `itemId = NULL` (vật tư bị xoá sau khi snapshot) bị bỏ qua — `purchase_request_items.itemId`
-   * là `NOT NULL`, không dựng được dòng.
-   * Nhận `tx` — chạy trong transaction của `startJob`, sau `createJobSnapshot`. */
+  /**
+   * Vật tư thiếu của Job lúc start: `requiredQty` trừ tồn **khả dụng** (tồn thực tế − phiếu lãnh
+   * đã duyệt giữ chỗ − nhu cầu các Job khác, không tính chính Job này), chỉ giữ phần dương; trừ
+   * tồn thực tế sẽ bỏ sót vật tư đã bị giữ chỗ. Dòng `itemId = NULL` (vật tư bị xoá sau khi
+   * snapshot) bị bỏ qua vì `purchase_request_items.itemId` là `NOT NULL`.
+   */
   private async getShortageItems(
     tx: DbTransaction,
     jobId: string,
@@ -882,9 +881,9 @@ export class ProductionJobsService {
       return [];
     }
 
-    // Tồn khả dụng của từng vật tư NGAY TRƯỚC Job này (loại nhu cầu của chính Job, vì snapshot vừa
-    // chốt nên nhu cầu của nó đã nằm trong `production_job_issues`). Âm nghĩa là đã bị Job/phiếu lãnh
-    // khác giữ chỗ quá mức: lúc đó coi như còn 0 và phải mua đủ nhu cầu.
+    // Tồn khả dụng của từng vật tư NGAY TRƯỚC Job này (`excludeJobId` loại nhu cầu của chính Job,
+    // vốn đã nằm trong `production_job_issues`). Âm nghĩa là đã bị Job/phiếu lãnh khác giữ chỗ quá
+    // mức: coi như còn 0 và phải mua đủ nhu cầu.
     const availableByItem = await getAvailableQuantities(tx, {
       itemIds,
       excludeJobId: jobId,
@@ -908,8 +907,7 @@ export class ProductionJobsService {
     });
   }
 
-  /** Khoá hàng (`FOR UPDATE`) trước khi `start` — chặn hai lượt bấm "Xác nhận sản xuất" song song
-   * trên cùng một Job (hoặc start song song với tải lại snapshot). */
+  /** Khoá hàng (`FOR UPDATE`): chặn start song song và start/sửa vật tư song song với tải lại. */
   private async getProductionJobForUpdate(
     tx: DbTransaction,
     jobId: string,
@@ -941,7 +939,6 @@ export class ProductionJobsService {
     return job;
   }
 
-  /** Job không tồn tại → `E082`. */
   private async ensureJobExists(jobId: string): Promise<{
     id: string;
     status: ProductionJobStatus;
@@ -976,9 +973,11 @@ export class ProductionJobsService {
     }
   }
 
-  /** Mã Job `xx-yyyyy-zzz`: `xx` 2 số cuối của năm (giờ VN) lúc sinh Job, `yyyyy` số trong mã LSX
-   * (`LSX0011` → `00011`), `zzz` thứ tự Job trong LSX. Mã duy nhất theo LSX nên không cần bộ đếm;
-   * Job của một LSX luôn sinh trọn trong một lượt duyệt (`createJobs`). */
+  /**
+   * Mã Job `xx-yyyyy-zzz`: `xx` 2 số cuối của năm (giờ VN) lúc sinh Job, `yyyyy` số trong mã LSX
+   * (`LSX0011` → `00011`), `zzz` thứ tự Job trong LSX. Không cần bộ đếm vì Job của một LSX luôn
+   * sinh trọn trong một lượt `createJobs`.
+   */
   private buildJobCode(lsxCode: string, index: number): string {
     const year = String(vnToday().getUTCFullYear() % 100).padStart(2, '0');
     const lsxNumber = lsxCode.replace(/\D/g, '').padStart(5, '0');

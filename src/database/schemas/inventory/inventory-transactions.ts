@@ -16,7 +16,7 @@ import { users } from '../identity-access/users';
 
 /** `_IN`/`RECEIPT` cộng tồn, `_OUT`/`ISSUE` trừ tồn — dấu bắt buộc khớp `type` (DB CHECK
  * `chk_inventory_transactions_quantity_sign`). `TRANSFER_IN`/`TRANSFER_OUT` là chỗ cắm cho chuyển
- * kho, chưa route nào phát ra (`docs/CODEMAPS/inventory.md`). */
+ * kho, chưa route nào phát ra. */
 export enum InventoryTransactionType {
   RECEIPT = 'RECEIPT',
   ISSUE = 'ISSUE',
@@ -47,8 +47,8 @@ export enum InventoryReferenceType {
   INVENTORY_ISSUE = 'INVENTORY_ISSUE',
   INVENTORY_ADJUSTMENT = 'INVENTORY_ADJUSTMENT',
   SUPPLIER_RETURN = 'SUPPLIER_RETURN',
-  // Gia công ngoài không còn ghi `inventory_transactions` —
-  // giữ 2 giá trị này chỉ để tương thích bút toán cũ/`GET /inventory/transactions?referenceType=`.
+  // Gia công ngoài không còn ghi `inventory_transactions`; giữ hai giá trị `OUTSOURCING_*` chỉ để
+  // tương thích bút toán cũ và `GET /inventory/transactions?referenceType=`.
   OUTSOURCING_ORDER = 'OUTSOURCING_ORDER',
   OUTSOURCING_RECEIPT = 'OUTSOURCING_RECEIPT',
 }
@@ -70,7 +70,7 @@ export const inventoryReferenceTypeEnum = pgEnum('inventory_reference_type', [
  * - `referenceId` trỏ về `inventory_receipts`/`inventory_issues`/`inventory_adjustments`/
  *   `supplier_returns`/`outsourcing_orders`/`outsourcing_receipts` theo `referenceType` — cố ý
  *   không FK vì đa hình, DB không tự kiểm được.
- * - Không `updatedAt`/xoá mềm — sửa sai bằng bút toán đảo dấu mới, không sửa/xoá bút toán cũ.
+ * - Không `updatedAt`/xoá mềm: sửa sai bằng bút toán đảo dấu mới, không sửa/xoá bút toán cũ.
  */
 export const inventoryTransactions = pgTable(
   'inventory_transactions',

@@ -181,8 +181,8 @@ export class SupplierReturnsService {
     };
   }
 
-  /** `SupplierReturnBaseResDto.iqc` giữ tên/field cũ (`{id, code}`, xem `IqcRefResDto`) cho FE dù
-   * bảng nguồn đã đổi tên — `code` lấy từ `inspectionNo` của `quality_inspections`. */
+  /** `iqc` trả dạng `{id, code}` (`IqcRefResDto`) cho FE; `code` lấy từ `inspectionNo` của
+   * `quality_inspections`. */
   private toIqcRef(
     qualityInspection: { id: string; inspectionNo: string } | null,
   ): { id: string; code: string } | null {
@@ -280,9 +280,9 @@ export class SupplierReturnsService {
     return this.getSupplierReturn(supplierReturnId);
   }
 
-  /** Tự sinh DRAFT — gọi bởi `IqcService.confirmIqc` khi QC chọn disposition SORT/RETURN, ngay
-   *  sau khi dòng IQC chuyển `WAITING_RETURN`, cùng transaction với việc khoá dòng đó lại (bắt
-   *  buộc `tx`, không mở transaction riêng). Xem `docs/CODEMAPS/inventory.md`. */
+  /** Tự sinh phiếu `DRAFT` — gọi bởi `IqcService.confirmIqc` khi QC chọn disposition SORT/RETURN,
+   *  ngay sau khi dòng IQC chuyển `WAITING_RETURN`. Bắt buộc dùng `tx` của `confirmIqc`, không mở
+   *  transaction riêng. Xem `docs/CODEMAPS/inventory.md`. */
   async createFromIqcDisposition(
     tx: DbTransaction,
     params: {
@@ -323,12 +323,16 @@ export class SupplierReturnsService {
     });
   }
 
-  /** `DRAFT → POSTED` — kho xác nhận đã thật sự xuất hàng trả NCC. Trừ tồn qua
-   *  `InventoryPostingService` (bỏ qua nếu phiếu nhập gốc chưa `POSTED` hoặc sinh từ OS-IN — xem
-   *  `shouldPostStock`), sinh từ OS-IN thì recompute luôn `status` OS-OUT + tiến độ công đoạn liên
-   *  quan (`recomputeAffectedOutsourcing`), rồi hoàn tất dòng IQC liên kết
-   *  (`completeIqcAfterSupplierReturn`) trong cùng transaction. `reqDto.note`/`fileIds` tuỳ chọn —
-   *  bằng chứng xuất trả, không ảnh hưởng transition. Xem `docs/CODEMAPS/inventory.md`. */
+  /** `DRAFT → POSTED` — kho xác nhận đã xuất hàng trả NCC.
+   *
+   *  Rules (cùng một transaction):
+   *  - Trừ tồn qua `InventoryPostingService`, trừ khi `shouldPostStock` trả `false`.
+   *  - Phiếu sinh từ OS-IN: recompute `status` OS-OUT + tiến độ công đoạn
+   *    (`recomputeAffectedOutsourcing`).
+   *  - Hoàn tất dòng IQC liên kết (`completeIqcAfterSupplierReturn`).
+   *  - `reqDto.note`/`fileIds` là bằng chứng xuất trả, không ảnh hưởng transition.
+   *
+   *  Xem `docs/CODEMAPS/inventory.md`. */
   async postSupplierReturn(
     supplierReturnId: string,
     reqDto: PostSupplierReturnReqDto,
@@ -358,7 +362,6 @@ export class SupplierReturnsService {
             {
               // `shouldPostStock` đã loại nhánh OS-IN (nơi duy nhất `itemId` có thể NULL).
               itemId: supplierReturn.itemId!,
-              // Xuất trả luôn trừ tồn — dấu âm.
               signedQuantity: -supplierReturn.quantity,
               type: InventoryTransactionType.ISSUE,
             },
@@ -402,13 +405,11 @@ export class SupplierReturnsService {
     });
   }
 
-  /** Phiếu trả sinh từ OS-IN vừa `POSTED` — SL nhận của (các) OS-OUT nguồn và tiến độ (các) công
-   *  đoạn `OUTSOURCE` nguồn giờ đã trừ đi SL trả này (`receivedQuantityByOrderIdSubquery`,
-   *  `recomputeOutsourcedOperationProgress`), nên `status` OS-OUT (`outsourcing_orders`) và
-   *  `completedQuantity` công đoạn (`production_job_operations`) đang lưu có thể đã lỗi thời
-   *  (`COMPLETED` dù thật ra vừa lùi về `PARTIAL`/`SENT`). Khoá đúng 1 dòng OS-IN qua FK
-   *  `outsourcingReceiptItemId`, cùng cách khấu trừ ở `receivedQuantityByOrderIdSubquery`; bỏ qua
-   *  công đoạn đã hard-delete — `productionJobOperationId` về NULL. */
+  /** Phiếu trả sinh từ OS-IN vừa `POSTED`: SL nhận của OS-OUT nguồn và tiến độ công đoạn
+   *  `OUTSOURCE` nguồn giờ đã trừ SL trả này (`receivedQuantityByOrderIdSubquery`), nên `status`
+   *  OS-OUT và `completedQuantity` công đoạn đang lưu có thể lỗi thời (`COMPLETED` dù đã lùi về
+   *  `PARTIAL`/`SENT`). Khoá đúng 1 dòng OS-IN qua FK `outsourcingReceiptItemId`; bỏ qua công
+   *  đoạn đã hard-delete (`productionJobOperationId` là NULL). */
   private async recomputeAffectedOutsourcing(
     tx: DbTransaction,
     outsourcingReceiptItemId: string,
@@ -451,13 +452,11 @@ export class SupplierReturnsService {
   /** Hai ca bỏ qua trừ tồn, còn lại luôn trừ:
    *  1. Phiếu nhập gốc chưa `POSTED` — IQC chạy trước khi phiếu nhập ghi tồn (`PENDING_IQC`/
    *     `IQC_COMPLETED` chưa đụng `inventory_balances`), trừ vào đó sẽ ra âm giả (`E106`) hoặc trừ
-   *     nhầm tồn của lô khác.
-   *     `postInventoryReceipt` tự bù trừ số lượng đã trả `POSTED` trước khi ghi bút toán `RECEIPT`
-   *     (`getReturnedQuantityByReceiptItemId`), nên không ghi thiếu tồn.
+   *     nhầm tồn của lô khác. `postInventoryReceipt` tự bù trừ số đã trả `POSTED`
+   *     (`getReturnedQuantityByReceiptItemId`) nên không ghi thừa tồn.
    *  2. Sinh từ IQC của OS-IN (`outsourcingReceiptId` có giá trị) — hàng đó chưa từng vào tồn
-   *     (gia công ngoài không ghi `inventory_balances`), trừ
-   *     vào cũng ra âm giả.
-   *  Không có phiếu nhập/OS-IN liên quan (IQC tạo tay) → luôn trừ tồn bình thường. */
+   *     (gia công ngoài không ghi `inventory_balances`), trừ vào cũng ra âm giả.
+   *  Không có phiếu nhập/OS-IN liên quan (IQC tạo tay) → luôn trừ tồn. */
   private async shouldPostStock(
     tx: DbTransaction,
     supplierReturn: Pick<
@@ -481,9 +480,8 @@ export class SupplierReturnsService {
     return inventoryReceipt?.status === InventoryDocumentStatus.POSTED;
   }
 
-  /** Khoá dòng phiếu (`FOR UPDATE`) rồi trả về — chỉ gọi bên trong transaction, cùng lý do
-   *  `InventoryIssuesService.getInventoryIssueForUpdate`: chặn `post` trùng lên cùng phiếu trừ tồn
-   *  hai lần. */
+  /** Khoá dòng phiếu (`FOR UPDATE`) rồi trả về — chỉ gọi trong transaction, để hai `post` đồng
+   *  thời không trừ tồn hai lần (cùng khuôn `InventoryIssuesService.getInventoryIssueForUpdate`). */
   private async getSupplierReturnForUpdate(
     tx: DbTransaction,
     supplierReturnId: string,

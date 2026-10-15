@@ -23,11 +23,10 @@ import { createProductionReceiptForJob } from '../inventory-receipts/inventory-r
 import { countPendingJobOperations } from '../production-jobs/production-jobs.query';
 
 /** Dòng `disposition = SCRAP` không tính vào SL đã xin QC của một công đoạn — hàng đã loại bỏ hẳn,
- * giải phóng lại quota lô để xưởng làm bù (`docs/CODEMAPS/quality.md`). `disposition` chỉ khác
- * `null` khi `decision = FAIL` (`chk_quality_inspections_disposition_requires_fail`), nên chỉ cần
- * lọc trên `disposition` — không cần đụng tới `decision`. `quality_inspections.disposition` mirror
- * đúng attempt mới nhất, nên lọc trên case row cho cùng kết
- * quả như lọc trên attempt mới nhất mà không cần join thêm. */
+ * giải phóng lại quota lô để xưởng làm bù (`docs/CODEMAPS/quality.md`). Chỉ cần lọc trên
+ * `disposition` vì nó khác `null` chỉ khi `decision = FAIL`
+ * (`chk_quality_inspections_disposition_requires_fail`), và case row mirror attempt mới nhất nên
+ * không cần join sang attempt. */
 const notScrapped = or(
   isNull(qualityInspections.disposition),
   ne(qualityInspections.disposition, OqcDisposition.SCRAP),
@@ -61,10 +60,9 @@ export async function getInspectedQuantityByOperationId(
   return row?.total ?? 0;
 }
 
-/** Σ `quantity` mọi OQC (trừ `disposition = SCRAP`) của MỌI công đoạn thuộc cùng một node BOM (join
- * qua `productionJobOperationId`) — dùng để validate `E176`: 1 node có thể có nhiều công đoạn (as-
- * used), nhưng cùng là 1 part vật lý, nên trần SL kế hoạch phải tính gộp qua node, không phải riêng
- * từng công đoạn (đó là việc của `E198`). */
+/** Σ `quantity` mọi OQC (trừ `disposition = SCRAP`) của MỌI công đoạn thuộc cùng một node BOM — dùng
+ * để validate `E176`: một node có nhiều công đoạn nhưng là một part vật lý, nên trần SL kế hoạch
+ * tính gộp theo node (còn trần theo từng công đoạn là `E198`). */
 export async function getInspectedQuantityByBomItemId(
   db: Database | DbTransaction,
   productionJobBomItemId: string,
@@ -102,8 +100,7 @@ export async function getInspectedQuantityByBomItemId(
  * FG Cấp 0 của Job, kèm trạng thái Job và SL đã hoàn thành lũy kế của công đoạn đó. Hai `LEFT JOIN`
  * (không phải `INNER`) để phân biệt "Job không tồn tại" (`undefined`) khỏi "Job tồn tại nhưng thiếu
  * node/công đoạn hợp lệ" (các cột công đoạn `null`). `uq_production_job_bom_items_final_assembly`
- * đảm bảo tối đa 1 node Cấp 0/Job; node có thể nhiều công đoạn (BUG-079) nhưng cùng một part vật lý,
- * SL hoàn thành của bước cuối là SL thành phẩm. */
+ * đảm bảo tối đa 1 node Cấp 0/Job; SL hoàn thành của bước cuối là SL thành phẩm. */
 export async function getJobFinalOperation(
   db: Database | DbTransaction,
   productionJobId: string,
@@ -189,29 +186,22 @@ export async function getPassedOqcQuantityByJobId(
   return row?.total ?? 0;
 }
 
-/** Điều kiện "Job đã QC xong hết" dùng cho gate nhập kho TP (`E196`/`E209`, xem
- * `InventoryReceiptsService.ensureProductionReceiptOqcCleared`) và gate giao hàng (`E205`,
- * `OutboundOrdersService.ensureAllJobsQcCompleted`). Gộp cả hai nhánh QC qua neo chung
- * `productionJobOperationId` — công đoạn `INHOUSE` chỉ có thể có dòng `OQC` trỏ vào, công đoạn
- * `OUTSOURCE` chỉ có thể có dòng `IQC` sinh từ OS-IN (xem
- * `IqcService.createInspectionsFromOutsourcingReceipt`) trỏ vào — hai tập không giao nhau, nên
- * LEFT JOIN theo đúng một cột này tự nhiên gộp đúng, không cần lọc `inspectionType` ở đây.
+/** Thống kê dòng QC của một Job cho gate nhập kho TP (`E196`/`E209`), gate giao hàng (`E205`) và
+ * `closeJobIfQcCovered`. Gộp IQC lẫn OQC qua neo chung `productionJobOperationId`: công đoạn
+ * `INHOUSE` chỉ có dòng OQC, công đoạn `OUTSOURCE` chỉ có dòng IQC sinh từ OS-IN (xem
+ * `IqcService.createInspectionsFromOutsourcingReceipt`), nên LEFT JOIN một cột là đủ.
  *
+ * Rules:
+ * - `total` và `finalCompleted` loại dòng `disposition = SCRAP` (cùng điều kiện `notScrapped`, viết
+ *   dạng `filter`): lô đã loại bỏ tuy khoá ở `COMPLETED` nhưng không chứng minh gì về hàng còn lại.
+ * - `open` là dòng chưa `COMPLETED`, `openIqc` là phần IQC của nó. Không cần loại SCRAP vì dòng
+ *   SCRAP luôn đã `COMPLETED`.
+ * - Công đoạn `OUTSOURCE` mà OS-IN không `requiresIqc` không có dòng nào, đóng góp `(0, 0)` và tự
+ *   nó không chặn gate.
+ * - `finalCompleted`/`hasFinalAssembly`: dòng `COMPLETED` gắn với công đoạn của node Cấp 0
+ *   (`itemType = 'FG'`).
  *
- * `total`/`open` dùng cho cả `E196` lẫn `E205`: Job phải có ít nhất 1 dòng QC, không còn dòng nào
- * chưa `COMPLETED` — một công đoạn `OUTSOURCE` mà OS-IN chưa từng `requiresIqc` (không sinh dòng
- * nào) đóng góp `(0, 0)`, không tự nó chặn `E196` (đúng semantics gốc trước khi có nhánh gia công
- * ngoài, nên không cần mã lỗi riêng cho ca này nữa, khác
- * `E212` cũ). `finalCompleted`/`hasFinalAssembly` — riêng cho `E209`: đếm dòng `COMPLETED` gắn với
- * công đoạn thuộc node Cấp 0 (`itemType = 'FG'`, bước Lắp ráp, `createJobOperations`); `E205`
- * không dùng hai field này.
- *
- * `total`/`finalCompleted` loại trừ dòng `disposition = SCRAP` (cùng điều kiện `notScrapped` ở
- * trên, viết lại dạng `filter` vì cần gộp với điều kiện khác) — một lô đã loại bỏ tuy khoá cứng ở
- * `status = COMPLETED` nhưng không chứng minh được gì về hàng còn lại của Job, không được tính là
- * "đã QC xong" (`docs/CODEMAPS/quality.md`). `open` **không** loại trừ SCRAP — nó là điểm
- * dừng thật, không phải "còn dở dang", nếu tính vào `open` thì Job sẽ vĩnh viễn không qua được gate
- * dù đã làm bù xong. */
+ * See `docs/CODEMAPS/quality.md`. */
 export async function getJobQcCoverage(
   db: Database | DbTransaction,
   productionJobId: string,
@@ -267,14 +257,14 @@ export async function getJobQcCoverage(
   };
 }
 
-/** Mở khoá Job sang `WAITING_DELIVERY` khi mọi dòng QC (IQC lẫn OQC, `getJobQcCoverage` gộp chung
- * theo `qc-data-model.md`) đã xong, không còn công đoạn nào của Job dở
- * (`countPendingJobOperations`, `production-jobs.query.ts`) **và** mọi SL thành phẩm đã hoàn thành
- * đều đã được xin OQC — OQC theo lô một phần (PH-111) nên "mọi dòng QC đã xong" chưa đủ: lô cuối có
- * thể chưa từng được xin. Gọi từ **mọi** nơi có thể đưa một dòng `quality_inspections` về
- * `COMPLETED`: `OqcService.confirmOqc`, `IqcService.confirmIqc`, `completeIqcAfterSupplierReturn`;
- * thiếu chỗ nào thì Job kẹt vĩnh viễn ở `WAITING_QC` (BUG-047). Đóng được Job thì ghi tiếp sang
- * module kho — bù phiếu nhập TP còn thiếu (`createProductionReceiptForJob`,
+/** Chuyển Job sang `WAITING_DELIVERY` khi mọi dòng QC (IQC lẫn OQC, qua `getJobQcCoverage`) đã
+ * xong, không còn công đoạn nào dở (`countPendingJobOperations`) **và** mọi SL thành phẩm đã hoàn
+ * thành đều đã được xin OQC — OQC theo lô một phần nên "mọi dòng QC đã xong" chưa đủ: lô cuối có
+ * thể chưa từng được xin.
+ *
+ * Gọi từ **mọi** nơi có thể đưa một dòng `quality_inspections` về `COMPLETED`: `confirmOqc`,
+ * `confirmIqc`, `completeIqcAfterSupplierReturn`; thiếu chỗ nào thì Job kẹt ở `WAITING_QC`. Đóng
+ * được Job thì bù luôn phiếu nhập TP còn thiếu (`createProductionReceiptForJob`,
  * `docs/CODEMAPS/inventory.md`). */
 export async function closeJobIfQcCovered(
   tx: DbTransaction,
@@ -310,8 +300,8 @@ export async function closeJobIfQcCovered(
     )
     .returning({ id: productionJobs.id });
 
-  // Hàm này bị gọi lại mỗi lần confirm 1 dòng QC bất kỳ và điều kiện vẫn đúng sau đó — chỉ UPDATE
-  // trên mới khớp đúng một lần trong đời Job, nên log chỉ ghi một lần.
+  // Hàm bị gọi lại mỗi lần confirm một dòng QC và điều kiện vẫn đúng sau đó; chỉ lần UPDATE đầu
+  // khớp trạng thái nên log chỉ ghi một lần.
   if (!closedJob) {
     return;
   }
@@ -326,7 +316,7 @@ export async function closeJobIfQcCovered(
   });
 
   // Job có OQC thành phẩm: phiếu nhập đã sinh theo từng lô lúc confirm OQC, chỉ bù phần còn thiếu.
-  // Job không có OQC (thành phẩm gia công ngoài, chỉ IQC): phiếu theo SL Job như trước.
+  // Job không có OQC (thành phẩm gia công ngoài, chỉ IQC): phiếu theo SL của Job.
   await createProductionReceiptForJob(
     tx,
     productionJobId,

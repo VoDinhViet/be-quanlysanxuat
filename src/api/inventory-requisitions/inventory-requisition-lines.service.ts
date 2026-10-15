@@ -36,19 +36,16 @@ import {
   reservedQuantitySubquery,
 } from './inventory-requisitions.query';
 
-/** Tách khỏi `InventoryRequisitionsService` — hai method ở đây đều là đọc thuần, cùng một bộ join
- * tính "6 số" (SL BOM/Đã lãnh/Tồn/Đã giữ/Có thể lãnh/Khả dụng), phục vụ tab chi tiết + popup chọn
- * vật tư (dùng chung "Lãnh từ LSX"/"Lãnh thủ công" — `productionJobId` optional, không phải hai
- * nguồn dữ liệu khác nhau). Không có method nào ghi. Xem `docs/CODEMAPS/inventory.md`, mục "Phiếu
- * lãnh vật tư". */
+/** Phần đọc thuần của phiếu lãnh, tách khỏi `InventoryRequisitionsService` vì cùng một bộ join tính
+ * "6 số" (SL BOM/Đã lãnh/Tồn/Đã giữ/Có thể lãnh/Khả dụng). Không method nào ghi.
+ * See `docs/CODEMAPS/inventory.md`. */
 @Injectable()
 export class InventoryRequisitionLinesService {
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
 
-  /** Tab "Chi tiết vật tư lãnh" của một phiếu đã lưu — cùng khuôn `getPurchaseRequestLines`
-   * (`.select()` thủ công vì `inventory_requisition_items` không có cột để `orderBy` qua relational
-   * API, và mọi cột số đều là cột tính). `bomQuantity`/`issuedQuantity` là `null` khi phiếu không
-   * gắn Job (`type = OTHER`) — hai subquery tự trả rỗng khi không có `productionJobId` để join. */
+  /** Tab "Chi tiết vật tư lãnh" của phiếu đã lưu, cùng khuôn `PurchaseRequestsService`
+   * (`.select()` thủ công vì mọi cột số đều là cột tính). `bomQuantity`/`issuedQuantity` là `null`
+   * khi phiếu không gắn Job (`type = OTHER`). */
   async getRequisitionLines(
     requisitionId: string,
     scope: { productionJobId: string | null },
@@ -58,8 +55,8 @@ export class InventoryRequisitionLinesService {
     });
     const issued = issuedQuantityByJobItemSubquery(this.db);
     const reserved = reservedQuantitySubquery(this.db);
-    // "Khả dụng" của hệ thống (cùng màn Tồn kho vật tư): join subquery chung vào câu select bên dưới.
-    // Khác "Có thể lãnh" (`issuableQuantity`, tồn − đã giữ) dùng để chặn thao tác.
+    // "Khả dụng" cùng nguồn màn Tồn kho vật tư; khác "Có thể lãnh" (`issuableQuantity`, tồn − đã
+    // giữ) là số dùng để chặn thao tác.
     const available = availableQuantityByItemSubquery(this.db);
 
     const rows = await this.db
@@ -101,19 +98,21 @@ export class InventoryRequisitionLinesService {
     return rows;
   }
 
-  /** Popup chọn vật tư dùng chung "Lãnh từ LSX"/"Lãnh thủ công" — `productionJobId` optional quyết
-   * định có khoanh vùng theo định mức BOM hay không, không phải hai nguồn dữ liệu khác nhau. Có
-   * Job: chỉ trả vật tư nằm trong `production_job_issues` của Job đó (ràng buộc y hệt `E230` phía
-   * `InventoryRequisitionsService.validateRequisitionLines`, biểu diễn bằng `inArray` thay vì
-   * driving table riêng để `q` vẫn lọc được ở cả hai nhánh). Không Job: mọi DIRECT chưa xoá tại kho —
-   * `bomQuantity`/`issuedQuantity`/`suggestedQuantity` luôn `null`. */
+  /** Popup chọn vật tư, dùng chung cho "Lãnh từ LSX" và "Lãnh thủ công".
+   *
+   * Rules:
+   * - Có `productionJobId`: chỉ trả vật tư thuộc `production_job_issues` của Job đó (cùng ràng buộc
+   *   `E230` ở `InventoryRequisitionsService.validateRequisitionLines`; dùng `inArray` để `q` vẫn
+   *   lọc được ở cả hai nhánh).
+   * - Không Job: mọi vật tư DIRECT chưa xoá; `bomQuantity`/`issuedQuantity`/`suggestedQuantity`
+   *   luôn `null`. */
   async getRequisitionPickerLines(
     reqDto: GetRequisitionLinesReqDto,
   ): Promise<OffsetPaginatedDto<RequisitionLineResDto>> {
     const issued = issuedQuantityByJobItemSubquery(this.db);
     const reserved = reservedQuantitySubquery(this.db);
-    // "Khả dụng" của hệ thống (cùng màn Tồn kho vật tư): join subquery chung vào câu select bên dưới.
-    // Khác "Có thể lãnh" (`issuableQuantity`, tồn − đã giữ) dùng để chặn thao tác.
+    // "Khả dụng" cùng nguồn màn Tồn kho vật tư; khác "Có thể lãnh" (`issuableQuantity`, tồn − đã
+    // giữ) là số dùng để chặn thao tác.
     const available = availableQuantityByItemSubquery(this.db);
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
     const { productionJobId } = reqDto;
@@ -181,10 +180,8 @@ export class InventoryRequisitionLinesService {
     ]);
 
     const lines = rows.map((row) => {
-      // `where` đã giới hạn chỉ item nằm trong BOM của Job khi có `productionJobId`, và join phía
-      // trên khớp đúng (productionJobId, itemId) đó — nên `bomQuantity` (từ LEFT JOIN
-      // `productionJobIssues`) null khi và chỉ khi không có `productionJobId`, không cần kiểm
-      // riêng cả hai.
+      // `bomQuantity` null khi và chỉ khi không có `productionJobId`: có Job thì `where` đã giới hạn
+      // vật tư thuộc BOM và join khớp đúng `(productionJobId, itemId)`.
       if (row.bomQuantity === null) {
         return {
           ...row,

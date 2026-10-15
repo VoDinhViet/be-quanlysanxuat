@@ -26,10 +26,10 @@ export const fulfillmentTypeEnum = pgEnum('fulfillment_type', [
 ]);
 
 /**
- * Vòng đời xem `docs/CODEMAPS/sales.md`: `DRAFT ─send→ PENDING_APPROVAL
- * ─approve→ PENDING_DELIVERY ─deliver→ DELIVERED`, có nhánh `PENDING_APPROVAL ─reject→ REJECTED
- * ─send→ PENDING_APPROVAL`. `cancel` (DRAFT/PENDING_APPROVAL/PENDING_DELIVERY → CANCELLED) và
- * `DELETE` (DRAFT-only, hard delete) là hai điểm cuối riêng, không nằm trên chuỗi trên.
+ * Vòng đời (`docs/CODEMAPS/sales.md`): `DRAFT ─send→ PENDING_APPROVAL ─approve→ PENDING_DELIVERY
+ * ─deliver→ DELIVERED`, có nhánh `PENDING_APPROVAL ─reject→ REJECTED ─send→ PENDING_APPROVAL`.
+ * `cancel` (DRAFT/PENDING_APPROVAL/PENDING_DELIVERY → CANCELLED) và `DELETE` (DRAFT-only, hard
+ * delete) là hai điểm cuối riêng, không nằm trên chuỗi trên.
  */
 export enum OutboundOrderStatus {
   DRAFT = 'DRAFT',
@@ -50,9 +50,8 @@ export const outboundOrderStatusEnum = pgEnum('outbound_order_status', [
 ]);
 
 /**
- * Phiếu giao hàng (DO) — header, nhiều dòng ở `outbound_order_items` (`docs/CODEMAPS/inventory.md`,
- * mục "Giao hàng"). Không giữ `warehouseId` — kho xuất suy từ dòng (`outbound_order_items` ↔
- * `order_items`), không cần chọn ở header.
+ * Phiếu giao hàng (DO) — header, nhiều dòng ở `outbound_order_items` (`docs/CODEMAPS/sales.md`).
+ * Không có cột kho: hệ thống chỉ có một kho (`inventory_balances` không có `warehouseId`).
  */
 export const outboundOrders = pgTable(
   'outbound_orders',
@@ -68,8 +67,7 @@ export const outboundOrders = pgTable(
       .notNull()
       .default(OutboundOrderStatus.DRAFT),
     note: varchar('note', { length: 500 }),
-    // 4 cột vận chuyển (BUG-090, mở rộng theo UI Spec) — tất cả nullable: PICKUP (khách tự đến
-    // lấy) không có địa chỉ giao, và mọi phiếu hiện có chưa từng có giá trị nào cho các cột này.
+    // 4 cột vận chuyển, đều nullable: `PICKUP` (khách tự đến lấy) không có địa chỉ giao.
     deliveryAddress: varchar('delivery_address', { length: 500 }),
     receiverName: varchar('receiver_name', { length: 255 }),
     receiverPhone: varchar('receiver_phone', { length: 30 }),

@@ -28,10 +28,11 @@ import { suppliers } from '../suppliers/suppliers';
 import { users } from '../identity-access/users';
 
 /**
- * Phiếu trả NCC — bảng phẳng, 1 phiếu = đúng 1 dòng vật tư (không có bảng con). `DRAFT → POSTED`
- * qua `SupplierReturnsService.postSupplierReturn` — tự sinh (DRAFT) từ `IqcService.confirmIqc`
- * khi QC chọn disposition SORT/RETURN, kho xác nhận xuất trả thì `post`. Chưa có `cancel` (huỷ một
- * phiếu đã `POSTED` cần đường "un-complete" IQC liên kết, để đợt sau — `docs/CODEMAPS/inventory.md`).
+ * Phiếu trả NCC — bảng phẳng, 1 phiếu = đúng 1 dòng vật tư (không có bảng con). Chỉ sinh `DRAFT`
+ * tự động từ `IqcService.confirmIqc` khi QC chọn disposition SORT/RETURN
+ * (`SupplierReturnsService.createFromIqcDisposition`); kho xác nhận xuất trả thì `post`
+ * (`DRAFT → POSTED`). Chưa có `cancel`: huỷ phiếu đã `POSTED` cần đường mở lại IQC liên kết.
+ * Xem `docs/CODEMAPS/inventory.md`.
  */
 export const supplierReturns = pgTable(
   'supplier_returns',
@@ -41,8 +42,8 @@ export const supplierReturns = pgTable(
     supplierId: uuid('supplier_id')
       .notNull()
       .references(() => suppliers.id, { onDelete: 'restrict' }),
-    // NULL khi trả node COMPONENT từ OS-IN (không phải một item) — `itemCode`/`itemName` snapshot thay
-    // thế, cùng quy ước `quality_inspections.itemId`.
+    // NULL khi trả node COMPONENT từ OS-IN (không phải một item): `itemCode`/`itemName` thay thế, cùng
+    // quy ước `quality_inspections.itemId`.
     itemId: uuid('item_id').references(() => items.id, {
       onDelete: 'restrict',
     }),
@@ -65,14 +66,13 @@ export const supplierReturns = pgTable(
       () => outsourcingReceipts.id,
       { onDelete: 'set null' },
     ),
-    // Khoá đúng 1 dòng OS-IN — trước suy mờ qua cặp `(outsourcingReceiptId, itemId)`, giờ không còn
-    // `itemId` để suy với node COMPONENT.
+    // Khoá đúng 1 dòng OS-IN; không suy qua cặp `(outsourcingReceiptId, itemId)` được vì node
+    // COMPONENT không có `itemId`.
     outsourcingReceiptItemId: uuid('outsourcing_receipt_item_id').references(
       () => outsourcingReceiptItems.id,
       { onDelete: 'set null' },
     ),
-    // Trỏ `quality_inspections` (lô kiểm) + `quality_inspection_results` (lần kiểm) — bảng phẳng
-    // thay `qc_requests`/`qc_inspections` cũ (đã xoá cùng migration dọn bảng QC cũ).
+    // Trỏ `quality_inspections` (lô kiểm) + `quality_inspection_results` (lần kiểm).
     qualityInspectionId: uuid('quality_inspection_id'),
     qualityInspectionResultId: uuid('quality_inspection_result_id'),
     qcInspectionType: qualityInspectionTypeEnum('qc_inspection_type'),
@@ -85,9 +85,8 @@ export const supplierReturns = pgTable(
       onDelete: 'set null',
     }),
     postedAt: timestamp('posted_at'),
-    // Ghi lúc `post` (kho xác nhận xuất trả) — khác `note` (ghi lúc tạo, hiện luôn rỗng vì chưa có
-    // route tạo tay). Tách cột vì 2 mốc thời gian khác nhau, cùng lý do `qc_inspections
-    // .dispositionNote` tách khỏi `resultNote`.
+    // Ghi lúc `post` (kho xác nhận xuất trả); `note` sửa được khi `DRAFT`. Tách cột vì hai mốc khác
+    // nhau.
     postNote: varchar('post_note', { length: 500 }),
     createdBy: uuid('created_by').references(() => users.id, {
       onDelete: 'set null',

@@ -81,8 +81,8 @@ import {
 
 @Injectable()
 export class OutboundOrdersService {
-  // Order còn "chưa hoàn thành" theo nghĩa DO — đã qua duyệt Giám đốc, chưa xong/chưa huỷ. Cùng tập
-  // trạng thái `InventoryService.openOrderDemandSubquery` dùng cho "đơn đã hứa với khách".
+  // Order còn "chưa hoàn thành" theo nghĩa DO: đã qua cổng duyệt, chưa xong/chưa huỷ. Cùng tập
+  // trạng thái `openOrderDemandByItemSubquery` (`inventory.query.ts`) dùng cho nhu cầu đơn đang mở.
   private static readonly UNFULFILLED_ORDER_STATUSES = [
     OrderStatus.AWAITING_PRODUCTION,
     OrderStatus.IN_PROGRESS,
@@ -151,8 +151,8 @@ export class OutboundOrdersService {
   }
 
   /** Cắt im lặng ở `MAX_EXPORT_ROWS`, không báo lỗi khi vượt trần. Bộ lọc tách riêng khỏi
-   * `getOutboundOrders` dù trông giống nhau — hai route độc lập, sửa filter route nào chỉ route đó đổi;
-   * riêng bộ lọc theo dòng (`outboundOrderLineMatchExists`) dùng chung có chủ đích. */
+   * `getOutboundOrders` dù trông giống nhau: hai route độc lập, sửa filter route nào chỉ route đó
+   * đổi. Riêng bộ lọc theo dòng (`outboundOrderLineMatchExists`) dùng chung có chủ đích. */
   async exportOutboundOrders(
     reqDto: ExportOutboundOrdersReqDto,
   ): Promise<StreamableFile> {
@@ -237,11 +237,10 @@ export class OutboundOrdersService {
     });
   }
 
-  /** `.select()` + join tường minh thay vì `db.query` quan hệ lồng 2 cấp: DTO nhận `item`/`unit`
-   * cùng cấp (không lồng `item.unit`), khớp thẳng shape select nên không cần map lại. 5 cột tồn
-   * kho (BUG-090, mở rộng theo UI Spec) `LEFT JOIN` 3 subquery — `excludeOutboundOrderId =
-   * outboundOrderId` cho "Đã giữ" để phiếu đang xem không tự trừ mình, cùng lý do
-   * `ensureOutboundLinesIssuable` làm khi kiểm `E194`. */
+  /** `.select()` + join tường minh thay vì `db.query` lồng 2 cấp: DTO nhận `item`/`unit` cùng
+   * cấp (không lồng `item.unit`) nên khớp thẳng shape select. Các cột SL tồn kho `LEFT JOIN` 3
+   * subquery; "Đã giữ" truyền `excludeOutboundOrderId = outboundOrderId` để phiếu đang xem không
+   * tự trừ mình, cùng lý do `ensureOutboundLinesIssuable` khi kiểm `E194`. */
   async getOutboundOrderItems(
     outboundOrderId: string,
   ): Promise<OutboundOrderItemResDto[]> {
@@ -298,10 +297,10 @@ export class OutboundOrdersService {
     });
   }
 
-  /** Popup "Chọn PO/Job cần giao" — mọi dòng `order_items` chưa `CANCELLED` của đơn
-   * `AWAITING_PRODUCTION`/`IN_PROGRESS`, lọc thêm `clientId` khi mở lại từ trang Sửa một DO đã có
-   * khách hàng (BUG-090). 5 cột tồn kho cùng khuôn `getOutboundOrderItems`;
-   * `excludeOutboundOrderId` loại chính phiếu đang sửa khỏi "Đã giữ". */
+  /** Popup "Chọn PO/Job cần giao" — dòng `order_items` còn `NORMAL` và chưa xuất đủ của đơn
+   * `AWAITING_PRODUCTION`/`IN_PROGRESS`; lọc thêm `clientId` khi mở lại từ trang Sửa một DO đã có
+   * khách hàng. Các cột tồn kho cùng khuôn `getOutboundOrderItems`; `excludeOutboundOrderId` loại
+   * chính phiếu đang sửa khỏi "Đã giữ". */
   async getUnfulfilledOrderItems(
     reqDto: GetUnfulfilledOrderItemsReqDto,
   ): Promise<OffsetPaginatedDto<UnfulfilledOrderItemResDto>> {
@@ -340,8 +339,9 @@ export class OutboundOrdersService {
       sql`${issuedQtySql()} < ${orderItems.quantity}`,
     );
 
-    // Danh sách và đếm dùng chung `where` tham chiếu cả khách hàng/thành phẩm/Job/tồn kho — truy vấn
-    // đếm phải join đủ các bảng đó, thiếu thì `total` lệch hoặc lỗi cột.
+    // Danh sách và đếm dùng chung `where` (tham chiếu `orders`/`items`/`productionJobs` và các
+    // subquery đã xuất/tồn/giữ) — query đếm phải join đủ các bảng đó, thiếu thì `total` lệch hoặc
+    // lỗi cột.
     const [rows, [{ total }]] = await Promise.all([
       this.db
         .select({
@@ -423,10 +423,10 @@ export class OutboundOrdersService {
     );
   }
 
-  /** Tạo phiếu DO — luôn `DRAFT`, chưa duyệt/xác nhận giao, chưa đụng tồn kho thật. Giữ chỗ thành
-   * phẩm bắt đầu ngay ở đây (`docs/CODEMAPS/sales.md`): `ensureOutboundLinesIssuable`
-   * chặn `E194` nếu vượt tồn khả dụng. Dòng do client gửi đủ cột (`itemId`/`productionJobId` lấy từ
-   * popup `unfulfilled-order-items`), server không resolve/validate lại phần còn lại. */
+  /** Tạo phiếu DO — luôn `DRAFT`, chưa đụng tồn kho thật. Giữ chỗ thành phẩm bắt đầu ngay ở đây
+   * (`docs/CODEMAPS/sales.md`): `ensureOutboundLinesIssuable` chặn `E194` nếu vượt tồn khả dụng.
+   * Dòng do client gửi đủ cột (`itemId`/`productionJobId` lấy từ popup `unfulfilled-order-items`),
+   * server không resolve/validate lại phần còn lại. */
   async createOutboundOrder(
     reqDto: CreateOutboundOrderReqDto,
     userId: string,
@@ -449,9 +449,9 @@ export class OutboundOrdersService {
     });
   }
 
-  /** Sửa (BUG-090) — chỉ khi DRAFT (`E259`), replace-all dòng (delete + reinsert, cùng khuôn
+  /** Sửa — chỉ khi `DRAFT` (`E259`), replace-all dòng (delete + reinsert, cùng khuôn
    * `InventoryRequisitionsService.replaceRequisitionItems`), rồi kiểm lại `E194` vì SL dòng có thể
-   * đổi. `clientId` không sửa được (bất biến), nên không cần `ensureClientExists` lại. */
+   * đổi. `clientId` bất biến nên không cần `ensureClientExists` lại. */
   async updateOutboundOrder(
     outboundOrderId: string,
     reqDto: UpdateOutboundOrderReqDto,
@@ -479,10 +479,10 @@ export class OutboundOrdersService {
     });
   }
 
-  /** Huỷ (BUG-090) — `DRAFT`/`PENDING_APPROVAL`/`PENDING_DELIVERY` → `CANCELLED` (`E257` nếu không
-   * thuộc 3 trạng thái này, kể cả `DELIVERED`). Chỉ đổi `status` — ba trạng thái trên đều chưa
-   * `deliver` nên chưa có `inventory_transactions`/`inventory_balances` nào để đảo ngược; giữ chỗ
-   * FG tự hết vì `HOLDING_STATUSES` (`outbound-orders.query.ts`) không còn khớp `CANCELLED`. */
+  /** `DRAFT`/`PENDING_APPROVAL`/`PENDING_DELIVERY` → `CANCELLED` (`E257` với trạng thái khác, kể cả
+   * `REJECTED`/`DELIVERED`). Chỉ đổi `status`: ba trạng thái trên chưa `deliver` nên chưa có
+   * `inventory_transactions` nào để đảo; giữ chỗ FG tự hết vì `HOLDING_STATUSES`
+   * (`outbound-orders.query.ts`) không còn khớp `CANCELLED`. */
   async cancelOutboundOrder(outboundOrderId: string): Promise<void> {
     await this.db.transaction(async (tx) => {
       const outboundOrder = await this.getOutboundOrderForUpdate(
@@ -506,10 +506,9 @@ export class OutboundOrdersService {
     });
   }
 
-  /** Xoá (BUG-090) — chỉ khi DRAFT (`E258`), hard delete, cùng khuôn
-   * `InventoryRequisitionsService.deleteInventoryRequisition`. Không transaction (1 write) và
-   * không khoá `FOR UPDATE` — đúng quy ước repo cho xoá DRAFT-only. `outbound_order_items` xoá theo
-   * qua cascade (`onDelete: 'cascade'`). */
+  /** Xoá — chỉ khi `DRAFT` (`E258`), hard delete, cùng khuôn
+   * `InventoryRequisitionsService.deleteInventoryRequisition`: một write nên không transaction,
+   * không khoá `FOR UPDATE`. `outbound_order_items` xoá theo qua cascade. */
   async deleteOutboundOrder(outboundOrderId: string): Promise<void> {
     await this.ensureOutboundOrderDraft(outboundOrderId);
 
@@ -562,8 +561,8 @@ export class OutboundOrdersService {
   }
 
   /** `DRAFT`/`REJECTED` → `PENDING_APPROVAL` — chạy gate QC, rồi kiểm lại `E194`
-   * (`ensureOutboundLinesIssuable`, giữ chỗ FG đã bắt đầu từ `createOutboundOrder`, BUG-087) vì tồn
-   * có thể đổi giữa hai bước; `approveOutboundOrder` kiểm lại lần nữa cùng lý do. */
+   * (`ensureOutboundLinesIssuable`) vì tồn có thể đổi từ lúc tạo; `approveOutboundOrder` kiểm lại
+   * lần nữa cùng lý do. */
   async sendOutboundOrder(
     outboundOrderId: string,
     userId: string,
@@ -596,9 +595,9 @@ export class OutboundOrdersService {
   }
 
   /** `PENDING_APPROVAL → PENDING_DELIVERY` — chưa phải "giao thật" (chưa `DELIVERED`, chưa trừ
-   * tồn, chưa sinh `inventory_issues`), đó là phase giao hàng 2 (Common mistake #22). Gate QC chỉ
-   * chạy 1 lần ở `send`. Kiểm lại `E194` (không chỉ ở `send`) vì có đường rò: một `POST
-   * /inventory-issues` thủ công có thể rút tồn FG giữa hai bước mà không đụng DO nào. */
+   * tồn, chưa sinh `inventory_issues`), việc đó nằm ở bước giao hàng sau. Gate QC chỉ chạy 1 lần
+   * ở `send`. Kiểm lại `E194` vì một `POST /inventory-issues` thủ công có thể rút tồn FG giữa hai
+   * bước mà không đụng DO nào. */
   async approveOutboundOrder(
     outboundOrderId: string,
     userId: string,
@@ -630,8 +629,7 @@ export class OutboundOrdersService {
    * khác đang giữ chỗ) — gọi từ cả `send` (chốt thật) lẫn `approve` (kiểm lại), cùng khuôn
    * `InventoryRequisitionsService.validateRequisitionLines`. Khoá `inventory_balances` trước khi
    * đọc, không thì hai DO gửi duyệt đồng thời cùng đọc một số "Đã giữ" và cùng lọt. Cộng dồn theo
-   * `itemId` trước khi so — một DO được phép có nhiều dòng cùng vật tư
-   * (`outbound_order_items.orderItemId` không unique). */
+   * `itemId` trước khi so vì một DO được phép có nhiều dòng cùng vật tư. */
   private async ensureOutboundLinesIssuable(
     tx: DbTransaction,
     outboundOrderId: string,
@@ -679,8 +677,8 @@ export class OutboundOrdersService {
     }
   }
 
-  /** `PENDING_APPROVAL → REJECTED` — điểm dừng tạm, `send` lại được từ đây (hoặc `updateOutboundOrder`
-   * sửa dòng trước khi gửi lại — nhưng chỉ khi đã về `DRAFT`, `update` không nhận `REJECTED`). */
+  /** `PENDING_APPROVAL → REJECTED` — `send` lại được từ đây, nhưng không sửa dòng được
+   * (`updateOutboundOrder` chỉ nhận `DRAFT`) và không huỷ được (`E257`). */
   async rejectOutboundOrder(
     outboundOrderId: string,
     reqDto: RejectOutboundOrderReqDto,
@@ -708,12 +706,14 @@ export class OutboundOrdersService {
     });
   }
 
-  /** Chặn (`E205`) nếu còn Job nào (suy từ `productionJobId` distinct trong các dòng, bỏ qua dòng
-   * `null`) chưa có lô QC nào qua (`getJobQcCoverage`) hoặc còn IQC chưa `COMPLETED`. OQC thành phẩm
-   * theo lô một phần (PH-111): Job có OQC chỉ cần ≥1 lô đã `COMPLETED` — lô khác đang dở không chặn
-   * giao phần đã đạt, SL giao còn bị chặn bởi tồn thực (`ensureOutboundLinesIssuable`, `E194`) vì
-   * thành phẩm chỉ vào kho sau khi lô qua OQC và được nhập; Job không có OQC vẫn chặn khi còn bất
-   * kỳ dòng QC nào chưa `COMPLETED`. Chỉ gọi ở `sendOutboundOrder` — `approve` không kiểm lại. */
+  /** Chặn (`E205`) nếu một Job trong các dòng (bỏ qua dòng `productionJobId = null`) chưa có lô QC
+   * nào qua (`getJobQcCoverage`) hoặc còn IQC chưa `COMPLETED`. Chỉ gọi ở `sendOutboundOrder`.
+   *
+   * Rules:
+   * - Job có OQC thành phẩm: chỉ cần >= 1 lô `COMPLETED`; lô khác đang dở không chặn giao phần đã
+   *   đạt. SL giao vẫn bị chặn bởi tồn thực (`E194`) vì thành phẩm chỉ vào kho sau khi lô qua OQC
+   *   và được nhập.
+   * - Job không có OQC: chặn khi còn bất kỳ dòng QC nào chưa `COMPLETED`. */
   private async ensureAllJobsQcCompleted(
     tx: DbTransaction,
     outboundOrderId: string,
@@ -741,10 +741,9 @@ export class OutboundOrdersService {
     }
   }
 
-  /** `PENDING_DELIVERY → DELIVERED` (không phải `POSTED` — DO không có trạng thái đó, tên hàm chỉ
-   * mượn động từ kế toán "post" cho hành vi ghi sổ bên trong). Tự sinh + post 1 `inventory_issues`
-   * (`SALES`) đúng các dòng của DO, rồi đóng đơn hàng nếu đã giao đủ.
-   */
+  /** `PENDING_DELIVERY → DELIVERED` (DO không có trạng thái `POSTED`; "post" ở tên hàm chỉ là
+   * động từ ghi sổ bên trong). Tự sinh + post 1 `inventory_issues` (`SALES`) đúng các dòng của
+   * DO, rồi đóng đơn hàng nếu đã giao đủ. */
   async postOutboundOrder(
     outboundOrderId: string,
     userId: string,
@@ -800,7 +799,6 @@ export class OutboundOrdersService {
       const postingLines: InventoryPostingLine[] = itemsToDeliver.map(
         (item) => ({
           itemId: item.itemId,
-          // Xuất luôn trừ tồn — dấu âm, cùng khuôn `InventoryIssuesService.postInventoryIssue`.
           signedQuantity: -item.quantity,
           type: InventoryTransactionType.ISSUE,
           orderItemId: item.orderItemId,
@@ -827,8 +825,8 @@ export class OutboundOrdersService {
     });
   }
 
-  /** Copy có chủ ý từ `InventoryIssuesService.generateIssueCode` (`private`, khác module) — cùng
-   * quy ước "copy có chủ ý" đã dùng ở `orders.query.ts` cho subquery xuyên domain. */
+  /** Copy có chủ ý từ `InventoryIssuesService.generateIssueCode` (`private`, khác module), như
+   * `orders.query.ts` làm cho subquery xuyên domain. */
   private async generateSalesIssueCode(
     tx: DbTransaction,
     issueDate: Date,
@@ -844,9 +842,8 @@ export class OutboundOrdersService {
   }
 
   /** Với mỗi đơn bị đụng bởi lô hàng vừa giao (1 DO có thể gộp nhiều đơn cùng khách): mọi dòng
-   * `order_items` còn `NORMAL` đã `issuedQty >= targetQuantity` (tính lại trong transaction này,
-   * đọc đúng bút toán vừa ghi ở trên) → đơn đó chuyển `COMPLETED`. Chỉ đóng đơn đang
-   * `IN_PROGRESS`, không đụng đơn ở trạng thái khác. */
+   * `order_items` còn `NORMAL` đã `issuedQty >= targetQuantity` (tính lại trong transaction, đọc
+   * đúng bút toán vừa ghi) → đơn chuyển `COMPLETED`. Chỉ đóng đơn đang `IN_PROGRESS`. */
   private async closeOrdersIfFullyDelivered(
     tx: DbTransaction,
     deliveredOrderItemIds: string[],
@@ -891,7 +888,7 @@ export class OutboundOrdersService {
     }
   }
 
-  /** Khoá dòng phiếu (`FOR UPDATE`) rồi trả về — chỉ gọi bên trong transaction, cùng lý do
+  /** Khoá dòng phiếu (`FOR UPDATE`) rồi trả về — chỉ gọi trong transaction, cùng khuôn
    * `InventoryIssuesService.getInventoryIssueForUpdate`. */
   private async getOutboundOrderForUpdate(
     tx: DbTransaction,
@@ -934,13 +931,10 @@ export class OutboundOrdersService {
     }
   }
 
-  /** `DO-{yyMMdd}-{seq trong ngày}` — ngày lấy từ **lúc tạo phiếu** (`outboundOrders.createdAt`,
-   * khớp mẫu mockup "DO-250608-001" đi cùng "Ngày tạo" 08/06), không phải `fulfillmentDate` (ngày
-   * giao có thể ở tương lai) — khác `generateReceiptCode` dùng `receiptDate` vì đó là ngày nghiệp
-   * vụ của phiếu nhập, còn DO không có trường ngày nào đóng vai trò đó. `document_sequences.year`
-   * bị mượn làm khoá reset-theo-ngày ở đây — encode nguyên YYMMDD (không phải năm thật) để mỗi
-   * ngày có một dãy số atomic riêng, tên cột không đổi vì dùng chung schema với mọi loại chứng từ
-   * khác. */
+  /** `DO-{yyMMdd}-{seq trong ngày}` — ngày là lúc tạo phiếu, không phải `fulfillmentDate` (có thể
+   * ở tương lai), vì DO không có trường ngày nghiệp vụ như `receiptDate` của phiếu nhập.
+   * `document_sequences.year` bị mượn làm khoá reset-theo-ngày: lưu nguyên `yyMMdd` (không phải
+   * năm thật) để mỗi ngày có một dãy số riêng. */
   private async generateOutboundOrderCode(tx: DbTransaction): Promise<string> {
     const now = new Date();
     const yy = String(now.getFullYear() % 100).padStart(2, '0');

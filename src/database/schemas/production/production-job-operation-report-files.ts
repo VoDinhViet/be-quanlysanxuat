@@ -5,9 +5,9 @@ import { files } from '../files';
 import { productionJobOperationReports } from './production-job-operation-reports';
 
 /**
- * Ảnh đính kèm của một lần báo cáo (`production_job_operation_reports`) — nhiều ảnh/lần, cùng
- * khuôn `qc_files` (`src/database/schemas/quality/qc-files.ts`). `fileId` dùng `restrict` (không
- * `cascade`) — ảnh là bằng chứng đã báo cáo, xoá `files` không được kéo theo mất dấu vết.
+ * Ảnh đính kèm của một lần báo cáo (`production_job_operation_reports`), nhiều ảnh mỗi lần.
+ * `fileId` dùng `restrict` (không `cascade`): ảnh là bằng chứng đã báo cáo, xoá `files` không được
+ * kéo theo mất dấu vết.
  */
 export const productionJobOperationReportFiles = pgTable(
   'production_job_operation_report_files',

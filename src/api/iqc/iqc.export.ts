@@ -26,9 +26,9 @@ export interface IqcExport {
   createdAt: Date;
 }
 
-// Cột `decision`/`status` DB rộng hơn 2 vocabulary API (IqcResult/IqcStatus) — nhãn dưới đây phủ
-// đủ mọi giá trị enum để Record exhaustive, dù dòng IQC trên thực tế chỉ rơi vào tập con hợp lệ
-// (CHECK `decision IS NULL OR decision IN ('PASS','FAIL')`, `status <> 'CANCELLED'`).
+// Enum `decision` DB rộng hơn `IqcResult` — nhãn dưới đây phủ đủ mọi giá trị để Record exhaustive,
+// dù dòng IQC trên thực tế chỉ rơi vào tập con hợp lệ (CHECK `decision IS NULL OR decision IN
+// ('PASS','FAIL')`).
 const IQC_RESULT_LABELS: Record<QualityInspectionDecision, string> = {
   [QualityInspectionDecision.PENDING]: '',
   [QualityInspectionDecision.PASS]: 'PASS',

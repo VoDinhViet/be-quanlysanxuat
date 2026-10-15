@@ -11,14 +11,12 @@ import { qualityInspectionResults } from './quality-inspection-results';
 import { qualityInspections } from './quality-inspections';
 
 /**
- * File riêng — lý do y hệt `qc-requests-relations.ts`: quan hệ `supplierReturns` (thêm khi
- * `supplier_returns` có cột `qualityInspectionId` — bước sau của migration) cần import
- * `supplierReturns`, mà bảng đó có composite FK dereference `qualityInspections` NGAY LÚC
- * module-load, tạo vòng lặp thật nếu import chéo ngay trong `quality-inspections.ts`.
+ * Quan hệ của `quality_inspections` ở file riêng để tránh vòng import: `supplier_returns` có
+ * composite FK dereference `qualityInspections` ngay lúc load module.
  *
- * Không có quan hệ `inventoryReceipt`/`outsourcingReceipt`/`outsourcingReceiptItem` — origin giờ là
+ * Không có quan hệ tới chứng từ nguồn (`inventoryReceipt`/`outsourcingReceiptItem`) vì origin là
  * polymorphic (`originType`/`originId`), Drizzle không hỗ trợ `relations()` cho FK polymorphic;
- * service tự join theo `originType` khi cần đọc kèm chứng từ nguồn.
+ * service tự join theo `originType` khi cần.
  */
 export const qualityInspectionsRelations = relations(
   qualityInspections,

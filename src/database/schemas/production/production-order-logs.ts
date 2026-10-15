@@ -11,8 +11,6 @@ import {
 import { productionOrders } from './production-orders';
 import { users } from '../identity-access/users';
 
-/** "Hành động" ghi log trên một LSX — mở rộng khi có thêm đường ghi mới trên `productionOrders`
- * (ví dụ huỷ duyệt, khi route đó được làm). */
 export enum ProductionOrderLogAction {
   CREATED = 'CREATED',
   QUANTITY_UPDATED = 'QUANTITY_UPDATED',
@@ -35,21 +33,18 @@ export const productionOrderLogActionEnum = pgEnum(
 );
 
 /**
- * Lịch sử thao tác trên một LSX — thời gian (`createdAt`), người thực hiện (`performedBy`), nội
- * dung (`content`, mô tả sẵn bằng tiếng Việt, sinh tại nơi ghi chứ không tính lại lúc đọc). Append
- * -only, không có `updatedAt` — cùng khuôn `order_files`/`client_contacts`, một dòng log
- * không bao giờ bị `UPDATE`.
+ * Lịch sử thao tác trên một LSX, append-only (không `updatedAt`). `content` là câu tiếng Việt
+ * sinh sẵn lúc ghi, không tính lại lúc đọc.
  *
  * Rules:
- * - `ProductionOrdersService.logAction` ghi 4 hành động đầu (`seedPlan` → `CREATED`,
- *   `updateProductionOrder` → `QUANTITY_UPDATED`, `approveProductionOrder` → `APPROVED`,
- *   `NOTE_UPDATED`) — luôn trong cùng transaction với hành động đang log. `COMPLETED` là ngoại lệ
- *   duy nhất: ghi thẳng (không qua `logAction`, hàm đó `private`) từ
- *   `InventoryReceiptsService.postInventoryReceipt` khi Job cuối của LSX vừa nhận đủ hàng.
- *   Không có route ghi log trực tiếp.
- * - `onDelete: 'cascade'` từ `productionOrders` — khi header bị xoá để ghi đè (replace-all lúc
- *   `seedPlan`/`OrdersService.updateOrder` xoá LSX `PENDING`), log cũ mất theo, cùng hành vi với
- *   `production_order_items`, không phải rủi ro riêng của bảng này.
+ * - Ghi trong cùng transaction với hành động đang log; không có route ghi log trực tiếp.
+ *   `ProductionOrdersService.logAction` (private) ghi `CREATED` (`seedPlan`), `QUANTITY_UPDATED`,
+ *   `APPROVED`/`COMPLETED` (`approveProductionOrder`; `COMPLETED` khi mọi dòng SL 0),
+ *   `SIGNED_FILE_UPDATED` và `NOTE_UPDATED`.
+ * - Hai nơi `tx.insert` thẳng: `NcrsService.createProductionOrder` (`CREATED` cho LSX phụ) và
+ *   `InventoryReceiptsService.closeJobIfFullyReceived` (`COMPLETED` khi Job cuối nhận đủ hàng).
+ * - `onDelete: 'cascade'`: LSX `PENDING` bị xoá để `seedPlan` ghi đè hoặc khi huỷ SO thì log đi
+ *   theo, cùng hành vi với `production_order_items`.
  */
 export const productionOrderLogs = pgTable(
   'production_order_logs',

@@ -9,7 +9,6 @@ import {
 } from '../../../decorators/field.decorators';
 import { InventoryReceiptItemReqDto } from './inventory-receipt-item.req.dto';
 
-/** Chỉ hợp lệ khi phiếu còn `DRAFT` (`E098`). */
 export class UpdateInventoryReceiptReqDto {
   @EnumFieldOptional(() => InventoryReceiptType)
   readonly receiptType?: InventoryReceiptType;

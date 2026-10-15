@@ -17,9 +17,9 @@ import { inventoryRequisitions } from './inventory-requisitions';
 
 /** Một dòng phiếu lãnh vật tư — luôn DIRECT (service-enforced, `E229`). Unique
  * `(requisitionId, itemId)` bắt buộc: phép SUM "Đã giữ"/"Đã lãnh"
- * (`src/api/inventory-requisitions/inventory-requisitions.query.ts`) và check vượt định mức BOM sẽ
- * sai nếu một phiếu có 2 dòng cùng vật tư. `unitId` chỉ để hiển thị
- * — không quy đổi, mọi so sánh định mức đọc thẳng `quantity`. */
+ * (`src/api/inventory-requisitions/inventory-requisitions.query.ts`) và check vượt định mức BOM
+ * sẽ sai nếu một phiếu có 2 dòng cùng vật tư. `unitId` chỉ để hiển thị, không quy đổi: mọi so
+ * sánh định mức đọc thẳng `quantity`. */
 export const inventoryRequisitionItems = pgTable(
   'inventory_requisition_items',
   {

@@ -64,7 +64,6 @@ import { UpdateProductionOrderSignedFileReqDto } from './dto/update-production-o
 import { FilesService } from '../files/files.service';
 import { PRODUCTION_ORDER_EXPORT_COLUMNS } from './production-orders.export';
 
-/** Số liệu đã chốt/tính toán của một dòng PO — hình dạng chung cho mọi hàm đọc/ghi bên dưới. */
 interface PlanItem {
   orderItemId: string;
   itemId: string;
@@ -75,9 +74,10 @@ interface PlanItem {
   fromStockQty: number;
 }
 
-/** "LSX" — lập kế hoạch sản xuất cho một PO đã duyệt: `production_orders` (header, 1 đơn = 1 LSX)
- * + `production_order_items` (quyết định sản xuất, 1 dòng/dòng PO). Vòng đời, business rule, luồng
- * ghi log: `docs/CODEMAPS/production.md`. */
+/** "LSX": kế hoạch sản xuất của một PO đã duyệt, gồm `production_orders` (header) và
+ * `production_order_items` (quyết định sản xuất, 1 dòng/dòng PO). Mỗi đơn có đúng 1 LSX thường
+ * (`sourceType = ORDER`); LSX phụ sinh từ NCR do `NcrsService` tạo. Vòng đời và business rule:
+ * `docs/CODEMAPS/production.md`. */
 @Injectable()
 export class ProductionOrdersService {
   private static readonly MAX_EXPORT_ROWS = 10_000;
@@ -94,8 +94,8 @@ export class ProductionOrdersService {
     reqDto: GetProductionOrdersReqDto,
   ): Promise<OffsetPaginatedDto<ProductionOrderResDto>> {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
-    // production_orders là base table (không phải orders) — mỗi PO trong phạm vi LSX luôn có đúng
-    // 1 header (OrdersService.approveOrder seed sẵn), nên inner join không bỏ sót PO nào.
+    // Base table là `production_orders`: mọi LSX đều có `orderId`, nên inner join `orders` không bỏ
+    // sót dòng nào. Một đơn có thể hiện nhiều dòng (LSX thường + LSX phụ NCR).
     const where = and(
       isNull(orders.deletedAt),
       keyword
@@ -150,9 +150,8 @@ export class ProductionOrdersService {
     );
   }
 
-  /** Cắt im lặng ở `MAX_EXPORT_ROWS`, không báo lỗi khi vượt trần. Bộ lọc tách riêng khỏi
-   * `getProductionOrders` dù trông giống nhau — hai route độc lập, sửa filter route nào chỉ route
-   * đó đổi. */
+  /** Cắt im lặng ở `MAX_EXPORT_ROWS`, không báo lỗi khi vượt trần. Bộ lọc viết riêng, không dùng
+   * chung với `getProductionOrders`, để sửa filter route nào chỉ route đó đổi. */
   async exportProductionOrders(
     reqDto: ExportProductionOrdersReqDto,
   ): Promise<StreamableFile> {
@@ -205,8 +204,8 @@ export class ProductionOrdersService {
     });
   }
 
-  /** Snapshot dòng quyết định sản xuất đã ghi lúc duyệt PO — query thẳng trên `production_orders`
-   * (khoá theo `id` của nó, không qua `orders`), không tính lại live qua `InventoryService`. */
+  /** Đọc kế hoạch đã lưu lúc duyệt PO, khoá theo `id` của `production_orders` (không qua `orders`);
+   * không tính lại live qua `InventoryService`. */
   async getProductionOrdersById(
     productionOrdersId: string,
   ): Promise<ProductionOrderDetailResDto> {
@@ -327,9 +326,12 @@ export class ProductionOrdersService {
     });
   }
 
-  /** Sửa số lượng sản xuất từng dòng, nhập tay — chỉ khi LSX còn `PENDING` (`E084`). Partial: chỉ
-   * dòng gửi lên bị ghi, dòng khác giữ nguyên. Chỉ tính lại `fromStockQty` — không refresh tồn kho
-   * (`docs/CODEMAPS/production.md`). */
+  /** Sửa tay số lượng sản xuất từng dòng, chỉ khi LSX còn `PENDING` (`E084`).
+   *
+   * Rules:
+   * - Partial: chỉ dòng gửi lên bị ghi.
+   * - Chỉ tính lại `fromStockQty`, không refresh tồn kho (`docs/CODEMAPS/production.md`).
+   */
   async updateProductionOrder(
     productionOrdersId: string,
     reqDto: UpdateProductionOrderReqDto,
@@ -383,7 +385,7 @@ export class ProductionOrdersService {
     });
 
     if (updates.length) {
-      // Tên item chỉ để dựng nội dung log — 1 query gộp theo itemId duy nhất, không lặp theo dòng.
+      // Tên item chỉ để dựng nội dung log; 1 query gộp thay vì mỗi dòng một query.
       const itemIds = [...new Set(updates.map((update) => update.itemId))];
       const itemRows = await this.db
         .select({ id: itemsTable.id, name: itemsTable.name })
@@ -422,9 +424,13 @@ export class ProductionOrdersService {
     return this.getProductionOrdersById(productionOrdersId);
   }
 
-  /** Chỉ hợp lệ khi đang `PENDING` và PO gốc vẫn `AWAITING_PRODUCTION`. Trong cùng transaction:
-   * đẩy PO gốc sang `IN_PROGRESS`, sinh Job. Không lập phiếu xuất kho, không
-   * kiểm tồn kho tổng hợp trước duyệt (`docs/CODEMAPS/production.md`, mục Invariants). */
+  /** Chỉ hợp lệ khi LSX đang `PENDING` và PO gốc vẫn `AWAITING_PRODUCTION`.
+   *
+   * Rules:
+   * - Cùng transaction: đẩy PO gốc sang `IN_PROGRESS`, sinh Job cho mỗi item có SL > 0; không có
+   *   dòng nào thì LSX `COMPLETED` luôn (`docs/CODEMAPS/production.md`, State flows).
+   * - Không lập phiếu xuất kho, không kiểm lại tồn kho lúc duyệt.
+   */
   async approveProductionOrder(
     productionOrdersId: string,
     userId: string,
@@ -523,8 +529,8 @@ export class ProductionOrdersService {
     return this.getProductionOrdersById(productionOrdersId);
   }
 
-  /** Khuôn `OrdersService.generateOrderCode`/`ItemsService.generateItemCode` — cấp số qua
-   * `generateDocumentSequence` (atomic `INSERT ... ON CONFLICT DO UPDATE`), không TOCTOU. */
+  /** Cấp số qua `generateDocumentSequence` (atomic `INSERT ... ON CONFLICT DO UPDATE`), không
+   * TOCTOU; cùng khuôn `OrdersService.generateOrderCode`. */
   private async generateProductionOrderCode(
     tx: DbTransaction,
   ): Promise<string> {
@@ -536,11 +542,10 @@ export class ProductionOrdersService {
     return `LSX${String(sequence).padStart(4, '0')}`;
   }
 
-  /** Đề xuất SX ban đầu cho mọi dòng NORMAL của một PO, tại thời điểm duyệt — công thức ở
-   * `docs/CODEMAPS/production.md` (loại trừ chính đơn này qua `excludeOrderId`). Chỉ đọc — gọi
-   * trước khi `OrdersService.approveOrder` mở transaction rồi mới `seedPlan`. */
+  /** Đề xuất SX ban đầu cho mọi dòng `NORMAL` của một PO tại lúc duyệt. Chỉ đọc: gọi trước khi
+   * `OrdersService.approveOrder` mở transaction, rồi kết quả mới được `seedPlan` ghi. */
   async getInitialPlanItems(orderId: string): Promise<PlanItem[]> {
-    // Nguồn: mọi dòng PO status = NORMAL của đơn này — dòng CANCELLED không cần sản xuất.
+    // Chỉ dòng `NORMAL`; dòng `CANCELLED` không cần sản xuất.
     const normalOrderItems = await this.db
       .select({
         id: orderItems.id,
@@ -554,15 +559,13 @@ export class ProductionOrdersService {
           eq(orderItems.status, OrderItemStatus.NORMAL),
         ),
       );
-    // Không có dòng NORMAL nào thì không có gì để tính — thoát sớm, khỏi gọi InventoryService dư.
     if (!normalOrderItems.length) {
       return [];
     }
 
-    // Gom itemId duy nhất — 1 query tồn kho cho mọi item thay vì mỗi dòng PO một query.
     const itemIds = [...new Set(normalOrderItems.map((item) => item.itemId))];
-    // `excludeOrderId = orderId`: PO đang xét đã tự giữ chỗ trong `reserved`, phải loại trừ chính
-    // nó ra để không bị trừ nhu cầu của nó hai lần (xem docs/CODEMAPS/production.md).
+    // Truyền `orderId` làm `excludeOrderId`: PO đang xét đã tự giữ chỗ trong `reserved`, phải loại
+    // chính nó ra để không trừ nhu cầu của nó hai lần.
     const stockByItem = await this.inventoryService.getStockLevels(
       itemIds,
       orderId,
@@ -601,9 +604,9 @@ export class ProductionOrdersService {
     );
   }
 
-  /** Ghi header (`PENDING`) + các dòng quyết định sản xuất — replace-all theo `orderId`, nên duyệt
-   * lại một PO từng bị từ chối sẽ ghi đè kế hoạch cũ, không đụng unique constraint. Bắt buộc
-   * truyền `tx` — chỉ chạy được trong transaction đang mở của `OrdersService.approveOrder`. */
+  /** Ghi header (`PENDING`) và các dòng quyết định sản xuất, replace-all theo `orderId` (chỉ LSX
+   * thường): duyệt lại một PO ghi đè kế hoạch cũ mà không đụng unique constraint. Chạy trong
+   * transaction của `OrdersService.approveOrder`. */
   async seedPlan(
     tx: DbTransaction,
     orderId: string,
@@ -616,7 +619,7 @@ export class ProductionOrdersService {
       .where(this.orderLsxCondition(orderId));
     await tx.delete(productionOrders).where(this.orderLsxCondition(orderId));
 
-    // Mã LSX cấp ngay khi sinh kế hoạch; duyệt lại đơn từng bị từ chối giữ nguyên mã cũ.
+    // Mã LSX cấp ngay khi sinh kế hoạch; duyệt lại giữ nguyên mã cũ.
     const code = previous?.code ?? (await this.generateProductionOrderCode(tx));
     const [createdProductionOrders] = await tx
       .insert(productionOrders)
@@ -647,7 +650,7 @@ export class ProductionOrdersService {
     );
   }
 
-  /** `performedBy` null nếu credential đã bị xoá; `E081` nếu header không tồn tại. */
+  /** `performedBy` null nếu user đã bị xoá (FK `ON DELETE SET NULL`); `E081` nếu không có LSX. */
   async getProductionOrderLogs(
     productionOrdersId: string,
     reqDto: GetProductionOrderLogsReqDto,
@@ -680,10 +683,7 @@ export class ProductionOrdersService {
     );
   }
 
-  /** Sửa được ở mọi trạng thái LSX — khác `updateProductionOrder` (chỉ `PENDING`, `E084`), vì đây
-   * chỉ là annotation nội bộ, không đụng số liệu sản xuất đã chốt. */
-
-  /** Cập nhật hoặc xóa file LSX đã ký (scan/PDF) — cho phép ở mọi trạng thái của LSX. */
+  /** Cập nhật hoặc xoá file LSX đã ký (scan/PDF); cho phép ở mọi trạng thái LSX. */
   async updateProductionOrderSignedFile(
     productionOrdersId: string,
     reqDto: UpdateProductionOrderSignedFileReqDto,
@@ -723,6 +723,8 @@ export class ProductionOrdersService {
     return this.getProductionOrdersById(productionOrdersId);
   }
 
+  /** Sửa được ở mọi trạng thái LSX (khác `updateProductionOrder`, chỉ `PENDING`): ghi chú nội bộ,
+   * không đụng số liệu sản xuất. */
   async updateProductionOrderNote(
     productionOrdersId: string,
     reqDto: UpdateProductionOrderNoteReqDto,
@@ -752,8 +754,8 @@ export class ProductionOrdersService {
     });
   }
 
-  /** Ghi 1 dòng lịch sử thao tác — luôn gọi trong transaction của hành động đang log, không tách
-   * rời (log và hành động cùng commit hoặc cùng rollback). */
+  /** Luôn gọi trong transaction của hành động đang log, để log và hành động cùng commit hoặc cùng
+   * rollback. */
   private async logAction(
     tx: DbTransaction,
     productionOrderId: string,

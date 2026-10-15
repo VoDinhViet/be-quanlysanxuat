@@ -18,15 +18,17 @@ import { syncReceiptIqcStatus } from '../inventory-receipts/inventory-receipts.w
 import { closeJobIfQcCovered } from '../oqc/oqc.query';
 
 /** Hoàn tất phiếu IQC sau khi phiếu trả NCC liên kết được `post` — gọi bởi
- *  `SupplierReturnsService.postSupplierReturn`, trong CÙNG transaction với việc trừ tồn. Plain
- *  function nhận `tx`, không qua DI: `IqcModule` đã import `SupplierReturnsModule` (để
- *  `IqcService.confirmIqc` gọi `SupplierReturnsService.createFromIqcDisposition`), nên chiều
- *  ngược lại không thể đi qua DI mà không tạo vòng lặp module — repo hiện không dùng `forwardRef`
- *  ở đâu cả. Không đi qua `IqcService.resolveIqcStatus`/`confirmIqc` (guard của chúng không hợp
- *  với dòng đã `IN_PROGRESS`) — đây là transition riêng, chỉ hợp lệ đúng một lần, từ
- *  `IN_PROGRESS` (WAITING_RETURN cũ) sang `COMPLETED`. Chỉ đổi `status` của **case row** — không
- *  phải một lần kiểm mới nên không sinh `quality_inspection_results`. Xem
- *  `docs/CODEMAPS/inventory.md`. */
+ *  `SupplierReturnsService.postSupplierReturn`, trong CÙNG transaction với việc trừ tồn.
+ *
+ *  Rules:
+ *  - Plain function nhận `tx`, không qua DI: `IqcModule` đã import `SupplierReturnsModule` (để
+ *    `confirmIqc` gọi `createFromIqcDisposition`), chiều ngược lại qua DI sẽ tạo vòng module.
+ *  - Không đi qua `confirmIqc` (guard của nó không hợp với dòng đã `IN_PROGRESS`): đây là
+ *    transition riêng, chỉ từ `IN_PROGRESS` sang `COMPLETED` (`E164` nếu sai trạng thái).
+ *  - Chỉ đổi `status` của case row; không phải lần kiểm mới nên không sinh
+ *    `quality_inspection_results`.
+ *
+ *  Xem `docs/CODEMAPS/inventory.md`. */
 export async function completeIqcAfterSupplierReturn(
   tx: DbTransaction,
   iqcId: string,
@@ -67,11 +69,9 @@ export async function completeIqcAfterSupplierReturn(
   }
 }
 
-/** Gắn bằng chứng cho MỘT attempt vừa tạo — attempt append-only nên đây luôn là insert vào một
- *  `qualityInspectionResultId` chưa từng có dòng nào, không còn ý nghĩa "replace-all" như trên
- *  case row cũ. Bắt buộc `tx` để tránh ghi ra ngoài transaction. Dùng chung
- *  `IqcService.confirmIqc`/`OqcService.confirmOqc` — plain function, không qua DI, cùng lý do
- *  `completeIqcAfterSupplierReturn` ở trên. */
+/** Gắn bằng chứng cho MỘT attempt vừa tạo: attempt append-only nên luôn là insert vào một
+ *  `qualityInspectionResultId` chưa có dòng nào (không có "replace-all"). Dùng chung
+ *  `IqcService.confirmIqc`/`OqcService.confirmOqc` — plain function nhận `tx`, không qua DI. */
 export async function linkQcFiles(
   tx: DbTransaction,
   qualityInspectionResultId: string,
@@ -93,8 +93,9 @@ export async function linkQcFiles(
 
 /** Huỷ mọi phiếu IQC (và phiếu trả NCC nháp) sinh từ một phiếu nhập kho khi phiếu đó bị huỷ — gọi
  *  bởi `InventoryReceiptsService.cancelInventoryReceipt` trong CÙNG transaction. Phiếu trả NCC đã
- *  `POSTED` thì chặn (`E290`): hàng đã xuất trả NCC, không tự đảo được. IQC giữ lại ở trạng thái
- *  `CANCELLED` để truy vết. Plain function nhận `tx`, cùng lý do `completeIqcAfterSupplierReturn`. */
+ *  `POSTED` thì chặn (`E290`): hàng đã xuất trả NCC, không tự đảo được. IQC giữ lại ở `CANCELLED`
+ *  để truy vết. Plain function nhận `tx`, không qua DI (cùng lý do
+ *  `completeIqcAfterSupplierReturn`). */
 export async function cancelReceiptInspections(
   tx: DbTransaction,
   receiptId: string,

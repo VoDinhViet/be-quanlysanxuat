@@ -10,8 +10,7 @@ import {
 
 /**
  * Nút "Lưu" duy nhất của trang chi tiết IQC — ghi đè toàn bộ quyết định QC mỗi lần gọi (không
- * phải patch một phần): field vắng mặt nghĩa là xoá, không phải giữ nguyên. QC tự chọn `result`
- * hoàn toàn.
+ * phải patch một phần): field vắng mặt nghĩa là xoá, không phải giữ nguyên.
  */
 export class ConfirmIqcReqDto {
   @DateFieldOptional({

@@ -31,8 +31,8 @@ export async function getInventoryBalancesForUpdate(
     .for('update');
 }
 
-/** Tồn theo item, gộp mọi kho — bản rút gọn của `InventoryService`'s balance subquery, không có
- * nhánh `asOfDate`/`warehouseId` vì hai nơi gọi hàm này luôn đọc tồn hiện tại, mọi kho. */
+/** Tồn hiện tại theo item — bản rút gọn của `balanceByItemSubquery`, không có nhánh `asOfDate`
+ * vì các nơi gọi luôn đọc tồn hiện tại. */
 export function onHandQuantityByItemSubquery(db: Database) {
   return db
     .select({
@@ -46,8 +46,8 @@ export function onHandQuantityByItemSubquery(db: Database) {
     .as('item_on_hand');
 }
 
-/** Tồn hiện tại (gộp mọi kho) của đúng `itemIds`; vật tư chưa có dòng tồn vắng trong `Map` (coi là 0).
- * Dùng cho relational query không join được `onHandQuantityByItemSubquery`. */
+/** Tồn hiện tại của đúng `itemIds`; vật tư chưa có dòng tồn vắng trong `Map` (coi là 0). Dùng cho
+ * relational query không join được `onHandQuantityByItemSubquery`. */
 export async function getOnHandQuantityByItemId(
   db: Database | DbTransaction,
   itemIds: string[],

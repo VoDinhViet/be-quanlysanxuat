@@ -50,16 +50,15 @@ import {
   productLedgerSubquery,
 } from './product-ledger.query';
 
-/** Tồn kho thành phẩm — nhánh FG tách khỏi `InventoryService.getInventory` cũ
- * (`docs/CODEMAPS/inventory.md`). DIRECT sống ở `inventory-directs`, không nhánh nào đọc chéo sang
- * nhánh kia. */
+/** Tồn kho thành phẩm (FG). Vật tư DIRECT nằm ở `inventory-directs`, hai nhánh không đọc chéo nhau
+ * (`docs/CODEMAPS/inventory.md`). */
 @Injectable()
 export class InventoryProductsService {
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
 
-  /** Liệt kê mọi thành phẩm ACTIVE, kể cả chưa từng phát sinh kho — không phân trang trên `items`
-   * rồi tra tồn riêng, cùng lý do `InventoryService.getInventory` cũ: filter `status` là giá trị
-   * tính nên toàn bộ join + tính toán phải nằm trong một `.select()` duy nhất. */
+  /** Liệt kê mọi thành phẩm ACTIVE, kể cả chưa từng phát sinh kho. Không phân trang `items` rồi
+   * tra tồn riêng: filter `status` là giá trị tính nên toàn bộ join + tính toán phải nằm trong một
+   * `.select()` duy nhất. */
   async getInventoryProducts(
     reqDto: GetInventoryProductsReqDto,
   ): Promise<OffsetPaginatedDto<InventoryProductResDto>> {
@@ -134,8 +133,8 @@ export class InventoryProductsService {
     );
   }
 
-  /** Sổ cái (thẻ kho) — lịch sử bút toán của một thành phẩm, tồn luỹ kế sau từng giao dịch
-   * (`docs/CODEMAPS/inventory.md`, mục "Thẻ kho thành phẩm"). */
+  /** Sổ cái (thẻ kho) của một thành phẩm: bút toán kèm tồn luỹ kế `balanceAfter` sau từng giao
+   * dịch (`docs/CODEMAPS/inventory.md`). */
   async getProductLedger(
     itemId: string,
     reqDto: GetProductLedgerReqDto,
@@ -205,8 +204,8 @@ export class InventoryProductsService {
         )
         .limit(reqDto.limit)
         .offset(reqDto.offset),
-      // Đếm thẳng trên `inventory_transactions` với cùng điều kiện, không qua `ledger` — không cần
-      // window function chỉ để đếm dòng.
+      // Đếm thẳng trên `inventory_transactions` cùng điều kiện, không qua `ledger` (khỏi chạy window
+      // function chỉ để đếm).
       this.db
         .select({ total: count() })
         .from(inventoryTransactions)

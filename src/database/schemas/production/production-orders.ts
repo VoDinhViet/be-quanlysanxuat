@@ -19,10 +19,11 @@ import { users } from '../identity-access/users';
 import { ncrs } from '../quality/ncrs';
 import { files } from '../files';
 
-/** "Chờ duyệt" (kế hoạch, sửa số lượng tự do qua `updateProductionOrder`) vs "Đã duyệt" (chốt
- * LSX, không sửa được nữa) vs "Hoàn thành" (mọi Job đã `COMPLETED`, tự động đóng — không có route
- * tay). Chưa có trạng thái huỷ riêng (xem
- * doc trên `productionOrders`). */
+/**
+ * `PENDING` còn sửa số lượng từng dòng (`updateProductionOrder`); `APPROVED` đã chốt, hết sửa;
+ * `COMPLETED` khi mọi Job `COMPLETED`, hoặc ngay lúc duyệt nếu không dòng nào cần sản xuất. Không
+ * có route đặt `COMPLETED` tay và chưa có trạng thái huỷ.
+ */
 export enum ProductionOrderStatus {
   PENDING = 'PENDING',
   APPROVED = 'APPROVED',
@@ -58,26 +59,19 @@ export const productionOrderNcrActionEnum = pgEnum(
 );
 
 /**
- * LSX (lệnh sản xuất) — header, 1-1 với một PO đã duyệt. Xem `docs/CODEMAPS/production.md`
- * để biết đầy đủ luồng duyệt PO → quyết định sản
- * xuất → duyệt LSX (chưa có huỷ duyệt).
+ * LSX (lệnh sản xuất) — header. LSX thường (`source_type = 'ORDER'`) sinh từ một SO đã duyệt, LSX
+ * phụ (`source_type = 'NCR'`) sinh từ một NCR. Luồng: `docs/CODEMAPS/production.md`.
  *
  * Rules:
- * - `PENDING` là lúc PO mới duyệt, hệ thống vừa sinh sẵn kế hoạch (`ProductionOrdersService.seedPlan`).
- *   Còn `PENDING` thì sửa được số lượng sản xuất từng dòng (`updateProductionOrder`, nhập tay).
- * - `APPROVED` (`ProductionOrdersService.approveProductionOrder`) chốt LSX và đẩy `orders.status`
- *   sang `IN_PROGRESS` — hết sửa được số lượng (`E084`). Chưa có route huỷ duyệt (đưa `APPROVED`
- *   quay lại `PENDING`) — tạm hoãn, xem `docs/CODEMAPS/production.md` (Common mistakes).
- * - `code` cấp ngay khi sinh kế hoạch (`seedPlan`, dòng cũ chưa có mã thì cấp lúc duyệt);
- *   `approvedBy`/`approvedAt` chỉ có giá trị khi `APPROVED`, luôn `NULL` khi `PENDING`
+ * - `PENDING` do `ProductionOrdersService.seedPlan` sinh trong `OrdersService.approveOrder`; còn
+ *   `PENDING` thì sửa được số lượng từng dòng (`updateProductionOrder`).
+ * - `APPROVED` (`approveProductionOrder`) chốt LSX và đẩy `orders.status` sang `IN_PROGRESS`; hết
+ *   sửa số lượng (`E084`). Chưa có route huỷ duyệt.
+ * - `code` cấp ngay lúc `seedPlan` (dòng `PENDING` cũ chưa có mã thì cấp lúc duyệt); `approvedAt`
+ *   là `NULL` khi `PENDING`, có giá trị khi `APPROVED`/`COMPLETED`
  *   (`chk_production_orders_status_fields`).
- * - `orderId` unique trong nhóm `source_type = 'ORDER'` (partial unique index) — mỗi PO chỉ có
- *   đúng một LSX thường tại một thời điểm; LSX phụ NCR (`source_type = 'NCR'`) dùng chung `orderId`
- *   của đơn liên quan, tối đa 1 LSX / (`ncrId`, `ncrAction`); duyệt lại sau khi huỷ (bằng
- *   một PO khác, hoặc `OrdersService.approveOrder` seed lại) ghi đè hoàn toàn header + dòng quyết
- *   định cũ (`seedPlan`, replace-all theo `orderId`).
- * - `COMPLETED` tự động khi mọi `productionJobs` của LSX đạt `COMPLETED` — không có route tay.
- *
+ * - `orderId` unique trong nhóm `source_type = 'ORDER'` (partial unique index): mỗi SO một LSX
+ *   thường. LSX phụ dùng chung `orderId` của SO, tối đa 1 LSX / (`ncrId`, `ncrAction`).
  */
 export const productionOrders = pgTable(
   'production_orders',

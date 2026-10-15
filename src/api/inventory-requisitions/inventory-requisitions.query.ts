@@ -15,15 +15,12 @@ import {
 // tồn thật (tính tiếp là trừ hai lần), `REJECTED`/`CANCELLED` nhả chỗ.
 const HOLDING_STATUS = InventoryRequisitionStatus.APPROVED;
 
-/** Σ SL lãnh mọi phiếu đang giữ chỗ (`HOLDING_STATUS`), theo `itemId` — "Đã giữ", LEFT JOIN thẳng
- * vào SELECT hiển thị (popup/tab chi tiết). Dùng chung khuôn `sentQuantityByJobOperationSubquery`
- * (`outsourcing-orders.query.ts`). */
+/** Σ SL lãnh các phiếu đang giữ chỗ (`HOLDING_STATUS`) theo `itemId` — số "Đã giữ", để LEFT JOIN
+ * thẳng vào SELECT hiển thị. */
 export function reservedQuantitySubquery(db: Database) {
   return db
     .select({
       itemId: inventoryRequisitionItems.itemId,
-      // Alias SQL cố ý khác tên cột JS `reservedQuantity` — `inventory_balances` cũng từng có cột
-      // cùng tên, giữ khác biệt cho rõ.
       reservedQuantity: sql<number>`sum(${inventoryRequisitionItems.quantity})`
         .mapWith(Number)
         .as('requisition_held_quantity'),
@@ -38,19 +35,18 @@ export function reservedQuantitySubquery(db: Database) {
     .as('reserved_quantity_by_item');
 }
 
-/** Bản gộp theo `itemId` của `reservedQuantitySubquery` — field trả về `heldQuantity`, cố ý khác
- * `reservedQuantity` của hàm gốc để không đọc nhầm 2 hàm là một.
+/** Bản gộp theo `itemId` của `reservedQuantitySubquery`; trả `heldQuantity` (cố ý khác tên
+ * `reservedQuantity` để không đọc nhầm hai hàm là một).
  *
- * `heldForJobsQuantity` tách riêng phần giữ có gắn `productionJobId` (`type = PRODUCTION`) — chỉ
- * phần này mới trùng với `remainingBomDemandByItemSubquery` (nguồn `production_job_issues`) nên
- * mới được trừ chéo ở `InventoryService.getInventory`; phiếu `type = OTHER` không có Job nên không
- * có nhu cầu BOM đối ứng để trùng, trộn chung vào `heldQuantity` rồi trừ chéo sẽ trừ nhầm phần
- * chưa từng bị cộng trùng. Xem `docs/CODEMAPS/inventory.md`.
+ * Rules:
+ * - `heldForJobsQuantity` chỉ tính phiếu có `productionJobId` mà Job chưa `COMPLETED`. Chỉ phần này
+ *   trùng với `remainingBomDemandByItemSubquery` nên `stockSqlFragments` mới trừ chéo nó; phiếu
+ *   `type = OTHER` không có nhu cầu BOM đối ứng, trừ chéo sẽ trừ nhầm.
+ * - Job `COMPLETED` đã bị loại khỏi nhu cầu BOM, nên phiếu `APPROVED` còn treo của nó không được
+ *   trừ chéo (sẽ làm tụt nhu cầu của Job khác); phiếu đó vẫn nằm trong `heldQuantity` tới khi
+ *   lãnh hoặc huỷ.
  *
- * Phần giữ của Job `COMPLETED` cũng KHÔNG tính vào `heldForJobsQuantity`: nhu cầu BOM của Job đã
- * hoàn tất đã bị loại khỏi `remainingBomDemandByItemSubquery`, nên phiếu APPROVED còn treo của nó
- * không còn nhu cầu đối ứng để trừ chéo — trừ chéo vẫn sẽ làm tụt nhu cầu của Job khác. Phiếu đó
- * vẫn nằm trong `heldQuantity` (giữ tồn thật) cho tới khi lãnh hoặc huỷ. */
+ * See `docs/CODEMAPS/inventory.md`. */
 export function requisitionHeldQuantityByItemSubquery(db: Database) {
   return db
     .select({
@@ -77,8 +73,8 @@ export function requisitionHeldQuantityByItemSubquery(db: Database) {
     .as('requisition_held_by_item');
 }
 
-/** Bản `Map` của "Đã giữ" — dùng để validate (`create`/`update`/`approve`), không có SELECT hiển thị
- * nào để LEFT JOIN vào. */
+/** Bản `Map` của "Đã giữ" cho validate (`create`/`update`/`approve`), nơi không có SELECT hiển thị
+ * để LEFT JOIN. */
 export async function getReservedQuantities(
   db: Database | DbTransaction,
   params: {
@@ -111,11 +107,9 @@ export async function getReservedQuantities(
   return new Map(rows.map((row) => [row.itemId, row.reservedQuantity]));
 }
 
-/** Σ SL lãnh mọi phiếu đã `ISSUED`, theo `(productionJobId, itemId)` — "Đã lãnh". LEFT JOIN thẳng
- * vào SELECT hiển thị (tab chi tiết/popup) và vào `remainingBomDemandByItemSubquery` dưới đây.
- * `GET /production-jobs/:jobId/bom` cũng import trực tiếp hàm này để hiển thị "Theo dõi đã lãnh"
- * (`docs/CODEMAPS/production.md`) — plain function, không qua DI, cùng tiền lệ
- * `hasPendingIqcForItems`. */
+/** Σ SL lãnh các phiếu `ISSUED` theo `(productionJobId, itemId)` — số "Đã lãnh".
+ * `GET /production-jobs/:jobId/bom` cũng import hàm này (plain function, không qua DI) để hiển thị
+ * "Theo dõi đã lãnh" (`docs/CODEMAPS/production.md`). */
 export function issuedQuantityByJobItemSubquery(db: Database) {
   return db
     .select({
@@ -171,14 +165,17 @@ export async function getIssuedQuantities(
   return new Map(rows.map((row) => [row.itemId, row.issuedQuantity]));
 }
 
-/** Nhu cầu BOM còn lại theo `itemId`, KHÔNG scope theo Job: `Σ max(requiredQty − Đã lãnh, 0)` cộng
- * dồn mọi Job đang mở — đầu vào để `InventoryDirectsService` tính tồn khả dụng (cố ý có thể âm, chỉ
- * báo thiếu, không chặn thao tác nào, khác "Có thể lãnh"). Trừ phần **còn lại** (không phải nguyên
- * `requiredQty`) để số không âm sai khi Job đã lãnh xong. Xem `docs/CODEMAPS/inventory.md`, mục
- * "Phiếu lãnh vật tư". `excludeJobId` bỏ nhu cầu của đúng một Job — dùng khi đo tồn khả dụng
- * *trước* Job đó (lúc start). Job `PENDING` (đã có snapshot nhưng chưa "Xác nhận kế hoạch") chưa
- * giữ chỗ vật tư; Job `COMPLETED` (nhập kho thành phẩm đủ) thì thôi giữ chỗ — phần vật tư chưa lãnh
- * của nó tự được nhả, không còn trừ vào tồn khả dụng. */
+/** Nhu cầu BOM còn lại theo `itemId`, không scope theo Job: `Σ max(requiredQty − Đã lãnh, 0)` trên
+ * các Job đang mở. Đầu vào của tồn khả dụng (`stockSqlFragments`) — cố ý có thể âm, chỉ báo thiếu,
+ * không chặn thao tác nào (khác "Có thể lãnh").
+ *
+ * Rules:
+ * - Trừ phần còn lại, không phải nguyên `requiredQty`, để Job đã lãnh xong không bị trừ thừa.
+ * - Job `PENDING` (chưa "Xác nhận kế hoạch") chưa giữ chỗ; Job `COMPLETED` thôi giữ chỗ, phần vật
+ *   tư chưa lãnh của nó tự được nhả.
+ * - `excludeJobId` bỏ nhu cầu của đúng một Job, dùng khi đo tồn khả dụng trước Job đó (lúc start).
+ *
+ * See `docs/CODEMAPS/inventory.md`. */
 export function remainingBomDemandByItemSubquery(
   db: Database,
   excludeJobId?: string,
@@ -220,11 +217,10 @@ export function remainingBomDemandByItemSubquery(
     .as('remaining_bom_demand');
 }
 
-/** 3 cột số spread vào cả ba `.select()` đọc dòng vật tư (chi tiết phiếu + 2 popup) — cùng khuôn
- * `itemStockColumns` (`inventory/item-stock.query.ts`). Nơi gọi phải LEFT JOIN sẵn
- * `inventory_balances` + `reservedQuantitySubquery` theo đúng `itemId`. `availableQuantity` không
- * nằm ở đây: nơi gọi join `availableQuantityByItemSubquery` (`inventory/available-quantity.query.ts`)
- * để cùng công thức màn Tồn kho; `issuableQuantity` mới là số dùng để chặn. */
+/** 3 cột số spread vào các `.select()` đọc dòng vật tư (chi tiết phiếu + popup chọn vật tư), cùng
+ * khuôn `itemStockColumns` (`inventory/item-stock.query.ts`). Nơi gọi phải LEFT JOIN sẵn
+ * `inventory_balances` + `reservedQuantitySubquery` theo `itemId`. `availableQuantity` không nằm ở
+ * đây (nơi gọi join `availableQuantityByItemSubquery`); `issuableQuantity` mới là số dùng để chặn. */
 export function requisitionStockColumns(
   reserved: ReturnType<typeof reservedQuantitySubquery>,
 ) {

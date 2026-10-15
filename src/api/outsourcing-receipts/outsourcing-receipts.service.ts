@@ -64,8 +64,8 @@ import {
 
 type ResolvedReceiptItem = {
   outsourcingOrderItemId: string;
-  // Phiếu OS-OUT chứa dòng nguồn — dùng để gọi `recomputeOutsourcingOrderStatus` sau khi insert
-  // (`createOutsourcingReceipt`), không phải cột ghi xuống `outsourcing_receipt_items`.
+  // Phiếu OS-OUT chứa dòng nguồn, dùng để `recomputeOutsourcingOrderStatus` sau khi insert; không
+  // ghi xuống `outsourcing_receipt_items`.
   outsourcingOrderId: string;
   itemCode: string;
   itemName: string;
@@ -74,9 +74,8 @@ type ResolvedReceiptItem = {
   weight: number | null;
   area: number | null;
   note: string | null;
-  // Denormalize từ dòng OS-OUT nguồn — neo sang đúng công đoạn `OUTSOURCE` sinh ra dòng này, dùng
-  // để gắn `qualityInspections.productionJobOperationId` khi `requiresIqc` (xem
-  // `createOutsourcingReceipt`, `docs/CODEMAPS/quality.md`).
+  // Lấy từ dòng OS-OUT nguồn để gắn `qualityInspections.productionJobOperationId` khi `requiresIqc`
+  // (xem `docs/CODEMAPS/quality.md`); không ghi xuống `outsourcing_receipt_items`.
   productionJobId: string | null;
   productionJobOperationId: string | null;
 };
@@ -195,11 +194,9 @@ export class OutsourcingReceiptsService {
     });
   }
 
-  /** Join phẳng `outsourcing_receipt_items -> outsourcing_order_items -> outsourcing_orders` +
-   * `-> items -> units` cho một phiếu — `.select()` + join tường minh thay vì relational `with:`
-   * lồng 2 cấp: DTO nhận `item`/`unit` cùng cấp (không lồng `item.unit`), khớp thẳng shape select,
-   * không cần map lại. `operationCode`/`operationName`/`outsourcingOrder` chỉ tồn tại trên dòng
-   * OS-OUT nguồn, không denormalize trên `outsourcing_receipt_items`. */
+  /** Dùng `.select()` + join tường minh thay vì relational `with:` để DTO nhận `item`/`unit` cùng
+   * cấp (không lồng `item.unit`). `operationCode`, `operationName` và `outsourcingOrder` lấy từ
+   * dòng OS-OUT nguồn, không có trên `outsourcing_receipt_items`. */
   async getReceiptItems(
     outsourcingReceiptId: string,
   ): Promise<OutsourcingReceiptItemResDto[]> {
@@ -343,10 +340,12 @@ export class OutsourcingReceiptsService {
     );
   }
 
-  /** Không còn nháp — tạo là nhận luôn: resolve/validate xong thì `INSERT` header thẳng `POSTED`,
-   * sinh IQC nếu `requiresIqc` ngay sau đó, rồi `recomputeOutsourcingOrderStatus` cho từng OS-OUT
-   * nguồn (SL đã nhận vừa đổi). Không đụng `inventory_balances` — hàng nhận về là node COMPONENT của
-   * Job, không phải item, không có tồn. */
+  /** Tạo là nhận luôn: header `INSERT` thẳng ở `POSTED`, không có bước nháp.
+   *
+   * Rules:
+   * - Sinh IQC ngay nếu `requiresIqc`, rồi `recomputeOutsourcingOrderStatus` cho từng OS-OUT nguồn.
+   * - Không đụng `inventory_balances`: hàng nhận về là node COMPONENT của Job, không có tồn.
+   */
   async createOutsourcingReceipt(
     reqDto: CreateOutsourcingReceiptReqDto,
     userId: string,
@@ -392,11 +391,9 @@ export class OutsourcingReceiptsService {
         )
         .returning();
 
-      // Hàng đã về nhà máy vật lý (không phải ghi tồn — node COMPONENT không có tồn) ngay khi lập phiếu,
-      // nên sinh IQC ở đây không gate việc `create`, khác nhánh IQC của phiếu nhập mua (`confirm`
-      // mới là nơi gate, `.claude/rules/service.md`). `insertedItems`/`resolvedItems` cùng thứ tự —
-      // cùng xây từ một `.map()` trên `resolvedItems`, Postgres giữ nguyên thứ tự RETURNING cho
-      // INSERT nhiều dòng một câu lệnh — zip theo index để lấy neo công đoạn của từng dòng.
+      // Hàng đã về nhà máy ngay khi lập phiếu nên sinh IQC ở đây, không gate `create` (khác phiếu
+      // nhập mua, gate ở `confirm`). `insertedItems` cùng thứ tự `resolvedItems` (INSERT nhiều dòng
+      // giữ thứ tự RETURNING), nên zip theo index để lấy neo công đoạn của từng dòng.
       if (outsourcingReceipt.requiresIqc && insertedItems.length) {
         await this.iqcService.createInspectionsFromOutsourcingReceipt(tx, {
           outsourcingReceiptId: outsourcingReceipt.id,
@@ -416,8 +413,7 @@ export class OutsourcingReceiptsService {
         });
       }
 
-      // 1 phiếu OS-IN có thể gộp nhiều OS-OUT cùng NCC — tính lại status từng phiếu nguồn bị ảnh
-      // hưởng, không chỉ 1.
+      // Một OS-IN có thể gộp nhiều OS-OUT cùng NCC: tính lại status từng phiếu nguồn.
       const affectedOrderIds = new Set(
         resolvedItems.map((item) => item.outsourcingOrderId),
       );
@@ -425,8 +421,7 @@ export class OutsourcingReceiptsService {
         await recomputeOutsourcingOrderStatus(tx, outsourcingOrderId);
       }
 
-      // Ghi ngược tiến độ đúng công đoạn OUTSOURCE vừa nhận về — cùng lý do gộp Set ở trên, 1 phiếu
-      // có thể chạm nhiều công đoạn.
+      // Ghi ngược tiến độ các công đoạn `OUTSOURCE` vừa nhận về (một phiếu có thể chạm nhiều).
       const affectedOperationIds = new Set(
         resolvedItems
           .map((item) => item.productionJobOperationId)
@@ -459,10 +454,8 @@ export class OutsourcingReceiptsService {
         }
       }
 
-      // Phải lấy trước khi update — sau khi CANCELLED, receipt không còn nằm trong tập
-      // `outsourcingReceiptItems` mà `recomputeOutsourcingOrderStatus`/
-      // `recomputeOutsourcedOperationProgress` tính (chỉ tính receipt POSTED), nhưng vẫn cần đúng
-      // tập OS-OUT/công đoạn bị ảnh hưởng để gọi recompute cho từng cái.
+      // Tập OS-OUT/công đoạn bị ảnh hưởng để recompute sau khi huỷ (cả hai recompute chỉ tính
+      // OS-IN `POSTED`).
       const affectedTargets = await this.getRecomputeTargetsForReceipt(
         tx,
         outsourcingReceiptId,
@@ -531,16 +524,13 @@ export class OutsourcingReceiptsService {
     }
   }
 
-  /** Suy dữ liệu ghi cho từng dòng, `weight`/`area` mặc định copy từ dòng OS-OUT khi client không
-   * gửi. */
+  /** `weight`/`area` mặc định copy từ dòng OS-OUT khi client không gửi. */
   private async resolveReceiptItems(
     reqItems: OutsourcingReceiptItemReqDto[],
     supplierId: string,
   ): Promise<ResolvedReceiptItem[]> {
     const orderItemIds = reqItems.map((item) => item.outsourcingOrderItemId);
 
-    // Hai truy vấn độc lập — `receivedMap` chỉ cần `orderItemIds`, không cần `orderItems` — chạy
-    // song song thay vì tuần tự.
     const [orderItemById, receivedMap] = await Promise.all([
       this.fetchOrderItemsById(orderItemIds),
       getReceivedQuantityByOrderItemIds(this.db, orderItemIds),
@@ -584,9 +574,8 @@ export class OutsourcingReceiptsService {
     return new Map(orderItems.map((row) => [row.id, row]));
   }
 
-  /** OS-OUT nguồn tồn tại (`E165`, tái dùng mã "không tìm thấy OS-OUT" — cùng aggregate) + chưa
-   * `CANCELLED` (`E171` — status đã gộp tiến độ, không còn chỉ `POSTED`)
-   * + NCC khớp header (`E187`). */
+  /** Dòng OS-OUT nguồn phải tồn tại (`E165`, dùng chung mã "không tìm thấy OS-OUT"), phiếu chưa
+   * `CANCELLED` (`E171`) và cùng NCC với header (`E187`). */
   private ensureOrderItemValid(
     orderItem:
       | {
@@ -611,8 +600,7 @@ export class OutsourcingReceiptsService {
     }
   }
 
-  /** Chặn nhận vượt SL gửi của dòng OS-OUT (`E172`, tính trên `POSTED` — không còn phiếu nào ở
-   * `DRAFT` để cộng dồn). */
+  /** Chặn nhận vượt SL gửi của dòng OS-OUT (`E172`); `receivedSoFar` chỉ tính OS-IN `POSTED`. */
   private ensureQuantityWithinOrdered(
     receivedSoFar: number,
     quantity: number,
@@ -623,11 +611,10 @@ export class OutsourcingReceiptsService {
     }
   }
 
-  /** Huỷ OS-IN đã `POSTED` bị chặn (`E173`) nếu đã sinh `quality_inspections`
-   * (`inspectionType = IQC`) trỏ vào — cùng lý do `supplier_returns` chưa có `cancel`: cần đường
-   * "un-complete" IQC. Chặn bất kể trạng thái IQC, kể cả đã `COMPLETED`. Origin polymorphic chỉ giữ
-   * `outsourcingReceiptItemId` (`originId`) — join qua `outsourcing_receipt_items` để suy lại
-   * `outsourcingReceiptId`, xem `quality-inspections.ts`. */
+  /** Đã có IQC (`quality_inspections`, `inspectionType = IQC`) trỏ vào OS-IN này chưa; có thì chặn
+   * huỷ (`E173`) bất kể trạng thái IQC, kể cả `COMPLETED`, vì chưa có đường "un-complete" IQC (cùng
+   * lý do `supplier_returns` chưa có `cancel`). `originId` chỉ giữ `outsourcingReceiptItemId`, nên
+   * join qua `outsourcing_receipt_items` (xem `quality-inspections.ts`). */
   private async hasLinkedIqc(
     tx: DbTransaction,
     outsourcingReceiptId: string,

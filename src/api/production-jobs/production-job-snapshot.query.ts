@@ -57,10 +57,8 @@ type BaseBomItem = typeof bomItems.$inferSelect & { item: ItemSelect | null };
 
 /**
  * Kế hoạch của Job tính từ master data hiện tại × SL Job, chỉ trên bộ nhớ: cây BOM đã nổ cấp,
- * công đoạn as-used, nhu cầu vật tư gộp. Job `PENDING` đọc thẳng hàm này (luôn khớp sản phẩm
- * đang sửa, gọi trong một transaction chỉ đọc cho nhất quán); `createJobSnapshot` ghi đúng kết quả
- * này khi xác nhận kế hoạch.
- *
+ * công đoạn as-used, nhu cầu vật tư gộp. Không ghi DB; `createJobSnapshot` ghi đúng kết quả này
+ * khi tạo Job hoặc tải lại snapshot, `NcrsService.getNcrOperations` dùng để xem trước.
  */
 export async function buildJobPlan(
   db: Database | DbTransaction,
@@ -103,8 +101,8 @@ export async function buildJobPlan(
   };
 }
 
-/** Job sửa chữa từ NCR: không cấp vật tư mới, chỉ chạy các công đoạn đã chọn (cộng công đoạn cuối
- * của node FG để Job vẫn xin OQC được). */
+/** Job sửa chữa từ NCR: không cấp vật tư mới, chỉ chạy các công đoạn đã chọn cộng công đoạn cuối
+ * của node FG để Job vẫn xin OQC được. */
 export type ReworkSnapshotOptions = { operationIds: string[] };
 
 function keepReworkOperations(
@@ -196,9 +194,9 @@ export async function clearJobSnapshot(
 
 /**
  * Nhân bản cây `bom_items` sang node của Job, nổ cấp `plannedQuantity` (cha trước con nhờ
- * `orderBy level`). Cấp 0 không phải một node `bom_items`
- * nên thành một node `FG` riêng đứng cuối cây, chỉ khi Cấp 0 có công đoạn. Map nguồn → id node
- * Job khoá theo `bom_items.id`, riêng node FG khoá theo `bomId` để gắn công đoạn Cấp 0.
+ * `orderBy level`). Cấp 0 không phải một node `bom_items` nên thành một node `FG` riêng đứng cuối
+ * cây, chỉ khi Cấp 0 có công đoạn. Map nguồn → id node Job khoá theo `bom_items.id`, riêng node FG
+ * khoá theo `bomId` để gắn công đoạn Cấp 0.
  */
 async function buildPlanBomItems(
   db: Database | DbTransaction,
@@ -289,8 +287,7 @@ async function buildPlanBomItems(
 
 /**
  * Công đoạn as-used của mọi node: `bom_operations` (node COMPONENT) và `routing_operations`
- * (Cấp 0). Node DIRECT không có công đoạn (chặn từ
- * lúc ghi).
+ * (Cấp 0). Node DIRECT không có công đoạn (chặn lúc ghi `bom_operations`, `E063`).
  */
 async function buildPlanOperations(
   db: Database | DbTransaction,
@@ -351,8 +348,8 @@ async function buildPlanOperations(
 
 /**
  * Nhu cầu vật tư đã nổ cấp: Σ `plannedQuantity` các node DIRECT theo `itemId` (không làm tròn từng
- * node), chỉ làm tròn scale 6 một lần ở tổng — khớp cột numeric, gọt rác dấu phẩy động cho bản xem
- * trước Job `PENDING`; bỏ dòng tròn về 0 (`production_job_issues.required_qty` có CHECK `> 0`).
+ * node), chỉ làm tròn scale 6 một lần ở tổng — khớp cột numeric và gọt rác dấu phẩy động; bỏ dòng
+ * tròn về 0 (`production_job_issues.required_qty` có CHECK `> 0`).
  */
 async function buildPlanIssues(
   db: Database | DbTransaction,
@@ -437,7 +434,7 @@ async function snapshotJobIssues(
  * không `RETURNING` dòng đã có, nên luôn `SELECT` lại theo `itemId` (cột dẫn đầu của unique) rồi
  * ghép bộ ba trong bộ nhớ — không cần join lại `items` sống, `directDemandRows` đã mang đúng
  * code/name tại thời điểm đọc trong cùng `tx`. `SELECT` lại thấy đủ dòng phụ thuộc READ COMMITTED
- * (mặc định Postgres, `.claude/rules/transactions.md` cấm đổi isolation).
+ * (mặc định Postgres, không đổi isolation).
  */
 export async function getOrCreateJobItemIds(
   tx: DbTransaction,

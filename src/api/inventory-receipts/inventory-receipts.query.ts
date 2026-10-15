@@ -10,9 +10,8 @@ import {
   purchaseRequests,
 } from '../../database/schemas';
 
-/** Nguồn hiển thị của một đề xuất mua hàng: số PO của khách hàng (qua LSX), không có thì lý do người
- * lập đã nhập (`note`) — không bao giờ hiện cả hai, cùng luật cột "PO liên quan / Lý do" của danh sách
- * Đề xuất mua hàng. */
+/** Nguồn hiển thị của một đề xuất mua hàng: số PO của khách (qua LSX), không có thì lý do người lập
+ * (`note`) — không bao giờ hiện cả hai, cùng luật cột "PO liên quan / Lý do" của Đề xuất mua hàng. */
 export function purchaseRequestSource(request: {
   note: string | null;
   productionOrder?: { order: { buyerPoNo: string | null } | null } | null;
@@ -20,9 +19,9 @@ export function purchaseRequestSource(request: {
   return request.productionOrder?.order?.buyerPoNo || request.note || null;
 }
 
-/** Nguồn (PO khách / lý do mua) của các phiếu nhập mua hàng, theo từng phiếu: đi từ dòng phiếu nhập →
- * dòng đơn mua → dòng đề xuất → đề xuất mua hàng. Một phiếu gom nhiều đề xuất thì có nhiều phần tử,
- * đã khử trùng. Phiếu không có dòng nào gắn đơn mua không xuất hiện trong kết quả. */
+/** Nguồn (PO khách / lý do mua) của từng phiếu nhập mua hàng, đi từ dòng phiếu nhập -> dòng đơn mua
+ * -> dòng đề xuất -> đề xuất mua hàng. Một phiếu gom nhiều đề xuất thì có nhiều nguồn (đã khử
+ * trùng); phiếu không có dòng nào gắn đơn mua không xuất hiện trong kết quả. */
 export async function getPurchaseSourcesByReceiptId(
   db: Database,
   receiptIds: string[],

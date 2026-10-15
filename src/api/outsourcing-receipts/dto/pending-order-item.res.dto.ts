@@ -16,9 +16,9 @@ import { OutsourcingOrderRefResDto } from '../../outsourcing-orders/dto/outsourc
 import { SupplierRefResDto } from '../../suppliers/dto/supplier-ref.res.dto';
 import { UnitRefResDto } from '../../units/dto/unit-ref.res.dto';
 
-/** Một dòng popup "Tìm kiếm & chọn hàng cần nhận" — `id` là id thật sự cần gửi lại khi tạo dòng
- * OS-IN (`OutsourcingReceiptItemReqDto.outsourcingOrderItemId`). `weight`/`area` là giá trị mặc
- * định gợi ý cho form nhập, lấy nguyên theo dòng OS-OUT gốc — client có thể sửa. */
+/** Dòng popup "chọn hàng cần nhận". `id` là giá trị client gửi lại làm
+ * `OutsourcingReceiptItemReqDto.outsourcingOrderItemId`; `weight`/`area` chỉ là mặc định gợi ý từ
+ * dòng OS-OUT gốc, client có thể sửa. */
 @Exclude()
 export class PendingOrderItemResDto {
   @Expose()

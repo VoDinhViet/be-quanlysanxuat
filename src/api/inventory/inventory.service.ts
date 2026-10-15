@@ -32,18 +32,16 @@ import {
   openOrderDemandByItemSubquery,
 } from './inventory.query';
 
-/** Đọc tồn thô (kho×item) + sổ cái + tra cứu nội bộ dùng bởi các module khác — list Tồn kho thành
- * phẩm/vật tư nay sống ở `inventory-products`/`inventory-directs`
- * (`docs/CODEMAPS/inventory.md`). */
+/** Đọc tồn thô theo item + sổ cái + tra cứu nội bộ cho các module khác. List tồn kho thành
+ * phẩm/vật tư nằm ở `inventory-products`/`inventory-directs` (`docs/CODEMAPS/inventory.md`). */
 @Injectable()
 export class InventoryService {
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
 
-  /** Tồn thô theo mặt hàng. `reservedQuantity` KHÔNG đọc cột cùng tên trên `inventory_balances`
-   * (cột đó đã bỏ) — điền số tính động lúc đọc: phiếu lãnh `APPROVED` (DIRECT) cộng DO
-   * `DRAFT`/`PENDING_APPROVAL`/`PENDING_DELIVERY` (FG, giữ từ lúc tạo, BUG-087). Hai nguồn loại trừ
-   * lẫn nhau theo `items.type` nên cộng thẳng, không cần điều kiện phân loại. Giữ nguyên hợp đồng
-   * API cũ, xem `docs/CODEMAPS/inventory.md`. */
+  /** Tồn thô theo mặt hàng. `reservedQuantity` không phải cột của `inventory_balances` mà tính
+   * lúc đọc: phiếu lãnh `APPROVED` (DIRECT) cộng DO `DRAFT`/`PENDING_APPROVAL`/`PENDING_DELIVERY`
+   * (FG, giữ từ lúc tạo). Hai nguồn loại trừ nhau theo `items.type` nên cộng thẳng. Xem
+   * `docs/CODEMAPS/inventory.md`. */
   async getInventoryBalances(
     reqDto: GetInventoryBalancesReqDto,
   ): Promise<OffsetPaginatedDto<InventoryBalanceResDto>> {
@@ -68,7 +66,6 @@ export class InventoryService {
         .select({
           ...getTableColumns(inventoryBalances),
           item: getTableColumns(items),
-          // Sau spread để thắng cột thật `reservedQuantity` (`.claude/rules/service.md`).
           reservedQuantity:
             sql<number>`(${rmHeldSql}) + (${fgHeldSql})`.mapWith(Number),
         })

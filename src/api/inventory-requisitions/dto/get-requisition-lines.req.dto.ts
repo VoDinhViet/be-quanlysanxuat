@@ -4,8 +4,7 @@ import {
   UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
 
-/** Popup chọn vật tư dùng chung "Lãnh từ LSX"/"Lãnh thủ công" (`GET .../lines`) — `q` kế thừa từ
- * `PageOptionsDto`, lọc được ở cả hai luồng. */
+/** `q` kế thừa từ `PageOptionsDto`, lọc được cả khi có lẫn không có `productionJobId`. */
 export class GetRequisitionLinesReqDto extends PageOptionsDto {
   @UUIDFieldOptional({
     description:

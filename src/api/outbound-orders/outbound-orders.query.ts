@@ -11,7 +11,7 @@ import {
   OutboundOrderStatus,
 } from '../../database/schemas';
 
-// Ba trạng thái DO đang giữ chỗ thành phẩm — giữ ngay từ lúc tạo (`DRAFT`, BUG-087);
+// Ba trạng thái DO đang giữ chỗ thành phẩm — giữ ngay từ lúc tạo (`DRAFT`);
 // `DELIVERED`/`REJECTED`/`CANCELLED` hết giữ.
 const HOLDING_STATUSES = [
   OutboundOrderStatus.DRAFT,
@@ -19,11 +19,10 @@ const HOLDING_STATUSES = [
   OutboundOrderStatus.PENDING_DELIVERY,
 ];
 
-/** Σ SL mọi dòng DO đang giữ chỗ, theo `itemId` — "Đã giữ" của thành phẩm bởi chứng từ giao hàng,
- * cùng khuôn `reservedQuantitySubquery` (`inventory-requisitions.query.ts`). `excludeOutboundOrderId`
- * (BUG-090, dùng ở trang Chi tiết/Sửa) loại chính phiếu đang xem — cùng lý do
- * `getOutboundHeldQuantities` bên dưới loại phiếu đang duyệt: nó không được trừ nhu cầu của
- * chính mình. */
+/** Σ SL mọi dòng DO đang giữ chỗ, theo `itemId` — "Đã giữ" của thành phẩm bởi chứng từ giao hàng
+ * (cùng khuôn `reservedQuantitySubquery`, `inventory-requisitions.query.ts`).
+ * `excludeOutboundOrderId` (trang Chi tiết/Sửa) loại chính phiếu đang xem, để phiếu không trừ nhu
+ * cầu của chính mình. */
 export function outboundHeldQuantityByItemSubquery(
   db: Database,
   excludeOutboundOrderId?: string,
@@ -52,10 +51,10 @@ export function outboundHeldQuantityByItemSubquery(
     .as('outbound_held_by_item');
 }
 
-/** Bản `Map` của "Đã giữ" FG — dùng để validate (`send`/`approve`), sibling của
+/** Bản `Map` của "Đã giữ" FG — dùng để validate (`send`/`approve`), cùng khuôn
  * `getReservedQuantities` (`inventory-requisitions.query.ts`). `excludeOutboundOrderId` loại chính
- * phiếu đang duyệt — nó tự nằm trong "Đã giữ" của chính nó lúc `PENDING_APPROVAL`, không được trừ
- * nhu cầu của mình hai lần. */
+ * phiếu đang duyệt: nó đã nằm trong "Đã giữ" lúc `PENDING_APPROVAL`, không được trừ nhu cầu của
+ * mình hai lần. */
 export async function getOutboundHeldQuantities(
   db: Database | DbTransaction,
   params: { itemIds: string[]; excludeOutboundOrderId?: string },
@@ -90,9 +89,9 @@ export async function getOutboundHeldQuantities(
   return new Map(rows.map((row) => [row.itemId, row.heldQuantity]));
 }
 
-/** Σ SL + danh sách mã đơn hàng (SO) và số PO khách nguồn của từng phiếu, cho list — mọi dòng, không lọc trạng thái
- * (khác `outboundHeldQuantityByItemSubquery` chỉ tính phiếu đang giữ chỗ). `orderCodes` là mảng vì
- * 1 phiếu gộp được nhiều dòng PO khác đơn (`outbound_order_items.orderItemId` không unique). */
+/** Σ SL + danh sách mã đơn hàng (SO) và số PO khách nguồn của từng phiếu, cho list. Tính mọi dòng,
+ * không lọc trạng thái (khác `outboundHeldQuantityByItemSubquery` chỉ tính phiếu đang giữ chỗ).
+ * `orderCodes` là mảng vì 1 phiếu gộp được nhiều dòng PO khác đơn. */
 export function outboundOrderSummarySubquery(db: Database) {
   return db
     .select({

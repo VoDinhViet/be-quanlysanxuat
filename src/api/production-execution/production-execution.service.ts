@@ -59,12 +59,14 @@ import {
   ProductionExecutionOperationSort,
 } from './production-execution.constant';
 
-/** Màn "Thực hiện sản xuất" (view của tổ sản xuất, đi từ công đoạn xuống) — đọc snapshot đã có
- * sẵn từ `production-jobs`; header và cấu trúc công đoạn của Job ủy quyền `ProductionJobsService`
- * sau khi kiểm phạm vi công đoạn (`OperationAccessService`).
- * `createJobOperationReport` là đường ghi duy nhất vào `production_job_operations` — cộng dồn,
- * kèm nhật ký `production_job_operation_reports`. Xem
- * `docs/CODEMAPS/production.md`. */
+/**
+ * Màn "Thực hiện sản xuất" (góc nhìn tổ sản xuất, đi từ công đoạn xuống): đọc snapshot của
+ * `production-jobs`, header và cấu trúc công đoạn ủy quyền `ProductionJobsService` sau khi kiểm
+ * phạm vi công đoạn (`OperationAccessService`).
+ *
+ * `createJobOperationReport` là đường duy nhất ghi tiến độ tay; công đoạn `OUTSOURCE` do OS-IN
+ * ghi. Xem `docs/CODEMAPS/production.md`.
+ */
 @Injectable()
 export class ProductionExecutionService {
   constructor(
@@ -74,12 +76,11 @@ export class ProductionExecutionService {
     private readonly productionJobsService: ProductionJobsService,
   ) {}
 
-  /** Một dòng / công đoạn (`operations`, master data) có ít nhất 1 Job khớp bộ lọc — không gộp gì
-   * theo `type`, `operationId` là id thật của `operations`. `type` trả về là giá trị danh mục
-   * (`operations.type`, chỉ còn là gợi ý mặc định) — có thể khác `type` thật của từng dòng
-   * `production_job_operations` bên dưới nếu nó đã được chọn khác lúc gắn vào BOM/routing;
-   * nhóm theo `operations.id` nên
-   * không có cách hiện đúng type từng Job ở đây mà không đổi hẳn cách gộp. */
+  /**
+   * Một dòng mỗi công đoạn (`operations`) có ít nhất 1 Job khớp bộ lọc, nhóm theo `operations.id`.
+   * `type` trả về là giá trị danh mục (`operations.type`, chỉ là gợi ý mặc định) nên có thể khác
+   * `type` thật của từng dòng `production_job_operations` đã chọn lúc gắn vào BOM/routing.
+   */
   async getOperations(
     reqDto: GetProductionExecutionOperationsReqDto,
     payload: JwtPayloadType,
@@ -185,10 +186,11 @@ export class ProductionExecutionService {
     });
   }
 
-  /** `.select()` thủ công — `q`/`orderBy` chạm bảng join, cùng khuôn
-   * `ProductionJobsService.getProductionJobs`. Gộp theo Job trên đúng các dòng
-   * `production_job_operations` khớp `operationId`: hạn hoàn thành là `MAX(due_date)` qua mọi
-   * Part, từ đó suy ra `operationStatus` (kể cả `OVERDUE`) và `operationEvaluation`. */
+  /**
+   * `.select()` thủ công vì `q`/`orderBy` chạm bảng join (cùng khuôn `getProductionJobs`). Gộp theo
+   * Job trên các dòng `production_job_operations` khớp `operationId`: hạn hoàn thành là
+   * `MAX(due_date)` qua mọi Part, từ đó suy ra `operationStatus` và `operationEvaluation`.
+   */
   async getJobs(
     reqDto: GetProductionExecutionJobsReqDto,
     payload: JwtPayloadType,
@@ -363,7 +365,6 @@ export class ProductionExecutionService {
     );
   }
 
-  /** Part → công đoạn của Job, đã lọc theo công đoạn `operationId` được phép. */
   async getJobOperations(
     productionJobId: string,
     operationId: string,
@@ -398,8 +399,6 @@ export class ProductionExecutionService {
     }
   }
 
-  /** Lịch sử báo cáo sản lượng của một Job (lọc theo công đoạn tuỳ chọn), mỗi lần báo cáo một
-   * dòng, mới nhất trước, phân trang. */
   async getJobOperationReports(
     productionJobId: string,
     reqDto: GetJobOperationReportsReqDto,
@@ -473,8 +472,7 @@ export class ProductionExecutionService {
     return new OffsetPaginatedDto(data, new OffsetPaginationDto(total, reqDto));
   }
 
-  /** `POST .../operations/:jobOperationId/reports` — đường ghi duy nhất vào
-   * `production_job_operations`, cộng dồn (không ghi đè). Xem `docs/CODEMAPS/production.md`. */
+  /** Báo cáo sản lượng cộng dồn (không ghi đè). Xem `docs/CODEMAPS/production.md`. */
   async createJobOperationReport(
     jobOperationId: string,
     reqDto: CreateJobOperationReportReqDto,
@@ -491,9 +489,8 @@ export class ProductionExecutionService {
 
     await this.operationAccess.assertCanAccess(payload, operation.operationId);
 
-    // completedQuantity/completedDate của công đoạn OUTSOURCE chỉ do OS-IN ghi
+    // `completedQuantity`/`completedDate` của công đoạn OUTSOURCE chỉ do OS-IN ghi
     // (`recomputeOutsourcedOperationProgress`) — không cho báo cáo tay.
-    //
     if (operation.type === OperationType.OUTSOURCE) {
       throw new AppException(ErrorCode.E260, HttpStatus.CONFLICT);
     }
@@ -543,8 +540,8 @@ export class ProductionExecutionService {
       const newRejectedQuantity =
         lockedOperation.rejectedQuantity + rejectedQuantityDelta;
 
-      // Chỉ trần SL đạt — SL NG cộng dồn không giới hạn theo plannedQuantity, cho phép báo bù thêm
-      // tới khi đạt chạm đủ kế hoạch (BUG-035, trần cũ gộp cả hai số làm công đoạn kẹt vĩnh viễn).
+      // Chỉ trần SL đạt: SL NG cộng dồn không bị giới hạn bởi `plannedQuantity`, để công đoạn đã có
+      // NG vẫn báo bù được cho đến khi SL đạt chạm đủ kế hoạch.
       const roundedNewCompleted =
         Math.round(newCompletedQuantity * 1000) / 1000;
       const roundedPlanned = Math.round(plannedQuantity * 1000) / 1000;
@@ -589,17 +586,15 @@ export class ProductionExecutionService {
         })
         .where(eq(productionJobOperations.id, jobOperationId));
 
-      // Node FG có thể có nhiều công đoạn Cấp 0 — chỉ chuyển WAITING_QC khi KHÔNG CÒN công đoạn FG
-      // nào dở, đếm lại trong `tx` sau khi ghi (BUG-079).
+      // Node FG có thể có nhiều công đoạn Cấp 0: chỉ chuyển `WAITING_QC` khi không còn công đoạn
+      // FG nào dở, đếm lại trong `tx` sau khi ghi.
       if (operation.bomItem.itemType === ProductionJobBomItemType.FG) {
         await closeJobIfFinalAssemblyDone(tx, operation.productionJobId);
       }
     });
   }
 
-  /** Đếm công đoạn của Job chưa `completedDate`, lọc theo phía node BOM (FG hay không) — dùng cho
-   * cả gate `E210` (đếm phía non-FG, trước khi mở bước Lắp ráp) lẫn recount trong `tx` (đếm phía FG,
-   * quyết định `WAITING_QC`), cùng khuôn "đếm lại trong `tx`" của `ProductionJobsService`. */
+  /** Đếm công đoạn của Job chưa `completedDate`, phía node FG hoặc non-FG; dùng cho gate `E210`. */
   private async countPendingOperations(
     executor: Database | DbTransaction,
     jobId: string,

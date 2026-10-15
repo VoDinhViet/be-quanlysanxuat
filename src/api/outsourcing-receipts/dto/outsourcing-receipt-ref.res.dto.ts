@@ -9,9 +9,8 @@ import {
   UUIDField,
 } from '../../../decorators/field.decorators';
 
-// Không dùng `PickType(OutsourcingReceiptResDto, ...)` — vòng import qua
-// `OutsourcingOrderRefResDto`/`OutsourcingOrderResDto`, xem comment ở
-// `outsourcing-order-ref.res.dto.ts`. Khai riêng, chỉ vài field.
+// Khai riêng thay vì `PickType(OutsourcingReceiptResDto, ...)`: `iqc` và `supplier-returns` nhúng
+// ref này, không cần kéo theo DTO phiếu đầy đủ.
 @Exclude()
 export class OutsourcingReceiptRefResDto {
   @Expose()

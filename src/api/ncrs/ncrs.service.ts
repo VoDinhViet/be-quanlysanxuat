@@ -415,9 +415,9 @@ export class NcrsService {
     });
   }
 
-  /** "Yêu cầu OQC lại" cho hàng đã xử lý ngoài LSX: tạo phiếu OQC `DRAFT` gắn Job gốc + NCR. Không
-   * qua gate quota `E198`/`E176` của `OqcService.createOqcForJob` — lô sàng lọc ban đầu đã chiếm hết
-   * quota, trần ở đây là SL xử lý của NCR. */
+  /** "Yêu cầu OQC lại" cho hàng đã xử lý ngoài LSX: tạo phiếu OQC `DRAFT` gắn Job gốc + NCR.
+   * Không qua gate quota `E198`/`E176` của `OqcService.createOqcForJob` — lô sàng lọc ban đầu đã
+   * chiếm hết quota, trần ở đây là SL xử lý của NCR (`E308`). */
   async requestOqc(
     ncrId: string,
     reqDto: RequestNcrOqcReqDto,

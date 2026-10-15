@@ -20,12 +20,8 @@ import { productionOrders } from './production-orders';
 import { users } from '../identity-access/users';
 
 /**
- * Vòng đời một Job sau khi được sinh ra (thêm 2026-07-30, xem `docs/CODEMAPS/production.md`).
- *
- * Rules:
- * - Rút từ 5 xuống 2 giá trị 2026-07-31 (`0068`/`0071`), rồi khôi phục điểm kết thúc 2026-08-24
- *   — `WAITING_QC`/`WAITING_DELIVERY`/
- *   `COMPLETED` tự động theo tiến độ QC + nhập kho thành phẩm, không có route tay nào set thẳng.
+ * Vòng đời Job. `WAITING_QC`/`WAITING_DELIVERY`/`COMPLETED` chuyển tự động theo tiến độ QC và nhập
+ * kho thành phẩm, không có route tay. Xem `docs/CODEMAPS/production.md`.
  */
 export enum ProductionJobStatus {
   PENDING = 'PENDING',
@@ -44,32 +40,22 @@ export const productionJobStatusEnum = pgEnum('production_job_status', [
 ]);
 
 /**
- * Job sản xuất — 1 sản phẩm (FG) = 1 Job trong một LSX. Số lượng gộp từ mọi dòng
- * `production_order_items` cùng `itemId` trong cùng LSX — khác tầng quyết định sản xuất, tầng
- * này không giữ 1-1 với `orderItemId` vì Job là đơn vị công việc thực tế của xưởng, không phải
- * đơn vị kế toán kho. Đường ghi từng sinh Job ("Tạo LSX" phát hành,
- * `ProductionOrdersService.issueProductionOrders`) đã bỏ 2026-07-30; sống lại cùng ngày qua
- * `ProductionJobsService.createJobs`, gọi từ `ProductionOrdersService.approveProductionOrder`
- * (chốt LSX sang `APPROVED`) thay vì phát hành — xem `docs/CODEMAPS/production.md`.
+ * Job sản xuất — 1 thành phẩm (FG) = 1 Job trong một LSX; số lượng gộp từ mọi dòng
+ * `production_order_items` cùng `itemId` (Job là đơn vị việc của xưởng, không 1-1 với
+ * `orderItemId`). Chỉ sinh qua `ProductionJobsService.createJobs`, gọi từ
+ * `ProductionOrdersService.approveProductionOrder` và `NcrsService.createProductionOrder`. Xem
+ * `docs/CODEMAPS/production.md`.
  *
  * Rules:
- * - `status` thêm 2026-07-30 — vòng đời ở mức Job; tiến độ **theo từng công đoạn** đọc riêng qua
- *   `productionJobOperations.completedQuantity`/`completedDate` (`docs/CODEMAPS/production.md`),
- *   `createJobs` đã snapshot công đoạn (`productionJobOperations`) + vật tư (`productionJobIssues`).
- * - `producedQty`/`rejectedQty` (báo sản lượng cộng dồn) và `cancelledBy`/`cancelledAt`/
- *   `cancelReason` vẫn chưa có — Job hiện không còn cách nào qua API để ghi nhận sản lượng đạt/phế
- *   hay huỷ. Tạm hoãn, xem `docs/CODEMAPS/production.md` (mở rộng lại khi xưởng cần).
- * - `completedBy`/`completedAt` khôi phục 2026-08-24 (từng bị xoá cùng đợt rút enum 2026-07-31) —
- *   ghi khi `status → COMPLETED` (`InventoryReceiptsService.postInventoryReceipt`, không có route
- *   tay).
- * - `operationsApprovedBy`/`operationsApprovedAt` thêm 2026-08-25, ghi bởi
- *   `POST .../approve-operations` — route đó đã xoá 2026-09-03 (bỏ bước duyệt công đoạn riêng,
- *   `POST /production-execution/operations/:jobOperationId/reports` mở ngay khi Job
- *   `IN_PROGRESS`). Giữ cột lại cho dữ liệu cũ, không còn route nào ghi. Xem
- *   `docs/CODEMAPS/production.md`.
- * - Lịch sử thao tác Job ở `production_job_logs` (bảng riêng, append-only), không ở bảng này —
- *   chỉ `startedBy`/`startedAt`/`completedBy`/`completedAt` là cột thật; 2 mốc `WAITING_QC`/
- *   `WAITING_DELIVERY` cố ý không có cột người/thời điểm riêng, xem `docs/CODEMAPS/production.md`.
+ * - Snapshot BOM/công đoạn/vật tư dựng lúc `createJobs`. Tiến độ theo từng công đoạn nằm ở
+ *   `production_job_operations` (`completedQuantity`/`completedDate`), không ở bảng này.
+ * - `completedBy`/`completedAt` ghi khi `status` thành `COMPLETED`
+ *   (`InventoryReceiptsService.closeJobIfFullyReceived`), không có route tay.
+ * - `operationsApprovedBy`/`operationsApprovedAt` chỉ giữ dữ liệu cũ: bước duyệt công đoạn riêng
+ *   đã bỏ, không còn code nào ghi.
+ * - Chưa có cột sản lượng đạt/phế hay thông tin huỷ ở mức Job (`producedQty`, `cancelledAt`...).
+ * - Lịch sử thao tác ở `production_job_logs`; hai mốc `WAITING_QC`/`WAITING_DELIVERY` cố ý không
+ *   có cột người/thời điểm riêng.
  */
 export const productionJobs = pgTable(
   'production_jobs',

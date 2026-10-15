@@ -25,9 +25,11 @@ import { purchaseRequests } from '../purchase-requests/purchase-requests';
 import { suppliers } from '../suppliers/suppliers';
 import { users } from '../identity-access/users';
 
-/** Nguồn nhập (cột `receipt_type`). `OTHER` = "Nhập từ khác": không có đối tác bên ngoài (không PO,
- * không NCC, không khách, không Job) — thu hồi, nhập hàng khác; bắt buộc `reason`.
- * Kiểm kê thừa KHÔNG đi qua đây mà ở phiếu Điều chỉnh tồn (INCREASE + STOCKTAKE). */
+/**
+ * Nguồn nhập (cột `receipt_type`). `OTHER` = "Nhập từ khác": không có đối tác bên ngoài (không PO,
+ * NCC, khách, Job), bắt buộc `reason`. Kiểm kê thừa KHÔNG đi qua đây mà ở phiếu Điều chỉnh tồn
+ * (`INCREASE` + `STOCKTAKE`).
+ */
 export enum InventoryReceiptType {
   PURCHASE = 'PURCHASE',
   PRODUCTION = 'PRODUCTION',
@@ -53,9 +55,10 @@ export const inventoryReceiptAssetTypeEnum = pgEnum(
 );
 
 /**
- * Phiếu nhập kho — header. `DRAFT` sửa/xoá tự do, không đụng tồn; `post` (`DRAFT → POSTED`) mới
- * sinh `inventory_transactions`/cập nhật `inventory_balances`, sau đó phiếu bất biến
- * (`docs/CODEMAPS/inventory.md`). `supplierId`/`clientId` loại trừ lẫn nhau — nhập từ khách hàng
+ * Phiếu nhập kho — header. `DRAFT` sửa/xoá tự do, không đụng tồn; chỉ `post` mới sinh
+ * `inventory_transactions`/cập nhật `inventory_balances`, sau đó phiếu bất biến. `post` chạy từ
+ * `PENDING_RECEIPT`, hoặc từ `PENDING_IQC`/`IQC_COMPLETED` khi mọi IQC đã `COMPLETED`
+ * (`docs/CODEMAPS/inventory.md`). `supplierId`/`clientId` loại trừ lẫn nhau: nhập từ khách hàng
  * (`receiptType = RETURN`) dùng `clientId`, còn lại dùng `supplierId`.
  */
 export const inventoryReceipts = pgTable(
@@ -72,13 +75,12 @@ export const inventoryReceipts = pgTable(
     supplierId: uuid('supplier_id').references(() => suppliers.id, {
       onDelete: 'set null',
     }),
-    // Khách hàng gửi trả (receiptType = RETURN) — loại trừ lẫn nhau với supplierId
-    // (chk_inventory_receipts_supplier_client_exclusive), xem docs/CODEMAPS/inventory.md.
+    // Khách hàng gửi trả (`receiptType = RETURN`), loại trừ lẫn nhau với `supplierId`
+    // (`chk_inventory_receipts_supplier_client_exclusive`).
     clientId: uuid('client_id').references(() => clients.id, {
       onDelete: 'set null',
     }),
-    // Nhãn phân loại tài sản, chọn tay độc lập với clientId — không tách tồn kho theo chủ sở
-    // hữu, xem docs/CODEMAPS/inventory.md mục "Nhập từ khách hàng".
+    // Nhãn phân loại tài sản, chọn tay độc lập với `clientId`; không tách tồn kho theo chủ sở hữu.
     assetType: inventoryReceiptAssetTypeEnum('asset_type')
       .notNull()
       .default(InventoryReceiptAssetType.COMPANY),
@@ -86,30 +88,30 @@ export const inventoryReceipts = pgTable(
       () => purchaseRequests.id,
       { onDelete: 'set null' },
     ),
-    // `set null`, không `restrict`/`cascade` — một LSX bị hard-delete khi đơn gốc được duyệt lại
-    // (`ProductionOrdersService.seedPlan`); phiếu đã post phải sống sót qua việc đó.
+    // `set null`, không `restrict`/`cascade`: LSX có thể bị hard-delete (`OrdersService.updateOrder`
+    // khi huỷ SO, `ProductionOrdersService.seedPlan`); phiếu phải sống sót qua việc đó.
     productionOrderId: uuid('production_order_id').references(
       () => productionOrders.id,
       { onDelete: 'set null' },
     ),
-    // `set null`, cùng lý do `productionOrderId` — bắt buộc khi `receiptType = PRODUCTION`
-    // (service-enforced, `E179`), dùng làm neo cho gate QC (`getJobQcCoverage`,
-    // `docs/CODEMAPS/inventory.md`).
+    // `set null`, cùng lý do `productionOrderId`. Bắt buộc khi `receiptType = PRODUCTION`
+    // (service-enforced, `E179`); làm neo cho gate QC (`getJobQcCoverage`).
     productionJobId: uuid('production_job_id').references(
       () => productionJobs.id,
       { onDelete: 'set null' },
     ),
-    // Trace mức phiếu về đơn mua sinh ra nó (`docs/CODEMAPS/purchasing.md`) — thuần để trace, không
-    // đọc để tính tồn/bút toán.
+    // Gắn phiếu với đơn mua sinh ra nó (`docs/CODEMAPS/purchasing.md`); không dùng để tính
+    // tồn/bút toán.
     purchaseOrderId: uuid('purchase_order_id').references(
       () => purchaseOrders.id,
       { onDelete: 'set null' },
     ),
     note: varchar('note', { length: 1000 }),
-    // PO / Lý do nhập — bắt buộc khi `receiptType = OTHER` (service-enforced, `E293`); `RETURN` có thể nhập (FE yêu cầu khi tạo); loại khác để trống.
+    // Lý do nhập: bắt buộc khi `receiptType = OTHER` (service-enforced, `E293`); `RETURN` có thể nhập
+    // (FE yêu cầu khi tạo); loại khác để trống.
     reason: varchar('reason', { length: 500 }),
-    // Ghi ở `confirm` — khác `postedBy`/`postedAt` (ghi ở `post`), hai mốc/hai người có thể khác
-    // nhau (`docs/CODEMAPS/inventory.md`).
+    // Ghi ở `confirm`, khác `postedBy`/`postedAt` (ghi ở `post`): hai mốc có thể do hai người khác
+    // nhau.
     confirmedBy: uuid('confirmed_by').references(() => users.id, {
       onDelete: 'set null',
     }),

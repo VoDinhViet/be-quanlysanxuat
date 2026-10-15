@@ -178,7 +178,6 @@ export class InventoryIssuesService {
       this.db.select({ total: count() }).from(inventoryIssues).where(where),
     ]);
 
-    // Phiếu lãnh sinh ra phiếu xuất này (`inventory_requisitions.inventory_issue_id`) — cột "Phiếu lãnh".
     const requisitionByIssueId = await this.getRequisitionsByIssueIds(
       entities.map((entity) => entity.id),
     );
@@ -316,9 +315,9 @@ export class InventoryIssuesService {
     });
   }
 
-  /** Chặn (`E235`) nếu phiếu do `inventoryRequisitions.inventoryIssueId` trỏ tới — hard-delete để
-   * FK `set null` âm thầm gỡ liên kết sẽ để phiếu lãnh kẹt `APPROVED` không còn PXK đi kèm, huỷ
-   * (`InventoryRequisitionsService.cancelInventoryRequisition`) là đường đúng cho trường hợp này. */
+  /** Phiếu do phiếu lãnh sinh ra (`inventoryRequisitions.inventoryIssueId`) bị chặn xoá (`E235`):
+   * FK `set null` sẽ âm thầm gỡ liên kết, để phiếu lãnh kẹt `APPROVED` mà không còn PXK. Đường đúng
+   * là `InventoryRequisitionsService.cancelInventoryRequisition`. */
   async deleteInventoryIssue(issueId: string): Promise<void> {
     await this.ensureIssueDraft(issueId);
 
@@ -336,13 +335,14 @@ export class InventoryIssuesService {
       .where(eq(inventoryIssues.id, issueId));
   }
 
-  /** `DRAFT → POSTED` — sinh bút toán + cập nhật tồn qua `InventoryPostingService`, sau đó phiếu
-   * bất biến. Đọc trạng thái nằm trong cùng transaction, sau `getInventoryIssueForUpdate`.
-   * `issueType = PRODUCTION`
-   * kèm gate IQC (`E203`) — vật tư chưa qua IQC (hoặc
-   * còn FAIL chưa xử lý) không được xuất cho sản xuất. Nếu phiếu do phiếu lãnh vật tư sinh ra
-   * (`inventoryRequisitions.inventoryIssueId`) thì ghi ngược phiếu lãnh đó sang `ISSUED`. Xem
-   * `docs/CODEMAPS/inventory.md`. */
+  /** `DRAFT → POSTED` — ghi sổ qua `InventoryPostingService`, sau đó phiếu bất biến.
+   *
+   * Rules:
+   * - `issueType = PRODUCTION` bị chặn (`E203`) khi vật tư còn IQC chưa xử lý xong.
+   * - Phiếu do phiếu lãnh sinh ra (`inventoryRequisitions.inventoryIssueId`) thì phiếu lãnh đó
+   *   chuyển sang `ISSUED` cùng transaction.
+   *
+   * See `docs/CODEMAPS/inventory.md`. */
   async postInventoryIssue(issueId: string, userId: string): Promise<void> {
     await this.db.transaction(async (tx) => {
       const inventoryIssue = await this.getInventoryIssueForUpdate(tx, issueId);
@@ -371,7 +371,6 @@ export class InventoryIssuesService {
         createdBy: userId,
         lines: itemsToPost.map((item) => ({
           itemId: item.itemId,
-          // Xuất luôn trừ tồn — dấu âm.
           signedQuantity: -item.quantity,
           type: issueTypeTransactionType[inventoryIssue.issueType],
           orderItemId: item.orderItemId,
@@ -398,10 +397,9 @@ export class InventoryIssuesService {
     });
   }
 
-  /** `DRAFT → CANCELLED` — chỉ huỷ được lúc còn Nháp; `POSTED` bất biến, không có đường đảo bút
-   * toán như `inventory-receipts`/`inventory-adjustments` (`docs/CODEMAPS/inventory.md`). Nếu phiếu
-   * do phiếu lãnh vật tư sinh ra (`inventoryRequisitions.inventoryIssueId`) thì huỷ luôn phiếu
-   * lãnh đó — ngược chiều với `InventoryRequisitionsService.cancelInventoryRequisition`. */
+  /** `DRAFT → CANCELLED`. `POSTED` bất biến, không có đường đảo bút toán như `inventory-adjustments`
+   * (`docs/CODEMAPS/inventory.md`). Phiếu do phiếu lãnh sinh ra thì huỷ luôn phiếu lãnh đó — ngược
+   * chiều với `InventoryRequisitionsService.cancelInventoryRequisition`. */
   async cancelInventoryIssue(issueId: string): Promise<void> {
     await this.db.transaction(async (tx) => {
       const inventoryIssue = await this.getInventoryIssueForUpdate(tx, issueId);
@@ -586,8 +584,9 @@ export class InventoryIssuesService {
     return existing;
   }
 
-  /** `issueType = PRODUCTION` chỉ còn sinh được từ `POST /inventory-requisitions/:requisitionId/issue` —
-   * lập/sửa tay ở đây bị chặn (`E234`), xem `docs/CODEMAPS/inventory.md`, mục "Phiếu lãnh vật tư". */
+  /** `issueType = PRODUCTION` chỉ được sinh khi duyệt phiếu lãnh
+   * (`POST /inventory-requisitions/:requisitionId/approve`); lập/sửa tay ở đây bị chặn (`E234`).
+   * See `docs/CODEMAPS/inventory.md`, mục "State flows" (Requisition). */
   private ensureNotDirectProductionIssue(
     issueType: InventoryIssueType | undefined,
   ): void {

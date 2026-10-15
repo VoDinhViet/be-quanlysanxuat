@@ -11,8 +11,8 @@ import {
 import { productionJobs } from './production-jobs';
 import { users } from '../identity-access/users';
 
-/** Mốc chuyển trạng thái được ghi log — cố ý KHÔNG trùng tên `ProductionJobStatus`: `CREATED`/
- * `STARTED` thay cho `PENDING`/`IN_PROGRESS`, vì log ghi hành động chứ không ghi trạng thái đích. */
+/** `CREATED`/`STARTED` thay cho `PENDING`/`IN_PROGRESS` vì log ghi hành động, không ghi trạng
+ * thái đích. */
 export enum ProductionJobLogAction {
   CREATED = 'CREATED',
   STARTED = 'STARTED',
@@ -33,11 +33,11 @@ export const productionJobLogActionEnum = pgEnum('production_job_log_action', [
 
 /**
  * Lịch sử thao tác trên một Job — cùng khuôn `production_order_logs`, append-only (không
- * `updatedAt`). Cả 5 mốc đều ghi bằng `tx.insert` thẳng, trong transaction của hành động đang
- * log, rải ở 4 file (`production-jobs.service.ts`/`.query.ts`, `oqc.query.ts`,
- * `inventory-receipts.service.ts`) — không gom về một service chung, tránh vòng import DI.
- * `performedBy` NULL có chủ đích ở
- * `WAITING_QC`/`WAITING_DELIVERY` — 2 mốc tự động, `production_jobs` cũng không có cột `*By`/`*At`.
+ * `updatedAt`). Mọi mốc ghi bằng `tx.insert` thẳng trong transaction của hành động đang log, rải
+ * ở nhiều nơi (`production-jobs.service.ts`/`.query.ts`, `production-job-issues.query.ts`,
+ * `oqc.query.ts`, `inventory-receipts.service.ts`), không gom về một service chung để tránh vòng
+ * import DI. `performedBy` NULL có chủ đích ở `WAITING_QC`/`WAITING_DELIVERY`: hai mốc tự động,
+ * `production_jobs` cũng không có cột `*By`/`*At` cho chúng.
  */
 export const productionJobLogs = pgTable(
   'production_job_logs',

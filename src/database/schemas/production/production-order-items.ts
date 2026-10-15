@@ -13,14 +13,14 @@ import { items } from '../items/items';
 import { productionOrders } from './production-orders';
 
 /**
- * Phần con "quyết định sản xuất" của một LSX — 1 dòng cho mỗi dòng PO (`order_items`) status
- * NORMAL, mang Đề xuất SX + snapshot tồn tại lần ghi gần nhất. Giữ 1-1 với `orderItemId` (không
- * gộp theo sản phẩm ở tầng này) vì phiếu xuất kho cần `orderItemId` để delivery tracking (xem
- * `docs/CODEMAPS/inventory.md`) — gộp theo sản phẩm chỉ xảy ra ở tầng `production_jobs`.
+ * Dòng "quyết định sản xuất" của một LSX thường — 1 dòng cho mỗi dòng SO (`order_items`) status
+ * `NORMAL`, mang Đề xuất SX và snapshot tồn ở lần ghi gần nhất. Giữ 1-1 với `orderItemId` (không
+ * gộp theo sản phẩm) vì phiếu xuất kho cần `orderItemId` để theo dõi giao hàng (xem
+ * `docs/CODEMAPS/sales.md`); chỉ `production_jobs` mới gộp theo sản phẩm.
  *
- * `orderItemId` dùng `restrict`, không `cascade` — `OrdersService.updateOrder` tự xoá các dòng
- * của LSX chưa phát hành trước khi replace `order_items` (transaction theo
- * `.claude/rules/service.md`), thay vì trông cậy FK tự dọn.
+ * `orderItemId` dùng `restrict`, không `cascade`: sửa `items` của SO bị chặn khi đã có LSX
+ * (`E080`), còn huỷ SO thì `OrdersService.updateOrder` xoá LSX `PENDING` tường minh trong
+ * transaction thay vì trông vào FK tự dọn.
  */
 export const productionOrderItems = pgTable(
   'production_order_items',

@@ -27,16 +27,14 @@ import {
 import { GetInventoryDirectsReqDto } from './dto/get-inventory-directs.req.dto';
 import { InventoryDirectResDto } from './dto/inventory-direct.res.dto';
 
-/** Tồn kho vật tư — nhánh DIRECT tách khỏi `InventoryService.getInventory` cũ
- * (`docs/CODEMAPS/inventory.md`). FG sống ở `inventory-products`, không nhánh nào đọc chéo sang
- * nhánh kia. Chưa có sổ cái/thẻ kho riêng cho DIRECT — đợt sau. */
+/** Tồn kho vật tư (DIRECT). Thành phẩm FG nằm ở `inventory-products`, hai nhánh không đọc chéo
+ * nhau (`docs/CODEMAPS/inventory.md`). Chưa có sổ cái/thẻ kho riêng cho DIRECT. */
 @Injectable()
 export class InventoryDirectsService {
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
 
-  /** Liệt kê mọi vật tư ACTIVE, kể cả chưa từng phát sinh kho — cùng lý do
-   * `InventoryService.getInventory` cũ: filter `status` là giá trị tính nên toàn bộ join + tính
-   * toán phải nằm trong một `.select()` duy nhất. */
+  /** Liệt kê mọi vật tư ACTIVE, kể cả chưa từng phát sinh kho. Filter `status` là giá trị tính nên
+   * toàn bộ join + tính toán phải nằm trong một `.select()` duy nhất. */
   async getInventoryDirects(
     reqDto: GetInventoryDirectsReqDto,
   ): Promise<OffsetPaginatedDto<InventoryDirectResDto>> {

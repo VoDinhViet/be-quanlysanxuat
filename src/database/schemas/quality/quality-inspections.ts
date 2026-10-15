@@ -33,12 +33,12 @@ import {
 } from './quality-enums';
 
 /**
- * Rename/tái cấu trúc của `qc_requests` — thay `kind`/`INCOMING`/`OUTGOING` bằng
- * `inspectionType`/`IQC`/`OQC`, `origin_type`+`origin_id` (polymorphic, không FK — validate ở
- * service) thay 3 cột chứng từ nguồn cũ (`inventoryReceiptId`/`outsourcingReceiptId`/
- * `outsourcingReceiptItemId`). `purchaseOrderId`/`supplierId`/`clientId`/`productionJobId`/
- * `productionJobOperationId` giữ nguyên làm FK thật — không gộp được vào origin, xem plan migration
- * ("Phát hiện quan trọng"). Mọi bất biến/comment khác kế thừa nguyên văn từ `qc-requests.ts`.
+ * Phiếu kiểm tra chất lượng — IQC (hàng nhập) và OQC (công đoạn của Job) dùng chung bảng qua
+ * `inspectionType`. Mỗi dòng là một "case" phản chiếu lần kiểm gần nhất; từng lần kiểm nằm ở
+ * `quality_inspection_results`. Chứng từ nguồn là polymorphic (`originType` + `originId`, không FK,
+ * service validate); `purchaseOrderId`/`supplierId`/`clientId`/`productionJobId`/
+ * `productionJobOperationId` vẫn là FK thật vì không gộp được vào origin. Xem
+ * `docs/CODEMAPS/quality.md`.
  */
 export const qualityInspections = pgTable(
   'quality_inspections',
@@ -47,9 +47,8 @@ export const qualityInspections = pgTable(
     inspectionNo: varchar('inspection_no', { length: 50 }).notNull().unique(),
     inspectionType: qualityInspectionTypeEnum('inspection_type').notNull(),
 
-    // Chứng từ nguồn (polymorphic) — thay inventoryReceiptId/outsourcingReceiptId/
-    // outsourcingReceiptItemId. `outsourcingReceiptId` không còn cột riêng, suy qua join
-    // outsourcing_receipt_items ở service khi cần.
+    // Chứng từ nguồn (polymorphic). Phiếu nhận gia công không có cột riêng, suy qua join
+    // `outsourcing_receipt_items` ở service khi cần.
     originType: qualityInspectionOriginTypeEnum('origin_type')
       .notNull()
       .default(QualityInspectionOriginType.MANUAL),
@@ -73,9 +72,8 @@ export const qualityInspections = pgTable(
       () => productionJobOperations.id,
       { onDelete: 'restrict' },
     ),
-    // NULL khi lô kiểm là node COMPONENT nhận về từ OS-IN (không phải một item)
-    // — khi đó `itemCode`/`itemName` là nguồn hiển thị; các nguồn
-    // khác (kho, tay, OQC) vẫn luôn có `itemId`.
+    // NULL khi lô kiểm là node COMPONENT nhận về từ OS-IN (không phải một item); khi đó
+    // `itemCode`/`itemName` là nguồn hiển thị. Các nguồn khác (kho, tay, OQC) luôn có `itemId`.
     itemId: uuid('item_id').references(() => items.id, {
       onDelete: 'restrict',
     }),
@@ -106,7 +104,7 @@ export const qualityInspections = pgTable(
       onDelete: 'set null',
     }),
     approvedAt: timestamp('approved_at'),
-    // Để dành — chưa có đường ghi đợt này, giữ vì có trong thiết kế gốc.
+    // Để dành: chưa có đường ghi nào.
     completedAt: timestamp('completed_at'),
     sortOkQty: numeric('sort_ok_qty', {
       precision: 18,
@@ -187,8 +185,7 @@ export const qualityInspections = pgTable(
       'chk_quality_inspections_sort_qty_total',
       sql`sort_ok_qty IS NULL OR sort_ok_qty + sort_ng_qty = quantity`,
     ),
-    // Thay chk_qc_requests_source_exclusive/outsourcing_item — origin chỉ giữ 1 giá trị nên tự
-    // loại trừ; MANUAL bắt buộc origin_id NULL, 2 loại còn lại bắt buộc khác NULL.
+    // `MANUAL` bắt buộc `origin_id` NULL, hai loại còn lại bắt buộc khác NULL.
     check(
       'chk_quality_inspections_origin_id_pair',
       sql`(origin_type = 'MANUAL') = (origin_id IS NULL)`,

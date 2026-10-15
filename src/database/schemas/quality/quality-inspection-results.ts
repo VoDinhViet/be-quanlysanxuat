@@ -25,11 +25,8 @@ import {
 import { qualityInspections } from './quality-inspections';
 
 /**
- * Rename của `qc_inspections` (attempt append-only) — đổi `qcRequestId→qualityInspectionId`,
- * `kind→inspectionType`, `inspectionDate→inspectedAt`, `result→decision`, `confirmedBy→inspectedBy`.
- * `disposition` giữ nguyên là cột enum (không FK — xem `quality-inspections.ts`). Mọi bất biến khác
- * (composite FK 3 cột mirror cha, `resultingStatus` thuần audit) kế thừa nguyên văn từ
- * `qc-inspections.ts`.
+ * Một lần kiểm (attempt) của `quality_inspections`, append-only; unique (`qualityInspectionId`,
+ * `attemptNo`). `disposition` là cột enum, không FK (xem `quality-inspections.ts`).
  */
 export const qualityInspectionResults = pgTable(
   'quality_inspection_results',

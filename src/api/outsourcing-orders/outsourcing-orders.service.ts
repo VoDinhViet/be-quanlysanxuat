@@ -120,8 +120,7 @@ export class OutsourcingOrdersService {
   async getOutsourcingOrder(
     outsourcingOrderId: string,
   ): Promise<OutsourcingOrderResDto> {
-    // Hai JOIN riêng biệt vào cùng bảng `users` (creatorBy/posterBy) cần alias để không đụng nhau
-    // trong cùng một query.
+    // Hai JOIN vào cùng bảng `users` (creatorBy/posterBy) cần alias để không đụng tên.
     const creatorUsers = alias(users, 'creator_users');
     const posterUsers = alias(users, 'poster_users');
 
@@ -347,10 +346,12 @@ export class OutsourcingOrdersService {
     );
   }
 
-  /** Không còn nháp — tạo là gửi luôn: `INSERT` header thẳng `SENT`, không qua bước `DRAFT` trung
-   * gian nào. Không đụng `inventory_balances` — mặt hàng gửi gia công là node COMPONENT của Job, không
-   * phải item, không có tồn. Dòng do client gửi đủ cột
-   * (không resolve lại từ `productionJobOperationId`). */
+  /** Tạo là gửi luôn: header `INSERT` thẳng ở `SENT`, không có bước nháp.
+   *
+   * Rules:
+   * - Không đụng `inventory_balances`: hàng gửi gia công là node COMPONENT của Job, không có tồn.
+   * - Dòng do client gửi đủ cột, không resolve lại từ `productionJobOperationId`.
+   */
   async createOutsourcingOrder(
     reqDto: CreateOutsourcingOrderReqDto,
     userId: string,
@@ -395,8 +396,6 @@ export class OutsourcingOrdersService {
         throw new AppException(ErrorCode.E098, HttpStatus.CONFLICT);
       }
 
-      // Mọi trạng thái khác CANCELLED đều "còn hoạt động" (status đã gộp tiến độ, không còn chỉ
-      // POSTED).
       const hasActiveReceipts = await hasActiveReceiptsForOrder(
         tx,
         outsourcingOrderId,
@@ -456,9 +455,7 @@ export class OutsourcingOrdersService {
     }
   }
 
-  /** Khoá dòng phiếu (`FOR UPDATE`) rồi trả về — chỉ gọi bên trong transaction, cùng lý do
-   * `InventoryIssuesService.getInventoryIssueForUpdate`: chặn `cancel` gọi trùng lên cùng phiếu hai
-   * lần. */
+  /** Khoá dòng phiếu `FOR UPDATE`, chỉ gọi trong transaction: chặn hai `cancel` đồng thời. */
   private async getOutsourcingOrderForUpdate(
     tx: DbTransaction,
     outsourcingOrderId: string,

@@ -12,9 +12,8 @@ import { files } from '../files';
 import { qualityInspectionResults } from './quality-inspection-results';
 
 /**
- * Rename của `qc_files` — treo dưới `quality_inspection_results` (đổi từ `qc_inspections`), mọi bất
- * biến khác (2 bộ file `QC_EVIDENCE`/`DISPOSITION_EVIDENCE`, `fileId` restrict để giữ vết) kế thừa
- * nguyên văn từ `qc-files.ts`.
+ * Hai bộ file đính kèm mỗi lần kiểm (`quality_inspection_results`): bằng chứng kiểm tra
+ * (`QC_EVIDENCE`) và bằng chứng xử lý (`DISPOSITION_EVIDENCE`).
  */
 export enum QualityEvidenceKind {
   QC_EVIDENCE = 'QC_EVIDENCE',

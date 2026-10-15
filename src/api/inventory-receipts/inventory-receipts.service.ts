@@ -104,7 +104,8 @@ const receiptTypeTransactionType: Record<
   [InventoryReceiptType.OTHER]: InventoryTransactionType.RECEIPT,
 };
 
-/** Loại phiếu có `reason` ("PO / Lý do" Kho ghi tay): lưu ở `effectiveReason`, hiện ở cột danh sách ở `resolvePoOrReason`. */
+/** Loại phiếu có `reason` ("PO / Lý do" do Kho ghi tay), xem `effectiveReason` và
+ * `resolvePoOrReason`. */
 const RECEIPT_TYPES_WITH_REASON: ReadonlySet<InventoryReceiptType> = new Set([
   InventoryReceiptType.OTHER,
   InventoryReceiptType.RETURN,
@@ -117,7 +118,6 @@ type IqcSourceIds = {
 
 @Injectable()
 export class InventoryReceiptsService {
-  /** Phiếu coi như đã `confirm` — `DRAFT` không tính. */
   private static readonly CONFIRMED_STATUSES = CONFIRMED_RECEIPT_STATUSES;
 
   constructor(
@@ -236,11 +236,9 @@ export class InventoryReceiptsService {
     );
   }
 
-  /** Cột "PO / Lý do" của danh sách phiếu nhập — trả lời "hàng này nhập về cho cái gì": phiếu mua hàng
-   * lấy theo các đề xuất mua hàng của những dòng đã nhập (số PO khách, hoặc lý do nếu đề xuất tạo
-   * tay; nhiều nguồn thì nối bằng ", "); phiếu nhập từ LSX lấy PO của đơn hàng; "Nhập từ khác" và
-   * "Nhập từ khách hàng" lấy PO / lý do nhập do Kho ghi. Phiếu mua hàng không có dòng gắn đơn mua
-   * thì dùng đề xuất gắn trên phiếu. */
+  /** Cột "PO / Lý do" của danh sách phiếu nhập ("hàng này nhập về cho cái gì"). Thứ tự ưu tiên:
+   * `reason` do Kho ghi (`OTHER`/`RETURN`) -> nguồn từ các đề xuất mua hàng của những dòng đã nhập
+   * (nhiều nguồn nối bằng ", ") -> đề xuất gắn trên phiếu -> PO của đơn hàng qua LSX. */
   private resolvePoOrReason(
     receipt: {
       receiptType: InventoryReceiptType;
@@ -264,8 +262,8 @@ export class InventoryReceiptsService {
       : (receipt.productionOrder?.order?.buyerPoNo ?? null);
   }
 
-  /** Kho/Warehouse và các ô ký để trống cho người dùng điền tay — hệ thống chỉ có 1 kho.
-   */
+  /** `context` không có Kho/Warehouse và các ô ký: để trống cho người dùng điền tay (hệ thống chỉ có
+   * 1 kho). */
   async exportInventoryReceiptPdf(receiptId: string): Promise<StreamableFile> {
     const [[receipt], items] = await Promise.all([
       this.db
@@ -364,10 +362,9 @@ export class InventoryReceiptsService {
     );
   }
 
-  /** `bomDemand`/`available`/`fromStock` không phải cột thật — relational API không tính được,
-   * nên dòng phiếu nhập dùng `.select()` + join thay vì `with: { items: ... }`. `onHand`/`bomDemand`/
-   * `fromStock` sống ở `item-stock.query.ts`, dùng chung với `PurchaseRequestsService`; `available`
-   * từ `availableQuantityByItemSubquery`. */
+  /** `.select()` + join thay vì `with: { items }` vì `onHand`/`bomDemand`/`fromStock`/`available`
+   * không phải cột thật. Ba cột đầu ở `item-stock.query.ts` (dùng chung với
+   * `PurchaseRequestsService`); `available` từ `availableQuantityByItemSubquery`. */
   private async getReceiptLines(
     receiptId: string,
     scope: {
@@ -377,10 +374,8 @@ export class InventoryReceiptsService {
   ) {
     const balance = onHandQuantityByItemSubquery(this.db);
     const demand = jobIssueDemandSubquery(this.db, scope);
-    // Số "khả dụng" của hệ thống (cùng màn Tồn kho vật tư): join subquery chung vào câu select bên dưới,
-    // không phải `onHand − bomDemand` của riêng Job này.
+    // "Khả dụng" cùng nguồn màn Tồn kho vật tư, không phải `onHand − bomDemand` của riêng Job này.
     const available = availableQuantityByItemSubquery(this.db);
-    // ĐVBG của dòng PO tương ứng (PH-135) — alias vì `units` đã join cho đơn vị của dòng phiếu.
 
     const [rows, returnedByItemId] = await Promise.all([
       this.db
@@ -560,9 +555,8 @@ export class InventoryReceiptsService {
       .where(eq(inventoryReceipts.id, receiptId));
   }
 
-  /** `DRAFT → PENDING_RECEIPT`/`PENDING_IQC` — chưa đụng tồn kho. `requiresIqc` sinh một phiếu
-   * IQC (`NOT_INSPECTED`) cho mỗi dòng, cùng transaction. Xem
-   * `docs/CODEMAPS/inventory.md`. */
+  /** `DRAFT -> PENDING_RECEIPT`/`PENDING_IQC`, chưa đụng tồn kho. `requiresIqc` sinh một phiếu IQC
+   * (`NOT_INSPECTED`) cho mỗi dòng, cùng transaction. See `docs/CODEMAPS/inventory.md`. */
   async confirmInventoryReceipt(
     receiptId: string,
     userId: string,
@@ -577,7 +571,8 @@ export class InventoryReceiptsService {
         throw new AppException(ErrorCode.E098, HttpStatus.CONFLICT);
       }
 
-      // PO có thể bị huỷ sau khi phiếu nháp được tạo — `create`/`update` đã kiểm, `confirm`/`post` phải kiểm lại.
+      // PO có thể bị huỷ sau khi phiếu nháp được tạo: `create`/`update` đã kiểm, `confirm`/`post`
+      // phải kiểm lại.
       await this.ensurePurchaseOrderOrdered(
         inventoryReceipt.purchaseOrderId,
         tx,
@@ -633,14 +628,18 @@ export class InventoryReceiptsService {
     });
   }
 
-  /** `PENDING_RECEIPT`/`PENDING_IQC`/`IQC_COMPLETED → POSTED` — sinh bút toán + cập nhật tồn qua
-   * `InventoryPostingService`, sau đó phiếu bất biến. `PENDING_IQC`/`IQC_COMPLETED` chặn (`E153`)
-   * nếu còn phiếu IQC nào chưa `COMPLETED` — `IQC_COMPLETED` vẫn kiểm lại, chống lệch. Đọc trạng
-   * thái nằm trong cùng transaction, sau `getInventoryReceiptForUpdate`. Trước khi ghi bút toán,
-   * `buildReceiptPostingLines` bù trừ SL đã trả NCC (`POSTED`) khỏi từng dòng — hàng NG chưa bao
-   * giờ thật sự vào tồn thì không được cộng vào (`docs/CODEMAPS/inventory.md`). Nếu phiếu
-   * gắn PO, gọi `PaymentRequestsService.createIfOrderCompleted` cùng transaction — tự sinh yêu cầu
-   * thanh toán khi PO vừa đạt COMPLETED. Xem `docs/CODEMAPS/inventory.md`. */
+  /** `PENDING_RECEIPT`/`PENDING_IQC`/`IQC_COMPLETED -> POSTED` — ghi sổ qua
+   * `InventoryPostingService`, sau đó phiếu bất biến.
+   *
+   * Rules:
+   * - `PENDING_IQC`/`IQC_COMPLETED` bị chặn (`E153`) nếu còn phiếu IQC chưa `COMPLETED`;
+   *   `IQC_COMPLETED` vẫn kiểm lại để chống lệch.
+   * - `buildReceiptPostingLines` trừ SL đã trả NCC (`POSTED`) khỏi từng dòng: hàng NG chưa từng
+   *   thật sự vào tồn thì không được cộng.
+   * - Phiếu gắn PO thì `PaymentRequestsService.createIfOrderCompleted` chạy cùng transaction
+   *   (tự sinh yêu cầu thanh toán khi PO vừa `COMPLETED`).
+   *
+   * See `docs/CODEMAPS/inventory.md`. */
   async postInventoryReceipt(receiptId: string, userId: string): Promise<void> {
     await this.db.transaction(async (tx) => {
       const inventoryReceipt = await this.getInventoryReceiptForUpdate(
@@ -709,11 +708,10 @@ export class InventoryReceiptsService {
     });
   }
 
-  /** Job đứng ở `WAITING_DELIVERY` cho tới khi nhập kho đủ SL kế hoạch — có thể qua nhiều phiếu nhỏ
-   * lẻ, `confirm` đã chặn (`E197`) không cho tổng vượt `job.quantity` nên chỉ cần so `>=`. Đóng Job
-   * xong mới xét đóng LSX (mọi Job anh em cũng phải `COMPLETED`) — 2 tầng cascade độc lập, một Job
-   * chưa nhập đủ không chặn các Job khác của cùng LSX.
-   */
+  /** Job đứng ở `WAITING_DELIVERY` cho tới khi nhập kho đủ SL kế hoạch (có thể qua nhiều phiếu
+   * nhỏ). `confirm` đã chặn (`E197`) tổng vượt `job.quantity` nên chỉ cần so `>=`. Đóng Job xong
+   * mới xét đóng LSX (mọi Job anh em phải `COMPLETED`) rồi NCR gốc nếu có; Job chưa đủ không chặn
+   * các Job khác của cùng LSX. */
   private async closeJobIfFullyReceived(
     tx: DbTransaction,
     productionJobId: string,
@@ -776,8 +774,8 @@ export class InventoryReceiptsService {
       performedBy: userId,
     });
 
-    // Job vừa đóng ở trên đã COMMIT trong cùng transaction — dòng của chính nó đọc lại đây đã thấy
-    // `COMPLETED`, không cần loại trừ riêng.
+    // Job vừa đóng ở trên đã UPDATE trong cùng transaction nên đọc lại đây đã thấy `COMPLETED`,
+    // không cần loại trừ riêng.
     const siblingJobs = await tx
       .select({ status: productionJobs.status })
       .from(productionJobs)
@@ -816,11 +814,14 @@ export class InventoryReceiptsService {
     }
   }
 
-  /** Bù trừ SL đã trả NCC (`supplier_returns` đã `POSTED`) khỏi từng dòng trước khi ghi bút toán
-   * `RECEIPT` — hàng NG bị trả không được cộng vào tồn. Dòng bị bù về 0 thì bỏ hẳn khỏi kết quả
-   * (`chk_inventory_transactions_quantity_sign` cấm dòng `RECEIPT` 0/âm). Nhiều dòng cùng `itemId`
-   * trên một phiếu → số đã trả trừ dần qua từng dòng theo thứ tự duyệt, không trừ hai lần. Xem
-   * `docs/CODEMAPS/inventory.md`. */
+  /** Trừ SL đã trả NCC (`supplier_returns` `POSTED`) khỏi từng dòng trước khi ghi bút toán, vì hàng
+   * NG bị trả không được cộng vào tồn.
+   *
+   * Rules:
+   * - Dòng bị trừ về 0 thì bỏ hẳn (`chk_inventory_transactions_quantity_sign` cấm dòng 0/âm).
+   * - Nhiều dòng cùng `itemId`: số đã trả trừ dần qua từng dòng, không trừ hai lần.
+   *
+   * See `docs/CODEMAPS/inventory.md`. */
   private async buildReceiptPostingLines(
     tx: DbTransaction,
     inventoryReceipt: Pick<InventoryReceiptSelect, 'id' | 'receiptType'>,
@@ -855,9 +856,8 @@ export class InventoryReceiptsService {
     return lines;
   }
 
-  /** Phiếu chưa ghi sổ → `CANCELLED`, kéo theo huỷ các phiếu IQC (và phiếu trả NCC nháp) sinh từ
-   * phiếu này. Phiếu `POSTED` không huỷ được (`E289`) — muốn đảo hàng đã nhập thì dùng phiếu trả
-   * NCC. Phiếu chưa ghi sổ chưa chạm kho nên không có bút toán nào để đảo. */
+  /** Phiếu chưa ghi sổ -> `CANCELLED`, kéo theo huỷ các phiếu IQC (và phiếu trả NCC nháp) sinh từ
+   * phiếu này (`cancelReceiptInspections`). Chưa chạm kho nên không có bút toán nào để đảo. */
   async cancelInventoryReceipt(receiptId: string): Promise<void> {
     await this.db.transaction(async (tx) => {
       const inventoryReceipt = await this.getInventoryReceiptForUpdate(
@@ -869,7 +869,7 @@ export class InventoryReceiptsService {
         throw new AppException(ErrorCode.E098, HttpStatus.CONFLICT);
       }
 
-      // Ghi sổ xong phiếu bất biến; muốn đảo hàng đã nhập thì dùng phiếu trả NCC.
+      // Phiếu `POSTED` bất biến; muốn đảo hàng đã nhập thì dùng phiếu trả NCC.
       if (inventoryReceipt.status === InventoryDocumentStatus.POSTED) {
         throw new AppException(ErrorCode.E289, HttpStatus.CONFLICT);
       }
@@ -883,9 +883,8 @@ export class InventoryReceiptsService {
     });
   }
 
-  /** Mặt hàng của mỗi dòng phải tồn tại (`E100`). Không kiểm loại kho ↔ loại hàng — cố ý, xem
-   * `docs/CODEMAPS/inventory.md`. Trả về `itemId → unitId gốc` để mặc định `unitId` hiển thị khi
-   * payload không gửi. */
+  /** Mặt hàng của mỗi dòng phải tồn tại (`E100`). Không kiểm loại kho <-> loại hàng, cố ý. Trả về
+   * `itemId -> unitId gốc` để mặc định `unitId` khi payload không gửi. */
   private async ensureItemsValid(
     itemsToValidate: InventoryReceiptItemReqDto[],
   ): Promise<Map<string, string>> {
@@ -985,9 +984,9 @@ export class InventoryReceiptsService {
       : null;
   }
 
-  /** `receiptType = OTHER` ("Nhập từ khác"): bắt buộc `reason` (`E293`); không có đối tác nên cấm gắn
-   * PO / NCC / khách hàng / dòng PO / Job (`E294`). `update` truyền giá trị **hiệu lực** (payload mới nếu
-   * có, giữ giá trị cũ nếu không). */
+  /** `receiptType = OTHER` ("Nhập từ khác"): bắt buộc `reason` (`E293`); không có đối tác nên cấm
+   * gắn PO / NCC / khách hàng / dòng PO / Job (`E294`). `update` truyền giá trị hiệu lực (payload
+   * mới nếu có, không thì giá trị cũ). */
   private ensureOtherReceiptShape(
     receipt: {
       receiptType: InventoryReceiptType;
@@ -1026,11 +1025,9 @@ export class InventoryReceiptsService {
     }
   }
 
-  /** `receiptType = PRODUCTION` bắt buộc gắn `productionJobId` (`E179`) — nếu không thì gate nhập
-   * kho thành phẩm theo OQC (`docs/CODEMAPS/inventory.md`) có lỗ hổng bỏ qua hoàn toàn. Đổi hành vi
-   * so với thiết kế ban đầu (cột này vốn chỉ để trace, không validate chéo với `receiptType`).
-   * `update` truyền vào giá trị **hiệu lực** (payload mới nếu có gửi, giữ nguyên giá trị cũ nếu
-   * không) — không tự suy bên trong hàm này. */
+  /** `receiptType = PRODUCTION` bắt buộc gắn `productionJobId` (`E179`), nếu không gate nhập kho
+   * thành phẩm theo OQC (`docs/CODEMAPS/inventory.md`) bị bỏ qua hoàn toàn. `update` truyền giá trị
+   * hiệu lực (payload mới nếu có, không thì giá trị cũ); hàm này không tự suy. */
   private ensureProductionJobRequired(
     receiptType: InventoryReceiptType,
     productionJobId: string | null | undefined,
@@ -1098,7 +1095,7 @@ export class InventoryReceiptsService {
       }
     }
 
-    // Dòng PO có ĐVBG thì dòng phiếu nhập phải ghi SL thực tế theo ĐVBG (PH-135, E315).
+    // Dòng PO có ĐVBG thì dòng phiếu nhập phải ghi SL thực tế theo ĐVBG (`E315`).
     const quotationUnitPurchaseOrderItemIds = new Set(
       found.filter((item) => item.quotationUnit).map((item) => item.id),
     );
@@ -1115,12 +1112,10 @@ export class InventoryReceiptsService {
     return quotationUnitPurchaseOrderItemIds;
   }
 
-  /** SL cộng dồn mọi phiếu đã `confirm` (`PENDING_IQC`/`IQC_COMPLETED`/`PENDING_RECEIPT`/`POSTED`,
-   * `DRAFT` không tính vì nháp có thể không bao giờ được xác nhận) trỏ cùng một dòng PO, cộng thêm
-   * SL của payload đang xét, không được vượt SL đặt của dòng đó (`E154`). Nhận
-   * `Database | DbTransaction` (không bắt buộc `tx` như một write helper thường) vì đây thuần là
-   * đọc, và phải dùng được từ cả `create`/`update` (ngoài transaction) lẫn `confirm` (trong
-   * transaction) — cùng ngoại lệ với `IqcService.generateIqcCodes`. */
+  /** SL cộng dồn của mọi phiếu đã `confirm` trỏ cùng một dòng PO, cộng SL của payload đang xét,
+   * không được vượt SL đặt của dòng đó (`E154`). `DRAFT` không tính vì nháp có thể không bao giờ
+   * được xác nhận. Nhận `Database | DbTransaction` vì đây là đọc thuần, gọi từ cả `create`/`update`
+   * (ngoài transaction) lẫn `confirm` (trong transaction). */
   private async ensureReceiptQuantitiesWithinOrdered(
     db: Database | DbTransaction,
     itemsToValidate: {
@@ -1169,20 +1164,22 @@ export class InventoryReceiptsService {
     }
   }
 
-  /** Gate nhập kho thành phẩm theo QC (`docs/CODEMAPS/inventory.md`, "Gate nhập kho thành phẩm";
-   * `docs/CODEMAPS/quality.md`) — chỉ chạy khi `receiptType = PRODUCTION`. `productionJobId`
-   * NULL tại đây nghĩa là một phiếu cũ tồn tại từ trước ràng buộc này (cột vốn không `NOT NULL` ở
-   * DB, chỉ service-enforced) — vẫn chặn bằng `E179` thay vì bỏ qua. Mọi dòng phải cùng `itemId`
-   * với Job (`E107`, tái dùng — cùng ngữ nghĩa `inventory_issues` dùng cho `orderItemId` lệch
-   * item). Job phải có ≥1 dòng QC (OQC công đoạn `INHOUSE` + IQC công đoạn `OUTSOURCE`, hợp nhất
-   * qua `getJobQcCoverage`) và không còn IQC nào chưa `COMPLETED` (`E196`). OQC thành phẩm theo lô
-   * một phần (PH-111): Job có node Cấp 0 phải có ≥1 phiếu QC `COMPLETED` (`E209`); nếu công đoạn
-   * cuối đi qua OQC thì SL nhập (cộng dồn mọi phiếu `PRODUCTION` khác đã `confirm`, cộng phiếu này)
-   * không vượt Σ SL các lô OQC đã đạt (`E196`) — lô OQC khác đang dở không chặn phần đã đạt; Job
-   * không có OQC (thành phẩm gia công ngoài, hoặc item không khai routing Cấp 0 — lỗ hổng đã biết)
-   * vẫn chặn khi còn bất kỳ dòng QC nào chưa `COMPLETED`
-   * (`E196`). SL nhập còn chặn trần theo
-   * `production_jobs.quantity` (`E197`). */
+  /** Gate nhập kho thành phẩm theo QC, chỉ chạy khi `receiptType = PRODUCTION`.
+   *
+   * Rules:
+   * - Thiếu `productionJobId` thì chặn `E179` (phiếu cũ từ trước ràng buộc; cột không `NOT NULL`
+   *   ở DB, chỉ service-enforced).
+   * - Mọi dòng phải cùng `itemId` với Job (`E107`).
+   * - Job phải có >= 1 dòng QC (OQC công đoạn `INHOUSE` + IQC công đoạn `OUTSOURCE`, hợp nhất qua
+   *   `getJobQcCoverage`) và không còn IQC chưa `COMPLETED` (`E196`).
+   * - Job có node Cấp 0 phải có >= 1 phiếu QC `COMPLETED` (`E209`).
+   * - Công đoạn cuối đi qua OQC: SL nhập (cộng dồn các phiếu `PRODUCTION` khác đã `confirm` và phiếu
+   *   này) không vượt Σ SL các lô OQC đã đạt (`E196`); lô OQC khác đang dở không chặn phần đã đạt.
+   * - Job không có OQC (gia công ngoài, hoặc item không khai routing Cấp 0 — lỗ hổng đã biết): còn
+   *   dòng QC nào chưa `COMPLETED` là chặn (`E196`).
+   * - SL nhập không vượt `production_jobs.quantity` (`E197`).
+   *
+   * See `docs/CODEMAPS/inventory.md` ("Production receipt and job closure"), `quality.md`. */
   private async ensureProductionReceiptOqcCleared(
     tx: DbTransaction,
     inventoryReceipt: Pick<InventoryReceiptSelect, 'id' | 'productionJobId'>,
@@ -1244,12 +1241,9 @@ export class InventoryReceiptsService {
     }
   }
 
-  /** Σ SL các dòng mọi phiếu nhập `PRODUCTION` đã `confirm` (`PENDING_IQC`/`IQC_COMPLETED`/
-   * `PENDING_RECEIPT`/`POSTED`) cùng Job. `excludeReceiptId` dùng ở
-   * `ensureProductionReceiptOqcCleared` (gate lúc confirm, loại chính phiếu đang xét trước khi
-   * cộng thêm SL của nó); bỏ trống ở `postInventoryReceipt` — phiếu đang post đã ở
-   * `PENDING_RECEIPT`/`POSTED` (đều nằm trong `CONFIRMED_STATUSES`) nên tổng không đổi qua bước
-   * post, không cần loại trừ. */
+  /** Σ SL các phiếu nhập `PRODUCTION` đã `confirm` (`CONFIRMED_STATUSES`) của Job. `excludeReceiptId`
+   * dùng ở gate lúc confirm (`ensureProductionReceiptOqcCleared`) để loại chính phiếu đang xét; bỏ
+   * trống ở `closeJobIfFullyReceived` vì phiếu đang post đã nằm trong `CONFIRMED_STATUSES`. */
   private async getConfirmedProductionQuantityByJobId(
     tx: DbTransaction,
     productionJobId: string,
@@ -1283,9 +1277,9 @@ export class InventoryReceiptsService {
     return row?.total ?? 0;
   }
 
-  /** Nguồn (NCC/khách hàng) của phiếu IQC sinh ra khi `confirm` — ưu tiên `inventoryReceipt.supplierId`,
-   * rồi `inventoryReceipt.clientId` (RETURN gắn khách hàng, BUG-038/065), rồi rơi về NCC của PO gắn
-   * với phiếu. Không suy được nguồn nào → `E152`; riêng `OTHER` (không đối tác) trả cả hai `null`. */
+  /** Nguồn (NCC/khách hàng) của phiếu IQC sinh ra khi `confirm`: ưu tiên `supplierId`, rồi `clientId`
+   * (phiếu `RETURN` gắn khách hàng), rồi NCC của PO gắn với phiếu. Không suy được nguồn nào thì
+   * `E152`; riêng `OTHER` (không đối tác) trả cả hai `null`. */
   private async resolveIqcSourceIds(
     tx: DbTransaction,
     inventoryReceipt: Pick<
@@ -1325,8 +1319,8 @@ export class InventoryReceiptsService {
     throw new AppException(ErrorCode.E152, HttpStatus.BAD_REQUEST);
   }
 
-  /** `post` một phiếu `PENDING_IQC` chỉ chạy khi mọi phiếu IQC gắn với nó đã `COMPLETED` — thiếu
-   * điều kiện này, kể cả khi chưa có phiếu IQC nào, đều là `E153`. */
+  /** `post` phiếu `PENDING_IQC`/`IQC_COMPLETED` chỉ chạy khi mọi phiếu IQC gắn với nó đã `COMPLETED`;
+   * chưa có phiếu IQC nào cũng là `E153`. */
   private async ensureReceiptIqcCompleted(
     tx: DbTransaction,
     receiptId: string,

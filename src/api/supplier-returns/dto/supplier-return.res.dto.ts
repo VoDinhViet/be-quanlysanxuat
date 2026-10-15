@@ -23,9 +23,9 @@ export class SupplierReturnResDto extends SupplierReturnBaseResDto {
   })
   postedAt!: Date | null;
 
-  // Không phải cột riêng của `supplier_returns` — lấy từ `qc_inspections.dispositionNote` của lần
-  // IQC đã sinh ra phiếu này (qua `qcInspectionId`), nơi QC ghi lý do khi chọn
-  // `disposition = RETURN`/`SORT`. `null` khi phiếu không sinh từ IQC hoặc QC không ghi lý do.
+  // Lấy từ `supplier_returns.note`; nếu `null` thì lấy `dispositionNote` của
+  // `quality_inspection_results` (lần IQC sinh phiếu, nơi QC ghi lý do khi chọn RETURN/SORT).
+  // `null` khi phiếu không sinh từ IQC hoặc không có lý do.
   @Expose()
   @StringFieldOptional({ nullable: true, description: 'Lý do trả (từ IQC)' })
   returnReason!: string | null;

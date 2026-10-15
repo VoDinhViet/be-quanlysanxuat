@@ -4,13 +4,10 @@ import {
   QualityInspectionStatus,
 } from '../../database/schemas';
 
-/** Đường ghi (`resolveIqcStatus`/`resolveOqcStatus`, `confirmIqc`/`confirmOqc`,
- * `createInspectionsFromReceipt`/`createInspectionsFromOutsourcingReceipt`) vẫn tính state machine
- * theo `IqcStatus`/`OqcStatus` cũ (rõ nghĩa nghiệp vụ hơn `IN_PROGRESS` gộp chung), rồi dịch sang
- * `quality_inspections.status` qua hàm này trước khi ghi DB. Đường đọc (response/filter DTO) không
- * còn dịch ngược — trả thẳng `QualityInspectionStatus` từ DB (API đã lộ vocabulary mới).
- *
- */
+/** Đường ghi (`confirmIqc`/`confirmOqc`, `createIqc`) tính state machine theo
+ * `IqcStatus`/`OqcStatus` (rõ nghĩa nghiệp vụ hơn `IN_PROGRESS` gộp chung) rồi dịch sang
+ * `quality_inspections.status` qua hàm này trước khi ghi DB. Đường đọc (response/filter DTO)
+ * không dịch ngược: trả thẳng `QualityInspectionStatus` từ DB. */
 export function mapToQualityInspectionStatus(
   status: IqcStatus | OqcStatus,
 ): QualityInspectionStatus {

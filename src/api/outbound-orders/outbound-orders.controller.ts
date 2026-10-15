@@ -62,8 +62,8 @@ export class OutboundOrdersController {
     return this.outboundOrdersService.getUnfulfilledOrderItems(reqDto);
   }
 
-  // Khai trước ':outboundOrderId' để 'export' không bị bắt nhầm thành id — cùng lý do
-  // 'unfulfilled-order-items' ở trên.
+  // Khai trước ':outboundOrderId' để 'export' không bị bắt nhầm thành id (như
+  // 'unfulfilled-order-items' ở trên).
   @Get('export')
   @Permissions('outbound:read')
   @ApiAuth({

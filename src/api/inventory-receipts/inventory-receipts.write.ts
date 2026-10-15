@@ -31,7 +31,7 @@ export async function generateReceiptCode(
   return `PNK-${year}-${String(sequence).padStart(5, '0')}`;
 }
 
-/** Phiếu nhập coi như đã `confirm` — `DRAFT` (nháp) và `CANCELLED` không tính. */
+/** Phiếu nhập coi như đã `confirm`; `DRAFT` và `CANCELLED` không tính. */
 export const CONFIRMED_RECEIPT_STATUSES = [
   InventoryDocumentStatus.PENDING_IQC,
   InventoryDocumentStatus.IQC_COMPLETED,
@@ -66,18 +66,19 @@ async function getProductionReceiptQuantityForJob(
   return row?.total ?? 0;
 }
 
-/** Tự sinh phiếu nhập kho TP thẳng ở `PENDING_RECEIPT` (đã "confirm", sẵn sàng `post`) + 1 dòng
- *  (`unitId` = đơn vị gốc của item) cho phần SL **còn thiếu** so với `targetQuantity` (mặc định
- *  `production_jobs.quantity`) sau khi trừ SL các phiếu `PRODUCTION` đã confirm của Job — nên gọi lại
- *  nhiều lần vẫn không sinh trùng, và OQC theo lô một phần (PH-111) sinh một phiếu cho mỗi lô vừa
- *  đạt (`OqcService.confirmOqc`, `targetQuantity` = Σ SL OQC đạt). Không qua `DRAFT` rồi gọi
- *  `confirmInventoryReceipt` — OQC chính là gate chất lượng của phiếu này
- *  (`ensureProductionReceiptOqcCleared` sẽ luôn pass), và phiếu PRODUCTION không bao giờ
- *  `requiresIqc` (IQC chỉ dành hàng nhập từ NCC/gia công ngoài), nên không có bước "confirm" nào
- *  thật sự khác `PENDING_RECEIPT` để chờ — `confirmedBy`/`confirmedAt` gán luôn `userId` (người vừa
- *  confirm OQC). Plain function nhận `tx`, không qua DI vì `OqcModule`/`IqcModule` cố ý không import
- *  `InventoryReceiptsModule` — cùng lý do `completeIqcAfterSupplierReturn` (`iqc.write.ts`).
- *  `docs/CODEMAPS/inventory.md`. */
+/** Tự sinh phiếu nhập kho TP thẳng ở `PENDING_RECEIPT` + 1 dòng cho phần SL còn thiếu của Job.
+ *
+ *  Rules:
+ *  - SL = `targetQuantity` (mặc định `production_jobs.quantity`) trừ SL các phiếu `PRODUCTION` đã
+ *    confirm của Job, nên gọi lại nhiều lần không sinh trùng. OQC theo lô một phần truyền
+ *    `targetQuantity` = Σ SL OQC đạt (`OqcService.confirmOqc`).
+ *  - Không qua `DRAFT` + `confirmInventoryReceipt`: OQC đã là gate chất lượng
+ *    (`ensureProductionReceiptOqcCleared` luôn pass) và phiếu `PRODUCTION` không bao giờ
+ *    `requiresIqc`. `confirmedBy`/`confirmedAt` gán luôn `userId` người confirm OQC.
+ *  - Plain function nhận `tx`, không qua DI vì `OqcModule`/`IqcModule` không import
+ *    `InventoryReceiptsModule` (cùng lý do `completeIqcAfterSupplierReturn` trong `iqc.write.ts`).
+ *
+ *  See `docs/CODEMAPS/inventory.md`. */
 export async function createProductionReceiptForJob(
   tx: DbTransaction,
   productionJobId: string,
@@ -138,10 +139,10 @@ export async function createProductionReceiptForJob(
   });
 }
 
-/** Đưa phiếu `PENDING_IQC`/`IQC_COMPLETED` về đúng trạng thái theo IQC hiện có; bỏ qua khi dòng IQC
- *  vừa ghi không neo vào phiếu nhập. Gọi trong tx của mọi điểm ghi IQC; plain function, không qua
- *  DI — cùng lý do `createProductionReceiptForJob`. Chiều `IQC_COMPLETED → PENDING_IQC` là chủ đích
- *  (IQC đã `COMPLETED` vẫn `confirm` lại được). */
+/** Đưa phiếu `PENDING_IQC`/`IQC_COMPLETED` về đúng trạng thái theo IQC hiện có; bỏ qua khi IQC vừa
+ *  ghi không neo vào phiếu nhập. Gọi trong tx của mọi điểm ghi IQC; plain function, không qua DI
+ *  (cùng lý do `createProductionReceiptForJob`). Chiều `IQC_COMPLETED -> PENDING_IQC` là chủ đích:
+ *  IQC đã `COMPLETED` vẫn `confirm` lại được. */
 export async function syncReceiptIqcStatus(
   tx: DbTransaction,
   inspection: {

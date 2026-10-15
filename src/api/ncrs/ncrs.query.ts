@@ -33,7 +33,6 @@ export async function getNcrTransferredQtyByJobId(
 
 const ncrRefColumns = { id: ncrs.id, code: ncrs.code, status: ncrs.status };
 
-/** Tham chiếu một NCR theo id (`null` nếu không tồn tại). */
 export async function getNcrRefById(
   db: Database | DbTransaction,
   ncrId: string,
@@ -47,8 +46,8 @@ export async function getNcrRefById(
   return ncrRef ?? null;
 }
 
-/** NCR sinh ra từ một phiếu OQC sàng lọc (`ncrs.quality_inspection_id`), sắp theo ngày tạo — để OQC truy ngược
- * sang NCR. */
+/** NCR sinh ra từ một phiếu OQC sàng lọc (`ncrs.quality_inspection_id`), sắp theo ngày tạo — để
+ * OQC truy ngược sang NCR. */
 export async function getNcrRefsByQualityInspectionId(
   db: Database | DbTransaction,
   qualityInspectionId: string,

@@ -15,8 +15,8 @@ import { items } from '../items/items';
 import { units } from '../units/units';
 
 /** Một dòng phiếu điều chỉnh — `quantity` luôn dương, dấu suy từ `adjustmentType` của header lúc
- * `post`, không ở đây (cùng khuôn `inventory_receipt_items`). `unitId` chỉ để hiển thị
- * — không quy đổi, mọi bút toán đọc thẳng `quantity`. */
+ * `post` (cùng khuôn `inventory_receipt_items`). `unitId` chỉ để hiển thị, không quy đổi: mọi
+ * bút toán đọc thẳng `quantity`. */
 export const inventoryAdjustmentItems = pgTable(
   'inventory_adjustment_items',
   {

@@ -43,11 +43,9 @@ export class OutsourceableOperationSnapshotResDto {
   name!: string;
 }
 
-/** Một dòng popup "chọn part cần gia công" — `productionJobOperationId`/`productionJobBomItemId`/
- * `itemId`/`bomItem.*`/`job.id`/`operation.*` là đúng bộ giá trị client gửi lại khi tạo dòng OS-OUT
- * (`OutsourcingOrderItemReqDto`); `unit` chỉ để hiển thị. Cùng khuôn popup OQC
- * (`InspectableOperationResDto`) nhưng mốc so sánh khác: đây là SL gửi gia công, không phải tiến
- * độ QC. */
+/** Dòng popup "chọn part cần gia công". `productionJobOperationId`, `productionJobBomItemId`,
+ * `itemId`, `bomItem.*`, `job.id` và `operation.*` là bộ giá trị client gửi lại khi tạo dòng OS-OUT
+ * (`OutsourcingOrderItemReqDto`); `unit` chỉ để hiển thị. */
 @Exclude()
 export class OutsourceableOperationResDto {
   @Expose()

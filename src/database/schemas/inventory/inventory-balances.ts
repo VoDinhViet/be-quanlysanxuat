@@ -8,7 +8,7 @@ import { items } from '../items/items';
  * (`docs/CODEMAPS/inventory.md`). Ghi duy nhất qua `InventoryPostingService`.
  *
  * Rules:
- * - `quantity` không bao giờ âm (DB CHECK) — chốt chặn thật, khác thiết kế cũ chỉ kiểm ở service.
+ * - `quantity` không bao giờ âm (DB CHECK) — chốt chặn thật, không chỉ kiểm ở service.
  * - "Đã giữ"/`reserved` không có cột riêng — `GET /inventory/balances` tính động ở tầng đọc, xem
  *   `InventoryService.getInventoryBalances`.
  */
