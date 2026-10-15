@@ -1,24 +1,24 @@
 # Git Workflow
 
-## Commit Message Format
+Never commit or push unless the user orders it in that request. Approval for one commit does not carry to the next.
+
+## Commit message format
+
+Conventional Commits with a scope, in English:
+
 ```
-<type>: <description>
+feat(scope): description (PH-xxx)
 
 <optional body>
 ```
 
-Types: feat, fix, refactor, docs, test, chore, perf, ci
+Types: feat, fix, refactor, docs, test, chore, perf, ci.
 
-Note: ECC-managed installs set `"includeCoAuthoredBy": false` in `~/.claude/settings.json`, so commits carry no `Co-Authored-By` trailer by default. To keep Claude attribution, set `"includeCoAuthoredBy": true` or configure `attribution`; ECC never overwrites an explicit choice.
+`includeCoAuthoredBy` is `false` in `~/.claude/settings.json`, so commits carry no `Co-Authored-By` trailer.
 
-## Pull Request Workflow
+## Pull requests
 
-When creating PRs:
-1. Analyze full commit history (not just latest commit)
-2. Use `git diff [base-branch]...HEAD` to see all changes
-3. Draft comprehensive PR summary
-4. Include test plan with TODOs
-5. Push with `-u` flag if new branch
-
-> For the full development process (planning, TDD, code review) before git operations,
-> see [development-workflow.md](./development-workflow.md).
+1. Read the full commit history, not only the latest commit.
+2. Use `git diff [base-branch]...HEAD` to see all changes.
+3. Write a PR summary and a test plan.
+4. Push with `-u` for a new branch.

@@ -1,5 +1,7 @@
 # Naming
 
+Casing follows the NestJS/TypeScript defaults and is not restated here. Lint (`no-restricted-syntax`, warn, `eslint.config.mjs`) flags the generic names below; fix the warnings in files you touch. `*.export.ts` is exempt because `row` there is an Excel row.
+
 - Name a variable after what it holds, not after its shape. Never use generic names such as `rows`, `row`, `data`, `result`, `res`, `list`, `entries` or `items` (unless the value really is an `items` row) for query results or intermediate values. Name the thing: `lastPurchases`, `purchasedSuppliers`, `requisitions`, `receiptPurchaseSources`.
 - A query result takes the plural of its entity (`requisitions`, `suppliers`); a callback parameter takes the singular (`(purchase) => ...`, `(supplier) => ...`). Do not shorten to `r`, `x` or `row`.
 - A `Map` is named `<value>By<Key>` (`supplierById`, `sourcesByReceiptId`); a `Set` or id list says what the ids identify (`issueIds`, `supplierIds`).

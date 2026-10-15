@@ -30,7 +30,7 @@ Global pipeline: prefix `api`; `JwtAuthGuard` then `PermissionsGuard` (every rou
 
 ## Rules
 
-`.claude/rules/` holds the rules: `project-overrides.md` (wins on conflict), `api-conventions.md`, `database.md`, `config.md`, `naming.md`, `model-routing.md` (which model for plan mode and subagents), and the ECC base in `ecc/common` and `ecc/typescript`.
+`.claude/rules/` holds the rules: `project-overrides.md` (wins on conflict), `api-conventions.md`, `database.md`, `config.md`, `naming.md`, `comments.md` (how to write and clean code comments), `model-routing.md` (which model for plan mode and subagents), and the ECC base in `ecc/common` and `ecc/typescript`.
 
 ## Compact Instructions
 
