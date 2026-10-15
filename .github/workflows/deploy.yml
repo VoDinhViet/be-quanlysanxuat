@@ -12,6 +12,7 @@ on:
       - '**/*.md'
       # Không do CI copy lên VPS, đổi nó không cần build hay deploy.
       - 'deploy/backup.sh'
+      - 'deploy/notify-zalo.sh'
       - 'deploy/restore.sh'
       - 'deploy/proxy/**'
       - 'deploy/monitor/**'

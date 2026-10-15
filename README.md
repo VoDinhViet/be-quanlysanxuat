@@ -109,7 +109,7 @@ Lưu ý:
 - Deploy lại hoặc quay về bản cũ bằng tay: chạy workflow bằng `workflow_dispatch`, hoặc trên VPS
   `bash /opt/quanlysanxuat/remote-deploy.sh app ghcr.io/vodinhviet/be-quanlysanxuat:v<số>`
   (đăng nhập GHCR trước nếu image chưa có trên máy).
-- Push chỉ đổi `docs/`, `.claude/`, file `*.md`, `deploy/backup.sh`, `deploy/restore.sh`, `deploy/proxy/` hoặc `deploy/monitor/` thì không kích hoạt deploy.
+- Push chỉ đổi `docs/`, `.claude/`, file `*.md`, `deploy/backup.sh`, `deploy/restore.sh`, `deploy/notify-zalo.sh`, `deploy/proxy/` hoặc `deploy/monitor/` thì không kích hoạt deploy.
 
 ### HTTPS và tên miền (Caddy)
 
@@ -136,7 +136,32 @@ Cron 02:00 chạy `backup.sh` (cài tay ở `/opt/quanlysanxuat`), chia hai nhá
 
 Khôi phục bằng `restore.sh` (`list`, `db [--r2] [--test]`, `files`), hướng dẫn từng tình huống và mẫu lệnh nhờ AI
 trong [deploy/RESTORE.md](deploy/RESTORE.md). `bash restore.sh db --test` khôi phục thử vào DB tạm, nên chạy mỗi tháng.
-Cập nhật script: `scp deploy/{backup.sh,restore.sh,RESTORE.md} root@<vps>:/opt/quanlysanxuat/`.
+Cập nhật script: `scp deploy/{backup.sh,restore.sh,notify-zalo.sh,RESTORE.md} root@<vps>:/opt/quanlysanxuat/`.
+
+#### Báo Zalo (backup và bảo trì)
+
+`backup.sh` gửi tin Zalo sau mỗi lần chạy: `Backup OK` (dung lượng, số bảng, số người dùng, số file uploads, trạng thái R2)
+hoặc `Backup LỖI` kèm bước bị hỏng. Chưa có `notify-zalo.sh` hay `zalo.env` thì bỏ qua, backup vẫn chạy bình thường.
+Dùng Zalo Bot Platform (miễn phí khi còn Beta, chỉ chat 1-1, mỗi người phải nhắn bot một tin trước).
+
+Cài một lần:
+
+1. Mở https://bot.zapps.me, đăng nhập bằng Zalo, tạo bot, lấy Bot Token (dạng `số:chuỗi`).
+2. Mỗi admin nhận tin mở bot trên Zalo và nhắn một tin bất kỳ.
+3. Trên VPS: `apt install -y jq`, copy `notify-zalo.sh` vào `/opt/quanlysanxuat/`.
+4. Tạo `/opt/quanlysanxuat/zalo.env` rồi `chmod 600`:
+   ```
+   ZALO_BOT_TOKEN=<số:chuỗi>
+   ZALO_CHAT_IDS=
+   ```
+5. `bash notify-zalo.sh --updates` in `chat_id` của từng người đã nhắn bot, điền vào `ZALO_CHAT_IDS` (cách nhau bằng dấu phẩy).
+   Lệnh này không chạy được nếu bot đã đặt webhook.
+6. Thử: `bash notify-zalo.sh "test"`.
+
+Báo bảo trì bằng tay (tin có khung chuẩn: tiêu đề, thời gian, nội dung, ảnh hưởng):
+`bash /opt/quanlysanxuat/notify-zalo.sh --maintenance "22:00-23:00 ngày 16/10/2026" "Nâng cấp máy chủ" ["Ảnh hưởng"]`.
+Thông báo chung: `bash notify-zalo.sh "Nội dung"`.
+`zalo.env` chứa token nên không nằm trong repo và không có trong backup.
 
 ### Giám sát (Beszel và Uptime Kuma)
 

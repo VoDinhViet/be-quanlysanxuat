@@ -23,7 +23,7 @@ r2:qlsx-bk/                          (VPS: /var/backups/quanlysanxuat/ cho phầ
 - Trên đĩa VPS ảnh nằm ở `/var/lib/quanlysanxuat/uploads` (cùng cấu trúc `YYYY/MM/DD/<uuid>.<ext>`), không có bản nén riêng.
 - Chạy lúc 02:00 mỗi ngày (cron `/etc/cron.d/qlsx-backup`), log ở `/var/log/qlsx-backup.log`.
 
-**Không có trong backup:** file bí mật `.env.production` và `.env` trên VPS (mật khẩu DB, JWT secret...). Hãy cất bản sao
+**Không có trong backup:** file bí mật `.env.production`, `.env` và `zalo.env` trên VPS (mật khẩu DB, JWT secret, token bot Zalo...). Hãy cất bản sao
 trong trình quản lý mật khẩu. Mất chúng thì dựng lại được hệ thống nhưng phải tạo bí mật mới (mọi người dùng bị đăng xuất).
 
 ## 2. Kiểm tra backup còn tốt (nên làm mỗi tháng)
@@ -76,9 +76,9 @@ Thủ công: `rclone copy r2:qlsx-bk/files /var/lib/quanlysanxuat/uploads && cho
    ```bash
    mkdir -p /opt/quanlysanxuat /var/lib/quanlysanxuat/{postgres,redis,uploads}
    git clone https://github.com/VoDinhViet/be-quanlysanxuat.git /tmp/be
-   cp /tmp/be/docker-compose.yml /tmp/be/deploy/backup.sh /tmp/be/deploy/restore.sh /tmp/be/deploy/RESTORE.md /opt/quanlysanxuat/
+   cp /tmp/be/docker-compose.yml /tmp/be/deploy/backup.sh /tmp/be/deploy/restore.sh /tmp/be/deploy/notify-zalo.sh /tmp/be/deploy/RESTORE.md /opt/quanlysanxuat/
    ```
-3. Đặt lại các file bí mật trong `/opt/quanlysanxuat/`: `.env.production` (từ bản cất riêng) và `.env` gồm
+3. Đặt lại các file bí mật trong `/opt/quanlysanxuat/`: `zalo.env` (token bot Zalo, tạo lại theo README nếu mất), `.env.production` (từ bản cất riêng) và `.env` gồm
    `POSTGRES_PASSWORD=<mật khẩu mới hoặc cũ>` và `APP_IMAGE=ghcr.io/vodinhviet/be-quanlysanxuat:<tag mới nhất>`
    (tag xem ở tab Packages của repo, hoặc trong file `.json` của bản backup).
 4. Khai báo R2 cho rclone (`rclone config`, remote tên `r2`, loại S3, provider Cloudflare, endpoint

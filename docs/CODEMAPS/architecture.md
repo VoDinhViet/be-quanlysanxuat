@@ -73,4 +73,4 @@ Table `document_sequences` (`src/database/schemas/document-sequences.ts`, unique
 ## Deployment (visible in repo)
 - `Dockerfile` (multi-stage, node:24-bookworm-slim, Chromium from Debian for PDF, `PORT=8003`, user `node`, HEALTHCHECK on `/health`, `CMD node dist/src/main.js`; output path depends on `drizzle.config.ts` being compiled).
 - `docker-compose.yml`: services `app` (container `qlsx-backend`, env `.env.production`, binds `127.0.0.1:8003`, uploads bind-mount), `postgres` (postgres:18), `redis` (redis:7-alpine).
-- `nixpacks.toml` (alt build, chromium via nixpkgs); `deploy/`: `remote-deploy.sh`, `backup.sh`, `restore.sh`, `RESTORE.md`, `proxy/` (Caddy), `monitor/`, `local/` (`clone-prod-db.sh`, local compose), `compose.env.example`. Scripts not read; behaviour unverified.
+- `nixpacks.toml` (alt build, chromium via nixpkgs); `deploy/`: `remote-deploy.sh`, `backup.sh`, `restore.sh`, `notify-zalo.sh` (Zalo Bot alerts for backup, hand-run for maintenance), `RESTORE.md`, `proxy/` (Caddy), `monitor/`, `local/` (`clone-prod-db.sh`, local compose), `compose.env.example`. Scripts not read; behaviour unverified.

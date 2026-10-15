@@ -65,3 +65,6 @@ deleted-storage-keys.txt
 
 # Playwright MCP session output
 .playwright-mcp/
+
+# Zalo bot token (deploy/notify-zalo.sh)
+zalo.env
