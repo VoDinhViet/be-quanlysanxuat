@@ -67,6 +67,11 @@ import { UsersModule } from './api/users/users.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
+      envFilePath: [
+        `.env.${process.env.NODE_ENV || 'local'}`,
+        '.env.local',
+        '.env',
+      ],
       load: [
         appConfig,
         authConfig,

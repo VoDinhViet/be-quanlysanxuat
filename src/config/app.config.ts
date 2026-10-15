@@ -53,7 +53,7 @@ export default registerAs<AppConfig>('app', () => {
   validateConfig(process.env, EnvironmentVariablesValidator);
 
   return {
-    nodeEnv: (process.env.NODE_ENV as Environment) || Environment.DEVELOPMENT,
+    nodeEnv: (process.env.NODE_ENV as Environment) || Environment.LOCAL,
     name: process.env.APP_NAME || 'app',
     workingDirectory: process.env.PWD || process.cwd(),
     frontendDomain: process.env.FRONTEND_DOMAIN,
