@@ -48,6 +48,7 @@ import {
 } from '../purchase-orders/purchase-orders.query';
 import { CancelPaymentRequestReqDto } from './dto/cancel-payment-request.req.dto';
 import { UpdatePaymentRequestInvoiceReqDto } from './dto/update-payment-request-invoice.req.dto';
+import { UpdatePaymentRequestNoteReqDto } from './dto/update-payment-request-note.req.dto';
 import { UpdatePaymentRequestExtraCostReqDto } from './dto/update-payment-request-extra-cost.req.dto';
 import { ExportPaymentRequestsReqDto } from './dto/export-payment-requests.req.dto';
 import { GetPaymentRequestLogsReqDto } from './dto/get-payment-request-logs.req.dto';
@@ -205,7 +206,9 @@ export class PaymentRequestsService {
         paidAt: paymentRequests.paidAt,
         cancellationReason: paymentRequests.cancellationReason,
         supplierInvoiceNo: paymentRequests.supplierInvoiceNo,
-        purchaseOrderNote: purchaseOrders.note,
+        note: sql<
+          string | null
+        >`coalesce(${paymentRequests.note}, ${purchaseOrders.note})`,
         creatorName: users.fullName,
         createdAt: paymentRequests.createdAt,
       })
@@ -429,6 +432,31 @@ export class PaymentRequestsService {
     await this.db
       .update(paymentRequests)
       .set({ supplierInvoiceNo: reqDto.supplierInvoiceNo?.trim() || null })
+      .where(eq(paymentRequests.id, paymentRequestId));
+  }
+
+  /** Ghi chú của YCTT (PH-132) thay cho ô ghi chú PO: chưa có thì màn hình/bản in/Excel hiện ghi chú
+   * của PO. Sửa được ở mọi trạng thái trừ `CANCELLED`; chuỗi rỗng coi như xoá. */
+  async updatePaymentRequestNote(
+    paymentRequestId: string,
+    reqDto: UpdatePaymentRequestNoteReqDto,
+  ): Promise<void> {
+    const [paymentRequest] = await this.db
+      .select({ status: paymentRequests.status })
+      .from(paymentRequests)
+      .where(eq(paymentRequests.id, paymentRequestId))
+      .limit(1);
+
+    if (!paymentRequest) {
+      throw new AppException(ErrorCode.E157, HttpStatus.NOT_FOUND);
+    }
+    if (paymentRequest.status === PaymentRequestStatus.CANCELLED) {
+      throw new AppException(ErrorCode.E158, HttpStatus.CONFLICT);
+    }
+
+    await this.db
+      .update(paymentRequests)
+      .set({ note: reqDto.note?.trim() || null })
       .where(eq(paymentRequests.id, paymentRequestId));
   }
 

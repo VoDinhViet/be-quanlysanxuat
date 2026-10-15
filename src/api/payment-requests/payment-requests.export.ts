@@ -17,7 +17,7 @@ export interface PaymentRequestExport {
   paidAt: Date | null;
   cancellationReason: string | null;
   supplierInvoiceNo: string | null;
-  purchaseOrderNote: string | null;
+  note: string | null;
   creatorName: string | null;
   createdAt: Date;
 }
@@ -56,7 +56,7 @@ export const PAYMENT_REQUEST_EXPORT_COLUMNS: ExcelColumn<PaymentRequestExport>[]
       value: (row) => formatVnDateTime(row.paidAt),
     },
     { header: 'Lý do huỷ', value: (row) => row.cancellationReason },
-    { header: 'Ghi chú PO', value: (row) => row.purchaseOrderNote, width: 30 },
+    { header: 'Ghi chú', value: (row) => row.note, width: 30 },
     { header: 'Người tạo', value: (row) => row.creatorName },
     { header: 'Ngày tạo', value: (row) => formatVnDateTime(row.createdAt) },
   ];

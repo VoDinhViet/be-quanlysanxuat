@@ -25,6 +25,7 @@ import { PagePaymentRequestResDto } from './dto/page-payment-request.res.dto';
 import { PaymentRequestLogResDto } from './dto/payment-request-log.res.dto';
 import { PaymentRequestResDto } from './dto/payment-request.res.dto';
 import { UpdatePaymentRequestInvoiceReqDto } from './dto/update-payment-request-invoice.req.dto';
+import { UpdatePaymentRequestNoteReqDto } from './dto/update-payment-request-note.req.dto';
 import { UpdatePaymentRequestExtraCostReqDto } from './dto/update-payment-request-extra-cost.req.dto';
 import { PaymentRequestsService } from './payment-requests.service';
 
@@ -102,6 +103,23 @@ export class PaymentRequestsController {
     @Body() reqDto: UpdatePaymentRequestInvoiceReqDto,
   ): Promise<void> {
     return this.paymentRequestsService.updatePaymentRequestInvoice(
+      paymentRequestId,
+      reqDto,
+    );
+  }
+
+  @Patch(':paymentRequestId/note')
+  @Permissions('purchasing:update')
+  @ApiAuth({
+    summary:
+      'Nhập/sửa ghi chú của yêu cầu thanh toán — mọi trạng thái trừ CANCELLED',
+    statusCode: HttpStatus.NO_CONTENT,
+  })
+  updatePaymentRequestNote(
+    @UUIDParam('paymentRequestId') paymentRequestId: string,
+    @Body() reqDto: UpdatePaymentRequestNoteReqDto,
+  ): Promise<void> {
+    return this.paymentRequestsService.updatePaymentRequestNote(
       paymentRequestId,
       reqDto,
     );
