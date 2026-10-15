@@ -46,6 +46,10 @@ import { AppException } from '../../exceptions/app.exception';
 import { FilesService } from '../files/files.service';
 import { createProductionReceiptForJob } from '../inventory-receipts/inventory-receipts.write';
 import { linkQcFiles } from '../iqc/iqc.write';
+import {
+  getNcrRefById,
+  getNcrRefsByQualityInspectionId,
+} from '../ncrs/ncrs.query';
 import { closeNcrAfterOqc, createNcrFromOqc } from '../ncrs/ncrs.write';
 import { mapToQualityInspectionStatus } from '../iqc/quality-inspection-status.util';
 import { ConfirmOqcReqDto } from './dto/confirm-oqc.req.dto';
@@ -125,8 +129,8 @@ export class OqcService {
         : undefined,
     );
 
-    // Một `.select()` phẳng — join tường minh thay vì `db.query` quan hệ + hydrate riêng
-    // (`docs/decisions/qc-data-model.md`). `productionJobOperations`/`productionJobBomItems`/
+    // Một `.select()` phẳng — join tường minh thay vì `db.query` quan hệ + hydrate riêng.
+    // `productionJobOperations`/`productionJobBomItems`/
     // `items` dùng `innerJoin` — `chk_quality_inspections_oqc_job` đảm bảo mọi dòng
     // `inspectionType = OQC` (đã lọc ở `where`) luôn có cả hai, nên Drizzle tự suy kiểu non-null,
     // không cần assertion. `items` chỉ join để lấy `unitId` (cột `unit` bên dưới) — không select
@@ -351,6 +355,7 @@ export class OqcService {
         confirmedAt: qualityInspections.startedAt,
         resolvedAt: qualityInspections.approvedAt,
         createdAt: qualityInspections.createdAt,
+        ncrId: qualityInspections.ncrId,
         productionJob: getTableColumns(productionJobs),
         orderCode: orders.code,
         buyerPoNo: orders.buyerPoNo,
@@ -418,28 +423,38 @@ export class OqcService {
       throw new AppException(ErrorCode.E174, HttpStatus.NOT_FOUND);
     }
 
-    const latestAttempt = await this.getLatestAttempt(oqcId);
+    const [latestEvidences, spawnedNcrs, ncr] = await Promise.all([
+      this.getLatestAttemptEvidences(oqcId),
+      getNcrRefsByQualityInspectionId(this.db, oqcId),
+      oqcInspection.ncrId ? getNcrRefById(this.db, oqcInspection.ncrId) : null,
+    ]);
 
     return plainToInstance(
       OqcResDto,
       {
         ...oqcInspection,
-        files: latestAttempt?.evidences ?? [],
+        ncr,
+        spawnedNcrs,
+        files: latestEvidences,
       },
       { excludeExtraneousValues: true },
     );
   }
 
-  private async getLatestAttempt(qualityInspectionId: string) {
-    return this.db.query.qualityInspectionResults.findFirst({
-      where: eq(
-        qualityInspectionResults.qualityInspectionId,
-        qualityInspectionId,
-      ),
-      columns: {},
-      with: { evidences: { with: { file: true } } },
-      orderBy: desc(qualityInspectionResults.attemptNo),
-    });
+  /** Bằng chứng (kèm file) của lần kiểm mới nhất của phiếu OQC — chỉ phục vụ `getOqc`. */
+  private async getLatestAttemptEvidences(qualityInspectionId: string) {
+    const latestAttempt =
+      await this.db.query.qualityInspectionResults.findFirst({
+        where: eq(
+          qualityInspectionResults.qualityInspectionId,
+          qualityInspectionId,
+        ),
+        columns: {},
+        with: { evidences: { with: { file: true } } },
+        orderBy: desc(qualityInspectionResults.attemptNo),
+      });
+
+    return latestAttempt?.evidences ?? [];
   }
 
   /** "Yêu cầu QC" cấp Job — OQC theo lô một phần (PH-111): xưởng làm xong bao nhiêu ở công đoạn cuối
@@ -462,8 +477,8 @@ export class OqcService {
     }
 
     // Job tự chuyển `WAITING_QC` khi công đoạn Cấp 0 hoàn thành hết — chấp nhận cả hai trạng thái:
-    // lô một phần được xin khi Job còn `IN_PROGRESS`. Xem
-    // `docs/decisions/production-lifecycle-closing.md`.
+    // lô một phần được xin khi Job còn `IN_PROGRESS`.
+    //
     const allowedJobStatuses: ProductionJobStatus[] = [
       ProductionJobStatus.IN_PROGRESS,
       ProductionJobStatus.WAITING_QC,
@@ -526,7 +541,7 @@ export class OqcService {
    * attempt mới (`quality_inspection_results`), mirror trên `quality_inspections`, và đính kèm.
    * `linkFiles` chạy trước khi mở transaction (`.claude/rules/transactions.md`) nên
    * `dispositionEvidenceFileIds` vẫn bị validate/stamp `linkedAt` kể cả khi PASS — chỉ dòng
-   * `quality_inspection_evidences` bị bỏ qua. Xem `docs/workflows/outgoing-qc.md`. */
+   * `quality_inspection_evidences` bị bỏ qua. Xem `docs/CODEMAPS/quality.md`. */
   async confirmOqc(
     oqcId: string,
     reqDto: ConfirmOqcReqDto,
@@ -603,7 +618,7 @@ export class OqcService {
       // Job đứng yên ở `WAITING_QC` cho tới khi QC xử lý xong hết (không chỉ lần confirm này) —
       // `closeJobIfQcCovered` đếm lại toàn bộ dòng QC của Job (IQC lẫn OQC), mở khoá khi hết dở
       // dang. Ghi thẳng bằng drizzle, không qua `ProductionJobsService` — tránh vòng import
-      // (`production-jobs` đã import `oqc`). Xem `docs/decisions/production-lifecycle-closing.md`.
+      // (`production-jobs` đã import `oqc`).
       if (
         status === OqcStatus.COMPLETED &&
         lockedOqcInspection.productionJobId

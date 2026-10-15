@@ -11,6 +11,7 @@ import {
   EnumField,
   StringFieldOptional,
   UUIDField,
+  UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
 import { OrderBaseResDto } from '../../orders/dto/order-base.res.dto';
 import { FileResDto } from '../../files/dto/file.res.dto';
@@ -43,6 +44,13 @@ export class ProductionOrderDetailResDto {
     description: 'Mã NCR nguồn — chỉ có với LSX phụ (sourceType = NCR)',
   })
   ncrCode!: string | null;
+
+  @Expose()
+  @UUIDFieldOptional({
+    nullable: true,
+    description: 'Id NCR nguồn — để truy vết sang NCR (null = LSX đơn hàng)',
+  })
+  ncrId!: string | null;
 
   @Expose()
   @DateFieldOptional({

@@ -53,6 +53,17 @@ export class ProductionJobDetailResDto {
   ncrAction!: ProductionOrderNcrAction | null;
 
   @Expose()
+  @UUIDFieldOptional({
+    nullable: true,
+    description: 'Id NCR nguồn của LSX phụ (null = Job từ LSX đơn hàng)',
+  })
+  ncrId!: string | null;
+
+  @Expose()
+  @StringFieldOptional({ nullable: true, description: 'Mã NCR nguồn' })
+  ncrCode!: string | null;
+
+  @Expose()
   @UUIDField({ description: 'Id sản phẩm (FG)' })
   itemId!: string;
 

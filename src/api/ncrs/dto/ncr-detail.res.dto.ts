@@ -20,6 +20,7 @@ import {
 import { ItemImageRefResDto } from '../../items/dto/item-image-ref.res.dto';
 import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
 import { NcrResDto } from './ncr.res.dto';
+import { NcrOqcRefResDto, NcrRefResDto } from './ncr-trace.res.dto';
 
 @Exclude()
 export class NcrCostLineResDto {
@@ -123,4 +124,30 @@ export class NcrDetailResDto extends NcrResDto {
   @Expose()
   @ClassField(() => NcrLogResDto, { each: true })
   logs!: NcrLogResDto[];
+
+  @Expose()
+  @ClassFieldOptional(() => NcrOqcRefResDto, {
+    nullable: true,
+    description: 'Phiếu OQC sàng lọc sinh ra NCR này (null = NCR thủ công)',
+  })
+  qualityInspection!: NcrOqcRefResDto | null;
+
+  @Expose()
+  @ClassFieldOptional(() => NcrRefResDto, {
+    nullable: true,
+    description:
+      'NCR cha — NCR này sinh từ phiếu OQC lại của NCR cha (null = NCR gốc)',
+  })
+  parentNcr!: NcrRefResDto | null;
+
+  @Expose()
+  @ClassField(() => NcrRefResDto, { each: true })
+  childNcrs!: NcrRefResDto[];
+
+  @Expose()
+  @ClassField(() => NcrOqcRefResDto, {
+    each: true,
+    description: 'Các phiếu OQC lại được yêu cầu từ NCR này',
+  })
+  reinspections!: NcrOqcRefResDto[];
 }

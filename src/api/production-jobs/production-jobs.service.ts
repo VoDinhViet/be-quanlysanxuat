@@ -30,6 +30,7 @@ import {
   clients,
   files,
   items,
+  ncrs,
   orders,
   productionJobBomItems,
   productionJobIssues,
@@ -89,7 +90,7 @@ import {
  * transaction duyệt LSX (`ProductionOrdersService.approveProductionOrder`) — không có route tạo
  * Job riêng. Snapshot dựng ngay lúc tạo Job (`createJobs`), chụp lại được khi còn `PENDING`
  * (`reloadSnapshot`); Job không bao giờ đọc sống từ sản phẩm. Vòng đời, business rule:
- * `docs/domains/production.md`, `docs/workflows/production-job-execution.md`. */
+ * `docs/CODEMAPS/production.md`. */
 @Injectable()
 export class ProductionJobsService {
   constructor(
@@ -247,6 +248,8 @@ export class ProductionJobsService {
         code: productionJobs.code,
         productionOrderId: productionJobs.productionOrderId,
         ncrAction: productionOrders.ncrAction,
+        ncrId: productionOrders.ncrId,
+        ncrCode: ncrs.code,
         order: getTableColumns(orders),
         client: getTableColumns(clients),
         itemId: productionJobs.itemId,
@@ -270,6 +273,7 @@ export class ProductionJobsService {
         eq(productionOrders.id, productionJobs.productionOrderId),
       )
       .innerJoin(orders, eq(orders.id, productionOrders.orderId))
+      .leftJoin(ncrs, eq(ncrs.id, productionOrders.ncrId))
       .leftJoin(clients, eq(clients.id, orders.clientId))
       .innerJoin(items, eq(items.id, productionJobs.itemId))
       .leftJoin(units, eq(units.id, items.unitId))
@@ -318,7 +322,7 @@ export class ProductionJobsService {
     );
 
     // "Theo dõi đã lãnh" — Đã lãnh đọc qua hàm thuần của module `inventory-requisitions`
-    // (`docs/domains/inventory.md`), không qua DI, cùng tiền lệ `hasPendingIqcForItems`.
+    // (`docs/CODEMAPS/inventory.md`), không qua DI, cùng tiền lệ `hasPendingIqcForItems`.
     const issued = issuedQuantityByJobItemSubquery(this.db);
     // Tồn thực tế + khả dụng cùng nguồn với màn Tồn kho vật tư, đọc theo vật tư sống (`itemId`).
     const onHandByItem = balanceByItemSubquery(this.db);
@@ -398,8 +402,8 @@ export class ProductionJobsService {
    * `OUTSOURCE`), nhóm theo BOM item chứa nó; nguồn duy nhất để lấy id công đoạn
    * (`production_job_operations.id`) cho `POST
    * /production-execution/operations/:jobOperationId/reports`. `plannedQuantity` đọc thẳng cột đã
-   * đóng băng lúc `start` (`production-job-snapshot.query.ts`, xem
-   * `docs/decisions/job-snapshot-at-start.md` — Job `PENDING` trả kế hoạch sống, `id` null), gắn xuống từng
+   * đóng băng lúc `start` (`production-job-snapshot.query.ts`,
+   * Job `PENDING` trả kế hoạch sống, `id` null), gắn xuống từng
    * công đoạn của node. `operationId` optional lọc chỉ trả BOM item nào chứa đúng công đoạn đó —
    * dùng bởi "Thực hiện sản xuất" (`ProductionExecutionService` đọc qua route này, không có route
    * riêng). Mảng thường, không phân trang — số BOM item của một Job luôn nhỏ. */
@@ -800,7 +804,7 @@ export class ProductionJobsService {
    * có của Job (chỉ chụp bù cho Job cũ tạo trước khi có snapshot lúc tạo). Cùng transaction: vật
    * tư nào của Job thiếu tồn thì sinh một đề xuất mua hàng cho đúng phần thiếu
    * (`PurchaseRequestsService.createShortageRequest`) — không thiếu gì thì không tạo phiếu.
-   * Trình tự đầy đủ: `docs/workflows/production-job-execution.md`. */
+   * Trình tự đầy đủ: `docs/CODEMAPS/production.md`. */
   async startJob(jobId: string, userId: string): Promise<void> {
     await this.db.transaction(async (tx) => {
       // Tính thiếu đọc nhu cầu của mọi Job đã start, mà Job vừa start chỉ hiện ra sau khi commit —

@@ -46,6 +46,7 @@ import { RejectNcrReqDto } from './dto/reject-ncr.req.dto';
 import { RequestNcrOqcReqDto } from './dto/request-ncr-oqc.req.dto';
 import { SaveNcrCostLinesReqDto } from './dto/save-ncr-cost-lines.req.dto';
 import { UpdateNcrReqDto } from './dto/update-ncr.req.dto';
+import { getNcrTrace } from './ncrs.query';
 import { generateNcrCode } from './ncrs.write';
 
 const ncrListRelations = {
@@ -113,10 +114,11 @@ export class NcrsService {
     }
 
     const totalCost = ncr.costLines.reduce((sum, line) => sum + line.amount, 0);
+    const trace = await getNcrTrace(this.db, ncr);
 
     return plainToInstance(
       NcrDetailResDto,
-      { ...ncr, totalCost },
+      { ...ncr, totalCost, ...trace },
       { excludeExtraneousValues: true },
     );
   }

@@ -24,6 +24,7 @@ import { ItemRefResDto } from '../../items/dto/item-ref.res.dto';
 import { QcFileResDto } from '../../iqc/dto/qc-file.res.dto';
 import { ProductionJobOperationRefResDto } from '../../production-jobs/dto/production-job-operation-ref.res.dto';
 import { ProductionJobRefResDto } from '../../production-jobs/dto/production-job-ref.res.dto';
+import { NcrRefResDto } from '../../ncrs/dto/ncr-trace.res.dto';
 import { UnitRefResDto } from '../../units/dto/unit-ref.res.dto';
 import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
 
@@ -43,6 +44,20 @@ export class OqcResDto {
   @Expose()
   @UUIDField()
   id!: string;
+
+  @Expose()
+  @ClassFieldOptional(() => NcrRefResDto, {
+    nullable: true,
+    description: 'NCR mà phiếu này là OQC lại (null = lô kiểm thường)',
+  })
+  ncr!: NcrRefResDto | null;
+
+  @Expose()
+  @ClassField(() => NcrRefResDto, {
+    each: true,
+    description: 'NCR sinh ra từ phiếu này khi sàng lọc có SL NG',
+  })
+  spawnedNcrs!: NcrRefResDto[];
 
   @Expose()
   @StringField({ description: 'Mã OQC' })
