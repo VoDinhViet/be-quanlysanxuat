@@ -15,14 +15,20 @@ import {
 import { users } from '../identity-access/users';
 import { purchaseOrders } from './purchase-orders';
 
+// PH-134: DRAFT (người mua rà soát) → PENDING (đã đề nghị, chờ kế toán) → PAID; kế toán có thể trả về
+// REJECTED để người mua sửa rồi đề nghị lại; DRAFT/PENDING/REJECTED đều hủy được.
 export enum PaymentRequestStatus {
+  DRAFT = 'DRAFT',
   PENDING = 'PENDING',
+  REJECTED = 'REJECTED',
   PAID = 'PAID',
   CANCELLED = 'CANCELLED',
 }
 
 export const paymentRequestStatusEnum = pgEnum('payment_request_status', [
+  PaymentRequestStatus.DRAFT,
   PaymentRequestStatus.PENDING,
+  PaymentRequestStatus.REJECTED,
   PaymentRequestStatus.PAID,
   PaymentRequestStatus.CANCELLED,
 ]);
@@ -71,7 +77,17 @@ export const paymentRequests = pgTable(
     dueDate: date('due_date', { mode: 'date' }).notNull(),
     status: paymentRequestStatusEnum('status')
       .notNull()
-      .default(PaymentRequestStatus.PENDING),
+      .default(PaymentRequestStatus.DRAFT),
+    sentBy: uuid('sent_by').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    sentAt: timestamp('sent_at'),
+    // Lý do từ chối giữ lại làm lịch sử sau khi đề nghị lại; chỉ hiển thị khi đang REJECTED.
+    rejectedBy: uuid('rejected_by').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    rejectedAt: timestamp('rejected_at'),
+    rejectionReason: varchar('rejection_reason', { length: 1000 }),
     paidBy: uuid('paid_by').references(() => users.id, {
       onDelete: 'set null',
     }),
@@ -98,6 +114,8 @@ export const paymentRequests = pgTable(
   (table) => [
     index('idx_payment_requests_status').on(table.status),
     index('idx_payment_requests_created_by').on(table.createdBy),
+    index('idx_payment_requests_sent_by').on(table.sentBy),
+    index('idx_payment_requests_rejected_by').on(table.rejectedBy),
     index('idx_payment_requests_paid_by').on(table.paidBy),
     index('idx_payment_requests_cancelled_by').on(table.cancelledBy),
     check(
@@ -113,6 +131,14 @@ export const paymentRequestsRelations = relations(
     purchaseOrder: one(purchaseOrders, {
       fields: [paymentRequests.purchaseOrderId],
       references: [purchaseOrders.id],
+    }),
+    sentByUser: one(users, {
+      fields: [paymentRequests.sentBy],
+      references: [users.id],
+    }),
+    rejectedByUser: one(users, {
+      fields: [paymentRequests.rejectedBy],
+      references: [users.id],
     }),
     paidByUser: one(users, {
       fields: [paymentRequests.paidBy],

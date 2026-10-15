@@ -7,6 +7,7 @@ import {
   eq,
   getTableColumns,
   gte,
+  inArray,
   lt,
   or,
   sql,
@@ -15,6 +16,7 @@ import { DateTime } from 'luxon';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
+import { exclusiveEndOfDay } from '../../common/utils/date-range.util';
 import {
   DocumentType,
   generateDocumentSequence,
@@ -22,6 +24,7 @@ import {
 import { buildXlsxBuffer, XLSX_MIME } from '../../common/utils/excel.util';
 import { extractPostgresError } from '../../common/utils/postgres-error.util';
 import { unaccentILike } from '../../common/utils/search.util';
+import { formatVnd } from '../../common/utils/vnd.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
@@ -47,16 +50,17 @@ import {
   orderReceivedQuantitySubquery,
 } from '../purchase-orders/purchase-orders.query';
 import { CancelPaymentRequestReqDto } from './dto/cancel-payment-request.req.dto';
-import { UpdatePaymentRequestInvoiceReqDto } from './dto/update-payment-request-invoice.req.dto';
-import { UpdatePaymentRequestUrgencyReqDto } from './dto/update-payment-request-urgency.req.dto';
-import { UpdatePaymentRequestNoteReqDto } from './dto/update-payment-request-note.req.dto';
-import { UpdatePaymentRequestExtraCostReqDto } from './dto/update-payment-request-extra-cost.req.dto';
 import { ExportPaymentRequestsReqDto } from './dto/export-payment-requests.req.dto';
 import { GetPaymentRequestLogsReqDto } from './dto/get-payment-request-logs.req.dto';
 import { GetPaymentRequestsReqDto } from './dto/get-payment-requests.req.dto';
 import { PagePaymentRequestResDto } from './dto/page-payment-request.res.dto';
 import { PaymentRequestLogResDto } from './dto/payment-request-log.res.dto';
 import { PaymentRequestResDto } from './dto/payment-request.res.dto';
+import { RejectPaymentRequestReqDto } from './dto/reject-payment-request.req.dto';
+import { UpdatePaymentRequestExtraCostReqDto } from './dto/update-payment-request-extra-cost.req.dto';
+import { UpdatePaymentRequestInvoiceReqDto } from './dto/update-payment-request-invoice.req.dto';
+import { UpdatePaymentRequestNoteReqDto } from './dto/update-payment-request-note.req.dto';
+import { UpdatePaymentRequestUrgencyReqDto } from './dto/update-payment-request-urgency.req.dto';
 import { PAYMENT_REQUEST_EXPORT_COLUMNS } from './payment-requests.export';
 
 /** Số ngày tính hạn thanh toán từ `orderDate` của PO — `createIfOrderCompleted` là consumer thật
@@ -67,6 +71,52 @@ const PAYMENT_TERM_DAYS: Record<PaymentTerm, number> = {
   [PaymentTerm.NET_30]: 30,
   [PaymentTerm.NET_60]: 60,
 };
+
+/** Trạng thái người mua còn được sửa phát sinh và (re)gửi đề nghị thanh toán (PH-134). */
+const EDITABLE_PAYMENT_REQUEST_STATUSES: readonly PaymentRequestStatus[] = [
+  PaymentRequestStatus.DRAFT,
+  PaymentRequestStatus.REJECTED,
+];
+
+/** Chưa chi và chưa huỷ — còn huỷ được và đổi được mức độ gấp. */
+const OPEN_PAYMENT_REQUEST_STATUSES: readonly PaymentRequestStatus[] = [
+  PaymentRequestStatus.DRAFT,
+  PaymentRequestStatus.PENDING,
+  PaymentRequestStatus.REJECTED,
+];
+
+/** Mọi trạng thái trừ `CANCELLED` — ghi chú và số hóa đơn vẫn sửa được sau khi đã chi. */
+const NON_CANCELLED_PAYMENT_REQUEST_STATUSES: readonly PaymentRequestStatus[] =
+  Object.values(PaymentRequestStatus).filter(
+    (status) => status !== PaymentRequestStatus.CANCELLED,
+  );
+
+/** Số liệu chốt theo PO tại thời điểm sinh (hoặc sinh lại) YCTT. */
+interface PaymentRequestSnapshot {
+  requestedAmount: number;
+  advancePaymentAmount: number;
+  dueDate: Date;
+}
+
+/** `payment_request_logs.content` là varchar(1000); lý do tối đa 1000 ký tự cộng tiền tố sẽ vượt. */
+const MAX_LOG_CONTENT_LENGTH = 1000;
+
+function truncateLogContent(content: string): string {
+  return content.slice(0, MAX_LOG_CONTENT_LENGTH);
+}
+
+/** Tổng tiền hàng đã chốt: đề nghị chi + tạm ứng − chi phí phát sinh (phát sinh không phải tiền hàng). */
+function settledTotalOf(paymentRequest: {
+  requestedAmount: number;
+  advancePaymentAmount: number;
+  extraCost: number;
+}): number {
+  return (
+    paymentRequest.requestedAmount +
+    paymentRequest.advancePaymentAmount -
+    paymentRequest.extraCost
+  );
+}
 
 @Injectable()
 export class PaymentRequestsService {
@@ -101,19 +151,14 @@ export class PaymentRequestsService {
       reqDto.startDate
         ? gte(paymentRequests.createdAt, reqDto.startDate)
         : undefined,
-      // Biên trên loại trừ — `endDate` parse ra nửa đêm UTC, `lte` sẽ bỏ sót cùng ngày.
       reqDto.endDate
-        ? lt(
-            paymentRequests.createdAt,
-            new Date(reqDto.endDate.getTime() + 24 * 60 * 60 * 1000),
-          )
+        ? lt(paymentRequests.createdAt, exclusiveEndOfDay(reqDto.endDate))
         : undefined,
     );
 
-    // `.select()` thay vì relational query — `purchaseOrders`/`paymentRequests` collapse type ngay
-    // ở `with:` 1 cấp (Drizzle relational query type-inference, không phải do lồng sâu). Join
-    // thẳng, DTO (`PickType` trên Ref DTO) tự lọc field nào thật sự lộ ra ngoài.
-    const [rows, [{ total }]] = await Promise.all([
+    // `.select()` thay vì relational query: type của `purchaseOrders`/`paymentRequests` bị collapse
+    // ngay ở `with:` một cấp. DTO (`PickType` trên Ref DTO) lọc field nào lộ ra ngoài.
+    const [pagePaymentRequests, [{ total }]] = await Promise.all([
       this.db
         .select({
           id: paymentRequests.id,
@@ -143,8 +188,7 @@ export class PaymentRequestsService {
         .limit(reqDto.limit)
         .offset(reqDto.offset)
         .orderBy(desc(paymentRequests.createdAt)),
-      // Không join `suppliers` — `where` chỉ tham chiếu `purchaseOrders` (`supplierId` lọc trên
-      // FK, không phải bảng `suppliers`), join thêm bảng này vào đây chỉ tốn công vô ích.
+      // Không join `suppliers`: `where` chỉ tham chiếu `purchaseOrders`.
       this.db
         .select({ total: count() })
         .from(paymentRequests)
@@ -156,7 +200,7 @@ export class PaymentRequestsService {
     ]);
 
     return new OffsetPaginatedDto(
-      plainToInstance(PagePaymentRequestResDto, rows, {
+      plainToInstance(PagePaymentRequestResDto, pagePaymentRequests, {
         excludeExtraneousValues: true,
       }),
       new OffsetPaginationDto(total, reqDto),
@@ -194,10 +238,7 @@ export class PaymentRequestsService {
         ? gte(paymentRequests.createdAt, reqDto.startDate)
         : undefined,
       reqDto.endDate
-        ? lt(
-            paymentRequests.createdAt,
-            new Date(reqDto.endDate.getTime() + 24 * 60 * 60 * 1000),
-          )
+        ? lt(paymentRequests.createdAt, exclusiveEndOfDay(reqDto.endDate))
         : undefined,
     );
 
@@ -267,6 +308,8 @@ export class PaymentRequestsService {
             },
           },
         },
+        sentByUser: true,
+        rejectedByUser: true,
         paidByUser: true,
         cancelledByUser: true,
         creatorBy: true,
@@ -283,14 +326,14 @@ export class PaymentRequestsService {
       this.db,
       purchaseOrder,
     );
-    const receivedByItemId = settledAmounts.receivedQuantityByItemId;
 
     const items = purchaseOrder.items.map((item) => {
       const unitPrice = item.unitPrice ?? 0;
       const receivedQuotationQty = item.quotationUnit
         ? (settledAmounts.billedQuotationQuantityByItemId.get(item.id) ?? 0)
         : null;
-      const receivedQty = receivedByItemId.get(item.id) ?? 0;
+      const receivedQty =
+        settledAmounts.receivedQuantityByItemId.get(item.id) ?? 0;
 
       return {
         id: item.id,
@@ -299,7 +342,7 @@ export class PaymentRequestsService {
         unit: item.purchaseRequestItem.item.unit.name,
         orderedQty: item.quantity,
         receivedQty,
-        quotationUnit: item.quotationUnit ?? null,
+        quotationUnit: item.quotationUnit,
         orderedQuotationQty: item.quotationQuantity,
         receivedQuotationQty,
         unitPrice,
@@ -312,22 +355,18 @@ export class PaymentRequestsService {
       {
         ...paymentRequest,
         supplier: purchaseOrder.supplier,
-        purchaseOrderTotalAmount:
-          paymentRequest.requestedAmount +
-          paymentRequest.advancePaymentAmount -
-          paymentRequest.extraCost,
+        purchaseOrderTotalAmount: settledTotalOf(paymentRequest),
         subtotal: settledAmounts.subtotal,
         vatAmount: settledAmounts.vatAmount,
-        advancePaymentAmount: paymentRequest.advancePaymentAmount,
         advancePaymentNote: purchaseOrder.advancePaymentNote,
-        extraCost: paymentRequest.extraCost,
-        extraCostNote: paymentRequest.extraCostNote,
         purchaseOrderNote: purchaseOrder.note,
         vatPercent: purchaseOrder.vatPercent,
         otherCost: purchaseOrder.otherCost,
         otherCostNote: purchaseOrder.otherCostNote,
         items,
         createdBy: paymentRequest.creatorBy,
+        sentBy: paymentRequest.sentByUser,
+        rejectedBy: paymentRequest.rejectedByUser,
         paidBy: paymentRequest.paidByUser,
         cancelledBy: paymentRequest.cancelledByUser,
       },
@@ -339,17 +378,21 @@ export class PaymentRequestsService {
     paymentRequestId: string,
     userId: string,
   ): Promise<void> {
-    await this.ensurePaymentRequestPending(paymentRequestId);
+    await this.ensurePaymentRequestStatus(paymentRequestId, [
+      PaymentRequestStatus.PENDING,
+    ]);
 
     await this.db.transaction(async (tx) => {
-      await tx
-        .update(paymentRequests)
-        .set({
+      await this.transitionStatus(
+        tx,
+        paymentRequestId,
+        [PaymentRequestStatus.PENDING],
+        {
           status: PaymentRequestStatus.PAID,
           paidBy: userId,
           paidAt: new Date(),
-        })
-        .where(eq(paymentRequests.id, paymentRequestId));
+        },
+      );
 
       await tx.insert(paymentRequestLogs).values({
         paymentRequestId,
@@ -365,14 +408,84 @@ export class PaymentRequestsService {
     reqDto: CancelPaymentRequestReqDto,
     userId: string,
   ): Promise<void> {
-    await this.ensurePaymentRequestPending(paymentRequestId);
+    await this.ensurePaymentRequestStatus(
+      paymentRequestId,
+      OPEN_PAYMENT_REQUEST_STATUSES,
+    );
 
     await this.db.transaction((tx) =>
       this.markCancelled(tx, paymentRequestId, userId, reqDto.reason),
     );
   }
 
-  /** Chi phí phát sinh sau khi đặt hàng (giao ngoài giờ, bốc dỡ...); chỉ sửa khi PENDING. */
+  /** Người mua đề nghị thanh toán (PH-134): `DRAFT`/`REJECTED` → `PENDING`, chuyển sang kế toán duyệt. */
+  async sendPaymentRequest(
+    paymentRequestId: string,
+    userId: string,
+  ): Promise<void> {
+    await this.ensurePaymentRequestStatus(
+      paymentRequestId,
+      EDITABLE_PAYMENT_REQUEST_STATUSES,
+    );
+
+    await this.db.transaction(async (tx) => {
+      await this.transitionStatus(
+        tx,
+        paymentRequestId,
+        EDITABLE_PAYMENT_REQUEST_STATUSES,
+        {
+          status: PaymentRequestStatus.PENDING,
+          sentBy: userId,
+          sentAt: new Date(),
+        },
+      );
+
+      await tx.insert(paymentRequestLogs).values({
+        paymentRequestId,
+        action: PaymentRequestLogAction.SENT,
+        content: 'Đề nghị thanh toán',
+        performedBy: userId,
+      });
+    });
+  }
+
+  /** Kế toán/giám đốc từ chối thanh toán (PH-134): `PENDING` → `REJECTED` kèm lý do, người mua sửa
+   * rồi đề nghị lại. Khác `cancel` — huỷ là kết thúc hẳn. */
+  async rejectPaymentRequest(
+    paymentRequestId: string,
+    reqDto: RejectPaymentRequestReqDto,
+    userId: string,
+  ): Promise<void> {
+    await this.ensurePaymentRequestStatus(paymentRequestId, [
+      PaymentRequestStatus.PENDING,
+    ]);
+
+    await this.db.transaction(async (tx) => {
+      await this.transitionStatus(
+        tx,
+        paymentRequestId,
+        [PaymentRequestStatus.PENDING],
+        {
+          status: PaymentRequestStatus.REJECTED,
+          rejectedBy: userId,
+          rejectedAt: new Date(),
+          rejectionReason: reqDto.reason,
+        },
+      );
+
+      await tx.insert(paymentRequestLogs).values({
+        paymentRequestId,
+        action: PaymentRequestLogAction.REJECTED,
+        content: truncateLogContent(
+          `Từ chối thanh toán — lý do: ${reqDto.reason}`,
+        ),
+        performedBy: userId,
+      });
+    });
+  }
+
+  /** Chi phí phát sinh sau khi đặt hàng (giao ngoài giờ, bốc dỡ...); chỉ sửa khi người mua còn
+   * đang xử lý (`DRAFT`/`REJECTED`) để kế toán duyệt trên số cố định. */
   async updatePaymentRequestExtraCost(
     paymentRequestId: string,
     reqDto: UpdatePaymentRequestExtraCostReqDto,
@@ -382,6 +495,14 @@ export class PaymentRequestsService {
     const nextExtraCostNote = reqDto.extraCostNote?.trim() || null;
 
     await this.db.transaction(async (tx) => {
+      // Khóa dòng YCTT để số tiền tạm ứng đọc ở dưới không bị `applyAdvancePayment` đổi xen giữa
+      // (hai bên cùng ghi `requestedAmount`).
+      await tx
+        .select({ id: paymentRequests.id })
+        .from(paymentRequests)
+        .where(eq(paymentRequests.id, paymentRequestId))
+        .for('update');
+
       const paymentRequest = await tx.query.paymentRequests.findFirst({
         columns: { status: true, advancePaymentAmount: true },
         where: eq(paymentRequests.id, paymentRequestId),
@@ -391,7 +512,7 @@ export class PaymentRequestsService {
       if (!paymentRequest) {
         throw new AppException(ErrorCode.E157, HttpStatus.NOT_FOUND);
       }
-      if (paymentRequest.status !== PaymentRequestStatus.PENDING) {
+      if (!EDITABLE_PAYMENT_REQUEST_STATUSES.includes(paymentRequest.status)) {
         throw new AppException(ErrorCode.E158, HttpStatus.CONFLICT);
       }
 
@@ -401,19 +522,25 @@ export class PaymentRequestsService {
       });
       const requestedAmount = settledAmounts.balanceDue + nextExtraCost;
 
-      await tx
-        .update(paymentRequests)
-        .set({
+      // Điều kiện trạng thái nằm ngay trong UPDATE để một lần `send` đồng thời không làm đổi số tiền
+      // sau khi YCTT đã gửi kế toán.
+      await this.transitionStatus(
+        tx,
+        paymentRequestId,
+        EDITABLE_PAYMENT_REQUEST_STATUSES,
+        {
           extraCost: nextExtraCost,
           extraCostNote: nextExtraCostNote,
           requestedAmount,
-        })
-        .where(eq(paymentRequests.id, paymentRequestId));
+        },
+      );
 
       await tx.insert(paymentRequestLogs).values({
         paymentRequestId,
         action: PaymentRequestLogAction.EXTRA_COST_UPDATED,
-        content: `Cập nhật chi phí phát sinh: ${nextExtraCost.toLocaleString('vi-VN')} đ${nextExtraCostNote ? ` (${nextExtraCostNote})` : ''}`,
+        content: truncateLogContent(
+          `Cập nhật chi phí phát sinh: ${formatVnd(nextExtraCost)} đ${nextExtraCostNote ? ` (${nextExtraCostNote})` : ''}`,
+        ),
         performedBy: userId,
       });
     });
@@ -425,18 +552,10 @@ export class PaymentRequestsService {
     paymentRequestId: string,
     reqDto: UpdatePaymentRequestInvoiceReqDto,
   ): Promise<void> {
-    const [paymentRequest] = await this.db
-      .select({ status: paymentRequests.status })
-      .from(paymentRequests)
-      .where(eq(paymentRequests.id, paymentRequestId))
-      .limit(1);
-
-    if (!paymentRequest) {
-      throw new AppException(ErrorCode.E157, HttpStatus.NOT_FOUND);
-    }
-    if (paymentRequest.status === PaymentRequestStatus.CANCELLED) {
-      throw new AppException(ErrorCode.E158, HttpStatus.CONFLICT);
-    }
+    await this.ensurePaymentRequestStatus(
+      paymentRequestId,
+      NON_CANCELLED_PAYMENT_REQUEST_STATUSES,
+    );
 
     await this.db
       .update(paymentRequests)
@@ -450,18 +569,10 @@ export class PaymentRequestsService {
     paymentRequestId: string,
     reqDto: UpdatePaymentRequestNoteReqDto,
   ): Promise<void> {
-    const [paymentRequest] = await this.db
-      .select({ status: paymentRequests.status })
-      .from(paymentRequests)
-      .where(eq(paymentRequests.id, paymentRequestId))
-      .limit(1);
-
-    if (!paymentRequest) {
-      throw new AppException(ErrorCode.E157, HttpStatus.NOT_FOUND);
-    }
-    if (paymentRequest.status === PaymentRequestStatus.CANCELLED) {
-      throw new AppException(ErrorCode.E158, HttpStatus.CONFLICT);
-    }
+    await this.ensurePaymentRequestStatus(
+      paymentRequestId,
+      NON_CANCELLED_PAYMENT_REQUEST_STATUSES,
+    );
 
     await this.db
       .update(paymentRequests)
@@ -469,13 +580,16 @@ export class PaymentRequestsService {
       .where(eq(paymentRequests.id, paymentRequestId));
   }
 
-  /** Đánh dấu YCTT gấp / bình thường (PH-133); chỉ đổi được khi còn `PENDING` vì sau khi chi hoặc huỷ
-   * thì mức độ ưu tiên không còn ý nghĩa. */
+  /** Đánh dấu YCTT gấp / bình thường (PH-133); đổi được khi chưa chi hoặc huỷ (`DRAFT`/`PENDING`/
+   * `REJECTED`) vì sau đó mức độ ưu tiên không còn ý nghĩa. */
   async updatePaymentRequestUrgency(
     paymentRequestId: string,
     reqDto: UpdatePaymentRequestUrgencyReqDto,
   ): Promise<void> {
-    await this.ensurePaymentRequestPending(paymentRequestId);
+    await this.ensurePaymentRequestStatus(
+      paymentRequestId,
+      OPEN_PAYMENT_REQUEST_STATUSES,
+    );
 
     await this.db
       .update(paymentRequests)
@@ -490,7 +604,7 @@ export class PaymentRequestsService {
     await this.ensurePaymentRequestExists(paymentRequestId);
 
     const where = eq(paymentRequestLogs.paymentRequestId, paymentRequestId);
-    const [rows, [{ total }]] = await Promise.all([
+    const [requestLogs, [{ total }]] = await Promise.all([
       this.db.query.paymentRequestLogs.findMany({
         where,
         with: { performerBy: true },
@@ -502,7 +616,7 @@ export class PaymentRequestsService {
     ]);
 
     return new OffsetPaginatedDto(
-      plainToInstance(PaymentRequestLogResDto, rows, {
+      plainToInstance(PaymentRequestLogResDto, requestLogs, {
         excludeExtraneousValues: true,
       }),
       new OffsetPaginationDto(total, reqDto),
@@ -518,13 +632,11 @@ export class PaymentRequestsService {
     tx: DbTransaction,
     purchaseOrderId: string,
   ): Promise<void> {
-    // Tái dùng đúng 2 subquery `resolveOrderProgress`/`getPurchaseOrders` (PurchaseOrdersService)
-    // dùng để định nghĩa PO COMPLETED — tránh 2 nơi tính `orderedQuantity`/`receivedQuantity` theo
-    // 2 công thức có thể lệch nhau về sau.
+    // Cùng 2 subquery với `PurchaseOrdersService` để "COMPLETED" chỉ có một công thức.
     const orderedAgg = orderAggregateSubquery(tx);
     const receivedAgg = orderReceivedQuantitySubquery(tx);
 
-    const [existing, purchaseOrderRows] = await Promise.all([
+    const [existing, [purchaseOrder]] = await Promise.all([
       tx.query.paymentRequests.findFirst({
         columns: { id: true, status: true },
         where: eq(paymentRequests.purchaseOrderId, purchaseOrderId),
@@ -555,12 +667,11 @@ export class PaymentRequestsService {
         )
         .where(eq(purchaseOrders.id, purchaseOrderId)),
     ]);
-    // YCTT đã huỷ (phiếu nhập bị huỷ rồi nhận lại đủ hàng) thì hồi sinh bên dưới; `PENDING`/`PAID` giữ nguyên.
+    // YCTT đã huỷ (phiếu nhập bị huỷ rồi nhận lại đủ hàng) thì hồi sinh bên dưới; các trạng thái khác giữ nguyên.
     if (existing && existing.status !== PaymentRequestStatus.CANCELLED) {
       return;
     }
 
-    const purchaseOrder = purchaseOrderRows[0];
     // PO còn treo phiếu nhập DRAFT lúc bị huỷ (`cancelPurchaseOrder` chỉ chặn khi đã có phiếu
     // `POSTED`, `E124`) vẫn có thể `post` sau đó — không sinh YCTT cho PO không còn `ORDERED`.
     if (purchaseOrder?.status !== PurchaseOrderStatus.ORDERED) {
@@ -592,55 +703,85 @@ export class PaymentRequestsService {
       items: orderItems,
     });
 
-    const dueDate = new Date(
-      purchaseOrder.orderDate.getTime() +
-        PAYMENT_TERM_DAYS[purchaseOrder.paymentTerm] * 24 * 60 * 60 * 1000,
-    );
+    const dueDate = DateTime.fromJSDate(purchaseOrder.orderDate, {
+      zone: 'utc',
+    })
+      .plus({ days: PAYMENT_TERM_DAYS[purchaseOrder.paymentTerm] })
+      .toJSDate();
+    const snapshot: PaymentRequestSnapshot = {
+      requestedAmount: balanceDue,
+      advancePaymentAmount: purchaseOrder.advancePaymentAmount,
+      dueDate,
+    };
 
-    // `purchase_order_id` unique → không chèn dòng mới, đưa bản ghi đã huỷ về `PENDING` với số liệu hiện tại.
     if (existing) {
-      await tx
-        .update(paymentRequests)
-        .set({
-          status: PaymentRequestStatus.PENDING,
-          requestedAmount: balanceDue,
-          advancePaymentAmount: purchaseOrder.advancePaymentAmount,
-          extraCost: 0,
-          extraCostNote: null,
-          dueDate,
-          cancelledBy: null,
-          cancelledAt: null,
-          cancellationReason: null,
-        })
-        .where(eq(paymentRequests.id, existing.id));
-
-      await tx.insert(paymentRequestLogs).values({
-        paymentRequestId: existing.id,
-        action: PaymentRequestLogAction.CREATED,
-        content: `Tự động sinh lại yêu cầu thanh toán khi PO ${purchaseOrder.code} nhận đủ hàng`,
-        performedBy: null,
-      });
+      await this.reviveCancelledPaymentRequest(
+        tx,
+        existing.id,
+        purchaseOrder.code,
+        snapshot,
+      );
       return;
     }
+    await this.insertPaymentRequest(
+      tx,
+      purchaseOrderId,
+      purchaseOrder.code,
+      snapshot,
+    );
+  }
 
+  /** `purchase_order_id` unique → không chèn dòng mới, đưa bản ghi đã huỷ về `DRAFT` với số liệu hiện tại. */
+  private async reviveCancelledPaymentRequest(
+    tx: DbTransaction,
+    paymentRequestId: string,
+    purchaseOrderCode: string,
+    snapshot: PaymentRequestSnapshot,
+  ): Promise<void> {
+    await tx
+      .update(paymentRequests)
+      .set({
+        ...snapshot,
+        status: PaymentRequestStatus.DRAFT,
+        extraCost: 0,
+        extraCostNote: null,
+        sentBy: null,
+        sentAt: null,
+        rejectedBy: null,
+        rejectedAt: null,
+        rejectionReason: null,
+        cancelledBy: null,
+        cancelledAt: null,
+        cancellationReason: null,
+      })
+      .where(eq(paymentRequests.id, paymentRequestId));
+
+    await tx.insert(paymentRequestLogs).values({
+      paymentRequestId,
+      action: PaymentRequestLogAction.CREATED,
+      content: `Tự động sinh lại yêu cầu thanh toán khi PO ${purchaseOrderCode} nhận đủ hàng`,
+      performedBy: null,
+    });
+  }
+
+  private async insertPaymentRequest(
+    tx: DbTransaction,
+    purchaseOrderId: string,
+    purchaseOrderCode: string,
+    snapshot: PaymentRequestSnapshot,
+  ): Promise<void> {
     const code = await this.generatePaymentRequestCode(tx);
     try {
       const [created] = await tx
         .insert(paymentRequests)
-        .values({
-          code,
-          purchaseOrderId,
-          requestedAmount: balanceDue,
-          advancePaymentAmount: purchaseOrder.advancePaymentAmount,
-          dueDate,
-        })
+        .values({ ...snapshot, code, purchaseOrderId })
         .returning({ id: paymentRequests.id });
 
       if (created) {
         await tx.insert(paymentRequestLogs).values({
           paymentRequestId: created.id,
           action: PaymentRequestLogAction.CREATED,
-          content: `Tự động sinh yêu cầu thanh toán khi PO ${purchaseOrder.code} nhận đủ hàng`,
+          content: `Tự động sinh yêu cầu thanh toán khi PO ${purchaseOrderCode} nhận đủ hàng`,
           performedBy: null,
         });
       }
@@ -671,14 +812,15 @@ export class PaymentRequestsService {
       }[];
     },
   ) {
+    const purchaseOrderItemIds = purchaseOrder.items.map((item) => item.id);
     const [billedQuotationQuantityByItemId, receivedQuantityByItemId] =
       await Promise.all([
         getBilledQuotationQuantityByPurchaseOrderItemId(
           executor,
-          purchaseOrder.items.map((item) => item.id),
+          purchaseOrderItemIds,
         ),
         getReceivedQuantityByPurchaseOrderItemId(executor, {
-          purchaseOrderItemIds: purchaseOrder.items.map((item) => item.id),
+          purchaseOrderItemIds,
           statuses: [InventoryDocumentStatus.POSTED],
         }),
       ]);
@@ -723,16 +865,12 @@ export class PaymentRequestsService {
     ) {
       return null;
     }
-    return (
-      paymentRequest.requestedAmount +
-      paymentRequest.advancePaymentAmount -
-      paymentRequest.extraCost
-    );
+    return settledTotalOf(paymentRequest);
   }
 
   /** Đồng bộ tiền tạm ứng của PO sang YCTT (PH-128) — chạy trong transaction của
    * `PurchaseOrdersService.updatePurchaseOrderAdvancePayment`. Không có YCTT hoặc đã huỷ thì bỏ qua
-   * (YCTT huỷ sẽ sinh lại theo số PO lúc đó); `PAID` thì chặn (`E284`) vì tiền đã chi. */
+   * (YCTT huỷ sẽ sinh lại theo số PO lúc đó); `PAID` thì chặn (`E284`) vì tiền đã chi, `PENDING` thì chặn (`E317`) vì kế toán đang duyệt. */
   async applyAdvancePayment(
     tx: DbTransaction,
     input: {
@@ -742,10 +880,17 @@ export class PaymentRequestsService {
       userId: string;
     },
   ): Promise<void> {
-    const existing = await tx.query.paymentRequests.findFirst({
-      columns: { id: true, status: true, extraCost: true },
-      where: eq(paymentRequests.purchaseOrderId, input.purchaseOrderId),
-    });
+    // Khóa dòng YCTT: `send`/`mark-paid` đồng thời phải chờ, nên trạng thái đọc ở đây còn đúng lúc ghi.
+    const [existing] = await tx
+      .select({
+        id: paymentRequests.id,
+        status: paymentRequests.status,
+        extraCost: paymentRequests.extraCost,
+      })
+      .from(paymentRequests)
+      .where(eq(paymentRequests.purchaseOrderId, input.purchaseOrderId))
+      .limit(1)
+      .for('update');
 
     if (!existing || existing.status === PaymentRequestStatus.CANCELLED) {
       return;
@@ -753,22 +898,28 @@ export class PaymentRequestsService {
     if (existing.status === PaymentRequestStatus.PAID) {
       throw new AppException(ErrorCode.E284, HttpStatus.CONFLICT);
     }
+    // Kế toán đang duyệt số đề nghị chi đã gửi — chỉ sửa được khi YCTT còn ở người mua (nháp/bị từ chối).
+    if (existing.status === PaymentRequestStatus.PENDING) {
+      throw new AppException(ErrorCode.E317, HttpStatus.CONFLICT);
+    }
 
     // Chi phí phát sinh (PH-131) cộng vào số đề nghị chi, không bị tạm ứng bù trừ.
     const requestedAmount = input.balanceDue + existing.extraCost;
 
-    await tx
-      .update(paymentRequests)
-      .set({
+    await this.transitionStatus(
+      tx,
+      existing.id,
+      EDITABLE_PAYMENT_REQUEST_STATUSES,
+      {
         advancePaymentAmount: input.advancePaymentAmount,
         requestedAmount,
-      })
-      .where(eq(paymentRequests.id, existing.id));
+      },
+    );
 
     await tx.insert(paymentRequestLogs).values({
       paymentRequestId: existing.id,
       action: PaymentRequestLogAction.ADVANCE_PAYMENT_UPDATED,
-      content: `Cập nhật tiền tạm ứng ${input.advancePaymentAmount.toLocaleString('vi-VN')} đ, còn lại phải thanh toán ${requestedAmount.toLocaleString('vi-VN')} đ${existing.extraCost > 0 ? ` (đã gồm chi phí phát sinh ${existing.extraCost.toLocaleString('vi-VN')} đ)` : ''}`,
+      content: `Cập nhật tiền tạm ứng ${formatVnd(input.advancePaymentAmount)} đ, còn lại phải thanh toán ${formatVnd(requestedAmount)} đ${existing.extraCost > 0 ? ` (đã gồm chi phí phát sinh ${formatVnd(existing.extraCost)} đ)` : ''}`,
       performedBy: input.userId,
     });
   }
@@ -804,49 +955,80 @@ export class PaymentRequestsService {
     userId: string,
     reason: string,
   ): Promise<void> {
-    await tx
-      .update(paymentRequests)
-      .set({
+    await this.transitionStatus(
+      tx,
+      paymentRequestId,
+      OPEN_PAYMENT_REQUEST_STATUSES,
+      {
         status: PaymentRequestStatus.CANCELLED,
         cancelledBy: userId,
         cancelledAt: new Date(),
         cancellationReason: reason,
-      })
-      .where(eq(paymentRequests.id, paymentRequestId));
+      },
+    );
 
     await tx.insert(paymentRequestLogs).values({
       paymentRequestId,
       action: PaymentRequestLogAction.CANCELLED,
-      content: `Hủy yêu cầu — lý do: ${reason}`,
+      content: truncateLogContent(`Hủy yêu cầu — lý do: ${reason}`),
       performedBy: userId,
     });
+  }
+
+  /** UPDATE chỉ khi YCTT còn đúng ở `fromStatuses` — kiểm tra và ghi trong cùng một câu lệnh nên hai
+   * thao tác đồng thời (kế toán xác nhận vs từ chối, người mua gửi vs huỷ) không ghi đè nhau; bên
+   * thua nhận E158. Gọi trong transaction để log chỉ được ghi khi chuyển trạng thái thành công. */
+  private async transitionStatus(
+    tx: DbTransaction,
+    paymentRequestId: string,
+    fromStatuses: readonly PaymentRequestStatus[],
+    values: Partial<typeof paymentRequests.$inferInsert>,
+  ): Promise<void> {
+    const updatedPaymentRequests = await tx
+      .update(paymentRequests)
+      .set(values)
+      .where(
+        and(
+          eq(paymentRequests.id, paymentRequestId),
+          inArray(paymentRequests.status, [...fromStatuses]),
+        ),
+      )
+      .returning({ id: paymentRequests.id });
+
+    if (updatedPaymentRequests.length === 0) {
+      throw new AppException(ErrorCode.E158, HttpStatus.CONFLICT);
+    }
   }
 
   private async ensurePaymentRequestExists(
     paymentRequestId: string,
   ): Promise<void> {
-    const row = await this.db.query.paymentRequests.findFirst({
-      columns: { id: true },
-      where: eq(paymentRequests.id, paymentRequestId),
-    });
+    const [paymentRequest] = await this.db
+      .select({ id: paymentRequests.id })
+      .from(paymentRequests)
+      .where(eq(paymentRequests.id, paymentRequestId))
+      .limit(1);
 
-    if (!row) {
+    if (!paymentRequest) {
       throw new AppException(ErrorCode.E157, HttpStatus.NOT_FOUND);
     }
   }
 
-  private async ensurePaymentRequestPending(
+  /** E157 nếu không có YCTT, E158 nếu trạng thái hiện tại không nằm trong `allowedStatuses`. */
+  private async ensurePaymentRequestStatus(
     paymentRequestId: string,
+    allowedStatuses: readonly PaymentRequestStatus[],
   ): Promise<void> {
-    const row = await this.db.query.paymentRequests.findFirst({
-      columns: { id: true, status: true },
-      where: eq(paymentRequests.id, paymentRequestId),
-    });
+    const [paymentRequest] = await this.db
+      .select({ status: paymentRequests.status })
+      .from(paymentRequests)
+      .where(eq(paymentRequests.id, paymentRequestId))
+      .limit(1);
 
-    if (!row) {
+    if (!paymentRequest) {
       throw new AppException(ErrorCode.E157, HttpStatus.NOT_FOUND);
     }
-    if (row.status !== PaymentRequestStatus.PENDING) {
+    if (!allowedStatuses.includes(paymentRequest.status)) {
       throw new AppException(ErrorCode.E158, HttpStatus.CONFLICT);
     }
   }

@@ -80,7 +80,7 @@ export class PendingApprovalsResDto {
   @NumberField({
     int: true,
     description:
-      'Count of payment requests (YCTT) with status PENDING (waiting to be paid or cancelled) — visible to every user, no permission gate',
+      'Count of open payment requests (YCTT) with status DRAFT, PENDING or REJECTED (not yet paid or cancelled) — visible to every user, no permission gate',
   })
   paymentRequestsPending!: number;
 

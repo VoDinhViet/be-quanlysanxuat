@@ -704,6 +704,8 @@ export enum ErrorCode {
   E315 = 'inventory_receipt.error.quotation_quantity_required',
   // Sửa SL báo giá trên dòng PO không có ĐVBG.
   E316 = 'purchase_order.error.quotation_unit_missing',
+  // Sửa tạm ứng của PO khi YCTT đã gửi kế toán (PENDING) — kế toán đang duyệt trên số cố định.
+  E317 = 'payment_request.error.pending_approval',
   V003 = 'common.error.too_many_requests',
   // `GlobalExceptionFilter` bắt chuỗi "No values to set" của drizzle-orm — mọi `PATCH` khi
   // `ValidationPipe` whitelist đã loại sạch field lạ, còn lại payload rỗng cho `.set()`. Trước đây

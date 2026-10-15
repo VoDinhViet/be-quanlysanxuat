@@ -164,7 +164,7 @@ export class IntegrationPurchasingService {
         FROM ${paymentRequests}
         JOIN ${purchaseOrders} ON ${purchaseOrders.id} = ${paymentRequests.purchaseOrderId}
         JOIN ${suppliers} ON ${suppliers.id} = ${purchaseOrders.supplierId}
-        WHERE ${paymentRequests.status}::text = 'PENDING' AND ${paymentRequests.dueDate} < ${TODAY}
+        WHERE ${paymentRequests.status}::text IN ('DRAFT', 'PENDING', 'REJECTED') AND ${paymentRequests.dueDate} < ${TODAY}
         ORDER BY so_ngay_tre DESC LIMIT ${reqDto.limit ?? DEFAULT_LIST_LIMIT}`,
     );
   }

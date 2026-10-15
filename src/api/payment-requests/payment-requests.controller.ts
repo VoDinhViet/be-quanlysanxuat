@@ -24,6 +24,7 @@ import { GetPaymentRequestsReqDto } from './dto/get-payment-requests.req.dto';
 import { PagePaymentRequestResDto } from './dto/page-payment-request.res.dto';
 import { PaymentRequestLogResDto } from './dto/payment-request-log.res.dto';
 import { PaymentRequestResDto } from './dto/payment-request.res.dto';
+import { RejectPaymentRequestReqDto } from './dto/reject-payment-request.req.dto';
 import { UpdatePaymentRequestUrgencyReqDto } from './dto/update-payment-request-urgency.req.dto';
 import { UpdatePaymentRequestInvoiceReqDto } from './dto/update-payment-request-invoice.req.dto';
 import { UpdatePaymentRequestNoteReqDto } from './dto/update-payment-request-note.req.dto';
@@ -79,7 +80,7 @@ export class PaymentRequestsController {
   @Post(':paymentRequestId/mark-paid')
   @Permissions('purchasing:approve')
   @ApiAuth({
-    summary: 'Đánh dấu đã thanh toán — PENDING → PAID',
+    summary: 'Xác nhận thanh toán — PENDING → PAID',
     statusCode: HttpStatus.NO_CONTENT,
   })
   markPaymentRequestPaid(
@@ -88,6 +89,41 @@ export class PaymentRequestsController {
   ): Promise<void> {
     return this.paymentRequestsService.markPaymentRequestPaid(
       paymentRequestId,
+      payload.userId,
+    );
+  }
+
+  @Post(':paymentRequestId/send')
+  @Permissions('purchasing:update')
+  @ApiAuth({
+    summary: 'Đề nghị thanh toán (gửi kế toán) — DRAFT/REJECTED → PENDING',
+    statusCode: HttpStatus.NO_CONTENT,
+  })
+  sendPaymentRequest(
+    @UUIDParam('paymentRequestId') paymentRequestId: string,
+    @CurrentUser() payload: JwtPayloadType,
+  ): Promise<void> {
+    return this.paymentRequestsService.sendPaymentRequest(
+      paymentRequestId,
+      payload.userId,
+    );
+  }
+
+  @Post(':paymentRequestId/reject')
+  @Permissions('purchasing:approve')
+  @ApiAuth({
+    summary:
+      'Từ chối thanh toán — PENDING → REJECTED, lý do bắt buộc; người mua sửa rồi đề nghị lại',
+    statusCode: HttpStatus.NO_CONTENT,
+  })
+  rejectPaymentRequest(
+    @UUIDParam('paymentRequestId') paymentRequestId: string,
+    @Body() reqDto: RejectPaymentRequestReqDto,
+    @CurrentUser() payload: JwtPayloadType,
+  ): Promise<void> {
+    return this.paymentRequestsService.rejectPaymentRequest(
+      paymentRequestId,
+      reqDto,
       payload.userId,
     );
   }
@@ -129,7 +165,8 @@ export class PaymentRequestsController {
   @Patch(':paymentRequestId/urgency')
   @Permissions('purchasing:update')
   @ApiAuth({
-    summary: 'Đánh dấu yêu cầu thanh toán gấp / bình thường — chỉ khi PENDING',
+    summary:
+      'Đánh dấu yêu cầu thanh toán gấp / bình thường — khi DRAFT, PENDING hoặc REJECTED',
     statusCode: HttpStatus.NO_CONTENT,
   })
   updatePaymentRequestUrgency(
@@ -146,7 +183,7 @@ export class PaymentRequestsController {
   @Permissions('purchasing:update')
   @ApiAuth({
     summary:
-      'Nhập/sửa chi phí phát sinh sau đặt hàng của yêu cầu thanh toán — chỉ khi PENDING',
+      'Nhập/sửa chi phí phát sinh sau đặt hàng của yêu cầu thanh toán — chỉ khi DRAFT hoặc REJECTED',
     statusCode: HttpStatus.NO_CONTENT,
   })
   updatePaymentRequestExtraCost(
@@ -164,7 +201,8 @@ export class PaymentRequestsController {
   @Post(':paymentRequestId/cancel')
   @Permissions('purchasing:approve')
   @ApiAuth({
-    summary: 'Huỷ yêu cầu thanh toán — PENDING → CANCELLED, lý do bắt buộc',
+    summary:
+      'Huỷ yêu cầu thanh toán — DRAFT/PENDING/REJECTED → CANCELLED, lý do bắt buộc',
     statusCode: HttpStatus.NO_CONTENT,
   })
   cancelPaymentRequest(

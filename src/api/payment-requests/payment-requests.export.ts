@@ -24,7 +24,9 @@ export interface PaymentRequestExport {
 }
 
 const PAYMENT_REQUEST_STATUS_LABELS: Record<PaymentRequestStatus, string> = {
+  [PaymentRequestStatus.DRAFT]: 'Nháp',
   [PaymentRequestStatus.PENDING]: 'Chờ thanh toán',
+  [PaymentRequestStatus.REJECTED]: 'Bị từ chối',
   [PaymentRequestStatus.PAID]: 'Đã thanh toán',
   [PaymentRequestStatus.CANCELLED]: 'Đã hủy',
 };

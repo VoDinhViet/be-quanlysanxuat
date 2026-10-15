@@ -105,6 +105,26 @@ export class PaymentRequestResDto extends PurchaseOrderAmountsResDto {
 
   @Expose()
   @ClassFieldOptional(() => UserRefResDto, { nullable: true })
+  sentBy!: UserRefResDto | null;
+
+  @Expose()
+  @DateFieldOptional({ nullable: true })
+  sentAt!: Date | null;
+
+  @Expose()
+  @ClassFieldOptional(() => UserRefResDto, { nullable: true })
+  rejectedBy!: UserRefResDto | null;
+
+  @Expose()
+  @DateFieldOptional({ nullable: true })
+  rejectedAt!: Date | null;
+
+  @Expose()
+  @StringFieldOptional({ nullable: true })
+  rejectionReason!: string | null;
+
+  @Expose()
+  @ClassFieldOptional(() => UserRefResDto, { nullable: true })
   paidBy!: UserRefResDto | null;
 
   @Expose()

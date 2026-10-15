@@ -19,6 +19,8 @@ export enum PaymentRequestLogAction {
   CANCELLED = 'CANCELLED',
   ADVANCE_PAYMENT_UPDATED = 'ADVANCE_PAYMENT_UPDATED',
   EXTRA_COST_UPDATED = 'EXTRA_COST_UPDATED',
+  SENT = 'SENT',
+  REJECTED = 'REJECTED',
 }
 
 export const paymentRequestLogActionEnum = pgEnum(
@@ -29,6 +31,8 @@ export const paymentRequestLogActionEnum = pgEnum(
     PaymentRequestLogAction.CANCELLED,
     PaymentRequestLogAction.ADVANCE_PAYMENT_UPDATED,
     PaymentRequestLogAction.EXTRA_COST_UPDATED,
+    PaymentRequestLogAction.SENT,
+    PaymentRequestLogAction.REJECTED,
   ],
 );
 

@@ -674,13 +674,19 @@ export class ReportsService {
     return row.count;
   }
 
-  // Yêu cầu thanh toán đang chờ xử lý (chưa chi, chưa huỷ) — tự sinh khi phiếu nhập kho hoàn tất đủ
-  // hàng của đơn mua.
+  // Yêu cầu thanh toán đang chờ xử lý (chưa chi, chưa huỷ): nháp/bị từ chối chờ người mua, đã gửi
+  // chờ kế toán — tự sinh khi phiếu nhập kho hoàn tất đủ hàng của đơn mua.
   private async getPaymentRequestsPendingCount(): Promise<number> {
     const [row] = await this.db
       .select({ count: sql<number>`count(*)`.mapWith(Number) })
       .from(paymentRequests)
-      .where(eq(paymentRequests.status, PaymentRequestStatus.PENDING));
+      .where(
+        inArray(paymentRequests.status, [
+          PaymentRequestStatus.DRAFT,
+          PaymentRequestStatus.PENDING,
+          PaymentRequestStatus.REJECTED,
+        ]),
+      );
 
     return row.count;
   }

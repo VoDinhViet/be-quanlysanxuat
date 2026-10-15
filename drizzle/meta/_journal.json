@@ -1618,6 +1618,13 @@
       "when": 1792034791090,
       "tag": "0230_concerned_queen_noir",
       "breakpoints": true
+    },
+    {
+      "idx": 231,
+      "version": "7",
+      "when": 1792036382951,
+      "tag": "0231_sharp_lockjaw",
+      "breakpoints": true
     }
   ]
 }

@@ -81,7 +81,7 @@ export class PurchaseOrdersController {
   @Permissions('purchasing:update')
   @ApiAuth({
     summary:
-      'Ghi nhận tiền tạm ứng/thanh toán trước cho NCC — sửa được ở PENDING_CONFIRMATION/ORDERED tới khi YCTT đã chi (E284); không vượt tổng tiền PO (E312), PO đã huỷ thì chặn (E313). YCTT đang PENDING tự cập nhật số đề nghị chi',
+      'Ghi nhận tiền tạm ứng/thanh toán trước cho NCC — sửa được ở PENDING_CONFIRMATION/ORDERED tới khi YCTT đã chi (E284) hoặc đã gửi kế toán (E317); không vượt tổng tiền PO (E312), PO đã huỷ thì chặn (E313). YCTT đang DRAFT/REJECTED tự cập nhật số đề nghị chi',
     statusCode: HttpStatus.NO_CONTENT,
   })
   updatePurchaseOrderAdvancePayment(

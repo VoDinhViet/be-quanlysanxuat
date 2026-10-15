@@ -598,8 +598,8 @@ export class PurchaseOrdersService {
   }
 
   /** Ghi nhận tiền tạm ứng cho NCC (PH-128). Chạy trong một transaction cùng việc đồng bộ YCTT:
-   * YCTT `PENDING` đổi `requestedAmount` theo số còn lại mới, `PAID` thì chặn (`E284`, tiền đã chi),
-   * `CANCELLED` bỏ qua (sẽ sinh lại theo số PO hiện tại). Tạm ứng không được vượt tổng tiền PO. */
+   * YCTT `DRAFT`/`REJECTED` đổi `requestedAmount` theo số còn lại mới, `PENDING` thì chặn (`E317`,
+   * kế toán đang duyệt), `PAID` thì chặn (`E284`, tiền đã chi), `CANCELLED` bỏ qua (sẽ sinh lại theo số PO hiện tại). Tạm ứng không được vượt tổng tiền PO. */
   async updatePurchaseOrderAdvancePayment(
     purchaseOrderId: string,
     reqDto: UpdatePurchaseOrderAdvancePaymentReqDto,
