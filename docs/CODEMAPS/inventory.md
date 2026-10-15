@@ -89,7 +89,7 @@ Receipt:
    -> `createProductionReceiptForJob` (write.ts:82): inserts receipt straight at PENDING_RECEIPT for qty = target - confirmed PRODUCTION qty (idempotent; no DRAFT, no confirm step)
    -> warehouse `post` -> `closeJobIfFullyReceived`: job WAITING_DELIVERY and received + NCR-transferred qty (`getNcrTransferredQtyByJobId`, ncrs.query.ts:15) >= job.quantity -> job COMPLETED + job log -> all sibling JOBs COMPLETED -> LSX COMPLETED + log -> if ncrId `closeNcrIfProductionOrdersDone` (ncrs.write.ts:143). UPDATE guarded by `status = WAITING_DELIVERY` to avoid duplicate logs.
 
-Issue: DRAFT --post (346)--> POSTED (PRODUCTION type needs no pending IQC else E203, `hasPendingIqcForItems` iqc.query.ts:17; sets linked requisition ISSUED); DRAFT --cancel (403)--> CANCELLED (cancels linked requisition). POSTED immutable. SALES issues are also auto-posted by `OutboundOrdersService.postOutboundOrder` (outbound-orders.service.ts:747).
+Issue: DRAFT --post (346)--> POSTED (PRODUCTION type needs no pending IQC else E203, `hasPendingIqcForItems` iqc.query.ts:23 (IQC CANCELLED by a cancelled source receipt does not count); sets linked requisition ISSUED); DRAFT --cancel (403)--> CANCELLED (cancels linked requisition). POSTED immutable. SALES issues are also auto-posted by `OutboundOrdersService.postOutboundOrder` (outbound-orders.service.ts:747).
 
 Requisition (own enum, DIRECT items only):
   DRAFT --send (292)--> PENDING_APPROVAL --approve (318)--> APPROVED --PXK post--> ISSUED

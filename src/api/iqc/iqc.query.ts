@@ -1,4 +1,4 @@
-import { and, eq, inArray, ne, sql } from 'drizzle-orm';
+import { and, eq, inArray, ne, notInArray, sql } from 'drizzle-orm';
 
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
@@ -11,9 +11,15 @@ import {
 
 /** `true` nếu còn ≥1 phiếu IQC chưa `COMPLETED` (chưa kiểm/FAIL chưa xử lý/đang chờ trả NCC) của
  * bất kỳ item nào trong danh sách — dùng bởi `InventoryIssuesService.postInventoryIssue` để chặn
- * (`E203`) xuất vật tư sản xuất chưa qua IQC. Join sang `inventory_receipts` (qua
- * `origin_type = INVENTORY_RECEIPT`) giới hạn gate vào IQC hàng nhập kho — phiếu IQC sinh từ
- * OS-IN không vào gate này. Plain function, không qua DI. */
+ * (`E203`) xuất vật tư sản xuất chưa qua IQC.
+ *
+ * Rules:
+ * - Phiếu `CANCELLED` (phiếu nhập nguồn đã huỷ) không tính: nó không bao giờ tự sang `COMPLETED`
+ *   nên nếu tính sẽ chặn xuất kho vật tư đó vĩnh viễn.
+ * - Join sang `inventory_receipts` (qua `origin_type = INVENTORY_RECEIPT`) giới hạn gate vào IQC
+ *   hàng nhập kho — phiếu IQC sinh từ OS-IN không vào gate này.
+ *
+ * Plain function, không qua DI. */
 export async function hasPendingIqcForItems(
   db: Database | DbTransaction,
   params: { itemIds: string[] },
@@ -22,7 +28,7 @@ export async function hasPendingIqcForItems(
     return false;
   }
 
-  const [row] = await db
+  const [pendingInspection] = await db
     .select({ one: sql`1` })
     .from(qualityInspections)
     .innerJoin(
@@ -39,12 +45,15 @@ export async function hasPendingIqcForItems(
       and(
         eq(qualityInspections.inspectionType, QualityInspectionType.IQC),
         inArray(qualityInspections.itemId, params.itemIds),
-        ne(qualityInspections.status, QualityInspectionStatus.COMPLETED),
+        notInArray(qualityInspections.status, [
+          QualityInspectionStatus.COMPLETED,
+          QualityInspectionStatus.CANCELLED,
+        ]),
       ),
     )
     .limit(1);
 
-  return !!row;
+  return !!pendingInspection;
 }
 
 /** `true` chỉ khi phiếu nhập có ≥ 1 phiếu IQC và **mọi** phiếu đã `COMPLETED` — dùng chung cho gate
