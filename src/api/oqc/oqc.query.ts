@@ -32,13 +32,19 @@ const notScrapped = or(
   ne(qualityInspections.disposition, OqcDisposition.SCRAP),
 );
 
-/** Σ `quantity` mọi OQC (trừ `disposition = SCRAP`) của riêng một công đoạn — dùng để validate
+/** OQC lại của NCR (`ncrId` khác `null`) kiểm lại phần NG mà lô sàng lọc gốc đã tính trong quota
+ * (hoặc hàng ngoài quota của Job, với NCR tạo tay), nên không cộng thêm vào SL đã xin QC — nếu
+ * không, lô một phần sẽ làm quota bị thổi lên và `isFinalQuantityInspected` coi là đủ khi còn
+ * hàng chưa kiểm. */
+const notNcrReinspection = isNull(qualityInspections.ncrId);
+
+/** Σ `quantity` mọi OQC (trừ `SCRAP` và OQC lại của NCR) của riêng một công đoạn — dùng để validate
  * `E198` khi tạo OQC mới (`OqcService.createOqcForJob`). */
 export async function getInspectedQuantityByOperationId(
   db: Database | DbTransaction,
   productionJobOperationId: string,
 ): Promise<number> {
-  const [row] = await db
+  const [inspectedTotal] = await db
     .select({
       total:
         sql<number>`coalesce(sum(${qualityInspections.quantity}), 0)`.mapWith(
@@ -54,20 +60,21 @@ export async function getInspectedQuantityByOperationId(
           productionJobOperationId,
         ),
         notScrapped,
+        notNcrReinspection,
       ),
     );
 
-  return row?.total ?? 0;
+  return inspectedTotal?.total ?? 0;
 }
 
-/** Σ `quantity` mọi OQC (trừ `disposition = SCRAP`) của MỌI công đoạn thuộc cùng một node BOM — dùng
+/** Σ `quantity` mọi OQC (trừ `SCRAP` và OQC lại của NCR) của MỌI công đoạn thuộc cùng một node BOM — dùng
  * để validate `E176`: một node có nhiều công đoạn nhưng là một part vật lý, nên trần SL kế hoạch
  * tính gộp theo node (còn trần theo từng công đoạn là `E198`). */
 export async function getInspectedQuantityByBomItemId(
   db: Database | DbTransaction,
   productionJobBomItemId: string,
 ): Promise<number> {
-  const [row] = await db
+  const [inspectedTotal] = await db
     .select({
       total:
         sql<number>`coalesce(sum(${qualityInspections.quantity}), 0)`.mapWith(
@@ -90,10 +97,11 @@ export async function getInspectedQuantityByBomItemId(
           productionJobBomItemId,
         ),
         notScrapped,
+        notNcrReinspection,
       ),
     );
 
-  return row?.total ?? 0;
+  return inspectedTotal?.total ?? 0;
 }
 
 /** Công đoạn cuối (`sortOrder` cao nhất, không `OUTSOURCE` — gia công ngoài chỉ QC qua IQC) của node

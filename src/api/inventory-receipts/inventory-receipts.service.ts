@@ -734,8 +734,8 @@ export class InventoryReceiptsService {
       productionJobId,
     );
 
-    // Phần NG đã chuyển sang NCR (sàng lọc OQC) không bao giờ nhập kho TP của Job này — tính vào
-    // SL "đã xử lý" để Job gốc không kẹt `WAITING_DELIVERY`.
+    // Phần NG đã chuyển sang NCR (sàng lọc OQC) chưa nhập kho TP của Job này (chỉ nhập khi OQC lại
+    // đạt) — tính vào SL "đã xử lý" để Job gốc không kẹt `WAITING_DELIVERY`.
     const transferredToNcr = await getNcrTransferredQtyByJobId(
       tx,
       productionJobId,

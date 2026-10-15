@@ -1,34 +1,89 @@
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, isNull, ne, or, sql } from 'drizzle-orm';
 
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
   ncrs,
   NcrOriginType,
   type NcrSelect,
+  OqcDisposition,
+  QualityInspectionStatus,
   QualityInspectionType,
   qualityInspections,
 } from '../../database/schemas';
 
-/** Σ `ngQty` mọi NCR sinh từ OQC sàng lọc của Job — phần NG đã chuyển sang NCR xử lý nên không còn
- * "chờ nhập kho" ở Job gốc (`closeJobIfFullyReceived`). NCR tạo tay không tính: nó không lấy từ SL
- * của Job. */
+/** SL đã chuyển sang NCR xử lý của Job (ròng) — phần NG này không còn "chờ nhập kho" ở Job gốc
+ * (`closeJobIfFullyReceived`). NCR tạo tay không tính: nó không lấy từ SL của Job.
+ *
+ * Rules:
+ * - Cộng `ngQty` mọi NCR sinh từ OQC sàng lọc của Job.
+ * - Trừ SL các lô OQC lại `COMPLETED` (không `SCRAP`) của những NCR đó: phần đạt đã vào phiếu nhập
+ *   qua `getPassedOqcQuantityByJobId`, phần NG còn lại đã nằm trong `ngQty` của NCR con — không
+ *   trừ thì cùng một đơn vị bị đếm hai lần. Lô `SCRAP` giữ nguyên vì hàng đã loại không bao giờ
+ *   nhập kho. */
 export async function getNcrTransferredQtyByJobId(
   db: Database | DbTransaction,
   productionJobId: string,
 ): Promise<number> {
-  const [transferred] = await db
+  const [[ngTotal], [reinspectedTotal]] = await Promise.all([
+    db
+      .select({
+        total: sql<number>`coalesce(sum(${ncrs.ngQty}), 0)`.mapWith(Number),
+      })
+      .from(ncrs)
+      .where(
+        and(
+          eq(ncrs.productionJobId, productionJobId),
+          eq(ncrs.originType, NcrOriginType.OQC),
+        ),
+      ),
+    db
+      .select({
+        total:
+          sql<number>`coalesce(sum(${qualityInspections.quantity}), 0)`.mapWith(
+            Number,
+          ),
+      })
+      .from(qualityInspections)
+      .innerJoin(ncrs, eq(ncrs.id, qualityInspections.ncrId))
+      .where(
+        and(
+          eq(qualityInspections.productionJobId, productionJobId),
+          eq(qualityInspections.inspectionType, QualityInspectionType.OQC),
+          eq(qualityInspections.status, QualityInspectionStatus.COMPLETED),
+          or(
+            isNull(qualityInspections.disposition),
+            ne(qualityInspections.disposition, OqcDisposition.SCRAP),
+          ),
+          eq(ncrs.originType, NcrOriginType.OQC),
+        ),
+      ),
+  ]);
+
+  return Math.max(0, (ngTotal?.total ?? 0) - (reinspectedTotal?.total ?? 0));
+}
+
+/** Σ `quantity` mọi OQC lại đã xin cho một NCR (mọi trạng thái, kể cả `SCRAP`) — hàng đã loại bỏ
+ * cũng không được xin kiểm lại, nên không trả SL về như quota của Job. */
+export async function getNcrRequestedReinspectionQty(
+  db: Database | DbTransaction,
+  ncrId: string,
+): Promise<number> {
+  const [requestedTotal] = await db
     .select({
-      total: sql<number>`coalesce(sum(${ncrs.ngQty}), 0)`.mapWith(Number),
+      total:
+        sql<number>`coalesce(sum(${qualityInspections.quantity}), 0)`.mapWith(
+          Number,
+        ),
     })
-    .from(ncrs)
+    .from(qualityInspections)
     .where(
       and(
-        eq(ncrs.productionJobId, productionJobId),
-        eq(ncrs.originType, NcrOriginType.OQC),
+        eq(qualityInspections.inspectionType, QualityInspectionType.OQC),
+        eq(qualityInspections.ncrId, ncrId),
       ),
     );
 
-  return transferred?.total ?? 0;
+  return requestedTotal?.total ?? 0;
 }
 
 const ncrRefColumns = { id: ncrs.id, code: ncrs.code, status: ncrs.status };

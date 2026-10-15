@@ -46,7 +46,7 @@ import { RejectNcrReqDto } from './dto/reject-ncr.req.dto';
 import { RequestNcrOqcReqDto } from './dto/request-ncr-oqc.req.dto';
 import { SaveNcrCostLinesReqDto } from './dto/save-ncr-cost-lines.req.dto';
 import { UpdateNcrReqDto } from './dto/update-ncr.req.dto';
-import { getNcrTrace } from './ncrs.query';
+import { getNcrRequestedReinspectionQty, getNcrTrace } from './ncrs.query';
 import { generateNcrCode } from './ncrs.write';
 
 const ncrListRelations = {
@@ -417,7 +417,7 @@ export class NcrsService {
 
   /** "Yêu cầu OQC lại" cho hàng đã xử lý ngoài LSX: tạo phiếu OQC `DRAFT` gắn Job gốc + NCR.
    * Không qua gate quota `E198`/`E176` của `OqcService.createOqcForJob` — lô sàng lọc ban đầu đã
-   * chiếm hết quota, trần ở đây là SL xử lý của NCR (`E308`). */
+   * chiếm hết quota, trần ở đây là SL xử lý của NCR trừ SL đã xin OQC lại (`E308`). */
   async requestOqc(
     ncrId: string,
     reqDto: RequestNcrOqcReqDto,
@@ -431,9 +431,11 @@ export class NcrsService {
       throw new AppException(ErrorCode.E311, HttpStatus.BAD_REQUEST);
     }
 
-    const processingQty = getProcessingQty(ncr);
-    const quantity = reqDto.quantity ?? processingQty;
-    if (quantity > processingQty) {
+    const remainingQty =
+      getProcessingQty(ncr) -
+      (await getNcrRequestedReinspectionQty(this.db, ncrId));
+    const quantity = reqDto.quantity ?? remainingQty;
+    if (quantity <= 0 || quantity > remainingQty) {
       throw new AppException(ErrorCode.E308, HttpStatus.BAD_REQUEST);
     }
 
