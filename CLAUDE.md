@@ -18,6 +18,10 @@ pnpm db:generate | db:migrate | db:check-drift
 One folder per domain in `src/api/<domain>/` (`*.module.ts`, `*.controller.ts`, `*.service.ts`, `dto/`). Cross-cutting code: `src/decorators`, `src/common`, `src/constants`, `src/filters`, `src/exceptions`, `src/database`, `src/redis`, `src/storage`.
 Global pipeline: prefix `api`; `JwtAuthGuard` then `PermissionsGuard` (every route needs a JWT unless `@Public()`); `ValidationPipe` with `whitelist`; `GlobalExceptionFilter`; `ClassSerializerInterceptor`.
 
+## Docs
+
+`docs/CODEMAPS/INDEX.md` is the entry point for tracing a domain: route, controller, service, table and state flow, one file per domain group (`sales`, `purchasing`, `inventory`, `product-structure`, `production`, `quality`, `identity-access`, `integration`) plus `architecture` and `data`. Read it before opening a domain's code. A codemap is a map and the code is the source of truth: when they disagree, trust the code and fix the codemap.
+
 ## Cautions
 
 - The app runs against the local Docker DB by default (`.env`, `localhost:5433`, Redis `6380`). Remote DBs are in `.env.development` / `.env.production`.

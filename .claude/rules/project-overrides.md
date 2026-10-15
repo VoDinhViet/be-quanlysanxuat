@@ -27,6 +27,7 @@ How to run them:
 - Give each agent a brief with the changed paths, the ticket, and the rules in this folder; pass `model` per `model-routing.md`. Run independent ones in one parallel message.
 - Reviewers are read-only. Fix CRITICAL and HIGH findings, then re-run `tsc` and `pnpm lint`; list MEDIUM and LOW in the reply and let the user decide.
 - Do not apply a simplifier's rewrite blindly: keep behaviour, keep the naming rules, and drop suggestions that add abstraction.
+- When a change adds or edits a route, a status transition, a table or a cross-domain call, update the matching file in `docs/CODEMAPS/` (by hand or with `/ecc:update-codemaps`) and refresh its `Generated:` header.
 - Skip all of this for typo or comment-only edits, doc changes, sheet updates, and pure `.claude/` config edits.
 - This never grants permission to commit or push; the "Commit & Push" row above still applies.
 
