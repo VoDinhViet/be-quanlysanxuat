@@ -1625,6 +1625,13 @@
       "when": 1792036382951,
       "tag": "0231_sharp_lockjaw",
       "breakpoints": true
+    },
+    {
+      "idx": 232,
+      "version": "7",
+      "when": 1792051999034,
+      "tag": "0232_ncr_permissions_and_retire_codes",
+      "breakpoints": true
     }
   ]
 }

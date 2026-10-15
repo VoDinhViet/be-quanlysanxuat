@@ -57,10 +57,6 @@ export const PERMISSION_CODES = [
   'inventory-requisitions:update',
   'inventory-requisitions:delete',
   'inventory-requisitions:approve',
-  // Nghỉ hưu cùng route `POST /inventory-requisitions/:id/issue` (đã bỏ, `approve` giờ tự sinh
-  // PXK) — giữ lại để `roles.permissions` cũ giữ code này không bị RolesService.onModuleInit cảnh
-  // báo "unknown permission code".
-  'inventory-requisitions:issue',
   'production:read',
   'production:create',
   'production:update',
@@ -168,7 +164,6 @@ export const PERMISSION_LABELS: Record<PermissionCode, string> = {
   'inventory-requisitions:update': 'Sửa phiếu lãnh vật tư',
   'inventory-requisitions:delete': 'Xoá phiếu lãnh vật tư',
   'inventory-requisitions:approve': 'Duyệt phiếu lãnh vật tư',
-  'inventory-requisitions:issue': 'Xuất kho theo phiếu lãnh',
   'production:read': 'Xem sản xuất',
   'production:create': 'Tạo lệnh/kế hoạch sản xuất',
   'production:update': 'Sửa lệnh/kế hoạch sản xuất',
@@ -223,8 +218,6 @@ export const PERMISSION_ITEM_DESCRIPTIONS: Partial<
     'Nhân bản nhanh thông tin sản phẩm và định mức vật tư sang mã mới',
   'items:bom-manage':
     'Quản lý công thức định mức nguyên vật liệu (BOM) và công đoạn',
-  'inventory-requisitions:issue':
-    'Xác nhận thực xuất vật tư khỏi kho theo phiếu đã duyệt',
 };
 
 export type PermissionCatalogueItem = {
@@ -434,7 +427,6 @@ const PERMISSION_GROUP_DEFS: PermissionGroupDef[] = [
       'inventory-requisitions:update',
       'inventory-requisitions:delete',
       'inventory-requisitions:approve',
-      'inventory-requisitions:issue',
     ],
   },
   {

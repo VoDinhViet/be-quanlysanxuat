@@ -17,7 +17,7 @@ Scope: `auth`, `users`, `roles`, `departments`, `positions`, the identity schema
 Shared code (wc -l):
 
 - Schemas `src/database/schemas/`: `identity-access/credentials.ts` 73 (JWT subject), `identity-access/roles.ts` 42, `identity-access/users.ts` 112, `departments.ts` 22, `positions.ts` 38.
-- `src/constants/permission.constant.ts` 575 (`PERMISSION_CODES` line 12, `SUPER_PERMISSION` line 112); `src/constants/error-code.constant.ts` 714.
+- `src/constants/permission.constant.ts` 567 (`PERMISSION_CODES` line 12, `SUPER_PERMISSION` line 108); `src/constants/error-code.constant.ts` 714.
 - Decorators `src/decorators/`: `permissions.decorator.ts` 8, `public.decorator.ts` 17, `current-user.decorator.ts` 13, `http.decorators.ts` 142 (`ApiPublic` calls `Public()` at line 95).
 
 ## 2 Routes
@@ -107,7 +107,7 @@ Token shape: `JwtPayloadType` (`src/api/auth/types/jwt-payload.type.ts`): `sub` 
 ## 4 Key rules
 
 - **JWT `sub` is `credentials.id`**, not `users.id`. Business rows need `userId`. Permissions attach to the role on the credential (`credentials.roleId`, `credentials.ts:43`), not to the user.
-- **Permission code format** `resource:action` (e.g. `roles:update`, `departments:delete`), catalogue in `permission.constant.ts:12`. `system:manage` (`SUPER_PERMISSION`, line 112) passes every check (`permissions.guard.ts:69`).
+- **Permission code format** `resource:action` (e.g. `roles:update`, `departments:delete`), catalogue in `permission.constant.ts:12`. `system:manage` (`SUPER_PERMISSION`, line 108) passes every check (`permissions.guard.ts:69`).
 - Only controllers gate permissions; services that expose data to other callers must call `getPermissionCodes` themselves (see `api-conventions.md`).
 - `GET /users` and its export need `users:update`; there is no `users:read` code.
 - Role writes: granting `system:manage` requires the actor to hold it (E034; `roles.service.ts:205-218`, `users.service.ts:520-533`). System roles are read-only (E030); roles in use cannot be deleted (E029). Role delete is soft.
@@ -117,6 +117,7 @@ Token shape: `JwtPayloadType` (`src/api/auth/types/jwt-payload.type.ts`): `sub` 
 - Discrepancy: the doc comment at `permissions.guard.ts:25` says permissions are "cached by PermissionsService". `getPermissionCodes` runs a DB query on every call. Unverified whether a cache sits elsewhere.
 - Public reads: departments and positions list/detail are `@ApiPublic`, so no JWT is required (`departments.controller.ts:30,42`, `positions.controller.ts:29`). Confirm this is intended.
 - Startup check: `RolesService.onModuleInit` (`roles.service.ts:45`) only logs unknown permission codes; it does not fail.
+- Catalogue changes need a data migration: `PERMISSION_CODES` has 87 codes and role grants live in `roles.permissions` (jsonb), so a new or retired code does nothing until a migration edits the roles. `drizzle/0232_ncr_permissions_and_retire_codes.sql` grants `ncr:read` to `oqc:read` holders and `ncr:create/update` to `oqc:update` holders only (`oqc:create` is the production side's request-OQC permission, and `ncr:update` can create approved production orders; `ncr:approve`/`ncr:delete` are ticked by hand) and strips `qc-aql:*` and `inventory-requisitions:issue` from every role, soft-deleted ones included. The web app no longer validates codes against a hardcoded enum; `validatePermissionCodes` (E031) is the only gate.
 
 ## 5 Cross-domain links
 
