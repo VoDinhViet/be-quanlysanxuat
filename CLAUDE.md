@@ -26,4 +26,15 @@ Global pipeline: prefix `api`; `JwtAuthGuard` then `PermissionsGuard` (every rou
 
 ## Rules
 
-`.claude/rules/` holds the rules: `project-overrides.md` (wins on conflict), `api-conventions.md`, `database.md`, `config.md`, `naming.md`, and the ECC base in `ecc/common` and `ecc/typescript`.
+`.claude/rules/` holds the rules: `project-overrides.md` (wins on conflict), `api-conventions.md`, `database.md`, `config.md`, `naming.md`, `model-routing.md` (which model for plan mode and subagents), and the ECC base in `ecc/common` and `ecc/typescript`.
+
+## Compact Instructions
+
+When compacting, keep:
+
+- the files changed or being edited, and the task they belong to;
+- the last `npx tsc --noEmit` and `pnpm lint` result;
+- open decisions and questions waiting on the user;
+- the standing prohibitions: no commit or push without an explicit order, no `pnpm db:migrate` or destructive script against remote dev/prod databases, no tests unless asked.
+
+Drop tool output and file dumps that are already summarized.
