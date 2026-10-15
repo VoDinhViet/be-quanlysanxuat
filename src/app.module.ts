@@ -84,8 +84,8 @@ import { UsersModule } from './api/users/users.module';
     }),
 
     // File bytes served straight off disk at the domain root (storage key IS the path, e.g.
-    // `/2026/07/20/<uuid>.png`) — no auth, no signing, permanent public link
-    // (`docs/decisions/files-registry.md`). Never collides with a controller route: storage keys
+    // `/2026/07/20/<uuid>.png`) — no auth, no signing, permanent public link.
+    // Never collides with a controller route: storage keys
     // are always `<year>/<month>/<day>/<uuid>.<ext>`, nothing under `api`/`health`/`/` looks like
     // that. `index`/`fallthrough` off: express's own miss-handler writes straight to `res` (skips
     // `GlobalExceptionFilter`) and leaked the absolute disk path in its raw `ENOENT` message.

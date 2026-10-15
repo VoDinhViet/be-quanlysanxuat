@@ -402,7 +402,7 @@ export class IqcService {
   /** Sinh phiếu IQC cho từng dòng phiếu nhập khi phiếu được xác nhận có yêu cầu QC — đường ghi tự
    *  động duy nhất vào `quality_inspections` (`inspectionType = IQC`), luôn `DRAFT` nên không sinh
    *  attempt nào. Gọi trong transaction của `InventoryReceiptsService.confirmInventoryReceipt`; xem
-   *  `docs/workflows/receipt-confirmation.md`. */
+   *  `docs/CODEMAPS/inventory.md`. */
   async createInspectionsFromReceipt(
     tx: DbTransaction,
     params: {
@@ -448,12 +448,12 @@ export class IqcService {
    *  tự động thứ ba (song sinh `createInspectionsFromReceipt`), gọi trong transaction của
    *  `OutsourcingReceiptsService.createOutsourcingReceipt`. **Không** gate `create` — hàng đã về nhà
    *  máy vật lý trước khi các dòng IQC này được kiểm (không phải ghi tồn — gia công ngoài không đụng
-   *  `inventory_balances`, `docs/decisions/wip-not-stocked.md`). Mỗi dòng neo thẳng vào công đoạn
+   *  `inventory_balances`). Mỗi dòng neo thẳng vào công đoạn
    *  `OUTSOURCE` sinh ra nó (`productionJobOperationId`/`productionJobId`, denormalize từ dòng
    *  OS-OUT nguồn qua `outsourcingOrderItemId`) — đây là neo mà `getJobQcCoverage` dùng để gộp
    *  chung với OQC, thay vì suy mờ qua `(outsourcingReceiptId, itemId)` như trước (một OS-IN gộp
    *  được nhiều Job khác nhau cùng NCC, suy theo cặp đó có thể lẫn Job). Xem
-   *  `docs/workflows/outsourcing-round-trip.md`. */
+   *  `docs/CODEMAPS/production.md`. */
   async createInspectionsFromOutsourcingReceipt(
     tx: DbTransaction,
     params: {
@@ -647,7 +647,7 @@ export class IqcService {
     });
   }
 
-  /** Xem `docs/domains/quality-iqc.md` — quy tắc suy `status`, dùng chung cho tạo lẫn lưu kết quả QC. */
+  /** Xem `docs/CODEMAPS/quality.md` — quy tắc suy `status`, dùng chung cho tạo lẫn lưu kết quả QC. */
   private resolveIqcStatus(
     result: IqcResult | undefined,
     disposition: IqcDisposition | undefined,
@@ -670,7 +670,7 @@ export class IqcService {
    * xử lý FAIL (route `POST /iqc/:iqcId/resolve` cũ đã xoá). Gọi lại được nhiều lần trừ khi request
    * đã ở trạng thái tương đương `WAITING_RETURN` cũ (`E159`) — mỗi lần gọi sinh **1 dòng
    * `quality_inspection_results` mới** (attempt), không còn `UPDATE` đè lên chính nó như trước khi
-   * tách case row/attempt (`docs/decisions/qc-data-model.md`); `quality_inspections` chỉ giữ
+   * tách case row/attempt; `quality_inspections` chỉ giữ
    * mirror của attempt mới nhất — nguồn duy nhất mọi gate/list/detail khác đang đọc. */
   async confirmIqc(
     iqcId: string,
@@ -794,9 +794,9 @@ export class IqcService {
         })
         .where(eq(qualityInspections.id, iqcId));
 
-      // Công đoạn `OUTSOURCE` neo IQC vào `productionJobId` (`getJobQcCoverage` gộp chung IQC/OQC,
-      // `docs/decisions/qc-data-model.md`) — dòng IQC này có thể là dòng QC cuối cùng đóng Job,
-      // không chỉ OQC mới làm được việc đó. Xem `docs/decisions/production-lifecycle-closing.md`.
+      // Công đoạn `OUTSOURCE` neo IQC vào `productionJobId` (`getJobQcCoverage` gộp chung IQC/OQC)
+      // — dòng IQC này có thể là dòng QC cuối cùng đóng Job,
+      // không chỉ OQC mới làm được việc đó.
       if (status === IqcStatus.COMPLETED && inspection.productionJobId) {
         await closeJobIfQcCovered(tx, inspection.productionJobId, userId);
       }

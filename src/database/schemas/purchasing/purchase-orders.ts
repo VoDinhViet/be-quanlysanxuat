@@ -31,9 +31,9 @@ export const purchaseOrderStatusEnum = pgEnum('purchase_order_status', [
 
 /**
  * Đơn mua (PO) — đặt mua với **một** NCC cho một nhóm dòng đề xuất mua hàng đã duyệt
- * (`docs/domains/purchasing.md`). Chỉ 3 trạng thái lưu cột; "Đang nhận"/"Hoàn tất" ở sổ cái tính
+ * (`docs/CODEMAPS/purchasing.md`). Chỉ 3 trạng thái lưu cột; "Đang nhận"/"Hoàn tất" ở sổ cái tính
  * lúc đọc từ phiếu nhập nối qua `purchase_order_items`, không lưu ở đây. `quotationId` tuỳ chọn —
- * chỉ có giá trị cho PO tự sinh từ duyệt RFQ (`docs/workflows/rfq-approval.md`).
+ * chỉ có giá trị cho PO tự sinh từ duyệt RFQ (`docs/CODEMAPS/purchasing.md`).
  */
 export const purchaseOrders = pgTable(
   'purchase_orders',

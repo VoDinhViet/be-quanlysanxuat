@@ -18,7 +18,7 @@ import { purchaseRequests } from './purchase-requests';
 /**
  * Một dòng vật tư của đề xuất mua hàng — luôn `type = DIRECT`, sửa/xoá qua
  * `PATCH`/`DELETE /purchase-requests/:purchaseRequestId/items/:id`, xem
- * `docs/domains/purchase-requests.md`. Ba cột `cancelled*` chưa có nơi nào ghi; chỉ
+ * `docs/CODEMAPS/purchasing.md`. Ba cột `cancelled*` chưa có nơi nào ghi; chỉ
  * `PurchaseQuotationsService.validateAllocations` đọc `cancelled_at`.
  */
 export const purchaseRequestItems = pgTable(

@@ -47,7 +47,7 @@ export const inventoryAdjustmentReasonEnum = pgEnum(
  * Phiếu điều chỉnh tồn (kiểm kê/hao hụt) — header, dùng chung
  * `inventory_document_status` với `inventory_receipts`/`inventory_issues` nhưng chỉ nhận
  * `DRAFT`/`POSTED`/`CANCELLED` (không có bước `confirm`, cùng khuôn phiếu xuất). `adjustmentType`
- * ở header quyết định dấu bút toán cho mọi dòng — xem `docs/workflows/inventory-adjustment.md`.
+ * ở header quyết định dấu bút toán cho mọi dòng — xem `docs/CODEMAPS/inventory.md`.
  */
 export const inventoryAdjustments = pgTable(
   'inventory_adjustments',

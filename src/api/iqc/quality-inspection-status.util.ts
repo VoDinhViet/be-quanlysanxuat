@@ -8,8 +8,8 @@ import {
  * `createInspectionsFromReceipt`/`createInspectionsFromOutsourcingReceipt`) vẫn tính state machine
  * theo `IqcStatus`/`OqcStatus` cũ (rõ nghĩa nghiệp vụ hơn `IN_PROGRESS` gộp chung), rồi dịch sang
  * `quality_inspections.status` qua hàm này trước khi ghi DB. Đường đọc (response/filter DTO) không
- * còn dịch ngược — trả thẳng `QualityInspectionStatus` từ DB (API đã lộ vocabulary mới,
- * `docs/decisions/quality-schema-rename.md`).
+ * còn dịch ngược — trả thẳng `QualityInspectionStatus` từ DB (API đã lộ vocabulary mới).
+ *
  */
 export function mapToQualityInspectionStatus(
   status: IqcStatus | OqcStatus,

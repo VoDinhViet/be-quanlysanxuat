@@ -22,7 +22,7 @@ import { itemUnits } from './item-units';
 /**
  * FG (thành phẩm, gốc cây BOM của chính nó), DIRECT (vật tư, chỉ xuất hiện như node lá —
  * không có BOM/công đoạn riêng). Node cấu trúc con không phải một item — sống trên
- * `bom_items.type = COMPONENT` (`docs/decisions/wip-removal.md`). Xem `docs/decisions/items-merge.md`.
+ * `bom_items.type = COMPONENT`.
  */
 export enum ItemType {
   FG = 'FG',
@@ -43,7 +43,7 @@ export const itemStatusEnum = pgEnum('item_status', [
 
 /**
  * Danh mục hàng hoá dùng chung cho cả FG/DIRECT — gộp `products`+`materials` cũ, một bảng, một
- * module `/items` (`docs/decisions/items-merge.md`).
+ * module `/items`.
  *
  * Rules:
  * - `supplierId`/`minStock`/8 cột mở rộng bên dưới chỉ có ý nghĩa với DIRECT — luôn
@@ -55,7 +55,7 @@ export const itemStatusEnum = pgEnum('item_status', [
  *   (cố tình, đã bàn với người yêu cầu): một mã bị xoá mềm phải dùng lại được, vì `code` còn tự
  *   sinh (`VTxxxx`/`SPxxxx`) nên giữ mã chết vĩnh viễn sẽ làm hụt dải số một cách vô ích.
  *   `revision` cho phép cùng một `code` tồn tại ở nhiều phiên bản
- *   (`docs/domains/product-structure.md`).
+ *   (`docs/CODEMAPS/product-structure.md`).
  */
 export const items = pgTable(
   'items',

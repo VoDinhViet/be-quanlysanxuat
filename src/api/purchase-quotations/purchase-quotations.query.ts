@@ -11,7 +11,7 @@ import {
 /** Giá + ngày đặt mua gần nhất cho mỗi cặp (vật tư, NCC) trong `itemIds`/`supplierIds` (bỏ trống
  * `supplierIds` = mọi NCC) — chỉ đơn
  * mua đã `ORDERED` và có `unitPrice`, `DISTINCT ON` lấy đúng dòng mới nhất/cặp. Dùng để hiện "Giá
- * gần nhất"/"Ngày mua gần nhất" khi khai báo NCC cho một RFQ (`docs/domains/purchasing.md`). */
+ * gần nhất"/"Ngày mua gần nhất" khi khai báo NCC cho một RFQ (`docs/CODEMAPS/purchasing.md`). */
 export function lastPurchaseQuery(
   db: Database,
   itemIds: string[],

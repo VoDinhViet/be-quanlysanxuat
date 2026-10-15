@@ -9,7 +9,7 @@ import { purchaseQuotations } from './purchase-quotations';
 /**
  * Một vật tư được hỏi giá trong một phiếu báo giá. Bảng không giữ số lượng — SL báo giá là `SUM`
  * của `purchase_quotation_item_allocations.quantity`, tính lúc đọc, để SL chỉ sống một chỗ
- * (`docs/domains/purchasing.md`).
+ * (`docs/CODEMAPS/purchasing.md`).
  */
 export const purchaseQuotationItems = pgTable(
   'purchase_quotation_items',

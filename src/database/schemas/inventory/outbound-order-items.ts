@@ -17,7 +17,7 @@ import { productionJobs } from '../production/production-jobs';
 
 /**
  * Dòng phiếu giao hàng (DO) — mỗi dòng trỏ 1 `order_items` (dòng PO nguồn), **không unique**: một
- * dòng PO được chọn lại ở nhiều phiếu DO khác nhau qua nhiều lần giao (`docs/domains/inventory.md`,
+ * dòng PO được chọn lại ở nhiều phiếu DO khác nhau qua nhiều lần giao (`docs/CODEMAPS/inventory.md`,
  * mục "Giao hàng"). `itemId` denormalize từ `orderItem.itemId` (khuôn
  * `outsourcing_receipt_items.itemId`); `productionJobId` là snapshot Job hiển thị, suy 1 lần lúc
  * tạo dòng — không dùng để validate.

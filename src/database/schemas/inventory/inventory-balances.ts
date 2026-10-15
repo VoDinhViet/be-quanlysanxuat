@@ -5,7 +5,7 @@ import { items } from '../items/items';
 
 /**
  * Tồn hiện tại — một dòng/mặt hàng, dựng lại được 100% từ `inventory_transactions`
- * (`docs/domains/inventory.md`). Ghi duy nhất qua `InventoryPostingService`.
+ * (`docs/CODEMAPS/inventory.md`). Ghi duy nhất qua `InventoryPostingService`.
  *
  * Rules:
  * - `quantity` không bao giờ âm (DB CHECK) — chốt chặn thật, khác thiết kế cũ chỉ kiểm ở service.

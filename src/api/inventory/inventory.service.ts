@@ -34,7 +34,7 @@ import {
 
 /** Đọc tồn thô (kho×item) + sổ cái + tra cứu nội bộ dùng bởi các module khác — list Tồn kho thành
  * phẩm/vật tư nay sống ở `inventory-products`/`inventory-directs`
- * (`docs/domains/inventory.md`). */
+ * (`docs/CODEMAPS/inventory.md`). */
 @Injectable()
 export class InventoryService {
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
@@ -43,7 +43,7 @@ export class InventoryService {
    * (cột đó đã bỏ) — điền số tính động lúc đọc: phiếu lãnh `APPROVED` (DIRECT) cộng DO
    * `DRAFT`/`PENDING_APPROVAL`/`PENDING_DELIVERY` (FG, giữ từ lúc tạo, BUG-087). Hai nguồn loại trừ
    * lẫn nhau theo `items.type` nên cộng thẳng, không cần điều kiện phân loại. Giữ nguyên hợp đồng
-   * API cũ, xem `docs/domains/inventory.md`. */
+   * API cũ, xem `docs/CODEMAPS/inventory.md`. */
   async getInventoryBalances(
     reqDto: GetInventoryBalancesReqDto,
   ): Promise<OffsetPaginatedDto<InventoryBalanceResDto>> {
@@ -157,7 +157,7 @@ export class InventoryService {
 
   /** `excludeOrderId` xem `openOrderDemandByItemSubquery`. Chỉ `ProductionOrdersService` truyền
    * tham số này. Field `reserved` trả ra đây là nhu cầu đơn hàng mở — KHÁC `reserved` của
-   * `inventory-products.service.ts` (đã có chứng từ giữ), xem `docs/domains/inventory.md`. */
+   * `inventory-products.service.ts` (đã có chứng từ giữ), xem `docs/CODEMAPS/inventory.md`. */
   async getStockLevels(
     itemIds: string[],
     excludeOrderId?: string,

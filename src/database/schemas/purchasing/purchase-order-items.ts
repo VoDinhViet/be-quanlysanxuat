@@ -16,7 +16,7 @@ import { purchaseQuotationItemSuppliers } from './purchase-quotation-item-suppli
 /**
  * Một dòng đơn mua — SL/giá đặt mua cho một dòng đề xuất. `quotationItemSupplierId` tuỳ chọn, trỏ
  * **dòng NCC** đã chốt (không phải dòng vật tư) — đó là nơi giữ đồng thời NCC + giá đã thoả thuận
- * (`docs/domains/purchasing.md`). Đơn mua có thể lập thẳng, không qua báo giá.
+ * (`docs/CODEMAPS/purchasing.md`). Đơn mua có thể lập thẳng, không qua báo giá.
  */
 export const purchaseOrderItems = pgTable(
   'purchase_order_items',
@@ -69,7 +69,7 @@ export const purchaseOrderItems = pgTable(
     index('idx_purchase_order_items_quotation_item_supplier_id').on(
       table.quotationItemSupplierId,
     ),
-    
+
     check('chk_purchase_order_items_quantity_positive', sql`quantity > 0`),
     check(
       'chk_purchase_order_items_quotation_unit',

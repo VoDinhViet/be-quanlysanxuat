@@ -855,7 +855,7 @@ export class PurchaseQuotationsService {
   /** Gộp các dòng payload cùng `itemId` thành một dòng vật tư — nối `allocations`, union NCC qua
    * `mergeAndValidateSuppliers` (có thể ném E129). DB vẫn giữ
    * `uq_purchase_quotation_items_quotation_item` làm chốt chặn cuối, không còn là cơ chế chính
-   * (`docs/domains/purchasing.md`). */
+   * (`docs/CODEMAPS/purchasing.md`). */
   private mergeItemsByItemId(
     itemsReq: CreateQuotationItemReqDto[],
   ): CreateQuotationItemReqDto[] {

@@ -12,7 +12,7 @@ import {
 /**
  * Bộ đếm dùng chung cho mọi mã chứng từ tự sinh — đường ghi duy nhất là
  * `generateDocumentSequence(s)` (`src/common/utils/document-sequence.util.ts`), xem
- * `docs/architecture.md`. `year = 0` là sentinel cho chứng từ không đánh số theo năm, không dùng
+ * `docs/CODEMAPS/architecture.md`. `year = 0` là sentinel cho chứng từ không đánh số theo năm, không dùng
  * NULL: Postgres coi NULL trong UNIQUE là "distinct", phá cả ràng buộc lẫn `ON CONFLICT`.
  */
 export const documentSequences = pgTable(

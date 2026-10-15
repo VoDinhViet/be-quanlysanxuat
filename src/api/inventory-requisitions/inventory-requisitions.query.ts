@@ -45,7 +45,7 @@ export function reservedQuantitySubquery(db: Database) {
  * phần này mới trùng với `remainingBomDemandByItemSubquery` (nguồn `production_job_issues`) nên
  * mới được trừ chéo ở `InventoryService.getInventory`; phiếu `type = OTHER` không có Job nên không
  * có nhu cầu BOM đối ứng để trùng, trộn chung vào `heldQuantity` rồi trừ chéo sẽ trừ nhầm phần
- * chưa từng bị cộng trùng. Xem `docs/domains/inventory.md`.
+ * chưa từng bị cộng trùng. Xem `docs/CODEMAPS/inventory.md`.
  *
  * Phần giữ của Job `COMPLETED` cũng KHÔNG tính vào `heldForJobsQuantity`: nhu cầu BOM của Job đã
  * hoàn tất đã bị loại khỏi `remainingBomDemandByItemSubquery`, nên phiếu APPROVED còn treo của nó
@@ -114,7 +114,7 @@ export async function getReservedQuantities(
 /** Σ SL lãnh mọi phiếu đã `ISSUED`, theo `(productionJobId, itemId)` — "Đã lãnh". LEFT JOIN thẳng
  * vào SELECT hiển thị (tab chi tiết/popup) và vào `remainingBomDemandByItemSubquery` dưới đây.
  * `GET /production-jobs/:jobId/bom` cũng import trực tiếp hàm này để hiển thị "Theo dõi đã lãnh"
- * (`docs/domains/production.md`) — plain function, không qua DI, cùng tiền lệ
+ * (`docs/CODEMAPS/production.md`) — plain function, không qua DI, cùng tiền lệ
  * `hasPendingIqcForItems`. */
 export function issuedQuantityByJobItemSubquery(db: Database) {
   return db
@@ -174,7 +174,7 @@ export async function getIssuedQuantities(
 /** Nhu cầu BOM còn lại theo `itemId`, KHÔNG scope theo Job: `Σ max(requiredQty − Đã lãnh, 0)` cộng
  * dồn mọi Job đang mở — đầu vào để `InventoryDirectsService` tính tồn khả dụng (cố ý có thể âm, chỉ
  * báo thiếu, không chặn thao tác nào, khác "Có thể lãnh"). Trừ phần **còn lại** (không phải nguyên
- * `requiredQty`) để số không âm sai khi Job đã lãnh xong. Xem `docs/domains/inventory.md`, mục
+ * `requiredQty`) để số không âm sai khi Job đã lãnh xong. Xem `docs/CODEMAPS/inventory.md`, mục
  * "Phiếu lãnh vật tư". `excludeJobId` bỏ nhu cầu của đúng một Job — dùng khi đo tồn khả dụng
  * *trước* Job đó (lúc start). Job `PENDING` (đã có snapshot nhưng chưa "Xác nhận kế hoạch") chưa
  * giữ chỗ vật tư; Job `COMPLETED` (nhập kho thành phẩm đủ) thì thôi giữ chỗ — phần vật tư chưa lãnh

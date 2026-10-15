@@ -624,7 +624,7 @@ export class ItemsService {
    * cha trực tiếp): ở đây `requiredQty` là định mức đã nổ cấp (nhân luỹ kế qua chuỗi node cha, seed
    * = 1 tại gốc) và gộp theo `itemId` — cùng tên, cùng khái niệm với
    * `ProductionJobIssueResDto.requiredQty` (seed = SL Job), xem "Chuẩn nổ cấp BOM" ở
-   * `docs/domains/product-structure.md`. Cây BOM nhỏ nên dựng multiplier + gộp trong bộ nhớ (cùng
+   * `docs/CODEMAPS/product-structure.md`. Cây BOM nhỏ nên dựng multiplier + gộp trong bộ nhớ (cùng
    * tiền lệ `copyBomTree`), phân trang cũng áp trên mảng đã gộp — không còn phân trang bằng SQL
    * trên `bom_items`. */
   async getItemIssues(
@@ -842,8 +842,8 @@ export class ItemsService {
   }
 
   /** Nhân bản cây `bom_items` + công đoạn as-used (`bom_operations`) của từng node COMPONENT, cộng
-   * công đoạn Cấp 0 (`routing_operations`, neo `bomId` — không phải một node `bom_items`, xem
-   * `docs/decisions/routing-operations-table.md`) — bảng riêng nên copy 2 bước độc lập. */
+   * công đoạn Cấp 0 (`routing_operations`, neo `bomId` — không phải một node `bom_items`)
+   * — bảng riêng nên copy 2 bước độc lập. */
   private async copyBomTree(
     tx: DbTransaction,
     itemId: string,

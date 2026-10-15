@@ -20,8 +20,8 @@ import {
 } from '../../database/schemas';
 
 /** Đẩy Job `IN_PROGRESS → WAITING_QC` khi không còn công đoạn nào của node FG dở — cùng luật đang
- * dùng ở `ProductionExecutionService.createJobOperationReport` (BUG-079,
- * `docs/decisions/production-lifecycle-closing.md`), gom về đây vì `recomputeOutsourcedOperationProgress`
+ * dùng ở `ProductionExecutionService.createJobOperationReport` (BUG-079),
+ * gom về đây vì `recomputeOutsourcedOperationProgress`
  * cũng cần gọi lại sau khi ghi OS-IN. */
 export async function closeJobIfFinalAssemblyDone(
   tx: DbTransaction,
@@ -73,8 +73,8 @@ export async function closeJobIfFinalAssemblyDone(
 /** Đếm công đoạn (mọi loại, không lọc node FG) của Job chưa `completedDate` — dùng làm gate bổ sung
  * cho `closeJobIfQcCovered` (`oqc.query.ts`): trước đây hàm đó chỉ đếm dòng `quality_inspections`
  * đã đóng, không đếm công đoạn nào thật sự xong, nên 1 công đoạn `OUTSOURCE` có IQC `COMPLETED` có
- * thể đẩy nhầm cả Job sang `WAITING_DELIVERY` dù công đoạn khác còn dở
- * (`docs/decisions/outsourced-operation-progress-writeback.md`). */
+ * thể đẩy nhầm cả Job sang `WAITING_DELIVERY` dù công đoạn khác còn dở.
+ */
 export async function countPendingJobOperations(
   db: Database | DbTransaction,
   productionJobId: string,
@@ -98,9 +98,9 @@ export async function countPendingJobOperations(
  * `receivedQuantityByOrderIdSubquery` ở `outsourcing-orders.query.ts`) — nguồn ghi duy nhất cho 2
  * cột này ở nhánh gia công ngoài, đối xứng `ProductionExecutionService.createJobOperationReport` ở
  * nhánh trong nhà. Gọi trong CÙNG `tx` với `create`/`cancel` OS-IN (`OutsourcingReceiptsService`)
- * và `post` phiếu trả sinh từ OS-IN (`SupplierReturnsService.postSupplierReturn`) — xem
- * `docs/decisions/outsourced-operation-progress-writeback.md`. Không suy `rejectedQuantity` từ IQC
- * — giữ nguyên 0, cùng lý do trong decision doc.
+ * và `post` phiếu trả sinh từ OS-IN (`SupplierReturnsService.postSupplierReturn`).
+ * Không suy `rejectedQuantity` từ IQC
+ * — giữ nguyên 0.
  */
 export async function recomputeOutsourcedOperationProgress(
   tx: DbTransaction,

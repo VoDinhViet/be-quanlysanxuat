@@ -77,7 +77,7 @@ async function getProductionReceiptQuantityForJob(
  *  thật sự khác `PENDING_RECEIPT` để chờ — `confirmedBy`/`confirmedAt` gán luôn `userId` (người vừa
  *  confirm OQC). Plain function nhận `tx`, không qua DI vì `OqcModule`/`IqcModule` cố ý không import
  *  `InventoryReceiptsModule` — cùng lý do `completeIqcAfterSupplierReturn` (`iqc.write.ts`).
- *  `docs/domains/inventory.md`. */
+ *  `docs/CODEMAPS/inventory.md`. */
 export async function createProductionReceiptForJob(
   tx: DbTransaction,
   productionJobId: string,

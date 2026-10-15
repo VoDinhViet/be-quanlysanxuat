@@ -102,7 +102,7 @@ export const uploadTypeEnum = pgEnum('upload_type', [
  * Rules:
  * - `storageKey` is the relative key the bound `StorageProvider` (`src/storage/`) uses to
  *   save/delete the bytes. `FileResDto.url` is derived from it at read time (`/<storageKey>`,
- *   served statically by `ServeStaticModule` — `docs/decisions/files-registry.md`), a permanent
+ *   served statically by `ServeStaticModule`), a permanent
  *   public link, safe to cache/store on the client indefinitely.
  * - `storageDriver` records which driver wrote the file, in case drivers are ever mixed during a
  *   migration to a new one (e.g. S3).

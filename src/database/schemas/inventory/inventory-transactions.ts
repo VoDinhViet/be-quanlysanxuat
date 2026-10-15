@@ -16,7 +16,7 @@ import { users } from '../identity-access/users';
 
 /** `_IN`/`RECEIPT` cộng tồn, `_OUT`/`ISSUE` trừ tồn — dấu bắt buộc khớp `type` (DB CHECK
  * `chk_inventory_transactions_quantity_sign`). `TRANSFER_IN`/`TRANSFER_OUT` là chỗ cắm cho chuyển
- * kho, chưa route nào phát ra (`docs/domains/inventory.md`). */
+ * kho, chưa route nào phát ra (`docs/CODEMAPS/inventory.md`). */
 export enum InventoryTransactionType {
   RECEIPT = 'RECEIPT',
   ISSUE = 'ISSUE',
@@ -47,7 +47,7 @@ export enum InventoryReferenceType {
   INVENTORY_ISSUE = 'INVENTORY_ISSUE',
   INVENTORY_ADJUSTMENT = 'INVENTORY_ADJUSTMENT',
   SUPPLIER_RETURN = 'SUPPLIER_RETURN',
-  // Gia công ngoài không còn ghi `inventory_transactions` (`docs/decisions/wip-not-stocked.md`) —
+  // Gia công ngoài không còn ghi `inventory_transactions` —
   // giữ 2 giá trị này chỉ để tương thích bút toán cũ/`GET /inventory/transactions?referenceType=`.
   OUTSOURCING_ORDER = 'OUTSOURCING_ORDER',
   OUTSOURCING_RECEIPT = 'OUTSOURCING_RECEIPT',
@@ -64,7 +64,7 @@ export const inventoryReferenceTypeEnum = pgEnum('inventory_reference_type', [
 
 /**
  * Sổ cái kho — append-only, nguồn sự thật. Chỉ `InventoryPostingService.postDocument`/
- * `reverseDocument` được ghi vào bảng này (`docs/domains/inventory.md`).
+ * `reverseDocument` được ghi vào bảng này (`docs/CODEMAPS/inventory.md`).
  *
  * Rules:
  * - `referenceId` trỏ về `inventory_receipts`/`inventory_issues`/`inventory_adjustments`/

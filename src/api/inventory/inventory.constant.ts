@@ -8,7 +8,7 @@
  * - `SHORTAGE`: `available < 0`.
  * - `WARNING`: `0 <= available < minStock`.
  * - `NORMAL`: `available >= minStock`.
- * - `available = onHand - reserved - bomDemand`, công thức đầy đủ ở `docs/domains/inventory.md`.
+ * - `available = onHand - reserved - bomDemand`, công thức đầy đủ ở `docs/CODEMAPS/inventory.md`.
  */
 export enum StockStatus {
   NORMAL = 'NORMAL',

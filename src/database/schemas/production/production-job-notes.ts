@@ -7,7 +7,7 @@ import { users } from '../identity-access/users';
 /**
  * Ghi chú tự do của một Job — người dùng chủ động viết (vd trao đổi yêu cầu khách hàng, ưu tiên
  * xưởng), khác `productionOrderLogs`: đây không phải log thao tác tự động, xem
- * `docs/domains/production.md`.
+ * `docs/CODEMAPS/production.md`.
  *
  * Rules:
  * - Append-only — chỉ `POST`/`GET`, không có route sửa/xoá.

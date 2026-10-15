@@ -39,7 +39,7 @@ import {
 /** Tách khỏi `InventoryRequisitionsService` — hai method ở đây đều là đọc thuần, cùng một bộ join
  * tính "6 số" (SL BOM/Đã lãnh/Tồn/Đã giữ/Có thể lãnh/Khả dụng), phục vụ tab chi tiết + popup chọn
  * vật tư (dùng chung "Lãnh từ LSX"/"Lãnh thủ công" — `productionJobId` optional, không phải hai
- * nguồn dữ liệu khác nhau). Không có method nào ghi. Xem `docs/domains/inventory.md`, mục "Phiếu
+ * nguồn dữ liệu khác nhau). Không có method nào ghi. Xem `docs/CODEMAPS/inventory.md`, mục "Phiếu
  * lãnh vật tư". */
 @Injectable()
 export class InventoryRequisitionLinesService {

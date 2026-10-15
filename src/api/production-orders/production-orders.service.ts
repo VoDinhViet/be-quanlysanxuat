@@ -77,7 +77,7 @@ interface PlanItem {
 
 /** "LSX" — lập kế hoạch sản xuất cho một PO đã duyệt: `production_orders` (header, 1 đơn = 1 LSX)
  * + `production_order_items` (quyết định sản xuất, 1 dòng/dòng PO). Vòng đời, business rule, luồng
- * ghi log: `docs/domains/production.md`, `docs/workflows/production-order-approval.md`. */
+ * ghi log: `docs/CODEMAPS/production.md`. */
 @Injectable()
 export class ProductionOrdersService {
   private static readonly MAX_EXPORT_ROWS = 10_000;
@@ -329,7 +329,7 @@ export class ProductionOrdersService {
 
   /** Sửa số lượng sản xuất từng dòng, nhập tay — chỉ khi LSX còn `PENDING` (`E084`). Partial: chỉ
    * dòng gửi lên bị ghi, dòng khác giữ nguyên. Chỉ tính lại `fromStockQty` — không refresh tồn kho
-   * (`docs/workflows/production-order-approval.md`). */
+   * (`docs/CODEMAPS/production.md`). */
   async updateProductionOrder(
     productionOrdersId: string,
     reqDto: UpdateProductionOrderReqDto,
@@ -424,7 +424,7 @@ export class ProductionOrdersService {
 
   /** Chỉ hợp lệ khi đang `PENDING` và PO gốc vẫn `AWAITING_PRODUCTION`. Trong cùng transaction:
    * đẩy PO gốc sang `IN_PROGRESS`, sinh Job. Không lập phiếu xuất kho, không
-   * kiểm tồn kho tổng hợp trước duyệt (`docs/domains/production.md`, mục Invariants). */
+   * kiểm tồn kho tổng hợp trước duyệt (`docs/CODEMAPS/production.md`, mục Invariants). */
   async approveProductionOrder(
     productionOrdersId: string,
     userId: string,
@@ -537,7 +537,7 @@ export class ProductionOrdersService {
   }
 
   /** Đề xuất SX ban đầu cho mọi dòng NORMAL của một PO, tại thời điểm duyệt — công thức ở
-   * `docs/domains/production.md` (loại trừ chính đơn này qua `excludeOrderId`). Chỉ đọc — gọi
+   * `docs/CODEMAPS/production.md` (loại trừ chính đơn này qua `excludeOrderId`). Chỉ đọc — gọi
    * trước khi `OrdersService.approveOrder` mở transaction rồi mới `seedPlan`. */
   async getInitialPlanItems(orderId: string): Promise<PlanItem[]> {
     // Nguồn: mọi dòng PO status = NORMAL của đơn này — dòng CANCELLED không cần sản xuất.
@@ -562,7 +562,7 @@ export class ProductionOrdersService {
     // Gom itemId duy nhất — 1 query tồn kho cho mọi item thay vì mỗi dòng PO một query.
     const itemIds = [...new Set(normalOrderItems.map((item) => item.itemId))];
     // `excludeOrderId = orderId`: PO đang xét đã tự giữ chỗ trong `reserved`, phải loại trừ chính
-    // nó ra để không bị trừ nhu cầu của nó hai lần (xem docs/domains/production.md).
+    // nó ra để không bị trừ nhu cầu của nó hai lần (xem docs/CODEMAPS/production.md).
     const stockByItem = await this.inventoryService.getStockLevels(
       itemIds,
       orderId,

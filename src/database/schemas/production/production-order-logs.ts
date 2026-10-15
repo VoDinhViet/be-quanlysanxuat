@@ -45,8 +45,8 @@ export const productionOrderLogActionEnum = pgEnum(
  *   `updateProductionOrder` → `QUANTITY_UPDATED`, `approveProductionOrder` → `APPROVED`,
  *   `NOTE_UPDATED`) — luôn trong cùng transaction với hành động đang log. `COMPLETED` là ngoại lệ
  *   duy nhất: ghi thẳng (không qua `logAction`, hàm đó `private`) từ
- *   `InventoryReceiptsService.postInventoryReceipt` khi Job cuối của LSX vừa nhận đủ hàng — xem
- *   `docs/decisions/production-lifecycle-closing.md`. Không có route ghi log trực tiếp.
+ *   `InventoryReceiptsService.postInventoryReceipt` khi Job cuối của LSX vừa nhận đủ hàng.
+ *   Không có route ghi log trực tiếp.
  * - `onDelete: 'cascade'` từ `productionOrders` — khi header bị xoá để ghi đè (replace-all lúc
  *   `seedPlan`/`OrdersService.updateOrder` xoá LSX `PENDING`), log cũ mất theo, cùng hành vi với
  *   `production_order_items`, không phải rủi ro riêng của bảng này.

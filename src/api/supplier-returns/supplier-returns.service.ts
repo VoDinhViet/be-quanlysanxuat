@@ -282,7 +282,7 @@ export class SupplierReturnsService {
 
   /** Tự sinh DRAFT — gọi bởi `IqcService.confirmIqc` khi QC chọn disposition SORT/RETURN, ngay
    *  sau khi dòng IQC chuyển `WAITING_RETURN`, cùng transaction với việc khoá dòng đó lại (bắt
-   *  buộc `tx`, không mở transaction riêng). Xem `docs/workflows/supplier-return.md`. */
+   *  buộc `tx`, không mở transaction riêng). Xem `docs/CODEMAPS/inventory.md`. */
   async createFromIqcDisposition(
     tx: DbTransaction,
     params: {
@@ -328,7 +328,7 @@ export class SupplierReturnsService {
    *  `shouldPostStock`), sinh từ OS-IN thì recompute luôn `status` OS-OUT + tiến độ công đoạn liên
    *  quan (`recomputeAffectedOutsourcing`), rồi hoàn tất dòng IQC liên kết
    *  (`completeIqcAfterSupplierReturn`) trong cùng transaction. `reqDto.note`/`fileIds` tuỳ chọn —
-   *  bằng chứng xuất trả, không ảnh hưởng transition. Xem `docs/workflows/supplier-return.md`. */
+   *  bằng chứng xuất trả, không ảnh hưởng transition. Xem `docs/CODEMAPS/inventory.md`. */
   async postSupplierReturn(
     supplierReturnId: string,
     reqDto: PostSupplierReturnReqDto,
@@ -455,7 +455,7 @@ export class SupplierReturnsService {
    *     `postInventoryReceipt` tự bù trừ số lượng đã trả `POSTED` trước khi ghi bút toán `RECEIPT`
    *     (`getReturnedQuantityByReceiptItemId`), nên không ghi thiếu tồn.
    *  2. Sinh từ IQC của OS-IN (`outsourcingReceiptId` có giá trị) — hàng đó chưa từng vào tồn
-   *     (`docs/decisions/wip-not-stocked.md`, gia công ngoài không ghi `inventory_balances`), trừ
+   *     (gia công ngoài không ghi `inventory_balances`), trừ
    *     vào cũng ra âm giả.
    *  Không có phiếu nhập/OS-IN liên quan (IQC tạo tay) → luôn trừ tồn bình thường. */
   private async shouldPostStock(

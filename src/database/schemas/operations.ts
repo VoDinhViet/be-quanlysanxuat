@@ -14,10 +14,10 @@ import { users } from './identity-access/users';
 /** Which lane a công đoạn (operation) runs in: `INHOUSE` is performed on the factory floor,
  * `OUTSOURCE` is sent to a supplier (gia công ngoài). The real, load-bearing value lives per
  * attachment on `bom_operations.type` (the same catalog operation can be Inhouse on one BOM node
- * and Outsource on another — including the ROOT node, "Cấp 0", since `docs/decisions/
- * root-bom-item.md`) — `operations.type` here is only the default suggestion pre-filled when
+ * and Outsource on another — including the ROOT node, "Cấp 0")
+ * — `operations.type` here is only the default suggestion pre-filled when
  * attaching, plus the value the "Gia công ngoài" catalog screen filters on (`GET
- * /operations?type=OUTSOURCE`). See `docs/decisions/routing-operation-type-per-attachment.md`. */
+ * /operations?type=OUTSOURCE`). */
 export enum OperationType {
   INHOUSE = 'INHOUSE',
   OUTSOURCE = 'OUTSOURCE',
@@ -40,7 +40,7 @@ export const operationStatusEnum = pgEnum('operation_status', [
 
 /** Master data for công đoạn (production operations/steps), e.g. Cắt laser, Hàn, Sơn tĩnh điện.
  * Referenced by `bom_operations`, keyed by a specific BOM node (COMPONENT, or the ROOT node
- * representing "Cấp 0" — `docs/decisions/root-bom-item.md`), to sequence the steps a node goes
+ * representing "Cấp 0"), to sequence the steps a node goes
  * through. Soft-deleted, not hard-deleted — `bom_operations` uses `onDelete: 'restrict'`, and
  * since a restrict FK never fires against a `deletedAt` update, `OperationsService.
  * deleteOperation` checks it itself. */

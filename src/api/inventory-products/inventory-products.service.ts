@@ -51,7 +51,7 @@ import {
 } from './product-ledger.query';
 
 /** Tồn kho thành phẩm — nhánh FG tách khỏi `InventoryService.getInventory` cũ
- * (`docs/domains/inventory.md`). DIRECT sống ở `inventory-directs`, không nhánh nào đọc chéo sang
+ * (`docs/CODEMAPS/inventory.md`). DIRECT sống ở `inventory-directs`, không nhánh nào đọc chéo sang
  * nhánh kia. */
 @Injectable()
 export class InventoryProductsService {
@@ -135,7 +135,7 @@ export class InventoryProductsService {
   }
 
   /** Sổ cái (thẻ kho) — lịch sử bút toán của một thành phẩm, tồn luỹ kế sau từng giao dịch
-   * (`docs/domains/inventory.md`, mục "Thẻ kho thành phẩm"). */
+   * (`docs/CODEMAPS/inventory.md`, mục "Thẻ kho thành phẩm"). */
   async getProductLedger(
     itemId: string,
     reqDto: GetProductLedgerReqDto,

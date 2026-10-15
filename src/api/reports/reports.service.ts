@@ -112,7 +112,7 @@ function withinDaysFromToday<TColumn extends Column>(
 
 // "Job trễ hạn" — jobDueDate (orders.dueDate của đơn hàng gốc, qua productionOrders) đã qua hôm
 // nay và Job chưa COMPLETED. Dùng chung cho getJobDueDateCount lẫn getJobDueDate — không khai lại
-// rule ở 2 nơi. Xem `docs/domains/production.md` (mục jobDueDate).
+// rule ở 2 nơi. Xem `docs/CODEMAPS/production.md` (mục jobDueDate).
 const JOB_DUE_DATE_PASSED = and(
   isNull(orders.deletedAt),
   ne(productionJobs.status, ProductionJobStatus.COMPLETED),
@@ -124,8 +124,8 @@ const JOB_DUE_DATE_PASSED = and(
  * hiện tại. Có `startDate`/`endDate` → mỗi nhóm lọc thêm theo đúng 1 cột mốc ngày của domain nó
  * (giao với điều kiện trạng thái sẵn có, không thay thế), và mọi field trend/window trả `null` —
  * so với "hôm qua"/"tuần trước" không còn nghĩa khi đang xem một khoảng ngày tuỳ ý. Trend không
- * filter tính lúc đọc, không có bảng lịch sử trạng thái nên chỉ ra delta ≥ 0. Xem
- * `docs/decisions/report-trends-derived.md`. */
+ * filter tính lúc đọc, không có bảng lịch sử trạng thái nên chỉ ra delta ≥ 0.
+ */
 @Injectable()
 export class ReportsService {
   private static readonly UPCOMING_DUE_DAYS = 3;
@@ -221,8 +221,8 @@ export class ReportsService {
 
   // Duy nhất trong module đọc `qc_inspections` (append-only, mỗi lần kiểm 1 dòng) thay vì
   // `qc_requests` (chỉ giữ trạng thái mới nhất) — cách duy nhất dựng lại tỷ lệ đạt theo TỪNG NGÀY
-  // trong quá khứ mà không cần bảng snapshot, cùng tiền lệ `openNcrTrendCount`
-  // (docs/decisions/report-trends-derived.md). `generate_series` đảm bảo đủ
+  // trong quá khứ mà không cần bảng snapshot, cùng tiền lệ `openNcrTrendCount`.
+  // `generate_series` đảm bảo đủ
   // QC_PASS_RATE_WINDOW_DAYS điểm kể cả ngày không có lần kiểm nào (LEFT JOIN, null khi ngày đó
   // không có lần kiểm nào của kind tương ứng).
   async getQcPassRate(): Promise<QcPassRateResDto[]> {
@@ -478,7 +478,7 @@ export class ReportsService {
   }
 
   // "Còn hàng chưa về đủ" giờ đọc thẳng từ `status` (đã gộp tiến độ — SENT/PARTIAL nghĩa là còn
-  // treo, WAITING_QC/COMPLETED nghĩa là đã nhận đủ, `docs/decisions/outsourcing-order-status-progress-merge.md`)
+  // treo, WAITING_QC/COMPLETED nghĩa là đã nhận đủ)
   // — không cần JOIN thêm subquery SL gửi/nhận như trước. Dùng chung cho
   // getOutsourcingOrderDueDateCount lẫn getOutsourcingOrderDueDate — không khai lại rule ở 2 nơi.
   private outsourcingOrderDuePassed() {

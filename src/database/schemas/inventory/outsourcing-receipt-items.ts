@@ -20,7 +20,7 @@ import { items } from '../items/items';
  * (`outsourcingOrderItemId`, `restrict` — dòng nguồn không được xoá khi còn dòng nhận trỏ vào).
  * `itemCode`/`itemName`/`itemId` denormalize từ dòng OS-OUT, **server tự copy, không nhận từ
  * client** — cần cho sinh IQC không phải join 2 tầng. `weight`/`area` mặc định copy từ dòng
- * OS-OUT lúc tạo, sửa được. Xem `docs/domains/inventory.md`.
+ * OS-OUT lúc tạo, sửa được. Xem `docs/CODEMAPS/inventory.md`.
  */
 export const outsourcingReceiptItems = pgTable(
   'outsourcing_receipt_items',

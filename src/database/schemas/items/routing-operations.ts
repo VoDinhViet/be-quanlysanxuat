@@ -14,13 +14,13 @@ import { users } from '../identity-access/users';
 
 /**
  * Công đoạn as-used của Cấp 0 (chính sản phẩm gốc, không phải một node `bom_items`) — gắn thẳng
- * vào `boms.id`, tách khỏi `bom_operations` (node COMPONENT) vì Cấp 0 không phải một node
- * (`docs/decisions/routing-operations-table.md`).
+ * vào `boms.id`, tách khỏi `bom_operations` (node COMPONENT) vì Cấp 0 không phải một node `bom_items`.
+ *
  *
  * Rules: cùng `bom_operations` — `operationId` bất biến sau khi thêm (đổi = xoá + thêm lại);
  * không unique trên `(bomId, operationId)` (một chuỗi được lặp lại cùng công đoạn); `type` là
- * quyết định thật cho bước này, độc lập với `operations.type` danh mục
- * (`docs/decisions/routing-operation-type-per-attachment.md`).
+ * quyết định thật cho bước này, độc lập với `operations.type` danh mục.
+ *
  */
 export const routingOperations = pgTable(
   'routing_operations',

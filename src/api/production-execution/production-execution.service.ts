@@ -64,7 +64,7 @@ import {
  * sau khi kiểm phạm vi công đoạn (`OperationAccessService`).
  * `createJobOperationReport` là đường ghi duy nhất vào `production_job_operations` — cộng dồn,
  * kèm nhật ký `production_job_operation_reports`. Xem
- * `docs/workflows/production-job-execution.md`, `docs/domains/production.md`. */
+ * `docs/CODEMAPS/production.md`. */
 @Injectable()
 export class ProductionExecutionService {
   constructor(
@@ -77,8 +77,8 @@ export class ProductionExecutionService {
   /** Một dòng / công đoạn (`operations`, master data) có ít nhất 1 Job khớp bộ lọc — không gộp gì
    * theo `type`, `operationId` là id thật của `operations`. `type` trả về là giá trị danh mục
    * (`operations.type`, chỉ còn là gợi ý mặc định) — có thể khác `type` thật của từng dòng
-   * `production_job_operations` bên dưới nếu nó đã được chọn khác lúc gắn vào BOM/routing
-   * (`docs/decisions/routing-operation-type-per-attachment.md`); nhóm theo `operations.id` nên
+   * `production_job_operations` bên dưới nếu nó đã được chọn khác lúc gắn vào BOM/routing;
+   * nhóm theo `operations.id` nên
    * không có cách hiện đúng type từng Job ở đây mà không đổi hẳn cách gộp. */
   async getOperations(
     reqDto: GetProductionExecutionOperationsReqDto,
@@ -474,7 +474,7 @@ export class ProductionExecutionService {
   }
 
   /** `POST .../operations/:jobOperationId/reports` — đường ghi duy nhất vào
-   * `production_job_operations`, cộng dồn (không ghi đè). Xem `docs/workflows/production-job-execution.md`. */
+   * `production_job_operations`, cộng dồn (không ghi đè). Xem `docs/CODEMAPS/production.md`. */
   async createJobOperationReport(
     jobOperationId: string,
     reqDto: CreateJobOperationReportReqDto,
@@ -492,8 +492,8 @@ export class ProductionExecutionService {
     await this.operationAccess.assertCanAccess(payload, operation.operationId);
 
     // completedQuantity/completedDate của công đoạn OUTSOURCE chỉ do OS-IN ghi
-    // (`recomputeOutsourcedOperationProgress`) — không cho báo cáo tay,
-    // `docs/decisions/outsourced-operation-progress-writeback.md`.
+    // (`recomputeOutsourcedOperationProgress`) — không cho báo cáo tay.
+    //
     if (operation.type === OperationType.OUTSOURCE) {
       throw new AppException(ErrorCode.E260, HttpStatus.CONFLICT);
     }
@@ -590,7 +590,7 @@ export class ProductionExecutionService {
         .where(eq(productionJobOperations.id, jobOperationId));
 
       // Node FG có thể có nhiều công đoạn Cấp 0 — chỉ chuyển WAITING_QC khi KHÔNG CÒN công đoạn FG
-      // nào dở, đếm lại trong `tx` sau khi ghi (BUG-079, `docs/decisions/production-lifecycle-closing.md`).
+      // nào dở, đếm lại trong `tx` sau khi ghi (BUG-079).
       if (operation.bomItem.itemType === ProductionJobBomItemType.FG) {
         await closeJobIfFinalAssemblyDone(tx, operation.productionJobId);
       }

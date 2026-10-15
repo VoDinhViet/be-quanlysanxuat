@@ -12,16 +12,16 @@ export enum ErrorCode {
   E003 = 'credential.error.email_exists',
   E004 = 'credential.error.invalid_credentials',
   E005 = 'user.error.code_exists',
-  // Chưa từng có nơi ném — dự phòng ở thiết kế `products` cũ, không sống lại ở `items`
-  // (`docs/decisions/items-merge.md`).
+  // Chưa từng có nơi ném — dự phòng ở thiết kế `products` cũ, không sống lại ở `items`.
+  //
   E006 = 'item.error.locked',
   E007 = 'item.error.not_found',
   // Trùng cặp `(code, revision)`, không phải `code` riêng lẻ — cùng `code` được phép ở nhiều
-  // `revision` khác nhau (`docs/domains/product-structure.md`).
+  // `revision` khác nhau (`docs/CODEMAPS/product-structure.md`).
   E008 = 'item.error.code_exists',
   E009 = 'client.error.not_found',
   // E010 (product_group.error.not_found) stays reserved — nhóm hàng hoá (product_groups/
-  // material_groups) bị bỏ hẳn khi gộp `items` (`docs/decisions/items-merge.md`); `type` là thứ
+  // material_groups) bị bỏ hẳn khi gộp `items`; `type` là thứ
   // duy nhất phân loại.
   E011 = 'unit.error.not_found',
   E012 = 'user.error.not_found',
@@ -52,8 +52,8 @@ export enum ErrorCode {
   E033 = 'auth.error.forbidden',
   E034 = 'role.error.elevation_forbidden',
   // E035 (material.error.not_found) and E036 (material.error.code_exists) stay reserved —
-  // `materials` merged into `items`; `E007`/`E008` cover the same cases now
-  // (`docs/decisions/items-merge.md`).
+  // `materials` merged into `items`; `E007`/`E008` cover the same cases now.
+  //
   // E037 (material_group.error.not_found) stays reserved — nhóm hàng hoá bỏ hẳn, cùng lý do E010.
   // E038/E039 (material_group.error.code_exists/in_use) stay reserved with their original
   // meanings — the resource they'd guard no longer exists.
@@ -79,11 +79,11 @@ export enum ErrorCode {
   // BOM của item trên URL — cùng khuôn kiểm tra (`BomsService.ensureBomItemInBom`), dùng chung mã
   // vì cùng resource `bom_items`.
   E051 = 'bom_item.error.parent_not_found',
-  // `bom_items` chứa cả node COMPONENT lẫn lá DIRECT (`docs/decisions/items-merge.md`) —
+  // `bom_items` chứa cả node COMPONENT lẫn lá DIRECT —
   // DIRECT là lá bắt buộc, không được nhận node con. Sống lại từ chỗ reserved khi vật tư còn
   // ở bảng riêng `bom_materials`.
   E052 = 'bom_item.error.parent_is_leaf',
-  // Nghỉ hưu — khái niệm WIP đã xoá khỏi hệ thống (`docs/decisions/wip-removal.md`), node cấu
+  // Nghỉ hưu — khái niệm WIP đã xoá khỏi hệ thống, node cấu
   // trúc con giờ là `bom_items.type = COMPONENT` (không trỏ item). Kiểm tra tương đương cho node
   // DIRECT là E270.
   E053 = 'bom_item.error.item_not_wip',
@@ -96,12 +96,12 @@ export enum ErrorCode {
   // thêm/sửa. Sống lại cùng lý do E052.
   E055 = 'bom_item.error.quantity_not_integer',
   // Nghỉ hưu — routing Cấp 0 (`routings`/`routing_operations`) không còn tồn tại, dùng chung
-  // `E109` (`bom_operation.error.not_found`) qua `BomOperationsService` cho mọi node kể cả ROOT
-  // (`docs/decisions/root-bom-item.md`). Giữ comment, không tái sử dụng số.
+  // `E109` (`bom_operation.error.not_found`) qua `BomOperationsService` cho mọi node kể cả ROOT.
+  // Giữ comment, không tái sử dụng số.
   E056 = 'routing_operation.error.not_found',
   E057 = 'order.error.not_found',
   // Nghỉ hưu — `orders.code` không còn nhận giá trị tay từ client, luôn sinh atomic qua
-  // `document_sequences` (`docs/architecture.md`). Giữ comment, không tái sử dụng số.
+  // `document_sequences` (`docs/CODEMAPS/architecture.md`). Giữ comment, không tái sử dụng số.
   E058 = 'order.error.code_exists',
   // Client/staff/item refs on an order. Retired when the module was pared down to a header-only
   // table on 2026-07-27, restored with their original meanings the same day when the module was
@@ -110,8 +110,8 @@ export enum ErrorCode {
   E060 = 'order.error.staff_not_found',
   E061 = 'order.error.item_not_found',
   // E062 (routing_operation.error.bom_item_not_found) stays reserved — routing as-used theo node
-  // sống ở `bom_operations` (dùng chung `E051` qua `BomsService.ensureBomItemInBom`), và từ
-  // `docs/decisions/root-bom-item.md` node ROOT ("Cấp 0") cũng là một `bomItemId` thật nên đi
+  // sống ở `bom_operations` (dùng chung `E051` qua `BomsService.ensureBomItemInBom`), và
+  // node ROOT ("Cấp 0") cũng là một `bomItemId` thật nên đi
   // đúng đường kiểm đó — không còn ca nào thiếu `bomItemId` để cần mã riêng.
   // DIRECT là lá — không được gắn `bom_operations`. Khác `E052` (lá không được nhận node
   // **con**): đây là lá không được gắn **công đoạn**. Sống lại cùng lý do E052.
@@ -130,7 +130,7 @@ export enum ErrorCode {
   // product_not_finished_good, insufficient_stock, invalid_order_item, reason_type_mismatch) stay
   // reserved — the whole `stock_receipts`/`stock_receipt_items` design (single-table receipt with
   // a `subject`+`type`+`reason` triple) was replaced 2026-08-04 by `inventory_receipts`/
-  // `inventory_issues` + a posted ledger (`docs/decisions/stored-inventory-balances.md`). No
+  // `inventory_issues` + a posted ledger. No
   // current throw site uses them; the successor codes are E096-E100/E106-E107.
   // `POST /orders/:orderId/approve` or `/reject` called on an order whose status isn't
   // PENDING_CONFIRMATION — only an order actually submitted for approval can be approved/rejected.
@@ -149,7 +149,7 @@ export enum ErrorCode {
   // `PATCH /production-orders/:productionOrdersId` gửi `orderItemId` không thuộc chính LSX đó.
   // Trước 2026-07-30 gắn với `PATCH` "Lưu lại" cũ (đã bỏ), không có nhánh throw — sống lại cùng
   // route `updateProductionOrder` mới (khác khoá tra cứu + semantics partial, xem
-  // `docs/workflows/production-order-approval.md`).
+  // `docs/CODEMAPS/production.md`).
   E078 = 'production_order.error.invalid_order_item',
   // Dự phòng — gắn với `POST /production-orders/:orderId/issue` đã bỏ 2026-07-30.
   E079 = 'production_order.error.no_items',
@@ -172,7 +172,7 @@ export enum ErrorCode {
   // E085/E086 (stock_receipt.error.material_not_found/line_target_mismatch) stay reserved —
   // retired with E067-E073, same reason.
   // `start` gọi trên một Job đang không ở trạng thái hợp lệ cho hành động đó (xem sơ đồ chuyển
-  // trạng thái ở `docs/domains/production.md`, mục Lifecycle).
+  // trạng thái ở `docs/CODEMAPS/production.md`, mục Lifecycle).
   E087 = 'production_job.error.invalid_status_transition',
   // Nghỉ hưu 2026-08-25 — thay bằng `E252` (so cả `completedQuantity + rejectedQuantity`, bao luôn
   // trường hợp cũ vì `rejectedQuantity >= 0`) khi thêm SL NG cho `updateProductionJobOperation`.
@@ -188,7 +188,7 @@ export enum ErrorCode {
   // tồn tại.
   E091 = 'production_job_operation.error.not_found',
   // E092 (warehouse.error.not_found) stays reserved — bảng `warehouses` bỏ hẳn, hệ thống chỉ 1 kho
-  // vật lý duy nhất (`docs/decisions/single-warehouse.md`).
+  // vật lý duy nhất.
   // E093 (warehouse.error.code_exists) stays reserved — cùng lý do E092.
   // E094 (warehouse.error.inactive) stays reserved — warehouses.status (ACTIVE/INACTIVE) bỏ hẳn
   // trước cả khi bỏ bảng, kho hoạt động 24/7 nên không có khái niệm đóng/mở; check nó từng bảo vệ
@@ -205,7 +205,7 @@ export enum ErrorCode {
   E098 = 'inventory_document.error.invalid_status_transition',
   // E099 (inventory_document.error.item_target_mismatch) stays reserved — dòng phiếu giờ chỉ có
   // một `itemId` (không còn cặp `productId`/`materialId` + `itemType`), nên "sai target" bất khả
-  // thi (`docs/decisions/items-merge.md`).
+  // thi.
   // `itemId` trên dòng phiếu không tồn tại.
   E100 = 'inventory_document.error.item_not_found',
   E101 = 'class.error.teacher_not_found',
@@ -221,7 +221,7 @@ export enum ErrorCode {
   // `productionJobId`/`departmentId`/`requestedBy`/`orderItemId`) không tồn tại.
   E107 = 'inventory_document.error.invalid_reference',
   // E108 (bom_material.error.not_found) stays reserved — `bom_materials` merged into `bom_items`;
-  // `E050` covers "node not found" for both node types now (`docs/decisions/items-merge.md`).
+  // `E050` covers "node not found" for both node types now.
   // `PATCH`/`DELETE` một dòng `bom_operations` không tồn tại đúng node.
   E109 = 'bom_operation.error.not_found',
   // Retired: `POST /items/:itemId/copy` từng chặn DIRECT; nay copy vật tư được phép — không tái dùng số.
@@ -244,7 +244,7 @@ export enum ErrorCode {
   E124 = 'purchase_order.error.has_posted_receipts',
   E125 = 'purchase_ledger.error.line_not_purchasable',
   // Nghỉ hưu — dành cho `POST /purchase-ledger/:id/cancel` thuộc thiết kế 7-trạng-thái ban đầu,
-  // chưa từng triển khai (`purchase-ledger` chỉ có `GET`, `docs/domains/purchasing.md`). Giữ
+  // chưa từng triển khai (`purchase-ledger` chỉ có `GET`, `docs/CODEMAPS/purchasing.md`). Giữ
   // comment, không tái sử dụng số.
   E126 = 'purchase_ledger.error.line_already_ordered',
   E127 = 'purchase_order.error.receipt_item_mismatch',
@@ -270,7 +270,7 @@ export enum ErrorCode {
   E138 = 'iqc_inspection.error.not_found',
   // `result = PASS` không được kèm `disposition` trên `POST /iqc` (tạo tay) — DB còn giữ
   // `chk_qc_requests_disposition_requires_fail` làm chốt chặn cuối. `confirmIqc` không còn ném mã
-  // này — QC toàn quyền quyết định ở luồng "Lưu" (`docs/domains/quality-iqc.md`).
+  // này — QC toàn quyền quyết định ở luồng "Lưu" (`docs/CODEMAPS/quality.md`).
   E139 = 'iqc_inspection.error.disposition_not_allowed_for_pass',
   // Nghỉ hưu — cùng lý do `E097`: `code` không còn cho client tự truyền trên `create`.
   E140 = 'iqc_inspection.error.code_exists',
@@ -312,7 +312,7 @@ export enum ErrorCode {
   // SL nhận (cộng dồn mọi phiếu đã xác nhận) vượt SL đặt của dòng đơn mua.
   E154 = 'purchase_order_item.error.received_quantity_exceeded',
   // E155 (purchase_order.error.missing_receipt_warehouse) stays reserved — `receiptWarehouseId` bỏ
-  // hẳn cùng đợt bỏ khái niệm kho (`docs/decisions/single-warehouse.md`).
+  // hẳn cùng đợt bỏ khái niệm kho.
   // Xác nhận đặt hàng khi chưa chọn điều khoản thanh toán — cần có để tính `dueDate` lúc PO đạt
   // COMPLETED và tự sinh yêu cầu thanh toán.
   E156 = 'purchase_order.error.missing_payment_term',
@@ -329,16 +329,16 @@ export enum ErrorCode {
   // `disposition = SORT` nhưng thiếu `sortOkQty`/`sortNgQty`.
   E162 = 'iqc_inspection.error.sort_quantity_required',
   // E163 (iqc_inspection.error.missing_warehouse_for_return) stays reserved — `supplier_returns`
-  // không còn cột kho để suy, `disposition = SORT`/`RETURN` giờ luôn sinh được phiếu trả
-  // (`docs/decisions/single-warehouse.md`).
+  // không còn cột kho để suy, `disposition = SORT`/`RETURN` giờ luôn sinh được phiếu trả.
+  //
   // Hoàn tất phiếu IQC sau khi phiếu trả NCC liên kết được `post` (`SupplierReturnsService.
   // postSupplierReturn`) khi dòng IQC không còn `WAITING_RETURN`.
   E164 = 'iqc_inspection.error.not_waiting_return',
   E165 = 'outsourcing_order.error.not_found',
   // E166 (outsourcing_order.error.operation_not_outsource) dự phòng — trước ném khi snapshot
   // `productionJobOperationId` không phải `type = OUTSOURCE`; `createOutsourcingOrder` không còn
-  // resolve/validate công đoạn phía server, client gửi thẳng các cột của dòng
-  // (`docs/decisions/outsourcing-no-draft.md`).
+  // resolve/validate công đoạn phía server, client gửi thẳng các cột của dòng.
+  //
   E166 = 'outsourcing_order.error.operation_not_outsource',
   // E167 (outsourcing_order.error.job_not_in_progress) dự phòng — cùng lý do bỏ như E166; trước
   // ném khi Job của công đoạn chưa/không còn `IN_PROGRESS`.
@@ -372,7 +372,7 @@ export enum ErrorCode {
   E178 = 'oqc_inspection.error.not_deletable',
   E179 = 'inventory_receipt.error.production_job_required',
   // E180 (inventory_receipt.error.oqc_pass_quantity_exceeded) dự phòng — OQC đổi từ gắn theo Job
-  // sang gắn theo công đoạn (`docs/decisions/oqc-per-operation.md`), SL OQC giờ ở đơn vị part, so
+  // sang gắn theo công đoạn, SL OQC giờ ở đơn vị part, so
   // trực tiếp với SL nhập kho (đơn vị FG) là sai đơn vị. Thay bằng `E196`/`E197`.
   E180 = 'inventory_receipt.error.oqc_pass_quantity_exceeded',
   // Nghỉ hưu — cùng lý do `E097`: `code` không còn cho client tự truyền trên `create`.
@@ -412,7 +412,7 @@ export enum ErrorCode {
   E193 = 'outbound_order.error.quantity_exceeds_ordered',
   // `POST /outbound-orders/:id/send` (chốt thật) và `.../approve` (kiểm lại) khi Σ SL cùng vật tư
   // của phiếu vượt `Có thể giao = Tồn kho FG − Đã giữ của DO khác PENDING_APPROVAL/PENDING_DELIVERY`
-  // — cùng khuôn `E231` (phiếu lãnh vật tư). Xem `docs/domains/inventory.md`.
+  // — cùng khuôn `E231` (phiếu lãnh vật tư). Xem `docs/CODEMAPS/inventory.md`.
   E194 = 'outbound_order.error.quantity_exceeds_deliverable',
   E195 = 'outbound_order.error.not_found',
   // Nhập kho thành phẩm (`receiptType = PRODUCTION`) khi Job chưa có phiếu OQC nào (dòng
@@ -430,7 +430,7 @@ export enum ErrorCode {
   // Node BOM chứa công đoạn đã mất `itemId` (item gốc bị xoá, `set null`) — không có gì để
   // snapshot vào `qc_requests.itemId` (NOT NULL) khi tạo OQC.
   E199 = 'oqc_inspection.error.item_not_resolvable',
-  // Nghỉ hưu — toàn bộ tính năng AQL đã bị xoá (`docs/decisions/aql-removed.md`), `result` trên OQC
+  // Nghỉ hưu — toàn bộ tính năng AQL đã bị xoá, `result` trên OQC
   // nay bắt buộc ở tầng DTO, không còn nhánh "thiếu cả result lẫn resultAuto". Giữ comment, không
   // tái sử dụng số.
   E200 = 'oqc_inspection.error.aql_plan_not_found',
@@ -442,8 +442,8 @@ export enum ErrorCode {
   // vẫn là chốt chặn cuối. Giữ comment, không tái sử dụng số.
   E202 = 'oqc_inspection.error.disposition_not_allowed_for_pass',
   // `postInventoryIssue` (`issueType = PRODUCTION`) khi còn ≥1 phiếu IQC chưa `COMPLETED` của cùng
-  // `itemId` — vật tư chưa qua IQC (hoặc IQC còn FAIL chưa xử lý) không được xuất cho sản xuất
-  // (`docs/decisions/qc-gates-on-stock-moves.md`).
+  // `itemId` — vật tư chưa qua IQC (hoặc IQC còn FAIL chưa xử lý) không được xuất cho sản xuất.
+  //
   E203 = 'inventory_issue.error.iqc_pending',
   // `DELETE /iqc/:iqcId` khi đã từng `confirm` (`confirmedAt` khác null) — chỉ xoá được phiếu chưa
   // ai đụng vào, khuôn `E178` (OQC) nhưng mint riêng vì hai domain khác nhau.
@@ -465,7 +465,7 @@ export enum ErrorCode {
   // `POST /inventory-receipts/:receiptId/confirm` (`receiptType = PRODUCTION`) khi Job có node
   // Cấp 0 (`createJobOperations`) mà chưa có phiếu OQC nào `COMPLETED` (trừ `disposition =
   // SCRAP`) gắn với công đoạn của node đó — tách riêng khỏi `E196` (còn phiếu OQC dở dang) vì đây là
-  // lý do khác: chưa từng QC thành phẩm. `docs/decisions/oqc-per-operation.md` mục "Đừng hoàn lại".
+  // lý do khác: chưa từng QC thành phẩm.
   E209 = 'inventory_receipt.error.final_oqc_missing',
   // `POST /production-execution/operations/:jobOperationId/reports` khi công đoạn thuộc node Cấp 0
   // (`itemType = 'FG'`, bước Lắp ráp) mà còn công đoạn của node khác trong cùng Job chưa
@@ -478,19 +478,19 @@ export enum ErrorCode {
   E211 = 'oqc_inspection.error.outsourced_operation',
   // Nghỉ hưu — chưa từng phát hành: điều kiện của nó ("Job có công đoạn OUTSOURCE mà chưa có IQC
   // nào từ OS-IN") hoá ra là tập con của `E196` sau khi `getJobQcCoverage` hợp nhất IQC/OQC theo
-  // công đoạn (`docs/decisions/qc-data-model.md`) — công đoạn OS-IN chưa `requiresIqc` đóng góp
+  // công đoạn — công đoạn OS-IN chưa `requiresIqc` đóng góp
   // `(0, 0)` vào tổng, không tự nó chặn được gì; `E196` đã bắt đúng ca "đã yêu cầu IQC mà chưa
   // xong". Giữ số, không tái sử dụng.
   E212 = 'inventory_receipt.error.outsourcing_iqc_missing',
   // `POST /production-jobs/:jobId/qc` khi Job không khai báo routing Cấp 0 (không có node BOM
-  // `itemType = 'FG'`, xem `docs/decisions/oqc-per-operation.md` mục "QC cho Cấp 0") — route này
+  // `itemType = 'FG'`) — route này
   // chỉ áp dụng cho Job có bước lắp ráp/thành phẩm riêng.
   E213 = 'production_job.error.no_final_assembly',
   // Nghỉ hưu — `confirmOqc` không còn bắt buộc `dispositionNote` khi `disposition ∈ {ACCEPT, SCRAP}`;
   // QC toàn quyền quyết định phương án xử lý. Giữ comment, không tái sử dụng số.
   E215 = 'oqc_inspection.error.disposition_reason_required',
   // Nghỉ hưu — module `qc-aql` (master data phương án lấy mẫu AQL) đã bị xoá hoàn toàn cùng toàn
-  // bộ tính năng AQL (`docs/decisions/aql-removed.md`). Giữ comment, không tái sử dụng số.
+  // bộ tính năng AQL. Giữ comment, không tái sử dụng số.
   E216 = 'qc_aql_plan.error.not_found',
   // Nghỉ hưu — cùng đợt E216.
   E217 = 'qc_aql_plan.error.code_exists',
@@ -531,7 +531,7 @@ export enum ErrorCode {
   // `POST /outbound-orders/:id/deliver` khi phiếu không ở `PENDING_DELIVERY`.
   E237 = 'outbound_order.error.not_deliverable',
   // E238 (outbound_order.error.fg_warehouse_ambiguous) stays reserved — `deliver` không còn cần
-  // resolve kho, hệ thống chỉ 1 kho vật lý (`docs/decisions/single-warehouse.md`).
+  // resolve kho, hệ thống chỉ 1 kho vật lý.
   // `POST /outbound-orders/:id/send` khi phiếu không ở `DRAFT`/`REJECTED`.
   E239 = 'outbound_order.error.not_sendable',
   // `POST /outbound-orders/:id/approve` hoặc `.../reject` khi phiếu không ở `PENDING_APPROVAL`.
@@ -585,8 +585,8 @@ export enum ErrorCode {
   // `PATCH /outbound-orders/:id` khi DO không còn DRAFT (BUG-090).
   E259 = 'outbound_order.error.not_editable',
   // `POST .../reports` trên công đoạn `OUTSOURCE` — completedQuantity/completedDate chỉ do OS-IN
-  // ghi (`recomputeOutsourcedOperationProgress`), không cho nhập tay
-  // (`docs/decisions/outsourced-operation-progress-writeback.md`).
+  // ghi (`recomputeOutsourcedOperationProgress`), không cho nhập tay.
+  //
   E260 = 'production_job_operation.error.outsource_not_editable',
   // Trùng `itemId` trong cùng payload lập/sửa phiếu điều chỉnh tồn — cùng khuôn `E228` (phiếu
   // lãnh), mint riêng vì khác resource.
@@ -596,7 +596,7 @@ export enum ErrorCode {
   E262 = 'item_unit.error.not_found',
   // `POST /items/:itemId/units` khi `(itemId, unitId)` đã có dòng — mỗi cặp chỉ 1 hệ số quy đổi.
   // Xoá một dòng `item_units` không cần mã lỗi "in_use" riêng — `unitId` của dòng phiếu kho FK
-  // thẳng `units`, không FK `item_units` (`docs/decisions/unit-conversion.md`).
+  // thẳng `units`, không FK `item_units`.
   E263 = 'item_unit.error.duplicate_unit',
   // `DELETE /orders/:orderId` khi status khác `DRAFT`/`REJECTED` — cùng khuôn `E258`
   // (outbound_order), mint riêng vì khác resource.

@@ -15,7 +15,7 @@ import { users } from './users';
 /**
  * Login credentials only — personal/HR info (name, gender, DOB, phone) lives on `users`. Mỗi
  * credential bắt buộc gắn đúng một `users` (`userId` NOT NULL, unique) — không có khái niệm
- * "admin-only login" nữa, xem `docs/domains/identity-access.md`.
+ * "admin-only login" nữa, xem `docs/CODEMAPS/identity-access.md`.
  *
  * Rules:
  * - Authorization is anchored here: `roleId` links the login identity (the JWT `sub`) to a role,

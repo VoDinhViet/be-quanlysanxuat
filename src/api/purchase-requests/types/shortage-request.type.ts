@@ -1,5 +1,5 @@
 /** Một dòng vật tư thiếu của Job — `quantity` là **phần thiếu** (`requiredQty − tồn khả dụng`, kẹp về 0), không
- * phải toàn bộ nhu cầu. Xem `docs/domains/purchase-requests.md`. */
+ * phải toàn bộ nhu cầu. Xem `docs/CODEMAPS/purchasing.md`. */
 export type PurchaseRequestShortageItem = {
   itemId: string;
   quantity: number;

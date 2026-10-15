@@ -69,7 +69,7 @@ export class ProductionJobIssueResDto {
   @Expose()
   @NumberField({
     description:
-      'Đã lãnh — Σ SL lãnh mọi phiếu lãnh vật tư ISSUED cùng (Job, vật tư), xem docs/domains/inventory.md',
+      'Đã lãnh — Σ SL lãnh mọi phiếu lãnh vật tư ISSUED cùng (Job, vật tư), xem docs/CODEMAPS/inventory.md',
   })
   issuedQuantity!: number;
 

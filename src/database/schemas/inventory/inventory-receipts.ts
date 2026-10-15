@@ -55,7 +55,7 @@ export const inventoryReceiptAssetTypeEnum = pgEnum(
 /**
  * Phiếu nhập kho — header. `DRAFT` sửa/xoá tự do, không đụng tồn; `post` (`DRAFT → POSTED`) mới
  * sinh `inventory_transactions`/cập nhật `inventory_balances`, sau đó phiếu bất biến
- * (`docs/domains/inventory.md`). `supplierId`/`clientId` loại trừ lẫn nhau — nhập từ khách hàng
+ * (`docs/CODEMAPS/inventory.md`). `supplierId`/`clientId` loại trừ lẫn nhau — nhập từ khách hàng
  * (`receiptType = RETURN`) dùng `clientId`, còn lại dùng `supplierId`.
  */
 export const inventoryReceipts = pgTable(
@@ -73,12 +73,12 @@ export const inventoryReceipts = pgTable(
       onDelete: 'set null',
     }),
     // Khách hàng gửi trả (receiptType = RETURN) — loại trừ lẫn nhau với supplierId
-    // (chk_inventory_receipts_supplier_client_exclusive), xem docs/domains/inventory.md.
+    // (chk_inventory_receipts_supplier_client_exclusive), xem docs/CODEMAPS/inventory.md.
     clientId: uuid('client_id').references(() => clients.id, {
       onDelete: 'set null',
     }),
     // Nhãn phân loại tài sản, chọn tay độc lập với clientId — không tách tồn kho theo chủ sở
-    // hữu, xem docs/domains/inventory.md mục "Nhập từ khách hàng".
+    // hữu, xem docs/CODEMAPS/inventory.md mục "Nhập từ khách hàng".
     assetType: inventoryReceiptAssetTypeEnum('asset_type')
       .notNull()
       .default(InventoryReceiptAssetType.COMPANY),
@@ -94,12 +94,12 @@ export const inventoryReceipts = pgTable(
     ),
     // `set null`, cùng lý do `productionOrderId` — bắt buộc khi `receiptType = PRODUCTION`
     // (service-enforced, `E179`), dùng làm neo cho gate QC (`getJobQcCoverage`,
-    // `docs/domains/inventory.md`).
+    // `docs/CODEMAPS/inventory.md`).
     productionJobId: uuid('production_job_id').references(
       () => productionJobs.id,
       { onDelete: 'set null' },
     ),
-    // Trace mức phiếu về đơn mua sinh ra nó (`docs/domains/purchasing.md`) — thuần để trace, không
+    // Trace mức phiếu về đơn mua sinh ra nó (`docs/CODEMAPS/purchasing.md`) — thuần để trace, không
     // đọc để tính tồn/bút toán.
     purchaseOrderId: uuid('purchase_order_id').references(
       () => purchaseOrders.id,
@@ -109,7 +109,7 @@ export const inventoryReceipts = pgTable(
     // PO / Lý do nhập — bắt buộc khi `receiptType = OTHER` (service-enforced, `E293`); `RETURN` có thể nhập (FE yêu cầu khi tạo); loại khác để trống.
     reason: varchar('reason', { length: 500 }),
     // Ghi ở `confirm` — khác `postedBy`/`postedAt` (ghi ở `post`), hai mốc/hai người có thể khác
-    // nhau (`docs/workflows/receipt-confirmation.md`).
+    // nhau (`docs/CODEMAPS/inventory.md`).
     confirmedBy: uuid('confirmed_by').references(() => users.id, {
       onDelete: 'set null',
     }),

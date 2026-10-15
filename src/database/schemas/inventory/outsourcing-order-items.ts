@@ -22,8 +22,8 @@ import { productionJobs } from '../production/production-jobs';
  * Dòng phiếu gửi gia công ngoài (OS-OUT) — client gửi đủ cột (`productionJobBomItemId`/
  * `itemCode`/`itemName`/`productionJobId`/`operationCode`/...) lấy từ popup
  * `GET .../outsourceable-operations`, server không resolve/validate lại — chỉ FK + `.notNull()`
- * ràng buộc (`docs/decisions/outsourcing-no-draft.md`). Xem
- * `docs/workflows/outsourcing-round-trip.md`.
+ * ràng buộc. Xem
+ * `docs/CODEMAPS/production.md`.
  *
  * Không unique trên `(outsourcingOrderId, productionJobOperationId)` (từng có, đã bỏ) — gửi cùng
  * một công đoạn ở nhiều phiếu OS-OUT khác nhau qua nhiều đợt là luồng thật (`sentQuantity` cộng
@@ -57,7 +57,7 @@ export const outsourcingOrderItems = pgTable(
     // `production_job_operations`.
     operationCode: varchar('operation_code', { length: 50 }).notNull(),
     operationName: varchar('operation_name', { length: 255 }).notNull(),
-    // Node Job cụ thể được gửi đi (`docs/decisions/wip-removal.md`) — `set null` cùng lý do
+    // Node Job cụ thể được gửi đi — `set null` cùng lý do
     // `productionJobId`; `itemCode`/`itemName` là snapshot bắt buộc thay thế lúc đó.
     productionJobBomItemId: uuid('production_job_bom_item_id').references(
       () => productionJobBomItems.id,

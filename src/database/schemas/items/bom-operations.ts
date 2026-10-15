@@ -15,15 +15,15 @@ import { users } from '../identity-access/users';
 /**
  * Công đoạn as-used gắn thẳng vào một node `bom_items` COMPONENT (node DIRECT là lá, không
  * gắn được). Công đoạn Cấp 0 (chính sản phẩm gốc) sống ở bảng riêng `routing_operations`, neo
- * `boms.id` — xem `docs/decisions/routing-operations-table.md`.
+ * `boms.id`.
  *
  * Rules:
  * - `operationId` bất biến sau khi thêm — đổi công đoạn là xoá dòng rồi thêm lại.
  * - Không unique trên `(bomItemId, operationId)` — một chuỗi được phép lặp lại cùng công đoạn (vd.
  *   Kiểm tra → Gia công → Kiểm tra).
  * - `type` là quyết định thật cho bước này (Inhouse/Outsource) — độc lập với `operations.type` của
- *   công đoạn danh mục, chỉ trùng lúc tạo vì FE prefill theo giá trị đó
- *   (`docs/decisions/routing-operation-type-per-attachment.md`).
+ *   công đoạn danh mục, chỉ trùng lúc tạo vì FE prefill theo giá trị đó.
+ *
  */
 export const bomOperations = pgTable(
   'bom_operations',

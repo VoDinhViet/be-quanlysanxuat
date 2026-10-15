@@ -20,7 +20,7 @@ import { productionJobs } from './production-jobs';
 
 /**
  * `FG` — node "Cấp 0" đại diện chính thành phẩm (đúng 1 mỗi Job); `COMPONENT`/`DIRECT` — nhân
- * bản từ `bom_items.type` (`docs/decisions/wip-removal.md`). Enum riêng, không dùng chung
+ * bản từ `bom_items.type`. Enum riêng, không dùng chung
  * `ItemType`: `items.type` không còn giá trị nào cho node cấu trúc con.
  */
 export enum ProductionJobBomItemType {
@@ -41,8 +41,8 @@ export const productionJobBomItemTypeEnum = pgEnum(
 /**
  * Snapshot cây BOM của một Job — nhân bản `bom_items` (cả node COMPONENT lẫn lá DIRECT), id
  * hoàn toàn mới. Dựng đúng một lần trong transaction `start` (`ProductionJobsService.startJob` →
- * `createJobSnapshot`) — Job còn `PENDING` không có dòng nào ở đây, xem
- * `docs/decisions/job-snapshot-at-start.md`. Đóng băng ngay từ lúc đó, không có route sửa — sửa/xoá
+ * `createJobSnapshot`) — Job còn `PENDING` không có dòng nào ở đây.
+ * Đóng băng ngay từ lúc đó, không có route sửa — sửa/xoá
  * BOM gốc sau đó không ảnh hưởng Job đã `start`.
  *
  * Rules:
@@ -52,10 +52,10 @@ export const productionJobBomItemTypeEnum = pgEnum(
  * - `itemType` chủ yếu `COMPONENT`/`DIRECT` (nhân bản từ `bom_items`), cộng **đúng một** node
  *   `FG` mỗi Job —
  *   node "Cấp 0" đại diện chính thành phẩm, mang routing lắp ráp/đóng gói của FG
- *   (`createJobBomItems`, xem `docs/decisions/oqc-per-operation.md` mục "Đừng hoàn
- *   lại"). Node FG luôn `parentId = null`, `sortOrder` lớn nhất trong Job (đứng cuối bảng "Công
+ *   (`createJobBomItems`).
+ *   Node FG luôn `parentId = null`, `sortOrder` lớn nhất trong Job (đứng cuối bảng "Công
  *   đoạn sản xuất") — snapshot riêng của Job này, không lẫn với node ROOT thật của `bom_items`
- *   (`docs/decisions/root-bom-item.md`, cây gốc đã có `parentId` cho mọi node khác ROOT nên không
+ *   (cây gốc đã có `parentId` cho mọi node khác ROOT nên không
  *   còn node nào khác trùng `parentId = null` để phân biệt); chỉ tạo khi node ROOT của FG có
  *   `bom_operations` (routing Cấp 0).
  * - `level` là snapshot copy nguyên từ `bom_items.level` lúc duyệt LSX, cùng quy ước 1-based (node

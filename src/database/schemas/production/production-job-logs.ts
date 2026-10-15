@@ -35,8 +35,8 @@ export const productionJobLogActionEnum = pgEnum('production_job_log_action', [
  * Lịch sử thao tác trên một Job — cùng khuôn `production_order_logs`, append-only (không
  * `updatedAt`). Cả 5 mốc đều ghi bằng `tx.insert` thẳng, trong transaction của hành động đang
  * log, rải ở 4 file (`production-jobs.service.ts`/`.query.ts`, `oqc.query.ts`,
- * `inventory-receipts.service.ts`) — không gom về một service chung, tránh vòng import DI, xem
- * `docs/decisions/production-lifecycle-closing.md`. `performedBy` NULL có chủ đích ở
+ * `inventory-receipts.service.ts`) — không gom về một service chung, tránh vòng import DI.
+ * `performedBy` NULL có chủ đích ở
  * `WAITING_QC`/`WAITING_DELIVERY` — 2 mốc tự động, `production_jobs` cũng không có cột `*By`/`*At`.
  */
 export const productionJobLogs = pgTable(

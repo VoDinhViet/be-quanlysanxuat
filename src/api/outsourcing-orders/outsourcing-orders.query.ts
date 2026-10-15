@@ -19,9 +19,9 @@ import {
 /** Σ SL đã gửi theo từng công đoạn Job — dùng cho popup "chọn part cần gia công"
  * (`getOutsourceableOperations`), LEFT JOIN thẳng vào SELECT hiển thị thay vì round-trip `Map`
  * riêng. Tính mọi phiếu chưa `CANCELLED` (4 trạng thái sống — không còn chỉ `POSTED`, status đã gộp
- * tiến độ, `docs/decisions/outsourcing-order-status-progress-merge.md`). Không còn dùng để validate
- * — `createOutsourcingOrder` nhận dòng do client gửi đủ cột, không tự tính lại số đã gửi
- * (`docs/decisions/outsourcing-no-draft.md`). */
+ * tiến độ). Không còn dùng để validate
+ * — `createOutsourcingOrder` nhận dòng do client gửi đủ cột, không tự tính lại số đã gửi.
+ */
 export function sentQuantityByJobOperationSubquery(db: Database) {
   return db
     .select({
@@ -181,10 +181,10 @@ async function hasPendingIqcForOrder(
 
 /**
  * Tính lại `status` (= tiến độ nhận hàng) của 1 phiếu OS-OUT từ dữ liệu thật (SL gửi/nhận/IQC còn
- * treo) rồi `UPDATE` — nguồn ghi duy nhất cho 3 giá trị `PARTIAL`/`WAITING_QC`/`COMPLETED`
- * (`docs/decisions/outsourcing-order-status-progress-merge.md`). SL nhận đã trừ hàng QC fail bị trả
+ * treo) rồi `UPDATE` — nguồn ghi duy nhất cho 3 giá trị `PARTIAL`/`WAITING_QC`/`COMPLETED`.
+ * SL nhận đã trừ hàng QC fail bị trả
  * NCC (`supplier_returns` `POSTED`) nên phiếu trả về hàng lỗi tự lùi status về `PARTIAL`/`SENT`,
- * mở lại hạn mức cho NCC giao bù (`docs/workflows/supplier-return.md`, Side effects). Gọi từ
+ * mở lại hạn mức cho NCC giao bù (`docs/CODEMAPS/inventory.md`, Side effects). Gọi từ
  * `OutsourcingReceiptsService.createOutsourcingReceipt`/`cancelOutsourcingReceipt` (SL nhận đổi),
  * `IqcService.confirmIqc` (IQC treo đổi), và `SupplierReturnsService.postSupplierReturn` (SL trả
  * đổi) — luôn trong cùng `tx` với thao tác vừa gây ra thay đổi đó, không phải cron/job riêng. Bỏ

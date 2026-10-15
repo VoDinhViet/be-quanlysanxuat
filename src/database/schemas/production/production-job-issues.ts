@@ -23,8 +23,8 @@ import { productionJobUnits } from './production-job-units';
  * đóng dấu `production_jobs.snapshotEditedAt`); từ `IN_PROGRESS` khoá hẳn. Sau snapshot đây là
  * nguồn duy nhất cho nhu cầu vật tư: `startJob` (vật tư thiếu), `bomDemand` của Inventory/Purchase
  * Requests, phiếu lãnh và `GET /production-jobs/:jobId/bom` — cây `production_job_bom_items` có
- * thể lệch với bảng này sau khi sửa tay. Xem `docs/domains/production.md`, "Chuẩn nổ cấp BOM" ở
- * `docs/domains/product-structure.md`.
+ * thể lệch với bảng này sau khi sửa tay. Xem `docs/CODEMAPS/production.md`, "Chuẩn nổ cấp BOM" ở
+ * `docs/CODEMAPS/product-structure.md`.
  *
  * Rules:
  * - `unitQty` là định mức BOM lúc duyệt, **bất biến**. NULL cho dòng người dùng thêm tay

@@ -490,7 +490,7 @@ export class PurchaseRequestsService {
 
   /** Một `delete` chạm 3 bảng: dòng vật tư theo `ON DELETE CASCADE`, phiếu nhập kho chỉ bị bỏ
    * trống `purchaseRequestId` (`set null`) — mất trace, có chủ ý. Xem
-   * `docs/domains/purchase-requests.md`. */
+   * `docs/CODEMAPS/purchasing.md`. */
   async deletePurchaseRequest(purchaseRequestId: string): Promise<void> {
     await this.ensurePurchaseRequestDeletable(purchaseRequestId);
 

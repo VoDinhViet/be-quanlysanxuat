@@ -16,7 +16,7 @@ import { productionOrders } from './production-orders';
  * Phần con "quyết định sản xuất" của một LSX — 1 dòng cho mỗi dòng PO (`order_items`) status
  * NORMAL, mang Đề xuất SX + snapshot tồn tại lần ghi gần nhất. Giữ 1-1 với `orderItemId` (không
  * gộp theo sản phẩm ở tầng này) vì phiếu xuất kho cần `orderItemId` để delivery tracking (xem
- * `docs/domains/inventory.md`) — gộp theo sản phẩm chỉ xảy ra ở tầng `production_jobs`.
+ * `docs/CODEMAPS/inventory.md`) — gộp theo sản phẩm chỉ xảy ra ở tầng `production_jobs`.
  *
  * `orderItemId` dùng `restrict`, không `cascade` — `OrdersService.updateOrder` tự xoá các dòng
  * của LSX chưa phát hành trước khi replace `order_items` (transaction theo

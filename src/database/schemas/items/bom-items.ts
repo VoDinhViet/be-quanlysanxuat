@@ -21,12 +21,12 @@ import { units } from '../units/units';
 import { users } from '../identity-access/users';
 
 /**
- * `COMPONENT` — node cấu trúc con (thay cho WIP cũ, `docs/decisions/wip-removal.md`): không trỏ
+ * `COMPONENT` — node cấu trúc con (thay cho WIP cũ): không trỏ
  * `items`, mang `code`/`name` nhập trực tiếp trên chính dòng, riêng cho vị trí đó trong cây của
  * đúng 1 sản phẩm — không tái sử dụng được. `DIRECT` — node lá, trỏ `items.id`
  * (`type = DIRECT`). Cấp 0 (chính item FG) không có giá trị nào ở đây — không phải một dòng
- * `bom_items`, không xuất hiện trong response `GET .../bom`
- * (`docs/decisions/level-0-outside-bom-tree-response.md`).
+ * `bom_items`, không xuất hiện trong response `GET .../bom`.
+ *
  */
 export enum BomType {
   COMPONENT = 'COMPONENT',
@@ -40,9 +40,9 @@ export const bomTypeEnum = pgEnum('bom_node_type', [
 
 /**
  * One line of the BOM tree — a `COMPONENT` sub-assembly node (private to this tree, no `items`
- * row) or a `DIRECT` leaf (`itemId`, không còn bảng `bom_materials` riêng — xem
- * `docs/decisions/items-merge.md`). `parentId` NULL nghĩa là node nằm ngay dưới Cấp 0 (dòng ảo,
- * không lưu ở đây — xem `docs/decisions/bom-header-as-level-0-anchor.md`). `level` stores 1-based
+ * row) or a `DIRECT` leaf (`itemId`, không còn bảng `bom_materials` riêng).
+ * `parentId` NULL nghĩa là node nằm ngay dưới Cấp 0 (dòng ảo,
+ * không lưu ở đây). `level` stores 1-based
  * depth from Cấp 0, read straight into the response.
  *
  * Rules:
@@ -95,7 +95,7 @@ export const bomItems = pgTable(
     sortOrder: integer('sort_order').notNull().default(0),
     note: varchar('note', { length: 1000 }),
     // Chỉ `DIRECT` — vật tư ngoài cấu trúc: được gắn cạnh node COMPONENT (miễn `E273`) và không bị
-    // xoá ngầm khi node cha có thêm con COMPONENT (`docs/domains/product-structure.md`).
+    // xoá ngầm khi node cha có thêm con COMPONENT (`docs/CODEMAPS/product-structure.md`).
     isOffStructure: boolean('is_off_structure').notNull().default(false),
     createdBy: uuid('created_by').references(() => users.id, {
       onDelete: 'set null',

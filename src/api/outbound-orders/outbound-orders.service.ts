@@ -424,7 +424,7 @@ export class OutboundOrdersService {
   }
 
   /** Tạo phiếu DO — luôn `DRAFT`, chưa duyệt/xác nhận giao, chưa đụng tồn kho thật. Giữ chỗ thành
-   * phẩm bắt đầu ngay ở đây (`docs/workflows/outbound-delivery.md`): `ensureOutboundLinesIssuable`
+   * phẩm bắt đầu ngay ở đây (`docs/CODEMAPS/sales.md`): `ensureOutboundLinesIssuable`
    * chặn `E194` nếu vượt tồn khả dụng. Dòng do client gửi đủ cột (`itemId`/`productionJobId` lấy từ
    * popup `unfulfilled-order-items`), server không resolve/validate lại phần còn lại. */
   async createOutboundOrder(
@@ -743,8 +743,8 @@ export class OutboundOrdersService {
 
   /** `PENDING_DELIVERY → DELIVERED` (không phải `POSTED` — DO không có trạng thái đó, tên hàm chỉ
    * mượn động từ kế toán "post" cho hành vi ghi sổ bên trong). Tự sinh + post 1 `inventory_issues`
-   * (`SALES`) đúng các dòng của DO, rồi đóng đơn hàng nếu đã giao đủ. Xem
-   * `docs/decisions/production-lifecycle-closing.md`. */
+   * (`SALES`) đúng các dòng của DO, rồi đóng đơn hàng nếu đã giao đủ.
+   */
   async postOutboundOrder(
     outboundOrderId: string,
     userId: string,

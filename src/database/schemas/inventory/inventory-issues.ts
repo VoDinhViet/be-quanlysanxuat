@@ -34,7 +34,7 @@ export const inventoryIssueTypeEnum = pgEnum('inventory_issue_type', [
 
 /**
  * Phiếu xuất kho — header, cùng khuôn `inventory_receipts` (status/postedBy/postedAt/createdBy)
- * nhưng vòng đời ngắn hơn — chỉ 3 trạng thái, không có nhánh IQC (`docs/domains/inventory.md`).
+ * nhưng vòng đời ngắn hơn — chỉ 3 trạng thái, không có nhánh IQC (`docs/CODEMAPS/inventory.md`).
  */
 export const inventoryIssues = pgTable(
   'inventory_issues',
@@ -58,7 +58,7 @@ export const inventoryIssues = pgTable(
     ),
     // Chỉ `OutboundOrdersService.deliver` (issueType = SALES) ghi cột này — phiếu xuất tự sinh lúc
     // giao hàng, dùng để thẻ kho trace ngược về DO. `set null`, không backfill phiếu cũ trước
-    // migration này (`docs/domains/inventory.md`).
+    // migration này (`docs/CODEMAPS/inventory.md`).
     outboundOrderId: uuid('outbound_order_id').references(
       () => outboundOrders.id,
       { onDelete: 'set null' },

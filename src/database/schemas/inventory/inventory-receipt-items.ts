@@ -16,8 +16,8 @@ import { units } from '../units/units';
 
 /** Một dòng phiếu nhập. `quantity` luôn dương — dấu chỉ xuất hiện ở bút toán sinh ra lúc `post`,
  * không ở đây. `purchaseOrderItemId` là nguồn duy nhất để sổ cái mua hàng tính "SL đã nhập kho"
- * theo từng dòng vật tư (`docs/domains/purchasing.md`) — chỉ đọc khi phiếu `POSTED`. `unitId` chỉ
- * để hiển thị (`docs/decisions/unit-conversion.md`) — không quy đổi, mọi bút toán/so sánh định mức
+ * theo từng dòng vật tư (`docs/CODEMAPS/purchasing.md`) — chỉ đọc khi phiếu `POSTED`. `unitId` chỉ
+ * để hiển thị — không quy đổi, mọi bút toán/so sánh định mức
  * đọc thẳng `quantity`. */
 export const inventoryReceiptItems = pgTable(
   'inventory_receipt_items',

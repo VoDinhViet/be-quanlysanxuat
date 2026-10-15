@@ -59,8 +59,8 @@ type BaseBomItem = typeof bomItems.$inferSelect & { item: ItemSelect | null };
  * Kế hoạch của Job tính từ master data hiện tại × SL Job, chỉ trên bộ nhớ: cây BOM đã nổ cấp,
  * công đoạn as-used, nhu cầu vật tư gộp. Job `PENDING` đọc thẳng hàm này (luôn khớp sản phẩm
  * đang sửa, gọi trong một transaction chỉ đọc cho nhất quán); `createJobSnapshot` ghi đúng kết quả
- * này khi xác nhận kế hoạch
- * (`docs/adr/0029-job-snapshot-at-start.md`, `docs/adr/0014-bom-explosion-in-job-demand.md`).
+ * này khi xác nhận kế hoạch.
+ *
  */
 export async function buildJobPlan(
   db: Database | DbTransaction,
@@ -196,7 +196,7 @@ export async function clearJobSnapshot(
 
 /**
  * Nhân bản cây `bom_items` sang node của Job, nổ cấp `plannedQuantity` (cha trước con nhờ
- * `orderBy level`). Cấp 0 không phải một node `bom_items` (`docs/adr/0030-bom-header-as-level-0-anchor.md`)
+ * `orderBy level`). Cấp 0 không phải một node `bom_items`
  * nên thành một node `FG` riêng đứng cuối cây, chỉ khi Cấp 0 có công đoạn. Map nguồn → id node
  * Job khoá theo `bom_items.id`, riêng node FG khoá theo `bomId` để gắn công đoạn Cấp 0.
  */
@@ -289,7 +289,7 @@ async function buildPlanBomItems(
 
 /**
  * Công đoạn as-used của mọi node: `bom_operations` (node COMPONENT) và `routing_operations`
- * (Cấp 0, `docs/adr/0032-routing-operations-table.md`). Node DIRECT không có công đoạn (chặn từ
+ * (Cấp 0). Node DIRECT không có công đoạn (chặn từ
  * lúc ghi).
  */
 async function buildPlanOperations(

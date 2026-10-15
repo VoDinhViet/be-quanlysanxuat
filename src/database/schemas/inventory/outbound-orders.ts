@@ -26,7 +26,7 @@ export const fulfillmentTypeEnum = pgEnum('fulfillment_type', [
 ]);
 
 /**
- * Vòng đời xem `docs/workflows/outbound-delivery.md`: `DRAFT ─send→ PENDING_APPROVAL
+ * Vòng đời xem `docs/CODEMAPS/sales.md`: `DRAFT ─send→ PENDING_APPROVAL
  * ─approve→ PENDING_DELIVERY ─deliver→ DELIVERED`, có nhánh `PENDING_APPROVAL ─reject→ REJECTED
  * ─send→ PENDING_APPROVAL`. `cancel` (DRAFT/PENDING_APPROVAL/PENDING_DELIVERY → CANCELLED) và
  * `DELETE` (DRAFT-only, hard delete) là hai điểm cuối riêng, không nằm trên chuỗi trên.
@@ -50,7 +50,7 @@ export const outboundOrderStatusEnum = pgEnum('outbound_order_status', [
 ]);
 
 /**
- * Phiếu giao hàng (DO) — header, nhiều dòng ở `outbound_order_items` (`docs/domains/inventory.md`,
+ * Phiếu giao hàng (DO) — header, nhiều dòng ở `outbound_order_items` (`docs/CODEMAPS/inventory.md`,
  * mục "Giao hàng"). Không giữ `warehouseId` — kho xuất suy từ dòng (`outbound_order_items` ↔
  * `order_items`), không cần chọn ở header.
  */

@@ -76,7 +76,7 @@ type ResolvedReceiptItem = {
   note: string | null;
   // Denormalize từ dòng OS-OUT nguồn — neo sang đúng công đoạn `OUTSOURCE` sinh ra dòng này, dùng
   // để gắn `qualityInspections.productionJobOperationId` khi `requiresIqc` (xem
-  // `createOutsourcingReceipt`, `docs/domains/quality-iqc.md`).
+  // `createOutsourcingReceipt`, `docs/CODEMAPS/quality.md`).
   productionJobId: string | null;
   productionJobOperationId: string | null;
 };
@@ -346,7 +346,7 @@ export class OutsourcingReceiptsService {
   /** Không còn nháp — tạo là nhận luôn: resolve/validate xong thì `INSERT` header thẳng `POSTED`,
    * sinh IQC nếu `requiresIqc` ngay sau đó, rồi `recomputeOutsourcingOrderStatus` cho từng OS-OUT
    * nguồn (SL đã nhận vừa đổi). Không đụng `inventory_balances` — hàng nhận về là node COMPONENT của
-   * Job, không phải item, không có tồn (`docs/decisions/wip-not-stocked.md`). */
+   * Job, không phải item, không có tồn. */
   async createOutsourcingReceipt(
     reqDto: CreateOutsourcingReceiptReqDto,
     userId: string,
@@ -426,7 +426,7 @@ export class OutsourcingReceiptsService {
       }
 
       // Ghi ngược tiến độ đúng công đoạn OUTSOURCE vừa nhận về — cùng lý do gộp Set ở trên, 1 phiếu
-      // có thể chạm nhiều công đoạn (docs/decisions/outsourced-operation-progress-writeback.md).
+      // có thể chạm nhiều công đoạn.
       const affectedOperationIds = new Set(
         resolvedItems
           .map((item) => item.productionJobOperationId)
@@ -585,8 +585,8 @@ export class OutsourcingReceiptsService {
   }
 
   /** OS-OUT nguồn tồn tại (`E165`, tái dùng mã "không tìm thấy OS-OUT" — cùng aggregate) + chưa
-   * `CANCELLED` (`E171` — status đã gộp tiến độ, không còn chỉ `POSTED`,
-   * `docs/decisions/outsourcing-order-status-progress-merge.md`) + NCC khớp header (`E187`). */
+   * `CANCELLED` (`E171` — status đã gộp tiến độ, không còn chỉ `POSTED`)
+   * + NCC khớp header (`E187`). */
   private ensureOrderItemValid(
     orderItem:
       | {

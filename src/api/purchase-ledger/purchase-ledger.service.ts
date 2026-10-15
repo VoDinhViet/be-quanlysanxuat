@@ -53,7 +53,7 @@ type LedgerQuantityRefs = {
 /** `quotedQuantity` đọc từ `purchase-quotations`, `orderedQuantity` từ `purchase-orders` — cả hai
  * module đã có route ghi, nhưng `orderedQuantity` chỉ đếm PO `ORDERED` (PO `DRAFT` tự sinh từ duyệt
  * RFQ không tính) nên phần lớn dòng vẫn dừng ở `WAITING_TO_PURCHASE`/`QUOTING` cho tới khi PO được
- * `confirm` (`docs/domains/purchasing.md`). */
+ * `confirm` (`docs/CODEMAPS/purchasing.md`). */
 @Injectable()
 export class PurchaseLedgerService {
   private static readonly MAX_EXPORT_ROWS = 10_000;

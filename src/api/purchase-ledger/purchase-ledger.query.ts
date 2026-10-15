@@ -104,7 +104,7 @@ export function receivedQuantitySubquery(db: Database) {
  * (`purchase_quotation_item_allocations`). Báo giá `APPROVED`: Σ `quantity` các dòng đơn mua sinh ra
  * từ nó (trừ PO đã huỷ), vì sau khi duyệt nguồn sự thật là đơn mua — đóng sớm PO (hạ/xoá dòng về
  * số đã nhận) tự trả phần thiếu về sổ cái để lập báo giá mới, báo giá gốc không bị sửa
- * (`docs/domains/purchasing.md`). */
+ * (`docs/CODEMAPS/purchasing.md`). */
 export function quotedQuantitySubquery(db: Database) {
   const orderedByQuotation = db
     .select({

@@ -13,7 +13,7 @@ import {
  * bất kỳ item nào trong danh sách — dùng bởi `InventoryIssuesService.postInventoryIssue` để chặn
  * (`E203`) xuất vật tư sản xuất chưa qua IQC. Join sang `inventory_receipts` (qua
  * `origin_type = INVENTORY_RECEIPT`) giới hạn gate vào đúng IQC hàng nhập kho — phiếu IQC sinh từ
- * OS-IN không vào gate này (`docs/decisions/qc-gates-on-stock-moves.md`). Plain function, không qua
+ * OS-IN không vào gate này. Plain function, không qua
  * DI. */
 export async function hasPendingIqcForItems(
   db: Database | DbTransaction,

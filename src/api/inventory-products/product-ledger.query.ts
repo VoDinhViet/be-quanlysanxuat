@@ -5,7 +5,7 @@ import { inventoryTransactions } from '../../database/schemas';
 
 /** Sổ cái của một item, tồn luỹ kế (`balanceAfter`) tính bằng window function trên TOÀN BỘ lịch sử
  * — không lọc theo khoảng ngày ở đây, nếu không số luỹ kế của các dòng còn lại sẽ sai. Nơi gọi lọc
- * ngày + phân trang ở query ngoài, sau khi đã có `balanceAfter` đúng (`docs/domains/inventory.md`).
+ * ngày + phân trang ở query ngoài, sau khi đã có `balanceAfter` đúng (`docs/CODEMAPS/inventory.md`).
  */
 export function productLedgerSubquery(db: Database, itemId: string) {
   return db

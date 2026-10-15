@@ -28,7 +28,7 @@ import { GetInventoryDirectsReqDto } from './dto/get-inventory-directs.req.dto';
 import { InventoryDirectResDto } from './dto/inventory-direct.res.dto';
 
 /** Tồn kho vật tư — nhánh DIRECT tách khỏi `InventoryService.getInventory` cũ
- * (`docs/domains/inventory.md`). FG sống ở `inventory-products`, không nhánh nào đọc chéo sang
+ * (`docs/CODEMAPS/inventory.md`). FG sống ở `inventory-products`, không nhánh nào đọc chéo sang
  * nhánh kia. Chưa có sổ cái/thẻ kho riêng cho DIRECT — đợt sau. */
 @Injectable()
 export class InventoryDirectsService {

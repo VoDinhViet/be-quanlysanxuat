@@ -8,7 +8,7 @@ import {
 
 /** SL đã trả NCC theo từng vật tư của một phiếu nhập, chỉ tính phiếu trả đã `POSTED` — dùng bởi
  *  `InventoryReceiptsService.postInventoryReceipt` để bù trừ trước khi ghi bút toán `RECEIPT`
- *  (xem `docs/workflows/supplier-return.md`, mục "bù trừ tồn"). Tại thời điểm `post` phiếu nhập
+ *  (xem `docs/CODEMAPS/inventory.md`, mục "bù trừ tồn"). Tại thời điểm `post` phiếu nhập
  *  chạy, mọi phiếu trả liên quan chắc chắn đã `POSTED` — phiếu nhập chỉ `post` được sau khi mọi
  *  IQC liên quan `COMPLETED`, và một IQC `WAITING_RETURN` chỉ `COMPLETED` sau khi phiếu trả của
  *  nó đã `POSTED` (`SupplierReturnsService.postSupplierReturn` →

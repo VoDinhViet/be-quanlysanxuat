@@ -21,7 +21,7 @@ import { files } from '../files';
 
 /** "Chờ duyệt" (kế hoạch, sửa số lượng tự do qua `updateProductionOrder`) vs "Đã duyệt" (chốt
  * LSX, không sửa được nữa) vs "Hoàn thành" (mọi Job đã `COMPLETED`, tự động đóng — không có route
- * tay, xem `docs/decisions/production-lifecycle-closing.md`). Chưa có trạng thái huỷ riêng (xem
+ * tay). Chưa có trạng thái huỷ riêng (xem
  * doc trên `productionOrders`). */
 export enum ProductionOrderStatus {
   PENDING = 'PENDING',
@@ -58,8 +58,8 @@ export const productionOrderNcrActionEnum = pgEnum(
 );
 
 /**
- * LSX (lệnh sản xuất) — header, 1-1 với một PO đã duyệt. Xem `docs/domains/production.md` và
- * `docs/workflows/production-order-approval.md` để biết đầy đủ luồng duyệt PO → quyết định sản
+ * LSX (lệnh sản xuất) — header, 1-1 với một PO đã duyệt. Xem `docs/CODEMAPS/production.md`
+ * để biết đầy đủ luồng duyệt PO → quyết định sản
  * xuất → duyệt LSX (chưa có huỷ duyệt).
  *
  * Rules:
@@ -67,7 +67,7 @@ export const productionOrderNcrActionEnum = pgEnum(
  *   Còn `PENDING` thì sửa được số lượng sản xuất từng dòng (`updateProductionOrder`, nhập tay).
  * - `APPROVED` (`ProductionOrdersService.approveProductionOrder`) chốt LSX và đẩy `orders.status`
  *   sang `IN_PROGRESS` — hết sửa được số lượng (`E084`). Chưa có route huỷ duyệt (đưa `APPROVED`
- *   quay lại `PENDING`) — tạm hoãn, xem `docs/domains/production.md` (Common mistakes).
+ *   quay lại `PENDING`) — tạm hoãn, xem `docs/CODEMAPS/production.md` (Common mistakes).
  * - `code` cấp ngay khi sinh kế hoạch (`seedPlan`, dòng cũ chưa có mã thì cấp lúc duyệt);
  *   `approvedBy`/`approvedAt` chỉ có giá trị khi `APPROVED`, luôn `NULL` khi `PENDING`
  *   (`chk_production_orders_status_fields`).
@@ -76,8 +76,8 @@ export const productionOrderNcrActionEnum = pgEnum(
  *   của đơn liên quan, tối đa 1 LSX / (`ncrId`, `ncrAction`); duyệt lại sau khi huỷ (bằng
  *   một PO khác, hoặc `OrdersService.approveOrder` seed lại) ghi đè hoàn toàn header + dòng quyết
  *   định cũ (`seedPlan`, replace-all theo `orderId`).
- * - `COMPLETED` tự động khi mọi `productionJobs` của LSX đạt `COMPLETED` — không có route tay, xem
- *   `docs/decisions/production-lifecycle-closing.md`.
+ * - `COMPLETED` tự động khi mọi `productionJobs` của LSX đạt `COMPLETED` — không có route tay.
+ *
  */
 export const productionOrders = pgTable(
   'production_orders',

@@ -44,11 +44,11 @@ type BomItemShapeCheck = {
 
 /**
  * Cây BOM một item FG — `bom_items` chứa node COMPONENT (cấu trúc con, `code`/`name` riêng,
- * không trỏ item) lẫn lá DIRECT (trỏ `items`), xem `docs/decisions/wip-removal.md`.
+ * không trỏ item) lẫn lá DIRECT (trỏ `items`).
  * DIRECT luôn là lá: không được nhận con (`E052`) và không được gắn `bom_operations`
  * (`E063`); ngược lại, DIRECT chỉ được gắn vào node chưa có con COMPONENT (`E273`), trừ vật tư
  * ngoài cấu trúc (`isOffStructure`).
- * Xem `docs/domains/product-structure.md`.
+ * Xem `docs/CODEMAPS/product-structure.md`.
  */
 @Injectable()
 export class BomsService {
@@ -69,7 +69,7 @@ export class BomsService {
 
     // Chưa có BOM (chưa ghi node nào) → mảng rỗng. Cấp 0 (chính item FG) không nằm trong mảng này
     // — FE đọc thông tin Cấp 0 qua `GET /items/:itemId` và công đoạn Cấp 0 qua
-    // `GET /items/:itemId/operations` (`docs/decisions/bom-header-as-level-0-anchor.md`).
+    // `GET /items/:itemId/operations`.
     if (!bom) {
       return [];
     }
@@ -433,7 +433,7 @@ export class BomsService {
   }
 
   /** Side-effect của `createBomItem` khi thêm COMPONENT: node cha vừa thành node cấu trúc nên vật tư
-   * đang khai trực tiếp trên nó bị xoá ngầm, trừ vật tư ngoài cấu trúc (`docs/domains/product-structure.md`). */
+   * đang khai trực tiếp trên nó bị xoá ngầm, trừ vật tư ngoài cấu trúc (`docs/CODEMAPS/product-structure.md`). */
   private async deleteDirectChildren(
     tx: DbTransaction,
     bomId: string,

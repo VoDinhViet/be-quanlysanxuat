@@ -15,7 +15,7 @@ import { items } from './items';
 /**
  * Đơn vị phụ của một item + hệ số quy đổi ra đơn vị gốc (`items.unitId`, hệ số 1 ngầm định, không
  * có dòng riêng ở đây). Dòng phiếu kho snapshot `conversionFactor` từ bảng này lúc lập, không đọc
- * lại giá trị mới nhất sau đó (`docs/decisions/unit-conversion.md`).
+ * lại giá trị mới nhất sau đó.
  */
 export const itemUnits = pgTable(
   'item_units',

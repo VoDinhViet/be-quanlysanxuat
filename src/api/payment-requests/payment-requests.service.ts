@@ -627,7 +627,7 @@ export class PaymentRequestsService {
    * `InventoryReceiptsService.postInventoryReceipt`, cùng transaction. Vô hại khi gọi lại nhiều
    * lần (kiểm `existing` + bắt `23505` — PO có thể nhận qua nhiều phiếu, kể cả 2 phiếu `post` gần
    * như đồng thời). Bỏ qua nếu PO đã `CANCELLED`, chưa có `paymentTerm` (gate `E156` cũ), hoặc 0
-   * dòng — chi tiết từng trường hợp: `docs/domains/purchasing.md`, mục "Yêu cầu thanh toán". */
+   * dòng — chi tiết từng trường hợp: `docs/CODEMAPS/purchasing.md`, mục "Yêu cầu thanh toán". */
   async createIfOrderCompleted(
     tx: DbTransaction,
     purchaseOrderId: string,

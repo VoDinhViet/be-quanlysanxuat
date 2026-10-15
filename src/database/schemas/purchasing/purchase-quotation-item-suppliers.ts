@@ -21,7 +21,7 @@ import { purchaseQuotationItemSupplierFiles } from './purchase-quotation-item-su
 /**
  * Giá một NCC báo cho một dòng vật tư. `unitPrice` nullable tới khi NCC được nhập giá. `selectedAt`
  * có giá trị nghĩa là NCC này thắng thầu cho vật tư đó — unique index từng phần bên dưới chặn hơn
- * một NCC thắng thầu cho cùng một `quotationItemId` ở tầng DB (`docs/domains/purchasing.md`).
+ * một NCC thắng thầu cho cùng một `quotationItemId` ở tầng DB (`docs/CODEMAPS/purchasing.md`).
  */
 export const purchaseQuotationItemSuppliers = pgTable(
   'purchase_quotation_item_suppliers',
@@ -60,7 +60,7 @@ export const purchaseQuotationItemSuppliers = pgTable(
     index('idx_purchase_quotation_item_suppliers_supplier_id').on(
       table.supplierId,
     ),
-    
+
     index('idx_purchase_quotation_item_suppliers_selected_by').on(
       table.selectedBy,
     ),

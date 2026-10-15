@@ -13,7 +13,7 @@ import { ItemUnitResDto } from './dto/item-unit.res.dto';
 import { UpdateItemUnitReqDto } from './dto/update-item-unit.req.dto';
 
 /** Đơn vị phụ khai báo riêng theo từng item — thuần thông tin tham khảo, không module nào đọc lại để
- * tính toán (`docs/decisions/unit-conversion.md`). */
+ * tính toán. */
 @Injectable()
 export class ItemUnitsService {
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}

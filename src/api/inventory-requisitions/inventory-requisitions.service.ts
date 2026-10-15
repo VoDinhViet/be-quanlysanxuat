@@ -59,8 +59,8 @@ import {
 /**
  * Phiếu lãnh vật tư — chứng từ duy nhất đưa DIRECT ra khỏi kho cho sản xuất. Đọc (tab chi tiết + 2
  * popup chọn vật tư) sống ở `InventoryRequisitionLinesService`, tách riêng vì cùng một bộ join
- * tính "6 số" lặp lại ba lần. Xem `docs/domains/inventory.md` mục "Phiếu lãnh vật tư",
- * `docs/workflows/inventory-requisition.md`.
+ * tính "6 số" lặp lại ba lần. Xem `docs/CODEMAPS/inventory.md` mục "Phiếu lãnh vật tư".
+ *
  */
 @Injectable()
 export class InventoryRequisitionsService {

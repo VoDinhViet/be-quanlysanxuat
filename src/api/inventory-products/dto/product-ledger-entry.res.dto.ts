@@ -16,7 +16,7 @@ import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
 
 /** Một dòng sổ cái (thẻ kho) của một thành phẩm. Không trả sẵn "loại giao dịch" đã suy diễn — FE tự
  * phân loại từ `quantity` (dấu) + `inventoryReceipt.receiptType`/`inventoryIssue.issueType` (đúng
- * một trong hai luôn có mặt), xem `docs/domains/inventory.md`, mục "Thẻ kho vật chất — item ledger".
+ * một trong hai luôn có mặt), xem `docs/CODEMAPS/inventory.md`, mục "Thẻ kho vật chất — item ledger".
  */
 @Exclude()
 export class ProductLedgerEntryResDto {

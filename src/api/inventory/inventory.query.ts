@@ -68,7 +68,7 @@ export function deliveredQuantityByOrderItemSubquery(db: Database) {
  * duyệt nên chưa tính vào đây. `excludeOrderId` loại một đơn khỏi nhu cầu khi tính Khả dụng cho
  * chính đơn đó — đơn này đã tự tính vào nhu cầu nên không loại trừ sẽ bị trừ hai lần; chỉ
  * `ProductionOrdersService` truyền tham số này. Tên hàm cố ý không dùng chữ "reserved" — khác khái
- * niệm "đã có chứng từ giữ" ở `inventory-products.service.ts` (`docs/domains/inventory.md`). */
+ * niệm "đã có chứng từ giữ" ở `inventory-products.service.ts` (`docs/CODEMAPS/inventory.md`). */
 export function openOrderDemandByItemSubquery(
   db: Database,
   excludeOrderId?: string,

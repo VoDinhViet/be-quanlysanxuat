@@ -26,7 +26,7 @@ import { closeJobIfQcCovered } from '../oqc/oqc.query';
  *  với dòng đã `IN_PROGRESS`) — đây là transition riêng, chỉ hợp lệ đúng một lần, từ
  *  `IN_PROGRESS` (WAITING_RETURN cũ) sang `COMPLETED`. Chỉ đổi `status` của **case row** — không
  *  phải một lần kiểm mới nên không sinh `quality_inspection_results`. Xem
- *  `docs/workflows/supplier-return.md`. */
+ *  `docs/CODEMAPS/inventory.md`. */
 export async function completeIqcAfterSupplierReturn(
   tx: DbTransaction,
   iqcId: string,

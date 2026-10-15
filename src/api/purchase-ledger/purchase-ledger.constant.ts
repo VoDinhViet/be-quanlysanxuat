@@ -6,7 +6,7 @@
  * - `ORDERED`: đã đặt, chưa nhập kho.
  * - `RECEIVING`: đã đặt, đã nhập về một phần (chưa đủ).
  * - `COMPLETED`: đặt đủ SL đề xuất và nhập đủ.
- * Xem `docs/domains/purchasing.md`.
+ * Xem `docs/CODEMAPS/purchasing.md`.
  */
 export enum PurchaseLedgerStatus {
   WAITING_TO_PURCHASE = 'WAITING_TO_PURCHASE',

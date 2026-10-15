@@ -31,7 +31,7 @@ import { users } from '../identity-access/users';
  * Phiếu trả NCC — bảng phẳng, 1 phiếu = đúng 1 dòng vật tư (không có bảng con). `DRAFT → POSTED`
  * qua `SupplierReturnsService.postSupplierReturn` — tự sinh (DRAFT) từ `IqcService.confirmIqc`
  * khi QC chọn disposition SORT/RETURN, kho xác nhận xuất trả thì `post`. Chưa có `cancel` (huỷ một
- * phiếu đã `POSTED` cần đường "un-complete" IQC liên kết, để đợt sau — `docs/domains/inventory.md`).
+ * phiếu đã `POSTED` cần đường "un-complete" IQC liên kết, để đợt sau — `docs/CODEMAPS/inventory.md`).
  */
 export const supplierReturns = pgTable(
   'supplier_returns',

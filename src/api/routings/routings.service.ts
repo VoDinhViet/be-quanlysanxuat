@@ -23,7 +23,7 @@ import { UpdateRoutingOperationReqDto } from './dto/update-routing-operation.req
 
 /**
  * Công đoạn Cấp 0 (as-used của chính item FG gốc, không phải một node `bom_items`) — bảng riêng
- * `routing_operations`, neo `boms.id`. Xem `docs/decisions/routing-operations-table.md`.
+ * `routing_operations`, neo `boms.id`.
  */
 @Injectable()
 export class RoutingsService {

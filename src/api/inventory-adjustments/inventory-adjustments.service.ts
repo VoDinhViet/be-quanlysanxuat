@@ -181,7 +181,7 @@ export class InventoryAdjustmentsService {
   /** `DRAFT → POSTED` — sinh bút toán + cập nhật tồn qua `InventoryPostingService`, sau đó phiếu
    * bất biến. Đọc trạng thái nằm trong cùng transaction, sau `getInventoryAdjustmentForUpdate`.
    * Rỗng dòng (`E151`) dùng lại mã của `inventory_receipts confirm` — phiếu điều chỉnh không có
-   * bước `confirm` riêng. Xem `docs/workflows/inventory-adjustment.md`. */
+   * bước `confirm` riêng. Xem `docs/CODEMAPS/inventory.md`. */
   async postInventoryAdjustment(
     adjustmentId: string,
     userId: string,

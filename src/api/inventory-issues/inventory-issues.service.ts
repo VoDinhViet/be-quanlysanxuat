@@ -50,7 +50,7 @@ import { InventoryIssueResDto } from './dto/inventory-issue.res.dto';
 import { PageInventoryIssueResDto } from './dto/page-inventory-issue.res.dto';
 import { UpdateInventoryIssueReqDto } from './dto/update-inventory-issue.req.dto';
 
-/** Loại phiếu → loại bút toán lúc `post` — bảng đầy đủ ở `docs/domains/inventory.md`. */
+/** Loại phiếu → loại bút toán lúc `post` — bảng đầy đủ ở `docs/CODEMAPS/inventory.md`. */
 const issueTypeTransactionType: Record<
   InventoryIssueType,
   InventoryTransactionType
@@ -339,10 +339,10 @@ export class InventoryIssuesService {
   /** `DRAFT → POSTED` — sinh bút toán + cập nhật tồn qua `InventoryPostingService`, sau đó phiếu
    * bất biến. Đọc trạng thái nằm trong cùng transaction, sau `getInventoryIssueForUpdate`.
    * `issueType = PRODUCTION`
-   * kèm gate IQC (`E203`, `docs/decisions/qc-gates-on-stock-moves.md`) — vật tư chưa qua IQC (hoặc
+   * kèm gate IQC (`E203`) — vật tư chưa qua IQC (hoặc
    * còn FAIL chưa xử lý) không được xuất cho sản xuất. Nếu phiếu do phiếu lãnh vật tư sinh ra
    * (`inventoryRequisitions.inventoryIssueId`) thì ghi ngược phiếu lãnh đó sang `ISSUED`. Xem
-   * `docs/workflows/stock-movement.md`, `docs/workflows/inventory-requisition.md`. */
+   * `docs/CODEMAPS/inventory.md`. */
   async postInventoryIssue(issueId: string, userId: string): Promise<void> {
     await this.db.transaction(async (tx) => {
       const inventoryIssue = await this.getInventoryIssueForUpdate(tx, issueId);
@@ -399,7 +399,7 @@ export class InventoryIssuesService {
   }
 
   /** `DRAFT → CANCELLED` — chỉ huỷ được lúc còn Nháp; `POSTED` bất biến, không có đường đảo bút
-   * toán như `inventory-receipts`/`inventory-adjustments` (`docs/domains/inventory.md`). Nếu phiếu
+   * toán như `inventory-receipts`/`inventory-adjustments` (`docs/CODEMAPS/inventory.md`). Nếu phiếu
    * do phiếu lãnh vật tư sinh ra (`inventoryRequisitions.inventoryIssueId`) thì huỷ luôn phiếu
    * lãnh đó — ngược chiều với `InventoryRequisitionsService.cancelInventoryRequisition`. */
   async cancelInventoryIssue(issueId: string): Promise<void> {
@@ -587,7 +587,7 @@ export class InventoryIssuesService {
   }
 
   /** `issueType = PRODUCTION` chỉ còn sinh được từ `POST /inventory-requisitions/:requisitionId/issue` —
-   * lập/sửa tay ở đây bị chặn (`E234`), xem `docs/domains/inventory.md`, mục "Phiếu lãnh vật tư". */
+   * lập/sửa tay ở đây bị chặn (`E234`), xem `docs/CODEMAPS/inventory.md`, mục "Phiếu lãnh vật tư". */
   private ensureNotDirectProductionIssue(
     issueType: InventoryIssueType | undefined,
   ): void {

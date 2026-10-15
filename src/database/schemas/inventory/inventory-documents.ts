@@ -1,7 +1,7 @@
 import { pgEnum } from 'drizzle-orm/pg-core';
 
 /** Vòng đời chung của `inventory_receipts`/`inventory_issues`. Chỉ `POSTED` mới sinh
- * `inventory_transactions`/đụng `inventory_balances` — xem `docs/domains/inventory.md`.
+ * `inventory_transactions`/đụng `inventory_balances` — xem `docs/CODEMAPS/inventory.md`.
  * `PENDING_IQC`/`IQC_COMPLETED`/`PENDING_RECEIPT` chỉ phiếu nhập phát ra (`confirm`), phiếu
  * xuất/`supplier_returns` không bao giờ mang ba giá trị này dù dùng chung enum. */
 export enum InventoryDocumentStatus {

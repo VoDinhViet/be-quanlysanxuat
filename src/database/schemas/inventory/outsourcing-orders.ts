@@ -15,8 +15,8 @@ import { users } from '../identity-access/users';
 
 /**
  * Vừa là trạng thái chứng từ vừa là tiến độ nhận hàng — gộp làm một, không tách cột `progress`
- * riêng (`docs/decisions/outsourcing-order-status-progress-merge.md`). `SENT` set thẳng lúc tạo
- * (không có nháp, `docs/decisions/outsourcing-no-draft.md`); `PARTIAL`/`WAITING_QC`/`COMPLETED` chỉ
+ * riêng. `SENT` set thẳng lúc tạo
+ * (không có nháp); `PARTIAL`/`WAITING_QC`/`COMPLETED` chỉ
  * do `recomputeOutsourcingOrderStatus` (`outsourcing-orders.query.ts`) ghi, gọi từ
  * `OutsourcingReceiptsService`/`IqcService` mỗi khi có sự kiện đổi SL đã nhận hoặc IQC — không có
  * route nào ghi tay 3 giá trị này. `CANCELLED` chỉ do `cancelOutsourcingOrder` ghi, và một khi đã
@@ -40,8 +40,8 @@ export const outsourcingOrderStatusEnum = pgEnum('outsourcing_order_status', [
 
 /**
  * Phiếu gửi gia công ngoài (OS-OUT) — header, nhiều dòng ở `outsourcing_order_items`. Không có
- * nháp — service luôn set `SENT` lúc tạo (xem `docs/domains/inventory.md`,
- * `docs/workflows/outsourcing-round-trip.md`, `docs/decisions/outsourcing-no-draft.md`).
+ * nháp — service luôn set `SENT` lúc tạo (xem `docs/CODEMAPS/inventory.md`,
+ * `docs/CODEMAPS/production.md`).
  */
 export const outsourcingOrders = pgTable(
   'outsourcing_orders',

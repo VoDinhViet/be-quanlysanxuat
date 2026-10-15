@@ -544,7 +544,7 @@ export class PurchaseOrdersService {
 
   /** Sinh PO Chờ xác nhận từ NCC thắng thầu của một RFQ — một NCC nhiều vật tư gộp chung một PO. Bắt
    * buộc truyền `tx` — chỉ gọi được từ transaction `approve`/`cancel` của
-   * `PurchaseQuotationsService` (`docs/workflows/rfq-approval.md`). */
+   * `PurchaseQuotationsService` (`docs/CODEMAPS/purchasing.md`). */
   async createPendingOrdersFromQuotation(
     tx: DbTransaction,
     input: CreatePendingOrdersFromQuotationInput,
@@ -1094,7 +1094,7 @@ export class PurchaseOrdersService {
   }
 
   /** `cancel` hợp lệ từ cả `PENDING_CONFIRMATION` lẫn `ORDERED` (khác `ensurePurchaseOrderPendingConfirmation`, chỉ chặn khi đã
-   * `CANCELLED`), khớp lifecycle `docs/domains/purchasing.md`. */
+   * `CANCELLED`), khớp lifecycle `docs/CODEMAPS/purchasing.md`. */
   private async ensurePurchaseOrderCancellable(purchaseOrderId: string) {
     const order = await this.db.query.purchaseOrders.findFirst({
       columns: { id: true, status: true, code: true, quotationId: true },

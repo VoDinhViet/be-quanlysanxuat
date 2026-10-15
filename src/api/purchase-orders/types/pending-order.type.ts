@@ -2,7 +2,7 @@
  * giá (`purchase_quotation_items`), `unitPrice` lấy từ dòng **NCC** thắng thầu
  * (`purchase_quotation_item_suppliers`). `quantityAdjustmentReason` lấy từ chính phân bổ
  * (`purchase_quotation_item_allocations`) — 1:1 với dòng PO sinh ra, không cần gộp nhiều lý do.
- * Xem `docs/workflows/rfq-approval.md`. */
+ * Xem `docs/CODEMAPS/purchasing.md`. */
 export type PurchaseOrderPendingLine = {
   purchaseRequestItemId: string;
   quotationItemSupplierId: string;

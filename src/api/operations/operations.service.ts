@@ -293,8 +293,8 @@ export class OperationsService {
     }
   }
 
-  /** Chặn xoá khi còn `bom_operations` trỏ tới (kể cả bước của node ROOT, "Cấp 0" — từ
-   * `docs/decisions/root-bom-item.md` không còn bảng `routing_operations` riêng) — FK là
+  /** Chặn xoá khi còn `bom_operations` trỏ tới (kể cả bước của node ROOT, "Cấp 0" —
+   * không còn bảng `routing_operations` riêng) — FK là
    * `restrict`, xoá mềm không tự kích hoạt ràng buộc đó nên phải tự kiểm ở tầng service. */
   private async ensureOperationIsDeletable(operationId: string): Promise<void> {
     const [bomOperation] = await this.db

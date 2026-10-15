@@ -93,7 +93,7 @@ import {
   generateReceiptCode,
 } from './inventory-receipts.write';
 
-/** Loại phiếu → loại bút toán lúc `post` — bảng đầy đủ ở `docs/domains/inventory.md`. */
+/** Loại phiếu → loại bút toán lúc `post` — bảng đầy đủ ở `docs/CODEMAPS/inventory.md`. */
 const receiptTypeTransactionType: Record<
   InventoryReceiptType,
   InventoryTransactionType
@@ -264,8 +264,8 @@ export class InventoryReceiptsService {
       : (receipt.productionOrder?.order?.buyerPoNo ?? null);
   }
 
-  /** Kho/Warehouse và các ô ký để trống cho người dùng điền tay — hệ thống chỉ có 1 kho
-   * (`docs/decisions/single-warehouse.md`). */
+  /** Kho/Warehouse và các ô ký để trống cho người dùng điền tay — hệ thống chỉ có 1 kho.
+   */
   async exportInventoryReceiptPdf(receiptId: string): Promise<StreamableFile> {
     const [[receipt], items] = await Promise.all([
       this.db
@@ -562,7 +562,7 @@ export class InventoryReceiptsService {
 
   /** `DRAFT → PENDING_RECEIPT`/`PENDING_IQC` — chưa đụng tồn kho. `requiresIqc` sinh một phiếu
    * IQC (`NOT_INSPECTED`) cho mỗi dòng, cùng transaction. Xem
-   * `docs/workflows/receipt-confirmation.md`. */
+   * `docs/CODEMAPS/inventory.md`. */
   async confirmInventoryReceipt(
     receiptId: string,
     userId: string,
@@ -638,9 +638,9 @@ export class InventoryReceiptsService {
    * nếu còn phiếu IQC nào chưa `COMPLETED` — `IQC_COMPLETED` vẫn kiểm lại, chống lệch. Đọc trạng
    * thái nằm trong cùng transaction, sau `getInventoryReceiptForUpdate`. Trước khi ghi bút toán,
    * `buildReceiptPostingLines` bù trừ SL đã trả NCC (`POSTED`) khỏi từng dòng — hàng NG chưa bao
-   * giờ thật sự vào tồn thì không được cộng vào (`docs/workflows/supplier-return.md`). Nếu phiếu
+   * giờ thật sự vào tồn thì không được cộng vào (`docs/CODEMAPS/inventory.md`). Nếu phiếu
    * gắn PO, gọi `PaymentRequestsService.createIfOrderCompleted` cùng transaction — tự sinh yêu cầu
-   * thanh toán khi PO vừa đạt COMPLETED. Xem `docs/workflows/receipt-confirmation.md`. */
+   * thanh toán khi PO vừa đạt COMPLETED. Xem `docs/CODEMAPS/inventory.md`. */
   async postInventoryReceipt(receiptId: string, userId: string): Promise<void> {
     await this.db.transaction(async (tx) => {
       const inventoryReceipt = await this.getInventoryReceiptForUpdate(
@@ -712,8 +712,8 @@ export class InventoryReceiptsService {
   /** Job đứng ở `WAITING_DELIVERY` cho tới khi nhập kho đủ SL kế hoạch — có thể qua nhiều phiếu nhỏ
    * lẻ, `confirm` đã chặn (`E197`) không cho tổng vượt `job.quantity` nên chỉ cần so `>=`. Đóng Job
    * xong mới xét đóng LSX (mọi Job anh em cũng phải `COMPLETED`) — 2 tầng cascade độc lập, một Job
-   * chưa nhập đủ không chặn các Job khác của cùng LSX. Xem
-   * `docs/decisions/production-lifecycle-closing.md`. */
+   * chưa nhập đủ không chặn các Job khác của cùng LSX.
+   */
   private async closeJobIfFullyReceived(
     tx: DbTransaction,
     productionJobId: string,
@@ -820,7 +820,7 @@ export class InventoryReceiptsService {
    * `RECEIPT` — hàng NG bị trả không được cộng vào tồn. Dòng bị bù về 0 thì bỏ hẳn khỏi kết quả
    * (`chk_inventory_transactions_quantity_sign` cấm dòng `RECEIPT` 0/âm). Nhiều dòng cùng `itemId`
    * trên một phiếu → số đã trả trừ dần qua từng dòng theo thứ tự duyệt, không trừ hai lần. Xem
-   * `docs/workflows/supplier-return.md`. */
+   * `docs/CODEMAPS/inventory.md`. */
   private async buildReceiptPostingLines(
     tx: DbTransaction,
     inventoryReceipt: Pick<InventoryReceiptSelect, 'id' | 'receiptType'>,
@@ -884,7 +884,7 @@ export class InventoryReceiptsService {
   }
 
   /** Mặt hàng của mỗi dòng phải tồn tại (`E100`). Không kiểm loại kho ↔ loại hàng — cố ý, xem
-   * `docs/domains/inventory.md`. Trả về `itemId → unitId gốc` để mặc định `unitId` hiển thị khi
+   * `docs/CODEMAPS/inventory.md`. Trả về `itemId → unitId gốc` để mặc định `unitId` hiển thị khi
    * payload không gửi. */
   private async ensureItemsValid(
     itemsToValidate: InventoryReceiptItemReqDto[],
@@ -1027,7 +1027,7 @@ export class InventoryReceiptsService {
   }
 
   /** `receiptType = PRODUCTION` bắt buộc gắn `productionJobId` (`E179`) — nếu không thì gate nhập
-   * kho thành phẩm theo OQC (`docs/domains/inventory.md`) có lỗ hổng bỏ qua hoàn toàn. Đổi hành vi
+   * kho thành phẩm theo OQC (`docs/CODEMAPS/inventory.md`) có lỗ hổng bỏ qua hoàn toàn. Đổi hành vi
    * so với thiết kế ban đầu (cột này vốn chỉ để trace, không validate chéo với `receiptType`).
    * `update` truyền vào giá trị **hiệu lực** (payload mới nếu có gửi, giữ nguyên giá trị cũ nếu
    * không) — không tự suy bên trong hàm này. */
@@ -1169,8 +1169,8 @@ export class InventoryReceiptsService {
     }
   }
 
-  /** Gate nhập kho thành phẩm theo QC (`docs/domains/inventory.md`, "Gate nhập kho thành phẩm";
-   * `docs/workflows/outgoing-qc.md`) — chỉ chạy khi `receiptType = PRODUCTION`. `productionJobId`
+  /** Gate nhập kho thành phẩm theo QC (`docs/CODEMAPS/inventory.md`, "Gate nhập kho thành phẩm";
+   * `docs/CODEMAPS/quality.md`) — chỉ chạy khi `receiptType = PRODUCTION`. `productionJobId`
    * NULL tại đây nghĩa là một phiếu cũ tồn tại từ trước ràng buộc này (cột vốn không `NOT NULL` ở
    * DB, chỉ service-enforced) — vẫn chặn bằng `E179` thay vì bỏ qua. Mọi dòng phải cùng `itemId`
    * với Job (`E107`, tái dùng — cùng ngữ nghĩa `inventory_issues` dùng cho `orderItemId` lệch
@@ -1179,8 +1179,8 @@ export class InventoryReceiptsService {
    * một phần (PH-111): Job có node Cấp 0 phải có ≥1 phiếu QC `COMPLETED` (`E209`); nếu công đoạn
    * cuối đi qua OQC thì SL nhập (cộng dồn mọi phiếu `PRODUCTION` khác đã `confirm`, cộng phiếu này)
    * không vượt Σ SL các lô OQC đã đạt (`E196`) — lô OQC khác đang dở không chặn phần đã đạt; Job
-   * không có OQC (thành phẩm gia công ngoài, hoặc item không khai routing Cấp 0 — lỗ hổng đã biết,
-   * `docs/decisions/oqc-per-operation.md`) vẫn chặn khi còn bất kỳ dòng QC nào chưa `COMPLETED`
+   * không có OQC (thành phẩm gia công ngoài, hoặc item không khai routing Cấp 0 — lỗ hổng đã biết)
+   * vẫn chặn khi còn bất kỳ dòng QC nào chưa `COMPLETED`
    * (`E196`). SL nhập còn chặn trần theo
    * `production_jobs.quantity` (`E197`). */
   private async ensureProductionReceiptOqcCleared(

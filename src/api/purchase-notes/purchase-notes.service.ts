@@ -28,7 +28,7 @@ type ChainIds = {
 /**
  * Đọc gộp ghi chú (`note`) của toàn bộ chứng từ liên quan trong chuỗi mua hàng
  * ĐXMH → Báo giá → Đơn mua → Kho, xuất phát từ bất kỳ 1 trong 4 loại — không sở hữu nghiệp vụ của
- * domain nào, xem `docs/decisions/purchase-chain-notes.md` cho sơ đồ FK đầy đủ.
+ * domain nào.
  */
 @Injectable()
 export class PurchaseNotesService {
@@ -122,7 +122,7 @@ export class PurchaseNotesService {
     });
   }
 
-  // Mỗi helper dưới đây đúng 1 quan hệ trong sơ đồ FK (docs/decisions/purchase-chain-notes.md) —
+  // Mỗi helper dưới đây đúng 1 quan hệ trong sơ đồ FK —
   // nhận id đã biết ở CẢ 2 phía (phía chưa biết truyền mảng rỗng), trả về id đã khử trùng lặp ở cả
   // 2 phía. Hai mảng vào đều rỗng thì trả rỗng luôn, không query — nhờ vậy 1 helper phục vụ được cả
   // chiều xuôi lẫn chiều ngược, không cần viết riêng từng cặp.

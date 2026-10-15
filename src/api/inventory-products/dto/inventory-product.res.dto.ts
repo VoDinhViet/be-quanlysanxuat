@@ -11,7 +11,7 @@ import { FileResDto } from '../../files/dto/file.res.dto';
 import { UnitRefResDto } from '../../units/dto/unit-ref.res.dto';
 
 /** Không trả `status`/`minStock` — minStock luôn 0 với FG nên FE tự suy status từ dấu `available`
- * (`docs/domains/inventory.md`). `GET /inventory-products?status=` vẫn lọc được — filter chạy
+ * (`docs/CODEMAPS/inventory.md`). `GET /inventory-products?status=` vẫn lọc được — filter chạy
  * thẳng trên SQL, không cần hiển thị field. */
 @Exclude()
 export class InventoryProductResDto {

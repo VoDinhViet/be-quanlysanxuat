@@ -17,7 +17,7 @@ import { productionJobOperations } from './production-job-operations';
 /**
  * Nhật ký báo cáo hoàn thành **từng lần** của một công đoạn (`production_job_operations`),
  * append-only — ghi bởi `ProductionExecutionService.createJobOperationReport`. Business rule (cộng
- * dồn, vì sao có thể lệch cột cộng dồn): `docs/domains/production.md`.
+ * dồn, vì sao có thể lệch cột cộng dồn): `docs/CODEMAPS/production.md`.
  *
  * Rules:
  * - `completedQuantityDelta`/`rejectedQuantityDelta` là số **cộng thêm** của riêng lần báo cáo

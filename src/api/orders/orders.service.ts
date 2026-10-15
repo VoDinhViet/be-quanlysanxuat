@@ -76,7 +76,7 @@ import { ORDER_EXPORT_COLUMNS, OrderExport } from './orders.export';
 import { issuedQuantityByOrderItemIdSubquery } from './orders.query';
 
 /** Đơn hàng: `DRAFT` → ... → `AWAITING_PRODUCTION` (duyệt Giám đốc) → `IN_PROGRESS`. Vòng đời +
- * business rule đầy đủ: `docs/domains/orders.md`, `docs/workflows/order-approval.md`. */
+ * business rule đầy đủ: `docs/CODEMAPS/sales.md`. */
 @Injectable()
 export class OrdersService {
   private static readonly MAX_EXPORT_ROWS = 10_000;
@@ -554,7 +554,7 @@ export class OrdersService {
         // tính `remainingQty` (SL mục tiêu giao luôn là SL đặt gốc đã duyệt).
         productionQuantity: productionOrderItems.quantity,
         // Không kẹp sàn 0 — để lộ ra nếu dòng bị xuất vượt SL còn lại thay vì giấu đi (chưa bị
-        // chặn ở tầng ghi, xem `docs/domains/inventory.md`).
+        // chặn ở tầng ghi, xem `docs/CODEMAPS/inventory.md`).
         remainingQty:
           sql<number>`${orderItems.quantity} - coalesce(${issuedByItem.issuedQty}, 0)`.mapWith(
             Number,

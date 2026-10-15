@@ -15,7 +15,7 @@ import { purchaseQuotationItems } from './purchase-quotation-items';
 /**
  * SL báo giá của một vật tư, phân bổ về từng dòng ĐXMH nguồn đã gộp vào đó — nguồn duy nhất của SL
  * báo giá: sổ cái mua hàng (`quotedQuantitySubquery`) đọc thẳng ở đây, và duyệt báo giá fan-out mỗi
- * phân bổ thành một dòng PO (`docs/domains/purchasing.md`).
+ * phân bổ thành một dòng PO (`docs/CODEMAPS/purchasing.md`).
  */
 export const purchaseQuotationItemAllocations = pgTable(
   'purchase_quotation_item_allocations',

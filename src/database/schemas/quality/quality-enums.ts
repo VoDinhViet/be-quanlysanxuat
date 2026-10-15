@@ -72,7 +72,7 @@ export const qualityInspectionOriginTypeEnum = pgEnum(
 
 // Type Postgres mới hoàn toàn (không phải rename từ `qc_disposition` cũ — type đó đã bị `DROP`
 // riêng khi dọn bảng QC cũ), giá trị giữ nguyên y hệt, `disposition` vẫn là cột enum (không tách
-// bảng tra cứu, xem `docs/decisions/qc-data-model.md` mục kế thừa). Giá trị viết literal (không
+// bảng tra cứu). Giá trị viết literal (không
 // import `IqcDisposition`/`OqcDisposition` từ enum bên dưới trong cùng file) — tránh lặp.
 export const qualityDispositionEnum = pgEnum('quality_disposition', [
   'CONCESSION',
@@ -85,7 +85,7 @@ export const qualityDispositionEnum = pgEnum('quality_disposition', [
 
 /**
  * `INCOMING` — kiểm hàng nhập từ NCC (IQC cũ). `OUTGOING` — kiểm công đoạn sản xuất, kể cả công
- * đoạn gia công ngoài (OQC cũ, gộp `type = OUTSOURCE` vào từ `docs/decisions/qc-data-model.md`).
+ * đoạn gia công ngoài (OQC cũ, gộp vào bằng `type = OUTSOURCE`).
  * Chuyển từ `qc-requests.ts` khi dọn bảng QC cũ — chỉ dùng làm vocabulary TS thuần (`kind` trên
  * `OpenNcrResDto`, `reports.service.ts`, `supplier_returns.qcInspectionType`), không còn `pgEnum`
  * vật lý riêng (bảng dùng `qc_kind` đã bị xoá cùng bảng cũ).
