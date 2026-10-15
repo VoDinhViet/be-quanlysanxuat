@@ -1,7 +1,7 @@
 <!-- Generated: 2026-10-15 | Files scanned: 52 | Token estimate: ~3000 -->
 # Purchasing codemap
 
-Paths relative to `src/api/` unless starting `src/`. Abbreviations: PRS=`purchase-requests/purchase-requests.service.ts`, PQS=`purchase-quotations/purchase-quotations.service.ts`, POS=`purchase-orders/purchase-orders.service.ts`, PYS=`payment-requests/payment-requests.service.ts`, PLS=`purchase-ledger/purchase-ledger.service.ts`, PNS=`purchase-notes/purchase-notes.service.ts`, SUS=`suppliers/suppliers.service.ts`. Source comments cite `docs/domains/*` and `docs/decisions/*`, which do not exist.
+Paths relative to `src/api/` unless starting `src/`. Abbreviations: PRS=`purchase-requests/purchase-requests.service.ts`, PQS=`purchase-quotations/purchase-quotations.service.ts`, POS=`purchase-orders/purchase-orders.service.ts`, PYS=`payment-requests/payment-requests.service.ts`, PLS=`purchase-ledger/purchase-ledger.service.ts`, PNS=`purchase-notes/purchase-notes.service.ts`, SUS=`suppliers/suppliers.service.ts`.
 
 ## 1. Modules (wc -l)
 
@@ -55,7 +55,7 @@ Purchase request (`PurchaseRequestStatus`, `src/database/schemas/purchase-reques
   DRAFT --send PRS:537--> PENDING_APPROVAL --approve :553--> APPROVED
   PENDING_APPROVAL --reject :571--> REJECTED --send :537--> PENDING_APPROVAL
   REJECTED --edit/delete line or needed-date (ensurePurchaseRequestEditable :614)--> DRAFT
-  Sources: hand-made :687 (DRAFT, no LSX/JOB); `createShortageRequest` :761, called by `production-jobs/production-jobs.service.ts:849` (startJob), carries LSX/JOB ids.
+  Sources: hand-made :687 (DRAFT, no LSX/JOB); `createShortageRequest` :761, called by `production-jobs/production-jobs.service.ts:848` (startJob), carries LSX/JOB ids.
 
 RFQ -> DMH (`PurchaseQuotationStatus` `purchasing/purchase-quotations.ts:14`, `PurchaseOrderStatus` `purchasing/purchase-orders.ts:20`):
   RFQ DRAFT --send PQS:470--> PENDING_APPROVAL --approve PQS:519--> APPROVED
@@ -65,7 +65,7 @@ RFQ -> DMH (`PurchaseQuotationStatus` `purchasing/purchase-quotations.ts:14`, `P
   APPROVED --revertQuotationToDraft POS:862 (cancel DMH with reopenQuotation)--> DRAFT
   DMH PENDING_CONFIRMATION --confirm POS:702--> ORDERED; either --cancel POS:743--> CANCELLED
   ORDERED + `closedAt` via closePurchaseOrder POS:913 (status stays ORDERED, lines cut to received qty)
-  Receipt: create requires DMH ORDERED (`inventory-receipts/inventory-receipts.service.ts:1043`); post :644 -> PYS.createIfOrderCompleted.
+  Receipt: create requires DMH ORDERED (`inventory-receipts/inventory-receipts.service.ts:1040`); post :643 -> PYS.createIfOrderCompleted.
   Derived, not stored: DMH progress `resolveOrderProgress` POS:346 (PENDING_CONFIRMATION, ORDERED, RECEIVING, COMPLETED, CANCELLED); ledger status `buildLedgerStatus` PLS:343 (WAITING_TO_PURCHASE, QUOTING, ORDERED, RECEIVING, COMPLETED).
 
 Payment request (`PaymentRequestStatus` `purchasing/payment-requests.ts:20`; log actions `purchasing/payment-request-logs.ts:16`):
@@ -92,7 +92,7 @@ Notes chain (PNS, read-only): purchase_requests - purchase_request_items - purch
 
 ## 5. Cross-domain links
 
-- inventory-receipts: nullable FKs purchaseRequestId/purchaseOrderId; post calls PYS.createIfOrderCompleted (`inventory-receipts.service.ts:692`); DMH cancel sets DRAFT receipts CANCELLED (POS:785); DMH close deletes unreceived lines (receipt FK set null); open receipts = DRAFT, PENDING_RECEIPT, PENDING_IQC, IQC_COMPLETED (`findUnpostedReceipts` POS:1059).
+- inventory-receipts: nullable FKs purchaseRequestId/purchaseOrderId; post calls PYS.createIfOrderCompleted (`inventory-receipts.service.ts:691`); DMH cancel sets DRAFT receipts CANCELLED (POS:785); DMH close deletes unreceived lines (receipt FK set null); open receipts = DRAFT, PENDING_RECEIPT, PENDING_IQC, IQC_COMPLETED (`findUnpostedReceipts` POS:1059).
 - iqc: `quality_inspections.supplierId/purchaseOrderId` (`iqc/iqc.service.ts:82`); POSTED `supplier_returns` reduce received qty in DMH, ledger and payment amounts.
 - items/units: request lines join items (DIRECT only), units, files, stock via `inventory/item-stock.query` and `inventory/available-quantity.query` (PRS:227).
 - production: purchase_requests.productionOrderId/productionJobId; ledger joins production_orders and orders.buyerPoNo.

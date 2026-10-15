@@ -1,4 +1,4 @@
-<!-- Generated: 2026-10-15 | Files scanned: 34 | Token estimate: ~3300 -->
+<!-- Generated: 2026-10-15 | Files scanned: 34 | Token estimate: ~3250 -->
 # Product structure codemap
 
 Paths under `src/`. Only controllers check permissions; services do not.
@@ -111,16 +111,16 @@ DIRECT demand (items.service.ts:630): multiplier = parent x quantity, rounded to
 
 Snapshot into a JOB (production-jobs, not at start):
 
-    LSX approved (production-orders.service.ts:500) or NCR rework (ncrs.service.ts:390)
-      -> ProductionJobsService.createJobs (production-jobs.service.ts:703, 1 JOB per FG item, same tx)
-      -> createJobSnapshot (production-job-snapshot.query.ts:136) <- buildJobPlan :65 (reads LIVE master data x job.quantity)
-           buildPlanBomItems :203  bom_items -> production_job_bom_items (new ids, plannedQuantity = parent x qty; Level 0 becomes a
+    LSX approved (production-orders.service.ts:506) or NCR rework (ncrs.service.ts:390)
+      -> ProductionJobsService.createJobs (production-jobs.service.ts:700, 1 JOB per FG item, same tx)
+      -> createJobSnapshot (production-job-snapshot.query.ts:134) <- buildJobPlan :63 (reads LIVE master data x job.quantity)
+           buildPlanBomItems :201  bom_items -> production_job_bom_items (new ids, plannedQuantity = parent x qty; Level 0 becomes a
                                    separate FG node, only if Level 0 has steps)
-           buildPlanOperations :295 bom_operations + routing_operations -> production_job_operations (code/name/type copied)
-           buildPlanIssues :357    sum DIRECT nodes per item -> production_job_issues (+ get-or-create production_job_items/_units :442/:491)
-      rework: keepReworkOperations :110 keeps chosen operations + last FG step, issues = []
-    PENDING job reads its stored production_job_issues rows (getProductionJobBom, production-jobs.service.ts:~307); buildJobPlan runs only in createJobSnapshot and the read-only NcrsService.getNcrOperations preview (ncrs.service.ts:130); reloadSnapshot (:747) = clearJobSnapshot :182 + re-snapshot; startJob (:808) only
-    back-fills when snapshotLoadedAt is null (:821). Schema comment in production-job-bom-items.ts says "built at start"; stale, code above is the truth.
+           buildPlanOperations :292 bom_operations + routing_operations -> production_job_operations (code/name/type copied)
+           buildPlanIssues :354    sum DIRECT nodes per item -> production_job_issues (+ get-or-create production_job_items/_units :439/:488)
+      rework: keepReworkOperations :108 keeps chosen operations + last FG step, issues = []
+    PENDING job reads its stored production_job_issues rows (getProductionJobBom, production-jobs.service.ts:~308); buildJobPlan runs only in createJobSnapshot and the read-only NcrsService.getNcrOperations preview (ncrs.service.ts:130); reloadSnapshot (:743) = clearJobSnapshot :180 + re-snapshot; startJob (:807) only
+    back-fills when snapshotLoadedAt is null (:820).
 
 ## 4. Key rules and error codes (`constants/error-code.constant.ts`)
 
@@ -148,8 +148,7 @@ Observed gaps (unverified as intended): `ensureOperationIsDeletable` (operations
 ## 5. Cross-domain links
 
 - production-jobs: snapshot above; `items` FKs from `order_items`, `production_order_items`, `production_jobs` (E255 guard).
-- purchasing: `startJob` -> `getShortageItems` (production-jobs.service.ts:865) -> `PurchaseRequestsService.createShortageRequest` (purchase-requests.service.ts:761) using `production_job_issues`; request lines must be DIRECT (E148, purchase-requests.service.ts:752).
-- inventory: balances filter by `items.type` (inventory.service.ts:59, inventory-directs.service.ts:54, inventory-products.service.ts:82); unit via `items.unitId` (inventory-receipts.write.ts:92).
+- purchasing: `startJob` -> `getShortageItems` (production-jobs.service.ts:864) -> `PurchaseRequestsService.createShortageRequest` (purchase-requests.service.ts:761) using `production_job_issues`; request lines must be DIRECT (E148, purchase-requests.service.ts:752).
+- inventory: balances filter by `items.type` (inventory.service.ts:57, inventory-directs.service.ts:52, inventory-products.service.ts:81); unit via `items.unitId` (inventory-receipts.write.ts:93).
 - outsourcing: `outsourcing-orders.service.ts` and `oqc.query.ts` use `OperationType.OUTSOURCE`; production-execution scopes by `OperationAccessService`.
 - item_units conversion: no reader outside `api/item-units` found by grep; schema comment says stock lines snapshot the factor (unverified).
-- Docs cited in code comments (`docs/decisions/*`, `docs/domains/*`) are absent in this checkout.
