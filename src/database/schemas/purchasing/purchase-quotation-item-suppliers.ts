@@ -13,7 +13,6 @@ import {
 } from 'drizzle-orm/pg-core';
 
 import { suppliers } from '../suppliers/suppliers';
-import { units } from '../units/units';
 import { users } from '../identity-access/users';
 import { purchaseQuotationItems } from './purchase-quotation-items';
 import { purchaseQuotationItemSupplierFiles } from './purchase-quotation-item-supplier-files';

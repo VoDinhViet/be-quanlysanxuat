@@ -8,7 +8,6 @@ import {
   varchar,
 } from 'drizzle-orm/pg-core';
 
-import { units } from '../units/units';
 import { purchaseRequestItems } from '../purchase-requests/purchase-request-items';
 import { purchaseOrders } from './purchase-orders';
 import { purchaseQuotationItemSuppliers } from './purchase-quotation-item-suppliers';

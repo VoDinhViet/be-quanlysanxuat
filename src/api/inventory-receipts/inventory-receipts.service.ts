@@ -15,7 +15,6 @@ import {
   or,
   sql,
 } from 'drizzle-orm';
-import { alias } from 'drizzle-orm/pg-core';
 import { DateTime } from 'luxon';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
