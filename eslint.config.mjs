@@ -4,6 +4,9 @@ import eslintPluginPrettierRecommended from 'eslint-plugin-prettier/recommended'
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
+// Tên chung chung bị cấm bởi `.claude/rules/naming.md`; `item`/`items` không cấm vì bảng `items` có thật.
+const GENERIC_NAME_PATTERN = '^(rows|row|data|result|res|list|entries|r|x|tmp)$';
+
 export default tseslint.config(
   {
     ignores: ['eslint.config.mjs'],
@@ -61,6 +64,22 @@ export default tseslint.config(
       '@typescript-eslint/no-unsafe-assignment': 'off',
       '@typescript-eslint/no-unsafe-argument': 'off',
       '@typescript-eslint/no-redundant-type-constituents': 'off',
+    },
+  },
+  {
+    // Mức `warn` để code cũ chưa đổi tên không chặn `pnpm lint`; sửa dần khi chạm file.
+    // `*.export.ts` miễn trừ vì `row` ở đó đúng nghĩa là một dòng của sheet.
+    files: ['src/**/*.ts'],
+    ignores: ['src/**/*.export.ts', 'src/**/*.spec.ts'],
+    rules: {
+      '@typescript-eslint/naming-convention': [
+        'warn',
+        {
+          selector: ['variable', 'parameter'],
+          format: null,
+          custom: { regex: GENERIC_NAME_PATTERN, match: false },
+        },
+      ],
     },
   },
 );
