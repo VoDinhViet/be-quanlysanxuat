@@ -44,9 +44,9 @@ export const productionJobBomItemTypeEnum = pgEnum(
  * `PENDING` (`reloadSnapshot`). Không có route sửa; sửa/xoá BOM gốc sau đó không ảnh hưởng Job.
  *
  * Rules:
- * - `code`/`name` là **snapshot text**, nguồn hiển thị chính — không đọc qua `itemId` lúc render.
- *   `itemId` chỉ là liên kết tham khảo tới item gốc (`set null` khi bị xoá) và luôn NULL với node
- *   `COMPONENT` (node đó không phải một item).
+ * - `code`/`name`/`revision` là **snapshot text**, nguồn hiển thị chính — không đọc qua `itemId`
+ *   lúc render. `itemId` chỉ là liên kết tham khảo tới item gốc (`set null` khi bị xoá) và luôn
+ *   NULL với node `COMPONENT` (node đó không phải một item); node đó cũng có `revision` NULL.
  * - Mỗi Job có **đúng một** node `FG` (nếu BOM của FG có `routing_operations`): node "Cấp 0" mang
  *   routing lắp ráp/đóng gói của thành phẩm. Luôn `parentId = null`, `quantity = 1`,
  *   `plannedQuantity = job.quantity`, `sortOrder` lớn nhất trong Job (đứng cuối bảng "Công đoạn
@@ -74,6 +74,7 @@ export const productionJobBomItems = pgTable(
     itemType: productionJobBomItemTypeEnum('item_type').notNull(),
     code: varchar('code', { length: 50 }).notNull(),
     name: varchar('name', { length: 255 }).notNull(),
+    revision: varchar('revision', { length: 50 }),
     quantity: numeric('quantity', {
       precision: 12,
       scale: 6,

@@ -182,7 +182,10 @@ export class OutsourcingOrdersService {
     const outsourcingOrderItemRows = await this.db
       .select({
         ...getTableColumns(outsourcingOrderItems),
-        item: getTableColumns(items),
+        item: {
+          ...getTableColumns(items),
+          revision: sql<string>`coalesce(${productionJobBomItems.revision}, ${items.revision})`,
+        },
         unit: getTableColumns(units),
         productionJob: getTableColumns(productionJobs),
         imageFile: getTableColumns(files),

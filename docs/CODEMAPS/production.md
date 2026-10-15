@@ -145,6 +145,7 @@ OS-IN (outsourcing-receipts.ts:17): create -> POSTED (svc:349) -> CANCELLED (svc
 ## 5. Cross-domain links
 
 - Orders: `OrdersService.approveOrder` (orders.service.ts:732-750) calls `getInitialPlanItems`/`seedPlan`; stock via `InventoryService.getStockLevels` (po.svc:569).
+- Revision: JOB views (list, detail, BOM nodes), production-execution, OQC and outsourcing orders/receipts (`coalesce(production_job_bom_items.revision, items.revision)`) read `pj.item_revision` / `production_job_bom_items.revision`, not `items.revision`, so editing a product's revision after approval does not relabel its JOBs. SO, LSX lines, inventory and delivery still show the live revision. `item_revision` is nullable until a follow-up migration sets NOT NULL (old app compatibility).
 - BOM/routing: `buildJobPlan` (snapshot.query:63) reads `boms`, `bom_items`, BOM operations, items; builds job BOM nodes (FG/COMPONENT/DIRECT), operations, issues.
 - Inventory: `getProductionJobBom` joins `issuedQuantityByJobItemSubquery`, `balanceByItemSubquery`, `availableQuantityByItemSubquery` (jobs.svc:327-330); inventory-requisitions.service.ts:575 throws E087 on job status; FG receipt via `createProductionReceiptForJob`/`postInventoryReceipt`.
 - Purchasing: `startJob` -> `PurchaseRequestsService.createShortageRequest` (jobs.svc:848).

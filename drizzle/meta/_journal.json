@@ -1632,6 +1632,13 @@
       "when": 1792051999034,
       "tag": "0232_ncr_permissions_and_retire_codes",
       "breakpoints": true
+    },
+    {
+      "idx": 233,
+      "version": "7",
+      "when": 1792053322621,
+      "tag": "0233_snapshot_item_revision",
+      "breakpoints": true
     }
   ]
 }

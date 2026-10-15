@@ -108,6 +108,7 @@ export class ProductionJobsService {
     const jobRows = await this.db
       .select({
         quantity: productionJobs.quantity,
+        itemRevision: productionJobs.itemRevision,
         item: getTableColumns(items),
         order: getTableColumns(orders),
         client: getTableColumns(clients),
@@ -140,7 +141,7 @@ export class ProductionJobsService {
       jobs: jobRows.map((row, index) => ({
         stt: index + 1,
         item_code: row.item.code,
-        revision: row.item.revision ?? '',
+        revision: row.itemRevision,
         item_name: row.item.name,
         quantity: formatQuantity(row.quantity),
         technical_requirements: '',
@@ -185,7 +186,7 @@ export class ProductionJobsService {
             unaccentILike(orders.code, keyword),
             unaccentILike(orders.buyerPoNo, keyword),
             unaccentILike(items.code, keyword),
-            unaccentILike(items.revision, keyword),
+            unaccentILike(productionJobs.itemRevision, keyword),
             unaccentILike(items.name, keyword),
           )
         : undefined,
@@ -198,8 +199,11 @@ export class ProductionJobsService {
           code: productionJobs.code,
           orderCode: orders.code,
           buyerPoNo: orders.buyerPoNo,
-          item: getTableColumns(items),
-          revision: items.revision,
+          item: {
+            ...getTableColumns(items),
+            revision: productionJobs.itemRevision,
+          },
+          revision: productionJobs.itemRevision,
           client: getTableColumns(clients),
           imageFile: getTableColumns(files),
           quantity: productionJobs.quantity,
@@ -262,8 +266,11 @@ export class ProductionJobsService {
         operationsApprovedAt: productionJobs.operationsApprovedAt,
         createdAt: productionJobs.createdAt,
         updatedAt: productionJobs.updatedAt,
-        item: getTableColumns(items),
-        revision: items.revision,
+        item: {
+          ...getTableColumns(items),
+          revision: productionJobs.itemRevision,
+        },
+        revision: productionJobs.itemRevision,
         unit: getTableColumns(units),
       })
       .from(productionJobs)
@@ -416,11 +423,9 @@ export class ProductionJobsService {
         .select({
           ...getTableColumns(productionJobBomItems),
           imageFile: getTableColumns(files),
-          revision: items.revision,
         })
         .from(productionJobBomItems)
         .leftJoin(files, eq(files.id, productionJobBomItems.imageFileId))
-        .leftJoin(items, eq(items.id, productionJobBomItems.itemId))
         .where(eq(productionJobBomItems.productionJobId, jobId))
         .orderBy(
           asc(productionJobBomItems.sortOrder),
@@ -716,6 +721,7 @@ export class ProductionJobsService {
           code: this.buildJobCode(productionOrder.code, index),
           productionOrderId: productionOrder.id,
           itemId,
+          itemRevision: sql`(select ${items.revision} from ${items} where ${items.id} = ${itemId})`,
           quantity: quantityByItem.get(itemId)!,
         })),
       )
@@ -747,6 +753,12 @@ export class ProductionJobsService {
 
       await clearJobSnapshot(tx, jobId);
       await createJobSnapshot(tx, job);
+      await tx
+        .update(productionJobs)
+        .set({
+          itemRevision: sql`(select ${items.revision} from ${items} where ${items.id} = ${job.itemId})`,
+        })
+        .where(eq(productionJobs.id, jobId));
     });
   }
 

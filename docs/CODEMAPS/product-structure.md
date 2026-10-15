@@ -113,8 +113,9 @@ Snapshot into a JOB (production-jobs, not at start):
 
     LSX approved (production-orders.service.ts:506) or NCR rework (ncrs.service.ts:390)
       -> ProductionJobsService.createJobs (production-jobs.service.ts:700, 1 JOB per FG item, same tx)
+      -> `production_jobs.item_revision` = items.revision (subquery in the createJobs insert; frozen until reloadSnapshot re-snapshots it together with the BOM)
       -> createJobSnapshot (production-job-snapshot.query.ts:134) <- buildJobPlan :63 (reads LIVE master data x job.quantity)
-           buildPlanBomItems :201  bom_items -> production_job_bom_items (new ids, plannedQuantity = parent x qty; Level 0 becomes a
+           buildPlanBomItems :201  bom_items -> production_job_bom_items (new ids, `revision` copied for item-backed nodes, plannedQuantity = parent x qty; Level 0 becomes a
                                    separate FG node, only if Level 0 has steps)
            buildPlanOperations :292 bom_operations + routing_operations -> production_job_operations (code/name/type copied)
            buildPlanIssues :354    sum DIRECT nodes per item -> production_job_issues (+ get-or-create production_job_items/_units :439/:488)

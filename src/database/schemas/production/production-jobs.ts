@@ -49,6 +49,9 @@ export const productionJobStatusEnum = pgEnum('production_job_status', [
  * Rules:
  * - Snapshot BOM/công đoạn/vật tư dựng lúc `createJobs`. Tiến độ theo từng công đoạn nằm ở
  *   `production_job_operations` (`completedQuantity`/`completedDate`), không ở bảng này.
+ * - `itemRevision` chụp cùng BOM (lúc `createJobs`, và chụp lại ở `reloadSnapshot`): sửa
+ *   `items.revision` sau đó không làm Job đổi nhãn cho tới lần chụp lại. Tạm nullable để app cũ
+ *   vẫn tạo được Job lúc deploy; migration sau sẽ đặt `NOT NULL`.
  * - `completedBy`/`completedAt` ghi khi `status` thành `COMPLETED`
  *   (`InventoryReceiptsService.closeJobIfFullyReceived`), không có route tay.
  * - `operationsApprovedBy`/`operationsApprovedAt` chỉ giữ dữ liệu cũ: bước duyệt công đoạn riêng
@@ -68,6 +71,7 @@ export const productionJobs = pgTable(
     itemId: uuid('item_id')
       .notNull()
       .references(() => items.id, { onDelete: 'restrict' }),
+    itemRevision: varchar('item_revision', { length: 50 }),
     quantity: numeric('quantity', {
       precision: 18,
       scale: 3,

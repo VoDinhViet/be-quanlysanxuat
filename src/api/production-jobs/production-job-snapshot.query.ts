@@ -27,7 +27,6 @@ type SnapshotJob = Pick<ProductionJobSelect, 'id' | 'itemId' | 'quantity'>;
 
 type JobPlanBomItem = typeof productionJobBomItems.$inferInsert & {
   id: string;
-  revision?: string | null;
 };
 
 export type JobPlanOperation = {
@@ -146,9 +145,7 @@ export async function createJobSnapshot(
     : fullPlan;
 
   if (plan.bomItems.length) {
-    await tx
-      .insert(productionJobBomItems)
-      .values(plan.bomItems.map(({ revision, ...rest }) => rest));
+    await tx.insert(productionJobBomItems).values(plan.bomItems);
   }
 
   if (plan.operations.length) {

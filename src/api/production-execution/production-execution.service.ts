@@ -134,7 +134,7 @@ export class ProductionExecutionService {
                 unaccentILike(productionJobs.code, keyword),
                 unaccentILike(orders.code, keyword),
                 unaccentILike(items.code, keyword),
-                unaccentILike(items.revision, keyword),
+                unaccentILike(productionJobs.itemRevision, keyword),
                 unaccentILike(items.name, keyword),
               )
             : undefined,
@@ -226,7 +226,7 @@ export class ProductionExecutionService {
             unaccentILike(orders.code, keyword),
             unaccentILike(orders.buyerPoNo, keyword),
             unaccentILike(items.code, keyword),
-            unaccentILike(items.revision, keyword),
+            unaccentILike(productionJobs.itemRevision, keyword),
             unaccentILike(items.name, keyword),
           )
         : undefined,
@@ -264,8 +264,11 @@ export class ProductionExecutionService {
           operationName: operations.name,
           orderCode: orders.code,
           buyerPoNo: orders.buyerPoNo,
-          item: getTableColumns(items),
-          revision: items.revision,
+          item: {
+            ...getTableColumns(items),
+            revision: productionJobs.itemRevision,
+          },
+          revision: productionJobs.itemRevision,
           imageFile: getTableColumns(files),
           quantity: productionJobs.quantity,
           orderDate: orders.orderDate,

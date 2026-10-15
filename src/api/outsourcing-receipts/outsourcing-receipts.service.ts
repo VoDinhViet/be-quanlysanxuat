@@ -208,7 +208,10 @@ export class OutsourcingReceiptsService {
         operationCode: outsourcingOrderItems.operationCode,
         operationName: outsourcingOrderItems.operationName,
         outsourcingOrder: getTableColumns(outsourcingOrders),
-        item: getTableColumns(items),
+        item: {
+          ...getTableColumns(items),
+          revision: sql<string>`coalesce(${productionJobBomItems.revision}, ${items.revision})`,
+        },
         unit: getTableColumns(units),
         imageFile: getTableColumns(files),
       })
@@ -278,7 +281,10 @@ export class OutsourcingReceiptsService {
           jobCode: productionJobs.code,
           itemCode: outsourcingOrderItems.itemCode,
           itemName: outsourcingOrderItems.itemName,
-          item: getTableColumns(items),
+          item: {
+            ...getTableColumns(items),
+            revision: sql<string>`coalesce(${productionJobBomItems.revision}, ${items.revision})`,
+          },
           unit: getTableColumns(units),
           imageFile: getTableColumns(files),
           operationCode: outsourcingOrderItems.operationCode,
