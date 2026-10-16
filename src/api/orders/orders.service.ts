@@ -662,7 +662,7 @@ export class OrdersService {
     if (reqDto.items?.length) {
       await this.ensureItemsExist(reqDto.items.map((item) => item.itemId));
     }
-    this.ensureStatusSettable(reqDto.status);
+    this.ensureStatusTransitionAllowed(existing.status, reqDto.status);
     if (reqDto.items !== undefined) {
       await this.ensureItemsNotLockedByProduction(orderId);
     }
@@ -1014,6 +1014,35 @@ export class OrdersService {
       status === OrderStatus.AWAITING_PRODUCTION ||
       status === OrderStatus.REJECTED
     ) {
+      throw new AppException(ErrorCode.E075, HttpStatus.BAD_REQUEST);
+    }
+  }
+
+  /** Trạng thái đích mà `PATCH /orders` được đặt → các trạng thái nguồn hợp lệ. */
+  private static readonly PATCHABLE_STATUS_SOURCES: Partial<
+    Record<OrderStatus, readonly OrderStatus[]>
+  > = {
+    [OrderStatus.PENDING_CONFIRMATION]: [
+      OrderStatus.DRAFT,
+      OrderStatus.REJECTED,
+    ],
+    [OrderStatus.DRAFT]: [OrderStatus.REJECTED],
+    [OrderStatus.CANCELLED]: [
+      OrderStatus.DRAFT,
+      OrderStatus.REJECTED,
+      OrderStatus.AWAITING_PRODUCTION,
+      OrderStatus.IN_PROGRESS,
+    ],
+  };
+
+  /** Các trạng thái còn lại do duyệt, LSX hoặc giao hàng ghi, để PATCH không lách qua bước duyệt. */
+  private ensureStatusTransitionAllowed(
+    current: OrderStatus,
+    requested: OrderStatus | undefined,
+  ): void {
+    if (requested === undefined || requested === current) return;
+    const allowedSources = OrdersService.PATCHABLE_STATUS_SOURCES[requested];
+    if (!allowedSources?.includes(current)) {
       throw new AppException(ErrorCode.E075, HttpStatus.BAD_REQUEST);
     }
   }
