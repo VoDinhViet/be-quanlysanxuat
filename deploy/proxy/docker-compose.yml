@@ -6,6 +6,7 @@
 #   WEB_DOMAIN   e.g. app.example.com   (the frontend)
 #   API_DOMAIN   e.g. api.example.com   (the backend)
 #   BESZEL_DOMAIN, UPTIME_DOMAIN   the monitoring tools (deploy/monitor)
+#   DOCS_DOMAIN  e.g. docs.example.com  (the user manual, repo docs-quanlysanxuat)
 # Both names must already have an A record pointing at the VPS, and ports 80/443 must be open, otherwise
 # Let's Encrypt cannot issue the certificates.
 
@@ -21,6 +22,7 @@ services:
       API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN in .env}
       BESZEL_DOMAIN: ${BESZEL_DOMAIN:?set BESZEL_DOMAIN in .env}
       UPTIME_DOMAIN: ${UPTIME_DOMAIN:?set UPTIME_DOMAIN in .env}
+      DOCS_DOMAIN: ${DOCS_DOMAIN:?set DOCS_DOMAIN in .env}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       # Certificates and ACME account: keep them, re-issuing too often hits Let's Encrypt rate limits.

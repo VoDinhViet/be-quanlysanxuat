@@ -57,3 +57,8 @@
 {$UPTIME_DOMAIN}, http://{$UPTIME_DOMAIN} {
 	import monitor_app 127.0.0.1:3001
 }
+
+# Sách hướng dẫn (repo docs-quanlysanxuat): trang tĩnh công khai, container qlsx-docs nghe 127.0.0.1:8081.
+{$DOCS_DOMAIN}, http://{$DOCS_DOMAIN} {
+	import monitor_app 127.0.0.1:8081
+}
