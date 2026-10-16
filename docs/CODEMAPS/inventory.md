@@ -1,4 +1,4 @@
-<!-- Generated: 2026-10-15 | Files scanned: 38 | Token estimate: ~3550 -->
+<!-- Generated: 2026-10-16 | Files scanned: 38 | Token estimate: ~3560 -->
 # Inventory codemap
 
 Single warehouse: `inventory_balances.itemId` is UNIQUE, no warehouse column (`src/database/schemas/inventory/inventory-balances.ts`).
@@ -8,7 +8,7 @@ Single warehouse: `inventory_balances.itemId` is UNIQUE, no warehouse column (`s
 | Folder | Main files | Role |
 |---|---|---|
 | inventory | service 192, posting.service 133, inventory.query 116, item-stock.query 121, available-quantity.query 84 | Only ledger writer (`InventoryPostingService`) + raw reads; module exports both services |
-| inventory-receipts | service 1376, write 189, query 76 | PNK receipts, IQC/OQC gates |
+| inventory-receipts | service 1375, write 189, query 76 | PNK receipts, IQC/OQC gates |
 | inventory-issues | service 607 | PXK issues |
 | inventory-requisitions | service 725, lines.service 218, query 237 | MR requisitions (DIRECT items), reservation maths |
 | inventory-adjustments | service 377 | PDC adjustments |
@@ -26,15 +26,15 @@ Controller file = `<folder>.controller.ts`; "Svc" = service line.
 |---|---|---|---|
 | GET /inventory/balances | R | getInventoryBalances -> InventoryService.getInventoryBalances (45) | - |
 | GET /inventory/transactions | R | getInventoryTransactions -> getInventoryTransactions (98) | - |
-| GET /inventory-receipts | R | getInventoryReceipts -> same (131) | - |
-| GET /inventory-receipts/:receiptId | R | getInventoryReceipt -> same (324) | - |
-| POST /inventory-receipts | C | createInventoryReceipt (427) | receipts, receipt_items |
-| PATCH /inventory-receipts/:receiptId | U | updateInventoryReceipt (481), DRAFT only | receipts, receipt_items |
-| DELETE /inventory-receipts/:receiptId | D | deleteInventoryReceipt (550), DRAFT, hard delete | receipts |
-| POST .../:receiptId/confirm | U | confirmInventoryReceipt (560) | receipts, quality_inspections |
-| POST .../:receiptId/post | U | postInventoryReceipt (643) | receipts, balances, transactions, payment_requests, production_jobs/orders(+logs), ncrs |
-| POST .../:receiptId/cancel | U | cancelInventoryReceipt (861) | receipts, quality_inspections |
-| GET .../:receiptId/export-pdf | R | exportInventoryReceiptPdf (267) | - |
+| GET /inventory-receipts | R | getInventoryReceipts -> same (130) | - |
+| GET /inventory-receipts/:receiptId | R | getInventoryReceipt -> same (323) | - |
+| POST /inventory-receipts | C | createInventoryReceipt (426) | receipts, receipt_items |
+| PATCH /inventory-receipts/:receiptId | U | updateInventoryReceipt (480), DRAFT only | receipts, receipt_items |
+| DELETE /inventory-receipts/:receiptId | D | deleteInventoryReceipt (549), DRAFT, hard delete | receipts |
+| POST .../:receiptId/confirm | U | confirmInventoryReceipt (559) | receipts, quality_inspections |
+| POST .../:receiptId/post | U | postInventoryReceipt (642) | receipts, balances, transactions, payment_requests, production_jobs/orders(+logs), ncrs |
+| POST .../:receiptId/cancel | U | cancelInventoryReceipt (860) | receipts, quality_inspections |
+| GET .../:receiptId/export-pdf | R | exportInventoryReceiptPdf (266) | - |
 | GET .../:receiptId/related-notes | R | PurchaseNotesService.getChainNotesFromReceipt | - |
 | GET /inventory-issues | R | getInventoryIssues (91) | - |
 | GET /inventory-issues/:issueId | R | getInventoryIssue (232) | - |
@@ -74,20 +74,20 @@ No supplier-return create/cancel route (DRAFT is born in `createFromIqcDispositi
 
 Ledger (`inventory-posting.service.ts`): `postDocument` :47 loops `applyLine` :95: SELECT balance FOR UPDATE -> new qty < 0 throws E106 (:107) -> upsert `inventory_balances` -> INSERT `inventory_transactions` (append-only; referenceType + referenceId polymorphic, no FK). `reverseDocument` :66 re-reads transactions by reference and writes opposite-sign ADJUSTMENT_IN/OUT; used only by adjustment cancel. DB checks: balance qty >= 0; transaction sign must match type. Reference types: INVENTORY_RECEIPT/ISSUE/ADJUSTMENT, SUPPLIER_RETURN, plus legacy OUTSOURCING_ORDER/RECEIPT (outsourcing no longer posts stock).
 
-Status enum (`inventory-documents.ts`): DRAFT, PENDING_IQC, IQC_COMPLETED, PENDING_RECEIPT, POSTED, CANCELLED. Receipt type -> ledger type (`receiptTypeTransactionType`, receipts.service:97): PURCHASE, RETURN, OTHER -> RECEIPT; PRODUCTION -> PRODUCTION_IN. Issue (`issues.service:54`): SALES, RETURN -> ISSUE; PRODUCTION -> PRODUCTION_OUT. Adjustment (`adjustments.service:32`): INCREASE -> ADJUSTMENT_IN, DECREASE -> ADJUSTMENT_OUT. No OUTSOURCING receipt type.
+Status enum (`inventory-documents.ts`): DRAFT, PENDING_IQC, IQC_COMPLETED, PENDING_RECEIPT, POSTED, CANCELLED. Receipt type -> ledger type (`receiptTypeTransactionType`, receipts.service:96): PURCHASE, RETURN, OTHER -> RECEIPT; PRODUCTION -> PRODUCTION_IN. Issue (`issues.service:54`): SALES, RETURN -> ISSUE; PRODUCTION -> PRODUCTION_OUT. Adjustment (`adjustments.service:32`): INCREASE -> ADJUSTMENT_IN, DECREASE -> ADJUSTMENT_OUT. No OUTSOURCING receipt type.
 
 Receipt:
-  DRAFT --confirm (560)--> PENDING_RECEIPT, or PENDING_IQC if requiresIqc (creates IQC via IqcService.createInspectionsFromReceipt, iqc.service.ts:404)
+  DRAFT --confirm (559)--> PENDING_RECEIPT, or PENDING_IQC if requiresIqc (creates IQC via IqcService.createInspectionsFromReceipt, iqc.service.ts:404)
   PENDING_IQC <-> IQC_COMPLETED by `syncReceiptIqcStatus` (write.ts:146; called from iqc.service.ts:397/886/987 and iqc.write.ts:63)
-  PENDING_RECEIPT | PENDING_IQC | IQC_COMPLETED --post (643)--> POSTED; IQC states need all IQC COMPLETED else E153 (1324). `buildReceiptPostingLines` (825) nets out POSTED supplier returns and drops lines <= 0.
-  Not POSTED --cancel (861)--> CANCELLED (`cancelReceiptInspections`, iqc.write.ts:99, same tx: cancels all IQC of the receipt and its DRAFT supplier returns); POSTED = E289 (reverse through supplier return); a POSTED supplier return of this receipt = E290 (iqc.write.ts:114, checked before any cancel write)
-  Confirm gates: PO ORDERED (1040); cumulative qty per PO line <= ordered (1119); PRODUCTION: `ensureProductionReceiptOqcCleared` (1183).
-  Post side effects: PO linked -> `PaymentRequestsService.createIfOrderCompleted` (691); PRODUCTION with job -> `closeJobIfFullyReceived` (715).
+  PENDING_RECEIPT | PENDING_IQC | IQC_COMPLETED --post (642)--> POSTED; IQC states need all IQC COMPLETED else E153 (1323). `buildReceiptPostingLines` (824) nets out POSTED supplier returns and drops lines <= 0.
+  Not POSTED --cancel (860)--> CANCELLED (`cancelReceiptInspections`, iqc.write.ts:99, same tx: cancels all IQC of the receipt and its DRAFT supplier returns); POSTED = E289 (reverse through supplier return); a POSTED supplier return of this receipt = E290 (iqc.write.ts:114, checked before any cancel write)
+  Confirm gates: PO ORDERED (1039); cumulative qty per PO line <= ordered (1118); PRODUCTION: `ensureProductionReceiptOqcCleared` (1182).
+  Post side effects: PO linked -> `PaymentRequestsService.createIfOrderCompleted` (691); PRODUCTION with job -> `closeJobIfFullyReceived` (714).
 
 ### Production receipt and job closure
-  OQC confirm (oqc.service.ts:621, per passed lot) or `closeJobIfQcCovered` (oqc.query.ts:269, job -> WAITING_DELIVERY)
+  OQC confirm (oqc.service.ts:627, per passed lot) or `closeJobIfQcCovered` (oqc.query.ts:277, job -> WAITING_DELIVERY)
    -> `createProductionReceiptForJob` (write.ts:82): inserts receipt straight at PENDING_RECEIPT for qty = target - confirmed PRODUCTION qty (idempotent; no DRAFT, no confirm step)
-   -> warehouse `post` -> `closeJobIfFullyReceived`: job WAITING_DELIVERY and received + NCR-transferred qty (`getNcrTransferredQtyByJobId`, ncrs.query.ts:15) >= job.quantity -> job COMPLETED + job log -> all sibling JOBs COMPLETED -> LSX COMPLETED + log -> if ncrId `closeNcrIfProductionOrdersDone` (ncrs.write.ts:143). UPDATE guarded by `status = WAITING_DELIVERY` to avoid duplicate logs.
+   -> warehouse `post` -> `closeJobIfFullyReceived`: job WAITING_DELIVERY and received + NCR-transferred qty (`getNcrTransferredQtyByJobId`, ncrs.query.ts:23) >= job.quantity -> job COMPLETED + job log -> all sibling JOBs COMPLETED -> LSX COMPLETED + log -> if ncrId `closeNcrIfProductionOrdersDone` (ncrs.write.ts:143). UPDATE guarded by `status = WAITING_DELIVERY` to avoid duplicate logs.
 
 Issue: DRAFT --post (346)--> POSTED (PRODUCTION type needs no pending IQC else E203, `hasPendingIqcForItems` iqc.query.ts:23 (IQC CANCELLED by a cancelled source receipt does not count); sets linked requisition ISSUED); DRAFT --cancel (403)--> CANCELLED (cancels linked requisition). POSTED immutable. SALES issues are also auto-posted by `OutboundOrdersService.postOutboundOrder` (outbound-orders.service.ts:747).
 
@@ -107,18 +107,18 @@ Supplier return: IQC confirm with SORT/RETURN disposition (iqc.service.ts:840) -
 
 ## 4. Key rules and errors (`src/constants/error-code.constant.ts`)
 
-- Generic: E096 not found (receipts 343/1349, issues 247/569), E098 bad status transition (receipts 571/658/869/1371; issues 351/408/602), E100 item not found, E107 invalid reference (receipts 973/1204; issues 504/554), E106 insufficient stock, E137 supplier return not found (service 214/242/496).
-- Receipt: E151 no lines (586); E152 IQC source unresolved (1319; OTHER exempt); E153 IQC not completed (1331); E154 over PO line qty (1162); E179 PRODUCTION needs productionJobId (1036); E196 OQC/IQC not cleared or qty > passed OQC (1220/1233/1236); E197 > job.quantity (1240); E209 final-assembly OQC missing (1224); E253 supplier xor client (1024); E289 POSTED not cancellable (874); E290 cancel blocked by a POSTED supplier return of the receipt (`cancelReceiptInspections`, iqc.write.ts:114); E293 OTHER needs reason, E294 OTHER forbids PO/supplier/client/job/PO line (1006/1015); E315 PO line with quotation unit needs quotationQuantity (1108); E121/E123/E127/E145 PO or PO line not found / mismatch / not ORDERED (1040-1094). `reason` saved only for OTHER and RETURN (`effectiveReason` 978).
+- Generic: E096 not found (receipts 342/1348, issues 247/569), E098 bad status transition (receipts 570/657/868/1370; issues 351/408/602), E100 item not found, E107 invalid reference (receipts 972/1203; issues 504/554), E106 insufficient stock, E137 supplier return not found (service 214/242/496).
+- Receipt: E151 no lines (585); E152 IQC source unresolved (1318; OTHER exempt); E153 IQC not completed (1330); E154 over PO line qty (1161); E179 PRODUCTION needs productionJobId (1035); E196 OQC/IQC not cleared or qty > passed OQC (1219/1232/1235); E197 > job.quantity (1239); E209 final-assembly OQC missing (1223); E253 supplier xor client (1023); E289 POSTED not cancellable (873); E290 cancel blocked by a POSTED supplier return of the receipt (`cancelReceiptInspections`, iqc.write.ts:114); E293 OTHER needs reason, E294 OTHER forbids PO/supplier/client/job/PO line (1005/1014); E315 PO line with quotation unit needs quotationQuantity (1107); E121/E123/E127/E145 PO or PO line not found / mismatch / not ORDERED (1039-1093). `reason` saved only for OTHER and RETURN (`effectiveReason` 977).
 - Issue: E203 pending IQC (363); E234 manual PRODUCTION issue (590); E235 deleting a PXK generated by a requisition (330).
 - Requisition: E223 not found; E224 not editable/cancellable; E225 not PENDING_APPROVAL (332/389); E227 no lines (341); E228 duplicate item; E229 item not DIRECT; E230 item not in job BOM; E231 qty > on-hand minus held (615); E232 qty > remaining BOM (624); E233 PRODUCTION needs job (522); E087 job PENDING (575); E007 item not found. All line checks in `validateRequisitionLines` (535), run at create/update/approve.
 - Adjustment: E261 duplicate item (308); E151 empty at post (202).
 - Stock: available = onHand - held - remaining BOM demand (`stockSqlFragments`, available-quantity.query.ts:14); filter `StockStatus` NORMAL/WARNING/SHORTAGE (`inventory.constant.ts`). FG list reserved = outbound-order held qty (inventory-products.service.ts:62). Stock card `balanceAfter` = window sum over full history, date filter applied after (`product-ledger.query.ts:10`).
-- Concurrency: post/cancel lock the document row FOR UPDATE (`getInventoryReceiptForUpdate` 1338 and siblings).
+- Concurrency: post/cancel lock the document row FOR UPDATE (`getInventoryReceiptForUpdate` 1337 and siblings).
 
 ## 5. Cross-domain links
 
 - purchase-orders: receipts need PO ORDERED; received qty = POSTED receipt lines (`getReceivedQuantityByPurchaseOrderItemId`, purchase-orders.query.ts:130); PO cancel cancels DRAFT receipts (`cancelLinkedDocuments`, purchase-orders.service.ts:773); payment-requests.service.ts:631 on post.
-- iqc/oqc: IQC created at confirm; `getJobQcCoverage` (oqc.query.ts:205) and `getPassedOqcQuantityByJobId` (:165) gate PRODUCTION receipts. `IqcModule` imports `SupplierReturnsModule`; IQC/OQC avoid importing `InventoryReceiptsModule` (hence plain functions).
+- iqc/oqc: IQC created at confirm; `getJobQcCoverage` (oqc.query.ts:213) and `getPassedOqcQuantityByJobId` (:173) gate PRODUCTION receipts. `IqcModule` imports `SupplierReturnsModule`; IQC/OQC avoid importing `InventoryReceiptsModule` (hence plain functions).
 - production-jobs/orders/ncrs: `production_job_issues` = BOM demand for requisitions; receipt post closes JOB, LSX, NCR.
 - outsourcing: supplier returns from OS-IN change OS-OUT status and operation progress; see outsourcing codemap (`outsourcing-*` schemas).
 - outbound-orders: DO delivery creates a POSTED SALES issue (`inventory_issues.outboundOrderId`); `outboundHeldQuantityByItemSubquery` feeds FG reserved; see outbound codemap.

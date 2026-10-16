@@ -1,4 +1,4 @@
-<!-- Generated: 2026-10-15 | Files scanned: 34 | Token estimate: ~2100 -->
+<!-- Generated: 2026-10-16 | Files scanned: 34 | Token estimate: ~2590 -->
 
 # Identity & Access Codemap
 
@@ -124,5 +124,5 @@ Token shape: `JwtPayloadType` (`src/api/auth/types/jwt-payload.type.ts`): `sub` 
 - Files: avatar via `users.avatarFileId` (`users.service.ts` getCurrentUser); files uploads and deletes check `system:manage` in `src/api/files/files.service.ts:182`. See `integration.md`.
 - Integration: `IntegrationOnBehalfGuard` (`src/api/integration/guards/integration-on-behalf.guard.ts`) reuses `PermissionsService` for the `X-On-Behalf-Of` credential id.
 - Operations: `OperationAccessService` calls `getPermissionCodes` (`src/api/operations/operation-access.service.ts:32`).
-- Production jobs: `UsersService.getUserDepartmentId` (`users.service.ts:593`) is used by `production-jobs.service.ts:849`.
+- Production jobs: `UsersService.getUserDepartmentId` (`users.service.ts:593`) is used by `production-jobs.service.ts:861`.
 - Redis: session keys `session_hash:%s`, `session_blacklist:%s` (`src/constants/cache.constant.ts`).

@@ -1,12 +1,12 @@
-<!-- Generated: 2026-10-15 | Files scanned: 40 | Token estimate: ~2640 -->
+<!-- Generated: 2026-10-16 | Files scanned: 40 | Token estimate: ~2590 -->
 # Data Codemap
 
-**Last Updated:** 2026-10-15
+**Last Updated:** 2026-10-16
 **Entry Points:** `src/database/schemas/index.ts` (re-exports everything), `src/database/database.module.ts` (`DRIZZLE` token), `drizzle.config.ts`
 **Engine:** Postgres via postgres.js + drizzle-orm. Companion: `docs/CODEMAPS/architecture.md`.
 
 ## Conventions
-- Soft delete (`deleted_at`) exists only on: `items`, `clients`, `operations`, `users`, `roles`, `suppliers`, `orders`, `production_job_issues`. Every other table hard-deletes or is status-driven. Filter `deletedAt` in queries on those.
+- Soft delete (`deleted_at`) exists only on: `items`, `clients`, `operations`, `users`, `roles`, `suppliers`, `orders`. Every other table hard-deletes or is status-driven. Filter `deletedAt` in queries on those.
 - Quantities are `numeric(18,3, { mode: 'number' })` (e.g. `ncrs.ng_qty`, `purchase_order_items`); drizzle returns JS numbers.
 - Audit FKs (`created_by`, `approved_by`, `posted_by`, `sent_by`, ... ) point to `users.id`, not `credentials.id`. `credentials.user_id` (unique, restrict) links a login identity to a user and holds `role_id`; the JWT `sub` is the credential id.
 - Dates: `date` columns use `{ mode: 'date' }` and are compared as UTC midnight. "Today" for business rules is Vietnam time: `vnToday()` in `src/database/vn-date.util.ts` returns UTC-midnight of the `Asia/Ho_Chi_Minh` calendar day (plain `new Date()` is off by a day 00:00-06:59 VN). `VN_TODAY` constant lives in `reports.service.ts`. Timestamps are plain `timestamp` (no tz).
@@ -23,7 +23,7 @@
 - `units/`: `units` (`unit_type`, `unit_status`); item-specific conversion in `items/item_units`.
 - `items/`: `items` (types FG/DIRECT, code + revision), `item_files`, `item_units`, `boms`, `bom_items` (`bom_node_type`: COMPONENT/DIRECT), `bom_operations`, `routing_operations`.
 - `orders/`: `orders` (sales order SO, FK `client_id`, `assigned_user_id`), `order_items` (FK `order_id`, `item_id`), `order_files`.
-- `production/`: `production_orders` (LSX; FK `order_id`, optional `ncr_id`), `production_order_items` (FK `production_order_id`, `order_item_id`, `item_id`), `production_order_logs`, `production_jobs` (JOB; FK `production_order_id`, `item_id`), `production_job_items`, `production_job_units`, `production_job_bom_items` (snapshot of BOM), `production_job_operations` (FK `production_job_id`, `operation_id`, bom item), `production_job_operation_reports` (+ `_report_files`), `production_job_issues` (soft delete), `production_job_logs`, `production_job_notes` (append-only).
+- `production/`: `production_orders` (LSX; FK `order_id`, optional `ncr_id`), `production_order_items` (FK `production_order_id`, `order_item_id`, `item_id`), `production_order_logs`, `production_jobs` (JOB; FK `production_order_id`, `item_id`), `production_job_items`, `production_job_units`, `production_job_bom_items` (snapshot of BOM), `production_job_operations` (FK `production_job_id`, `operation_id`, bom item), `production_job_operation_reports` (+ `_report_files`), `production_job_issues`, `production_job_logs`, `production_job_notes` (append-only).
 - `quality/`: `quality_inspections` (IQC and OQC in one table, `inspection_no`), `quality_inspection_results`, `quality_inspection_evidences` (`quality_evidence_kind`), `ncrs`, `ncr_logs`, `ncr_cost_lines` (`ncr_cost_kind`), `quality-enums.ts`.
 - `inventory/`: `inventory_receipts` (+ `_items`), `inventory_issues` (+ `_items`), `inventory_adjustments` (+ `_items`), `inventory_requisitions` (+ `_items`), `inventory_transactions` (ledger, only POSTED docs write), `inventory_balances` (per item), `outbound_orders` (+ `_items`), `outsourcing_orders` (+ `_items`), `outsourcing_receipts` (+ `_items`), `supplier_returns` (+ `supplier_return_files`), `inventory-documents.ts` (shared status enum).
 - `purchase-requests/`: `purchase_requests` (FK `department_id`), `purchase_request_items` (FK `purchase_request_id`, `item_id`).
@@ -79,6 +79,6 @@ Unverified: exact cardinality of `quality_inspections.origin_id` (polymorphic, n
 - Master data: `ItemType` FG/DIRECT, `ItemStatus` ACTIVE/INACTIVE, `BomType` COMPONENT/DIRECT (`bom_node_type`).
 
 ## Migrations (`drizzle/`)
-- 232 SQL files `0000_*.sql` to `0231_sharp_lockjaw.sql`, named `NNNN_<random_words>.sql` (drizzle-kit auto names); `drizzle/meta/_journal.json` has 232 entries (`idx`, `when`, `tag`) plus `NNNN_snapshot.json` per migration. Config: `drizzle.config.ts` (schema `src/database/schemas/index.ts`, out `drizzle`, url `DATABASE_URL`, env loaded `.env.${NODE_ENV||local}` then `.env`).
+- 234 SQL files `0000_*.sql` to `0233_snapshot_item_revision.sql`, named `NNNN_<random_words>.sql` (drizzle-kit auto names; recent ones are hand-named, e.g. `0232_ncr_permissions_and_retire_codes.sql`); `drizzle/meta/_journal.json` has 234 entries (`idx`, `when`, `tag`) plus `NNNN_snapshot.json` for 232 of them (0156 and 0212 have none). Config: `drizzle.config.ts` (schema `src/database/schemas/index.ts`, out `drizzle`, url `DATABASE_URL`, env loaded `.env.${NODE_ENV||local}` then `.env`).
 - Scripts (`package.json`): `pnpm db:generate` (drizzle-kit generate), `pnpm db:migrate` (drizzle-kit migrate), `pnpm db:check-drift` (`src/database/check-migration-drift.ts`: compares journal `when` and SHA-256 of each `.sql` against `__drizzle_migrations` in the `development` and `production` DBs, read-only), `db:studio`, `db:reset`, `db:reset:transactions`, `db:seed:supplier-groups` (seed file `src/database/seeds/supplier-groups.seed.ts`; other seeds were removed).
 - WARNING: `DATABASE_URL` in `.env.development` / `.env.production` is a remote database. Never run `pnpm db:migrate`, `db:reset*` or any destructive script against remote DBs without explicit user approval; `drizzle-kit` is interactive, ask the user to run it. Default `.env` points to local Docker (`localhost:5433`, Redis `6380`).

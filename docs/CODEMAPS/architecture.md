@@ -1,7 +1,7 @@
-<!-- Generated: 2026-10-15 | Files scanned: 58 | Token estimate: ~2700 -->
+<!-- Generated: 2026-10-16 | Files scanned: 58 | Token estimate: ~2660 -->
 # Architecture Codemap
 
-**Last Updated:** 2026-10-15
+**Last Updated:** 2026-10-16
 **Entry Points:** `src/main.ts`, `src/app.module.ts`
 **Stack:** NestJS 11 modular monolith, Drizzle ORM + postgres.js, Redis (Keyv cache + BullMQ connection), pnpm, Node >= 24. Companion: `docs/CODEMAPS/data.md` (schema).
 
@@ -40,13 +40,13 @@ client --HTTP--> helmet/compression/CORS (Express)
 - Integration routes (`src/api/integration/`, `/api/v1/integration/*`): `@ApiPublic` skips JWT; guarded instead by `IntegrationApiKeyGuard` (header `api-key`, env `INTEGRATION_API_KEY`, route group off when unset), `IntegrationOnBehalfGuard`, `ThrottlerGuard`.
 
 ## Per-domain file convention (`src/api/<domain>/`)
-`<d>.module.ts`, `<d>.controller.ts`, `<d>.service.ts`, optional `<d>.query.ts` (20 domains: read helpers/joins), `<d>.write.ts` (3 domains: ncrs, iqc, inventory-receipts; transactional write helpers, e.g. `ncrs.write.ts` `generateNcrCode(tx)`), `<d>.constant.ts` (inventory, production-execution, purchase-ledger, purchase-orders), `<d>.export.ts` (Excel, e.g. orders, iqc, oqc, items), `dto/` (`*.req.dto.ts`, `*.res.dto.ts`, `*-ref.res.dto.ts` for narrow refs). Query/write helpers are plain functions, not providers, so modules avoid circular imports (see comment `ncrs.write.ts`: OqcModule deliberately does not import NcrsModule). Reference example: `src/api/ncrs/`.
+`<d>.module.ts`, `<d>.controller.ts`, `<d>.service.ts`, optional `<d>.query.ts` (20 files in 16 domains: read helpers/joins), `<d>.write.ts` (3 domains: ncrs, iqc, inventory-receipts; transactional write helpers, e.g. `ncrs.write.ts` `generateNcrCode(tx)`), `<d>.constant.ts` (inventory, production-execution, purchase-ledger, purchase-orders), `<d>.export.ts` (Excel, e.g. orders, iqc, oqc, items), `dto/` (`*.req.dto.ts`, `*.res.dto.ts`, `*-ref.res.dto.ts` for narrow refs). Query/write helpers are plain functions, not providers, so modules avoid circular imports (see comment `ncrs.write.ts`: OqcModule deliberately does not import NcrsModule). Reference example: `src/api/ncrs/`.
 
 ## Shared code
 - `src/common/dto/offset-pagination/` (`PageOptionsDto` limit/page/q/order, getter `offset`; `OffsetPaginatedDto {data, pagination}` with `OffsetPaginationDto` totalRecords/totalPages) and `cursor-pagination/`; `error.dto.ts`, `error-detail.dto.ts`. Default limit 10 (`DEFAULT_PAGE_LIMIT`), no max limit.
 - `src/common/utils/`: `document-sequence.util.ts`, `search.util.ts` (`unaccentILike`), `date-range.util.ts`, `excel.util.ts`, `vnd.util.ts`, `postgres-error.util.ts`, `array.util.ts`, `object.util.ts`.
 - `src/decorators/`: `field.decorators.ts` (`StringField`, `UUIDField`, `EnumField`, `ClassField`, ... each with `*Optional`), `http.decorators.ts` (`ApiAuth`, `ApiPublic`), `permissions.decorator.ts`, `public.decorator.ts`, `current-user.decorator.ts`, `param.decorators.ts` (`UUIDParam`), `validators/`.
-- `src/constants/`: `error-code.constant.ts` (enum `ErrorCode`, ~700 lines: `E###` business, `V###` validation, values like `ncr.error.job_required`; retired codes stay reserved), `permission.constant.ts`, `app.constant.ts` (`Environment`, `OrderBy`, paging defaults), `cache.constant.ts`, `role.constant.ts`.
+- `src/constants/`: `error-code.constant.ts` (enum `ErrorCode`, 714 lines, 283 codes: `E###` business, `V###` validation, values like `ncr.error.job_required`; retired codes stay reserved), `permission.constant.ts`, `app.constant.ts` (`Environment`, `OrderBy`, paging defaults), `cache.constant.ts`, `role.constant.ts`.
 - `src/redis/`: `RedisModule` (global) gives a Keyv-Redis `CacheModule` (TTL 1 week) and `BullModule.forRootAsync` connection from `REDIS_URL`. No queue is registered and no `@Processor`/`InjectQueue` exists in `src` (grep): BullMQ is wiring only.
 - `src/storage/`: `STORAGE_PROVIDER` symbol, `LocalDiskStorageProvider` (only driver; `UPLOAD_DRIVER=local`, dir `uploads/`). Upload policies per `UploadType` in `src/api/files/upload-policy.ts`; hourly cleanup of orphan files (`UPLOAD_ORPHAN_TTL`).
 - `src/templates/`: `TemplatesModule` exports `PdfRendererService` (Puppeteer/Chromium, init/destroy hooks, `render(type, ctx) -> Buffer`); `form-templates.registry.ts` maps `FormTemplateType` (ORDER, ORDER_SUMMARY, PRODUCTION_ORDER, PRODUCTION_PLAN, STOCK_IN_SLIP) to static `*.html`; copied to `dist/src/templates` via `nest-cli.json` assets. Specs importing the renderer must `jest.mock` it (puppeteer is ESM-only).

@@ -1,11 +1,11 @@
-<!-- Generated: 2026-10-15 | Files scanned: 42 | Token estimate: ~2900 -->
+<!-- Generated: 2026-10-16 | Files scanned: 42 | Token estimate: ~2690 -->
 # Integration, reports & files codemap
 
 Conventions: controllers check permissions, services do not. Paths: `R`=`src/api/reports`, `I`=`src/api/integration`, `F`=`src/api/files`, `H`=`src/api/health`. Counts verified by reading controllers: reports 7, integration 22, files 3, health 1.
 
 ## 1. Modules
-- `R/` : `reports.controller.ts` 106, `reports.service.ts` 797, `dto/` 9 files. Imports AuthModule (for `PermissionsService`, `reports.module.ts:8`). Read-only; owns no business rule, re-reads rules of orders, production, quality, purchasing, inventory.
-- `I/` (AI platform read gateway): 5 controllers (identity 57, orders 128, production 72, purchasing 102, quality 60), services (orders 325, production 114, purchasing 191, quality 124), `integration-query.service.ts` 114 (shared SQL runner), `guards/` (api-key 57, on-behalf 91), `dto/` 4 files, `integration.module.ts` 61 (registers its own `ThrottlerModule`, limit from `integration.rateLimitPerMinute`, :36).
+- `R/` : `reports.controller.ts` 106, `reports.service.ts` 797, `dto/` 10 files. Imports AuthModule (for `PermissionsService`, `reports.module.ts:8`). Read-only; owns no business rule, re-reads rules of orders, production, quality, purchasing, inventory.
+- `I/` (AI platform read gateway): 5 controllers (identity 57, orders 128, production 72, purchasing 102, quality 60), services (orders 325, production 114, purchasing 191, quality 124), `integration-query.service.ts` 114 (shared SQL runner), `guards/` (api-key 57, on-behalf 91), `dto/` 5 files, `integration.module.ts` 61 (registers its own `ThrottlerModule`, limit from `integration.rateLimitPerMinute`, :36).
 - `F/`: `files.controller.ts` 77, `files.service.ts` 279, `files-cleanup.service.ts` 70, `upload-policy.ts` 50, `config/multer.config.ts` 26, `util/file-type.util.ts` 18.
 - `H/`: `health.controller.ts` 32, `indicators/{database 28, redis 36}.health.ts`.
 - Shared infra: `src/storage/` (`storage.module.ts` 37 global, `storage-provider.interface.ts` 13 = `save`/`delete` only, `providers/local-disk.storage-provider.ts` 32; only LOCAL driver exists), `src/redis/` (`redis.module.ts` 43 global: Keyv-Redis `CacheModule` TTL 1 week + `BullModule` connection, both from `REDIS_URL`).
@@ -47,17 +47,17 @@ Integration auth (request order, all set at controller level via `@UseGuards`):
 
 - `IntegrationApiKeyGuard` (`I/guards/integration-api-key.guard.ts:34`): header `Api-Key` vs env `INTEGRATION_API_KEY` (min 32 chars), SHA-256 digest + `timingSafeEqual`; unset key = 401 for every call (group disabled).
 - `IntegrationOnBehalfGuard` (`I/guards/integration-on-behalf.guard.ts:47`): no `X-On-Behalf-Of` header = pass (internal admin Ask, key only). Header present = must match UUID pattern, then the credential's permissions must include `SUPER_PERMISSION` or every `@Permissions` of the route; a route with no declared permission and no known `entity` is denied (closed by default). Failure = 403 E033.
-- Query runner: `SET TRANSACTION READ ONLY` + `SET LOCAL statement_timeout` (`integration.queryTimeoutMs`, default 10s), cut at `MAX_ROWS` 1000 (`truncated` flag), Postgres 57014 -> 504, one log line per call without params. DTO caps: `limit` max 50, "N days" max 365 (`dto/integration-common.dto.ts:11`). "Today" is Asia/Ho_Chi_Minh (`TODAY`, :20).
+- Query runner: `SET TRANSACTION READ ONLY` + `SET LOCAL statement_timeout` (`integration.queryTimeoutMs`, default 10s), cut at `MAX_ROWS` 1000 (`truncated` flag), Postgres 57014 -> 504, one log line per call without params. DTO caps: `limit` max 50, "N days" max 365 (`dto/integration-common.dto.ts:11`). "Today" is Asia/Ho_Chi_Minh (`TODAY`, `I/integration-query.service.ts:24`).
 
 Reports data sources and derivation:
-- `getStats` runs 3 queries in parallel (orders, jobs, QC). Without `startDate`/`endDate` it also returns trend fields; with a range every trend/window field is `null` (`reports.service.ts:123`, :397).
+- `getStats` runs 3 queries in parallel (orders, jobs, QC). Without `startDate`/`endDate` it also returns trend fields; with a range every trend/window field is `null` (`reports.service.ts:125`, :397).
 - Trends are computed at read time, no history table: `runningOrdersTrendPercent` = running now vs running with `approvedAt` older than 7 days (:372); `orderDueDateTrendCount` = overdue today minus overdue as of yesterday (:380); `runningJobsTrendCount` = jobs with `startedAt` in last 24h (:423); `jobsWaitingQcTrendCount` = distinct OQC DRAFT jobs now minus those created over 1 day ago (:456). Deltas are therefore >= 0.
 - `getQcPassRate`: 7-day series (`generate_series` LEFT JOIN `quality_inspection_results`, one row per day, `null` when no inspection that day), IQC and OQC PASS percent from `decision` (:228). Comment at :222 still says `qc_inspections`; the code reads `quality_inspection_results`.
 - `getPendingApprovals`: a count runs only if the caller has the matching approve/create/update permission (or `system:manage`), otherwise 0. Six warehouse/QC/payment counts (receipts to post, payment requests, supplier returns, issues to post, IQC and OQC to inspect) are not gated.
 - `reports.controller.ts:40` summary of `/reports/alerts` mentions NCR, but `getAlerts` returns only jobDueDate, outsourcingOrderDueDate, upcomingDeliveries.
 
 Files flow (upload then link):
-  1. `POST /files?type=` -> multer memory storage, ceiling = max(image, document) size (`F/config/multer.config.ts:22`).
+  1. `POST /files?type=` -> multer memory storage, ceiling = max(image, document) size (`F/config/multer.config.ts:22-24`).
   2. `upload`: `UploadType` -> `uploadPolicies` gives `kind` (IMAGE/DOCUMENT/EVIDENCE; never from client) -> size cap per kind (default 5MB image, 10MB document) -> magic-byte MIME detection (`file-type`) vs allowlist -> key `yyyy/mm/dd/<uuid>.<ext>` -> `StorageProvider.save` -> insert `files` with sha256 `checksum`, `linkedAt` null.
   3. Consumer services call `FilesService.linkFiles` (:220) before writing a `*FileId`; it sets `linkedAt` once (E042 if any id missing).
   4. Download is not an API route: `FileResDto.url` is `/<storageKey>`, served by `ServeStaticModule` from `upload.dir` at the domain root, `index:false`, `fallthrough:false` (`src/app.module.ts:92`). No auth on those static URLs.

@@ -21,6 +21,7 @@ Global pipeline: prefix `api`; `JwtAuthGuard` then `PermissionsGuard` (every rou
 ## Docs
 
 `docs/CODEMAPS/INDEX.md` is the entry point for tracing a domain: route, controller, service, table and state flow, one file per domain group (`sales`, `purchasing`, `inventory`, `product-structure`, `production`, `quality`, `identity-access`, `integration`) plus `architecture` and `data`. Read it before opening a domain's code. A codemap is a map and the code is the source of truth: when they disagree, trust the code and fix the codemap.
+For a chain that crosses UI and API (button, server function, endpoint, status), start at `../web-qlsx-start/docs/CODEMAPS/system-flow.md`.
 
 ## Cautions
 

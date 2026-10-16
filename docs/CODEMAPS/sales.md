@@ -1,4 +1,4 @@
-<!-- Generated: 2026-10-15 | Files scanned: 27 | Token estimate: ~2900 -->
+<!-- Generated: 2026-10-16 | Files scanned: 27 | Token estimate: ~2950 -->
 # Sales codemap
 
 Conventions: controllers check permissions, services do not; routes are under global prefix `api`. Create/update mostly return 204 (void) except `POST /orders`. Paths below: `O`=`src/api/orders`, `B`=`src/api/outbound-orders`, `C`=`src/api/clients`, `S`=`src/database/schemas`.
@@ -60,12 +60,12 @@ Public (no JWT, `@ApiPublic`): `GET /client-groups` (1) `client-groups.controlle
 ## 3. State flows
 SO status (`S/orders/orders.ts:35`). No dedicated submit route: DRAFT -> PENDING_CONFIRMATION is a client-sent `status` on POST/PATCH.
   DRAFT --(PATCH status)--> PENDING_CONFIRMATION --approveOrder--> AWAITING_PRODUCTION --approveProductionOrder--> IN_PROGRESS --postOutboundOrder/closeOrdersIfFullyDelivered--> COMPLETED
-  PENDING_CONFIRMATION --rejectOrder--> REJECTED --updateOrder (no status sent)--> DRAFT
+  PENDING_CONFIRMATION --rejectOrder--> REJECTED --updateOrder (no status sent)--> DRAFT; an explicit status sent with the PATCH (e.g. PENDING_CONFIRMATION, CANCELLED) is applied as sent instead of DRAFT (`updateOrder`, `revertsToDraft`)
   any editable state --updateOrder (status=CANCELLED)--> CANCELLED
 `approveOrder` (service:729): guard `ensurePendingConfirmation` (:1022), `ensureItemsNotLockedByProduction` (:952), `getInitialPlanItems` (`production-orders.service.ts:547`, read-only), then one tx: set AWAITING_PRODUCTION + approvedBy/At, `seedPlan` (`production-orders.service.ts:610`).
 
 SO -> LSX:
-  approveOrder -> seedPlan: delete-and-reuse branch for an old ORDER-type LSX (`orderLsxCondition`:603) is effectively unreachable here because `ensureItemsNotLockedByProduction` throws E080 first; insert `production_orders` PENDING (code reused if existed) + `production_order_items` (suggested qty = need beyond available stock) + CREATED log
+  approveOrder -> seedPlan: delete-and-reuse branch for an old ORDER-type LSX (`orderLsxCondition`:600) is effectively unreachable here because `ensureItemsNotLockedByProduction` throws E080 first; insert `production_orders` PENDING (code reused if existed) + `production_order_items` (suggested qty = need beyond available stock) + CREATED log
   -> (LSX qty editable while PENDING, `updateProductionOrder`:335)
   -> `approveProductionOrder` (:434): LSX APPROVED (or COMPLETED if every line is fully from stock), `orders.status = IN_PROGRESS` (:503), `createJobs` makes JOBs
   NCR path: `NcrsService.createProductionOrder` (`ncrs.service.ts:337`) inserts LSX with `source_type=NCR`, same `orderId`, already APPROVED, 1 JOB; order status untouched.
@@ -91,6 +91,6 @@ SO cancel/delete guards: PATCH blocked on COMPLETED/CANCELLED (E065) and PENDING
 ## 5. Cross-domain links
 - Production (LSX/JOB): `OrdersService` calls `ProductionOrdersService.getInitialPlanItems/seedPlan`; LSX approval flips SO to IN_PROGRESS (`production-orders.service.ts:503`); `production_orders.orderId` unique per `source_type=ORDER` (`S/production/production-orders.ts:117`).
 - Inventory: DO delivery writes `inventory_issues.outboundOrderId` (`S/inventory/inventory-issues.ts:63`); `InventoryService` copies delivered/open-demand queries for AWAITING_PRODUCTION and IN_PROGRESS SO (`inventory/inventory.query.ts:92`); `OrdersService.getOrderItems` exposes `issuedQty`/`remainingQty` (unclamped).
-- Quality: DO send reads `getJobQcCoverage`/`getJobFinalOperation` (`oqc/oqc.query.ts:205`, :104). NCR rows from OQC copy `orderId` from the JOB's LSX (`ncrs/ncrs.write.ts:69`); secondary LSX reuses it, E305 if missing (`ncrs.service.ts:347`).
+- Quality: DO send reads `getJobQcCoverage`/`getJobFinalOperation` (`oqc/oqc.query.ts:213`, :112). NCR rows from OQC copy `orderId` from the JOB's LSX (`ncrs/ncrs.write.ts:69`); secondary LSX reuses it, E305 if missing (`ncrs.service.ts:347`).
 - Items: SO and DO lines reference `items` with restrict FK; `outbound_order_items.productionJobId` is a display snapshot, set null if the JOB is deleted on LSX re-approval (`S/inventory/outbound-order-items.ts:35-40`).
 - Others reading SO: `reports.service.ts`, `integration/integration-orders.service.ts` (raw SQL on `orders`), payment-requests and purchase-orders modules (not read; unverified how).
