@@ -28,6 +28,21 @@ export class QuotationItemSupplierResDto {
   unitPrice!: number | null;
 
   @Expose()
+  @StringFieldOptional({
+    nullable: true,
+    maxLength: 50,
+    description: 'Đơn vị báo giá (ĐVBG) khi NCC báo khác đơn vị chính',
+  })
+  quotationUnit!: string | null;
+
+  @Expose()
+  @NumberFieldOptional({
+    nullable: true,
+    description: 'SL báo giá theo ĐVBG; thành tiền = đơn giá × SL báo giá',
+  })
+  quotationQuantity!: number | null;
+
+  @Expose()
   @NumberFieldOptional({
     nullable: true,
     int: true,

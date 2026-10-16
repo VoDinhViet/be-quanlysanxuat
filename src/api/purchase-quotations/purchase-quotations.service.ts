@@ -815,12 +815,31 @@ export class PurchaseQuotationsService {
   ): Promise<CreateQuotationItemReqDto[]> {
     const quotationItems = this.mergeItemsByItemId(itemsReq);
 
+    this.validateQuotationUnits(quotationItems);
     await this.ensureSuppliersExist(
       quotationItems.flatMap((item) => item.suppliers.map((s) => s.supplierId)),
     );
     await this.validateAllocations(quotationItems);
 
     return quotationItems;
+  }
+
+  /** ĐVBG và SL báo giá đi cùng nhau (cùng có, SL > 0, hoặc cùng trống) — khớp CHECK
+   * `chk_purchase_quotation_item_suppliers_quotation_unit`; kiểm ở đây để trả 422 thay vì 500. */
+  private validateQuotationUnits(
+    quotationItems: CreateQuotationItemReqDto[],
+  ): void {
+    const hasInvalidPair = quotationItems
+      .flatMap((item) => item.suppliers)
+      .some(
+        ({ quotationUnit, quotationQuantity }) =>
+          (quotationUnit == null) !== (quotationQuantity == null) ||
+          (quotationQuantity != null && quotationQuantity <= 0),
+      );
+
+    if (hasInvalidPair) {
+      throw new AppException(ErrorCode.E314, HttpStatus.UNPROCESSABLE_ENTITY);
+    }
   }
 
   /** Stamp `linkedAt` on supplier attachment files before opening the main transaction.
@@ -876,7 +895,7 @@ export class PurchaseQuotationsService {
     return [...mergedByItemId.values()];
   }
 
-  /** Cùng `supplierId` mà `unitPrice`/`leadTimeDays`/`note` khác nhau là xung đột thật, ném E129
+  /** Cùng `supplierId` mà `unitPrice`/ĐVBG/SL báo giá/`leadTimeDays`/`note` khác nhau là xung đột thật, ném E129
    * — không tự chọn hộ giá nào. Trùng khít thì giữ lần xuất hiện đầu. */
   private mergeAndValidateSuppliers(
     base: CreateQuotationItemSupplierReqDto[],
@@ -892,6 +911,8 @@ export class PurchaseQuotationsService {
       }
       if (
         existing.unitPrice !== supplier.unitPrice ||
+        existing.quotationUnit !== supplier.quotationUnit ||
+        existing.quotationQuantity !== supplier.quotationQuantity ||
         existing.leadTimeDays !== supplier.leadTimeDays ||
         existing.note !== supplier.note
       ) {
