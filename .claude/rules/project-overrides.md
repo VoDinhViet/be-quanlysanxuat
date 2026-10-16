@@ -10,6 +10,17 @@ project; re-running `/ecc:configure-ecc` can overwrite it, so read `git diff` be
 - Never commit or push unless the user orders it in that request.
 - Commit format is Conventional Commits with scope, in English: `feat(scope): description (PH-xxx)`.
 
+## When a bug report arrives
+
+A bug report is a PH row (Google Sheet "Tổng hợp") or a user message describing a wrong result. Use the existing ECC skills (`ecc:browser-qa`, `ecc:verification-loop`, `ecc:orch-fix-defect`) in this order. No tests are written (see above), so the "failing test" step of `orch-fix-defect` is replaced by reproducing in the browser.
+
+1. Read the report: screen, steps, expected vs actual result, ticket ID.
+2. Reproduce on the **local** stack only (Postgres 5433, BE + web dev servers) with `ecc:browser-qa` or the Playwright MCP, and note the request and response. If the reporter's data is not in the local DB, create `DEMO-*` records; never touch a remote DB.
+3. Trace the root cause by reading code before editing (`Explore` on haiku; `opus` when it spans several files, per `model-routing.md`). Separate the root cause from side findings and ask before widening the scope.
+4. Make the smallest fix, sized and reviewed the way `ecc:orch-fix-defect` does, minus the test step.
+5. Verify with a trimmed `ecc:verification-loop` (`npx tsc --noEmit`, `pnpm lint`, read the diff), then repeat step 2 and confirm the symptom is gone, including the error path.
+6. Log it in `wiki-qlsx/DANH-GIA-UNG-DUNG.md` (ID, reproduction, root cause, status), update `docs/CODEMAPS/` if a DTO, route or status changed, and run the reviewers in the next section. Data already corrupted by the bug is not repaired silently: tell the user which records need re-entering.
+
 ## After implementing code
 
 When a coding unit is finished (a feature, a fix touching code, a PH ticket), run these without waiting to be asked, before the final `tsc` and `pnpm lint` and before any commit:
