@@ -84,3 +84,27 @@
 {$STAGING_API_DOMAIN}, http://{$STAGING_API_DOMAIN} {
 	import staging_app 127.0.0.1:8013
 }
+
+# ai-platform staging (repo qlsx-ai-platform, /opt/qlsx-ai-staging): web nghe 127.0.0.1:3020 và tự chuyển sang api
+# trong mạng nội bộ. Chat nhúng (/embed/*, /embed.js) phải nhúng được vào web ERP staging nên không đặt
+# X-Frame-Options ở đây; trang iframe tự đặt `frame-ancestors` theo origin của từng ứng dụng nhúng. Giữ nguyên
+# SSE của Ask: không `encode`, không đệm.
+staging-ai-qlsx.thomi.com.vn, http://staging-ai-qlsx.thomi.com.vn {
+	header X-Robots-Tag "noindex, nofollow"
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+	@notEmbeddable not path /embed/* /embed.js
+	header @notEmbeddable X-Frame-Options DENY
+	log {
+		output stdout
+	}
+	request_body {
+		max_size 5MB
+	}
+	reverse_proxy 127.0.0.1:3020 {
+		flush_interval -1
+	}
+}
