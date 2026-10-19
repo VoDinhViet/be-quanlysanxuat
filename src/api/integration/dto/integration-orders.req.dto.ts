@@ -212,9 +212,17 @@ export class OrdersSummaryReqDto extends DateRangeLimitReqDto {
 
   @NumberFieldOptional({
     min: 0,
-    description: 'Chỉ đơn có tổng giá trị từ mức này trở lên (groupBy=order)',
+    description:
+      'Từ mức này trở lên (>=): groupBy=order lọc từng đơn, groupBy=client lọc tổng giá trị đơn của khách',
   })
   readonly minTotal?: number;
+
+  @NumberFieldOptional({
+    min: 0,
+    description:
+      'Dưới mức này (<): groupBy=order lọc từng đơn, groupBy=client lọc tổng giá trị đơn của khách',
+  })
+  readonly maxTotal?: number;
 }
 
 export class OrdersWatchlistReqDto extends LimitReqDto {

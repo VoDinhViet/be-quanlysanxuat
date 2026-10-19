@@ -462,9 +462,24 @@ export class IntegrationOrdersService {
           .innerJoin(clients, sql`${clients.id} = ${orders.clientId}`)
           .where(and(...this.buildOrderFilters(reqDto)))
           .groupBy(clients.name)
+          .having(this.buildClientTotalFilter(reqDto))
           .orderBy(desc(metric.value))
           .limit(reqDto.limit ?? DEFAULT_ORDER_VALUE_LIMIT),
     );
+  }
+
+  // "Khách có giá trị đơn dưới/trên X": lọc theo tổng giá trị đơn của từng khách trong kỳ, kể cả
+  // khi đang đếm số đơn (metric=count) nên luôn tính trên sum(total), không trên metric
+  private buildClientTotalFilter(reqDto: OrdersSummaryReqDto): SQL | undefined {
+    const clientTotal = sql`sum(${orders.total})`;
+    const conditions: SQL[] = [];
+    if (reqDto.minTotal !== undefined) {
+      conditions.push(sql`${clientTotal} >= ${reqDto.minTotal}`);
+    }
+    if (reqDto.maxTotal !== undefined) {
+      conditions.push(sql`${clientTotal} < ${reqDto.maxTotal}`);
+    }
+    return and(...conditions);
   }
 
   private listTopOrders(
@@ -473,6 +488,9 @@ export class IntegrationOrdersService {
     const filters = this.buildOrderFilters(reqDto);
     if (reqDto.minTotal !== undefined) {
       filters.push(sql`${orders.total} >= ${reqDto.minTotal}`);
+    }
+    if (reqDto.maxTotal !== undefined) {
+      filters.push(sql`${orders.total} < ${reqDto.maxTotal}`);
     }
     return this.queryService.query(
       'orders_summary',
