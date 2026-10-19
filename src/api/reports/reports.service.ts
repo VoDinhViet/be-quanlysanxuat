@@ -517,10 +517,12 @@ export class ReportsService {
     return row.count;
   }
 
-  // Mỗi field chỉ tính khi user có quyền approve module đó — không có quyền thì trả 0 mà không chạy
-  // query đếm, cho badge sidebar (`GET /reports/pending-approvals`).
+  // Mỗi field chỉ tính khi user có quyền xử lý module đó (approve; riêng việc chờ tạo là create) —
+  // không có quyền thì trả 0 mà không chạy query đếm, cho badge sidebar
+  // (`GET /reports/pending-approvals`).
   async getPendingApprovals(
     credentialId: string,
+    userId: string,
   ): Promise<PendingApprovalsResDto> {
     const granted =
       await this.permissionsService.getPermissionCodes(credentialId);
@@ -529,6 +531,7 @@ export class ReportsService {
 
     const [
       purchaseRequestsCount,
+      purchaseRequestsToSubmitCount,
       purchaseQuotationsCount,
       purchaseQuotationsToQuoteCount,
       purchaseOrdersCount,
@@ -545,6 +548,9 @@ export class ReportsService {
     ] = await Promise.all([
       canApprove('purchase-requests:approve')
         ? this.getPurchaseRequestsPendingCount()
+        : 0,
+      canApprove('purchase-requests:create')
+        ? this.getPurchaseRequestsToSubmitCount(userId)
         : 0,
       canApprove('purchasing:approve')
         ? this.getPurchaseQuotationsPendingCount()
@@ -581,6 +587,7 @@ export class ReportsService {
       PendingApprovalsResDto,
       {
         purchaseRequests: purchaseRequestsCount,
+        purchaseRequestsToSubmit: purchaseRequestsToSubmitCount,
         purchaseQuotations: purchaseQuotationsCount,
         purchaseQuotationsToQuote: purchaseQuotationsToQuoteCount,
         purchaseOrders: purchaseOrdersCount,
@@ -697,6 +704,27 @@ export class ReportsService {
       .from(purchaseRequests)
       .where(
         eq(purchaseRequests.status, PurchaseRequestStatus.PENDING_APPROVAL),
+      );
+
+    return row.count;
+  }
+
+  // Việc chờ của người tạo: đề xuất Nháp/Bị từ chối do chính họ tạo; lọc theo `users.id` (`createdBy`),
+  // không phải credential id.
+  private async getPurchaseRequestsToSubmitCount(
+    userId: string,
+  ): Promise<number> {
+    const [row] = await this.db
+      .select({ count: sql<number>`count(*)`.mapWith(Number) })
+      .from(purchaseRequests)
+      .where(
+        and(
+          inArray(purchaseRequests.status, [
+            PurchaseRequestStatus.DRAFT,
+            PurchaseRequestStatus.REJECTED,
+          ]),
+          eq(purchaseRequests.createdBy, userId),
+        ),
       );
 
     return row.count;

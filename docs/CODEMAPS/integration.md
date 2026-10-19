@@ -1,4 +1,4 @@
-<!-- Generated: 2026-10-16 | Files scanned: 42 | Token estimate: ~2690 -->
+<!-- Generated: 2026-10-19 | Files scanned: 42 | Token estimate: ~2690 -->
 # Integration, reports & files codemap
 
 Conventions: controllers check permissions, services do not. Paths: `R`=`src/api/reports`, `I`=`src/api/integration`, `F`=`src/api/files`, `H`=`src/api/health`. Counts verified by reading controllers: reports 7, integration 22, files 3, health 1.
@@ -21,7 +21,7 @@ Reports (7), `@Controller('reports')`, all GET, all `@ApiAuth` (JWT). Handler li
 | /reports/outsourcing-order-due-date | reports:read | :58 -> `getOutsourcingOrderDueDate` (:203) | outsourcing_orders, suppliers |
 | /reports/qc-pass-rate | reports:read | :70 -> `getQcPassRate` (:228) | quality_inspection_results |
 | /reports/production-progress | reports:read | :82 -> `getProductionProgress` (:267) | production_jobs, production_orders, orders |
-| /reports/pending-approvals | none (JWT only) | :95 -> `getPendingApprovals` (:522) | 14 counts over purchase_requests, purchase_quotations, purchase_orders, orders, production_orders, inventory_requisitions, outbound_orders, inventory_receipts/issues, supplier_returns, payment_requests, quality_inspections |
+| /reports/pending-approvals | none (JWT only) | :95 -> `getPendingApprovals` (:522) | 15 counts over purchase_requests (incl. `purchaseRequestsToSubmit`: the caller's own DRAFT/REJECTED, needs `purchase-requests:create`), purchase_quotations, purchase_orders, orders, production_orders, inventory_requisitions, outbound_orders, inventory_receipts/issues, supplier_returns, payment_requests, quality_inspections |
 
 Integration (22), `@Controller({ path: 'integration', version: '1' })`, all GET, all `@ApiPublic`, all return `IntegrationResultResDto` {columns, rows, truncated}. Every query is a fixed SQL template via `IntegrationQueryService.run` (`I/integration-query.service.ts:77`).
 - Identity (1): GET /integration/auth/whoami (header `X-User-Token`) -> `AuthService.getActiveIdentity` + `PermissionsService.getPermissionCodes` (`I/integration-identity.controller.ts:39`). Guards: API key + throttler only, no on-behalf guard.

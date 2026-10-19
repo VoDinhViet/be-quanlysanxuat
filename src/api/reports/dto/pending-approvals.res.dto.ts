@@ -16,6 +16,14 @@ export class PendingApprovalsResDto {
   @NumberField({
     int: true,
     description:
+      'Count of purchase requests created by the current user with status DRAFT or REJECTED (still to be completed and sent for approval) — 0 if the current user lacks purchase-requests:create',
+  })
+  purchaseRequestsToSubmit!: number;
+
+  @Expose()
+  @NumberField({
+    int: true,
+    description:
       'Count of purchase quotations (RFQ) with status PENDING_APPROVAL — 0 if the current user lacks purchasing:approve',
   })
   purchaseQuotations!: number;

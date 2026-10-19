@@ -96,11 +96,11 @@ export class ReportsController {
   @ApiAuth({
     type: PendingApprovalsResDto,
     summary:
-      'Số đếm "chờ duyệt" theo module cho badge sidebar — mỗi field chỉ đếm khi user hiện tại có quyền approve module đó, ngược lại trả 0',
+      'Số đếm "chờ duyệt" theo module cho badge sidebar — mỗi field chỉ đếm khi user hiện tại có quyền xử lý module đó (approve; riêng việc chờ tạo là create), ngược lại trả 0',
   })
   getPendingApprovals(
     @CurrentUser() user: JwtPayloadType,
   ): Promise<PendingApprovalsResDto> {
-    return this.reportsService.getPendingApprovals(user.sub);
+    return this.reportsService.getPendingApprovals(user.sub, user.userId);
   }
 }
