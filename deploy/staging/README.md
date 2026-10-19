@@ -27,7 +27,7 @@ Không dùng thì `docker compose stop` trong `/opt/qlsx-staging` và `/opt/qlsx
    `STAGING_API_DOMAIN` (be), `STAGING_VITE_API_URL` và `STAGING_WEB_DOMAIN` (web).
 6. Đưa dữ liệu prod sang, đặt mật khẩu test cho mọi tài khoản:
    `cd /opt/qlsx-staging && STAGING_PASSWORD='...' bash refresh-from-prod.sh`.
-7. Push lên `develop` (hoặc chạy tay workflow **Deploy staging**), CI migrate DB staging rồi deploy.
+7. Push lên `develop` (hoặc chạy tay workflow **Staging**), CI migrate DB staging rồi deploy.
 
 ## Làm mới dữ liệu
 
