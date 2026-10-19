@@ -7,11 +7,12 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { sql } from 'drizzle-orm';
-import type { SQL } from 'drizzle-orm';
+import type { AnyColumn, SQL } from 'drizzle-orm';
 
+import { extractPostgresError } from '../../common/utils/postgres-error.util';
 import { AllConfigType } from '../../config/config.type';
 import { DRIZZLE } from '../../database/database.module';
-import type { Database } from '../../database/database.type';
+import type { Database, DbTransaction } from '../../database/database.type';
 import type { DateRangeReqDto } from './dto/integration-common.dto';
 import { IntegrationResultResDto } from './dto/integration-common.dto';
 
@@ -49,6 +50,19 @@ export function dateRangeConditions(
   return conditions;
 }
 
+/** So khớp cột enum với chuỗi từ request qua `::text`: giá trị lạ cho kết quả rỗng thay vì lỗi
+ * `invalid input value for enum`. */
+export function equalsText(column: AnyColumn | SQL, value: string): SQL {
+  return sql`${column}::text = ${value}`;
+}
+
+export function inTexts(column: AnyColumn | SQL, values: string[]): SQL {
+  return sql`${column}::text IN (${sql.join(
+    values.map((value) => sql`${value}`),
+    sql`, `,
+  )})`;
+}
+
 // Postgres.js trả bigint/numeric dạng chuỗi và date dạng Date; bảng kết quả chỉ chứa số và chuỗi
 function toCell(value: unknown): unknown {
   if (value instanceof Date) {
@@ -74,10 +88,22 @@ export class IntegrationQueryService {
     private readonly configService: ConfigService<AllConfigType>,
   ) {}
 
-  async run(
+  run(
     toolName: string,
     columns: string[],
     query: SQL,
+  ): Promise<IntegrationResultResDto> {
+    return this.query(toolName, columns, (tx) => tx.execute(query));
+  }
+
+  /**
+   * Chạy truy vấn dựng bằng Drizzle trong giao dịch READ ONLY. `columns` là hợp đồng với bên gọi
+   * và phải trùng khoá của câu `select`, nên kiểu `Row` suy ra từ `select` bắt lỗi lệch tên cột.
+   */
+  async query<Row extends Record<string, unknown>>(
+    toolName: string,
+    columns: Array<keyof Row & string>,
+    buildQuery: (tx: DbTransaction) => PromiseLike<Iterable<Row>>,
   ): Promise<IntegrationResultResDto> {
     const timeoutMs = this.configService.getOrThrow(
       'integration.queryTimeoutMs',
@@ -86,22 +112,28 @@ export class IntegrationQueryService {
     const startedAt = Date.now();
 
     try {
-      const fetchedRows = await this.db.transaction(async (tx) => {
-        await tx.execute(sql`SET TRANSACTION READ ONLY`);
-        await tx.execute(sql.raw(`SET LOCAL statement_timeout = ${timeoutMs}`));
-        return tx.execute(query);
-      });
+      const fetchedRows = Array.from(
+        await this.db.transaction(async (tx) => {
+          await tx.execute(sql`SET TRANSACTION READ ONLY`);
+          await tx.execute(
+            sql.raw(`SET LOCAL statement_timeout = ${timeoutMs}`),
+          );
+          return buildQuery(tx);
+        }),
+      );
 
       const isTruncated = fetchedRows.length > MAX_ROWS;
-      const rows = Array.from(fetchedRows)
+      const resultRows = fetchedRows
         .slice(0, MAX_ROWS)
-        .map((row) => columns.map((column) => toCell(row[column])));
+        .map((fetchedRow) =>
+          columns.map((column) => toCell(fetchedRow[column])),
+        );
       this.logger.log(
-        `integration_query tool=${toolName} rows=${rows.length} truncated=${isTruncated} elapsedMs=${Date.now() - startedAt}`,
+        `integration_query tool=${toolName} rows=${resultRows.length} truncated=${isTruncated} elapsedMs=${Date.now() - startedAt}`,
       );
-      return { columns, rows, truncated: isTruncated };
+      return { columns, rows: resultRows, truncated: isTruncated };
     } catch (error) {
-      const code = (error as { code?: string }).code;
+      const code = extractPostgresError(error)?.code;
       this.logger.warn(
         `integration_query_failed tool=${toolName} code=${code ?? 'unknown'} elapsedMs=${Date.now() - startedAt}`,
       );

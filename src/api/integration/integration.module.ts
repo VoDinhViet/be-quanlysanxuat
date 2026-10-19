@@ -7,6 +7,8 @@ import { AuthModule } from '../auth/auth.module';
 import { IntegrationOnBehalfGuard } from './guards/integration-on-behalf.guard';
 import { IntegrationIdentityController } from './integration-identity.controller';
 import { IntegrationApiKeyGuard } from './guards/integration-api-key.guard';
+import { IntegrationInventoryController } from './integration-inventory.controller';
+import { IntegrationInventoryService } from './integration-inventory.service';
 import { IntegrationOrdersController } from './integration-orders.controller';
 import { IntegrationOrdersService } from './integration-orders.service';
 import { IntegrationProductionController } from './integration-production.controller';
@@ -16,6 +18,8 @@ import { IntegrationPurchasingService } from './integration-purchasing.service';
 import { IntegrationQualityController } from './integration-quality.controller';
 import { IntegrationQualityService } from './integration-quality.service';
 import { IntegrationQueryService } from './integration-query.service';
+import { IntegrationTraceController } from './integration-trace.controller';
+import { IntegrationTraceService } from './integration-trace.service';
 
 const ONE_MINUTE_MS = 60_000;
 
@@ -43,17 +47,21 @@ const ONE_MINUTE_MS = 60_000;
   ],
   controllers: [
     IntegrationIdentityController,
+    IntegrationInventoryController,
     IntegrationOrdersController,
     IntegrationProductionController,
     IntegrationPurchasingController,
     IntegrationQualityController,
+    IntegrationTraceController,
   ],
   providers: [
     IntegrationQueryService,
+    IntegrationInventoryService,
     IntegrationOrdersService,
     IntegrationProductionService,
     IntegrationPurchasingService,
     IntegrationQualityService,
+    IntegrationTraceService,
     IntegrationApiKeyGuard,
     IntegrationOnBehalfGuard,
   ],

@@ -12,7 +12,11 @@ import {
   SUPER_PERMISSION,
 } from '../../../constants/permission.constant';
 import { ErrorCode } from '../../../constants/error-code.constant';
-import { PERMISSIONS_KEY } from '../../../decorators/permissions.decorator';
+import {
+  PERMISSIONS_BY_PARAM_KEY,
+  PERMISSIONS_KEY,
+  type PermissionsByParamRule,
+} from '../../../decorators/permissions.decorator';
 import { AppException } from '../../../exceptions/app.exception';
 import { PermissionsService } from '../../auth/permissions.service';
 import { StatusCountEntity } from '../dto/integration-orders.req.dto';
@@ -72,11 +76,26 @@ export class IntegrationOnBehalfGuard implements CanActivate {
     context: ExecutionContext,
     request: Request,
   ): PermissionCode[] {
-    const declared = this.reflector.getAllAndOverride<PermissionCode[]>(
-      PERMISSIONS_KEY,
-      [context.getHandler(), context.getClass()],
+    const targets = [context.getHandler(), context.getClass()];
+    const declared =
+      this.reflector.getAllAndOverride<PermissionCode[]>(
+        PERMISSIONS_KEY,
+        targets,
+      ) ?? [];
+    const byParam = this.reflector.getAllAndOverride<PermissionsByParamRule>(
+      PERMISSIONS_BY_PARAM_KEY,
+      targets,
     );
-    if (declared && declared.length > 0) {
+    if (byParam) {
+      const value = request.query[byParam.param];
+      const paramPermission =
+        typeof value === 'string'
+          ? byParam.permissionByValue[value]
+          : undefined;
+      // Route khai quyền theo tham số mà giá trị lạ: không cấp quyền nào, bị từ chối (mặc định đóng)
+      return paramPermission ? [...declared, ...[paramPermission].flat()] : [];
+    }
+    if (declared.length > 0) {
       return declared;
     }
 

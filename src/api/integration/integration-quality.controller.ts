@@ -9,6 +9,8 @@ import {
   IqcFailBySupplierReqDto,
   OpenNcrReqDto,
   QualityInspectionRateReqDto,
+  QualitySummaryReqDto,
+  QualityWatchlistReqDto,
 } from './dto/integration-quality.req.dto';
 import { IntegrationApiKeyGuard } from './guards/integration-api-key.guard';
 import { IntegrationOnBehalfGuard } from './guards/integration-on-behalf.guard';
@@ -56,5 +58,31 @@ export class IntegrationQualityController {
   })
   openNcr(@Query() reqDto: OpenNcrReqDto): Promise<IntegrationResultResDto> {
     return this.qualityService.openNcr(reqDto);
+  }
+
+  @Get('quality-summary')
+  @Permissions('iqc:read')
+  @ApiPublic({
+    type: IntegrationResultResDto,
+    summary:
+      'Số phiếu kiểm chất lượng đã xong theo kết quả (nhóm theo ngày, nhà cung cấp, loại) hoặc tỉ lệ kiểm đầu vào không đạt theo nhà cung cấp',
+  })
+  summarizeQuality(
+    @Query() reqDto: QualitySummaryReqDto,
+  ): Promise<IntegrationResultResDto> {
+    return this.qualityService.summarizeQuality(reqDto);
+  }
+
+  @Get('quality-watchlist')
+  @Permissions('iqc:read')
+  @ApiPublic({
+    type: IntegrationResultResDto,
+    summary:
+      'Phiếu kiểm không đạt còn mở (chưa xong, hoặc xong nhưng chưa có cách xử lý)',
+  })
+  listQualityWatchlist(
+    @Query() reqDto: QualityWatchlistReqDto,
+  ): Promise<IntegrationResultResDto> {
+    return this.qualityService.listQualityWatchlist(reqDto);
   }
 }

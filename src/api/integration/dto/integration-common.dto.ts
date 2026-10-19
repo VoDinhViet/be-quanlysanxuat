@@ -16,6 +16,18 @@ export const STATUS_CODE_PATTERN = /^[A-Z][A-Z_]{1,40}$/;
 export const DOCUMENT_CODE_PATTERN = /^[A-Za-z0-9._/-]{1,40}$/;
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
+// Cấu hình chung cho tham số trạng thái (`status`): mọi route mới dùng lại thay vì chép
+export const STATUS_FIELD_OPTIONS = {
+  pattern: STATUS_CODE_PATTERN,
+  patternMessage: 'Mã trạng thái là chữ hoa và gạch dưới',
+  maxLength: 41,
+};
+
+export enum SummaryMetric {
+  TOTAL = 'total',
+  COUNT = 'count',
+}
+
 export class DateRangeReqDto {
   @StringFieldOptional({
     description: 'Từ ngày (YYYY-MM-DD), gồm cả ngày này',
@@ -33,6 +45,16 @@ export class DateRangeReqDto {
 }
 
 export class LimitReqDto {
+  @NumberFieldOptional({
+    int: true,
+    min: 1,
+    max: INTEGRATION_MAX_LIMIT,
+    description: `Số dòng tối đa (1-${INTEGRATION_MAX_LIMIT})`,
+  })
+  readonly limit?: number;
+}
+
+export class DateRangeLimitReqDto extends DateRangeReqDto {
   @NumberFieldOptional({
     int: true,
     min: 1,

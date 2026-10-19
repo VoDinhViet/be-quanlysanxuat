@@ -2,7 +2,10 @@ import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ApiSecurity, ApiTags } from '@nestjs/swagger';
 import { ThrottlerGuard } from '@nestjs/throttler';
 
-import { Permissions } from '../../decorators/permissions.decorator';
+import {
+  Permissions,
+  PermissionsByParam,
+} from '../../decorators/permissions.decorator';
 import { ApiPublic } from '../../decorators/http.decorators';
 import {
   IntegrationResultResDto,
@@ -11,6 +14,10 @@ import {
 import {
   InventoryRankingReqDto,
   PaymentRequestValueReqDto,
+  PurchasingSummaryReqDto,
+  PurchasingSummaryEntity,
+  PurchasingWatchKind,
+  PurchasingWatchlistReqDto,
   PurchaseValueBySupplierReqDto,
 } from './dto/integration-purchasing.req.dto';
 import { IntegrationApiKeyGuard } from './guards/integration-api-key.guard';
@@ -98,5 +105,43 @@ export class IntegrationPurchasingController {
     @Query() reqDto: PaymentRequestValueReqDto,
   ): Promise<IntegrationResultResDto> {
     return this.purchasingService.paymentRequestValue(reqDto);
+  }
+
+  @Get('purchasing-summary')
+  @PermissionsByParam('entity', {
+    [PurchasingSummaryEntity.PURCHASE_ORDERS]: 'purchasing:read',
+    [PurchasingSummaryEntity.PAYMENT_REQUESTS]: 'purchasing:read',
+    [PurchasingSummaryEntity.QUOTATIONS]: 'purchasing:read',
+    [PurchasingSummaryEntity.SUPPLIER_RETURNS]: 'inventory:read',
+  })
+  @ApiPublic({
+    type: IntegrationResultResDto,
+    summary:
+      'Giá trị đơn mua theo nhà cung cấp, đề nghị thanh toán, báo giá hoặc phiếu trả nhà cung cấp theo trạng thái',
+  })
+  summarizePurchasing(
+    @Query() reqDto: PurchasingSummaryReqDto,
+  ): Promise<IntegrationResultResDto> {
+    return this.purchasingService.summarizePurchasing(reqDto);
+  }
+
+  @Get('purchasing-watchlist')
+  @PermissionsByParam('kind', {
+    [PurchasingWatchKind.OVERDUE_PURCHASE_ORDERS]: [
+      'purchasing:read',
+      'inventory:read',
+    ],
+    [PurchasingWatchKind.STUCK_REQUESTS]: 'purchase-requests:read',
+    [PurchasingWatchKind.OVERDUE_PAYMENTS]: 'purchasing:read',
+  })
+  @ApiPublic({
+    type: IntegrationResultResDto,
+    summary:
+      'Đơn mua quá hạn nhận, đề nghị mua kẹt chưa lên đơn hoặc đề nghị thanh toán quá hạn',
+  })
+  listPurchasingWatchlist(
+    @Query() reqDto: PurchasingWatchlistReqDto,
+  ): Promise<IntegrationResultResDto> {
+    return this.purchasingService.listPurchasingWatchlist(reqDto);
   }
 }

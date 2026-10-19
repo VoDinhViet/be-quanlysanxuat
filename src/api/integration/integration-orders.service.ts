@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { sql } from 'drizzle-orm';
+import { and, asc, desc, isNull, sql } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
 
 import {
@@ -11,11 +11,18 @@ import {
   users,
 } from '../../database/schemas';
 
-import { IntegrationResultResDto } from './dto/integration-common.dto';
+import {
+  IntegrationResultResDto,
+  SummaryMetric,
+} from './dto/integration-common.dto';
 import {
   CountByStatusReqDto,
   CountClientsReqDto,
   OrderProgressReqDto,
+  OrdersGroupBy,
+  OrdersSummaryReqDto,
+  OrdersWatchKind,
+  OrdersWatchlistReqDto,
   OrderValueGroupBy,
   OrderValueMetric,
   OrderValueReqDto,
@@ -27,6 +34,8 @@ import {
 } from './dto/integration-orders.req.dto';
 import {
   dateRangeConditions,
+  equalsText,
+  inTexts,
   IntegrationQueryService,
   TODAY,
   whereClause,
@@ -320,6 +329,254 @@ export class IntegrationOrdersService {
       ['status', 'so_khach_hang'],
       sql`SELECT status::text AS status, COUNT(*)::int AS so_khach_hang FROM clients
         WHERE deleted_at IS NULL GROUP BY status ORDER BY so_khach_hang DESC`,
+    );
+  }
+
+  summarizeOrders(
+    reqDto: OrdersSummaryReqDto,
+  ): Promise<IntegrationResultResDto> {
+    switch (reqDto.groupBy) {
+      case OrdersGroupBy.MONTH:
+        return this.summarizeByMonth(reqDto);
+      case OrdersGroupBy.STATUS:
+        return this.summarizeByStatus(reqDto);
+      case OrdersGroupBy.SALESPERSON:
+        return this.summarizeBySalesperson(reqDto);
+      case OrdersGroupBy.CLIENT:
+        return this.summarizeByClient(reqDto);
+      case OrdersGroupBy.ORDER:
+        return this.listTopOrders(reqDto);
+      case OrdersGroupBy.CLIENT_STATUS:
+        return this.countClientsByStatus(reqDto);
+    }
+  }
+
+  listOrdersWatchlist(
+    reqDto: OrdersWatchlistReqDto,
+  ): Promise<IntegrationResultResDto> {
+    return reqDto.kind === OrdersWatchKind.OVERDUE_ORDERS
+      ? this.listOverdueOrders(reqDto)
+      : this.listPendingDeliveries(reqDto);
+  }
+
+  private buildOrderFilters(reqDto: OrdersSummaryReqDto): SQL[] {
+    // Gom theo trạng thái mà bỏ đơn bị từ chối thì nhóm REJECTED không bao giờ hiện
+    // và lọc đúng một trạng thái thì loại trừ mâu thuẫn với điều kiện lọc, nên cũng bỏ qua
+    const shouldExcludeRejected =
+      reqDto.excludeRejected ??
+      (reqDto.groupBy !== OrdersGroupBy.STATUS && !reqDto.status);
+    const filters: SQL[] = [
+      isNull(orders.deletedAt),
+      ...dateRangeConditions(sql`${orders.orderDate}`, reqDto),
+    ];
+    if (shouldExcludeRejected) {
+      filters.push(sql`${orders.status}::text <> ${REJECTED_STATUS}`);
+    }
+    if (reqDto.status) {
+      filters.push(equalsText(orders.status, reqDto.status));
+    }
+    return filters;
+  }
+
+  private buildMetric(metric: SummaryMetric = SummaryMetric.TOTAL): {
+    alias: string;
+    value: SQL<number>;
+  } {
+    return metric === SummaryMetric.COUNT
+      ? { alias: 'so_don', value: sql<number>`count(*)::int` }
+      : {
+          alias: 'tong_gia_tri',
+          value: sql<number>`sum(${orders.total})::float8`,
+        };
+  }
+
+  private summarizeByMonth(
+    reqDto: OrdersSummaryReqDto,
+  ): Promise<IntegrationResultResDto> {
+    const metric = this.buildMetric(reqDto.metric);
+    const month = sql<string>`to_char(date_trunc('month', ${orders.orderDate}), 'YYYY-MM-DD')`;
+    return this.queryService.query(
+      'orders_summary',
+      ['thang', metric.alias],
+      (tx) =>
+        tx
+          .select({ thang: month, [metric.alias]: metric.value })
+          .from(orders)
+          .where(and(...this.buildOrderFilters(reqDto)))
+          .groupBy(month)
+          .orderBy(asc(month)),
+    );
+  }
+
+  private summarizeByStatus(
+    reqDto: OrdersSummaryReqDto,
+  ): Promise<IntegrationResultResDto> {
+    const metric = this.buildMetric(reqDto.metric);
+    return this.queryService.query(
+      'orders_summary',
+      ['status', metric.alias],
+      (tx) =>
+        tx
+          .select({
+            status: sql<string>`${orders.status}::text`,
+            [metric.alias]: metric.value,
+          })
+          .from(orders)
+          .where(and(...this.buildOrderFilters(reqDto)))
+          .groupBy(orders.status)
+          .orderBy(desc(metric.value)),
+    );
+  }
+
+  // Đơn chưa có người phụ trách (assignedUserId NULL) không vào nhóm nào
+  private summarizeBySalesperson(
+    reqDto: OrdersSummaryReqDto,
+  ): Promise<IntegrationResultResDto> {
+    const metric = this.buildMetric(reqDto.metric);
+    return this.queryService.query(
+      'orders_summary',
+      ['nhan_vien', metric.alias],
+      (tx) =>
+        tx
+          .select({ nhan_vien: users.fullName, [metric.alias]: metric.value })
+          .from(orders)
+          .innerJoin(users, sql`${users.id} = ${orders.assignedUserId}`)
+          .where(and(...this.buildOrderFilters(reqDto)))
+          .groupBy(users.fullName)
+          .orderBy(desc(metric.value))
+          .limit(reqDto.limit ?? DEFAULT_ORDER_VALUE_LIMIT),
+    );
+  }
+
+  private summarizeByClient(
+    reqDto: OrdersSummaryReqDto,
+  ): Promise<IntegrationResultResDto> {
+    const metric = this.buildMetric(reqDto.metric);
+    return this.queryService.query(
+      'orders_summary',
+      ['name', metric.alias],
+      (tx) =>
+        tx
+          .select({ name: clients.name, [metric.alias]: metric.value })
+          .from(orders)
+          .innerJoin(clients, sql`${clients.id} = ${orders.clientId}`)
+          .where(and(...this.buildOrderFilters(reqDto)))
+          .groupBy(clients.name)
+          .orderBy(desc(metric.value))
+          .limit(reqDto.limit ?? DEFAULT_ORDER_VALUE_LIMIT),
+    );
+  }
+
+  private listTopOrders(
+    reqDto: OrdersSummaryReqDto,
+  ): Promise<IntegrationResultResDto> {
+    const filters = this.buildOrderFilters(reqDto);
+    if (reqDto.minTotal !== undefined) {
+      filters.push(sql`${orders.total} >= ${reqDto.minTotal}`);
+    }
+    return this.queryService.query(
+      'orders_summary',
+      ['don_hang', 'khach_hang', 'status', 'due_date', 'tong_gia_tri'],
+      (tx) =>
+        tx
+          .select({
+            don_hang: orders.code,
+            khach_hang: clients.name,
+            status: sql<string>`${orders.status}::text`,
+            due_date: sql<string>`${orders.dueDate}::text`,
+            tong_gia_tri: sql<number>`${orders.total}::float8`,
+          })
+          .from(orders)
+          .innerJoin(clients, sql`${clients.id} = ${orders.clientId}`)
+          .where(and(...filters))
+          .orderBy(desc(orders.total))
+          .limit(reqDto.limit ?? DEFAULT_ORDER_VALUE_LIMIT),
+    );
+  }
+
+  private countClientsByStatus(
+    reqDto: OrdersSummaryReqDto,
+  ): Promise<IntegrationResultResDto> {
+    const filters: SQL[] = [isNull(clients.deletedAt)];
+    if (reqDto.status) {
+      filters.push(equalsText(clients.status, reqDto.status));
+    }
+    return this.queryService.query(
+      'orders_summary',
+      ['status', 'so_khach_hang'],
+      (tx) =>
+        tx
+          .select({
+            status: sql<string>`${clients.status}::text`,
+            so_khach_hang: sql<number>`count(*)::int`,
+          })
+          .from(clients)
+          .where(and(...filters))
+          .groupBy(clients.status)
+          .orderBy(desc(sql`count(*)`)),
+    );
+  }
+
+  private listOverdueOrders(
+    reqDto: OrdersWatchlistReqDto,
+  ): Promise<IntegrationResultResDto> {
+    const statuses = reqDto.statuses?.length
+      ? reqDto.statuses
+      : DEFAULT_OVERDUE_STATUSES;
+    const columns: Array<'code' | 'due_date' | 'status' | 'khach_hang'> = [
+      'code',
+      'due_date',
+      'status',
+    ];
+    if (reqDto.withClient) {
+      columns.push('khach_hang');
+    }
+    return this.queryService.query('orders_watchlist', columns, (tx) =>
+      tx
+        .select({
+          code: orders.code,
+          due_date: sql<string>`${orders.dueDate}::text`,
+          status: sql<string>`${orders.status}::text`,
+          khach_hang: clients.name,
+        })
+        .from(orders)
+        .innerJoin(clients, sql`${clients.id} = ${orders.clientId}`)
+        .where(
+          and(
+            isNull(orders.deletedAt),
+            inTexts(orders.status, statuses),
+            sql`${orders.dueDate} < ${TODAY} + ${reqDto.dueWithinDays ?? 0}::int`,
+          ),
+        )
+        .orderBy(asc(orders.dueDate))
+        .limit(reqDto.limit ?? DEFAULT_LIST_LIMIT),
+    );
+  }
+
+  private listPendingDeliveries(
+    reqDto: OrdersWatchlistReqDto,
+  ): Promise<IntegrationResultResDto> {
+    return this.queryService.query(
+      'orders_watchlist',
+      ['phieu_xuat', 'khach_hang', 'ngay_giao', 'so_ngay_con_lai'],
+      (tx) =>
+        tx
+          .select({
+            phieu_xuat: outboundOrders.code,
+            khach_hang: clients.name,
+            ngay_giao: sql<string>`${outboundOrders.fulfillmentDate}::text`,
+            so_ngay_con_lai: sql<number>`(${outboundOrders.fulfillmentDate} - ${TODAY})::int`,
+          })
+          .from(outboundOrders)
+          .innerJoin(clients, sql`${clients.id} = ${outboundOrders.clientId}`)
+          .where(
+            and(
+              equalsText(outboundOrders.status, 'PENDING_DELIVERY'),
+              sql`${outboundOrders.fulfillmentDate} <= ${TODAY} + ${reqDto.daysAhead ?? DEFAULT_DAYS_AHEAD}::int`,
+            ),
+          )
+          .orderBy(asc(outboundOrders.fulfillmentDate))
+          .limit(reqDto.limit ?? DEFAULT_LIST_LIMIT),
     );
   }
 }

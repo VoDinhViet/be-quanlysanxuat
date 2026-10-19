@@ -2,13 +2,20 @@ import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ApiSecurity, ApiTags } from '@nestjs/swagger';
 import { ThrottlerGuard } from '@nestjs/throttler';
 
-import { Permissions } from '../../decorators/permissions.decorator';
+import {
+  Permissions,
+  PermissionsByParam,
+} from '../../decorators/permissions.decorator';
 import { ApiPublic } from '../../decorators/http.decorators';
 import { IntegrationResultResDto } from './dto/integration-common.dto';
 import {
   CountByStatusReqDto,
   CountClientsReqDto,
   OrderProgressReqDto,
+  OrdersGroupBy,
+  OrdersSummaryReqDto,
+  OrdersWatchKind,
+  OrdersWatchlistReqDto,
   OrderValueReqDto,
   OverdueOrdersReqDto,
   PendingDeliveriesReqDto,
@@ -124,5 +131,40 @@ export class IntegrationOrdersController {
     @Query() reqDto: CountClientsReqDto,
   ): Promise<IntegrationResultResDto> {
     return this.ordersService.countClients(reqDto);
+  }
+
+  @Get('orders-summary')
+  @PermissionsByParam('groupBy', {
+    [OrdersGroupBy.MONTH]: 'orders:read',
+    [OrdersGroupBy.CLIENT]: 'orders:read',
+    [OrdersGroupBy.STATUS]: 'orders:read',
+    [OrdersGroupBy.SALESPERSON]: 'orders:read',
+    [OrdersGroupBy.ORDER]: 'orders:read',
+    [OrdersGroupBy.CLIENT_STATUS]: 'clients:read',
+  })
+  @ApiPublic({
+    type: IntegrationResultResDto,
+    summary:
+      'Số liệu bán hàng gom theo tháng, khách hàng, nhân viên, trạng thái, từng đơn hoặc trạng thái khách hàng',
+  })
+  summarizeOrders(
+    @Query() reqDto: OrdersSummaryReqDto,
+  ): Promise<IntegrationResultResDto> {
+    return this.ordersService.summarizeOrders(reqDto);
+  }
+
+  @Get('orders-watchlist')
+  @PermissionsByParam('kind', {
+    [OrdersWatchKind.OVERDUE_ORDERS]: 'orders:read',
+    [OrdersWatchKind.PENDING_DELIVERIES]: ['orders:read', 'outbound:read'],
+  })
+  @ApiPublic({
+    type: IntegrationResultResDto,
+    summary: 'Đơn bán quá hạn giao hoặc phiếu xuất đang chờ giao',
+  })
+  listOrdersWatchlist(
+    @Query() reqDto: OrdersWatchlistReqDto,
+  ): Promise<IntegrationResultResDto> {
+    return this.ordersService.listOrdersWatchlist(reqDto);
   }
 }
