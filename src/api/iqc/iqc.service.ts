@@ -408,6 +408,7 @@ export class IqcService {
       purchaseOrderId: string | null;
       supplierId: string | null;
       clientId: string | null;
+      reason: string | null;
       inspectionDate: Date;
       lines: { itemId: string; quantity: number; note: string | null }[];
       userId: string;
@@ -432,6 +433,7 @@ export class IqcService {
         purchaseOrderId: params.purchaseOrderId,
         supplierId: params.supplierId,
         clientId: params.clientId,
+        reason: params.reason,
         itemId: line.itemId,
         quantity: line.quantity,
         note: line.note,

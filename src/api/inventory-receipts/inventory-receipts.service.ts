@@ -608,6 +608,7 @@ export class InventoryReceiptsService {
           purchaseOrderId: inventoryReceipt.purchaseOrderId,
           supplierId,
           clientId,
+          reason: inventoryReceipt.reason,
           inspectionDate: new Date(),
           lines: itemsToConfirm.map((item) => ({
             itemId: item.itemId,
