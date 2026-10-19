@@ -1,4 +1,4 @@
-name: Deploy
+name: Production
 
 # Push lên main → (kiểm tra tsc + eslint) song song với (build image đẩy lên GHCR) → migrate DB prod → deploy lên VPS.
 # Deploy chỉ chạy khi cả hai job đầu thành công. Không dùng pull_request_target: repo public, secret

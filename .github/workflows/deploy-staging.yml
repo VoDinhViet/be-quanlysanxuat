@@ -1,4 +1,4 @@
-name: Deploy staging
+name: Staging
 
 # Push lên develop → (tsc + eslint) song song với (build image đẩy lên GHCR) → migrate DB staging → deploy lên
 # môi trường test trên VPS (/opt/qlsx-staging). Hoàn toàn tách khỏi prod: image tag `staging-v<số>` (không đụng
