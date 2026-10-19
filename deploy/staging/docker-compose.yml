@@ -1,0 +1,86 @@
+# Compose cho môi trường test (staging) trên VPS: /opt/qlsx-staging/. CI copy file này cùng remote-deploy.sh lên đó.
+# Chạy độc lập với prod (/opt/quanlysanxuat): project, container, network, cổng và thư mục dữ liệu đều riêng.
+# Staging chia RAM với prod nên mọi container có giới hạn bộ nhớ và `oom_score_adj` cao, để khi thiếu RAM
+# kernel kill staging trước.
+#
+# Giá trị lấy từ /opt/qlsx-staging/.env trên VPS:
+#   POSTGRES_PASSWORD  bắt buộc, khác prod (openssl rand -hex 24)
+#   APP_IMAGE          remote-deploy.sh ghi sau mỗi lần deploy thành công
+# Biến của app nằm ở /opt/qlsx-staging/.env.staging (xem README.md).
+
+name: qlsx-staging
+
+services:
+  app:
+    container_name: qlsx-staging-backend
+    image: ${APP_IMAGE:-ghcr.io/vodinhviet/be-quanlysanxuat:staging}
+    restart: unless-stopped
+    env_file:
+      - .env.staging
+    environment:
+      NODE_ENV: production
+      PORT: "8003"
+      # Heap nhỏ hơn mem_limit để Node tự dọn trước khi bị OOM kill; Chromium (in PDF) dùng phần còn lại.
+      NODE_OPTIONS: --max-old-space-size=160
+      DATABASE_URL: postgresql://${POSTGRES_USER:-qlsx}:${POSTGRES_PASSWORD:?đặt POSTGRES_PASSWORD trong .env}@postgres:5432/${POSTGRES_DB:-qlsx}
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    mem_limit: 320m
+    oom_score_adj: 500
+    # Chỉ nghe trên loopback; Caddy (deploy/proxy) cấp HTTPS và chuyển tiếp vào 127.0.0.1:8013.
+    ports:
+      - "127.0.0.1:${HOST_PORT:-8013}:8003"
+    volumes:
+      # Thư mục cho user `node` (uid 1000) ghi được: chown -R 1000:1000 <thư mục>.
+      - ${STAGING_DATA_DIR:-/var/lib/qlsx-staging}/uploads:/app/uploads
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:8003/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      start_interval: 3s
+      retries: 3
+
+  postgres:
+    container_name: qlsx-staging-postgres
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-qlsx}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?đặt POSTGRES_PASSWORD trong .env}
+      POSTGRES_DB: ${POSTGRES_DB:-qlsx}
+      TZ: Asia/Ho_Chi_Minh
+    # Dữ liệu nhỏ (prod ~74 MB) nên bộ nhớ đệm vừa phải là đủ.
+    command: ["postgres", "-c", "shared_buffers=48MB", "-c", "max_connections=40"]
+    mem_limit: 160m
+    oom_score_adj: 500
+    volumes:
+      - ${STAGING_DATA_DIR:-/var/lib/qlsx-staging}/postgres:/var/lib/postgresql
+    # Loopback của host: CI mở SSH tunnel tới đây để migrate, script làm mới dữ liệu cũng dùng.
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5442}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      start_period: 20s
+      retries: 5
+
+  redis:
+    container_name: qlsx-staging-redis
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "24mb"]
+    mem_limit: 32m
+    oom_score_adj: 500
+    volumes:
+      - ${STAGING_DATA_DIR:-/var/lib/qlsx-staging}/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5

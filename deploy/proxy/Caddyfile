@@ -62,3 +62,25 @@
 {$DOCS_DOMAIN}, http://{$DOCS_DOMAIN} {
 	import monitor_app 127.0.0.1:8081
 }
+
+# Môi trường test (deploy/staging): container qlsx-staging-* nghe trên loopback. Chặn công cụ tìm kiếm vì staging
+# chứa bản sao dữ liệu prod.
+(staging_app) {
+	header X-Robots-Tag "noindex, nofollow"
+	log {
+		output stdout
+	}
+	encode zstd gzip
+	request_body {
+		max_size 20MB
+	}
+	reverse_proxy {args[0]}
+}
+
+{$STAGING_WEB_DOMAIN}, http://{$STAGING_WEB_DOMAIN} {
+	import staging_app 127.0.0.1:3010
+}
+
+{$STAGING_API_DOMAIN}, http://{$STAGING_API_DOMAIN} {
+	import staging_app 127.0.0.1:8013
+}
