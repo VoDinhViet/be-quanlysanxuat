@@ -1,4 +1,4 @@
-<!-- Generated: 2026-10-19 | Files scanned: 42 | Token estimate: ~2690 -->
+<!-- Generated: 2026-10-24 | Files scanned: 42 | Token estimate: ~2760 -->
 # Integration, reports & files codemap
 
 Conventions: controllers check permissions, services do not. Paths: `R`=`src/api/reports`, `I`=`src/api/integration`, `F`=`src/api/files`, `H`=`src/api/health`. Counts verified by reading controllers: reports 7, integration 22, files 3, health 1.
@@ -21,7 +21,7 @@ Reports (7), `@Controller('reports')`, all GET, all `@ApiAuth` (JWT). Handler li
 | /reports/outsourcing-order-due-date | reports:read | :58 -> `getOutsourcingOrderDueDate` (:203) | outsourcing_orders, suppliers |
 | /reports/qc-pass-rate | reports:read | :70 -> `getQcPassRate` (:228) | quality_inspection_results |
 | /reports/production-progress | reports:read | :82 -> `getProductionProgress` (:267) | production_jobs, production_orders, orders |
-| /reports/pending-approvals | none (JWT only) | :95 -> `getPendingApprovals` (:522) | 15 counts over purchase_requests (incl. `purchaseRequestsToSubmit`: the caller's own DRAFT/REJECTED, needs `purchase-requests:create`), purchase_quotations, purchase_orders, orders, production_orders, inventory_requisitions, outbound_orders, inventory_receipts/issues, supplier_returns, payment_requests, quality_inspections |
+| /reports/pending-approvals | none (JWT only) | :95 -> `getPendingApprovals` (:525) | 18 counts over purchase_requests (incl. `purchaseRequestsToSubmit`: the caller's own DRAFT/REJECTED, needs `purchase-requests:create`), purchase_quotations, purchase_orders, orders, production_orders, inventory_requisitions, outbound_orders, inventory_receipts/issues, supplier_returns, payment_requests (`paymentRequestsToSubmit` DRAFT+REJECTED, `paymentRequestsPending` PENDING), ncrs (`ncrsPending` PENDING_APPROVAL needs `ncr:approve`, `ncrsToProcess` OPEN/REJECTED/APPROVED needs `ncr:update`), quality_inspections |
 
 Integration (22), `@Controller({ path: 'integration', version: '1' })`, all GET, all `@ApiPublic`, all return `IntegrationResultResDto` {columns, rows, truncated}. Every query is a fixed SQL template via `IntegrationQueryService.run` (`I/integration-query.service.ts:77`).
 - Identity (1): GET /integration/auth/whoami (header `X-User-Token`) -> `AuthService.getActiveIdentity` + `PermissionsService.getPermissionCodes` (`I/integration-identity.controller.ts:39`). Guards: API key + throttler only, no on-behalf guard.
@@ -53,7 +53,7 @@ Reports data sources and derivation:
 - `getStats` runs 3 queries in parallel (orders, jobs, QC). Without `startDate`/`endDate` it also returns trend fields; with a range every trend/window field is `null` (`reports.service.ts:125`, :397).
 - Trends are computed at read time, no history table: `runningOrdersTrendPercent` = running now vs running with `approvedAt` older than 7 days (:372); `orderDueDateTrendCount` = overdue today minus overdue as of yesterday (:380); `runningJobsTrendCount` = jobs with `startedAt` in last 24h (:423); `jobsWaitingQcTrendCount` = distinct OQC DRAFT jobs now minus those created over 1 day ago (:456). Deltas are therefore >= 0.
 - `getQcPassRate`: 7-day series (`generate_series` LEFT JOIN `quality_inspection_results`, one row per day, `null` when no inspection that day), IQC and OQC PASS percent from `decision` (:228). Comment at :222 still says `qc_inspections`; the code reads `quality_inspection_results`.
-- `getPendingApprovals`: a count runs only if the caller has the matching approve/create/update permission (or `system:manage`), otherwise 0. Six warehouse/QC/payment counts (receipts to post, payment requests, supplier returns, issues to post, IQC and OQC to inspect) are not gated.
+- `getPendingApprovals`: a count runs only if the caller has the matching approve/create/update permission (or `system:manage`), otherwise 0. Seven warehouse/QC/payment counts (receipts to post, payment requests to submit and pending, supplier returns, issues to post, IQC and OQC to inspect) are not gated. NCR `PENDING_QC` is left out of `ncrsToProcess` because the OQC count already includes it.
 - `reports.controller.ts:40` summary of `/reports/alerts` mentions NCR, but `getAlerts` returns only jobDueDate, outsourcingOrderDueDate, upcomingDeliveries.
 
 Files flow (upload then link):

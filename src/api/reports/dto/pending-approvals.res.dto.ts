@@ -88,9 +88,33 @@ export class PendingApprovalsResDto {
   @NumberField({
     int: true,
     description:
-      'Count of open payment requests (YCTT) with status DRAFT, PENDING or REJECTED (not yet paid or cancelled) — visible to every user, no permission gate',
+      'Count of payment requests (YCTT) with status DRAFT or REJECTED (waiting for the buyer to send them) — visible to every user, no permission gate',
+  })
+  paymentRequestsToSubmit!: number;
+
+  @Expose()
+  @NumberField({
+    int: true,
+    description:
+      'Count of payment requests (YCTT) with status PENDING (sent, waiting for accounting) — visible to every user, no permission gate',
   })
   paymentRequestsPending!: number;
+
+  @Expose()
+  @NumberField({
+    int: true,
+    description:
+      'Count of NCRs with status PENDING_APPROVAL (waiting for the director) — 0 if the current user lacks ncr:approve',
+  })
+  ncrsPending!: number;
+
+  @Expose()
+  @NumberField({
+    int: true,
+    description:
+      'Count of NCRs with status OPEN, REJECTED or APPROVED (waiting for the handler to analyse, fix or choose a disposition) — 0 if the current user lacks ncr:update',
+  })
+  ncrsToProcess!: number;
 
   @Expose()
   @NumberField({

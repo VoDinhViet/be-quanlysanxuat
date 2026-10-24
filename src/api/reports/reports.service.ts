@@ -30,6 +30,8 @@ import {
   InventoryRequisitionStatus,
   inventoryRequisitions,
   IqcResult,
+  ncrs,
+  NcrStatus,
   orders,
   OrderStatus,
   outboundOrders,
@@ -540,7 +542,10 @@ export class ReportsService {
       inventoryRequisitionsCount,
       outboundOrdersCount,
       inventoryReceiptsToPostCount,
+      paymentRequestsToSubmitCount,
       paymentRequestsPendingCount,
+      ncrsPendingCount,
+      ncrsToProcessCount,
       supplierReturnsToPostCount,
       inventoryIssuesToPostCount,
       iqcToInspectCount,
@@ -571,8 +576,11 @@ export class ReportsService {
       canApprove('outbound:approve') ? this.getOutboundOrdersPendingCount() : 0,
       // Việc chờ của Kho — theo yêu cầu khách mọi người dùng đều thấy, không gate theo quyền.
       this.getInventoryReceiptsToPostCount(),
-      // Việc chờ của YCTT — cũng mọi người dùng đều thấy (menu tự ẩn với người không vào được màn).
+      // YCTT: cả số xanh lẫn số đỏ đều cho mọi người dùng thấy; menu tự ẩn với người không vào được màn.
+      this.getPaymentRequestsToSubmitCount(),
       this.getPaymentRequestsPendingCount(),
+      canApprove('ncr:approve') ? this.getNcrsPendingCount() : 0,
+      canApprove('ncr:update') ? this.getNcrsToProcessCount() : 0,
       // Việc chờ của Kho khi IQC xác nhận hàng NG cần trả NCC — cũng mọi người dùng đều thấy.
       this.getSupplierReturnsToPostCount(),
       // Việc chờ của Kho khi phiếu lãnh vật tư được duyệt — cũng mọi người dùng đều thấy.
@@ -596,7 +604,10 @@ export class ReportsService {
         inventoryRequisitions: inventoryRequisitionsCount,
         outboundOrders: outboundOrdersCount,
         inventoryReceiptsToPost: inventoryReceiptsToPostCount,
+        paymentRequestsToSubmit: paymentRequestsToSubmitCount,
         paymentRequestsPending: paymentRequestsPendingCount,
+        ncrsPending: ncrsPendingCount,
+        ncrsToProcess: ncrsToProcessCount,
         supplierReturnsToPost: supplierReturnsToPostCount,
         inventoryIssuesToPost: inventoryIssuesToPostCount,
         iqcToInspect: iqcToInspectCount,
@@ -681,21 +692,56 @@ export class ReportsService {
     return row.count;
   }
 
-  // Yêu cầu thanh toán đang chờ xử lý (chưa chi, chưa huỷ): nháp/bị từ chối chờ người mua, đã gửi
-  // chờ kế toán — tự sinh khi phiếu nhập kho hoàn tất đủ hàng của đơn mua.
-  private async getPaymentRequestsPendingCount(): Promise<number> {
-    const [row] = await this.db
+  // Yêu cầu thanh toán nháp/bị từ chối — việc của người mua hàng, tự sinh khi phiếu nhập kho hoàn
+  // tất đủ hàng của đơn mua. Giảm khi người mua gửi đề nghị thanh toán.
+  private async getPaymentRequestsToSubmitCount(): Promise<number> {
+    const [{ count }] = await this.db
       .select({ count: sql<number>`count(*)`.mapWith(Number) })
       .from(paymentRequests)
       .where(
         inArray(paymentRequests.status, [
           PaymentRequestStatus.DRAFT,
-          PaymentRequestStatus.PENDING,
           PaymentRequestStatus.REJECTED,
         ]),
       );
 
-    return row.count;
+    return count;
+  }
+
+  // Yêu cầu thanh toán đã gửi, chờ kế toán duyệt.
+  private async getPaymentRequestsPendingCount(): Promise<number> {
+    const [{ count }] = await this.db
+      .select({ count: sql<number>`count(*)`.mapWith(Number) })
+      .from(paymentRequests)
+      .where(eq(paymentRequests.status, PaymentRequestStatus.PENDING));
+
+    return count;
+  }
+
+  private async getNcrsPendingCount(): Promise<number> {
+    const [{ count }] = await this.db
+      .select({ count: sql<number>`count(*)`.mapWith(Number) })
+      .from(ncrs)
+      .where(eq(ncrs.status, NcrStatus.PENDING_APPROVAL));
+
+    return count;
+  }
+
+  // NCR cần người xử lý động tay: mới tạo (`OPEN`), bị từ chối (`REJECTED`) hoặc đã duyệt nhưng chưa
+  // chọn cách xử lý (`APPROVED`). `PENDING_QC` đã được đếm ở OQC nên không tính lại.
+  private async getNcrsToProcessCount(): Promise<number> {
+    const [{ count }] = await this.db
+      .select({ count: sql<number>`count(*)`.mapWith(Number) })
+      .from(ncrs)
+      .where(
+        inArray(ncrs.status, [
+          NcrStatus.OPEN,
+          NcrStatus.REJECTED,
+          NcrStatus.APPROVED,
+        ]),
+      );
+
+    return count;
   }
 
   private async getPurchaseRequestsPendingCount(): Promise<number> {
