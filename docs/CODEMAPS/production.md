@@ -8,7 +8,7 @@ Paths relative to `src/api/` unless starting `database/` or `constants/`. `ctrl:
 | Folder | Files (lines) | Role |
 |---|---|---|
 | production-orders | ctrl 180, svc 774, export 49, dto/ | LSX header + plan lines, approve, logs, Excel/PDF. No query/write file: SQL inline in svc |
-| production-jobs | ctrl 322, svc 999, `production-job-snapshot.query.ts` 536, `production-jobs.query.ts` 216, `production-job-issues.query.ts` 195, dto/ | JOB read/plan/start. snapshot.query builds BOM/ops/issues; jobs.query has close helpers; issues.query edits materials |
+| production-jobs | ctrl 338, svc 1052, `production-job-snapshot.query.ts` 536, `production-jobs.query.ts` 216, `production-job-issues.query.ts` 195, dto/ | JOB read/plan/start. snapshot.query builds BOM/ops/issues; jobs.query has close helpers; issues.query edits materials |
 | production-execution | ctrl 136, svc 645, constant 30, dto/ | "Thuc hien san xuat" screens; only manual progress writer. No query file |
 | outsourcing-orders | ctrl 118, svc 489, `outsourcing-orders.query.ts` 327, dto/ | OS-OUT (send out); query holds `recomputeOutsourcingOrderStatus` |
 | outsourcing-receipts | ctrl 112, svc 695, `outsourcing-receipts.query.ts` 155, dto/ | OS-IN (receive back); query = received-qty subqueries |
@@ -32,26 +32,27 @@ Tables: `po`=production_orders, `poi`=_order_items, `pol`=_order_logs, `pj`=prod
 | GET /:id/logs | read | getProductionOrderLogs ctrl:155 -> svc:654 | - |
 | POST /:id/approve | approve | approveProductionOrder ctrl:171 -> svc:434 (returns detail) | po, orders.status, pj + snapshot tables, pjl, pol |
 
-### production-jobs (17) `/production-jobs` perm prefix `production:`
+### production-jobs (18) `/production-jobs` perm prefix `production:`
 | Route | Perm | Controller -> Service | Writes |
 |---|---|---|---|
-| GET / | read | getProductionJobs ctrl:60 -> svc:167 | - |
-| GET /export-plan-pdf | read | exportProductionPlanPdf ctrl:73 -> svc:105 | - |
-| GET /:jobId | read | getProductionJob ctrl:85 -> svc:247 (+oqc.query.ts:153) | - |
-| GET /:jobId/bom | read | getProductionJobBom ctrl:98 -> svc:315 | - |
-| GET /:jobId/operations | read | getProductionJobOperations ctrl:116 -> svc:415 (ctrl asserts operation access if `operationId`) | - |
-| GET /:jobId/notes | read | getProductionJobNotes ctrl:139 -> svc:648 | - |
-| GET /:jobId/logs | read | getProductionJobLogs ctrl:154 -> svc:674 | - |
-| POST /:jobId/notes | update | createProductionJobNote ctrl:167 -> svc:472 | production_job_notes |
-| POST /:jobId/bom | update | addIssues ctrl:186 -> svc:771 -> addJobIssues issues.query:26 | production_job_issues, job items/units, pjl (ITEMS_EDITED), pj.snapshotEditedAt |
-| PATCH /:jobId/bom/:issueId | update | updateIssue ctrl:200 -> svc:782 -> updateJobIssue issues.query:112 | same as above |
-| DELETE /:jobId/bom/:issueId | update | removeIssue ctrl:220 -> svc:794 -> removeJobIssue issues.query:136 | same as above |
-| POST /:jobId/snapshot | update | reloadSnapshot ctrl:239 -> svc:749 | delete+insert job bom items/operations/issues, pj.snapshotLoadedAt, pj.snapshotEditedAt (null), pj.itemRevision |
-| POST /:jobId/start | update | startJob ctrl:250 -> svc:819 | pj, pjl, purchase_requests (via `PurchaseRequestsService.createShortageRequest`) |
-| GET /:jobId/operations/plan | read | getProductionJobPlanOperations ctrl:265 -> svc:516 | - |
-| PATCH /:jobId/operations/plan | update | updateProductionJobOperationsPlan ctrl:278 -> svc:613 | pjo.dueDate |
-| PATCH /:jobId/operations/:jobOperationId/due-date | update | updateProductionJobOperationDueDate ctrl:295 -> svc:491 | pjo.dueDate |
-| POST /:jobId/qc | oqc:create | requestJobQc ctrl:315 -> `OqcService.createOqcForJob` oqc/oqc.service.ts:470 | quality_inspections (one DRAFT OQC row, `ncrId` null, inserted in a tx) + document_sequences (OQC code via `generateOqcCode`) |
+| GET / | read | getProductionJobs ctrl:62 -> svc:178 | - |
+| GET /stats | read | getProductionJobStats ctrl:76 -> svc:245 (counts per status; same filters as GET / minus status, shared `buildProductionJobFilter`) | - |
+| GET /export-plan-pdf | read | exportProductionPlanPdf ctrl:89 -> svc:114 | - |
+| GET /:jobId | read | getProductionJob ctrl:101 -> svc:274 (+oqc.query.ts:153) | - |
+| GET /:jobId/bom | read | getProductionJobBom ctrl:114 -> svc:342 | - |
+| GET /:jobId/operations | read | getProductionJobOperations ctrl:132 -> svc:442 (ctrl asserts operation access if `operationId`) | - |
+| GET /:jobId/notes | read | getProductionJobNotes ctrl:155 -> svc:675 | - |
+| GET /:jobId/logs | read | getProductionJobLogs ctrl:170 -> svc:701 | - |
+| POST /:jobId/notes | update | createProductionJobNote ctrl:183 -> svc:499 | production_job_notes |
+| POST /:jobId/bom | update | addIssues ctrl:202 -> svc:798 -> addJobIssues issues.query:26 | production_job_issues, job items/units, pjl (ITEMS_EDITED), pj.snapshotEditedAt |
+| PATCH /:jobId/bom/:issueId | update | updateIssue ctrl:216 -> svc:809 -> updateJobIssue issues.query:112 | same as above |
+| DELETE /:jobId/bom/:issueId | update | removeIssue ctrl:236 -> svc:821 -> removeJobIssue issues.query:136 | same as above |
+| POST /:jobId/snapshot | update | reloadSnapshot ctrl:255 -> svc:776 | delete+insert job bom items/operations/issues, pj.snapshotLoadedAt, pj.snapshotEditedAt (null), pj.itemRevision |
+| POST /:jobId/start | update | startJob ctrl:266 -> svc:846 | pj, pjl, purchase_requests (via `PurchaseRequestsService.createShortageRequest`) |
+| GET /:jobId/operations/plan | read | getProductionJobPlanOperations ctrl:281 -> svc:543 | - |
+| PATCH /:jobId/operations/plan | update | updateProductionJobOperationsPlan ctrl:294 -> svc:640 | pjo.dueDate |
+| PATCH /:jobId/operations/:jobOperationId/due-date | update | updateProductionJobOperationDueDate ctrl:311 -> svc:518 | pjo.dueDate |
+| POST /:jobId/qc | oqc:create | requestJobQc ctrl:331 -> `OqcService.createOqcForJob` oqc/oqc.service.ts:470 | quality_inspections (one DRAFT OQC row, `ncrId` null, inserted in a tx) + document_sequences (OQC code via `generateOqcCode`) |
 
 ### production-execution (6) `/production-execution` perm prefix `production-execution:`
 | Route | Perm | Controller -> Service | Writes |

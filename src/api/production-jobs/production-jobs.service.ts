@@ -12,6 +12,7 @@ import {
   lte,
   or,
   sql,
+  type SQL,
 } from 'drizzle-orm';
 import { DateTime } from 'luxon';
 
@@ -66,6 +67,7 @@ import { CreateProductionJobNoteReqDto } from './dto/create-production-job-note.
 import { GetProductionJobBomReqDto } from './dto/get-production-job-bom.req.dto';
 import { GetProductionJobLogsReqDto } from './dto/get-production-job-logs.req.dto';
 import { GetProductionJobNotesReqDto } from './dto/get-production-job-notes.req.dto';
+import { GetProductionJobStatsReqDto } from './dto/get-production-job-stats.req.dto';
 import { GetProductionJobsReqDto } from './dto/get-production-jobs.req.dto';
 import { ProductionJobBomItemResDto } from './dto/production-job-bom-operation.res.dto';
 import { ProductionJobPlanOperationResDto } from './dto/production-job-plan-operation.res.dto';
@@ -73,6 +75,7 @@ import { ProductionJobDetailResDto } from './dto/production-job-detail.res.dto';
 import { ProductionJobIssueResDto } from './dto/production-job-issue.res.dto';
 import { ProductionJobLogResDto } from './dto/production-job-log.res.dto';
 import { ProductionJobNoteResDto } from './dto/production-job-note.res.dto';
+import { ProductionJobStatsResDto } from './dto/production-job-stats.res.dto';
 import { ProductionJobResDto } from './dto/production-job.res.dto';
 import { UpdateProductionJobOperationDueDateReqDto } from './dto/update-production-job-operation-due-date.req.dto';
 import { UpdateProductionJobOperationsPlanReqDto } from './dto/update-production-job-operations-plan.req.dto';
@@ -175,29 +178,13 @@ export class ProductionJobsService {
   async getProductionJobs(
     reqDto: GetProductionJobsReqDto,
   ): Promise<OffsetPaginatedDto<ProductionJobResDto>> {
-    const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
     const where = and(
-      reqDto.orderId ? eq(orders.id, reqDto.orderId) : undefined,
-      reqDto.itemId ? eq(productionJobs.itemId, reqDto.itemId) : undefined,
+      this.buildProductionJobFilter(reqDto),
       reqDto.statuses?.length
         ? inArray(productionJobs.status, reqDto.statuses)
         : reqDto.status
           ? eq(productionJobs.status, reqDto.status)
           : undefined,
-      reqDto.clientId ? eq(orders.clientId, reqDto.clientId) : undefined,
-      reqDto.startDate ? gte(orders.dueDate, reqDto.startDate) : undefined,
-      reqDto.endDate ? lte(orders.dueDate, reqDto.endDate) : undefined,
-      keyword
-        ? or(
-            unaccentILike(productionJobs.code, keyword),
-            unaccentILike(productionOrders.code, keyword),
-            unaccentILike(orders.code, keyword),
-            unaccentILike(orders.buyerPoNo, keyword),
-            unaccentILike(items.code, keyword),
-            unaccentILike(productionJobs.itemRevision, keyword),
-            unaccentILike(items.name, keyword),
-          )
-        : undefined,
     );
 
     const [rows, [{ total }]] = await Promise.all([
@@ -251,6 +238,37 @@ export class ProductionJobsService {
       }),
       new OffsetPaginationDto(total, reqDto),
     );
+  }
+
+  /** Cùng bộ lọc với `getProductionJobs` trừ trạng thái, để số của mỗi trạng thái khớp số dòng
+   * danh sách khi lọc theo trạng thái đó. */
+  async getProductionJobStats(
+    reqDto: GetProductionJobStatsReqDto,
+  ): Promise<ProductionJobStatsResDto> {
+    const countByStatus = (status: ProductionJobStatus) =>
+      count(sql`case when ${productionJobs.status} = ${status} then 1 end`);
+
+    const [jobStats] = await this.db
+      .select({
+        total: count(),
+        pending: countByStatus(ProductionJobStatus.PENDING),
+        inProgress: countByStatus(ProductionJobStatus.IN_PROGRESS),
+        waitingQc: countByStatus(ProductionJobStatus.WAITING_QC),
+        waitingDelivery: countByStatus(ProductionJobStatus.WAITING_DELIVERY),
+        completed: countByStatus(ProductionJobStatus.COMPLETED),
+      })
+      .from(productionJobs)
+      .innerJoin(
+        productionOrders,
+        eq(productionOrders.id, productionJobs.productionOrderId),
+      )
+      .innerJoin(orders, eq(orders.id, productionOrders.orderId))
+      .innerJoin(items, eq(items.id, productionJobs.itemId))
+      .where(this.buildProductionJobFilter(reqDto));
+
+    return plainToInstance(ProductionJobStatsResDto, jobStats, {
+      excludeExtraneousValues: true,
+    });
   }
 
   async getProductionJob(jobId: string): Promise<ProductionJobDetailResDto> {
@@ -983,6 +1001,32 @@ export class ProductionJobsService {
     }
 
     return job;
+  }
+
+  /** Điều kiện lọc chung của danh sách Job và thống kê. Câu query gọi nó phải join sẵn
+   * `productionOrders`, `orders`, `items`. */
+  private buildProductionJobFilter(
+    filters: GetProductionJobStatsReqDto,
+  ): SQL | undefined {
+    const keyword = filters.q ? `%${filters.q}%` : undefined;
+    return and(
+      filters.orderId ? eq(orders.id, filters.orderId) : undefined,
+      filters.itemId ? eq(productionJobs.itemId, filters.itemId) : undefined,
+      filters.clientId ? eq(orders.clientId, filters.clientId) : undefined,
+      filters.startDate ? gte(orders.dueDate, filters.startDate) : undefined,
+      filters.endDate ? lte(orders.dueDate, filters.endDate) : undefined,
+      keyword
+        ? or(
+            unaccentILike(productionJobs.code, keyword),
+            unaccentILike(productionOrders.code, keyword),
+            unaccentILike(orders.code, keyword),
+            unaccentILike(orders.buyerPoNo, keyword),
+            unaccentILike(items.code, keyword),
+            unaccentILike(productionJobs.itemRevision, keyword),
+            unaccentILike(items.name, keyword),
+          )
+        : undefined,
+    );
   }
 
   private ensureStatus(

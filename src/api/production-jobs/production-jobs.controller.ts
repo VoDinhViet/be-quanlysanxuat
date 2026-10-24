@@ -28,6 +28,7 @@ import { GetProductionJobBomReqDto } from './dto/get-production-job-bom.req.dto'
 import { GetProductionJobLogsReqDto } from './dto/get-production-job-logs.req.dto';
 import { GetProductionJobNotesReqDto } from './dto/get-production-job-notes.req.dto';
 import { GetProductionJobOperationsReqDto } from './dto/get-production-job-operations.req.dto';
+import { GetProductionJobStatsReqDto } from './dto/get-production-job-stats.req.dto';
 import { GetProductionJobsReqDto } from './dto/get-production-jobs.req.dto';
 import { ProductionJobBomItemResDto } from './dto/production-job-bom-operation.res.dto';
 import { ProductionJobPlanOperationResDto } from './dto/production-job-plan-operation.res.dto';
@@ -35,6 +36,7 @@ import { ProductionJobDetailResDto } from './dto/production-job-detail.res.dto';
 import { ProductionJobIssueResDto } from './dto/production-job-issue.res.dto';
 import { ProductionJobLogResDto } from './dto/production-job-log.res.dto';
 import { ProductionJobNoteResDto } from './dto/production-job-note.res.dto';
+import { ProductionJobStatsResDto } from './dto/production-job-stats.res.dto';
 import { ProductionJobResDto } from './dto/production-job.res.dto';
 import { UpdateProductionJobOperationDueDateReqDto } from './dto/update-production-job-operation-due-date.req.dto';
 import { UpdateProductionJobOperationsPlanReqDto } from './dto/update-production-job-operations-plan.req.dto';
@@ -61,6 +63,20 @@ export class ProductionJobsController {
     @Query() reqDto: GetProductionJobsReqDto,
   ): Promise<OffsetPaginatedDto<ProductionJobResDto>> {
     return this.productionJobsService.getProductionJobs(reqDto);
+  }
+
+  // Khai trước ':jobId' để 'stats' không bị bắt nhầm thành id.
+  @Get('stats')
+  @Permissions('production:read')
+  @ApiAuth({
+    type: ProductionJobStatsResDto,
+    summary:
+      'Đếm Job theo trạng thái, cùng bộ lọc với danh sách (trừ trạng thái)',
+  })
+  getProductionJobStats(
+    @Query() reqDto: GetProductionJobStatsReqDto,
+  ): Promise<ProductionJobStatsResDto> {
+    return this.productionJobsService.getProductionJobStats(reqDto);
   }
 
   // Khai trước ':jobId' để không bị nuốt thành param đó.
