@@ -1,4 +1,4 @@
-<!-- Generated: 2026-10-16 | Files scanned: 27 | Token estimate: ~3530 -->
+<!-- Generated: 2026-10-24 | Files scanned: 27 | Token estimate: ~3530 -->
 # Production codemap
 
 Paths relative to `src/api/` unless starting `database/` or `constants/`. `ctrl:N`/`svc:N` = line in that domain's controller/service (`po.svc`, `jobs.svc`, `exec svc`, `OO svc`, `OR svc` = the five services). Create/update routes return 204 unless noted.
@@ -99,6 +99,9 @@ LSX (`database/schemas/production/production-orders.ts:27`: PENDING, APPROVED, C
      insert directly APPROVED, sourceType=NCR, ncrId+ncrAction (REWORK|REMAKE), same orderId, 1 JOB, NCR -> IN_PROGRESS
      REWORK: qty=ncr.reworkQty, snapshot via `ReworkSnapshotOptions` (snapshot.query:105): only chosen ops + last FG op, issues []
      REMAKE: qty=ncr.remakeQty, normal snapshot
+     Marker: `production_orders.ncrAction` is exposed as `ncrAction` (null for normal LSX) on GET /production-jobs,
+     GET /production-execution/jobs and GET /oqc rows; the plan PDF (`exportProductionPlanPdf`, template
+     `production-plan.html`) adds a red "(sửa chữa)"/"(làm mới)" line under the PO cell and a red left edge
      LSX COMPLETED -> closeNcrIfProductionOrdersDone (ncrs/ncrs.write.ts:143, called inventory-receipts.service.ts:808):
      closes NCR (IN_PROGRESS -> closed) when COMPLETED LSX count >= (reworkQty>0)+(remakeQty>0)
 

@@ -264,6 +264,7 @@ export class ProductionExecutionService {
           operationName: operations.name,
           orderCode: orders.code,
           buyerPoNo: orders.buyerPoNo,
+          ncrAction: productionOrders.ncrAction,
           item: {
             ...getTableColumns(items),
             revision: productionJobs.itemRevision,

@@ -3,6 +3,7 @@ import { Exclude, Expose } from 'class-transformer';
 import {
   IqcResult,
   OqcDisposition,
+  ProductionOrderNcrAction,
   QualityInspectionStatus,
 } from '../../../database/schemas';
 import {
@@ -47,6 +48,14 @@ export class PageOqcResDto {
     description: 'Số PO của khách hàng (orders.buyerPoNo)',
   })
   buyerPoNo!: string | null;
+
+  @Expose()
+  @EnumFieldOptional(() => ProductionOrderNcrAction, {
+    nullable: true,
+    description:
+      'Loại LSX phụ từ NCR (REWORK sửa chữa / REMAKE làm mới); null = Job từ LSX đơn hàng',
+  })
+  ncrAction!: ProductionOrderNcrAction | null;
 
   @Expose()
   @ClassField(() => ProductionJobOperationRefResDto)

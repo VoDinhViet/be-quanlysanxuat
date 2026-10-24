@@ -42,6 +42,7 @@ import {
   productionJobs,
   ProductionJobStatus,
   productionJobUnits,
+  ProductionOrderNcrAction,
   productionOrders,
   units,
 } from '../../database/schemas';
@@ -86,6 +87,11 @@ import {
   type ReworkSnapshotOptions,
 } from './production-job-snapshot.query';
 
+const NCR_ACTION_PLAN_LABELS: Record<ProductionOrderNcrAction, string> = {
+  [ProductionOrderNcrAction.REWORK]: 'sửa chữa',
+  [ProductionOrderNcrAction.REMAKE]: 'làm mới',
+};
+
 /**
  * Job sản xuất: 1 sản phẩm (FG) = 1 Job trong một LSX. Không có route tạo Job; `createJobs` chỉ
  * được gọi từ transaction duyệt LSX và tạo LSX phụ của NCR. Snapshot dựng ngay lúc tạo Job, chụp
@@ -109,6 +115,7 @@ export class ProductionJobsService {
       .select({
         quantity: productionJobs.quantity,
         itemRevision: productionJobs.itemRevision,
+        ncrAction: productionOrders.ncrAction,
         item: getTableColumns(items),
         order: getTableColumns(orders),
         client: getTableColumns(clients),
@@ -146,6 +153,7 @@ export class ProductionJobsService {
         quantity: formatQuantity(row.quantity),
         technical_requirements: '',
         po_code: row.order.code,
+        ncr_label: row.ncrAction ? NCR_ACTION_PLAN_LABELS[row.ncrAction] : '',
         completion_deadline: formatVnDate(row.order.dueDate),
         note: '',
       })),
@@ -210,6 +218,7 @@ export class ProductionJobsService {
           orderDate: orders.orderDate,
           dueDate: orders.dueDate,
           status: productionJobs.status,
+          ncrAction: productionOrders.ncrAction,
         })
         .from(productionJobs)
         .innerJoin(

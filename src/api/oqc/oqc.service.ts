@@ -145,6 +145,7 @@ export class OqcService {
           productionJob: getTableColumns(productionJobs),
           orderCode: orders.code,
           buyerPoNo: orders.buyerPoNo,
+          ncrAction: productionOrders.ncrAction,
           operation: getTableColumns(productionJobOperations),
           bomItem: getTableColumns(productionJobBomItems),
           item: {

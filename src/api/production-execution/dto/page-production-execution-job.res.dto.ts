@@ -1,6 +1,9 @@
 import { Exclude, Expose } from 'class-transformer';
 
-import { ProductionJobStatus } from '../../../database/schemas';
+import {
+  ProductionJobStatus,
+  ProductionOrderNcrAction,
+} from '../../../database/schemas';
 import {
   ClassField,
   DateField,
@@ -66,6 +69,14 @@ export class PageProductionExecutionJobResDto {
     description: 'Số PO của khách hàng trên đơn hàng gốc (Buyer PO No)',
   })
   buyerPoNo!: string | null;
+
+  @Expose()
+  @EnumFieldOptional(() => ProductionOrderNcrAction, {
+    nullable: true,
+    description:
+      'Loại LSX phụ từ NCR (REWORK sửa chữa / REMAKE làm mới); null = Job từ LSX đơn hàng',
+  })
+  ncrAction!: ProductionOrderNcrAction | null;
 
   @Expose()
   @ClassField(() => ProductionExecutionItemRefResDto)

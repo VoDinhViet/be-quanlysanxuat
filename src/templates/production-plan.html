@@ -585,6 +585,18 @@
       justify-content: space-between;
     }
 
+    /* Job của LSX phụ sinh từ NCR: viền đỏ đầu dòng + nhãn đỏ dưới ô PO */
+    tr.row-ncr td:first-child {
+      box-shadow: inset 3px 0 0 #dc2626;
+    }
+
+    .ncr-mark {
+      display: block;
+      margin-top: 2px;
+      color: #dc2626;
+      font-weight: 600;
+      font-family: inherit;
+    }
   </style>
 </head>
 <body>
@@ -656,14 +668,14 @@
           </thead>
           <tbody>
             {{#each jobs}}
-            <tr>
+            <tr{{#if this.ncr_label}} class="row-ncr"{{/if}}>
               <td class="text-center font-bold">{{this.stt}}</td>
               <td><div class="cell-edit text-center font-mono">{{this.item_code}}</div></td>
               <td><div class="cell-edit text-center font-mono">{{this.revision}}</div></td>
               <td><div class="cell-edit text-left font-semibold">{{this.item_name}}</div></td>
               <td><div class="cell-edit text-right font-bold font-mono">{{this.quantity}}</div></td>
               <td><div class="cell-edit text-left">{{this.technical_requirements}}</div></td>
-              <td><div class="cell-edit text-center font-mono">{{this.po_code}}</div></td>
+              <td><div class="cell-edit text-center font-mono">{{this.po_code}}{{#if this.ncr_label}}<span class="ncr-mark">({{this.ncr_label}})</span>{{/if}}</div></td>
               <td><div class="cell-edit text-center font-mono">{{this.completion_deadline}}</div></td>
               <td><div class="cell-edit text-left">{{this.note}}</div></td>
             </tr>

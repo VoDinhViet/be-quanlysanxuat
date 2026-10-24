@@ -1,4 +1,4 @@
-<!-- Generated: 2026-10-16 | Files scanned: 40 | Token estimate: ~3600 -->
+<!-- Generated: 2026-10-24 | Files scanned: 40 | Token estimate: ~3600 -->
 # Quality codemap
 
 Includes the NCR<->OQC trace refs (PH-136). Controllers check permissions, services do not.
@@ -41,7 +41,7 @@ OQC (oqc.controller.ts, 5 routes)
 
 | Route | Permission | Handler -> Service | Writes |
 |---|---|---|---|
-| GET /oqc :32 | oqc:read | getOqcs -> getOqcs:84 | - |
+| GET /oqc :32 | oqc:read | getOqcs -> getOqcs:84 (rows carry the LSX `ncrAction`) | - |
 | GET /oqc/export :46 | oqc:read | exportOqc -> exportOqc:219 | - |
 | GET /oqc/:oqcId :57 | oqc:read | getOqc -> getOqc:335 (adds `ncr`, `spawnedNcrs`, latest-attempt files) | - |
 | POST /oqc/:oqcId/confirm :67 | oqc:update | confirmOqc -> confirmOqc:545 | results, inspections, evidences, files, inventory_receipts(+items), production_jobs(+logs), ncrs(+logs) |
