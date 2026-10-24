@@ -31,7 +31,7 @@ For a chain that crosses UI and API (button, server function, endpoint, status),
 
 ## Rules
 
-`.claude/rules/` holds the rules: `project-overrides.md` (wins on conflict), `api-conventions.md`, `database.md`, `config.md`, `naming.md`, `comments.md` (how to write and clean code comments), `model-routing.md` (which model for plan mode and subagents), and the ECC base in `ecc/common` and `ecc/typescript`.
+`.claude/rules/` holds the rules: `project-overrides.md` (wins on conflict), `api-conventions.md`, `database.md`, `config.md`, `naming.md`, `comments.md` (how to write and clean code comments), `model-routing.md` (which model for plan mode and subagents), and the unmodified ECC 2.2.3 base in `ecc/common` and `ecc/typescript` (the project's changes to it are the "Project deltas to ECC rules" section of `project-overrides.md`).
 
 ## Compact Instructions
 
@@ -40,6 +40,6 @@ When compacting, keep:
 - the files changed or being edited, and the task they belong to;
 - the last `npx tsc --noEmit` and `pnpm lint` result;
 - open decisions and questions waiting on the user;
-- the standing prohibitions: no commit or push without an explicit order, no `pnpm db:migrate` or destructive script against remote dev/prod databases, no tests unless asked.
+- the standing prohibitions: no commit or push without an explicit order, no `pnpm db:migrate` or destructive script against remote dev/prod databases, no spec files unless asked, and an end-to-end check of the affected flow after each PH ticket.
 
 Drop tool output and file dumps that are already summarized.

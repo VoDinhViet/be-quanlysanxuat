@@ -1,49 +1,124 @@
 # Code Review Standards
 
-## When to review
+## Purpose
 
-- After writing or modifying code, before any commit.
-- When auth, permission or user-data code changes.
-- When module boundaries or a table change.
+Code review ensures quality, security, and maintainability before code is merged. This rule defines when and how to conduct code reviews.
 
-The exact agents and their order are in `../../project-overrides.md` ("After implementing code").
+## When to Review
 
-## Review checklist
+**MANDATORY review triggers:**
 
-- [ ] Code is readable and well-named (`naming.md`)
+- After writing or modifying code
+- Before any commit to shared branches
+- When security-sensitive code is changed (auth, payments, user data)
+- When architectural changes are made
+- Before merging pull requests
+
+**Pre-Review Requirements:**
+
+Before requesting review, ensure:
+
+- All automated checks (CI/CD) are passing
+- Merge conflicts are resolved
+- Branch is up to date with target branch
+
+## Review Checklist
+
+Before marking code complete:
+
+- [ ] Code is readable and well-named
 - [ ] Functions are focused (<50 lines)
-- [ ] Source files are cohesive (under the 800-line soft ceiling, or with a reason for the exception)
-- [ ] No deep nesting (>4 levels); prefer early returns
+- [ ] Source files are cohesive (under the 800-line soft maintainability ceiling, or include a reason for a deliberate exception)
+- [ ] No deep nesting (>4 levels)
 - [ ] Errors are handled explicitly
 - [ ] No hardcoded secrets or credentials
-- [ ] No `console.log` or debug statements
-- [ ] Comments follow `comments.md`
+- [ ] No console.log or debug statements
+- [ ] Tests exist for new functionality
+- [ ] Test coverage meets 80% minimum
 
-## Security review triggers
+## Security Review Triggers
 
-Use `security-reviewer` when the change:
+**STOP and use security-reviewer agent when:**
 
-- adds a route or edits `@Permissions` / `@Public`, or touches auth, JWT or credentials;
-- handles file upload or any filesystem path;
-- builds raw `sql` or a query from dynamic filter or sort input;
-- is reachable from outside a controller (a job, an AI tool, another module), because services do not check permissions;
-- calls an external API or uses cryptography.
+- Authentication or authorization code
+- User input handling
+- Database queries
+- File system operations
+- External API calls
+- Cryptographic operations
+- Payment or financial code
 
-An ordinary Drizzle read or write inside an existing, already-guarded route is not a trigger on its own.
-
-## Severity levels
+## Review Severity Levels
 
 | Level | Meaning | Action |
 |-------|---------|--------|
-| CRITICAL | Security vulnerability or data loss risk | **BLOCK**: fix before merge |
-| HIGH | Bug or significant quality issue | **WARN**: fix before merge |
-| MEDIUM | Maintainability concern, including an unexplained file over 800 lines | **INFO**: list for the user |
-| LOW | Style or minor suggestion | **NOTE**: optional |
+| CRITICAL | Security vulnerability or data loss risk | **BLOCK** - Must fix before merge |
+| HIGH | Bug or significant quality issue | **WARN** - Should fix before merge |
+| MEDIUM | Maintainability concern, including an unexplained source file over the soft 800-line ceiling | **INFO** - Consider fixing |
+| LOW | Style or minor suggestion | **NOTE** - Optional |
 
-Approve with no CRITICAL or HIGH; with only HIGH, merge with caution; with any CRITICAL, block.
+## Agent Usage
 
-## Common issues to catch
+Use these agents for code review:
 
-- Security: hardcoded credentials, SQL built by string concatenation, path traversal, authentication bypass.
-- Quality: functions over 50 lines, files over 800 lines, deep nesting, swallowed errors, parameter mutation.
-- Performance: N+1 queries (use joins or batching), list endpoints without a `limit` cap for non-HTTP callers, unbounded queries.
+| Agent | Purpose |
+|-------|---------|
+| **code-reviewer** | General code quality, patterns, best practices |
+| **security-reviewer** | Security vulnerabilities, OWASP Top 10 |
+| **typescript-reviewer** | TypeScript/JavaScript specific issues |
+| **python-reviewer** | Python specific issues |
+| **go-reviewer** | Go specific issues |
+| **rust-reviewer** | Rust specific issues |
+
+## Review Workflow
+
+```
+1. Run git diff to understand changes
+2. Check security checklist first
+3. Review code quality checklist
+4. Run relevant tests
+5. Verify coverage >= 80%
+6. Use appropriate agent for detailed review
+```
+
+## Common Issues to Catch
+
+### Security
+
+- Hardcoded credentials (API keys, passwords, tokens)
+- SQL injection (string concatenation in queries)
+- XSS vulnerabilities (unescaped user input)
+- Path traversal (unsanitized file paths)
+- CSRF protection missing
+- Authentication bypasses
+
+### Code Quality
+
+- Large functions (>50 lines) - split into smaller
+- Large files (>800 lines) - extract modules
+- Deep nesting (>4 levels) - use early returns
+- Missing error handling - handle explicitly
+- Mutation patterns - prefer immutable operations
+- Missing tests - add test coverage
+
+### Performance
+
+- N+1 queries - use JOINs or batching
+- Missing pagination - add LIMIT to queries
+- Unbounded queries - add constraints
+- Missing caching - cache expensive operations
+
+## Approval Criteria
+
+- **Approve**: No CRITICAL or HIGH issues
+- **Warning**: Only HIGH issues (merge with caution)
+- **Block**: CRITICAL issues found
+
+## Integration with Other Rules
+
+This rule works with:
+
+- [testing.md](testing.md) - Test coverage requirements
+- [security.md](security.md) - Security checklist
+- [git-workflow.md](git-workflow.md) - Commit standards
+- [agents.md](agents.md) - Agent delegation

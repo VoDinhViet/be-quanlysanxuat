@@ -1,27 +1,29 @@
 # Security Guidelines
 
-## Checks before a commit
+## Mandatory Security Checks
 
+Before ANY commit:
 - [ ] No hardcoded secrets (API keys, passwords, tokens)
-- [ ] All user input validated by a DTO
-- [ ] Queries parameterized (Drizzle, or `sql` template with bound values)
-- [ ] Authentication and authorization verified: controllers declare `@Permissions`, services do not check
-- [ ] Error messages do not leak sensitive data
+- [ ] All user inputs validated
+- [ ] SQL injection prevention (parameterized queries)
+- [ ] XSS prevention (sanitized HTML)
+- [ ] CSRF protection enabled
+- [ ] Authentication/authorization verified
+- [ ] Rate limiting on all endpoints
+- [ ] Error messages don't leak sensitive data
 
-CSRF and rate limiting do not apply here: a stateless JWT API with no cookies, and rate limiting is a deployment decision.
+## Secret Management
 
-## Secret management
+- NEVER hardcode secrets in source code
+- ALWAYS use environment variables or a secret manager
+- Validate that required secrets are present at startup
+- Rotate any secrets that may have been exposed
 
-- Never hardcode secrets; read them from environment variables through the config factories.
-- A required secret that is missing must stop the app at boot (see `config.md`).
-- Rotate any secret that may have been exposed.
+## Security Response Protocol
 
-## Security response protocol
-
-If a security issue is found:
-
-1. Stop.
-2. Run the `security-reviewer` agent.
-3. Fix CRITICAL issues before continuing.
-4. Rotate any exposed secrets.
-5. Look for the same pattern elsewhere in the codebase.
+If security issue found:
+1. STOP immediately
+2. Use **security-reviewer** agent
+3. Fix CRITICAL issues before continuing
+4. Rotate any exposed secrets
+5. Review entire codebase for similar issues

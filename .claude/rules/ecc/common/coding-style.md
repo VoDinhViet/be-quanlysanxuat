@@ -1,10 +1,8 @@
 # Coding Style
 
-## Immutability
+## Immutability (CRITICAL)
 
-Applies to plain data only. Do not rewrite Drizzle query builders or Nest providers to fit it.
-
-Create new objects instead of mutating existing ones:
+ALWAYS create new objects, NEVER mutate existing ones:
 
 ```
 // Pseudocode
@@ -96,4 +94,4 @@ Before marking work complete:
 - [ ] No deep nesting (>4 levels)
 - [ ] Proper error handling
 - [ ] No hardcoded values (use constants or config)
-- [ ] No mutation of plain data
+- [ ] No mutation (immutable patterns used)
