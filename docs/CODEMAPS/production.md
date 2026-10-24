@@ -38,7 +38,7 @@ Tables: `po`=production_orders, `poi`=_order_items, `pol`=_order_logs, `pj`=prod
 | GET / | read | getProductionJobs ctrl:62 -> svc:178 | - |
 | GET /stats | read | getProductionJobStats ctrl:76 -> svc:245 (counts per status; same filters as GET / minus status, shared `buildProductionJobFilter`) | - |
 | GET /export-plan-pdf | read | exportProductionPlanPdf ctrl:89 -> svc:114 | - |
-| GET /:jobId | read | getProductionJob ctrl:101 -> svc:274 (+oqc.query.ts:153) | - |
+| GET /:jobId | read | getProductionJob ctrl:101 -> svc:275 (+oqc.query.ts:153; `productFiles` = item_files of the Job's item revision) | - |
 | GET /:jobId/bom | read | getProductionJobBom ctrl:114 -> svc:342 | - |
 | GET /:jobId/operations | read | getProductionJobOperations ctrl:132 -> svc:442 (ctrl asserts operation access if `operationId`) | - |
 | GET /:jobId/notes | read | getProductionJobNotes ctrl:155 -> svc:675 | - |
@@ -59,7 +59,7 @@ Tables: `po`=production_orders, `poi`=_order_items, `pol`=_order_logs, `pj`=prod
 |---|---|---|---|
 | GET /operations | read | getOperations ctrl:37 -> svc:84 | - |
 | GET /jobs | read | getJobs ctrl:52 -> svc:194 | - |
-| GET /jobs/:productionJobId | read | getJob ctrl:66 -> svc:347 | - |
+| GET /jobs/:productionJobId | read | getJob ctrl:66 -> svc:348 (builds from `getProductionJobRecord`, so it carries `productFiles` too) | - |
 | GET /jobs/:productionJobId/operations | read | getJobOperations ctrl:86 -> svc:371 | - |
 | GET /jobs/:productionJobId/reports | read | getJobOperationReports ctrl:106 -> svc:405 | - |
 | POST /operations/:jobOperationId/reports | report | createJobOperationReport ctrl:125 -> svc:479 | production_job_operation_reports(+_files), pjo, pj.status+pjl via `closeJobIfFinalAssemblyDone` |

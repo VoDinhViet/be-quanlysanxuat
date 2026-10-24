@@ -30,6 +30,7 @@ import type { Database, DbTransaction } from '../../database/database.type';
 import {
   clients,
   files,
+  itemFiles,
   items,
   ncrs,
   orders,
@@ -272,6 +273,17 @@ export class ProductionJobsService {
   }
 
   async getProductionJob(jobId: string): Promise<ProductionJobDetailResDto> {
+    return plainToInstance(
+      ProductionJobDetailResDto,
+      await this.getProductionJobRecord(jobId),
+      { excludeExtraneousValues: true },
+    );
+  }
+
+  /** Bản ghi thô của chi tiết Job, chưa qua DTO. Lớp nào mở rộng `ProductionJobDetailResDto` phải
+   * build từ bản ghi này: `plainToInstance` lần hai trên `FileResDto` đã build làm `url` thành null
+   * (`FileUrlField` chỉ đọc `storageKey`). */
+  async getProductionJobRecord(jobId: string) {
     const [job] = await this.db
       .select({
         id: productionJobs.id,
@@ -316,16 +328,16 @@ export class ProductionJobsService {
       throw new AppException(ErrorCode.E082, HttpStatus.NOT_FOUND);
     }
 
-    const oqcRequestableQuantity = await getOqcRequestableQuantity(
-      this.db,
-      jobId,
-    );
+    const [oqcRequestableQuantity, productFiles] = await Promise.all([
+      getOqcRequestableQuantity(this.db, jobId),
+      this.db.query.itemFiles.findMany({
+        where: eq(itemFiles.itemId, job.itemId),
+        with: { file: true },
+        orderBy: [asc(itemFiles.createdAt), asc(itemFiles.id)],
+      }),
+    ]);
 
-    return plainToInstance(
-      ProductionJobDetailResDto,
-      { ...job, oqcRequestableQuantity },
-      { excludeExtraneousValues: true },
-    );
+    return { ...job, oqcRequestableQuantity, productFiles };
   }
 
   /**

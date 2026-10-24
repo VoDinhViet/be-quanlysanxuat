@@ -5,6 +5,7 @@ import {
   ProductionOrderNcrAction,
 } from '../../../database/schemas';
 import { ClientBaseResDto } from '../../clients/dto/client-base.res.dto';
+import { ItemFileResDto } from '../../items/dto/item-file.res.dto';
 import { ItemRefResDto } from '../../items/dto/item-ref.res.dto';
 import { UnitRefResDto } from '../../units/dto/unit-ref.res.dto';
 import { OrderBaseResDto } from '../../orders/dto/order-base.res.dto';
@@ -132,6 +133,14 @@ export class ProductionJobDetailResDto {
       'SL thành phẩm đã hoàn thành ở công đoạn cuối mà chưa xin OQC (trừ lô SCRAP) — 0 thì nút "Yêu cầu OQC" khoá lại',
   })
   oqcRequestableQuantity!: number;
+
+  @Expose()
+  @ClassField(() => ItemFileResDto, {
+    each: true,
+    description:
+      'Bản vẽ / tài liệu đính kèm của sản phẩm (đúng revision của Job)',
+  })
+  productFiles!: ItemFileResDto[];
 
   @Expose()
   @DateField({ description: 'Thời điểm tạo Job' })

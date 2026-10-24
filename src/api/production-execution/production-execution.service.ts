@@ -354,7 +354,7 @@ export class ProductionExecutionService {
     await this.ensureJobHasOperation(productionJobId, operationId);
 
     const detail =
-      await this.productionJobsService.getProductionJob(productionJobId);
+      await this.productionJobsService.getProductionJobRecord(productionJobId);
     const [item] = await this.db
       .select({ imageFile: getTableColumns(files) })
       .from(items)
