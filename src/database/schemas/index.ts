@@ -48,6 +48,7 @@ export * from './quality/quality-inspection-results';
 export * from './quality/quality-inspection-evidences';
 export * from './inventory/supplier-returns';
 export * from './inventory/supplier-return-files';
+export * from './inventory/inventory-issue-files';
 export * from './quality/quality-inspections-relations';
 export * from './inventory/outsourcing-orders';
 export * from './inventory/outsourcing-order-items';

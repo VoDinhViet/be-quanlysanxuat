@@ -15,6 +15,7 @@ import {
   inventoryDocumentStatusEnum,
 } from './inventory-documents';
 import { inventoryIssueItems } from './inventory-issue-items';
+import { inventoryIssueFiles } from './inventory-issue-files';
 import { outboundOrders } from './outbound-orders';
 import { productionJobs } from '../production/production-jobs';
 import { productionOrders } from '../production/production-orders';
@@ -75,6 +76,8 @@ export const inventoryIssues = pgTable(
       onDelete: 'set null',
     }),
     postedAt: timestamp('posted_at'),
+    // Ghi chú kho nhập lúc xác nhận xuất, kèm ảnh ở `inventory_issue_files`.
+    postNote: varchar('post_note', { length: 500 }),
     createdBy: uuid('created_by').references(() => users.id, {
       onDelete: 'set null',
     }),
@@ -132,6 +135,7 @@ export const inventoryIssuesRelations = relations(
       references: [users.id],
     }),
     items: many(inventoryIssueItems),
+    files: many(inventoryIssueFiles),
   }),
 );
 

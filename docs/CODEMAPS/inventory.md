@@ -1,4 +1,4 @@
-<!-- Generated: 2026-10-16 | Files scanned: 38 | Token estimate: ~3560 -->
+<!-- Generated: 2026-10-24 | Files scanned: 38 | Token estimate: ~3560 -->
 # Inventory codemap
 
 Single warehouse: `inventory_balances.itemId` is UNIQUE, no warehouse column (`src/database/schemas/inventory/inventory-balances.ts`).
@@ -37,11 +37,11 @@ Controller file = `<folder>.controller.ts`; "Svc" = service line.
 | GET .../:receiptId/export-pdf | R | exportInventoryReceiptPdf (266) | - |
 | GET .../:receiptId/related-notes | R | PurchaseNotesService.getChainNotesFromReceipt | - |
 | GET /inventory-issues | R | getInventoryIssues (91) | - |
-| GET /inventory-issues/:issueId | R | getInventoryIssue (232) | - |
+| GET /inventory-issues/:issueId | R | getInventoryIssue (236), returns `postNote` + `files` | - |
 | POST /inventory-issues | C | createInventoryIssue (264) | issues, issue_items |
 | PATCH /inventory-issues/:issueId | U | updateInventoryIssue (291) | issues, issue_items |
 | DELETE /inventory-issues/:issueId | D | deleteInventoryIssue (321) | issues |
-| POST .../:issueId/post | U | postInventoryIssue (346) | issues, balances, transactions, requisitions |
+| POST .../:issueId/post | U | postInventoryIssue (358), optional body `{note, fileIds}` (UploadType INVENTORY_ISSUE_EVIDENCE, `linkFiles` before the tx) | issues (`post_note`), inventory_issue_files, balances, transactions, requisitions |
 | POST .../:issueId/cancel | U | cancelInventoryIssue (403) | issues, requisitions |
 | GET /inventory-requisitions | inventory-requisitions:read | getInventoryRequisitions (72) | - |
 | GET /inventory-requisitions/lines | :read | RequisitionLinesService.getRequisitionPickerLines (lines.service 109); declared before `:requisitionId` | - |

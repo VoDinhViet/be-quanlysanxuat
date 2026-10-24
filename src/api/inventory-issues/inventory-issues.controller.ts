@@ -19,6 +19,7 @@ import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
 import { CreateInventoryIssueReqDto } from './dto/create-inventory-issue.req.dto';
 import { GetInventoryIssuesReqDto } from './dto/get-inventory-issues.req.dto';
 import { InventoryIssueResDto } from './dto/inventory-issue.res.dto';
+import { PostInventoryIssueReqDto } from './dto/post-inventory-issue.req.dto';
 import { PageInventoryIssueResDto } from './dto/page-inventory-issue.res.dto';
 import { UpdateInventoryIssueReqDto } from './dto/update-inventory-issue.req.dto';
 import { InventoryIssuesService } from './inventory-issues.service';
@@ -103,10 +104,12 @@ export class InventoryIssuesController {
   })
   postInventoryIssue(
     @UUIDParam('issueId') issueId: string,
+    @Body() reqDto: PostInventoryIssueReqDto,
     @CurrentUser() payload: JwtPayloadType,
   ): Promise<void> {
     return this.inventoryIssuesService.postInventoryIssue(
       issueId,
+      reqDto,
       payload.userId,
     );
   }

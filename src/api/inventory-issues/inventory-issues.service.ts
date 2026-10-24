@@ -26,6 +26,7 @@ import {
   departments,
   InventoryDocumentStatus,
   InventoryIssueType,
+  inventoryIssueFiles,
   inventoryIssueItems,
   inventoryIssues,
   InventoryReferenceType,
@@ -42,11 +43,13 @@ import {
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { hasPendingIqcForItems } from '../iqc/iqc.query';
+import { FilesService } from '../files/files.service';
 import { InventoryPostingService } from '../inventory/inventory-posting.service';
 import { CreateInventoryIssueReqDto } from './dto/create-inventory-issue.req.dto';
 import { GetInventoryIssuesReqDto } from './dto/get-inventory-issues.req.dto';
 import { InventoryIssueItemReqDto } from './dto/inventory-issue-item.req.dto';
 import { InventoryIssueResDto } from './dto/inventory-issue.res.dto';
+import { PostInventoryIssueReqDto } from './dto/post-inventory-issue.req.dto';
 import { PageInventoryIssueResDto } from './dto/page-inventory-issue.res.dto';
 import { UpdateInventoryIssueReqDto } from './dto/update-inventory-issue.req.dto';
 
@@ -86,6 +89,7 @@ export class InventoryIssuesService {
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly inventoryPostingService: InventoryPostingService,
+    private readonly filesService: FilesService,
   ) {}
 
   async getInventoryIssues(
@@ -240,6 +244,13 @@ export class InventoryIssuesService {
         posterBy: true,
         creatorBy: true,
         items: { with: { item: true, unit: true } },
+        files: {
+          with: { file: true },
+          orderBy: (issueFiles, { asc }) => [
+            asc(issueFiles.createdAt),
+            asc(issueFiles.id),
+          ],
+        },
       },
     });
 
@@ -255,6 +266,7 @@ export class InventoryIssuesService {
       InventoryIssueResDto,
       {
         ...inventoryIssue,
+        files: inventoryIssue.files.map((issueFile) => issueFile.file),
         requisition: requisitionByIssueId.get(issueId) ?? null,
       },
       { excludeExtraneousValues: true },
@@ -343,7 +355,16 @@ export class InventoryIssuesService {
    *   chuyển sang `ISSUED` cùng transaction.
    *
    * See `docs/CODEMAPS/inventory.md`. */
-  async postInventoryIssue(issueId: string, userId: string): Promise<void> {
+  async postInventoryIssue(
+    issueId: string,
+    reqDto: PostInventoryIssueReqDto,
+    userId: string,
+  ): Promise<void> {
+    // Kiểm file tồn tại và đánh dấu đã dùng trước transaction, cùng khuôn `postSupplierReturn`.
+    if (reqDto.fileIds?.length) {
+      await this.filesService.linkFiles(reqDto.fileIds);
+    }
+
     await this.db.transaction(async (tx) => {
       const inventoryIssue = await this.getInventoryIssueForUpdate(tx, issueId);
 
@@ -383,8 +404,17 @@ export class InventoryIssuesService {
           status: InventoryDocumentStatus.POSTED,
           postedBy: userId,
           postedAt: new Date(),
+          postNote: reqDto.note ?? null,
         })
         .where(eq(inventoryIssues.id, issueId));
+
+      if (reqDto.fileIds?.length) {
+        await tx
+          .insert(inventoryIssueFiles)
+          .values(
+            [...new Set(reqDto.fileIds)].map((fileId) => ({ issueId, fileId })),
+          );
+      }
 
       await tx
         .update(inventoryRequisitions)

@@ -1,4 +1,4 @@
-<!-- Generated: 2026-10-16 | Files scanned: 40 | Token estimate: ~2590 -->
+<!-- Generated: 2026-10-24 | Files scanned: 40 | Token estimate: ~2590 -->
 # Data Codemap
 
 **Last Updated:** 2026-10-16
@@ -25,7 +25,7 @@
 - `orders/`: `orders` (sales order SO, FK `client_id`, `assigned_user_id`), `order_items` (FK `order_id`, `item_id`), `order_files`.
 - `production/`: `production_orders` (LSX; FK `order_id`, optional `ncr_id`), `production_order_items` (FK `production_order_id`, `order_item_id`, `item_id`), `production_order_logs`, `production_jobs` (JOB; FK `production_order_id`, `item_id`), `production_job_items`, `production_job_units`, `production_job_bom_items` (snapshot of BOM), `production_job_operations` (FK `production_job_id`, `operation_id`, bom item), `production_job_operation_reports` (+ `_report_files`), `production_job_issues`, `production_job_logs`, `production_job_notes` (append-only).
 - `quality/`: `quality_inspections` (IQC and OQC in one table, `inspection_no`), `quality_inspection_results`, `quality_inspection_evidences` (`quality_evidence_kind`), `ncrs`, `ncr_logs`, `ncr_cost_lines` (`ncr_cost_kind`), `quality-enums.ts`.
-- `inventory/`: `inventory_receipts` (+ `_items`), `inventory_issues` (+ `_items`), `inventory_adjustments` (+ `_items`), `inventory_requisitions` (+ `_items`), `inventory_transactions` (ledger, only POSTED docs write), `inventory_balances` (per item), `outbound_orders` (+ `_items`), `outsourcing_orders` (+ `_items`), `outsourcing_receipts` (+ `_items`), `supplier_returns` (+ `supplier_return_files`), `inventory-documents.ts` (shared status enum).
+- `inventory/`: `inventory_receipts` (+ `_items`), `inventory_issues` (+ `_items`, `inventory_issue_files`), `inventory_adjustments` (+ `_items`), `inventory_requisitions` (+ `_items`), `inventory_transactions` (ledger, only POSTED docs write), `inventory_balances` (per item), `outbound_orders` (+ `_items`), `outsourcing_orders` (+ `_items`), `outsourcing_receipts` (+ `_items`), `supplier_returns` (+ `supplier_return_files`), `inventory-documents.ts` (shared status enum).
 - `purchase-requests/`: `purchase_requests` (FK `department_id`), `purchase_request_items` (FK `purchase_request_id`, `item_id`).
 - `purchasing/`: `purchase_quotations`, `purchase_quotation_items` (FK `quotation_id`, `item_id`), `purchase_quotation_item_suppliers` (supplier quotes, FK `supplier_id`) + `_supplier_files`, `purchase_quotation_item_allocations` (links to `purchase_request_items`), `purchase_orders` (DMH; FK `supplier_id`, `quotation_id`), `purchase_order_items` (FK `purchase_order_id`, `purchase_request_item_id`), `payment_requests` (FK `purchase_order_id`), `payment_request_logs`.
 

@@ -5,6 +5,7 @@ import {
   InventoryIssueType,
 } from '../../../database/schemas';
 import {
+  ClassField,
   ClassFieldOptional,
   DateField,
   DateFieldOptional,
@@ -14,6 +15,7 @@ import {
   UUIDField,
 } from '../../../decorators/field.decorators';
 import { DepartmentResDto } from '../../departments/dto/department.res.dto';
+import { FileResDto } from '../../files/dto/file.res.dto';
 import { InventoryRequisitionRefResDto } from '../../inventory-requisitions/dto/inventory-requisition-ref.res.dto';
 import { ProductionJobRefResDto } from '../../production-jobs/dto/production-job-ref.res.dto';
 import { ProductionOrderRefResDto } from '../../production-orders/dto/production-order-ref.res.dto';
@@ -77,6 +79,17 @@ export class InventoryIssueResDto {
   @Expose()
   @DateFieldOptional({ nullable: true })
   postedAt!: Date | null;
+
+  @Expose()
+  @StringFieldOptional({ nullable: true, description: 'Ghi chú xác nhận xuất' })
+  postNote!: string | null;
+
+  @Expose()
+  @ClassField(() => FileResDto, {
+    each: true,
+    description: 'Ảnh/file bằng chứng lúc xác nhận xuất',
+  })
+  files!: FileResDto[];
 
   @Expose()
   @ClassFieldOptional(() => UserRefResDto, { nullable: true })

@@ -72,6 +72,8 @@ export enum UploadType {
   PRODUCTION_ORDER_SIGNED_DOCUMENT = 'PRODUCTION_ORDER_SIGNED_DOCUMENT',
   // Tệp đính kèm cho dòng NCC trong phiếu báo giá (catalogue, chứng chỉ, bảng giá PDF, ảnh mẫu).
   QUOTATION_SUPPLIER_EVIDENCE = 'QUOTATION_SUPPLIER_EVIDENCE',
+  // Ảnh/file bằng chứng khi kho xác nhận xuất (`POST /inventory-issues/:issueId/post`).
+  INVENTORY_ISSUE_EVIDENCE = 'INVENTORY_ISSUE_EVIDENCE',
 }
 
 export const uploadTypeEnum = pgEnum('upload_type', [
@@ -94,6 +96,7 @@ export const uploadTypeEnum = pgEnum('upload_type', [
   UploadType.BOM_ITEM_IMAGE,
   UploadType.PRODUCTION_ORDER_SIGNED_DOCUMENT,
   UploadType.QUOTATION_SUPPLIER_EVIDENCE,
+  UploadType.INVENTORY_ISSUE_EVIDENCE,
 ]);
 
 /**
