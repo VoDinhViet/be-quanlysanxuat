@@ -2,12 +2,14 @@ import { Exclude, Expose } from 'class-transformer';
 
 import {
   FulfillmentType,
+  OutboundOrderInvoiceStatus,
   OutboundOrderStatus,
 } from '../../../database/schemas';
 import {
   ClassField,
   ClassFieldOptional,
   DateField,
+  DateFieldOptional,
   EnumField,
   NumberField,
   StringField,
@@ -66,6 +68,18 @@ export class PageOutboundOrderResDto {
   @Expose()
   @StringFieldOptional({ nullable: true, description: 'Ghi chú' })
   note!: string | null;
+
+  @Expose()
+  @EnumField(() => OutboundOrderInvoiceStatus)
+  invoiceStatus!: OutboundOrderInvoiceStatus;
+
+  @Expose()
+  @StringFieldOptional({ nullable: true, description: 'Số hóa đơn' })
+  invoiceNo!: string | null;
+
+  @Expose()
+  @DateFieldOptional({ nullable: true, description: 'Ngày xuất hóa đơn' })
+  invoiceDate!: Date | null;
 
   @Expose()
   @ClassFieldOptional(() => UserRefResDto, { nullable: true })

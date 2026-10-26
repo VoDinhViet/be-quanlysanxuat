@@ -20,6 +20,7 @@ import { Permissions } from '../../decorators/permissions.decorator';
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
 import { CreateOutboundOrderReqDto } from './dto/create-outbound-order.req.dto';
 import { ExportOutboundOrdersReqDto } from './dto/export-outbound-orders.req.dto';
+import { GetOutboundOrderStatsReqDto } from './dto/get-outbound-order-stats.req.dto';
 import { GetOutboundOrdersReqDto } from './dto/get-outbound-orders.req.dto';
 import { GetUnfulfilledOrderItemsReqDto } from './dto/get-unfulfilled-order-items.req.dto';
 import { OutboundOrderItemResDto } from './dto/outbound-order-item.res.dto';
@@ -27,6 +28,8 @@ import { OutboundOrderResDto } from './dto/outbound-order.res.dto';
 import { PageOutboundOrderResDto } from './dto/page-outbound-order.res.dto';
 import { RejectOutboundOrderReqDto } from './dto/reject-outbound-order.req.dto';
 import { UnfulfilledOrderItemResDto } from './dto/unfulfilled-order-item.res.dto';
+import { OutboundOrderStatsResDto } from './dto/outbound-order-stats.res.dto';
+import { UpdateOutboundOrderInvoiceReqDto } from './dto/update-outbound-order-invoice.req.dto';
 import { UpdateOutboundOrderReqDto } from './dto/update-outbound-order.req.dto';
 import { OutboundOrdersService } from './outbound-orders.service';
 
@@ -46,6 +49,20 @@ export class OutboundOrdersController {
     @Query() reqDto: GetOutboundOrdersReqDto,
   ): Promise<OffsetPaginatedDto<PageOutboundOrderResDto>> {
     return this.outboundOrdersService.getOutboundOrders(reqDto);
+  }
+
+  // Khai trước ':outboundOrderId' để 'stats' không bị bắt nhầm thành id.
+  @Get('stats')
+  @Permissions('outbound:read')
+  @ApiAuth({
+    type: OutboundOrderStatsResDto,
+    summary:
+      'Thống kê DO: tổng số và số DO đã giao chưa xuất hóa đơn — theo bộ lọc GET /outbound-orders trừ trạng thái, không phân trang',
+  })
+  getOutboundOrderStats(
+    @Query() reqDto: GetOutboundOrderStatsReqDto,
+  ): Promise<OutboundOrderStatsResDto> {
+    return this.outboundOrdersService.getOutboundOrderStats(reqDto);
   }
 
   @Get('unfulfilled-order-items')
@@ -181,6 +198,25 @@ export class OutboundOrdersController {
     @CurrentUser() payload: JwtPayloadType,
   ): Promise<void> {
     return this.outboundOrdersService.rejectOutboundOrder(
+      outboundOrderId,
+      reqDto,
+      payload.userId,
+    );
+  }
+
+  @Patch(':outboundOrderId/invoice')
+  @Permissions('outbound:invoice')
+  @ApiAuth({
+    summary:
+      'Nhập/sửa thông tin hóa đơn (số + ngày) — chỉ khi DO đã giao (E320), lưu là tự thành Đã xuất',
+    statusCode: HttpStatus.NO_CONTENT,
+  })
+  updateOutboundOrderInvoice(
+    @UUIDParam('outboundOrderId') outboundOrderId: string,
+    @Body() reqDto: UpdateOutboundOrderInvoiceReqDto,
+    @CurrentUser() payload: JwtPayloadType,
+  ): Promise<void> {
+    return this.outboundOrdersService.updateOutboundOrderInvoice(
       outboundOrderId,
       reqDto,
       payload.userId,

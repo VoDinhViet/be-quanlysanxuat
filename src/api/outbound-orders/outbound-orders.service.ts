@@ -41,6 +41,7 @@ import {
   OrderStatus,
   outboundOrderItems,
   outboundOrders,
+  OutboundOrderInvoiceStatus,
   OutboundOrderStatus,
   productionJobs,
   productionOrders,
@@ -57,14 +58,17 @@ import { getJobFinalOperation, getJobQcCoverage } from '../oqc/oqc.query';
 import { issuedQuantityByOrderItemIdSubquery } from '../orders/orders.query';
 import { CreateOutboundOrderReqDto } from './dto/create-outbound-order.req.dto';
 import { ExportOutboundOrdersReqDto } from './dto/export-outbound-orders.req.dto';
+import { GetOutboundOrderStatsReqDto } from './dto/get-outbound-order-stats.req.dto';
 import { GetOutboundOrdersReqDto } from './dto/get-outbound-orders.req.dto';
 import { GetUnfulfilledOrderItemsReqDto } from './dto/get-unfulfilled-order-items.req.dto';
 import { OutboundOrderItemResDto } from './dto/outbound-order-item.res.dto';
 import { OutboundOrderResDto } from './dto/outbound-order.res.dto';
+import { OutboundOrderStatsResDto } from './dto/outbound-order-stats.res.dto';
 import { PageOutboundOrderResDto } from './dto/page-outbound-order.res.dto';
 import { OutboundOrderItemReqDto } from './dto/outbound-order-item.req.dto';
 import { RejectOutboundOrderReqDto } from './dto/reject-outbound-order.req.dto';
 import { UnfulfilledOrderItemResDto } from './dto/unfulfilled-order-item.res.dto';
+import { UpdateOutboundOrderInvoiceReqDto } from './dto/update-outbound-order-invoice.req.dto';
 import { UpdateOutboundOrderReqDto } from './dto/update-outbound-order.req.dto';
 import { OUTBOUND_ORDER_EXPORT_COLUMNS } from './outbound-orders.export';
 import {
@@ -108,6 +112,9 @@ export class OutboundOrdersService {
       reqDto.endDate
         ? lte(outboundOrders.fulfillmentDate, reqDto.endDate)
         : undefined,
+      reqDto.invoiceStatus
+        ? eq(outboundOrders.invoiceStatus, reqDto.invoiceStatus)
+        : undefined,
       outboundOrderLineMatchExists(this.db, reqDto),
     );
 
@@ -143,6 +150,47 @@ export class OutboundOrdersService {
     );
   }
 
+  /** Không lọc theo trạng thái: `total` đếm mọi DO, `notInvoiced` chỉ đếm DO đã giao chưa xuất hóa
+   * đơn, để bấm vào một thẻ không làm con số đổi. Bộ lọc tách riêng khỏi `getOutboundOrders` như
+   * `exportOutboundOrders`: route độc lập, sửa filter route nào chỉ route đó đổi. */
+  async getOutboundOrderStats(
+    reqDto: GetOutboundOrderStatsReqDto,
+  ): Promise<OutboundOrderStatsResDto> {
+    const where = and(
+      reqDto.q
+        ? unaccentILike(outboundOrders.code, `%${reqDto.q}%`)
+        : undefined,
+      reqDto.clientId
+        ? eq(outboundOrders.clientId, reqDto.clientId)
+        : undefined,
+      reqDto.fulfillmentType
+        ? eq(outboundOrders.fulfillmentType, reqDto.fulfillmentType)
+        : undefined,
+      reqDto.startDate
+        ? gte(outboundOrders.fulfillmentDate, reqDto.startDate)
+        : undefined,
+      reqDto.endDate
+        ? lte(outboundOrders.fulfillmentDate, reqDto.endDate)
+        : undefined,
+      outboundOrderLineMatchExists(this.db, reqDto),
+    );
+
+    const [stats] = await this.db
+      .select({
+        total: count(),
+        notInvoiced:
+          sql<number>`count(*) filter (where ${outboundOrders.status} = ${OutboundOrderStatus.DELIVERED} and ${outboundOrders.invoiceStatus} = ${OutboundOrderInvoiceStatus.NOT_ISSUED})`.mapWith(
+            Number,
+          ),
+      })
+      .from(outboundOrders)
+      .where(where);
+
+    return plainToInstance(OutboundOrderStatsResDto, stats, {
+      excludeExtraneousValues: true,
+    });
+  }
+
   /** Cắt im lặng ở `MAX_EXPORT_ROWS`, không báo lỗi khi vượt trần. Bộ lọc tách riêng khỏi
    * `getOutboundOrders` dù trông giống nhau: hai route độc lập, sửa filter route nào chỉ route đó
    * đổi. Riêng bộ lọc theo dòng (`outboundOrderLineMatchExists`) dùng chung có chủ đích. */
@@ -166,12 +214,15 @@ export class OutboundOrdersService {
       reqDto.endDate
         ? lte(outboundOrders.fulfillmentDate, reqDto.endDate)
         : undefined,
+      reqDto.invoiceStatus
+        ? eq(outboundOrders.invoiceStatus, reqDto.invoiceStatus)
+        : undefined,
       outboundOrderLineMatchExists(this.db, reqDto),
     );
 
     const summary = outboundOrderSummarySubquery(this.db);
 
-    const rows = await this.db
+    const outboundOrdersForExport = await this.db
       .select({
         code: outboundOrders.code,
         clientName: clients.name,
@@ -179,7 +230,11 @@ export class OutboundOrdersService {
         fulfillmentDate: outboundOrders.fulfillmentDate,
         fulfillmentType: outboundOrders.fulfillmentType,
         status: outboundOrders.status,
+        invoiceStatus: outboundOrders.invoiceStatus,
+        invoiceNo: outboundOrders.invoiceNo,
+        invoiceDate: outboundOrders.invoiceDate,
         orderCodes: sql<string[]>`coalesce(${summary.orderCodes}, '{}')`,
+        buyerPoNos: sql<string[]>`coalesce(${summary.buyerPoNos}, '{}')`,
         totalQuantity:
           sql<number>`coalesce(${summary.totalQuantity}, 0)`.mapWith(Number),
         note: outboundOrders.note,
@@ -197,7 +252,7 @@ export class OutboundOrdersService {
     const buffer = await buildXlsxBuffer(
       'Đơn giao hàng',
       OUTBOUND_ORDER_EXPORT_COLUMNS,
-      rows,
+      outboundOrdersForExport,
     );
     const fileName = `don-giao-hang-${DateTime.now().toFormat('yyyyLLdd-HHmm')}.xlsx`;
 
@@ -218,6 +273,7 @@ export class OutboundOrdersService {
         senderBy: true,
         approverBy: true,
         rejecterBy: true,
+        invoicerBy: true,
       },
     });
 
@@ -756,6 +812,36 @@ export class OutboundOrdersService {
         throw new AppException(ErrorCode.E205, HttpStatus.CONFLICT);
       }
     }
+  }
+
+  /** Chỉ DO đã giao (`DELIVERED`, `E320`); nhập lại để sửa số hóa đơn được. Lưu là tự thành
+   * `ISSUED`. Khoá dòng DO để hai lần lưu đồng thời không ghi chồng nhau. */
+  async updateOutboundOrderInvoice(
+    outboundOrderId: string,
+    reqDto: UpdateOutboundOrderInvoiceReqDto,
+    userId: string,
+  ): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      const lockedOutboundOrder = await this.getOutboundOrderForUpdate(
+        tx,
+        outboundOrderId,
+      );
+
+      if (lockedOutboundOrder.status !== OutboundOrderStatus.DELIVERED) {
+        throw new AppException(ErrorCode.E320, HttpStatus.CONFLICT);
+      }
+
+      await tx
+        .update(outboundOrders)
+        .set({
+          invoiceStatus: OutboundOrderInvoiceStatus.ISSUED,
+          invoiceNo: reqDto.invoiceNo,
+          invoiceDate: reqDto.invoiceDate,
+          invoicedBy: userId,
+          invoicedAt: new Date(),
+        })
+        .where(eq(outboundOrders.id, outboundOrderId));
+    });
   }
 
   /** Phiếu xuất `SALES` nháp của DO vừa duyệt: thủ kho vào đó xác nhận xuất, lúc ghi sổ DO mới

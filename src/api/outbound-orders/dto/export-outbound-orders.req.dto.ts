@@ -1,5 +1,6 @@
 import {
   FulfillmentType,
+  OutboundOrderInvoiceStatus,
   OutboundOrderStatus,
 } from '../../../database/schemas';
 import {
@@ -21,6 +22,9 @@ export class ExportOutboundOrdersReqDto {
 
   @EnumFieldOptional(() => FulfillmentType)
   readonly fulfillmentType?: FulfillmentType;
+
+  @EnumFieldOptional(() => OutboundOrderInvoiceStatus)
+  readonly invoiceStatus?: OutboundOrderInvoiceStatus;
 
   @DateFieldOptional({ description: 'Filter: fulfillmentDate >= startDate' })
   readonly startDate?: Date;

@@ -1667,6 +1667,13 @@
       "when": 1792982097739,
       "tag": "0237_sales_issue_for_pending_delivery",
       "breakpoints": true
+    },
+    {
+      "idx": 238,
+      "version": "7",
+      "when": 1792983499224,
+      "tag": "0238_outbound_order_invoice",
+      "breakpoints": true
     }
   ]
 }

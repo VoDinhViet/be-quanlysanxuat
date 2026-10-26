@@ -3,7 +3,11 @@ import {
   formatVnDateTime,
   type ExcelColumn,
 } from '../../common/utils/excel.util';
-import { FulfillmentType, OutboundOrderStatus } from '../../database/schemas';
+import {
+  FulfillmentType,
+  OutboundOrderInvoiceStatus,
+  OutboundOrderStatus,
+} from '../../database/schemas';
 
 export interface OutboundOrderExport {
   code: string;
@@ -12,6 +16,9 @@ export interface OutboundOrderExport {
   fulfillmentDate: Date;
   fulfillmentType: FulfillmentType;
   status: OutboundOrderStatus;
+  invoiceStatus: OutboundOrderInvoiceStatus;
+  invoiceNo: string | null;
+  invoiceDate: Date | null;
   orderCodes: string[];
   buyerPoNos: string[];
   totalQuantity: number;
@@ -27,6 +34,11 @@ const OUTBOUND_ORDER_STATUS_LABELS: Record<OutboundOrderStatus, string> = {
   [OutboundOrderStatus.DELIVERED]: 'Đã giao',
   [OutboundOrderStatus.CANCELLED]: 'Đã hủy',
   [OutboundOrderStatus.REJECTED]: 'Bị từ chối',
+};
+
+const INVOICE_STATUS_LABELS: Record<OutboundOrderInvoiceStatus, string> = {
+  [OutboundOrderInvoiceStatus.NOT_ISSUED]: 'Chưa xuất',
+  [OutboundOrderInvoiceStatus.ISSUED]: 'Đã xuất',
 };
 
 const FULFILLMENT_TYPE_LABELS: Record<FulfillmentType, string> = {
@@ -51,6 +63,15 @@ export const OUTBOUND_ORDER_EXPORT_COLUMNS: ExcelColumn<OutboundOrderExport>[] =
     {
       header: 'Trạng thái',
       value: (row) => OUTBOUND_ORDER_STATUS_LABELS[row.status],
+    },
+    {
+      header: 'Trạng thái hóa đơn',
+      value: (row) => INVOICE_STATUS_LABELS[row.invoiceStatus],
+    },
+    { header: 'Số hóa đơn', value: (row) => row.invoiceNo },
+    {
+      header: 'Ngày xuất hóa đơn',
+      value: (row) => (row.invoiceDate ? formatVnDate(row.invoiceDate) : null),
     },
     {
       header: 'Mã đơn hàng nguồn',

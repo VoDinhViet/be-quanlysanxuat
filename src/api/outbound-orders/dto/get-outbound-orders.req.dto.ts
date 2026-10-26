@@ -1,6 +1,7 @@
 import { PageOptionsDto } from '../../../common/dto/offset-pagination/page-options.dto';
 import {
   FulfillmentType,
+  OutboundOrderInvoiceStatus,
   OutboundOrderStatus,
 } from '../../../database/schemas';
 import {
@@ -19,6 +20,12 @@ export class GetOutboundOrdersReqDto extends PageOptionsDto {
 
   @EnumFieldOptional(() => FulfillmentType)
   readonly fulfillmentType?: FulfillmentType;
+
+  @EnumFieldOptional(() => OutboundOrderInvoiceStatus, {
+    description:
+      'Trạng thái hóa đơn. DO chưa giao luôn là NOT_ISSUED, nên lọc "chưa xuất" cần kèm status=DELIVERED',
+  })
+  readonly invoiceStatus?: OutboundOrderInvoiceStatus;
 
   @DateFieldOptional({ description: 'Filter: fulfillmentDate >= startDate' })
   readonly startDate?: Date;

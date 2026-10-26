@@ -25,6 +25,16 @@ export const fulfillmentTypeEnum = pgEnum('fulfillment_type', [
   FulfillmentType.PICKUP,
 ]);
 
+export enum OutboundOrderInvoiceStatus {
+  NOT_ISSUED = 'NOT_ISSUED',
+  ISSUED = 'ISSUED',
+}
+
+export const outboundOrderInvoiceStatusEnum = pgEnum(
+  'outbound_order_invoice_status',
+  [OutboundOrderInvoiceStatus.NOT_ISSUED, OutboundOrderInvoiceStatus.ISSUED],
+);
+
 /**
  * Vòng đời (`docs/CODEMAPS/sales.md`): `DRAFT ─send→ PENDING_APPROVAL ─approve→ PENDING_DELIVERY
  * ─ghi sổ phiếu xuất kho→ DELIVERED`, có nhánh `PENDING_APPROVAL ─reject→ REJECTED ─send→ PENDING_APPROVAL`.
@@ -88,6 +98,17 @@ export const outboundOrders = pgTable(
     }),
     rejectedAt: timestamp('rejected_at'),
     rejectionReason: varchar('rejection_reason', { length: 1000 }),
+    // Hóa đơn xuất ở hệ thống khác: chỉ ghi lại để theo dõi DO nào chưa xuất. Số hóa đơn không
+    // unique (nhiều DO có thể chung một hóa đơn).
+    invoiceStatus: outboundOrderInvoiceStatusEnum('invoice_status')
+      .notNull()
+      .default(OutboundOrderInvoiceStatus.NOT_ISSUED),
+    invoiceNo: varchar('invoice_no', { length: 100 }),
+    invoiceDate: date('invoice_date', { mode: 'date' }),
+    invoicedBy: uuid('invoiced_by').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    invoicedAt: timestamp('invoiced_at'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at')
       .defaultNow()
@@ -102,6 +123,7 @@ export const outboundOrders = pgTable(
     index('idx_outbound_orders_sent_by').on(table.sentBy),
     index('idx_outbound_orders_approved_by').on(table.approvedBy),
     index('idx_outbound_orders_rejected_by').on(table.rejectedBy),
+    index('idx_outbound_orders_invoiced_by').on(table.invoicedBy),
   ],
 );
 
@@ -126,6 +148,10 @@ export const outboundOrdersRelations = relations(
     }),
     rejecterBy: one(users, {
       fields: [outboundOrders.rejectedBy],
+      references: [users.id],
+    }),
+    invoicerBy: one(users, {
+      fields: [outboundOrders.invoicedBy],
       references: [users.id],
     }),
     items: many(outboundOrderItems),

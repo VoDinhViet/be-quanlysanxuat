@@ -1,14 +1,14 @@
-<!-- Generated: 2026-10-26 | Files scanned: 27 | Token estimate: ~2950 -->
+<!-- Generated: 2026-10-26 | Files scanned: 29 | Token estimate: ~2950 -->
 # Sales codemap
 
 Conventions: controllers check permissions, services do not; routes are under global prefix `api`. Create/update mostly return 204 (void) except `POST /orders`. Paths below: `O`=`src/api/orders`, `B`=`src/api/outbound-orders`, `C`=`src/api/clients`, `S`=`src/database/schemas`.
 
 ## 1. Modules
 - `O/` (SO): `orders.controller.ts` 199, `orders.service.ts` 1045, `orders.query.ts` 26 (`issuedQuantityByOrderItemIdSubquery`:12 = delivered qty per order line, from `inventory_transactions`), `orders.export.ts` 76, `dto/` 14 files. Imports Files, ProductionOrders, Templates (PDF) modules (`orders.module.ts:11`).
-- `B/` (DO): `outbound-orders.controller.ts` 214, `.service.ts` 882, `.query.ts` 210 (held-qty and filter helpers, `closeOrdersIfFullyDelivered`:168), `.export.ts` 73. No module imports; posting the DO's issue lives in `InventoryIssuesService`.
+- `B/` (DO): `outbound-orders.controller.ts` 250, `.service.ts` 968, `.query.ts` 210 (held-qty and filter helpers, `closeOrdersIfFullyDelivered`:168), `.export.ts` 94. No module imports; posting the DO's issue lives in `InventoryIssuesService`.
 - `C/`: `clients.controller.ts` 118, `clients.service.ts` 354 (clients + contacts).
 - `src/api/client-groups/` (controller 26, service 49) and `src/api/countries/` (controller 23, service 34): read-only lookups.
-- Schemas: `S/orders/{orders 241, order-items 109, order-files 38}.ts`, `S/clients/{clients 77, client-contacts 41, client-groups 15}.ts`, `S/countries.ts` 15, `S/inventory/{outbound-orders 135, outbound-order-items 91}.ts`.
+- Schemas: `S/orders/{orders 241, order-items 109, order-files 38}.ts`, `S/clients/{clients 77, client-contacts 41, client-groups 15}.ts`, `S/countries.ts` 15, `S/inventory/{outbound-orders 161, outbound-order-items 91}.ts`.
 
 ## 2. Routes (35 total)
 Orders (13), `@Controller('orders')`; static routes are declared before `:orderId`.
@@ -27,21 +27,23 @@ Orders (13), `@Controller('orders')`; static routes are declared before `:orderI
 | POST /orders/:orderId/reject | orders:approve | :182 -> `rejectOrder` (:760) | orders |
 | DELETE /orders/:orderId | orders:delete | :196 -> `deleteOrder` (:779) | orders.deletedAt |
 
-Outbound orders (13), `@Controller('outbound-orders')`; handler lines in `B/outbound-orders.controller.ts`, service lines in `.service.ts`.
+Outbound orders (15), `@Controller('outbound-orders')`; handler lines in `B/outbound-orders.controller.ts`, service lines in `.service.ts`.
 | Route | Perm | Handler -> Service | Writes |
 |---|---|---|---|
-| GET /outbound-orders | outbound:read | :45 -> `getOutboundOrders` (:98) | - |
-| GET .../unfulfilled-order-items | outbound:read | :59 -> `getUnfulfilledOrderItems` (:304) | - |
-| GET .../export | outbound:read | :74 -> `exportOutboundOrders` (:156) | - |
-| GET .../:outboundOrderId | outbound:read | :86 -> `getOutboundOrder` (:217) | - |
-| GET .../:outboundOrderId/items | outbound:read | :99 -> `getOutboundOrderItems` (:244) | - |
-| POST /outbound-orders | outbound:create | :112 -> `createOutboundOrder` (:430) | outbound_orders, outbound_order_items, document_sequences |
-| PATCH .../:id | outbound:update | :128 -> `updateOutboundOrder` (:455) | outbound_orders, outbound_order_items |
-| POST .../:id/send | outbound:update | :145 -> `sendOutboundOrder` (:566) | outbound_orders |
-| POST .../:id/approve | outbound:approve | :162 -> `approveOutboundOrder` (:616) | outbound_orders, inventory_issues + inventory_issue_items (DRAFT SALES issue), document_sequences |
-| POST .../:id/reject | outbound:approve | :178 -> `rejectOutboundOrder` (:682) | outbound_orders |
-| POST .../:id/cancel | outbound:update | :190 -> `cancelOutboundOrder` (:491) | outbound_orders, inventory_issues (DRAFT issue -> CANCELLED) |
-| DELETE .../:id | outbound:delete | :203 -> `deleteOutboundOrder` (:527) | outbound_orders (hard delete, items cascade) |
+| GET /outbound-orders | outbound:read | :48 -> `getOutboundOrders` (:95) | - |
+| GET .../stats | outbound:read | :62 -> `getOutboundOrderStats` (:156) - `{total, notInvoiced}`, own filter DTO (no status/invoiceStatus/paging), declared before `:outboundOrderId` | - |
+| GET .../unfulfilled-order-items | outbound:read | :76 -> `getUnfulfilledOrderItems` (:365) | - |
+| GET .../export | outbound:read | :91 -> `exportOutboundOrders` (:197) | - |
+| GET .../:outboundOrderId | outbound:read | :103 -> `getOutboundOrder` (:265) | - |
+| GET .../:outboundOrderId/items | outbound:read | :116 -> `getOutboundOrderItems` (:305) | - |
+| POST /outbound-orders | outbound:create | :129 -> `createOutboundOrder` (:491) | outbound_orders, outbound_order_items, document_sequences |
+| PATCH .../:id | outbound:update | :145 -> `updateOutboundOrder` (:516) | outbound_orders, outbound_order_items |
+| POST .../:id/send | outbound:update | :162 -> `sendOutboundOrder` (:637) | outbound_orders |
+| POST .../:id/approve | outbound:approve | :179 -> `approveOutboundOrder` (:672) | outbound_orders, inventory_issues + inventory_issue_items (DRAFT SALES issue), document_sequences |
+| POST .../:id/reject | outbound:approve | :195 -> `rejectOutboundOrder` (:755) | outbound_orders |
+| PATCH .../:id/invoice | outbound:invoice | :214 -> `updateOutboundOrderInvoice` (:819) - DELIVERED only, else E320; saving sets `invoiceStatus = ISSUED` | outbound_orders (invoice_status, invoice_no, invoice_date, invoiced_by, invoiced_at) |
+| POST .../:id/cancel | outbound:update | :233 -> `cancelOutboundOrder` (:547) | outbound_orders, inventory_issues (DRAFT issue -> CANCELLED) |
+| DELETE .../:id | outbound:delete | :245 -> `deleteOutboundOrder` (:583) | outbound_orders (hard delete, items cascade) |
 
 Clients (7), handler lines in `C/clients.controller.ts`, service in `clients.service.ts`.
 | Route | Perm | Handler -> Service | Writes |
@@ -69,13 +71,14 @@ SO -> LSX:
   -> `approveProductionOrder` (:434): LSX APPROVED (or COMPLETED if every line is fully from stock), `orders.status = IN_PROGRESS` (:503), `createJobs` makes JOBs
   NCR path: `NcrsService.createProductionOrder` (`ncrs.service.ts:337`) inserts LSX with `source_type=NCR`, same `orderId`, already APPROVED, 1 JOB; order status untouched.
 
-DO status (`S/inventory/outbound-orders.ts:34`), each step locks the row with `getOutboundOrderForUpdate` (:893):
+DO status (`S/inventory/outbound-orders.ts:44`), each step locks the row with `getOutboundOrderForUpdate` (:908):
   DRAFT --sendOutboundOrder--> PENDING_APPROVAL --approveOutboundOrder--> PENDING_DELIVERY ("Chờ xuất kho") --InventoryIssuesService.postInventoryIssue--> DELIVERED
   PENDING_APPROVAL --rejectOutboundOrder--> REJECTED --sendOutboundOrder--> PENDING_APPROVAL
   DRAFT | PENDING_APPROVAL | PENDING_DELIVERY --cancelOutboundOrder--> CANCELLED;   DRAFT --deleteOutboundOrder--> (row removed)
 
-Stock reservation: DRAFT, PENDING_APPROVAL, PENDING_DELIVERY hold finished goods (`HOLDING_STATUSES`, `B/outbound-orders.query.ts:16`); `getOutboundHeldQuantities`:58 and `outboundHeldQuantityByItemSubquery`:26 sum held qty per item. `ensureOutboundLinesIssuable` (service:633), called from create (:448), update (:478), send (:584), approve (:615): sums line qty per `itemId`, locks balances (`getInventoryBalancesForUpdate`, `inventory/item-stock.query.ts:15`), then requires qty <= onHand - held by OTHER DOs, else E194.
-Delivery is two steps. Approve (`approveOutboundOrder`, same tx as the status change) calls `createSalesIssueDraft` (:763): a DRAFT `inventory_issues` (SALES, `outboundOrderId`, code `PXK-yyyy-nnnnn`) with the DO's lines; stock is untouched. The warehouse then posts it (`InventoryIssuesService.postInventoryIssue`, `inventory:update`): lock DO row, then issue row; DO must be PENDING_DELIVERY (E237); `postDocument` writes negative `inventory_transactions` dated the posting day (not the approval day) -> DO = DELIVERED -> `closeOrdersIfFullyDelivered` (`B/outbound-orders.query.ts`:168): SO goes COMPLETED only if currently IN_PROGRESS and every NORMAL line has delivered qty >= ordered qty.
+Stock reservation: DRAFT, PENDING_APPROVAL, PENDING_DELIVERY hold finished goods (`HOLDING_STATUSES`, `B/outbound-orders.query.ts:16`); `getOutboundHeldQuantities`:58 and `outboundHeldQuantityByItemSubquery`:26 sum held qty per item. `ensureOutboundLinesIssuable` (service:706), called from create (:448), update (:478), send (:584), approve (:615): sums line qty per `itemId`, locks balances (`getInventoryBalancesForUpdate`, `inventory/item-stock.query.ts:15`), then requires qty <= onHand - held by OTHER DOs, else E194.
+Delivery is two steps. Approve (`approveOutboundOrder`, same tx as the status change) calls `createSalesIssueDraft` (:849): a DRAFT `inventory_issues` (SALES, `outboundOrderId`, code `PXK-yyyy-nnnnn`) with the DO's lines; stock is untouched. The warehouse then posts it (`InventoryIssuesService.postInventoryIssue`, `inventory:update`): lock DO row, then issue row; DO must be PENDING_DELIVERY (E237); `postDocument` writes negative `inventory_transactions` dated the posting day (not the approval day) -> DO = DELIVERED -> `closeOrdersIfFullyDelivered` (`B/outbound-orders.query.ts`:168): SO goes COMPLETED only if currently IN_PROGRESS and every NORMAL line has delivered qty >= ordered qty.
+Invoice (separate flag, not a status): DELIVERED DOs start `invoiceStatus = NOT_ISSUED` (so do all older and not-yet-delivered DOs); `updateOutboundOrderInvoice` locks the DO row, requires DELIVERED (E320) and writes number (trimmed, <= 100) + date + `invoicedBy/At`, re-saving overwrites (last writer wins). `invoiceStatus` is a list/export filter; non-delivered DOs are always NOT_ISSUED, so "not invoiced" lists must also send `status=DELIVERED` to match the `notInvoiced` count. `outbound:invoice` is granted to nobody by default.
 Cancel both ways: `cancelOutboundOrder` also cancels the DRAFT issue; `InventoryIssuesService.cancelInventoryIssue` on a DO-linked issue cancels the DO and needs `outbound:update` as well (controller passes `canCancelOutboundOrder`, else E033). Update/delete of a DO-linked issue is blocked (E319). Badge `salesIssuesToPost` = DRAFT SALES issues; `inventoryIssuesToPost` now counts the other types.
 
 SO cancel/delete guards: PATCH blocked on COMPLETED/CANCELLED (E065) and PENDING_CONFIRMATION (E090), `ensureOrderEditable`:991. Cancel: E236 if its ORDER-LSX is APPROVED (`ensureProductionOrderNotApproved`:971); a PENDING LSX is deleted in the same tx (:704). Delete: only DRAFT or REJECTED, soft delete (`ensureOrderDeletable`:1003, E264). Client delete: E246 if any `orders` or `outbound_orders` row exists, including soft-deleted orders (`ensureClientNotInUse`:250).

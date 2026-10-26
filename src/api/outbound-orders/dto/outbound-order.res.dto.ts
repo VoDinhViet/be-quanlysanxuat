@@ -2,6 +2,7 @@ import { Exclude, Expose } from 'class-transformer';
 
 import {
   FulfillmentType,
+  OutboundOrderInvoiceStatus,
   OutboundOrderStatus,
 } from '../../../database/schemas';
 import {
@@ -95,6 +96,26 @@ export class OutboundOrderResDto {
   @Expose()
   @StringFieldOptional({ nullable: true, description: 'Lý do từ chối' })
   rejectionReason!: string | null;
+
+  @Expose()
+  @EnumField(() => OutboundOrderInvoiceStatus)
+  invoiceStatus!: OutboundOrderInvoiceStatus;
+
+  @Expose()
+  @StringFieldOptional({ nullable: true, description: 'Số hóa đơn' })
+  invoiceNo!: string | null;
+
+  @Expose()
+  @DateFieldOptional({ nullable: true, description: 'Ngày xuất hóa đơn' })
+  invoiceDate!: Date | null;
+
+  @Expose()
+  @ClassFieldOptional(() => UserRefResDto, { nullable: true })
+  invoicerBy!: UserRefResDto | null;
+
+  @Expose()
+  @DateFieldOptional({ nullable: true })
+  invoicedAt!: Date | null;
 
   @Expose()
   @ClassFieldOptional(() => OutboundOrderIssueRefResDto, { nullable: true })
