@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Đề Xuất Mua Hàng (Purchase Requisition) - BM 07-01 | Tiến Huy Mold</title>
+  <title>Đề Xuất Mua Hàng - BM 07-01 | Tiến Huy Mold</title>
   <!-- Phông chữ chuẩn doanh nghiệp: Times New Roman / Tinos (Nghị định 30/2020/NĐ-CP & ISO 9001) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -603,7 +603,7 @@
       grid-column: span 2;
     }
 
-    .meta-flat-grid.meta-grid-3 .meta-item-lbl {
+    .meta-flat-grid.meta-grid-3 > div .meta-item-lbl {
       min-width: 110px;
     }
 
@@ -624,7 +624,8 @@
             <div class="company-names">
               <div class="company-name-vi">CÔNG TY TNHH CƠ KHÍ KHUÔN MẪU TIẾN HUY</div>
               <div class="company-name-en">TIEN HUY MECHANICAL MOLD CO., LTD</div>
-              <div class="company-contact">Đường số 4, KCN Sông Mây, Xã Bình Minh, Tỉnh Đồng Nai • ĐT: (+84) 0251.xxxx</div>
+              <div class="company-contact">Đường số 4, khu công nghiệp Sông Mây, Xã Bình Minh, TP Đồng Nai, Việt Nam</div>
+              <div class="company-contact">MST: 3602622388 • Điện thoại: 0909185730 • Email: cokhitienhuy@gmail.com • Website: www.cokhitienhuy.com</div>
             </div>
           </div>
           <div class="header-iso-flat">
@@ -637,35 +638,34 @@
         <!-- 2. Tiêu đề biểu mẫu -->
         <div class="title-flat-wrap">
           <h1 class="title-main-text">ĐỀ XUẤT MUA HÀNG</h1>
-          <div class="title-sub-text">PURCHASE REQUISITION</div>
         </div>
 
         <!-- 3. Thông tin mua hàng (Hoàn toàn phẳng, không dùng Card) -->
         <div class="meta-flat-grid meta-grid-3">
           <div class="meta-row-item meta-row-wide">
-            <span class="meta-item-lbl">PO / Lý do <span>/Purpose:</span></span>
+            <span class="meta-item-lbl">PO / Lý do:</span>
             <div class="meta-item-val font-semibold">{{source}}</div>
           </div>
           <div class="meta-row-item">
-            <span class="meta-item-lbl">Job <span>/Job No:</span></span>
+            <span class="meta-item-lbl">Job:</span>
             <div class="meta-item-val font-mono">{{job_code}}</div>
           </div>
 
           <div class="meta-row-item">
-            <span class="meta-item-lbl">Mã phiếu <span>/No:</span></span>
+            <span class="meta-item-lbl">Mã phiếu:</span>
             <div class="meta-item-val font-bold font-mono" style="color: var(--navy);">{{code}}</div>
           </div>
           <div class="meta-row-item">
-            <span class="meta-item-lbl">Ngày đề xuất <span>/Request Date:</span></span>
+            <span class="meta-item-lbl">Ngày đề xuất:</span>
             <div class="meta-item-val font-mono">{{request_date}}</div>
           </div>
           <div class="meta-row-item">
-            <span class="meta-item-lbl">Ngày cần <span>/Required Date:</span></span>
+            <span class="meta-item-lbl">Ngày cần:</span>
             <div class="meta-item-val font-mono">{{needed_date}}</div>
           </div>
 
           <div class="meta-row-item">
-            <span class="meta-item-lbl">Bộ phận đề xuất <span>/Department:</span></span>
+            <span class="meta-item-lbl">Bộ phận đề xuất:</span>
             <div class="meta-item-val">{{department_name}}</div>
           </div>
         </div>
@@ -674,12 +674,12 @@
         <table class="form-integrated-table" id="table-purchase-request">
           <thead>
             <tr>
-              <th style="width: 35px;">STT<span class="th-subline">No</span></th>
-              <th style="width: 130px;">Mã vật tư<span class="th-subline">Item Code</span></th>
-              <th>Tên hàng hóa (bao gồm quy cách)<span class="th-subline">Description &amp; Specification</span></th>
-              <th style="width: 70px;">Đơn vị tính<span class="th-subline">Unit</span></th>
-              <th style="width: 90px;">Số lượng<span class="th-subline">Qty</span></th>
-              <th style="width: 220px;">Ghi chú<span class="th-subline">Note</span></th>
+              <th style="width: 35px;">STT</th>
+              <th style="width: 130px;">Mã vật tư</th>
+              <th>Tên hàng hóa (bao gồm quy cách)</th>
+              <th style="width: 70px;">Đơn vị tính</th>
+              <th style="width: 90px;">Số lượng</th>
+              <th style="width: 220px;">Ghi chú</th>
             </tr>
           </thead>
           <tbody>
@@ -701,24 +701,22 @@
           <div class="sig-flat-col" style="min-width: 180px;">
             <div>
               <div class="sig-title-main">Người Lập</div>
-              <div class="sig-title-sub">Prepared by</div>
             </div>
             <div class="sig-name-block">
               <div class="sig-person-name"></div>
-              <div class="sig-date-note">Ký bởi/Signed by: ....................</div>
-              <div class="sig-date-note">Ngày ký/Signed Date: ....................</div>
+              <div class="sig-date-note">Ký bởi: ....................</div>
+              <div class="sig-date-note">Ngày ký: ....................</div>
             </div>
           </div>
 
           <div class="sig-flat-col" style="min-width: 180px;">
             <div>
               <div class="sig-title-main">Phê Duyệt</div>
-              <div class="sig-title-sub">Approval by</div>
             </div>
             <div class="sig-name-block">
               <div class="sig-person-name"></div>
-              <div class="sig-date-note">Ký bởi/Signed by: ....................</div>
-              <div class="sig-date-note">Ngày ký/Signed Date: ....................</div>
+              <div class="sig-date-note">Ký bởi: ....................</div>
+              <div class="sig-date-note">Ngày ký: ....................</div>
             </div>
           </div>
         </div>
