@@ -15,6 +15,8 @@ import { CurrentUser } from '../../decorators/current-user.decorator';
 import { ApiAuth } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
+import { PermissionsService } from '../auth/permissions.service';
+import { SUPER_PERMISSION } from '../../constants/permission.constant';
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
 import { CreateInventoryIssueReqDto } from './dto/create-inventory-issue.req.dto';
 import { GetInventoryIssuesReqDto } from './dto/get-inventory-issues.req.dto';
@@ -29,6 +31,7 @@ import { InventoryIssuesService } from './inventory-issues.service';
 export class InventoryIssuesController {
   constructor(
     private readonly inventoryIssuesService: InventoryIssuesService,
+    private readonly permissionsService: PermissionsService,
   ) {}
 
   @Get()
@@ -75,7 +78,8 @@ export class InventoryIssuesController {
   @Patch(':issueId')
   @Permissions('inventory:update')
   @ApiAuth({
-    summary: 'Update an inventory issue — only while DRAFT',
+    summary:
+      'Update an inventory issue — only while DRAFT; an issue generated from a delivery order is locked (E319)',
     statusCode: HttpStatus.NO_CONTENT,
   })
   updateInventoryIssue(
@@ -88,7 +92,8 @@ export class InventoryIssuesController {
   @Delete(':issueId')
   @Permissions('inventory:delete')
   @ApiAuth({
-    summary: 'Delete an inventory issue — only while DRAFT',
+    summary:
+      'Delete an inventory issue — only while DRAFT; an issue generated from a delivery order is locked (E319)',
     statusCode: HttpStatus.NO_CONTENT,
   })
   deleteInventoryIssue(@UUIDParam('issueId') issueId: string): Promise<void> {
@@ -118,10 +123,22 @@ export class InventoryIssuesController {
   @Permissions('inventory:update')
   @ApiAuth({
     summary:
-      'Cancel a DRAFT issue — void it before it touches stock; POSTED is immutable',
+      'Cancel a DRAFT issue — void it before it touches stock; POSTED is immutable. An issue generated from a delivery order also cancels that order and needs outbound:update',
     statusCode: HttpStatus.NO_CONTENT,
   })
-  cancelInventoryIssue(@UUIDParam('issueId') issueId: string): Promise<void> {
-    return this.inventoryIssuesService.cancelInventoryIssue(issueId);
+  async cancelInventoryIssue(
+    @UUIDParam('issueId') issueId: string,
+    @CurrentUser() payload: JwtPayloadType,
+  ): Promise<void> {
+    const granted = await this.permissionsService.getPermissionCodes(
+      payload.sub,
+    );
+    const canCancelOutboundOrder =
+      granted.includes(SUPER_PERMISSION) || granted.includes('outbound:update');
+
+    return this.inventoryIssuesService.cancelInventoryIssue(
+      issueId,
+      canCancelOutboundOrder,
+    );
   }
 }

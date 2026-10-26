@@ -16,6 +16,7 @@ import {
 } from '../../../decorators/field.decorators';
 import { DepartmentResDto } from '../../departments/dto/department.res.dto';
 import { FileResDto } from '../../files/dto/file.res.dto';
+import { OutboundOrderClientRefResDto } from '../../outbound-orders/dto/outbound-order-client-ref.res.dto';
 import { InventoryRequisitionRefResDto } from '../../inventory-requisitions/dto/inventory-requisition-ref.res.dto';
 import { ProductionJobRefResDto } from '../../production-jobs/dto/production-job-ref.res.dto';
 import { ProductionOrderRefResDto } from '../../production-orders/dto/production-order-ref.res.dto';
@@ -47,6 +48,10 @@ export class InventoryIssueResDto {
   @Expose()
   @ClassFieldOptional(() => InventoryRequisitionRefResDto, { nullable: true })
   requisition!: InventoryRequisitionRefResDto | null;
+
+  @Expose()
+  @ClassFieldOptional(() => OutboundOrderClientRefResDto, { nullable: true })
+  outboundOrder!: OutboundOrderClientRefResDto | null;
 
   @Expose()
   @ClassFieldOptional(() => ProductionOrderRefResDto, { nullable: true })

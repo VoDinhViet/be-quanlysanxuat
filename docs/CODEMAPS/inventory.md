@@ -1,4 +1,4 @@
-<!-- Generated: 2026-10-24 | Files scanned: 38 | Token estimate: ~3560 -->
+<!-- Generated: 2026-10-26 | Files scanned: 38 | Token estimate: ~3560 -->
 # Inventory codemap
 
 Single warehouse: `inventory_balances.itemId` is UNIQUE, no warehouse column (`src/database/schemas/inventory/inventory-balances.ts`).
@@ -89,7 +89,7 @@ Receipt:
    -> `createProductionReceiptForJob` (write.ts:82): inserts receipt straight at PENDING_RECEIPT for qty = target - confirmed PRODUCTION qty (idempotent; no DRAFT, no confirm step)
    -> warehouse `post` -> `closeJobIfFullyReceived`: job WAITING_DELIVERY and received + NCR-transferred qty (`getNcrTransferredQtyByJobId`, ncrs.query.ts:23) >= job.quantity -> job COMPLETED + job log -> all sibling JOBs COMPLETED -> LSX COMPLETED + log -> if ncrId `closeNcrIfProductionOrdersDone` (ncrs.write.ts:143). UPDATE guarded by `status = WAITING_DELIVERY` to avoid duplicate logs.
 
-Issue: DRAFT --post (346)--> POSTED (PRODUCTION type needs no pending IQC else E203, `hasPendingIqcForItems` iqc.query.ts:23 (IQC CANCELLED by a cancelled source receipt does not count); sets linked requisition ISSUED); DRAFT --cancel (403)--> CANCELLED (cancels linked requisition). POSTED immutable. SALES issues are also auto-posted by `OutboundOrdersService.postOutboundOrder` (outbound-orders.service.ts:747).
+Issue: DRAFT --post (346)--> POSTED (PRODUCTION type needs no pending IQC else E203, `hasPendingIqcForItems` iqc.query.ts:23 (IQC CANCELLED by a cancelled source receipt does not count); sets linked requisition ISSUED); DRAFT --cancel (403)--> CANCELLED (cancels linked requisition). POSTED immutable. SALES issues linked to a DO (`outboundOrderId`) are created DRAFT by `OutboundOrdersService.approveOutboundOrder`; posting one (`postInventoryIssue`:378) delivers the DO and runs `closeOrdersIfFullyDelivered`, cancelling it (`cancelInventoryIssue`:487, needs `outbound:update` too) cancels the DO, and update/delete are blocked (E319).
 
 Requisition (own enum, DIRECT items only):
   DRAFT --send (292)--> PENDING_APPROVAL --approve (318)--> APPROVED --PXK post--> ISSUED
@@ -121,4 +121,4 @@ Supplier return: IQC confirm with SORT/RETURN disposition (iqc.service.ts:840) -
 - iqc/oqc: IQC created at confirm; `getJobQcCoverage` (oqc.query.ts:213) and `getPassedOqcQuantityByJobId` (:173) gate PRODUCTION receipts. `IqcModule` imports `SupplierReturnsModule`; IQC/OQC avoid importing `InventoryReceiptsModule` (hence plain functions).
 - production-jobs/orders/ncrs: `production_job_issues` = BOM demand for requisitions; receipt post closes JOB, LSX, NCR.
 - outsourcing: supplier returns from OS-IN change OS-OUT status and operation progress; see outsourcing codemap (`outsourcing-*` schemas).
-- outbound-orders: DO delivery creates a POSTED SALES issue (`inventory_issues.outboundOrderId`); `outboundHeldQuantityByItemSubquery` feeds FG reserved; see outbound codemap.
+- outbound-orders: DO approval creates a DRAFT SALES issue (`inventory_issues.outboundOrderId`) that the warehouse posts; `outboundHeldQuantityByItemSubquery` feeds FG reserved; see outbound codemap.

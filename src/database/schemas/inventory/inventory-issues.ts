@@ -58,8 +58,8 @@ export const inventoryIssues = pgTable(
       () => productionJobs.id,
       { onDelete: 'set null' },
     ),
-    // Chỉ `OutboundOrdersService.postOutboundOrder` (`issueType = SALES`) ghi cột này: phiếu xuất tự
-    // sinh lúc giao hàng, để thẻ kho trace ngược về DO. `set null`, không backfill phiếu cũ
+    // Chỉ `OutboundOrdersService.approveOutboundOrder` (`issueType = SALES`) ghi cột này: phiếu xuất
+    // nháp tự sinh lúc duyệt DO, ghi sổ thì DO mới giao xong. `set null`, không backfill phiếu cũ
     // (`docs/CODEMAPS/sales.md`).
     outboundOrderId: uuid('outbound_order_id').references(
       () => outboundOrders.id,

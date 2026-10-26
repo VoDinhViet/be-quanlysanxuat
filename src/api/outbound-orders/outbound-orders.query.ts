@@ -4,12 +4,15 @@ import { unaccentILike } from '../../common/utils/search.util';
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
   items,
+  OrderItemStatus,
   orderItems,
   orders,
+  OrderStatus,
   outboundOrderItems,
   outboundOrders,
   OutboundOrderStatus,
 } from '../../database/schemas';
+import { issuedQuantityByOrderItemIdSubquery } from '../orders/orders.query';
 
 // Ba trạng thái DO đang giữ chỗ thành phẩm — giữ ngay từ lúc tạo (`DRAFT`);
 // `DELIVERED`/`REJECTED`/`CANCELLED` hết giữ.
@@ -157,4 +160,51 @@ export function outboundOrderLineMatchExists(
         ),
       ),
   );
+}
+
+/** Với mỗi đơn bị đụng bởi lô hàng vừa giao (1 DO có thể gộp nhiều đơn cùng khách): mọi dòng
+ * `order_items` còn `NORMAL` đã `issuedQty >= targetQuantity` (tính lại trong transaction, đọc
+ * đúng bút toán vừa ghi) → đơn chuyển `COMPLETED`. Chỉ đóng đơn đang `IN_PROGRESS`. */
+export async function closeOrdersIfFullyDelivered(
+  tx: DbTransaction,
+  deliveredOrderItemIds: string[],
+): Promise<void> {
+  const affectedOrders = await tx
+    .selectDistinct({ orderId: orderItems.orderId })
+    .from(orderItems)
+    .where(inArray(orderItems.id, deliveredOrderItemIds));
+
+  const issuedByItem = issuedQuantityByOrderItemIdSubquery(tx);
+
+  for (const { orderId } of affectedOrders) {
+    const orderLines = await tx
+      .select({
+        targetQuantity: orderItems.quantity,
+        issuedQty: issuedByItem.issuedQty,
+      })
+      .from(orderItems)
+      .leftJoin(issuedByItem, eq(issuedByItem.orderItemId, orderItems.id))
+      .where(
+        and(
+          eq(orderItems.orderId, orderId),
+          eq(orderItems.status, OrderItemStatus.NORMAL),
+        ),
+      );
+
+    const fullyDelivered = orderLines.every(
+      (line) => (line.issuedQty ?? 0) >= line.targetQuantity,
+    );
+
+    if (fullyDelivered) {
+      await tx
+        .update(orders)
+        .set({ status: OrderStatus.COMPLETED })
+        .where(
+          and(
+            eq(orders.id, orderId),
+            eq(orders.status, OrderStatus.IN_PROGRESS),
+          ),
+        );
+    }
+  }
 }

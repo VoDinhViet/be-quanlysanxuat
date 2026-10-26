@@ -144,9 +144,17 @@ export class PendingApprovalsResDto {
   @NumberField({
     int: true,
     description:
-      'Count of inventory issues with status DRAFT (auto-created when a requisition is approved, waiting for the warehouse to post) — visible to every user, no permission gate',
+      'Count of non-SALES inventory issues with status DRAFT (auto-created when a requisition is approved, waiting for the warehouse to post) — visible to every user, no permission gate',
   })
   inventoryIssuesToPost!: number;
+
+  @Expose()
+  @NumberField({
+    int: true,
+    description:
+      'Count of SALES inventory issues with status DRAFT (auto-created when a delivery order is approved, waiting for the warehouse to post) — visible to every user, no permission gate',
+  })
+  salesIssuesToPost!: number;
 
   @Expose()
   @NumberField({

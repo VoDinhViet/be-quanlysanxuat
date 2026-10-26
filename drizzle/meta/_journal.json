@@ -1660,6 +1660,13 @@
       "when": 1792981361969,
       "tag": "0236_outsourcing_order_origin",
       "breakpoints": true
+    },
+    {
+      "idx": 237,
+      "version": "7",
+      "when": 1792982097739,
+      "tag": "0237_sales_issue_for_pending_delivery",
+      "breakpoints": true
     }
   ]
 }

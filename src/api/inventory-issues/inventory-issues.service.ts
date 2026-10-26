@@ -37,6 +37,8 @@ import {
   items,
   ItemType,
   orderItems,
+  outboundOrders,
+  OutboundOrderStatus,
   productionJobs,
   productionOrders,
   users,
@@ -45,6 +47,7 @@ import { AppException } from '../../exceptions/app.exception';
 import { hasPendingIqcForItems } from '../iqc/iqc.query';
 import { FilesService } from '../files/files.service';
 import { InventoryPostingService } from '../inventory/inventory-posting.service';
+import { closeOrdersIfFullyDelivered } from '../outbound-orders/outbound-orders.query';
 import { CreateInventoryIssueReqDto } from './dto/create-inventory-issue.req.dto';
 import { GetInventoryIssuesReqDto } from './dto/get-inventory-issues.req.dto';
 import { InventoryIssueItemReqDto } from './dto/inventory-issue-item.req.dto';
@@ -172,6 +175,10 @@ export class InventoryIssuesService {
             with: { order: { columns: { buyerPoNo: true } } },
           },
           productionJob: true,
+          outboundOrder: {
+            columns: { id: true, code: true },
+            with: { client: { columns: { id: true, code: true, name: true } } },
+          },
           department: true,
           requesterBy: true,
           posterBy: true,
@@ -239,6 +246,10 @@ export class InventoryIssuesService {
       with: {
         productionOrder: true,
         productionJob: true,
+        outboundOrder: {
+          columns: { id: true, code: true },
+          with: { client: { columns: { id: true, code: true, name: true } } },
+        },
         department: true,
         requesterBy: true,
         posterBy: true,
@@ -304,7 +315,10 @@ export class InventoryIssuesService {
     issueId: string,
     reqDto: UpdateInventoryIssueReqDto,
   ): Promise<void> {
-    await this.ensureIssueDraft(issueId);
+    const draftIssue = await this.ensureIssueDraft(issueId);
+    if (draftIssue.outboundOrderId) {
+      throw new AppException(ErrorCode.E319, HttpStatus.CONFLICT);
+    }
 
     this.ensureNotDirectProductionIssue(reqDto.issueType);
     const baseUnitByItemId = await this.ensureItemsValid(reqDto.items);
@@ -329,9 +343,13 @@ export class InventoryIssuesService {
 
   /** Phiếu do phiếu lãnh sinh ra (`inventoryRequisitions.inventoryIssueId`) bị chặn xoá (`E235`):
    * FK `set null` sẽ âm thầm gỡ liên kết, để phiếu lãnh kẹt `APPROVED` mà không còn PXK. Đường đúng
-   * là `InventoryRequisitionsService.cancelInventoryRequisition`. */
+   * là `InventoryRequisitionsService.cancelInventoryRequisition`. Phiếu sinh từ DO bị chặn `E319`
+   * vì lý do tương tự: huỷ phiếu để huỷ DO. */
   async deleteInventoryIssue(issueId: string): Promise<void> {
-    await this.ensureIssueDraft(issueId);
+    const draftIssue = await this.ensureIssueDraft(issueId);
+    if (draftIssue.outboundOrderId) {
+      throw new AppException(ErrorCode.E319, HttpStatus.CONFLICT);
+    }
 
     const [generatingRequisition] = await this.db
       .select({ id: inventoryRequisitions.id })
@@ -353,6 +371,8 @@ export class InventoryIssuesService {
    * - `issueType = PRODUCTION` bị chặn (`E203`) khi vật tư còn IQC chưa xử lý xong.
    * - Phiếu do phiếu lãnh sinh ra (`inventoryRequisitions.inventoryIssueId`) thì phiếu lãnh đó
    *   chuyển sang `ISSUED` cùng transaction.
+   * - Phiếu sinh từ DO (`outboundOrderId`) thì DO phải đang `PENDING_DELIVERY` (`E237`), chuyển
+   *   `DELIVERED` cùng transaction và đóng đơn hàng đã giao đủ.
    *
    * See `docs/CODEMAPS/inventory.md`. */
   async postInventoryIssue(
@@ -366,10 +386,21 @@ export class InventoryIssuesService {
     }
 
     await this.db.transaction(async (tx) => {
+      const lockedOutboundOrder = await this.lockOutboundOrderOfIssue(
+        tx,
+        issueId,
+      );
       const inventoryIssue = await this.getInventoryIssueForUpdate(tx, issueId);
 
       if (inventoryIssue.status !== InventoryDocumentStatus.DRAFT) {
         throw new AppException(ErrorCode.E098, HttpStatus.CONFLICT);
+      }
+
+      if (
+        lockedOutboundOrder &&
+        lockedOutboundOrder.status !== OutboundOrderStatus.PENDING_DELIVERY
+      ) {
+        throw new AppException(ErrorCode.E237, HttpStatus.CONFLICT);
       }
 
       const itemsToPost = await tx.query.inventoryIssueItems.findMany({
@@ -385,10 +416,16 @@ export class InventoryIssuesService {
         }
       }
 
+      // Phiếu sinh từ DO được tạo lúc duyệt, kho có thể ghi sổ nhiều ngày sau: bút toán phải mang
+      // ngày xuất thật, không phải ngày duyệt.
+      const issueDate = lockedOutboundOrder
+        ? new Date()
+        : inventoryIssue.issueDate;
+
       await this.inventoryPostingService.postDocument(tx, {
         referenceType: InventoryReferenceType.INVENTORY_ISSUE,
         referenceId: issueId,
-        transactionDate: inventoryIssue.issueDate,
+        transactionDate: issueDate,
         createdBy: userId,
         lines: itemsToPost.map((item) => ({
           itemId: item.itemId,
@@ -402,6 +439,7 @@ export class InventoryIssuesService {
         .update(inventoryIssues)
         .set({
           status: InventoryDocumentStatus.POSTED,
+          issueDate,
           postedBy: userId,
           postedAt: new Date(),
           postNote: reqDto.note ?? null,
@@ -424,18 +462,52 @@ export class InventoryIssuesService {
           issuedAt: new Date(),
         })
         .where(eq(inventoryRequisitions.inventoryIssueId, issueId));
+
+      if (lockedOutboundOrder) {
+        await tx
+          .update(outboundOrders)
+          .set({ status: OutboundOrderStatus.DELIVERED })
+          .where(eq(outboundOrders.id, lockedOutboundOrder.id));
+
+        await closeOrdersIfFullyDelivered(
+          tx,
+          itemsToPost.flatMap((item) =>
+            item.orderItemId ? [item.orderItemId] : [],
+          ),
+        );
+      }
     });
   }
 
   /** `DRAFT → CANCELLED`. `POSTED` bất biến, không có đường đảo bút toán như `inventory-adjustments`
    * (`docs/CODEMAPS/inventory.md`). Phiếu do phiếu lãnh sinh ra thì huỷ luôn phiếu lãnh đó — ngược
-   * chiều với `InventoryRequisitionsService.cancelInventoryRequisition`. */
-  async cancelInventoryIssue(issueId: string): Promise<void> {
+   * chiều với `InventoryRequisitionsService.cancelInventoryRequisition`. Phiếu sinh từ DO huỷ luôn
+   * DO đó (giải phóng giữ chỗ), nên người huỷ cũng phải có quyền sửa DO (`canCancelOutboundOrder`,
+   * `E033`). See `docs/CODEMAPS/sales.md`. */
+  async cancelInventoryIssue(
+    issueId: string,
+    canCancelOutboundOrder: boolean,
+  ): Promise<void> {
     await this.db.transaction(async (tx) => {
+      const lockedOutboundOrder = await this.lockOutboundOrderOfIssue(
+        tx,
+        issueId,
+      );
       const inventoryIssue = await this.getInventoryIssueForUpdate(tx, issueId);
 
       if (inventoryIssue.status !== InventoryDocumentStatus.DRAFT) {
         throw new AppException(ErrorCode.E098, HttpStatus.CONFLICT);
+      }
+
+      if (lockedOutboundOrder && !canCancelOutboundOrder) {
+        throw new AppException(ErrorCode.E033, HttpStatus.FORBIDDEN);
+      }
+
+      if (
+        lockedOutboundOrder &&
+        lockedOutboundOrder.status !== OutboundOrderStatus.PENDING_DELIVERY
+      ) {
+        throw new AppException(ErrorCode.E237, HttpStatus.CONFLICT);
       }
 
       await tx
@@ -447,6 +519,13 @@ export class InventoryIssuesService {
         .update(inventoryRequisitions)
         .set({ status: InventoryRequisitionStatus.CANCELLED })
         .where(eq(inventoryRequisitions.inventoryIssueId, issueId));
+
+      if (lockedOutboundOrder) {
+        await tx
+          .update(outboundOrders)
+          .set({ status: OutboundOrderStatus.CANCELLED })
+          .where(eq(outboundOrders.id, lockedOutboundOrder.id));
+      }
     });
   }
 
@@ -600,6 +679,25 @@ export class InventoryIssuesService {
     }
 
     return inventoryIssue;
+  }
+
+  /** Khoá DO của phiếu (nếu có) trước khi khoá phiếu, cùng thứ tự với `cancelOutboundOrder` (khoá
+   * DO rồi mới sửa phiếu) để hai đường huỷ/ghi sổ đồng thời không khoá chéo nhau. */
+  private async lockOutboundOrderOfIssue(tx: DbTransaction, issueId: string) {
+    const [linkedIssue] = await tx
+      .select({ outboundOrderId: inventoryIssues.outboundOrderId })
+      .from(inventoryIssues)
+      .where(eq(inventoryIssues.id, issueId));
+
+    if (!linkedIssue?.outboundOrderId) return null;
+
+    const [outboundOrder] = await tx
+      .select({ id: outboundOrders.id, status: outboundOrders.status })
+      .from(outboundOrders)
+      .where(eq(outboundOrders.id, linkedIssue.outboundOrderId))
+      .for('update');
+
+    return outboundOrder ?? null;
   }
 
   private async ensureIssueExists(issueId: string) {

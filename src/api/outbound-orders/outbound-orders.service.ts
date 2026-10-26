@@ -34,8 +34,6 @@ import {
   InventoryIssueType,
   inventoryIssueItems,
   inventoryIssues,
-  InventoryReferenceType,
-  InventoryTransactionType,
   items,
   OrderItemStatus,
   orderItems,
@@ -51,8 +49,6 @@ import {
   users,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
-import type { InventoryPostingLine } from '../inventory/inventory-posting.service';
-import { InventoryPostingService } from '../inventory/inventory-posting.service';
 import {
   getInventoryBalancesForUpdate,
   onHandQuantityByItemSubquery,
@@ -90,10 +86,7 @@ export class OutboundOrdersService {
 
   private static readonly MAX_EXPORT_ROWS = 10_000;
 
-  constructor(
-    @Inject(DRIZZLE) private readonly db: Database,
-    private readonly inventoryPostingService: InventoryPostingService,
-  ) {}
+  constructor(@Inject(DRIZZLE) private readonly db: Database) {}
 
   async getOutboundOrders(
     reqDto: GetOutboundOrdersReqDto,
@@ -232,9 +225,21 @@ export class OutboundOrdersService {
       throw new AppException(ErrorCode.E195, HttpStatus.NOT_FOUND);
     }
 
-    return plainToInstance(OutboundOrderResDto, outboundOrder, {
-      excludeExtraneousValues: true,
-    });
+    const [inventoryIssue] = await this.db
+      .select({
+        id: inventoryIssues.id,
+        code: inventoryIssues.code,
+        status: inventoryIssues.status,
+      })
+      .from(inventoryIssues)
+      .where(eq(inventoryIssues.outboundOrderId, outboundOrderId))
+      .limit(1);
+
+    return plainToInstance(
+      OutboundOrderResDto,
+      { ...outboundOrder, inventoryIssue: inventoryIssue ?? null },
+      { excludeExtraneousValues: true },
+    );
   }
 
   /** `.select()` + join tường minh thay vì `db.query` lồng 2 cấp: DTO nhận `item`/`unit` cùng
@@ -480,8 +485,8 @@ export class OutboundOrdersService {
   }
 
   /** `DRAFT`/`PENDING_APPROVAL`/`PENDING_DELIVERY` → `CANCELLED` (`E257` với trạng thái khác, kể cả
-   * `REJECTED`/`DELIVERED`). Chỉ đổi `status`: ba trạng thái trên chưa `deliver` nên chưa có
-   * `inventory_transactions` nào để đảo; giữ chỗ FG tự hết vì `HOLDING_STATUSES`
+   * `REJECTED`/`DELIVERED`). Ba trạng thái trên chưa xuất kho nên chưa có `inventory_transactions`
+   * nào để đảo; phiếu xuất nháp sinh lúc duyệt huỷ theo. Giữ chỗ FG tự hết vì `HOLDING_STATUSES`
    * (`outbound-orders.query.ts`) không còn khớp `CANCELLED`. */
   async cancelOutboundOrder(outboundOrderId: string): Promise<void> {
     await this.db.transaction(async (tx) => {
@@ -503,6 +508,16 @@ export class OutboundOrdersService {
         .update(outboundOrders)
         .set({ status: OutboundOrderStatus.CANCELLED })
         .where(eq(outboundOrders.id, outboundOrderId));
+
+      await tx
+        .update(inventoryIssues)
+        .set({ status: InventoryDocumentStatus.CANCELLED })
+        .where(
+          and(
+            eq(inventoryIssues.outboundOrderId, outboundOrderId),
+            eq(inventoryIssues.status, InventoryDocumentStatus.DRAFT),
+          ),
+        );
     });
   }
 
@@ -594,10 +609,10 @@ export class OutboundOrdersService {
     });
   }
 
-  /** `PENDING_APPROVAL → PENDING_DELIVERY` — chưa phải "giao thật" (chưa `DELIVERED`, chưa trừ
-   * tồn, chưa sinh `inventory_issues`), việc đó nằm ở bước giao hàng sau. Gate QC chỉ chạy 1 lần
-   * ở `send`. Kiểm lại `E194` vì một `POST /inventory-issues` thủ công có thể rút tồn FG giữa hai
-   * bước mà không đụng DO nào. */
+  /** `PENDING_APPROVAL → PENDING_DELIVERY` ("Chờ xuất kho") và sinh phiếu xuất `SALES` nháp — chưa
+   * trừ tồn, thủ kho ghi sổ phiếu đó thì DO mới `DELIVERED`. Gate QC chỉ chạy 1 lần ở `send`.
+   * Kiểm lại `E194` vì một `POST /inventory-issues` thủ công có thể rút tồn FG giữa hai bước mà
+   * không đụng DO nào. */
   async approveOutboundOrder(
     outboundOrderId: string,
     userId: string,
@@ -622,6 +637,8 @@ export class OutboundOrdersService {
           approvedAt: new Date(),
         })
         .where(eq(outboundOrders.id, outboundOrderId));
+
+      await this.createSalesIssueDraft(tx, outboundOrderId, userId);
     });
   }
 
@@ -741,88 +758,47 @@ export class OutboundOrdersService {
     }
   }
 
-  /** `PENDING_DELIVERY → DELIVERED` (DO không có trạng thái `POSTED`; "post" ở tên hàm chỉ là
-   * động từ ghi sổ bên trong). Tự sinh + post 1 `inventory_issues` (`SALES`) đúng các dòng của
-   * DO, rồi đóng đơn hàng nếu đã giao đủ. */
-  async postOutboundOrder(
+  /** Phiếu xuất `SALES` nháp của DO vừa duyệt: thủ kho vào đó xác nhận xuất, lúc ghi sổ DO mới
+   * thành `DELIVERED` (`InventoryIssuesService.postInventoryIssue`). */
+  private async createSalesIssueDraft(
+    tx: DbTransaction,
     outboundOrderId: string,
     userId: string,
   ): Promise<void> {
-    await this.db.transaction(async (tx) => {
-      const outboundOrder = await this.getOutboundOrderForUpdate(
-        tx,
+    const itemsToIssue = await tx
+      .select({
+        itemId: outboundOrderItems.itemId,
+        quantity: outboundOrderItems.quantity,
+        orderItemId: outboundOrderItems.orderItemId,
+        unitId: items.unitId,
+      })
+      .from(outboundOrderItems)
+      .innerJoin(items, eq(items.id, outboundOrderItems.itemId))
+      .where(eq(outboundOrderItems.outboundOrderId, outboundOrderId));
+
+    const issueDate = new Date();
+    const issueCode = await this.generateSalesIssueCode(tx, issueDate);
+
+    const [salesIssue] = await tx
+      .insert(inventoryIssues)
+      .values({
+        code: issueCode,
+        issueType: InventoryIssueType.SALES,
+        issueDate,
         outboundOrderId,
-      );
-
-      if (outboundOrder.status !== OutboundOrderStatus.PENDING_DELIVERY) {
-        throw new AppException(ErrorCode.E237, HttpStatus.CONFLICT);
-      }
-
-      const itemsToDeliver = await tx
-        .select({
-          itemId: outboundOrderItems.itemId,
-          quantity: outboundOrderItems.quantity,
-          orderItemId: outboundOrderItems.orderItemId,
-          unitId: items.unitId,
-        })
-        .from(outboundOrderItems)
-        .innerJoin(items, eq(items.id, outboundOrderItems.itemId))
-        .where(eq(outboundOrderItems.outboundOrderId, outboundOrderId));
-
-      const issueDate = new Date();
-      const issueCode = await this.generateSalesIssueCode(tx, issueDate);
-
-      const [inventoryIssue] = await tx
-        .insert(inventoryIssues)
-        .values({
-          code: issueCode,
-          issueType: InventoryIssueType.SALES,
-          status: InventoryDocumentStatus.POSTED,
-          issueDate,
-          outboundOrderId,
-          postedBy: userId,
-          postedAt: issueDate,
-          createdBy: userId,
-        })
-        .returning({ id: inventoryIssues.id });
-
-      await tx.insert(inventoryIssueItems).values(
-        itemsToDeliver.map((item) => ({
-          issueId: inventoryIssue.id,
-          itemId: item.itemId,
-          unitId: item.unitId,
-          quantity: item.quantity,
-          orderItemId: item.orderItemId,
-        })),
-      );
-
-      const postingLines: InventoryPostingLine[] = itemsToDeliver.map(
-        (item) => ({
-          itemId: item.itemId,
-          signedQuantity: -item.quantity,
-          type: InventoryTransactionType.ISSUE,
-          orderItemId: item.orderItemId,
-        }),
-      );
-
-      await this.inventoryPostingService.postDocument(tx, {
-        referenceType: InventoryReferenceType.INVENTORY_ISSUE,
-        referenceId: inventoryIssue.id,
-        transactionDate: issueDate,
         createdBy: userId,
-        lines: postingLines,
-      });
+      })
+      .returning({ id: inventoryIssues.id });
 
-      await tx
-        .update(outboundOrders)
-        .set({ status: OutboundOrderStatus.DELIVERED })
-        .where(eq(outboundOrders.id, outboundOrderId));
-
-      await this.closeOrdersIfFullyDelivered(
-        tx,
-        itemsToDeliver.map((item) => item.orderItemId),
-      );
-    });
+    await tx.insert(inventoryIssueItems).values(
+      itemsToIssue.map((item) => ({
+        issueId: salesIssue.id,
+        itemId: item.itemId,
+        unitId: item.unitId,
+        quantity: item.quantity,
+        orderItemId: item.orderItemId,
+      })),
+    );
   }
 
   /** Copy có chủ ý từ `InventoryIssuesService.generateIssueCode` (`private`, khác module), như
@@ -839,53 +815,6 @@ export class OutboundOrdersService {
     );
 
     return `PXK-${year}-${String(sequence).padStart(5, '0')}`;
-  }
-
-  /** Với mỗi đơn bị đụng bởi lô hàng vừa giao (1 DO có thể gộp nhiều đơn cùng khách): mọi dòng
-   * `order_items` còn `NORMAL` đã `issuedQty >= targetQuantity` (tính lại trong transaction, đọc
-   * đúng bút toán vừa ghi) → đơn chuyển `COMPLETED`. Chỉ đóng đơn đang `IN_PROGRESS`. */
-  private async closeOrdersIfFullyDelivered(
-    tx: DbTransaction,
-    deliveredOrderItemIds: string[],
-  ): Promise<void> {
-    const affectedOrders = await tx
-      .selectDistinct({ orderId: orderItems.orderId })
-      .from(orderItems)
-      .where(inArray(orderItems.id, deliveredOrderItemIds));
-
-    const issuedByItem = issuedQuantityByOrderItemIdSubquery(tx);
-
-    for (const { orderId } of affectedOrders) {
-      const lines = await tx
-        .select({
-          targetQuantity: orderItems.quantity,
-          issuedQty: issuedByItem.issuedQty,
-        })
-        .from(orderItems)
-        .leftJoin(issuedByItem, eq(issuedByItem.orderItemId, orderItems.id))
-        .where(
-          and(
-            eq(orderItems.orderId, orderId),
-            eq(orderItems.status, OrderItemStatus.NORMAL),
-          ),
-        );
-
-      const fullyDelivered = lines.every(
-        (line) => (line.issuedQty ?? 0) >= line.targetQuantity,
-      );
-
-      if (fullyDelivered) {
-        await tx
-          .update(orders)
-          .set({ status: OrderStatus.COMPLETED })
-          .where(
-            and(
-              eq(orders.id, orderId),
-              eq(orders.status, OrderStatus.IN_PROGRESS),
-            ),
-          );
-      }
-    }
   }
 
   /** Khoá dòng phiếu (`FOR UPDATE`) rồi trả về — chỉ gọi trong transaction, cùng khuôn

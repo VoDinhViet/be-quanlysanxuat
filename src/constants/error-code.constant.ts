@@ -525,9 +525,9 @@ export enum ErrorCode {
   // mồ côi hoặc đụng ràng buộc OQC restrict nếu cascade-xoá. LSX còn `PENDING` không ném lỗi này —
   // xem `OrdersService.ensureProductionOrderNotApproved`.
   E236 = 'order.error.has_approved_production_order',
-  // `POST /outbound-orders/:id/deliver` khi phiếu không ở `PENDING_DELIVERY`.
+  // Ghi sổ phiếu xuất kho sinh từ DO (`POST /inventory-issues/:id/post`) khi DO không ở `PENDING_DELIVERY`.
   E237 = 'outbound_order.error.not_deliverable',
-  // E238 (outbound_order.error.fg_warehouse_ambiguous) stays reserved — `deliver` không còn cần
+  // E238 (outbound_order.error.fg_warehouse_ambiguous) stays reserved — giao hàng không còn cần
   // resolve kho, hệ thống chỉ 1 kho vật lý.
   // `POST /outbound-orders/:id/send` khi phiếu không ở `DRAFT`/`REJECTED`.
   E239 = 'outbound_order.error.not_sendable',
@@ -705,6 +705,8 @@ export enum ErrorCode {
   E317 = 'payment_request.error.pending_approval',
   // Sửa phiếu OS-OUT bằng route của nguồn gốc khác (phiếu thủ công sửa qua route theo Job và ngược lại).
   E318 = 'outsourcing_order.error.origin_mismatch',
+  // Sửa/xoá phiếu xuất kho sinh từ DO (`inventory_issues.outboundOrderId`): dòng phiếu chốt theo DO đã duyệt.
+  E319 = 'inventory_issue.error.generated_from_outbound_order',
   V003 = 'common.error.too_many_requests',
   // `GlobalExceptionFilter` bắt chuỗi "No values to set" của drizzle-orm — mọi `PATCH` khi
   // `ValidationPipe` whitelist đã loại sạch field lạ, còn lại payload rỗng cho `.set()`. Trước đây

@@ -7,7 +7,7 @@ import { inventoryTransactions } from '../../database/schemas';
  * (`src/api/inventory/inventory.service.ts`), copy có chủ ý vì khác domain tiêu thụ (cùng quy ước
  * `purchase-orders.query.ts` copy `receivedQuantitySubquery`). Không lọc `type`/trạng thái phiếu —
  * huỷ phiếu tự triệt tiêu qua bút toán đảo dấu cùng `orderItemId`. Nhận `tx` khi cần đọc trong cùng
- * transaction vừa ghi bút toán (`OutboundOrdersService.deliverOutboundOrder`), `db` cho mọi nơi
+ * transaction vừa ghi bút toán (`InventoryIssuesService.postInventoryIssue`), `db` cho mọi nơi
  * khác. */
 export function issuedQuantityByOrderItemIdSubquery(
   db: Database | DbTransaction,

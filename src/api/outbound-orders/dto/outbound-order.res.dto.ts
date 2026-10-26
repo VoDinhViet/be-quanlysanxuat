@@ -15,6 +15,7 @@ import {
   UUIDField,
 } from '../../../decorators/field.decorators';
 import { ClientRefResDto } from '../../clients/dto/client-ref.res.dto';
+import { OutboundOrderIssueRefResDto } from './outbound-order-issue-ref.res.dto';
 import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
 
 @Exclude()
@@ -94,6 +95,10 @@ export class OutboundOrderResDto {
   @Expose()
   @StringFieldOptional({ nullable: true, description: 'Lý do từ chối' })
   rejectionReason!: string | null;
+
+  @Expose()
+  @ClassFieldOptional(() => OutboundOrderIssueRefResDto, { nullable: true })
+  inventoryIssue!: OutboundOrderIssueRefResDto | null;
 
   @Expose()
   @DateField()

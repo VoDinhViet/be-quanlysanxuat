@@ -23,6 +23,7 @@ import { DRIZZLE } from '../../database/database.module';
 import type { Database } from '../../database/database.type';
 import {
   InventoryDocumentStatus,
+  InventoryIssueType,
   inventoryIssues,
   inventoryReceipts,
   paymentRequests,
@@ -550,6 +551,7 @@ export class ReportsService {
       outsourcingOrdersToProcessCount,
       supplierReturnsToPostCount,
       inventoryIssuesToPostCount,
+      salesIssuesToPostCount,
       iqcToInspectCount,
       oqcToInspectCount,
     ] = await Promise.all([
@@ -592,7 +594,9 @@ export class ReportsService {
       // Việc chờ của Kho khi IQC xác nhận hàng NG cần trả NCC — cũng mọi người dùng đều thấy.
       this.getSupplierReturnsToPostCount(),
       // Việc chờ của Kho khi phiếu lãnh vật tư được duyệt — cũng mọi người dùng đều thấy.
-      this.getInventoryIssuesToPostCount(),
+      this.getDraftInventoryIssueCount(false),
+      // Việc chờ của Kho khi DO được duyệt (phiếu xuất thành phẩm) — cũng mọi người dùng đều thấy.
+      this.getDraftInventoryIssueCount(true),
       // Việc chờ của IQC khi kho gửi hàng vào kiểm — cũng mọi người dùng đều thấy.
       this.getIqcToInspectCount(),
       // Việc chờ của QC khi sản xuất yêu cầu OQC — cũng mọi người dùng đều thấy.
@@ -620,6 +624,7 @@ export class ReportsService {
         outsourcingOrdersToProcess: outsourcingOrdersToProcessCount,
         supplierReturnsToPost: supplierReturnsToPostCount,
         inventoryIssuesToPost: inventoryIssuesToPostCount,
+        salesIssuesToPost: salesIssuesToPostCount,
         iqcToInspect: iqcToInspectCount,
         oqcToInspect: oqcToInspectCount,
       },
@@ -681,14 +686,22 @@ export class ReportsService {
     return oqcCount.count;
   }
 
-  // Phiếu xuất kho nháp — tự sinh khi phiếu lãnh vật tư được duyệt, chờ kho ghi sổ xuất.
-  private async getInventoryIssuesToPostCount(): Promise<number> {
-    const [row] = await this.db
+  // Phiếu xuất kho nháp chờ kho ghi sổ xuất: phiếu `SALES` tự sinh khi DO được duyệt, hoặc các
+  // loại còn lại (sinh khi phiếu lãnh vật tư được duyệt).
+  private async getDraftInventoryIssueCount(isSales: boolean): Promise<number> {
+    const [draftIssues] = await this.db
       .select({ count: sql<number>`count(*)`.mapWith(Number) })
       .from(inventoryIssues)
-      .where(eq(inventoryIssues.status, InventoryDocumentStatus.DRAFT));
+      .where(
+        and(
+          eq(inventoryIssues.status, InventoryDocumentStatus.DRAFT),
+          isSales
+            ? eq(inventoryIssues.issueType, InventoryIssueType.SALES)
+            : ne(inventoryIssues.issueType, InventoryIssueType.SALES),
+        ),
+      );
 
-    return row.count;
+    return draftIssues.count;
   }
 
   // Phiếu trả NCC nháp — tự sinh khi IQC xác nhận hàng NG cần trả (SORT/RETURN), chờ kho xác nhận

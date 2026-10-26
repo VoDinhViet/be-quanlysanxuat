@@ -23,7 +23,7 @@ export interface OutboundOrderExport {
 const OUTBOUND_ORDER_STATUS_LABELS: Record<OutboundOrderStatus, string> = {
   [OutboundOrderStatus.DRAFT]: 'Nháp',
   [OutboundOrderStatus.PENDING_APPROVAL]: 'Chờ duyệt',
-  [OutboundOrderStatus.PENDING_DELIVERY]: 'Chờ xác nhận giao',
+  [OutboundOrderStatus.PENDING_DELIVERY]: 'Chờ xuất kho',
   [OutboundOrderStatus.DELIVERED]: 'Đã giao',
   [OutboundOrderStatus.CANCELLED]: 'Đã hủy',
   [OutboundOrderStatus.REJECTED]: 'Bị từ chối',
