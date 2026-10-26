@@ -335,9 +335,8 @@ export enum ErrorCode {
   // postSupplierReturn`) khi dòng IQC không còn `WAITING_RETURN`.
   E164 = 'iqc_inspection.error.not_waiting_return',
   E165 = 'outsourcing_order.error.not_found',
-  // Công đoạn chọn cho phiếu thủ công không phải `type = OUTSOURCE` hoặc đã ngừng hoạt động.
-  // Phiếu theo Job không validate công đoạn phía server, client gửi thẳng các cột của dòng.
-  E166 = 'outsourcing_order.error.operation_not_outsource',
+  // E166 (outsourcing_order.error.operation_not_outsource) dự phòng — 2026-10-26 phiếu thủ công
+  // nhận mọi công đoạn đang hoạt động, không còn buộc `type = OUTSOURCE`; công đoạn ngừng dùng ném E322.
   // E167 (outsourcing_order.error.job_not_in_progress) dự phòng — cùng lý do bỏ như E166; trước
   // ném khi Job của công đoạn chưa/không còn `IN_PROGRESS`.
   E167 = 'outsourcing_order.error.job_not_in_progress',
@@ -711,6 +710,8 @@ export enum ErrorCode {
   E320 = 'outbound_order.error.invoice_requires_delivered',
   // File nhập tồn kho có dòng lỗi (mã không có, trùng dòng, số sai…) — `details` liệt kê theo dòng.
   E321 = 'inventory_direct_import.error.rows_invalid',
+  // Công đoạn chọn cho phiếu gia công ngoài thủ công đã ngừng hoạt động.
+  E322 = 'operation.error.inactive',
   V003 = 'common.error.too_many_requests',
   // `GlobalExceptionFilter` bắt chuỗi "No values to set" của drizzle-orm — mọi `PATCH` khi
   // `ValidationPipe` whitelist đã loại sạch field lạ, còn lại payload rỗng cho `.set()`. Trước đây

@@ -492,7 +492,7 @@ export class OutsourcingOrdersService {
     await this.ensureSupplierExists(orderFields.supplierId);
     this.validateStandaloneItems(standaloneItems);
     await this.ensureUnitsActive(standaloneItems);
-    const operation = await this.getOutsourceOperation(operationId);
+    const operation = await this.getActiveOperation(operationId);
 
     await this.db.transaction(async (tx) => {
       const code = await this.generateOutsourcingOrderCode(tx);
@@ -526,7 +526,7 @@ export class OutsourcingOrdersService {
     await this.ensureSupplierExists(orderFields.supplierId);
     this.validateStandaloneItems(standaloneItems);
     await this.ensureUnitsActive(standaloneItems);
-    const operation = await this.getOutsourceOperation(operationId);
+    const operation = await this.getActiveOperation(operationId);
 
     await this.db.transaction(async (tx) => {
       const outsourcingOrder = await this.getOutsourcingOrderForUpdate(
@@ -888,13 +888,13 @@ export class OutsourcingOrdersService {
     }
   }
 
-  private async getOutsourceOperation(operationId: string) {
+  /** Phiếu thủ công không gắn Job nên nhận mọi công đoạn đang hoạt động, kể cả loại `INHOUSE`. */
+  private async getActiveOperation(operationId: string) {
     const [operation] = await this.db
       .select({
         id: operations.id,
         code: operations.code,
         name: operations.name,
-        type: operations.type,
         status: operations.status,
       })
       .from(operations)
@@ -904,11 +904,8 @@ export class OutsourcingOrdersService {
     if (!operation) {
       throw new AppException(ErrorCode.E046, HttpStatus.NOT_FOUND);
     }
-    if (
-      operation.type !== OperationType.OUTSOURCE ||
-      operation.status !== OperationStatus.ACTIVE
-    ) {
-      throw new AppException(ErrorCode.E166, HttpStatus.BAD_REQUEST);
+    if (operation.status !== OperationStatus.ACTIVE) {
+      throw new AppException(ErrorCode.E322, HttpStatus.BAD_REQUEST);
     }
     return operation;
   }
