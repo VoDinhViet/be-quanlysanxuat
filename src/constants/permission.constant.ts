@@ -52,6 +52,7 @@ export const PERMISSION_CODES = [
   'inventory:create',
   'inventory:update',
   'inventory:delete',
+  'inventory:import',
   'inventory-requisitions:read',
   'inventory-requisitions:create',
   'inventory-requisitions:update',
@@ -161,6 +162,7 @@ export const PERMISSION_LABELS: Record<PermissionCode, string> = {
   'inventory:create': 'Tạo phiếu kho',
   'inventory:update': 'Sửa phiếu kho',
   'inventory:delete': 'Xoá phiếu kho',
+  'inventory:import': 'Nhập tồn kho từ Excel',
   'inventory-requisitions:read': 'Xem phiếu lãnh vật tư',
   'inventory-requisitions:create': 'Tạo phiếu lãnh vật tư',
   'inventory-requisitions:update': 'Sửa phiếu lãnh vật tư',
@@ -418,6 +420,7 @@ const PERMISSION_GROUP_DEFS: PermissionGroupDef[] = [
       'inventory:create',
       'inventory:update',
       'inventory:delete',
+      'inventory:import',
     ],
   },
   {

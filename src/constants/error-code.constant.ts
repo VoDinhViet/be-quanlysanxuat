@@ -709,6 +709,8 @@ export enum ErrorCode {
   E319 = 'inventory_issue.error.generated_from_outbound_order',
   // Nhập hóa đơn cho DO chưa ở `DELIVERED`.
   E320 = 'outbound_order.error.invoice_requires_delivered',
+  // File nhập tồn kho có dòng lỗi (mã không có, trùng dòng, số sai…) — `details` liệt kê theo dòng.
+  E321 = 'inventory_direct_import.error.rows_invalid',
   V003 = 'common.error.too_many_requests',
   // `GlobalExceptionFilter` bắt chuỗi "No values to set" của drizzle-orm — mọi `PATCH` khi
   // `ValidationPipe` whitelist đã loại sạch field lạ, còn lại payload rỗng cho `.set()`. Trước đây

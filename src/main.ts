@@ -28,6 +28,8 @@ let cachedServer: Express | null = null;
 
 export async function bootstrap(): Promise<Express> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // Mặc định 100kb của Express không đủ cho nhập tồn kho 1000 dòng (`POST /inventory-directs/import`).
+  app.useBodyParser('json', { limit: '1mb' });
 
   app.set('trust proxy', 1);
   app.use(

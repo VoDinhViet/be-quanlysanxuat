@@ -12,6 +12,7 @@ import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
+  InventoryAdjustmentReason,
   InventoryAdjustmentType,
   InventoryDocumentStatus,
   InventoryReferenceType,
@@ -36,6 +37,31 @@ const adjustmentTypeTransactionType: Record<
   [InventoryAdjustmentType.INCREASE]: InventoryTransactionType.ADJUSTMENT_IN,
   [InventoryAdjustmentType.DECREASE]: InventoryTransactionType.ADJUSTMENT_OUT,
 };
+
+type AdjustmentLine = { itemId: string; quantity: number };
+
+export type PostedAdjustmentInput = {
+  adjustmentType: InventoryAdjustmentType;
+  reason: InventoryAdjustmentReason;
+  adjustmentDate: Date;
+  note: string | null;
+  lines: (AdjustmentLine & { unitId: string; note?: string })[];
+};
+
+/** Số lượng dòng phiếu luôn dương; dấu bút toán suy từ `adjustmentType` của header. */
+function toPostingLines(
+  adjustmentType: InventoryAdjustmentType,
+  lines: AdjustmentLine[],
+) {
+  const sign = adjustmentType === InventoryAdjustmentType.INCREASE ? 1 : -1;
+  const type = adjustmentTypeTransactionType[adjustmentType];
+
+  return lines.map((line) => ({
+    itemId: line.itemId,
+    signedQuantity: sign * line.quantity,
+    type,
+  }));
+}
 
 @Injectable()
 export class InventoryAdjustmentsService {
@@ -202,23 +228,12 @@ export class InventoryAdjustmentsService {
         throw new AppException(ErrorCode.E151, HttpStatus.BAD_REQUEST);
       }
 
-      const type =
-        adjustmentTypeTransactionType[inventoryAdjustment.adjustmentType];
-      const sign =
-        inventoryAdjustment.adjustmentType === InventoryAdjustmentType.INCREASE
-          ? 1
-          : -1;
-
       await this.inventoryPostingService.postDocument(tx, {
         referenceType: InventoryReferenceType.INVENTORY_ADJUSTMENT,
         referenceId: adjustmentId,
         transactionDate: inventoryAdjustment.adjustmentDate,
         createdBy: userId,
-        lines: itemsToPost.map((item) => ({
-          itemId: item.itemId,
-          signedQuantity: sign * item.quantity,
-          type,
-        })),
+        lines: toPostingLines(inventoryAdjustment.adjustmentType, itemsToPost),
       });
 
       await tx
@@ -230,6 +245,49 @@ export class InventoryAdjustmentsService {
         })
         .where(eq(inventoryAdjustments.id, adjustmentId));
     });
+  }
+
+  /** Tạo phiếu đã `POSTED` ngay trong transaction của nơi gọi, bỏ qua bước `DRAFT` — dùng cho nhập
+   * tồn kho từ Excel, nơi người dùng đã xem trước chênh lệch. Nơi gọi tự kiểm item và khoá tồn. */
+  async createPostedAdjustment(
+    tx: DbTransaction,
+    input: PostedAdjustmentInput,
+    userId: string,
+  ): Promise<{ id: string; code: string }> {
+    const { lines, ...adjustmentFields } = input;
+    const code = await this.generateAdjustmentCode(tx, input.adjustmentDate);
+
+    const [inventoryAdjustment] = await tx
+      .insert(inventoryAdjustments)
+      .values({
+        ...adjustmentFields,
+        code,
+        status: InventoryDocumentStatus.POSTED,
+        createdBy: userId,
+        postedBy: userId,
+        postedAt: new Date(),
+      })
+      .returning({
+        id: inventoryAdjustments.id,
+        code: inventoryAdjustments.code,
+      });
+
+    await tx.insert(inventoryAdjustmentItems).values(
+      lines.map((line) => ({
+        ...line,
+        adjustmentId: inventoryAdjustment.id,
+      })),
+    );
+
+    await this.inventoryPostingService.postDocument(tx, {
+      referenceType: InventoryReferenceType.INVENTORY_ADJUSTMENT,
+      referenceId: inventoryAdjustment.id,
+      transactionDate: input.adjustmentDate,
+      createdBy: userId,
+      lines: toPostingLines(input.adjustmentType, lines),
+    });
+
+    return inventoryAdjustment;
   }
 
   /** `DRAFT`/`POSTED → CANCELLED`. Từ `POSTED` thì đảo bút toán trước (`reverseDocument`). */
