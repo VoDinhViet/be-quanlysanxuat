@@ -20,6 +20,15 @@ cd "$APP_DIR"
 exec 9>/var/lock/qlsx-staging-deploy.lock
 flock -n 9 || { echo "Đang có một lần deploy staging khác chạy, dừng." >&2; exit 1; }
 
+# Giữ 1 bản mới nhất của staging (theo số lần chạy trong tag `staging-v<số>`), xoá các bản cũ hơn.
+# Lọc theo tag nên không đụng image của prod (`v<số>`); `docker rmi` không có -f sẽ bỏ qua image đang có container dùng.
+prune_old_images() {
+  local repo="${1%:*}"
+  docker images "$repo" --format '{{.Tag}}' \
+    | sed -nE 's/^staging-v([0-9]+)$/\1/p' | sort -nr | tail -n +2 \
+    | while read -r run; do docker rmi "$repo:staging-v$run" >/dev/null 2>&1 || true; done
+}
+
 deploy_infra() {
   echo "==> Tạo thư mục dữ liệu"
   mkdir -p "$DATA_DIR/postgres" "$DATA_DIR/redis" "$DATA_DIR/uploads"
@@ -49,6 +58,13 @@ deploy_app() {
     docker login ghcr.io -u "$GHCR_USER" --password-stdin >/dev/null
   fi
 
+  # Pull cần ~2GB và Postgres chạy chung ổ: còn dưới 3GB thì dừng, không để pull lấy nốt chỗ của DB.
+  if (( $(df --output=avail / | tail -1) < 3 * 1024 * 1024 )); then
+    echo "!!! Ổ đĩa còn dưới 3GB, dừng deploy. Dọn image cũ rồi chạy lại." >&2
+    df -h / >&2
+    return 1
+  fi
+
   echo "==> Pull $image"
   docker pull "$image"
 
@@ -65,7 +81,8 @@ deploy_app() {
     grep -v '^APP_IMAGE=' .env > .env.tmp || true
     echo "APP_IMAGE=$image" >> .env.tmp
     mv .env.tmp .env
-    # Không prune image toàn máy: image của prod nằm chung Docker daemon và không được đụng tới.
+    echo "==> Dọn image staging cũ, chỉ giữ bản đang chạy"
+    prune_old_images "$image"
     echo "==> Deploy xong: $image"
     return 0
   fi

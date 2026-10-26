@@ -21,6 +21,15 @@ cd "$APP_DIR"
 exec 9>/var/lock/qlsx-deploy.lock
 flock -n 9 || { echo "Đang có một lần deploy khác chạy, dừng." >&2; exit 1; }
 
+# Giữ 2 bản mới nhất của prod (theo số lần chạy trong tag `v<số>`), xoá các bản cũ hơn.
+# Lọc theo tag nên không đụng image của staging (`staging-v<số>`); `docker rmi` không có -f sẽ bỏ qua image đang có container dùng.
+prune_old_images() {
+  local repo="${1%:*}"
+  docker images "$repo" --format '{{.Tag}}' \
+    | sed -nE 's/^v([0-9]+)$/\1/p' | sort -nr | tail -n +3 \
+    | while read -r run; do docker rmi "$repo:v$run" >/dev/null 2>&1 || true; done
+}
+
 deploy_infra() {
   echo "==> Bật Postgres và Redis"
   docker compose up -d --no-build --wait --wait-timeout "$WAIT_TIMEOUT" postgres redis
@@ -46,6 +55,13 @@ deploy_app() {
     docker login ghcr.io -u "$GHCR_USER" --password-stdin >/dev/null
   fi
 
+  # Pull cần ~2GB và Postgres chạy chung ổ: còn dưới 3GB thì dừng, không để pull lấy nốt chỗ của DB.
+  if (( $(df --output=avail / | tail -1) < 3 * 1024 * 1024 )); then
+    echo "!!! Ổ đĩa còn dưới 3GB, dừng deploy. Dọn image cũ rồi chạy lại." >&2
+    df -h / >&2
+    return 1
+  fi
+
   echo "==> Pull $image"
   docker pull "$image"
 
@@ -64,8 +80,8 @@ deploy_app() {
     echo "APP_IMAGE=$image" >> .env.tmp
     mv .env.tmp .env
 
-    echo "==> Dọn image cũ hơn 72 giờ không còn container nào dùng"
-    docker image prune -af --filter "until=72h" >/dev/null
+    echo "==> Dọn image cũ, giữ 2 bản prod mới nhất (bản đang chạy + 1 bản để rollback)"
+    prune_old_images "$image"
     echo "==> Deploy xong: $image"
     return 0
   fi
