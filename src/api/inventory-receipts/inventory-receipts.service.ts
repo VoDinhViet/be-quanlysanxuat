@@ -110,6 +110,30 @@ const RECEIPT_TYPES_WITH_REASON: ReadonlySet<InventoryReceiptType> = new Set([
   InventoryReceiptType.RETURN,
 ]);
 
+type ReceiptPartner = {
+  name: string;
+  address: string | null;
+  taxCode: string | null;
+};
+
+/** Khối "đơn vị giao" trên phiếu in: NCC với phiếu mua, khách hàng với phiếu trả hàng. */
+function resolveReceiptPartner(receipt: {
+  supplier: ReceiptPartner | null;
+  client: ReceiptPartner | null;
+}) {
+  const [title, label, partner] = receipt.supplier
+    ? ['Thông tin nhà cung cấp', 'Tên nhà cung cấp', receipt.supplier]
+    : ['Thông tin khách hàng', 'Tên khách hàng', receipt.client];
+
+  return {
+    partner_title: title,
+    partner_label: label,
+    partner_name: partner?.name ?? '',
+    partner_address: partner?.address ?? '',
+    partner_tax_code: partner?.taxCode ?? '',
+  };
+}
+
 type IqcSourceIds = {
   supplierId: string | null;
   clientId: string | null;
@@ -261,50 +285,90 @@ export class InventoryReceiptsService {
       : (receipt.productionOrder?.order?.buyerPoNo ?? null);
   }
 
-  /** `context` không có Kho/Warehouse và các ô ký: để trống cho người dùng điền tay (hệ thống chỉ có
-   * 1 kho). */
+  /** Các ô ký để trống cho người dùng điền tay; "PO / Lý do" dùng chung quy tắc với cột của danh
+   * sách (`resolvePoOrReason`). Phiếu không có NCC/khách (nhập thành phẩm) thì ẩn khối đơn vị giao. */
   async exportInventoryReceiptPdf(receiptId: string): Promise<StreamableFile> {
-    const [[receipt], items] = await Promise.all([
-      this.db
-        .select({
-          code: inventoryReceipts.code,
-          receiptDate: inventoryReceipts.receiptDate,
-          supplier: getTableColumns(suppliers),
-          client: getTableColumns(clients),
-        })
-        .from(inventoryReceipts)
-        .leftJoin(suppliers, eq(suppliers.id, inventoryReceipts.supplierId))
-        .leftJoin(clients, eq(clients.id, inventoryReceipts.clientId))
-        .where(eq(inventoryReceipts.id, receiptId)),
-      this.db
-        .select({
-          item: getTableColumns(itemsTable),
-          unit: getTableColumns(units),
-          quantity: inventoryReceiptItems.quantity,
-          note: inventoryReceiptItems.note,
-        })
-        .from(inventoryReceiptItems)
-        .innerJoin(itemsTable, eq(itemsTable.id, inventoryReceiptItems.itemId))
-        .leftJoin(units, eq(units.id, inventoryReceiptItems.unitId))
-        .where(eq(inventoryReceiptItems.receiptId, receiptId))
-        .orderBy(asc(inventoryReceiptItems.createdAt)),
-    ]);
+    const [receipt, receiptLines, purchaseSourcesByReceiptId] =
+      await Promise.all([
+        this.db.query.inventoryReceipts.findFirst({
+          where: eq(inventoryReceipts.id, receiptId),
+          with: {
+            supplier: true,
+            client: true,
+            purchaseRequest: {
+              with: { productionOrder: { with: { order: true } } },
+            },
+            productionOrder: { with: { order: true } },
+            purchaseOrder: true,
+          },
+        }),
+        this.db
+          .select({
+            item: getTableColumns(itemsTable),
+            unit: getTableColumns(units),
+            quantity: inventoryReceiptItems.quantity,
+            quotationQuantity: inventoryReceiptItems.quotationQuantity,
+            quotationUnit: purchaseOrderItems.quotationUnit,
+            purchaseOrderCode: purchaseOrders.code,
+            note: inventoryReceiptItems.note,
+          })
+          .from(inventoryReceiptItems)
+          .innerJoin(
+            itemsTable,
+            eq(itemsTable.id, inventoryReceiptItems.itemId),
+          )
+          .leftJoin(units, eq(units.id, inventoryReceiptItems.unitId))
+          .leftJoin(
+            purchaseOrderItems,
+            eq(
+              purchaseOrderItems.id,
+              inventoryReceiptItems.purchaseOrderItemId,
+            ),
+          )
+          .leftJoin(
+            purchaseOrders,
+            eq(purchaseOrders.id, purchaseOrderItems.purchaseOrderId),
+          )
+          .where(eq(inventoryReceiptItems.receiptId, receiptId))
+          .orderBy(asc(inventoryReceiptItems.createdAt)),
+        getPurchaseSourcesByReceiptId(this.db, [receiptId]),
+      ]);
 
     if (!receipt) {
       throw new AppException(ErrorCode.E096, HttpStatus.NOT_FOUND);
     }
 
+    // Một phiếu có thể gom dòng của nhiều đơn mua; phiếu không gắn dòng PO thì lấy PO trên phiếu.
+    const lineOrderCodes = receiptLines
+      .map((line) => line.purchaseOrderCode)
+      .filter((orderCode) => orderCode !== null);
+    const purchaseOrderCodes = lineOrderCodes.length
+      ? [...new Set(lineOrderCodes)]
+      : receipt.purchaseOrder
+        ? [receipt.purchaseOrder.code]
+        : [];
+
     const context = {
       code: receipt.code,
       receipt_date: formatVnDate(receipt.receiptDate),
-      delivery_unit: receipt.supplier?.name ?? receipt.client?.name ?? '',
-      receipt_items: items.map((row, index) => ({
+      purchase_order_codes: purchaseOrderCodes.join(', '),
+      source:
+        this.resolvePoOrReason(
+          receipt,
+          purchaseSourcesByReceiptId.get(receiptId),
+        ) ?? '',
+      ...resolveReceiptPartner(receipt),
+      receipt_items: receiptLines.map((line, index) => ({
         stt: index + 1,
-        item_code: row.item.code,
-        item_name: row.item.name,
-        unit_name: row.unit?.name ?? '',
-        quantity: formatQuantity(row.quantity),
-        note: row.note ?? '',
+        item_code: line.item.code,
+        item_name: line.item.name,
+        unit_name: line.unit?.name ?? '',
+        quantity: formatQuantity(line.quantity),
+        converted_quantity:
+          line.quotationQuantity !== null
+            ? `${formatQuantity(line.quotationQuantity)} ${line.quotationUnit ?? ''}`.trim()
+            : '-',
+        note: line.note ?? '',
       })),
     };
 

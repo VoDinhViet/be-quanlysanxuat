@@ -7,6 +7,7 @@ import {
   Patch,
   Post,
   Query,
+  StreamableFile,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 
@@ -25,6 +26,7 @@ import { RejectInventoryRequisitionReqDto } from './dto/reject-inventory-requisi
 import { RequisitionLineResDto } from './dto/requisition-line.res.dto';
 import { UpdateInventoryRequisitionReqDto } from './dto/update-inventory-requisition.req.dto';
 import { InventoryRequisitionLinesService } from './inventory-requisition-lines.service';
+import { InventoryRequisitionPdfService } from './inventory-requisition-pdf.service';
 import { InventoryRequisitionsService } from './inventory-requisitions.service';
 
 @ApiTags('Inventory Requisitions')
@@ -33,6 +35,7 @@ export class InventoryRequisitionsController {
   constructor(
     private readonly inventoryRequisitionsService: InventoryRequisitionsService,
     private readonly requisitionLinesService: InventoryRequisitionLinesService,
+    private readonly requisitionPdfService: InventoryRequisitionPdfService,
   ) {}
 
   @Get()
@@ -75,6 +78,20 @@ export class InventoryRequisitionsController {
     @UUIDParam('requisitionId') requisitionId: string,
   ): Promise<InventoryRequisitionResDto> {
     return this.inventoryRequisitionsService.getInventoryRequisition(
+      requisitionId,
+    );
+  }
+
+  @Get(':requisitionId/export-pdf')
+  @Permissions('inventory-requisitions:read')
+  @ApiAuth({
+    summary: 'Xuất PDF Phiếu lãnh vật tư (BM 09-03)',
+    fileType: 'application/pdf',
+  })
+  exportInventoryRequisitionPdf(
+    @UUIDParam('requisitionId') requisitionId: string,
+  ): Promise<StreamableFile> {
+    return this.requisitionPdfService.exportInventoryRequisitionPdf(
       requisitionId,
     );
   }

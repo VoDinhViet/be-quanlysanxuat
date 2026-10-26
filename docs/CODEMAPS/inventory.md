@@ -34,10 +34,11 @@ Controller file = `<folder>.controller.ts`; "Svc" = service line.
 | POST .../:receiptId/confirm | U | confirmInventoryReceipt (559) | receipts, quality_inspections |
 | POST .../:receiptId/post | U | postInventoryReceipt (642) | receipts, balances, transactions, payment_requests, production_jobs/orders(+logs), ncrs |
 | POST .../:receiptId/cancel | U | cancelInventoryReceipt (860) | receipts, quality_inspections |
-| GET .../:receiptId/export-pdf | R | exportInventoryReceiptPdf (266) | - |
+| GET .../:receiptId/export-pdf | R | exportInventoryReceiptPdf (290): PDF BM 09-01 A4 portrait; PO / Lý do via `resolvePoOrReason`, PO codes from receipt lines, supplier or client block | - |
 | GET .../:receiptId/related-notes | R | PurchaseNotesService.getChainNotesFromReceipt | - |
 | GET /inventory-issues | R | getInventoryIssues (91) | - |
-| GET /inventory-issues/:issueId | R | getInventoryIssue (236), returns `postNote` + `files` | - |
+| GET /inventory-issues/:issueId | R | getInventoryIssue (249), returns `postNote` + `files` | - |
+| GET .../:issueId/export-pdf | R | exportInventoryIssuePdf (295): PDF BM 09-02 A4 portrait; requisition code, PO / Lý do via `resolvePoOrReason`, requester = requisition creator | - |
 | POST /inventory-issues | C | createInventoryIssue (264) | issues, issue_items |
 | PATCH /inventory-issues/:issueId | U | updateInventoryIssue (291) | issues, issue_items |
 | DELETE /inventory-issues/:issueId | D | deleteInventoryIssue (321) | issues |
@@ -46,6 +47,7 @@ Controller file = `<folder>.controller.ts`; "Svc" = service line.
 | GET /inventory-requisitions | inventory-requisitions:read | getInventoryRequisitions (72) | - |
 | GET /inventory-requisitions/lines | :read | RequisitionLinesService.getRequisitionPickerLines (lines.service 109); declared before `:requisitionId` | - |
 | GET .../:requisitionId | :read | getInventoryRequisition (150) | - |
+| GET .../:requisitionId/export-pdf | :read | InventoryRequisitionPdfService.exportInventoryRequisitionPdf (pdf.service 31): PDF BM 09-03 A4 portrait; PO / Lý do = order `buyerPoNo` for PRODUCTION, `reason` otherwise | - |
 | POST /inventory-requisitions | :create | createInventoryRequisition (185) | requisitions, requisition_items |
 | PATCH .../:requisitionId | :update | updateInventoryRequisition (233); REJECTED reopens to DRAFT | requisitions, requisition_items |
 | DELETE .../:requisitionId | :delete | deleteInventoryRequisition (270), DRAFT only | requisitions |

@@ -7,6 +7,7 @@ import {
   Patch,
   Post,
   Query,
+  StreamableFile,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 
@@ -57,6 +58,18 @@ export class InventoryIssuesController {
     @UUIDParam('issueId') issueId: string,
   ): Promise<InventoryIssueResDto> {
     return this.inventoryIssuesService.getInventoryIssue(issueId);
+  }
+
+  @Get(':issueId/export-pdf')
+  @Permissions('inventory:read')
+  @ApiAuth({
+    summary: 'Xuất PDF Phiếu xuất kho (BM 09-02)',
+    fileType: 'application/pdf',
+  })
+  exportInventoryIssuePdf(
+    @UUIDParam('issueId') issueId: string,
+  ): Promise<StreamableFile> {
+    return this.inventoryIssuesService.exportInventoryIssuePdf(issueId);
   }
 
   @Post()

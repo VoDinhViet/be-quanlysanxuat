@@ -6,6 +6,8 @@ import { join } from 'path';
  * - `PRODUCTION_ORDER`: lệnh sản xuất (mã BM-02/KD), file `production-order.html`
  * - `PRODUCTION_PLAN`: kế hoạch sản xuất nhiều Job (mã BM 08-01), file `production-plan.html`
  * - `STOCK_IN_SLIP`: phiếu nhập kho (mã BM 09-01), file `stock-in-slip.html`
+ * - `STOCK_OUT_SLIP`: phiếu xuất kho (mã BM 09-02), file `stock-out-slip.html`
+ * - `MATERIAL_REQUISITION`: phiếu lãnh vật tư (mã BM 09-03), file `material-requisition.html`
  * - `PURCHASE_REQUEST`: đề xuất mua hàng (mã BM 07-01), file `purchase-request.html`
  * - `PURCHASE_ORDER`: đơn đặt hàng NCC (mã BM 07-02), file `purchase-order.html`
  */
@@ -15,6 +17,8 @@ export enum FormTemplateType {
   PRODUCTION_ORDER = 'PRODUCTION_ORDER',
   PRODUCTION_PLAN = 'PRODUCTION_PLAN',
   STOCK_IN_SLIP = 'STOCK_IN_SLIP',
+  STOCK_OUT_SLIP = 'STOCK_OUT_SLIP',
+  MATERIAL_REQUISITION = 'MATERIAL_REQUISITION',
   PURCHASE_REQUEST = 'PURCHASE_REQUEST',
   PURCHASE_ORDER = 'PURCHASE_ORDER',
 }
@@ -117,11 +121,54 @@ export const FORM_TEMPLATES: Record<FormTemplateType, FormTemplateDefinition> =
     },
     [FormTemplateType.STOCK_IN_SLIP]: {
       fileName: 'stock-in-slip.html',
-      landscape: true,
+      landscape: false,
       placeholders: [
-        { key: 'code', label: 'Số phiếu nhập', group: 'meta' },
-        { key: 'receipt_date', label: 'Ngày nhập kho', group: 'meta' },
-        { key: 'delivery_unit', label: 'Đơn vị giao', group: 'meta' },
+        { key: 'code', label: 'Mã phiếu nhập', group: 'meta' },
+        { key: 'receipt_date', label: 'Ngày nhập', group: 'meta' },
+        { key: 'purchase_order_codes', label: 'Mã phiếu mua', group: 'meta' },
+        { key: 'source', label: 'PO / Lý do', group: 'meta' },
+        {
+          key: 'partner_title',
+          label: 'Tiêu đề khối NCC / khách hàng',
+          group: 'meta',
+        },
+        {
+          key: 'partner_label',
+          label: 'Nhãn tên NCC / khách hàng',
+          group: 'meta',
+        },
+        { key: 'partner_name', label: 'Tên NCC / khách hàng', group: 'meta' },
+        {
+          key: 'partner_address',
+          label: 'Địa chỉ NCC / khách hàng',
+          group: 'meta',
+        },
+        { key: 'partner_tax_code', label: 'Mã số thuế', group: 'meta' },
+      ],
+    },
+    [FormTemplateType.STOCK_OUT_SLIP]: {
+      fileName: 'stock-out-slip.html',
+      landscape: false,
+      placeholders: [
+        { key: 'code', label: 'Mã phiếu xuất', group: 'meta' },
+        { key: 'requisition_code', label: 'Mã phiếu lãnh', group: 'meta' },
+        { key: 'issue_date', label: 'Ngày xuất kho', group: 'meta' },
+        { key: 'department_name', label: 'Bộ phận lãnh', group: 'meta' },
+        { key: 'requester_name', label: 'Người tạo phiếu lãnh', group: 'meta' },
+        { key: 'source', label: 'PO / Lý do', group: 'meta' },
+        { key: 'job_code', label: 'Job', group: 'meta' },
+      ],
+    },
+    [FormTemplateType.MATERIAL_REQUISITION]: {
+      fileName: 'material-requisition.html',
+      landscape: false,
+      placeholders: [
+        { key: 'code', label: 'Mã phiếu lãnh', group: 'meta' },
+        { key: 'requisition_date', label: 'Ngày lãnh', group: 'meta' },
+        { key: 'source', label: 'PO / Lý do', group: 'meta' },
+        { key: 'job_code', label: 'Job', group: 'meta' },
+        { key: 'department_name', label: 'Bộ phận đề xuất', group: 'meta' },
+        { key: 'note', label: 'Ghi chú', group: 'meta' },
       ],
     },
     [FormTemplateType.PURCHASE_REQUEST]: {

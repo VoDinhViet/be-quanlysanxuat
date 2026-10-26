@@ -1,4 +1,4 @@
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, StreamableFile } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import {
   and,
@@ -11,6 +11,7 @@ import {
   lt,
   or,
 } from 'drizzle-orm';
+import { DateTime } from 'luxon';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
@@ -18,7 +19,9 @@ import {
   DocumentType,
   generateDocumentSequence,
 } from '../../common/utils/document-sequence.util';
+import { formatVnDate } from '../../common/utils/excel.util';
 import { unaccentILike } from '../../common/utils/search.util';
+import { formatQuantity } from '../../common/utils/vnd.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
@@ -44,6 +47,8 @@ import {
   users,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
+import { FormTemplateType } from '../../templates/form-templates.registry';
+import { PdfRendererService } from '../../templates/pdf-renderer.service';
 import { hasPendingIqcForItems } from '../iqc/iqc.query';
 import { FilesService } from '../files/files.service';
 import { InventoryPostingService } from '../inventory/inventory-posting.service';
@@ -93,6 +98,7 @@ export class InventoryIssuesService {
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly inventoryPostingService: InventoryPostingService,
     private readonly filesService: FilesService,
+    private readonly pdfRendererService: PdfRendererService,
   ) {}
 
   async getInventoryIssues(
@@ -282,6 +288,69 @@ export class InventoryIssuesService {
       },
       { excludeExtraneousValues: true },
     );
+  }
+
+  /** "PO / Lý do" dùng chung quy tắc với cột của danh sách (`resolvePoOrReason`); người lãnh in ra
+   * là `requesterBy` của phiếu lãnh sinh ra phiếu xuất. */
+  async exportInventoryIssuePdf(issueId: string): Promise<StreamableFile> {
+    const [inventoryIssue, requisitionByIssueId] = await Promise.all([
+      this.db.query.inventoryIssues.findFirst({
+        where: eq(inventoryIssues.id, issueId),
+        with: {
+          productionOrder: {
+            with: { order: { columns: { buyerPoNo: true } } },
+          },
+          productionJob: true,
+          department: true,
+          requesterBy: true,
+          items: {
+            with: { item: true, unit: true },
+            orderBy: (issueItems, { asc }) => [asc(issueItems.createdAt)],
+          },
+        },
+      }),
+      this.getRequisitionsByIssueIds([issueId]),
+    ]);
+
+    if (!inventoryIssue) {
+      throw new AppException(ErrorCode.E096, HttpStatus.NOT_FOUND);
+    }
+
+    const requisition = requisitionByIssueId.get(issueId) ?? null;
+
+    const context = {
+      code: inventoryIssue.code,
+      requisition_code: requisition?.code ?? '',
+      issue_date: formatVnDate(inventoryIssue.issueDate),
+      department_name: inventoryIssue.department?.name ?? '',
+      requester_name: inventoryIssue.requesterBy?.fullName ?? '',
+      source:
+        resolvePoOrReason(
+          requisition,
+          inventoryIssue.productionOrder?.order.buyerPoNo ?? null,
+          inventoryIssue.note,
+        ) ?? '',
+      job_code: inventoryIssue.productionJob?.code ?? '',
+      issue_items: inventoryIssue.items.map((issueItem, index) => ({
+        stt: index + 1,
+        item_code: issueItem.item.code,
+        item_name: issueItem.item.name,
+        unit_name: issueItem.unit.name,
+        quantity: formatQuantity(issueItem.quantity),
+        note: issueItem.note ?? '',
+      })),
+    };
+
+    const buffer = await this.pdfRendererService.render(
+      FormTemplateType.STOCK_OUT_SLIP,
+      context,
+    );
+
+    const fileName = `${inventoryIssue.code}-${DateTime.now().toFormat('yyyyLLdd-HHmm')}.pdf`;
+    return new StreamableFile(buffer, {
+      type: 'application/pdf',
+      disposition: `attachment; filename="${fileName}"`,
+    });
   }
 
   async createInventoryIssue(
