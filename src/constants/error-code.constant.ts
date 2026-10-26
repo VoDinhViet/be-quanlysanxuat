@@ -335,10 +335,8 @@ export enum ErrorCode {
   // postSupplierReturn`) khi dòng IQC không còn `WAITING_RETURN`.
   E164 = 'iqc_inspection.error.not_waiting_return',
   E165 = 'outsourcing_order.error.not_found',
-  // E166 (outsourcing_order.error.operation_not_outsource) dự phòng — trước ném khi snapshot
-  // `productionJobOperationId` không phải `type = OUTSOURCE`; `createOutsourcingOrder` không còn
-  // resolve/validate công đoạn phía server, client gửi thẳng các cột của dòng.
-  //
+  // Công đoạn chọn cho phiếu thủ công không phải `type = OUTSOURCE` hoặc đã ngừng hoạt động.
+  // Phiếu theo Job không validate công đoạn phía server, client gửi thẳng các cột của dòng.
   E166 = 'outsourcing_order.error.operation_not_outsource',
   // E167 (outsourcing_order.error.job_not_in_progress) dự phòng — cùng lý do bỏ như E166; trước
   // ném khi Job của công đoạn chưa/không còn `IN_PROGRESS`.
@@ -378,8 +376,8 @@ export enum ErrorCode {
   // Nghỉ hưu — cùng lý do `E097`: `code` không còn cho client tự truyền trên `create`.
   E181 = 'oqc_inspection.error.code_exists',
   E182 = 'outsourcing_order.error.items_required',
-  // Hai dòng trong cùng payload OS-OUT trỏ cùng một `productionJobOperationId` — mỗi công đoạn chỉ
-  // được xuất hiện một lần trên một phiếu.
+  // Hai dòng trong cùng payload OS-OUT trỏ cùng một `productionJobOperationId` (phiếu thủ công:
+  // cùng `itemCode`) — mỗi công đoạn/mã chỉ được xuất hiện một lần trên một phiếu.
   E183 = 'outsourcing_order.error.duplicate_operation',
   // Σ SL gửi (cộng dồn theo `productionJobOperationId`, mọi phiếu chưa huỷ) vượt `plannedQuantity`
   // của node BOM; ném ở `OutsourcingOrdersService.assertWithinPlannedQuantity`.
@@ -705,6 +703,8 @@ export enum ErrorCode {
   E316 = 'purchase_order.error.quotation_unit_missing',
   // Sửa tạm ứng của PO khi YCTT đã gửi kế toán (PENDING) — kế toán đang duyệt trên số cố định.
   E317 = 'payment_request.error.pending_approval',
+  // Sửa phiếu OS-OUT bằng route của nguồn gốc khác (phiếu thủ công sửa qua route theo Job và ngược lại).
+  E318 = 'outsourcing_order.error.origin_mismatch',
   V003 = 'common.error.too_many_requests',
   // `GlobalExceptionFilter` bắt chuỗi "No values to set" của drizzle-orm — mọi `PATCH` khi
   // `ValidationPipe` whitelist đã loại sạch field lạ, còn lại payload rỗng cho `.set()`. Trước đây

@@ -65,7 +65,8 @@ export class OutsourcingOrderItemResDto {
   @Expose()
   @ClassFieldOptional(() => UnitRefResDto, {
     nullable: true,
-    description: 'ĐVT vật tư — chỉ khi node là DIRECT',
+    description:
+      'ĐVT của dòng: đơn vị đã nhập (phiếu thủ công) hoặc ĐVT vật tư khi node là DIRECT',
   })
   unit!: UnitRefResDto | null;
 

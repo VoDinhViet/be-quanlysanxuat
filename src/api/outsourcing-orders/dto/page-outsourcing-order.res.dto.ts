@@ -1,6 +1,9 @@
 import { Exclude, Expose } from 'class-transformer';
 
-import { OutsourcingOrderStatus } from '../../../database/schemas';
+import {
+  OutsourcingOrderOrigin,
+  OutsourcingOrderStatus,
+} from '../../../database/schemas';
 import {
   ClassField,
   ClassFieldOptional,
@@ -36,6 +39,12 @@ export class PageOutsourcingOrderResDto {
   @Expose()
   @DateFieldOptional({ nullable: true, description: 'Ngày hẹn về' })
   expectedReturnDate!: Date | null;
+
+  @Expose()
+  @EnumField(() => OutsourcingOrderOrigin, {
+    description: 'FROM_JOB lập từ công đoạn của Job, MANUAL lập thủ công',
+  })
+  origin!: OutsourcingOrderOrigin;
 
   @Expose()
   @EnumField(() => OutsourcingOrderStatus, {

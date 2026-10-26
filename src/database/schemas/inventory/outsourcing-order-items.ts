@@ -17,6 +17,7 @@ import { operations } from '../operations';
 import { productionJobBomItems } from '../production/production-job-bom-items';
 import { productionJobOperations } from '../production/production-job-operations';
 import { productionJobs } from '../production/production-jobs';
+import { units } from '../units/units';
 
 /**
  * Dòng phiếu gửi gia công ngoài (OS-OUT) — client gửi đủ cột snapshot (`productionJobBomItemId`,
@@ -64,6 +65,11 @@ export const outsourcingOrderItems = pgTable(
     itemId: uuid('item_id').references(() => items.id, {
       onDelete: 'set null',
     }),
+    // Đơn vị người dùng chọn ở phiếu thủ công; dòng từ Job lấy đơn vị theo `itemId`. `restrict`
+    // vì dòng thủ công không có item để suy ra lại đơn vị đã mất, xem `UnitsService.ensureUnitNotInUse`.
+    unitId: uuid('unit_id').references(() => units.id, {
+      onDelete: 'restrict',
+    }),
     quantity: numeric('quantity', {
       precision: 18,
       scale: 3,
@@ -94,6 +100,7 @@ export const outsourcingOrderItems = pgTable(
       table.productionJobOperationId,
     ),
     index('idx_outsourcing_order_items_operation_id').on(table.operationId),
+    index('idx_outsourcing_order_items_unit_id').on(table.unitId),
     check('chk_outsourcing_order_items_quantity_positive', sql`quantity > 0`),
     check(
       'chk_outsourcing_order_items_weight',

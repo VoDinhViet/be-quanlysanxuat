@@ -17,6 +17,7 @@ import { Permissions } from '../../decorators/permissions.decorator';
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
 import { OperationAccessService } from '../operations/operation-access.service';
 import { CreateOutsourcingOrderReqDto } from './dto/create-outsourcing-order.req.dto';
+import { CreateStandaloneOutsourcingOrderReqDto } from './dto/create-standalone-outsourcing-order.req.dto';
 import { GetOutsourceableOperationsReqDto } from './dto/get-outsourceable-operations.req.dto';
 import { GetOutsourcingOrdersReqDto } from './dto/get-outsourcing-orders.req.dto';
 import { OutsourceableOperationResDto } from './dto/outsourceable-operation.res.dto';
@@ -108,6 +109,39 @@ export class OutsourcingOrdersController {
     return this.outsourcingOrdersService.createOutsourcingOrder(
       reqDto,
       payload.userId,
+    );
+  }
+
+  @Post('standalone')
+  @Permissions('outsourcing:create')
+  @ApiAuth({
+    summary:
+      'Lập phiếu gửi gia công ngoài thủ công (không gắn Job) ở trạng thái nháp',
+    statusCode: HttpStatus.NO_CONTENT,
+  })
+  createStandaloneOutsourcingOrder(
+    @Body() reqDto: CreateStandaloneOutsourcingOrderReqDto,
+    @CurrentUser() payload: JwtPayloadType,
+  ): Promise<void> {
+    return this.outsourcingOrdersService.createStandaloneOutsourcingOrder(
+      reqDto,
+      payload.userId,
+    );
+  }
+
+  @Patch(':outsourcingOrderId/standalone')
+  @Permissions('outsourcing:update')
+  @ApiAuth({
+    summary: 'Sửa phiếu thủ công đang nháp hoặc bị từ chối',
+    statusCode: HttpStatus.NO_CONTENT,
+  })
+  updateStandaloneOutsourcingOrder(
+    @UUIDParam('outsourcingOrderId') outsourcingOrderId: string,
+    @Body() reqDto: CreateStandaloneOutsourcingOrderReqDto,
+  ): Promise<void> {
+    return this.outsourcingOrdersService.updateStandaloneOutsourcingOrder(
+      outsourcingOrderId,
+      reqDto,
     );
   }
 

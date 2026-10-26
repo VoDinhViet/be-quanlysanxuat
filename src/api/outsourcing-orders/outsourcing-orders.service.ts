@@ -27,7 +27,10 @@ import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
   items,
+  OperationStatus,
+  operations,
   OperationType,
+  OutsourcingOrderOrigin,
   OutsourcingOrderStatus,
   outsourcingOrderItems,
   outsourcingOrders,
@@ -38,10 +41,15 @@ import {
   files,
   suppliers,
   units,
+  UnitStatus,
   users,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { receivedQuantityByOrderItemIdSubquery } from '../outsourcing-receipts/outsourcing-receipts.query';
+import {
+  CreateStandaloneOutsourcingOrderReqDto,
+  StandaloneOutsourcingOrderItemReqDto,
+} from './dto/create-standalone-outsourcing-order.req.dto';
 import { CreateOutsourcingOrderReqDto } from './dto/create-outsourcing-order.req.dto';
 import { GetOutsourceableOperationsReqDto } from './dto/get-outsourceable-operations.req.dto';
 import { GetOutsourcingOrdersReqDto } from './dto/get-outsourcing-orders.req.dto';
@@ -227,7 +235,13 @@ export class OutsourcingOrdersService {
       })
       .from(outsourcingOrderItems)
       .leftJoin(items, eq(items.id, outsourcingOrderItems.itemId))
-      .leftJoin(units, eq(units.id, items.unitId))
+      .leftJoin(
+        units,
+        eq(
+          units.id,
+          sql`coalesce(${outsourcingOrderItems.unitId}, ${items.unitId})`,
+        ),
+      )
       .leftJoin(
         productionJobBomItems,
         eq(
@@ -298,7 +312,7 @@ export class OutsourcingOrdersService {
         )
       : sentQuantityByJobOperationSubquery(this.db);
 
-    const [operations, [{ total }]] = await Promise.all([
+    const [outsourceableOperations, [{ total }]] = await Promise.all([
       this.db
         .select({
           productionJobOperationId: productionJobOperations.id,
@@ -383,7 +397,7 @@ export class OutsourcingOrdersService {
     ]);
 
     return new OffsetPaginatedDto(
-      plainToInstance(OutsourceableOperationResDto, operations, {
+      plainToInstance(OutsourceableOperationResDto, outsourceableOperations, {
         excludeExtraneousValues: true,
       }),
       new OffsetPaginationDto(total, reqDto),
@@ -436,6 +450,10 @@ export class OutsourcingOrdersService {
         outsourcingOrderId,
       );
       this.assertStatusIn(outsourcingOrder.status, EDITABLE_STATUSES);
+      this.assertOrigin(
+        outsourcingOrder.origin,
+        OutsourcingOrderOrigin.FROM_JOB,
+      );
 
       await this.assertWithinPlannedQuantity(
         tx,
@@ -458,6 +476,85 @@ export class OutsourcingOrdersService {
           eq(outsourcingOrderItems.outsourcingOrderId, outsourcingOrderId),
         );
       await this.insertOrderItems(tx, outsourcingOrderId, orderItems);
+    });
+  }
+
+  /** Lập phiếu thủ công ở `DRAFT`: người dùng tự nhập mã/tên/SL/đơn vị, không gắn Job nên không có
+   * kiểm định mức (E184); công đoạn lấy từ danh mục và server tự ghi mã/tên công đoạn. */
+  async createStandaloneOutsourcingOrder(
+    {
+      items: standaloneItems,
+      operationId,
+      ...orderFields
+    }: CreateStandaloneOutsourcingOrderReqDto,
+    userId: string,
+  ): Promise<void> {
+    await this.ensureSupplierExists(orderFields.supplierId);
+    this.validateStandaloneItems(standaloneItems);
+    await this.ensureUnitsActive(standaloneItems);
+    const operation = await this.getOutsourceOperation(operationId);
+
+    await this.db.transaction(async (tx) => {
+      const code = await this.generateOutsourcingOrderCode(tx);
+      const [outsourcingOrder] = await tx
+        .insert(outsourcingOrders)
+        .values({
+          ...orderFields,
+          code,
+          origin: OutsourcingOrderOrigin.MANUAL,
+          createdBy: userId,
+        })
+        .returning({ id: outsourcingOrders.id });
+
+      await this.insertOrderItems(
+        tx,
+        outsourcingOrder.id,
+        this.toStandaloneOrderItems(standaloneItems, operation),
+      );
+    });
+  }
+
+  /** Sửa phiếu thủ công `DRAFT`/`REJECTED`: thay toàn bộ header và dòng. */
+  async updateStandaloneOutsourcingOrder(
+    outsourcingOrderId: string,
+    {
+      items: standaloneItems,
+      operationId,
+      ...orderFields
+    }: CreateStandaloneOutsourcingOrderReqDto,
+  ): Promise<void> {
+    await this.ensureSupplierExists(orderFields.supplierId);
+    this.validateStandaloneItems(standaloneItems);
+    await this.ensureUnitsActive(standaloneItems);
+    const operation = await this.getOutsourceOperation(operationId);
+
+    await this.db.transaction(async (tx) => {
+      const outsourcingOrder = await this.getOutsourcingOrderForUpdate(
+        tx,
+        outsourcingOrderId,
+      );
+      this.assertStatusIn(outsourcingOrder.status, EDITABLE_STATUSES);
+      this.assertOrigin(outsourcingOrder.origin, OutsourcingOrderOrigin.MANUAL);
+
+      await tx
+        .update(outsourcingOrders)
+        .set({
+          ...orderFields,
+          expectedReturnDate: orderFields.expectedReturnDate ?? null,
+          note: orderFields.note ?? null,
+        })
+        .where(eq(outsourcingOrders.id, outsourcingOrderId));
+
+      await tx
+        .delete(outsourcingOrderItems)
+        .where(
+          eq(outsourcingOrderItems.outsourcingOrderId, outsourcingOrderId),
+        );
+      await this.insertOrderItems(
+        tx,
+        outsourcingOrderId,
+        this.toStandaloneOrderItems(standaloneItems, operation),
+      );
     });
   }
 
@@ -586,7 +683,10 @@ export class OutsourcingOrdersService {
   private async insertOrderItems(
     tx: DbTransaction,
     outsourcingOrderId: string,
-    orderItems: OutsourcingOrderItemReqDto[],
+    orderItems: Omit<
+      typeof outsourcingOrderItems.$inferInsert,
+      'outsourcingOrderId' | 'sortOrder'
+    >[],
   ): Promise<void> {
     await tx.insert(outsourcingOrderItems).values(
       orderItems.map((orderItem, index) => ({
@@ -737,6 +837,88 @@ export class OutsourcingOrdersService {
   ): void {
     if (!allowedStatuses.includes(status)) {
       throw new AppException(ErrorCode.E098, HttpStatus.CONFLICT);
+    }
+  }
+
+  /** Dòng phiếu thủ công mang mã/tên công đoạn do server ghi từ danh mục, không nhận từ client. */
+  private toStandaloneOrderItems(
+    standaloneItems: StandaloneOutsourcingOrderItemReqDto[],
+    operation: { id: string; code: string; name: string },
+  ) {
+    return standaloneItems.map((standaloneItem) => ({
+      ...standaloneItem,
+      operationId: operation.id,
+      operationCode: operation.code,
+      operationName: operation.name,
+    }));
+  }
+
+  private async ensureUnitsActive(
+    standaloneItems: StandaloneOutsourcingOrderItemReqDto[],
+  ): Promise<void> {
+    const unitIds = [
+      ...new Set(
+        standaloneItems.map((standaloneItem) => standaloneItem.unitId),
+      ),
+    ];
+    const activeUnits = await this.db
+      .select({ id: units.id })
+      .from(units)
+      .where(
+        and(inArray(units.id, unitIds), eq(units.status, UnitStatus.ACTIVE)),
+      );
+
+    if (activeUnits.length !== unitIds.length) {
+      throw new AppException(ErrorCode.E011, HttpStatus.NOT_FOUND);
+    }
+  }
+
+  private validateStandaloneItems(
+    standaloneItems: StandaloneOutsourcingOrderItemReqDto[],
+  ): void {
+    if (!standaloneItems.length) {
+      throw new AppException(ErrorCode.E182, HttpStatus.BAD_REQUEST);
+    }
+
+    const itemCodes = standaloneItems.map(
+      (standaloneItem) => standaloneItem.itemCode,
+    );
+    if (new Set(itemCodes).size !== itemCodes.length) {
+      throw new AppException(ErrorCode.E183, HttpStatus.BAD_REQUEST);
+    }
+  }
+
+  private async getOutsourceOperation(operationId: string) {
+    const [operation] = await this.db
+      .select({
+        id: operations.id,
+        code: operations.code,
+        name: operations.name,
+        type: operations.type,
+        status: operations.status,
+      })
+      .from(operations)
+      .where(and(eq(operations.id, operationId), isNull(operations.deletedAt)))
+      .limit(1);
+
+    if (!operation) {
+      throw new AppException(ErrorCode.E046, HttpStatus.NOT_FOUND);
+    }
+    if (
+      operation.type !== OperationType.OUTSOURCE ||
+      operation.status !== OperationStatus.ACTIVE
+    ) {
+      throw new AppException(ErrorCode.E166, HttpStatus.BAD_REQUEST);
+    }
+    return operation;
+  }
+
+  private assertOrigin(
+    origin: OutsourcingOrderOrigin,
+    expectedOrigin: OutsourcingOrderOrigin,
+  ): void {
+    if (origin !== expectedOrigin) {
+      throw new AppException(ErrorCode.E318, HttpStatus.CONFLICT);
     }
   }
 

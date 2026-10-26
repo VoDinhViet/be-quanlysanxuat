@@ -7,7 +7,12 @@ import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database } from '../../database/database.type';
-import { items, productionJobUnits, units } from '../../database/schemas';
+import {
+  items,
+  outsourcingOrderItems,
+  productionJobUnits,
+  units,
+} from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { CreateUnitReqDto } from './dto/create-unit.req.dto';
 import { GetUnitsReqDto } from './dto/get-units.req.dto';
@@ -115,24 +120,31 @@ export class UnitsService {
     }
   }
 
-  /** Kiểm trực tiếp hai bảng có `unitId` FK `restrict` (`items`, `production_job_units`), không lọc
+  /** Kiểm trực tiếp các bảng có `unitId` FK `restrict` (`items`, `production_job_units`,
+   * `outsourcing_order_items`), không lọc
    * `isNull(items.deletedAt)` — item xoá mềm vẫn giữ FK nên DB vẫn chặn xoá; lọc sẽ biến 409 sạch
    * ở đây thành lỗi FK constraint thô (500). */
   private async ensureUnitNotInUse(unitId: string): Promise<void> {
-    const [[usedInItem], [usedInProductionJobUnit]] = await Promise.all([
-      this.db
-        .select({ id: items.id })
-        .from(items)
-        .where(eq(items.unitId, unitId))
-        .limit(1),
-      this.db
-        .select({ id: productionJobUnits.id })
-        .from(productionJobUnits)
-        .where(eq(productionJobUnits.unitId, unitId))
-        .limit(1),
-    ]);
+    const [[usedInItem], [usedInProductionJobUnit], [usedInOutsourcingLine]] =
+      await Promise.all([
+        this.db
+          .select({ id: items.id })
+          .from(items)
+          .where(eq(items.unitId, unitId))
+          .limit(1),
+        this.db
+          .select({ id: productionJobUnits.id })
+          .from(productionJobUnits)
+          .where(eq(productionJobUnits.unitId, unitId))
+          .limit(1),
+        this.db
+          .select({ id: outsourcingOrderItems.id })
+          .from(outsourcingOrderItems)
+          .where(eq(outsourcingOrderItems.unitId, unitId))
+          .limit(1),
+      ]);
 
-    if (usedInItem || usedInProductionJobUnit) {
+    if (usedInItem || usedInProductionJobUnit || usedInOutsourcingLine) {
       throw new AppException(ErrorCode.E242, HttpStatus.CONFLICT);
     }
   }

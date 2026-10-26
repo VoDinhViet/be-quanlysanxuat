@@ -230,7 +230,13 @@ export class OutsourcingReceiptsService {
         eq(outsourcingOrders.id, outsourcingOrderItems.outsourcingOrderId),
       )
       .leftJoin(items, eq(items.id, outsourcingReceiptItems.itemId))
-      .leftJoin(units, eq(units.id, items.unitId))
+      .leftJoin(
+        units,
+        eq(
+          units.id,
+          sql`coalesce(${outsourcingOrderItems.unitId}, ${items.unitId})`,
+        ),
+      )
       .leftJoin(
         productionJobBomItems,
         eq(
@@ -310,7 +316,13 @@ export class OutsourcingReceiptsService {
           eq(productionJobs.id, outsourcingOrderItems.productionJobId),
         )
         .leftJoin(items, eq(items.id, outsourcingOrderItems.itemId))
-        .leftJoin(units, eq(units.id, items.unitId))
+        .leftJoin(
+          units,
+          eq(
+            units.id,
+            sql`coalesce(${outsourcingOrderItems.unitId}, ${items.unitId})`,
+          ),
+        )
         .leftJoin(
           productionJobBomItems,
           eq(

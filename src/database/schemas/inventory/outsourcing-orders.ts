@@ -47,6 +47,21 @@ export const outsourcingOrderStatusEnum = pgEnum('outsourcing_order_status', [
   OutsourcingOrderStatus.CANCELLED,
 ]);
 
+/**
+ * Nguồn gốc phiếu: `FROM_JOB` chọn từ công đoạn của Job (có kiểm định mức), `MANUAL` người dùng tự
+ * nhập mã/tên/SL và chọn một công đoạn gia công ngoài từ danh mục (không gắn Job, không kiểm định
+ * mức).
+ */
+export enum OutsourcingOrderOrigin {
+  FROM_JOB = 'FROM_JOB',
+  MANUAL = 'MANUAL',
+}
+
+export const outsourcingOrderOriginEnum = pgEnum('outsourcing_order_origin', [
+  OutsourcingOrderOrigin.FROM_JOB,
+  OutsourcingOrderOrigin.MANUAL,
+]);
+
 /** Phiếu gửi gia công ngoài (OS-OUT) — header, nhiều dòng ở `outsourcing_order_items`. */
 export const outsourcingOrders = pgTable(
   'outsourcing_orders',
@@ -58,6 +73,9 @@ export const outsourcingOrders = pgTable(
       .references(() => suppliers.id, { onDelete: 'restrict' }),
     sendDate: date('send_date', { mode: 'date' }).notNull(),
     expectedReturnDate: date('expected_return_date', { mode: 'date' }),
+    origin: outsourcingOrderOriginEnum('origin')
+      .notNull()
+      .default(OutsourcingOrderOrigin.FROM_JOB),
     status: outsourcingOrderStatusEnum('status')
       .notNull()
       .default(OutsourcingOrderStatus.DRAFT),
