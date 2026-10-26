@@ -12,18 +12,13 @@ import puppeteer, { Browser } from 'puppeteer';
 import { ErrorCode } from '../constants/error-code.constant';
 import { AppException } from '../exceptions/app.exception';
 import {
+  FORM_TEMPLATES,
   FormTemplateType,
   getFormTemplatePath,
 } from './form-templates.registry';
 
 @Injectable()
 export class PdfRendererService implements OnModuleInit, OnModuleDestroy {
-  private static readonly PDF_OPTIONS = {
-    format: 'A4' as const,
-    landscape: true,
-    printBackground: true,
-  };
-
   private readonly logger = new Logger(PdfRendererService.name);
   private readonly compiledTemplates = new Map<
     FormTemplateType,
@@ -44,9 +39,10 @@ export class PdfRendererService implements OnModuleInit, OnModuleDestroy {
 
   async render(type: FormTemplateType, context: object): Promise<Buffer> {
     const html = this.compile(type)(context);
+    const { landscape } = FORM_TEMPLATES[type];
 
     try {
-      return await this.renderPdf(html);
+      return await this.renderPdf(html, landscape);
     } catch {
       // Chromium có thể đã crash giữa chừng — thử khởi động lại browser 1 lần rồi render lại,
       // tránh app đứng render PDF vĩnh viễn sau 1 lần crash.
@@ -60,7 +56,7 @@ export class PdfRendererService implements OnModuleInit, OnModuleDestroy {
       });
 
       try {
-        return await this.renderPdf(html);
+        return await this.renderPdf(html, landscape);
       } catch {
         throw new AppException(
           ErrorCode.E274,
@@ -70,7 +66,7 @@ export class PdfRendererService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async renderPdf(html: string): Promise<Buffer> {
+  private async renderPdf(html: string, landscape: boolean): Promise<Buffer> {
     if (!this.browser) {
       throw new AppException(ErrorCode.E274, HttpStatus.INTERNAL_SERVER_ERROR);
     }
@@ -81,7 +77,11 @@ export class PdfRendererService implements OnModuleInit, OnModuleDestroy {
       // stylesheet/font ngoài (Google Fonts), thêm `document.fonts.ready` để chắc chắn.
       await page.setContent(html, { waitUntil: 'load' });
       await page.evaluateHandle('document.fonts.ready');
-      const pdf = await page.pdf(PdfRendererService.PDF_OPTIONS);
+      const pdf = await page.pdf({
+        format: 'A4',
+        landscape,
+        printBackground: true,
+      });
       return Buffer.from(pdf);
     } finally {
       await page.close();

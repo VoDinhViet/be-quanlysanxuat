@@ -6,6 +6,7 @@ import { join } from 'path';
  * - `PRODUCTION_ORDER`: lệnh sản xuất (mã BM-02/KD), file `production-order.html`
  * - `PRODUCTION_PLAN`: kế hoạch sản xuất nhiều Job (mã BM 08-01), file `production-plan.html`
  * - `STOCK_IN_SLIP`: phiếu nhập kho (mã BM 09-01), file `stock-in-slip.html`
+ * - `PURCHASE_REQUEST`: đề xuất mua hàng (mã BM 07-01), file `purchase-request.html`
  */
 export enum FormTemplateType {
   ORDER = 'ORDER',
@@ -13,6 +14,7 @@ export enum FormTemplateType {
   PRODUCTION_ORDER = 'PRODUCTION_ORDER',
   PRODUCTION_PLAN = 'PRODUCTION_PLAN',
   STOCK_IN_SLIP = 'STOCK_IN_SLIP',
+  PURCHASE_REQUEST = 'PURCHASE_REQUEST',
 }
 
 export interface FormTemplatePlaceholder {
@@ -23,6 +25,7 @@ export interface FormTemplatePlaceholder {
 
 interface FormTemplateDefinition {
   fileName: string;
+  landscape: boolean;
   placeholders: FormTemplatePlaceholder[];
 }
 
@@ -34,6 +37,7 @@ export const FORM_TEMPLATES: Record<FormTemplateType, FormTemplateDefinition> =
   {
     [FormTemplateType.ORDER]: {
       fileName: 'order.html',
+      landscape: true,
       placeholders: [
         { key: 'code', label: 'Số đơn', group: 'meta' },
         { key: 'order_date', label: 'Ngày tạo đơn', group: 'meta' },
@@ -64,6 +68,7 @@ export const FORM_TEMPLATES: Record<FormTemplateType, FormTemplateDefinition> =
     },
     [FormTemplateType.ORDER_SUMMARY]: {
       fileName: 'order-summary.html',
+      landscape: true,
       placeholders: [
         { key: 'period_from', label: 'Từ ngày', group: 'meta' },
         { key: 'period_to', label: 'Đến ngày', group: 'meta' },
@@ -90,6 +95,7 @@ export const FORM_TEMPLATES: Record<FormTemplateType, FormTemplateDefinition> =
     },
     [FormTemplateType.PRODUCTION_ORDER]: {
       fileName: 'production-order.html',
+      landscape: true,
       placeholders: [
         { key: 'code', label: 'Mã lệnh SX / PO', group: 'meta' },
         { key: 'order_date', label: 'Ngày tạo lệnh', group: 'meta' },
@@ -99,6 +105,7 @@ export const FORM_TEMPLATES: Record<FormTemplateType, FormTemplateDefinition> =
     },
     [FormTemplateType.PRODUCTION_PLAN]: {
       fileName: 'production-plan.html',
+      landscape: true,
       placeholders: [
         { key: 'customer_name', label: 'Khách hàng', group: 'meta' },
         { key: 'report_code', label: 'Số hiệu', group: 'meta' },
@@ -108,10 +115,23 @@ export const FORM_TEMPLATES: Record<FormTemplateType, FormTemplateDefinition> =
     },
     [FormTemplateType.STOCK_IN_SLIP]: {
       fileName: 'stock-in-slip.html',
+      landscape: true,
       placeholders: [
         { key: 'code', label: 'Số phiếu nhập', group: 'meta' },
         { key: 'receipt_date', label: 'Ngày nhập kho', group: 'meta' },
         { key: 'delivery_unit', label: 'Đơn vị giao', group: 'meta' },
+      ],
+    },
+    [FormTemplateType.PURCHASE_REQUEST]: {
+      fileName: 'purchase-request.html',
+      landscape: false,
+      placeholders: [
+        { key: 'code', label: 'Số phiếu đề xuất', group: 'meta' },
+        { key: 'request_date', label: 'Ngày đề xuất', group: 'meta' },
+        { key: 'needed_date', label: 'Ngày cần', group: 'meta' },
+        { key: 'source', label: 'PO / Lý do', group: 'meta' },
+        { key: 'job_code', label: 'Job', group: 'meta' },
+        { key: 'department_name', label: 'Bộ phận đề xuất', group: 'meta' },
       ],
     },
   };

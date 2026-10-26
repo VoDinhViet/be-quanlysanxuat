@@ -1,4 +1,4 @@
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, StreamableFile } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import {
   and,
@@ -16,6 +16,7 @@ import {
   or,
   sql,
 } from 'drizzle-orm';
+import { DateTime } from 'luxon';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
@@ -23,8 +24,10 @@ import {
   DocumentType,
   generateDocumentSequence,
 } from '../../common/utils/document-sequence.util';
+import { formatVnDate } from '../../common/utils/excel.util';
 import { hasFields } from '../../common/utils/object.util';
 import { unaccentILike } from '../../common/utils/search.util';
+import { formatQuantity } from '../../common/utils/vnd.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
@@ -50,12 +53,15 @@ import {
   units,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
+import { FormTemplateType } from '../../templates/form-templates.registry';
+import { PdfRendererService } from '../../templates/pdf-renderer.service';
 import { availableQuantityByItemSubquery } from '../inventory/available-quantity.query';
 import {
   onHandQuantityByItemSubquery,
   itemStockColumns,
   jobIssueDemandSubquery,
 } from '../inventory/item-stock.query';
+import { purchaseRequestSource } from '../inventory-receipts/inventory-receipts.query';
 import { CreatePurchaseRequestItemsReqDto } from './dto/create-purchase-request-items.req.dto';
 import { CreatePurchaseRequestItemReqDto } from './dto/create-purchase-request-item.req.dto';
 import { CreatePurchaseRequestReqDto } from './dto/create-purchase-request.req.dto';
@@ -86,7 +92,10 @@ function flattenBuyerPoNo(purchaseRequest: {
 
 @Injectable()
 export class PurchaseRequestsService {
-  constructor(@Inject(DRIZZLE) private readonly db: Database) {}
+  constructor(
+    @Inject(DRIZZLE) private readonly db: Database,
+    private readonly pdfRendererService: PdfRendererService,
+  ) {}
 
   async getPurchaseRequests(
     reqDto: GetPurchaseRequestsReqDto,
@@ -218,6 +227,81 @@ export class PurchaseRequestsService {
       },
       { excludeExtraneousValues: true },
     );
+  }
+
+  /** Dòng đã huỷ (`cancelledAt`) không mua nên không in; `context` không có tên người ký — các ô ký
+   * để trống cho ký tay. */
+  async exportPurchaseRequestPdf(
+    purchaseRequestId: string,
+  ): Promise<StreamableFile> {
+    const [purchaseRequest, requestLines] = await Promise.all([
+      this.db.query.purchaseRequests.findFirst({
+        where: eq(purchaseRequests.id, purchaseRequestId),
+        with: {
+          department: true,
+          productionOrder: {
+            with: { order: { columns: { buyerPoNo: true } } },
+          },
+          productionJob: true,
+        },
+      }),
+      this.db
+        .select({
+          item: getTableColumns(items),
+          unit: getTableColumns(units),
+          quantity: purchaseRequestItems.quantity,
+          note: purchaseRequestItems.note,
+        })
+        .from(purchaseRequestItems)
+        .innerJoin(items, eq(items.id, purchaseRequestItems.itemId))
+        .innerJoin(units, eq(units.id, items.unitId))
+        .where(
+          and(
+            eq(purchaseRequestItems.purchaseRequestId, purchaseRequestId),
+            isNull(purchaseRequestItems.cancelledAt),
+          ),
+        )
+        .orderBy(asc(items.code)),
+    ]);
+
+    if (!purchaseRequest) {
+      throw new AppException(ErrorCode.E112, HttpStatus.NOT_FOUND);
+    }
+
+    // Có cả PO khách lẫn ghi chú thì in "PO (lý do)", ngược lại lấy cái có.
+    const buyerPoNo = purchaseRequest.productionOrder?.order?.buyerPoNo;
+    const source =
+      buyerPoNo && purchaseRequest.note
+        ? `${buyerPoNo} (${purchaseRequest.note})`
+        : (purchaseRequestSource(purchaseRequest) ?? '');
+
+    const context = {
+      code: purchaseRequest.code,
+      request_date: formatVnDate(purchaseRequest.createdAt),
+      needed_date: formatVnDate(purchaseRequest.neededDate),
+      source,
+      job_code: purchaseRequest.productionJob?.code ?? '',
+      department_name: purchaseRequest.department?.name ?? '',
+      request_items: requestLines.map((line, index) => ({
+        stt: index + 1,
+        item_code: line.item.code,
+        item_name: line.item.name,
+        unit_name: line.unit.name,
+        quantity: formatQuantity(line.quantity),
+        note: line.note ?? '',
+      })),
+    };
+
+    const buffer = await this.pdfRendererService.render(
+      FormTemplateType.PURCHASE_REQUEST,
+      context,
+    );
+
+    const fileName = `${purchaseRequest.code}-${DateTime.now().toFormat('yyyyLLdd-HHmm')}.pdf`;
+    return new StreamableFile(buffer, {
+      type: 'application/pdf',
+      disposition: `attachment; filename="${fileName}"`,
+    });
   }
 
   /** `purchase_request_items` không có `sortOrder`, và relational query API không order được

@@ -7,6 +7,7 @@ import {
   Patch,
   Post,
   Query,
+  StreamableFile,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 
@@ -251,6 +252,20 @@ export class PurchaseRequestsController {
     return this.purchaseRequestsService.updatePurchaseRequestNeededDate(
       purchaseRequestId,
       reqDto,
+    );
+  }
+
+  @Get(':purchaseRequestId/export-pdf')
+  @Permissions('purchase-requests:read')
+  @ApiAuth({
+    summary: 'Xuất PDF Đề xuất mua hàng (BM 07-01)',
+    fileType: 'application/pdf',
+  })
+  exportPurchaseRequestPdf(
+    @UUIDParam('purchaseRequestId') purchaseRequestId: string,
+  ): Promise<StreamableFile> {
+    return this.purchaseRequestsService.exportPurchaseRequestPdf(
+      purchaseRequestId,
     );
   }
 

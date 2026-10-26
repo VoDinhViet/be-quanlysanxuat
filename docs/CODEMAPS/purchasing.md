@@ -1,4 +1,4 @@
-<!-- Generated: 2026-10-16 | Files scanned: 52 | Token estimate: ~2900 -->
+<!-- Generated: 2026-10-26 | Files scanned: 52 | Token estimate: ~2900 -->
 # Purchasing codemap
 
 Paths relative to `src/api/` unless starting `src/`. Abbreviations: PRS=`purchase-requests/purchase-requests.service.ts`, PQS=`purchase-quotations/purchase-quotations.service.ts`, POS=`purchase-orders/purchase-orders.service.ts`, PYS=`payment-requests/payment-requests.service.ts`, PLS=`purchase-ledger/purchase-ledger.service.ts`, PNS=`purchase-notes/purchase-notes.service.ts`, SUS=`suppliers/suppliers.service.ts`.
@@ -19,13 +19,14 @@ Schemas `src/database/schemas/`: `purchase-requests/*` (2 tables), `purchasing/*
 
 ## 2. Routes (prefix `/api`; permission `purchasing:<x>` unless noted; writes mostly return void)
 
-purchase-requests (14), `PurchaseRequestsController` -> PRS; perm `purchase-requests:<x>`:
+purchase-requests (15), `PurchaseRequestsController` -> PRS; perm `purchase-requests:<x>`:
 - GET / read: getPurchaseRequests :91. GET /:id read: getPurchaseRequest :181 (lines :227).
 - POST / create: createPurchaseRequest :687 [purchase_requests, purchase_request_items]. DELETE /:id delete: deletePurchaseRequest :494.
 - POST /:id/send update :537; /approve approve :553; /reject approve :571 [purchase_requests].
 - POST /:id/items update: createPurchaseRequestItems :275; PATCH /:id/items/:itemId update :308; DELETE same path update :339 [purchase_request_items].
 - PATCH /:id/items/:itemId/purchasable update :376 [purchase_request_items.cancelledAt]. PATCH /:id/note :502; /needed-date :523 (update).
 - GET /:id/related-notes read: PNS.getChainNotesFromRequest :37.
+- GET /:id/export-pdf read: exportPurchaseRequestPdf :234 (PDF BM 07-01, A4 portrait, `FormTemplateType.PURCHASE_REQUEST`; skips cancelled lines, signature boxes left blank).
 
 purchase-quotations (12) -> PQS:
 - GET / read :79; GET /last-purchases read :300 (`purchase-quotations.query.ts:15`); GET /:id read :215; GET /:id/comparison read :235; GET /:id/related-notes read: PNS :60.
