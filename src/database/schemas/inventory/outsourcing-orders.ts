@@ -14,13 +14,20 @@ import { suppliers } from '../suppliers/suppliers';
 import { users } from '../identity-access/users';
 
 /**
- * Vừa là trạng thái chứng từ vừa là tiến độ nhận hàng, không tách cột `progress` riêng. `SENT` set
- * thẳng lúc tạo (không có nháp); `PARTIAL`/`WAITING_QC`/`COMPLETED` chỉ do
- * `recomputeOutsourcingOrderStatus` (`outsourcing-orders.query.ts`) ghi, gọi mỗi khi SL đã nhận
- * hoặc IQC đổi (`OutsourcingReceiptsService`, `IqcService`, `SupplierReturnsService`); không route
- * nào ghi tay. `CANCELLED` chỉ do `cancelOutsourcingOrder` ghi và `recompute` không ghi đè lại.
+ * Vừa là trạng thái chứng từ vừa là tiến độ nhận hàng, không tách cột `progress` riêng.
+ *
+ * Rules:
+ * - Phiếu đi `DRAFT` → `PENDING_APPROVAL` → `APPROVED` (hoặc `REJECTED`, sửa rồi gửi lại) → `SENT`
+ *   khi xác nhận xuất gia công. Hàng chỉ coi là đã rời xưởng từ `SENT`.
+ * - `PARTIAL`/`WAITING_QC`/`COMPLETED` chỉ do `recomputeOutsourcingOrderStatus`
+ *   (`outsourcing-orders.query.ts`) ghi, gọi mỗi khi SL đã nhận hoặc IQC đổi; không route nào ghi tay.
+ * - `CANCELLED` chỉ do `cancelOutsourcingOrder` ghi và `recompute` không ghi đè lại.
  */
 export enum OutsourcingOrderStatus {
+  DRAFT = 'DRAFT',
+  PENDING_APPROVAL = 'PENDING_APPROVAL',
+  APPROVED = 'APPROVED',
+  REJECTED = 'REJECTED',
   SENT = 'SENT',
   PARTIAL = 'PARTIAL',
   WAITING_QC = 'WAITING_QC',
@@ -29,6 +36,10 @@ export enum OutsourcingOrderStatus {
 }
 
 export const outsourcingOrderStatusEnum = pgEnum('outsourcing_order_status', [
+  OutsourcingOrderStatus.DRAFT,
+  OutsourcingOrderStatus.PENDING_APPROVAL,
+  OutsourcingOrderStatus.APPROVED,
+  OutsourcingOrderStatus.REJECTED,
   OutsourcingOrderStatus.SENT,
   OutsourcingOrderStatus.PARTIAL,
   OutsourcingOrderStatus.WAITING_QC,
@@ -36,10 +47,7 @@ export const outsourcingOrderStatusEnum = pgEnum('outsourcing_order_status', [
   OutsourcingOrderStatus.CANCELLED,
 ]);
 
-/**
- * Phiếu gửi gia công ngoài (OS-OUT) — header, nhiều dòng ở `outsourcing_order_items`. Không có
- * nháp: service luôn set `SENT` lúc tạo (`docs/CODEMAPS/production.md`).
- */
+/** Phiếu gửi gia công ngoài (OS-OUT) — header, nhiều dòng ở `outsourcing_order_items`. */
 export const outsourcingOrders = pgTable(
   'outsourcing_orders',
   {
@@ -52,8 +60,21 @@ export const outsourcingOrders = pgTable(
     expectedReturnDate: date('expected_return_date', { mode: 'date' }),
     status: outsourcingOrderStatusEnum('status')
       .notNull()
-      .default(OutsourcingOrderStatus.SENT),
+      .default(OutsourcingOrderStatus.DRAFT),
     note: varchar('note', { length: 1000 }),
+    submittedBy: uuid('submitted_by').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    submittedAt: timestamp('submitted_at'),
+    approvedBy: uuid('approved_by').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    approvedAt: timestamp('approved_at'),
+    rejectedBy: uuid('rejected_by').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    rejectedAt: timestamp('rejected_at'),
+    rejectionReason: varchar('rejection_reason', { length: 1000 }),
     postedBy: uuid('posted_by').references(() => users.id, {
       onDelete: 'set null',
     }),
@@ -89,6 +110,14 @@ export const outsourcingOrdersRelations = relations(
     }),
     posterBy: one(users, {
       fields: [outsourcingOrders.postedBy],
+      references: [users.id],
+    }),
+    approverBy: one(users, {
+      fields: [outsourcingOrders.approvedBy],
+      references: [users.id],
+    }),
+    rejecterBy: one(users, {
+      fields: [outsourcingOrders.rejectedBy],
       references: [users.id],
     }),
     items: many(outsourcingOrderItems),

@@ -7,7 +7,9 @@ import {
   desc,
   eq,
   getTableColumns,
+  inArray,
   isNull,
+  ne,
   or,
   sql,
 } from 'drizzle-orm';
@@ -48,12 +50,20 @@ import { OutsourcingOrderItemReqDto } from './dto/outsourcing-order-item.req.dto
 import { OutsourcingOrderItemResDto } from './dto/outsourcing-order-item.res.dto';
 import { OutsourcingOrderResDto } from './dto/outsourcing-order.res.dto';
 import { PageOutsourcingOrderResDto } from './dto/page-outsourcing-order.res.dto';
+import { RejectOutsourcingOrderReqDto } from './dto/reject-outsourcing-order.req.dto';
 import {
   hasActiveReceiptsForOrder,
   receivedQuantityByOrderIdSubquery,
   sentQuantityByJobOperationSubquery,
   sentQuantityByOrderIdSubquery,
+  sentQuantityByOtherOrdersSubquery,
 } from './outsourcing-orders.query';
+
+/** Trạng thái còn sửa được và gửi duyệt được. */
+const EDITABLE_STATUSES: readonly OutsourcingOrderStatus[] = [
+  OutsourcingOrderStatus.DRAFT,
+  OutsourcingOrderStatus.REJECTED,
+];
 
 @Injectable()
 export class OutsourcingOrdersService {
@@ -120,9 +130,11 @@ export class OutsourcingOrdersService {
   async getOutsourcingOrder(
     outsourcingOrderId: string,
   ): Promise<OutsourcingOrderResDto> {
-    // Hai JOIN vào cùng bảng `users` (creatorBy/posterBy) cần alias để không đụng tên.
+    // Nhiều JOIN vào cùng bảng `users` (creatorBy/posterBy/approverBy/rejecterBy) cần alias để không đụng tên.
     const creatorUsers = alias(users, 'creator_users');
     const posterUsers = alias(users, 'poster_users');
+    const approverUsers = alias(users, 'approver_users');
+    const rejecterUsers = alias(users, 'rejecter_users');
 
     const sentQuantityByOrder = sentQuantityByOrderIdSubquery(this.db);
     const receivedQuantityByOrder = receivedQuantityByOrderIdSubquery(this.db);
@@ -133,6 +145,8 @@ export class OutsourcingOrdersService {
         supplier: getTableColumns(suppliers),
         creatorBy: getTableColumns(creatorUsers),
         posterBy: getTableColumns(posterUsers),
+        approverBy: getTableColumns(approverUsers),
+        rejecterBy: getTableColumns(rejecterUsers),
         totalQuantity:
           sql<number>`coalesce(${sentQuantityByOrder.totalQuantity}, 0)`.mapWith(
             Number,
@@ -150,6 +164,14 @@ export class OutsourcingOrdersService {
       .innerJoin(suppliers, eq(suppliers.id, outsourcingOrders.supplierId))
       .leftJoin(creatorUsers, eq(creatorUsers.id, outsourcingOrders.createdBy))
       .leftJoin(posterUsers, eq(posterUsers.id, outsourcingOrders.postedBy))
+      .leftJoin(
+        approverUsers,
+        eq(approverUsers.id, outsourcingOrders.approvedBy),
+      )
+      .leftJoin(
+        rejecterUsers,
+        eq(rejecterUsers.id, outsourcingOrders.rejectedBy),
+      )
       .leftJoin(
         sentQuantityByOrder,
         eq(sentQuantityByOrder.outsourcingOrderId, outsourcingOrders.id),
@@ -178,6 +200,10 @@ export class OutsourcingOrdersService {
     const receivedQuantityByItem = receivedQuantityByOrderItemIdSubquery(
       this.db,
     );
+    const sentByOtherOrders = sentQuantityByOtherOrdersSubquery(
+      this.db,
+      outsourcingOrderId,
+    );
 
     const outsourcingOrderItemRows = await this.db
       .select({
@@ -189,8 +215,13 @@ export class OutsourcingOrdersService {
         unit: getTableColumns(units),
         productionJob: getTableColumns(productionJobs),
         imageFile: getTableColumns(files),
+        plannedQuantity: productionJobBomItems.plannedQuantity,
         receivedQuantity:
           sql<number>`coalesce(${receivedQuantityByItem.receivedQuantity}, 0)`.mapWith(
+            Number,
+          ),
+        sentByOtherOrdersQuantity:
+          sql<number>`coalesce(${sentByOtherOrders.sentQuantity}, 0)`.mapWith(
             Number,
           ),
       })
@@ -214,6 +245,13 @@ export class OutsourcingOrdersService {
         eq(
           receivedQuantityByItem.outsourcingOrderItemId,
           outsourcingOrderItems.id,
+        ),
+      )
+      .leftJoin(
+        sentByOtherOrders,
+        eq(
+          sentByOtherOrders.productionJobOperationId,
+          outsourcingOrderItems.productionJobOperationId,
         ),
       )
       .where(eq(outsourcingOrderItems.outsourcingOrderId, outsourcingOrderId))
@@ -253,9 +291,12 @@ export class OutsourcingOrdersService {
         : undefined,
     );
 
-    const sentQuantityByJobOperation = sentQuantityByJobOperationSubquery(
-      this.db,
-    );
+    const sentQuantityByJobOperation = reqDto.excludeOutsourcingOrderId
+      ? sentQuantityByOtherOrdersSubquery(
+          this.db,
+          reqDto.excludeOutsourcingOrderId,
+        )
+      : sentQuantityByJobOperationSubquery(this.db);
 
     const [operations, [{ total }]] = await Promise.all([
       this.db
@@ -349,7 +390,8 @@ export class OutsourcingOrdersService {
     );
   }
 
-  /** Tạo là gửi luôn: header `INSERT` thẳng ở `SENT`, không có bước nháp.
+  /** Lập phiếu ở `DRAFT`: chưa coi là hàng đã rời xưởng, phải gửi duyệt và xác nhận xuất mới sang
+   * `SENT`.
    *
    * Rules:
    * - Không đụng `inventory_balances`: hàng gửi gia công là node COMPONENT của Job, không có tồn.
@@ -362,30 +404,157 @@ export class OutsourcingOrdersService {
     await this.ensureSupplierExists(reqDto.supplierId);
     this.validateOrderItems(reqDto.items);
 
-    const { items: reqItems, ...orderFields } = reqDto;
+    const { items: orderItems, ...orderFields } = reqDto;
 
     await this.db.transaction(async (tx) => {
+      await this.assertWithinPlannedQuantity(tx, orderItems);
+
       const code = await this.generateOutsourcingOrderCode(tx);
       const [outsourcingOrder] = await tx
         .insert(outsourcingOrders)
-        .values({
-          ...orderFields,
-          code,
-          createdBy: userId,
-          status: OutsourcingOrderStatus.SENT,
-          postedBy: userId,
-          postedAt: new Date(),
-        })
+        .values({ ...orderFields, code, createdBy: userId })
         .returning({ id: outsourcingOrders.id });
 
-      await tx.insert(outsourcingOrderItems).values(
-        reqItems.map((item, index) => ({
-          ...item,
-          outsourcingOrderId: outsourcingOrder.id,
-          sortOrder: index,
-        })),
+      await this.insertOrderItems(tx, outsourcingOrder.id, orderItems);
+    });
+  }
+
+  /** Sửa phiếu `DRAFT`/`REJECTED`: thay toàn bộ header và dòng. Phiếu `REJECTED` giữ nguyên lý do
+   * từ chối cho tới khi gửi duyệt lại. */
+  async updateOutsourcingOrder(
+    outsourcingOrderId: string,
+    reqDto: CreateOutsourcingOrderReqDto,
+  ): Promise<void> {
+    await this.ensureSupplierExists(reqDto.supplierId);
+    this.validateOrderItems(reqDto.items);
+
+    const { items: orderItems, ...orderFields } = reqDto;
+
+    await this.db.transaction(async (tx) => {
+      const outsourcingOrder = await this.getOutsourcingOrderForUpdate(
+        tx,
+        outsourcingOrderId,
+      );
+      this.assertStatusIn(outsourcingOrder.status, EDITABLE_STATUSES);
+
+      await this.assertWithinPlannedQuantity(
+        tx,
+        orderItems,
+        outsourcingOrderId,
+      );
+
+      await tx
+        .update(outsourcingOrders)
+        .set({
+          ...orderFields,
+          expectedReturnDate: orderFields.expectedReturnDate ?? null,
+          note: orderFields.note ?? null,
+        })
+        .where(eq(outsourcingOrders.id, outsourcingOrderId));
+
+      await tx
+        .delete(outsourcingOrderItems)
+        .where(
+          eq(outsourcingOrderItems.outsourcingOrderId, outsourcingOrderId),
+        );
+      await this.insertOrderItems(tx, outsourcingOrderId, orderItems);
+    });
+  }
+
+  /** `DRAFT`/`REJECTED` → `PENDING_APPROVAL`. Kiểm tra lại định mức vì phiếu khác có thể đã gửi
+   * thêm từ lúc lập nháp. */
+  async submitOutsourcingOrder(
+    outsourcingOrderId: string,
+    userId: string,
+  ): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      const outsourcingOrder = await this.getOutsourcingOrderForUpdate(
+        tx,
+        outsourcingOrderId,
+      );
+      this.assertStatusIn(outsourcingOrder.status, EDITABLE_STATUSES);
+
+      const orderItems = await tx
+        .select({
+          productionJobOperationId:
+            outsourcingOrderItems.productionJobOperationId,
+          quantity: outsourcingOrderItems.quantity,
+        })
+        .from(outsourcingOrderItems)
+        .where(
+          eq(outsourcingOrderItems.outsourcingOrderId, outsourcingOrderId),
+        );
+      await this.assertWithinPlannedQuantity(
+        tx,
+        orderItems,
+        outsourcingOrderId,
+      );
+
+      await this.transitionStatus(
+        tx,
+        outsourcingOrderId,
+        EDITABLE_STATUSES,
+        OutsourcingOrderStatus.PENDING_APPROVAL,
+        {
+          submittedBy: userId,
+          submittedAt: new Date(),
+          rejectedBy: null,
+          rejectedAt: null,
+          rejectionReason: null,
+        },
       );
     });
+  }
+
+  async approveOutsourcingOrder(
+    outsourcingOrderId: string,
+    userId: string,
+  ): Promise<void> {
+    await this.db.transaction((tx) =>
+      this.transitionStatus(
+        tx,
+        outsourcingOrderId,
+        [OutsourcingOrderStatus.PENDING_APPROVAL],
+        OutsourcingOrderStatus.APPROVED,
+        { approvedBy: userId, approvedAt: new Date() },
+      ),
+    );
+  }
+
+  async rejectOutsourcingOrder(
+    outsourcingOrderId: string,
+    reqDto: RejectOutsourcingOrderReqDto,
+    userId: string,
+  ): Promise<void> {
+    await this.db.transaction((tx) =>
+      this.transitionStatus(
+        tx,
+        outsourcingOrderId,
+        [OutsourcingOrderStatus.PENDING_APPROVAL],
+        OutsourcingOrderStatus.REJECTED,
+        {
+          rejectedBy: userId,
+          rejectedAt: new Date(),
+          rejectionReason: reqDto.reason,
+        },
+      ),
+    );
+  }
+
+  /** `APPROVED` → `SENT`: thời điểm hàng thực sự rời xưởng, từ đây mới nhập hàng về được. */
+  async confirmSendOutsourcingOrder(
+    outsourcingOrderId: string,
+    userId: string,
+  ): Promise<void> {
+    await this.db.transaction((tx) =>
+      this.transitionStatus(
+        tx,
+        outsourcingOrderId,
+        [OutsourcingOrderStatus.APPROVED],
+        OutsourcingOrderStatus.SENT,
+        { postedBy: userId, postedAt: new Date() },
+      ),
+    );
   }
 
   async cancelOutsourcingOrder(outsourcingOrderId: string): Promise<void> {
@@ -414,6 +583,163 @@ export class OutsourcingOrdersService {
     });
   }
 
+  private async insertOrderItems(
+    tx: DbTransaction,
+    outsourcingOrderId: string,
+    orderItems: OutsourcingOrderItemReqDto[],
+  ): Promise<void> {
+    await tx.insert(outsourcingOrderItems).values(
+      orderItems.map((orderItem, index) => ({
+        ...orderItem,
+        outsourcingOrderId,
+        sortOrder: index,
+      })),
+    );
+  }
+
+  /**
+   * Chặn tổng SL gửi của một công đoạn Job vượt định mức của node BOM.
+   *
+   * Rules:
+   * - Khoá các công đoạn `FOR UPDATE` để hai phiếu cùng lập/gửi duyệt không cùng đọc "còn lại"
+   *   rồi cùng vượt.
+   * - Tính mọi phiếu chưa `CANCELLED`, kể cả nháp/chờ duyệt/bị từ chối: phiếu đó vẫn giữ chỗ.
+   * - `excludedOutsourcingOrderId` là phiếu đang sửa, để không tự cộng SL cũ của chính nó.
+   */
+  private async assertWithinPlannedQuantity(
+    tx: DbTransaction,
+    orderItems: readonly {
+      productionJobOperationId?: string | null;
+      quantity: number;
+    }[],
+    excludedOutsourcingOrderId?: string,
+  ): Promise<void> {
+    const jobOperationItems = orderItems.flatMap((orderItem) =>
+      orderItem.productionJobOperationId
+        ? [
+            {
+              productionJobOperationId: orderItem.productionJobOperationId,
+              quantity: orderItem.quantity,
+            },
+          ]
+        : [],
+    );
+    if (jobOperationItems.length === 0) {
+      return;
+    }
+    const jobOperationIds = jobOperationItems.map(
+      (jobOperationItem) => jobOperationItem.productionJobOperationId,
+    );
+
+    const plannedJobOperations = await tx
+      .select({
+        productionJobOperationId: productionJobOperations.id,
+        plannedQuantity: productionJobBomItems.plannedQuantity,
+      })
+      .from(productionJobOperations)
+      .innerJoin(
+        productionJobBomItems,
+        eq(
+          productionJobBomItems.id,
+          productionJobOperations.productionJobBomItemId,
+        ),
+      )
+      .where(inArray(productionJobOperations.id, jobOperationIds))
+      .orderBy(asc(productionJobOperations.id))
+      .for('update', { of: productionJobOperations });
+
+    const sentByOtherOrders = await tx
+      .select({
+        productionJobOperationId:
+          outsourcingOrderItems.productionJobOperationId,
+        sentQuantity:
+          sql<number>`coalesce(sum(${outsourcingOrderItems.quantity}), 0)`.mapWith(
+            Number,
+          ),
+      })
+      .from(outsourcingOrderItems)
+      .innerJoin(
+        outsourcingOrders,
+        eq(outsourcingOrders.id, outsourcingOrderItems.outsourcingOrderId),
+      )
+      .where(
+        and(
+          inArray(
+            outsourcingOrderItems.productionJobOperationId,
+            jobOperationIds,
+          ),
+          ne(outsourcingOrders.status, OutsourcingOrderStatus.CANCELLED),
+          excludedOutsourcingOrderId
+            ? ne(outsourcingOrders.id, excludedOutsourcingOrderId)
+            : undefined,
+        ),
+      )
+      .groupBy(outsourcingOrderItems.productionJobOperationId);
+
+    const sentQuantityByJobOperationId = new Map(
+      sentByOtherOrders.map((sent) => [
+        sent.productionJobOperationId,
+        sent.sentQuantity,
+      ]),
+    );
+    const plannedQuantityByJobOperationId = new Map(
+      plannedJobOperations.map((planned) => [
+        planned.productionJobOperationId,
+        planned.plannedQuantity,
+      ]),
+    );
+
+    const exceedsPlannedQuantity = jobOperationItems.some(
+      (orderItem) =>
+        (sentQuantityByJobOperationId.get(orderItem.productionJobOperationId) ??
+          0) +
+          orderItem.quantity >
+        (plannedQuantityByJobOperationId.get(
+          orderItem.productionJobOperationId,
+        ) ?? 0),
+    );
+    if (exceedsPlannedQuantity) {
+      throw new AppException(ErrorCode.E184, HttpStatus.CONFLICT);
+    }
+  }
+
+  /** UPDATE chỉ khi phiếu còn đúng ở `fromStatuses`: kiểm tra và ghi cùng một câu lệnh nên hai
+   * thao tác đồng thời (duyệt vs từ chối, gửi duyệt vs huỷ) không ghi đè nhau; bên thua nhận E098. */
+  private async transitionStatus(
+    tx: DbTransaction,
+    outsourcingOrderId: string,
+    fromStatuses: readonly OutsourcingOrderStatus[],
+    toStatus: OutsourcingOrderStatus,
+    stampFields: Partial<typeof outsourcingOrders.$inferInsert>,
+  ): Promise<void> {
+    const transitionedOrders = await tx
+      .update(outsourcingOrders)
+      .set({ ...stampFields, status: toStatus })
+      .where(
+        and(
+          eq(outsourcingOrders.id, outsourcingOrderId),
+          inArray(outsourcingOrders.status, [...fromStatuses]),
+        ),
+      )
+      .returning({ id: outsourcingOrders.id });
+
+    if (transitionedOrders.length > 0) {
+      return;
+    }
+
+    await this.ensureOutsourcingOrderExists(outsourcingOrderId, tx);
+    throw new AppException(ErrorCode.E098, HttpStatus.CONFLICT);
+  }
+
+  private assertStatusIn(
+    status: OutsourcingOrderStatus,
+    allowedStatuses: readonly OutsourcingOrderStatus[],
+  ): void {
+    if (!allowedStatuses.includes(status)) {
+      throw new AppException(ErrorCode.E098, HttpStatus.CONFLICT);
+    }
+  }
+
   private validateOrderItems(reqItems: OutsourcingOrderItemReqDto[]): void {
     if (!reqItems.length) {
       throw new AppException(ErrorCode.E182, HttpStatus.BAD_REQUEST);
@@ -434,13 +760,16 @@ export class OutsourcingOrdersService {
     }
   }
 
+  /** Truyền `tx` khi đang trong transaction: dùng `this.db` ở đó phải chờ thêm một kết nối. */
   private async ensureOutsourcingOrderExists(
     outsourcingOrderId: string,
+    executor: Database | DbTransaction = this.db,
   ): Promise<void> {
-    const existing = await this.db.query.outsourcingOrders.findFirst({
-      columns: { id: true },
-      where: eq(outsourcingOrders.id, outsourcingOrderId),
-    });
+    const [existing] = await executor
+      .select({ id: outsourcingOrders.id })
+      .from(outsourcingOrders)
+      .where(eq(outsourcingOrders.id, outsourcingOrderId))
+      .limit(1);
 
     if (!existing) {
       throw new AppException(ErrorCode.E165, HttpStatus.NOT_FOUND);

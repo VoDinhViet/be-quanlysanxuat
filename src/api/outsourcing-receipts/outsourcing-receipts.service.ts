@@ -11,7 +11,6 @@ import {
   gte,
   inArray,
   lt,
-  ne,
   or,
   sql,
 } from 'drizzle-orm';
@@ -46,7 +45,10 @@ import {
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { IqcService } from '../iqc/iqc.service';
-import { recomputeOutsourcingOrderStatus } from '../outsourcing-orders/outsourcing-orders.query';
+import {
+  RECEIVING_STATUSES,
+  recomputeOutsourcingOrderStatus,
+} from '../outsourcing-orders/outsourcing-orders.query';
 import { recomputeOutsourcedOperationProgress } from '../production-jobs/production-jobs.query';
 import { CreateOutsourcingReceiptReqDto } from './dto/create-outsourcing-receipt.req.dto';
 import { GetOutsourcingReceiptsReqDto } from './dto/get-outsourcing-receipts.req.dto';
@@ -253,7 +255,7 @@ export class OutsourcingReceiptsService {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
 
     const where = and(
-      ne(outsourcingOrders.status, OutsourcingOrderStatus.CANCELLED),
+      inArray(outsourcingOrders.status, [...RECEIVING_STATUSES]),
       reqDto.operationId
         ? eq(outsourcingOrderItems.operationId, reqDto.operationId)
         : undefined,
@@ -596,9 +598,7 @@ export class OutsourcingReceiptsService {
     if (!orderItem) {
       throw new AppException(ErrorCode.E165, HttpStatus.NOT_FOUND);
     }
-    if (
-      orderItem.outsourcingOrder.status === OutsourcingOrderStatus.CANCELLED
-    ) {
+    if (!RECEIVING_STATUSES.includes(orderItem.outsourcingOrder.status)) {
       throw new AppException(ErrorCode.E171, HttpStatus.CONFLICT);
     }
     if (orderItem.outsourcingOrder.supplierId !== supplierId) {

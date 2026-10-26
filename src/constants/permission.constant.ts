@@ -82,6 +82,7 @@ export const PERMISSION_CODES = [
   'outsourcing:create',
   'outsourcing:update',
   'outsourcing:delete',
+  'outsourcing:approve',
   'oqc:read',
   'oqc:create',
   'oqc:update',
@@ -190,6 +191,7 @@ export const PERMISSION_LABELS: Record<PermissionCode, string> = {
   'outsourcing:create': 'Tạo phiếu gia công ngoài',
   'outsourcing:update': 'Sửa phiếu gia công ngoài',
   'outsourcing:delete': 'Xoá phiếu gia công ngoài',
+  'outsourcing:approve': 'Duyệt phiếu gia công ngoài',
   'oqc:read': 'Xem OQC',
   'oqc:create': 'Tạo phiếu OQC',
   'oqc:update': 'Sửa phiếu OQC',
@@ -501,6 +503,7 @@ const PERMISSION_GROUP_DEFS: PermissionGroupDef[] = [
       'outsourcing:create',
       'outsourcing:update',
       'outsourcing:delete',
+      'outsourcing:approve',
     ],
   },
   {

@@ -16,9 +16,17 @@ import {
   supplierReturns,
 } from '../../database/schemas';
 
+/** Trạng thái phiếu đã xuất đi, tức là có thể nhận hàng về. */
+export const RECEIVING_STATUSES: readonly OutsourcingOrderStatus[] = [
+  OutsourcingOrderStatus.SENT,
+  OutsourcingOrderStatus.PARTIAL,
+  OutsourcingOrderStatus.WAITING_QC,
+  OutsourcingOrderStatus.COMPLETED,
+];
+
 /** Σ SL đã gửi theo từng công đoạn Job, LEFT JOIN thẳng vào popup `getOutsourceableOperations`.
- * Tính mọi phiếu chưa `CANCELLED`. Chỉ để hiển thị: `createOutsourcingOrder` không dùng nó để chặn
- * gửi vượt định mức. */
+ * Tính mọi phiếu chưa `CANCELLED`, kể cả nháp/chờ duyệt/bị từ chối vì phiếu đó vẫn giữ chỗ định mức
+ * (`OutsourcingOrdersService.assertWithinPlannedQuantity` tính cùng cách). */
 export function sentQuantityByJobOperationSubquery(db: Database) {
   return db
     .select({
@@ -36,6 +44,35 @@ export function sentQuantityByJobOperationSubquery(db: Database) {
     .where(ne(outsourcingOrders.status, OutsourcingOrderStatus.CANCELLED))
     .groupBy(outsourcingOrderItems.productionJobOperationId)
     .as('sent_quantity_by_job_operation');
+}
+
+/** Như `sentQuantityByJobOperationSubquery` nhưng bỏ phiếu `excludedOutsourcingOrderId`: phần "đã
+ * gửi ở phiếu khác" khi sửa một phiếu, để trừ khỏi định mức còn lại mà không trừ lặp chính nó. */
+export function sentQuantityByOtherOrdersSubquery(
+  db: Database,
+  excludedOutsourcingOrderId: string,
+) {
+  return db
+    .select({
+      productionJobOperationId: outsourcingOrderItems.productionJobOperationId,
+      sentQuantity:
+        sql<number>`coalesce(sum(${outsourcingOrderItems.quantity}), 0)`
+          .mapWith(Number)
+          .as('sent_quantity'),
+    })
+    .from(outsourcingOrderItems)
+    .innerJoin(
+      outsourcingOrders,
+      eq(outsourcingOrders.id, outsourcingOrderItems.outsourcingOrderId),
+    )
+    .where(
+      and(
+        ne(outsourcingOrders.status, OutsourcingOrderStatus.CANCELLED),
+        ne(outsourcingOrders.id, excludedOutsourcingOrderId),
+      ),
+    )
+    .groupBy(outsourcingOrderItems.productionJobOperationId)
+    .as('sent_quantity_by_other_orders');
 }
 
 /** Σ SL gửi theo từng phiếu OS-OUT (`totalQuantity`) cho list và detail. Không lọc `status`, nên
@@ -185,7 +222,8 @@ async function hasPendingIqcForOrder(
  * - Gọi trong cùng `tx` với thao tác làm đổi dữ liệu: `OutsourcingReceiptsService`
  *   (`createOutsourcingReceipt`, `cancelOutsourcingReceipt`), `IqcService.confirmIqc`,
  *   `SupplierReturnsService.postSupplierReturn`.
- * - Phiếu `CANCELLED` bị bỏ qua, không hồi sinh.
+ * - Phiếu chưa xuất (`DRAFT`, `PENDING_APPROVAL`, `APPROVED`, `REJECTED`) và `CANCELLED` bị bỏ qua,
+ *   không ghi đè.
  */
 export async function recomputeOutsourcingOrderStatus(
   tx: DbTransaction,
@@ -197,7 +235,7 @@ export async function recomputeOutsourcingOrderStatus(
     .where(eq(outsourcingOrders.id, outsourcingOrderId))
     .limit(1);
 
-  if (!order || order.status === OutsourcingOrderStatus.CANCELLED) {
+  if (!order || !RECEIVING_STATUSES.includes(order.status)) {
     return;
   }
 

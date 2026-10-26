@@ -546,6 +546,8 @@ export class ReportsService {
       paymentRequestsPendingCount,
       ncrsPendingCount,
       ncrsToProcessCount,
+      outsourcingOrdersPendingCount,
+      outsourcingOrdersToProcessCount,
       supplierReturnsToPostCount,
       inventoryIssuesToPostCount,
       iqcToInspectCount,
@@ -581,6 +583,12 @@ export class ReportsService {
       this.getPaymentRequestsPendingCount(),
       canApprove('ncr:approve') ? this.getNcrsPendingCount() : 0,
       canApprove('ncr:update') ? this.getNcrsToProcessCount() : 0,
+      canApprove('outsourcing:approve')
+        ? this.getOutsourcingOrdersPendingCount()
+        : 0,
+      canApprove('outsourcing:update')
+        ? this.getOutsourcingOrdersToProcessCount()
+        : 0,
       // Việc chờ của Kho khi IQC xác nhận hàng NG cần trả NCC — cũng mọi người dùng đều thấy.
       this.getSupplierReturnsToPostCount(),
       // Việc chờ của Kho khi phiếu lãnh vật tư được duyệt — cũng mọi người dùng đều thấy.
@@ -608,6 +616,8 @@ export class ReportsService {
         paymentRequestsPending: paymentRequestsPendingCount,
         ncrsPending: ncrsPendingCount,
         ncrsToProcess: ncrsToProcessCount,
+        outsourcingOrdersPending: outsourcingOrdersPendingCount,
+        outsourcingOrdersToProcess: outsourcingOrdersToProcessCount,
         supplierReturnsToPost: supplierReturnsToPostCount,
         inventoryIssuesToPost: inventoryIssuesToPostCount,
         iqcToInspect: iqcToInspectCount,
@@ -738,6 +748,34 @@ export class ReportsService {
           NcrStatus.OPEN,
           NcrStatus.REJECTED,
           NcrStatus.APPROVED,
+        ]),
+      );
+
+    return count;
+  }
+
+  private async getOutsourcingOrdersPendingCount(): Promise<number> {
+    const [{ count }] = await this.db
+      .select({ count: sql<number>`count(*)`.mapWith(Number) })
+      .from(outsourcingOrders)
+      .where(
+        eq(outsourcingOrders.status, OutsourcingOrderStatus.PENDING_APPROVAL),
+      );
+
+    return count;
+  }
+
+  // Phiếu gia công ngoài cần người lập động tay: nháp, bị từ chối cần sửa gửi lại, hoặc đã duyệt
+  // đang chờ xác nhận xuất.
+  private async getOutsourcingOrdersToProcessCount(): Promise<number> {
+    const [{ count }] = await this.db
+      .select({ count: sql<number>`count(*)`.mapWith(Number) })
+      .from(outsourcingOrders)
+      .where(
+        inArray(outsourcingOrders.status, [
+          OutsourcingOrderStatus.DRAFT,
+          OutsourcingOrderStatus.REJECTED,
+          OutsourcingOrderStatus.APPROVED,
         ]),
       );
 

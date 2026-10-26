@@ -381,9 +381,8 @@ export enum ErrorCode {
   // Hai dòng trong cùng payload OS-OUT trỏ cùng một `productionJobOperationId` — mỗi công đoạn chỉ
   // được xuất hiện một lần trên một phiếu.
   E183 = 'outsourcing_order.error.duplicate_operation',
-  // E184 (outsourcing_order.error.planned_quantity_exceeded) dự phòng — trước ném khi Σ SL gửi
-  // (cộng dồn theo `productionJobOperationId`) vượt `plannedQuantity` của node BOM; cùng lý do bỏ
-  // như E166 — không còn validate phía server.
+  // Σ SL gửi (cộng dồn theo `productionJobOperationId`, mọi phiếu chưa huỷ) vượt `plannedQuantity`
+  // của node BOM; ném ở `OutsourcingOrdersService.assertWithinPlannedQuantity`.
   E184 = 'outsourcing_order.error.planned_quantity_exceeded',
   E185 = 'outsourcing_receipt.error.items_required',
   // Hai dòng trong cùng payload OS-IN trỏ cùng một `outsourcingOrderItemId`.

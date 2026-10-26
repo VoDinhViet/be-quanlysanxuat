@@ -1,4 +1,4 @@
-<!-- Generated: 2026-10-24 | Files scanned: 42 | Token estimate: ~2760 -->
+<!-- Generated: 2026-10-26 | Files scanned: 42 | Token estimate: ~2760 -->
 # Integration, reports & files codemap
 
 Conventions: controllers check permissions, services do not. Paths: `R`=`src/api/reports`, `I`=`src/api/integration`, `F`=`src/api/files`, `H`=`src/api/health`. Counts verified by reading controllers: reports 7, integration 22, files 3, health 1.
@@ -15,13 +15,13 @@ Conventions: controllers check permissions, services do not. Paths: `R`=`src/api
 Reports (7), `@Controller('reports')`, all GET, all `@ApiAuth` (JWT). Handler lines in `R/reports.controller.ts`.
 | Route | Perm | Handler -> Service | Reads |
 |---|---|---|---|
-| /reports/stats | reports:read | :24 -> `getStats` (service:142) | orders, production_jobs, quality_inspections |
+| /reports/stats | reports:read | :24 -> `getStats` (service:142) | orders, production_jobs, quality_inspections, outsourcing_orders (`outsourcingOrdersPending` PENDING_APPROVAL needs `outsourcing:approve`, `outsourcingOrdersToProcess` DRAFT/REJECTED/APPROVED needs `outsourcing:update`) |
 | /reports/alerts | reports:read | :35 -> `getAlerts` (:156) | production_jobs+production_orders+orders, outsourcing_orders, outbound_orders |
 | /reports/job-due-date | reports:read | :46 -> `getJobDueDate` (:177) | production_jobs, production_orders, orders |
 | /reports/outsourcing-order-due-date | reports:read | :58 -> `getOutsourcingOrderDueDate` (:203) | outsourcing_orders, suppliers |
 | /reports/qc-pass-rate | reports:read | :70 -> `getQcPassRate` (:228) | quality_inspection_results |
 | /reports/production-progress | reports:read | :82 -> `getProductionProgress` (:267) | production_jobs, production_orders, orders |
-| /reports/pending-approvals | none (JWT only) | :95 -> `getPendingApprovals` (:525) | 18 counts over purchase_requests (incl. `purchaseRequestsToSubmit`: the caller's own DRAFT/REJECTED, needs `purchase-requests:create`), purchase_quotations, purchase_orders, orders, production_orders, inventory_requisitions, outbound_orders, inventory_receipts/issues, supplier_returns, payment_requests (`paymentRequestsToSubmit` DRAFT+REJECTED, `paymentRequestsPending` PENDING), ncrs (`ncrsPending` PENDING_APPROVAL needs `ncr:approve`, `ncrsToProcess` OPEN/REJECTED/APPROVED needs `ncr:update`), quality_inspections |
+| /reports/pending-approvals | none (JWT only) | :95 -> `getPendingApprovals` (:525) | 20 counts over purchase_requests (incl. `purchaseRequestsToSubmit`: the caller's own DRAFT/REJECTED, needs `purchase-requests:create`), purchase_quotations, purchase_orders, orders, production_orders, inventory_requisitions, outbound_orders, inventory_receipts/issues, supplier_returns, payment_requests (`paymentRequestsToSubmit` DRAFT+REJECTED, `paymentRequestsPending` PENDING), ncrs (`ncrsPending` PENDING_APPROVAL needs `ncr:approve`, `ncrsToProcess` OPEN/REJECTED/APPROVED needs `ncr:update`), quality_inspections |
 
 Integration (22), `@Controller({ path: 'integration', version: '1' })`, all GET, all `@ApiPublic`, all return `IntegrationResultResDto` {columns, rows, truncated}. Every query is a fixed SQL template via `IntegrationQueryService.run` (`I/integration-query.service.ts:77`).
 - Identity (1): GET /integration/auth/whoami (header `X-User-Token`) -> `AuthService.getActiveIdentity` + `PermissionsService.getPermissionCodes` (`I/integration-identity.controller.ts:39`). Guards: API key + throttler only, no on-behalf guard.

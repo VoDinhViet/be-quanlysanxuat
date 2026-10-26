@@ -120,6 +120,22 @@ export class PendingApprovalsResDto {
   @NumberField({
     int: true,
     description:
+      'Count of outsourcing orders with status PENDING_APPROVAL — 0 if the current user lacks outsourcing:approve',
+  })
+  outsourcingOrdersPending!: number;
+
+  @Expose()
+  @NumberField({
+    int: true,
+    description:
+      'Count of outsourcing orders with status DRAFT, REJECTED or APPROVED (waiting for the requester to edit, resubmit or confirm sending) — 0 if the current user lacks outsourcing:update',
+  })
+  outsourcingOrdersToProcess!: number;
+
+  @Expose()
+  @NumberField({
+    int: true,
+    description:
       'Count of supplier returns with status DRAFT (auto-created when IQC confirms NG goods to return, waiting for the warehouse to post) — visible to every user, no permission gate',
   })
   supplierReturnsToPost!: number;

@@ -7,6 +7,7 @@ import {
   StringField,
   StringFieldOptional,
   UUIDField,
+  UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
 import { FileField } from '../../files/dto/file.field';
 import { FileResDto } from '../../files/dto/file.res.dto';
@@ -19,6 +20,27 @@ export class OutsourcingOrderItemResDto {
   @Expose()
   @UUIDField()
   id!: string;
+
+  @Expose()
+  @UUIDFieldOptional({
+    nullable: true,
+    description: 'Công đoạn as-used của Job — null với dòng không gắn Job',
+  })
+  productionJobOperationId!: string | null;
+
+  @Expose()
+  @UUIDFieldOptional({
+    nullable: true,
+    description: 'Node BOM của Job — null với dòng không gắn Job',
+  })
+  productionJobBomItemId!: string | null;
+
+  @Expose()
+  @UUIDFieldOptional({
+    nullable: true,
+    description: 'Công đoạn danh mục — null nếu snapshot mất liên kết',
+  })
+  operationId!: string | null;
 
   @Expose()
   @StringField({ description: 'Mã part (snapshot lúc gửi)' })
@@ -66,6 +88,20 @@ export class OutsourcingOrderItemResDto {
   @Expose()
   @NumberField({ description: 'SL đã nhận (OS-IN POSTED trỏ tới dòng này)' })
   receivedQuantity!: number;
+
+  @Expose()
+  @NumberFieldOptional({
+    nullable: true,
+    description: 'SL định mức của node BOM — null với dòng không gắn Job',
+  })
+  plannedQuantity!: number | null;
+
+  @Expose()
+  @NumberField({
+    description:
+      'SL công đoạn này đã gửi ở các phiếu khác chưa hủy, để tính còn được gửi khi sửa phiếu',
+  })
+  sentByOtherOrdersQuantity!: number;
 
   @Expose()
   @NumberFieldOptional({ nullable: true, description: 'Trọng lượng (kg)' })

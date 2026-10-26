@@ -83,4 +83,31 @@ export class OutsourcingOrderResDto {
     description: 'Thời điểm xác nhận gửi hàng',
   })
   postedAt!: Date | null;
+
+  @Expose()
+  @DateFieldOptional({ nullable: true, description: 'Thời điểm gửi duyệt' })
+  submittedAt!: Date | null;
+
+  @Expose()
+  @ClassFieldOptional(() => UserRefResDto, { nullable: true })
+  approverBy!: UserRefResDto | null;
+
+  @Expose()
+  @DateFieldOptional({ nullable: true, description: 'Thời điểm duyệt' })
+  approvedAt!: Date | null;
+
+  @Expose()
+  @ClassFieldOptional(() => UserRefResDto, { nullable: true })
+  rejecterBy!: UserRefResDto | null;
+
+  @Expose()
+  @DateFieldOptional({ nullable: true, description: 'Thời điểm từ chối' })
+  rejectedAt!: Date | null;
+
+  @Expose()
+  @StringFieldOptional({
+    nullable: true,
+    description: 'Lý do từ chối của lần duyệt gần nhất, xoá khi gửi duyệt lại',
+  })
+  rejectionReason!: string | null;
 }

@@ -1,4 +1,4 @@
-<!-- Generated: 2026-10-24 | Files scanned: 27 | Token estimate: ~3530 -->
+<!-- Generated: 2026-10-26 | Files scanned: 27 | Token estimate: ~3530 -->
 # Production codemap
 
 Paths relative to `src/api/` unless starting `database/` or `constants/`. `ctrl:N`/`svc:N` = line in that domain's controller/service (`po.svc`, `jobs.svc`, `exec svc`, `OO svc`, `OR svc` = the five services). Create/update routes return 204 unless noted.
@@ -64,15 +64,20 @@ Tables: `po`=production_orders, `poi`=_order_items, `pol`=_order_logs, `pj`=prod
 | GET /jobs/:productionJobId/reports | read | getJobOperationReports ctrl:106 -> svc:405 | - |
 | POST /operations/:jobOperationId/reports | report | createJobOperationReport ctrl:125 -> svc:479 | production_job_operation_reports(+_files), pjo, pj.status+pjl via `closeJobIfFinalAssemblyDone` |
 
-### outsourcing-orders (6) `/outsourcing-orders` perm prefix `outsourcing:`
+### outsourcing-orders (11) `/outsourcing-orders` perm prefix `outsourcing:`
 | Route | Perm | Controller -> Service | Writes |
 |---|---|---|---|
 | GET / | read | getOutsourcingOrders ctrl:35 -> svc:62 | - |
 | GET /outsourceable-operations | read | getOutsourceableOperations ctrl:49 -> svc:231 | - |
 | GET /:outsourcingOrderId | read | getOutsourcingOrder ctrl:67 -> svc:120 | - |
 | GET /:id/items | read | getOrderItems ctrl:82 -> svc:173 | - |
-| POST / | create | createOutsourcingOrder ctrl:95 -> svc:358 | outsourcing_orders, outsourcing_order_items |
-| POST /:id/cancel | update | cancelOutsourcingOrder ctrl:111 -> svc:391 | outsourcing_orders.status |
+| POST / | create | createOutsourcingOrder -> creates a `DRAFT` (204) | outsourcing_orders, outsourcing_order_items |
+| PATCH /:id | update | updateOutsourcingOrder (DRAFT/REJECTED) | outsourcing_orders, outsourcing_order_items (replaced) |
+| POST /:id/submit | update | submitOutsourcingOrder | status, submittedBy/At, clears rejectionReason |
+| POST /:id/approve | approve | approveOutsourcingOrder | status, approvedBy/At |
+| POST /:id/reject | approve | rejectOutsourcingOrder (reason required) | status, rejectedBy/At, rejectionReason |
+| POST /:id/confirm-send | update | confirmSendOutsourcingOrder | status SENT, postedBy/At |
+| POST /:id/cancel | update | cancelOutsourcingOrder | outsourcing_orders.status |
 
 ### outsourcing-receipts (6) `/outsourcing-receipts` perm prefix `outsourcing:`
 | Route | Perm | Controller -> Service | Writes |
@@ -124,14 +129,17 @@ JOB (`production-jobs.ts:26`: PENDING, IN_PROGRESS, WAITING_QC, WAITING_DELIVERY
 
 Close chain: closeJobIfQcCovered -> closeJobIfFullyReceived -> LSX COMPLETED -> closeNcrIfProductionOrdersDone.
 
-Outsourcing order (`database/schemas/inventory/outsourcing-orders.ts:23`: SENT, PARTIAL, WAITING_QC, COMPLETED, CANCELLED; status = state + receive progress)
+Outsourcing order (`database/schemas/inventory/outsourcing-orders.ts`: DRAFT, PENDING_APPROVAL, APPROVED, REJECTED, SENT, PARTIAL, WAITING_QC, COMPLETED, CANCELLED; the first four are the approval flow, the rest = state + receive progress)
 
-  create svc:358 --> SENT
-  `recomputeOutsourcingOrderStatus` (outsourcing-orders.query.ts:190, same tx; skips CANCELLED):
+  create --> DRAFT (quota check E184) ; update (DRAFT/REJECTED only) ; submit DRAFT/REJECTED --> PENDING_APPROVAL (needs `outsourcing:update`)
+  approve PENDING_APPROVAL --> APPROVED ; reject PENDING_APPROVAL --> REJECTED + reason (both need `outsourcing:approve`)
+  confirm-send APPROVED --> SENT (needs `outsourcing:update`); only SENT and later can be received (OS-IN, E171 otherwise)
+  every transition is a conditional UPDATE (`transitionStatus`), the loser of a race gets E098
+  `recomputeOutsourcingOrderStatus` (outsourcing-orders.query.ts, same tx; touches only `RECEIVING_STATUSES`: SENT/PARTIAL/WAITING_QC/COMPLETED):
      received = sum POSTED OS-IN qty - sum POSTED supplier_returns
      received < sent: 0 -> SENT, >0 -> PARTIAL; received >= sent: pending IQC -> WAITING_QC else COMPLETED
      callers: OS-IN create/cancel (OR svc:427, :476), IqcService.confirmIqc, postSupplierReturn
-  cancel svc:391 --> CANCELLED (final)
+  cancel (any status before CANCELLED, blocked by active OS-IN, E169) --> CANCELLED (final)
 OS-IN (outsourcing-receipts.ts:17): create -> POSTED (svc:355) -> CANCELLED (svc:445). Progress of an OUTSOURCE operation is written only by `recomputeOutsourcedOperationProgress` (jobs.query:106): completedQuantity = received - returned; completedDate when >= planned; FG op done -> closeJobIfFinalAssemblyDone.
 
 ## 4. Key rules (error codes in `constants/error-code.constant.ts`)
@@ -142,9 +150,9 @@ OS-IN (outsourcing-receipts.ts:17): create -> POSTED (svc:355) -> CANCELLED (svc
 - Execution: E091 operation not found (exec svc:490). E260 OUTSOURCE ops not reportable by hand (:498). E087 JOB must be IN_PROGRESS (:502). E256 zero deltas or completed > planned (:509, :554). E210 FG assembly blocked until other ops done (:525). E279 403 operation not assigned (operations/operation-access.service.ts:78). completedDate set when completed >= planned (:587).
 - OQC/NCR hooks: E175 job status (oqc.service:488). E213 no final op (oqc.service:492, ncrs.service:447). NCR LSX: E305 no order (ncrs.service:348), E307 qty 0 (:354), E306 duplicate (ncrId, ncrAction) (:366).
 - FG receipt gates (`ensureProductionReceiptOqcCleared`, inventory-receipts.service.ts:1182): E196 QC incomplete (no QC row, open IQC, qty over passed OQC, or open row when no final OQC operation; :1219/:1232/:1235), E209 final OQC missing (:1223), E197 over job.quantity (:1239); details in quality.md. Outbound gate E205 outbound-orders.service.ts:739.
-- OS-OUT: E019 supplier (OO svc:457). E182 no items (:419). E183 duplicate operation (:424). E280 mixed operations in one order (:433). E098 already cancelled (:399). E169 cancel blocked by active OS-IN (:407). E165 not found (:165). Outsourceable list: JOB IN_PROGRESS + OUTSOURCE ops only (:237-238).
-- OS-IN: E185 no items (OR svc:524). E186 duplicate order item (:529). E187 supplier mismatch (:605). E171 source OS-OUT CANCELLED (:602). E172 over sent qty (:616). E170 not found (:189). E098 already cancelled (:453). E173 cancel blocked once IQC exists (:459). IQC generated when `requiresIqc` (:403).
-- E166, E167, E168, E184 (outsourcing_order.*): no throw site in `src/api`.
+- OS-OUT: E019 supplier. E182 no items. E183 duplicate operation. E280 mixed operations in one order. E184 total sent over the BOM planned quantity (counts every non-cancelled order, locks the operations `FOR UPDATE`). E098 wrong status for the transition / already cancelled. E169 cancel blocked by active OS-IN (:407). E165 not found (:165). Outsourceable list: JOB IN_PROGRESS + OUTSOURCE ops only (:237-238).
+- OS-IN: E185 no items (OR svc:524). E186 duplicate order item (:529). E187 supplier mismatch (:605). E171 source OS-OUT not yet sent (DRAFT/PENDING_APPROVAL/APPROVED/REJECTED) or CANCELLED (:602). E172 over sent qty (:616). E170 not found (:189). E098 already cancelled (:453). E173 cancel blocked once IQC exists (:459). IQC generated when `requiresIqc` (:403).
+- E166, E167, E168 (outsourcing_order.*): no throw site in `src/api`.
 
 ## 5. Cross-domain links
 
