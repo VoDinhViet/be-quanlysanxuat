@@ -33,8 +33,9 @@ purchase-quotations (12) -> PQS:
 - POST / create :407; PATCH /:id update :429 (deletes and recreates items); DELETE /:id delete :459 [quotations, items, allocations, item_suppliers, item_supplier_files].
 - POST /:id/send update :470; /approve approve :519 [item_suppliers.selected*, quotations, purchase_orders, purchase_order_items]; /reject approve :660; /cancel approve :683 [purchase_orders delete, quotations].
 
-purchase-orders (9) -> POS:
+purchase-orders (10) -> POS:
 - GET / read :99; GET /:id read :403; GET /:id/related-notes read: PNS :83.
+- GET /:id/export-pdf read: `purchase-orders/purchase-order-pdf.service.ts` exportPurchaseOrderPdf (PDF BM 07-02, A4 portrait, `FormTemplateType.PURCHASE_ORDER`; totals via `calculatePurchaseOrderAmounts`, contact = primary supplier representative, signature boxes left blank).
 - PATCH /:id update :582; PATCH /:id/items/:itemId update :667 (both PENDING_CONFIRMATION only).
 - PATCH /:id/advance-payment update :603 [purchase_orders, payment_requests, logs].
 - POST /:id/confirm update :702; /cancel approve :743 [purchase_orders, payment_requests+logs, inventory_receipts, purchase_quotations]; /close approve :913 [purchase_order_items, purchase_orders, payment_requests].

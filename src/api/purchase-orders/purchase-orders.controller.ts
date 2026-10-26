@@ -6,6 +6,7 @@ import {
   Patch,
   Post,
   Query,
+  StreamableFile,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 
@@ -25,6 +26,7 @@ import { PurchaseOrderResDto } from './dto/purchase-order.res.dto';
 import { UpdatePurchaseOrderAdvancePaymentReqDto } from './dto/update-purchase-order-advance-payment.req.dto';
 import { UpdatePurchaseOrderItemReqDto } from './dto/update-purchase-order-item.req.dto';
 import { UpdatePurchaseOrderReqDto } from './dto/update-purchase-order.req.dto';
+import { PurchaseOrderPdfService } from './purchase-order-pdf.service';
 import { PurchaseOrdersService } from './purchase-orders.service';
 
 @ApiTags('Purchase Orders')
@@ -33,6 +35,7 @@ export class PurchaseOrdersController {
   constructor(
     private readonly purchaseOrdersService: PurchaseOrdersService,
     private readonly purchaseNotesService: PurchaseNotesService,
+    private readonly purchaseOrderPdfService: PurchaseOrderPdfService,
   ) {}
 
   @Get()
@@ -167,6 +170,18 @@ export class PurchaseOrdersController {
       reqDto,
       payload.userId,
     );
+  }
+
+  @Get(':purchaseOrderId/export-pdf')
+  @Permissions('purchasing:read')
+  @ApiAuth({
+    summary: 'Xuất PDF Đơn đặt hàng (BM 07-02)',
+    fileType: 'application/pdf',
+  })
+  exportPurchaseOrderPdf(
+    @UUIDParam('purchaseOrderId') purchaseOrderId: string,
+  ): Promise<StreamableFile> {
+    return this.purchaseOrderPdfService.exportPurchaseOrderPdf(purchaseOrderId);
   }
 
   @Get(':purchaseOrderId/related-notes')

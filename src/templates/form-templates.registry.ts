@@ -7,6 +7,7 @@ import { join } from 'path';
  * - `PRODUCTION_PLAN`: kế hoạch sản xuất nhiều Job (mã BM 08-01), file `production-plan.html`
  * - `STOCK_IN_SLIP`: phiếu nhập kho (mã BM 09-01), file `stock-in-slip.html`
  * - `PURCHASE_REQUEST`: đề xuất mua hàng (mã BM 07-01), file `purchase-request.html`
+ * - `PURCHASE_ORDER`: đơn đặt hàng NCC (mã BM 07-02), file `purchase-order.html`
  */
 export enum FormTemplateType {
   ORDER = 'ORDER',
@@ -15,6 +16,7 @@ export enum FormTemplateType {
   PRODUCTION_PLAN = 'PRODUCTION_PLAN',
   STOCK_IN_SLIP = 'STOCK_IN_SLIP',
   PURCHASE_REQUEST = 'PURCHASE_REQUEST',
+  PURCHASE_ORDER = 'PURCHASE_ORDER',
 }
 
 export interface FormTemplatePlaceholder {
@@ -132,6 +134,43 @@ export const FORM_TEMPLATES: Record<FormTemplateType, FormTemplateDefinition> =
         { key: 'source', label: 'PO / Lý do', group: 'meta' },
         { key: 'job_code', label: 'Job', group: 'meta' },
         { key: 'department_name', label: 'Bộ phận đề xuất', group: 'meta' },
+      ],
+    },
+    [FormTemplateType.PURCHASE_ORDER]: {
+      fileName: 'purchase-order.html',
+      landscape: false,
+      placeholders: [
+        { key: 'code', label: 'Số đơn đặt hàng', group: 'meta' },
+        { key: 'order_date', label: 'Ngày đặt hàng', group: 'meta' },
+        { key: 'expected_date', label: 'Ngày giao dự kiến', group: 'meta' },
+        { key: 'supplier_name', label: 'Tên nhà cung cấp', group: 'meta' },
+        { key: 'supplier_address', label: 'Địa chỉ NCC', group: 'meta' },
+        { key: 'supplier_tax_code', label: 'Mã số thuế NCC', group: 'meta' },
+        { key: 'supplier_phone', label: 'Điện thoại NCC', group: 'meta' },
+        { key: 'supplier_contact', label: 'Người liên hệ', group: 'meta' },
+        { key: 'supplier_email', label: 'Email NCC', group: 'meta' },
+        { key: 'payment_term', label: 'Điều khoản thanh toán', group: 'meta' },
+        { key: 'note', label: 'Ghi chú', group: 'meta' },
+        {
+          key: 'subtotal',
+          label: 'Tổng tiền hàng (chưa thuế)',
+          group: 'totals',
+        },
+        { key: 'vat_percent', label: '% Thuế VAT', group: 'totals' },
+        { key: 'vat_amount', label: 'Tiền thuế VAT', group: 'totals' },
+        { key: 'other_cost', label: 'Chi phí khác', group: 'totals' },
+        { key: 'grand_total', label: 'Tổng thanh toán', group: 'totals' },
+        { key: 'advance_payment', label: 'Tạm ứng đơn hàng', group: 'totals' },
+        {
+          key: 'balance_due',
+          label: 'Còn lại phải thanh toán',
+          group: 'totals',
+        },
+        {
+          key: 'amount_in_words',
+          label: 'Tổng thanh toán bằng chữ',
+          group: 'totals',
+        },
       ],
     },
   };
