@@ -14,6 +14,7 @@ import {
   StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
+import { ItemCategoryRefResDto } from '../../item-categories/dto/item-category-ref.res.dto';
 import { SupplierRefResDto } from '../../suppliers/dto/supplier-ref.res.dto';
 import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
 import { ItemFileResDto } from './item-file.res.dto';
@@ -69,6 +70,13 @@ export class ItemResDto {
     description: 'NCC chính — chỉ có ý nghĩa với DIRECT',
   })
   supplier!: SupplierRefResDto | null;
+
+  @Expose()
+  @ClassFieldOptional(() => ItemCategoryRefResDto, {
+    nullable: true,
+    description: 'Nhóm vật tư — chỉ có ý nghĩa với DIRECT',
+  })
+  itemCategory!: ItemCategoryRefResDto | null;
 
   @Expose()
   @NumberField({

@@ -16,6 +16,7 @@ import { files } from '../files';
 import { suppliers } from '../suppliers/suppliers';
 import { units } from '../units/units';
 import { users } from '../identity-access/users';
+import { itemCategories } from './item-categories';
 import { itemFiles } from './item-files';
 import { itemUnits } from './item-units';
 
@@ -48,8 +49,8 @@ export const itemStatusEnum = pgEnum('item_status', [
  * Rules:
  * - `supplierId`/`minStock`/8 cột mở rộng bên dưới chỉ có ý nghĩa với DIRECT — luôn
  *   nullable/mặc định trên FG, không tách bảng phụ.
- * - Không còn cột nhóm hàng hoá (`productGroupId`/`materialGroupId` cũ) — `type` là thứ duy nhất
- *   phân loại.
+ * - `itemCategoryId` là nhóm vật tư do người dùng tự quản, tuỳ chọn, chỉ dùng cho DIRECT; `type`
+ *   vẫn là thứ phân loại FG/DIRECT.
  * - Cặp `(code, revision)` unique theo partial index (chỉ dòng còn sống) chứ không phải
  *   `.unique()` toàn bảng — khác quy ước chung của `.claude/rules/database.md`'s "Soft delete"
  *   (cố tình, đã bàn với người yêu cầu): một mã bị xoá mềm phải dùng lại được, vì `code` còn tự
@@ -88,6 +89,10 @@ export const items = pgTable(
     supplierId: uuid('supplier_id').references(() => suppliers.id, {
       onDelete: 'set null',
     }),
+    itemCategoryId: uuid('item_category_id').references(
+      () => itemCategories.id,
+      { onDelete: 'restrict' },
+    ),
     minStock: numeric('min_stock', {
       precision: 18,
       scale: 3,
@@ -122,6 +127,7 @@ export const items = pgTable(
     index('idx_items_client_id').on(table.clientId),
     index('idx_items_unit_id').on(table.unitId),
     index('idx_items_supplier_id').on(table.supplierId),
+    index('idx_items_item_category_id').on(table.itemCategoryId),
     index('idx_items_cloned_from_item_id').on(table.clonedFromItemId),
     index('idx_items_created_by').on(table.createdBy),
     index('idx_items_image_file_id').on(table.imageFileId),
@@ -150,6 +156,10 @@ export const itemsRelations = relations(items, ({ one, many }) => ({
   supplier: one(suppliers, {
     fields: [items.supplierId],
     references: [suppliers.id],
+  }),
+  itemCategory: one(itemCategories, {
+    fields: [items.itemCategoryId],
+    references: [itemCategories.id],
   }),
   creatorBy: one(users, {
     fields: [items.createdBy],

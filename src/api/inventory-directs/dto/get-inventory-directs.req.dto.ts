@@ -10,6 +10,9 @@ export class GetInventoryDirectsReqDto extends PageOptionsDto {
   @UUIDFieldOptional({ description: 'Filter theo NCC' })
   readonly supplierId?: string;
 
+  @UUIDFieldOptional({ description: 'Filter theo nhóm vật tư' })
+  readonly itemCategoryId?: string;
+
   @EnumFieldOptional(() => StockStatus)
   readonly status?: StockStatus;
 

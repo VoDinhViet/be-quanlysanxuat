@@ -13,6 +13,7 @@ export interface ItemExport {
   unitName: string;
   clientName: string | null;
   supplierName: string | null;
+  itemCategoryName: string | null;
   minStock: number;
   directGrade: string | null;
   technicalStandard: string | null;
@@ -46,6 +47,7 @@ export const ITEM_EXPORT_COLUMNS: ExcelColumn<ItemExport>[] = [
   { header: 'Đơn vị tính', value: (row) => row.unitName },
   { header: 'Khách hàng', value: (row) => row.clientName, width: 25 },
   { header: 'Nhà cung cấp', value: (row) => row.supplierName, width: 25 },
+  { header: 'Nhóm vật tư', value: (row) => row.itemCategoryName, width: 25 },
   {
     header: 'Định mức tồn tối thiểu',
     value: (row) => row.minStock,

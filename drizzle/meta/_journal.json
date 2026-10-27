@@ -1674,6 +1674,20 @@
       "when": 1792983499224,
       "tag": "0238_outbound_order_invoice",
       "breakpoints": true
+    },
+    {
+      "idx": 239,
+      "version": "7",
+      "when": 1793063894945,
+      "tag": "0239_item_categories",
+      "breakpoints": true
+    },
+    {
+      "idx": 240,
+      "version": "7",
+      "when": 1793063909521,
+      "tag": "0240_item_categories_seed",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,4 @@
-<!-- Generated: 2026-10-16 | Files scanned: 34 | Token estimate: ~3270 -->
+<!-- Generated: 2026-10-27 | Files scanned: 34 | Token estimate: ~3270 -->
 # Product structure codemap
 
 Paths under `src/`. Only controllers check permissions; services do not.
@@ -10,6 +10,7 @@ Paths under `src/`. Only controllers check permissions; services do not.
 | items | items.controller 194, items.service 992, items.import 174, items.export 69 | Item master, import/export, copy with BOM, DIRECT demand explosion |
 | item-units | service 118, controller 74 | Secondary unit + conversion factor per item |
 | units | service 139, controller 79 | Unit master (ĐVT) |
+| item-categories | service ~130, controller ~85 | Nhóm vật tư (user-managed catalog; optional `items.itemCategoryId` for DIRECT) |
 | boms | service 595, controller 79, bom-tree.util 43 | BOM tree (`bom_items`), lazy `boms` header |
 | bom-directs | service 76, controller 31 | Read-only DIRECT children of a node |
 | bom-operations | service 181, controller 108 | Steps (as-used) on a COMPONENT node |
@@ -41,6 +42,15 @@ Item units (`items/:itemId/units`, `item-units.controller.ts` -> `item-units.ser
 | POST | items:update | :42 -> createItemUnit :35 | item_units |
 | PATCH :unitId | items:update | :54 -> updateItemUnit :56 | item_units |
 | DELETE :unitId | items:update | :68 -> deleteItemUnit :70 | item_units |
+
+Item categories (`item-categories.controller.ts` -> `item-categories.service.ts`), 5 (same shape as units; permissions reuse `items:*`):
+| GET /item-categories | public (`@ApiPublic`) | getItemCategories (`q` on code/name, sorted by name) | - |
+| GET /item-categories/:itemCategoryId | public | getItemCategory | - |
+| POST /item-categories | items:create | createItemCategory (E324 on duplicate code) | item_categories |
+| PATCH /item-categories/:itemCategoryId | items:update | updateItemCategory | item_categories |
+| DELETE /item-categories/:itemCategoryId | items:update | deleteItemCategory (hard delete; E325 when any item, soft-deleted included, uses it) | item_categories |
+`items` accepts `itemCategoryId` on create/update (nullable on PATCH), filters `GET /items` and `/items/export` by it, and exports a "Nhóm vật tư" column. `GET /inventory-directs` also filters by `itemCategoryId`. Excel import does not carry the category.
+Error codes: E323 not found, E324 code exists, E325 in use.
 
 Units (`units.controller.ts` -> `units.service.ts`), 5:
 | GET /units | public (`@ApiPublic`) | :33 -> getUnits :21 | - |

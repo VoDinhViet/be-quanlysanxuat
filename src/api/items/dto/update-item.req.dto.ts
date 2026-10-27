@@ -43,6 +43,12 @@ export class UpdateItemReqDto {
   })
   supplierId?: string | null;
 
+  @UUIDFieldOptional({
+    nullable: true,
+    description: 'Nhóm vật tư (item_categories) — chỉ có ý nghĩa với DIRECT',
+  })
+  itemCategoryId?: string | null;
+
   @NumberFieldOptional({
     min: 0,
     description: 'Định mức tồn tối thiểu — chỉ có ý nghĩa với DIRECT',

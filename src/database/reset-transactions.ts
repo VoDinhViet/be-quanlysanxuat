@@ -30,6 +30,7 @@ const KEEP_TABLES = [
   'document_sequences',
   'units',
   'item_units',
+  'item_categories',
   'operations',
   'client_groups',
   'clients',

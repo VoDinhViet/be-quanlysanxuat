@@ -39,6 +39,7 @@ import { InventoryProductsModule } from './api/inventory-products/inventory-prod
 import { InventoryReceiptsModule } from './api/inventory-receipts/inventory-receipts.module';
 import { InventoryRequisitionsModule } from './api/inventory-requisitions/inventory-requisitions.module';
 import { IqcModule } from './api/iqc/iqc.module';
+import { ItemCategoriesModule } from './api/item-categories/item-categories.module';
 import { ItemUnitsModule } from './api/item-units/item-units.module';
 import { ItemsModule } from './api/items/items.module';
 import { OperationsModule } from './api/operations/operations.module';
@@ -112,6 +113,7 @@ import { UsersModule } from './api/users/users.module';
     ClientGroupsModule,
     CountriesModule,
     UnitsModule,
+    ItemCategoriesModule,
     ItemsModule,
     ItemUnitsModule,
     BomsModule,

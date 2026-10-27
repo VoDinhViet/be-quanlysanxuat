@@ -57,6 +57,9 @@ export class InventoryDirectsService {
           )
         : undefined,
       reqDto.supplierId ? eq(items.supplierId, reqDto.supplierId) : undefined,
+      reqDto.itemCategoryId
+        ? eq(items.itemCategoryId, reqDto.itemCategoryId)
+        : undefined,
       reqDto.status
         ? stockStatusCondition(availableSql, reqDto.status)
         : undefined,

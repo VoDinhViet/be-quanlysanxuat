@@ -54,6 +54,12 @@ export class CreateItemReqDto {
   })
   supplierId?: string | null;
 
+  @UUIDFieldOptional({
+    nullable: true,
+    description: 'Nhóm vật tư (item_categories) — chỉ có ý nghĩa với DIRECT',
+  })
+  itemCategoryId?: string | null;
+
   @NumberFieldOptional({
     min: 0,
     description:

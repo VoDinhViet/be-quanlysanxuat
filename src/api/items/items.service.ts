@@ -42,6 +42,7 @@ import {
   BomType,
   clients,
   files,
+  itemCategories,
   itemFiles,
   items,
   ItemStatus,
@@ -106,6 +107,9 @@ export class ItemsService {
       reqDto.type?.length ? inArray(items.type, reqDto.type) : undefined,
       reqDto.clientId ? eq(items.clientId, reqDto.clientId) : undefined,
       reqDto.supplierId ? eq(items.supplierId, reqDto.supplierId) : undefined,
+      reqDto.itemCategoryId
+        ? eq(items.itemCategoryId, reqDto.itemCategoryId)
+        : undefined,
       reqDto.status ? eq(items.status, reqDto.status) : undefined,
     );
 
@@ -119,6 +123,7 @@ export class ItemsService {
           client: true,
           unit: true,
           supplier: true,
+          itemCategory: true,
           creatorBy: true,
           imageFile: true,
         },
@@ -163,6 +168,9 @@ export class ItemsService {
       reqDto.type?.length ? inArray(items.type, reqDto.type) : undefined,
       reqDto.clientId ? eq(items.clientId, reqDto.clientId) : undefined,
       reqDto.supplierId ? eq(items.supplierId, reqDto.supplierId) : undefined,
+      reqDto.itemCategoryId
+        ? eq(items.itemCategoryId, reqDto.itemCategoryId)
+        : undefined,
       reqDto.status ? eq(items.status, reqDto.status) : undefined,
     );
 
@@ -176,6 +184,7 @@ export class ItemsService {
         unitName: units.name,
         clientName: clients.name,
         supplierName: suppliers.name,
+        itemCategoryName: itemCategories.name,
         minStock: items.minStock,
         directGrade: items.directGrade,
         technicalStandard: items.technicalStandard,
@@ -193,6 +202,7 @@ export class ItemsService {
       .innerJoin(units, eq(units.id, items.unitId))
       .leftJoin(clients, eq(clients.id, items.clientId))
       .leftJoin(suppliers, eq(suppliers.id, items.supplierId))
+      .leftJoin(itemCategories, eq(itemCategories.id, items.itemCategoryId))
       .leftJoin(users, eq(users.id, items.createdBy))
       .where(where)
       .orderBy(desc(items.createdAt))
@@ -244,6 +254,7 @@ export class ItemsService {
         client: true,
         unit: true,
         supplier: true,
+        itemCategory: true,
         creatorBy: true,
         imageFile: true,
         clonedFrom: true,
@@ -285,6 +296,9 @@ export class ItemsService {
     }
     if (reqDto.supplierId) {
       await this.ensureSupplierExists(reqDto.supplierId);
+    }
+    if (reqDto.itemCategoryId) {
+      await this.ensureItemCategoryExists(reqDto.itemCategoryId);
     }
     await this.linkSuppliedFiles(reqDto);
 
@@ -527,6 +541,9 @@ export class ItemsService {
     }
     if (reqDto.supplierId) {
       await this.ensureSupplierExists(reqDto.supplierId);
+    }
+    if (reqDto.itemCategoryId) {
+      await this.ensureItemCategoryExists(reqDto.itemCategoryId);
     }
     await this.linkSuppliedFiles(reqDto);
 
@@ -980,6 +997,20 @@ export class ItemsService {
 
     if (!existing) {
       throw new AppException(ErrorCode.E019, HttpStatus.NOT_FOUND);
+    }
+  }
+
+  private async ensureItemCategoryExists(
+    itemCategoryId: string,
+  ): Promise<void> {
+    const [existing] = await this.db
+      .select({ id: itemCategories.id })
+      .from(itemCategories)
+      .where(eq(itemCategories.id, itemCategoryId))
+      .limit(1);
+
+    if (!existing) {
+      throw new AppException(ErrorCode.E323, HttpStatus.NOT_FOUND);
     }
   }
 

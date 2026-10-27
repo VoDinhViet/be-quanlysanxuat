@@ -24,6 +24,9 @@ export class ExportItemsReqDto {
   @UUIDFieldOptional({ description: 'Filter by supplier id (DIRECT)' })
   readonly supplierId?: string;
 
+  @UUIDFieldOptional({ description: 'Filter by item category id (DIRECT)' })
+  readonly itemCategoryId?: string;
+
   @EnumFieldOptional(() => ItemStatus)
   readonly status?: ItemStatus;
 }
