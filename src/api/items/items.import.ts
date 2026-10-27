@@ -14,6 +14,7 @@ type ItemImportKey =
   | 'unitCode'
   | 'supplierCode'
   | 'clientCode'
+  | 'itemCategoryCode'
   | 'minStock'
   | 'specificWeight'
   | 'directGrade'
@@ -60,6 +61,7 @@ export const ITEM_IMPORT_FIELDS: ItemImportField[] = [
     maxLength: 50,
   },
   { key: 'clientCode', header: 'Mã khách hàng', maxLength: 50 },
+  { key: 'itemCategoryCode', header: 'Mã nhóm vật tư', maxLength: 50 },
   {
     key: 'minStock',
     header: 'Định mức tồn tối thiểu',
@@ -104,6 +106,7 @@ export interface ParsedItemImportRow {
   unitCode: string;
   supplierCode?: string;
   clientCode?: string;
+  itemCategoryCode?: string;
   minStock?: number;
   specificWeight?: number;
   directGrade?: string;

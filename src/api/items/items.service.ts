@@ -350,22 +350,32 @@ export class ItemsService {
     const rows = await this.readImportRows(file);
     const { parsed, errors } = parseImportRows(rows);
 
-    const [unitRows, supplierRows, clientRows] = await Promise.all([
-      this.db.select({ id: units.id, code: units.code }).from(units),
-      this.db
-        .select({ id: suppliers.id, code: suppliers.code })
-        .from(suppliers)
-        .where(isNull(suppliers.deletedAt)),
-      this.db
-        .select({ id: clients.id, code: clients.code })
-        .from(clients)
-        .where(isNull(clients.deletedAt)),
-    ]);
+    const [unitRows, supplierRows, clientRows, itemCategoryRefs] =
+      await Promise.all([
+        this.db.select({ id: units.id, code: units.code }).from(units),
+        this.db
+          .select({ id: suppliers.id, code: suppliers.code })
+          .from(suppliers)
+          .where(isNull(suppliers.deletedAt)),
+        this.db
+          .select({ id: clients.id, code: clients.code })
+          .from(clients)
+          .where(isNull(clients.deletedAt)),
+        this.db
+          .select({ id: itemCategories.id, code: itemCategories.code })
+          .from(itemCategories),
+      ]);
     const unitIdByCode = new Map(unitRows.map((row) => [row.code, row.id]));
     const supplierIdByCode = new Map(
       supplierRows.map((row) => [row.code, row.id]),
     );
     const clientIdByCode = new Map(clientRows.map((row) => [row.code, row.id]));
+    const itemCategoryIdByCode = new Map(
+      itemCategoryRefs.map((itemCategory) => [
+        itemCategory.code,
+        itemCategory.id,
+      ]),
+    );
 
     const existingRows = await this.db
       .select({ code: items.code, revision: items.revision })
@@ -401,6 +411,9 @@ export class ItemsService {
       const clientId = row.clientCode
         ? clientIdByCode.get(row.clientCode)
         : undefined;
+      const itemCategoryId = row.itemCategoryCode
+        ? itemCategoryIdByCode.get(row.itemCategoryCode)
+        : undefined;
       let rowValid = true;
 
       if (!unitId) {
@@ -419,6 +432,10 @@ export class ItemsService {
       if (row.clientCode && !clientId) {
         rowValid = false;
         addError(row.rowNumber, 'Mã khách hàng', 'not_found', 'Không tồn tại');
+      }
+      if (row.itemCategoryCode && !itemCategoryId) {
+        rowValid = false;
+        addError(row.rowNumber, 'Mã nhóm vật tư', 'not_found', 'Không tồn tại');
       }
 
       const key = `${row.code}\u0000${row.revision ?? ItemsService.DEFAULT_REVISION}`;
@@ -454,6 +471,7 @@ export class ItemsService {
         unitId,
         supplierId,
         clientId,
+        itemCategoryId,
         minStock: row.minStock,
         specificWeight: row.specificWeight,
         directGrade: row.directGrade,
