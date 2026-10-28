@@ -285,7 +285,7 @@ export class InventoryReceiptsService {
       : (receipt.productionOrder?.order?.buyerPoNo ?? null);
   }
 
-  /** Các ô ký để trống cho người dùng điền tay; "PO / Lý do" dùng chung quy tắc với cột của danh
+  /** Chỉ ô "Người lập" tự điền (người tạo phiếu), các ô ký khác để trống cho điền tay; "PO / Lý do" dùng chung quy tắc với cột của danh
    * sách (`resolvePoOrReason`). Phiếu không có NCC/khách (nhập thành phẩm) thì ẩn khối đơn vị giao. */
   async exportInventoryReceiptPdf(receiptId: string): Promise<StreamableFile> {
     const [receipt, receiptLines, purchaseSourcesByReceiptId] =
@@ -300,6 +300,7 @@ export class InventoryReceiptsService {
             },
             productionOrder: { with: { order: true } },
             purchaseOrder: true,
+            creatorBy: true,
           },
         }),
         this.db
@@ -358,6 +359,8 @@ export class InventoryReceiptsService {
           purchaseSourcesByReceiptId.get(receiptId),
         ) ?? '',
       ...resolveReceiptPartner(receipt),
+      creator_name: receipt.creatorBy?.fullName ?? '',
+      creator_date: formatVnDate(new Date()),
       receipt_items: receiptLines.map((line, index) => ({
         stt: index + 1,
         item_code: line.item.code,

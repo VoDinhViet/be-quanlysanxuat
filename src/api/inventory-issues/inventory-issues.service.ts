@@ -303,6 +303,7 @@ export class InventoryIssuesService {
           productionJob: true,
           department: true,
           requesterBy: true,
+          creatorBy: true,
           items: {
             with: { item: true, unit: true },
             orderBy: (issueItems, { asc }) => [asc(issueItems.createdAt)],
@@ -324,6 +325,8 @@ export class InventoryIssuesService {
       issue_date: formatVnDate(inventoryIssue.issueDate),
       department_name: inventoryIssue.department?.name ?? '',
       requester_name: inventoryIssue.requesterBy?.fullName ?? '',
+      creator_name: inventoryIssue.creatorBy?.fullName ?? '',
+      creator_date: formatVnDate(new Date()),
       source:
         resolvePoOrReason(
           requisition,

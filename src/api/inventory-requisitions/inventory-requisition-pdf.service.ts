@@ -40,6 +40,7 @@ export class InventoryRequisitionPdfService {
             with: { order: { columns: { buyerPoNo: true } } },
           },
           productionJob: true,
+          creatorBy: true,
         },
       }),
       this.db
@@ -75,6 +76,8 @@ export class InventoryRequisitionPdfService {
       job_code: inventoryRequisition.productionJob?.code ?? '',
       department_name: inventoryRequisition.department?.name ?? '',
       note: inventoryRequisition.note ?? '',
+      creator_name: inventoryRequisition.creatorBy?.fullName ?? '',
+      creator_date: formatVnDate(new Date()),
       requisition_items: requisitionLines.map((line, index) => ({
         stt: index + 1,
         item_code: line.item.code,

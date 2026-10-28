@@ -35,6 +35,12 @@ interface FormTemplateDefinition {
   placeholders: FormTemplatePlaceholder[];
 }
 
+/** Hai token của partial `creator-signature.html`, dùng chung cho các biểu mẫu có cột "Người lập". */
+const creatorSignaturePlaceholders: FormTemplatePlaceholder[] = [
+  { key: 'creator_name', label: 'Người lập', group: 'signatures' },
+  { key: 'creator_date', label: 'Ngày in', group: 'signatures' },
+];
+
 /** Mỗi loại chứng từ trỏ 1 file HTML tĩnh trong `src/templates/` (build sang `dist/src/templates/`
  * qua `assets` của `nest-cli.json`) — file **lưu cứng trong repo**, sửa nội dung là commit code +
  * deploy, không qua registry `files`/API upload. `placeholders` thuần mô tả token thật sự có trong
@@ -92,11 +98,7 @@ export const FORM_TEMPLATES: Record<FormTemplateType, FormTemplateDefinition> =
           label: 'Tổng số tiền bằng chữ',
           group: 'totals',
         },
-        {
-          key: 'preparer_name',
-          label: 'Người lập biểu',
-          group: 'signatures',
-        },
+        ...creatorSignaturePlaceholders,
       ],
     },
     [FormTemplateType.PRODUCTION_ORDER]: {
@@ -144,6 +146,7 @@ export const FORM_TEMPLATES: Record<FormTemplateType, FormTemplateDefinition> =
           group: 'meta',
         },
         { key: 'partner_tax_code', label: 'Mã số thuế', group: 'meta' },
+        ...creatorSignaturePlaceholders,
       ],
     },
     [FormTemplateType.STOCK_OUT_SLIP]: {
@@ -157,6 +160,7 @@ export const FORM_TEMPLATES: Record<FormTemplateType, FormTemplateDefinition> =
         { key: 'requester_name', label: 'Người tạo phiếu lãnh', group: 'meta' },
         { key: 'source', label: 'PO / Lý do', group: 'meta' },
         { key: 'job_code', label: 'Job', group: 'meta' },
+        ...creatorSignaturePlaceholders,
       ],
     },
     [FormTemplateType.MATERIAL_REQUISITION]: {
@@ -169,6 +173,7 @@ export const FORM_TEMPLATES: Record<FormTemplateType, FormTemplateDefinition> =
         { key: 'job_code', label: 'Job', group: 'meta' },
         { key: 'department_name', label: 'Bộ phận đề xuất', group: 'meta' },
         { key: 'note', label: 'Ghi chú', group: 'meta' },
+        ...creatorSignaturePlaceholders,
       ],
     },
     [FormTemplateType.PURCHASE_REQUEST]: {
@@ -181,6 +186,7 @@ export const FORM_TEMPLATES: Record<FormTemplateType, FormTemplateDefinition> =
         { key: 'source', label: 'PO / Lý do', group: 'meta' },
         { key: 'job_code', label: 'Job', group: 'meta' },
         { key: 'department_name', label: 'Bộ phận đề xuất', group: 'meta' },
+        ...creatorSignaturePlaceholders,
       ],
     },
     [FormTemplateType.PURCHASE_ORDER]: {
@@ -218,6 +224,7 @@ export const FORM_TEMPLATES: Record<FormTemplateType, FormTemplateDefinition> =
           label: 'Tổng thanh toán bằng chữ',
           group: 'totals',
         },
+        ...creatorSignaturePlaceholders,
       ],
     },
   };
@@ -227,3 +234,11 @@ export const FORM_TEMPLATES: Record<FormTemplateType, FormTemplateDefinition> =
 export function getFormTemplatePath(type: FormTemplateType): string {
   return join(__dirname, FORM_TEMPLATES[type].fileName);
 }
+
+export const CREATOR_SIGNATURE_PARTIAL_NAME = 'creator-signature';
+
+export const CREATOR_SIGNATURE_PARTIAL_PATH = join(
+  __dirname,
+  'partials',
+  'creator-signature.html',
+);

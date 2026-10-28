@@ -40,7 +40,7 @@ export class PurchaseOrderPdfService {
     private readonly pdfRendererService: PdfRendererService,
   ) {}
 
-  /** Ô ký để trống cho ký tay; thành tiền dòng và các tổng dùng chung công thức với màn chi tiết
+  /** Chỉ ô "Người lập" tự điền (người tạo đơn), các ô ký khác để trống cho ký tay; thành tiền dòng và các tổng dùng chung công thức với màn chi tiết
    * (`calculatePurchaseOrderAmounts`). */
   async exportPurchaseOrderPdf(
     purchaseOrderId: string,
@@ -49,7 +49,7 @@ export class PurchaseOrderPdfService {
       await Promise.all([
         this.db.query.purchaseOrders.findFirst({
           where: eq(purchaseOrders.id, purchaseOrderId),
-          with: { supplier: true },
+          with: { supplier: true, creatorBy: true },
         }),
         this.db
           .select({
@@ -137,6 +137,8 @@ export class PurchaseOrderPdfService {
       advance_payment: formatVnd(purchaseOrder.advancePaymentAmount),
       balance_due: formatVnd(amounts.balanceDue),
       amount_in_words: formatVndInWords(amounts.totalAmount),
+      creator_name: purchaseOrder.creatorBy?.fullName ?? '',
+      creator_date: formatVnDate(new Date()),
     };
 
     const buffer = await this.pdfRendererService.render(

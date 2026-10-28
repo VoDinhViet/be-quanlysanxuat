@@ -243,6 +243,7 @@ export class PurchaseRequestsService {
             with: { order: { columns: { buyerPoNo: true } } },
           },
           productionJob: true,
+          requesterBy: true,
         },
       }),
       this.db
@@ -282,6 +283,8 @@ export class PurchaseRequestsService {
       source,
       job_code: purchaseRequest.productionJob?.code ?? '',
       department_name: purchaseRequest.department?.name ?? '',
+      creator_name: purchaseRequest.requesterBy?.fullName ?? '',
+      creator_date: formatVnDate(new Date()),
       request_items: requestLines.map((line, index) => ({
         stt: index + 1,
         item_code: line.item.code,

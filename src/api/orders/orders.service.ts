@@ -519,7 +519,8 @@ export class OrdersService {
       vat_amount: formatVnd(vatAmount),
       grand_total: formatVnd(grandTotal),
       amount_in_words: formatVndInWords(grandTotal),
-      preparer_name: preparer?.fullName ?? '',
+      creator_name: preparer?.fullName ?? '',
+      creator_date: formatVnDate(new Date()),
       orders: templateOrders,
     };
 

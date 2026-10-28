@@ -12,6 +12,8 @@ import puppeteer, { Browser } from 'puppeteer';
 import { ErrorCode } from '../constants/error-code.constant';
 import { AppException } from '../exceptions/app.exception';
 import {
+  CREATOR_SIGNATURE_PARTIAL_NAME,
+  CREATOR_SIGNATURE_PARTIAL_PATH,
   FORM_TEMPLATES,
   FormTemplateType,
   getFormTemplatePath,
@@ -27,6 +29,10 @@ export class PdfRendererService implements OnModuleInit, OnModuleDestroy {
   private browser: Browser | undefined;
 
   async onModuleInit(): Promise<void> {
+    Handlebars.registerPartial(
+      CREATOR_SIGNATURE_PARTIAL_NAME,
+      readFileSync(CREATOR_SIGNATURE_PARTIAL_PATH, 'utf-8'),
+    );
     this.browser = await puppeteer.launch({
       headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
