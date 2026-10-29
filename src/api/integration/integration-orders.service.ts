@@ -10,6 +10,7 @@ import {
   productionOrders,
   users,
 } from '../../database/schemas';
+import { vnTimestamp } from '../../common/utils/time';
 
 import {
   IntegrationResultResDto,
@@ -53,7 +54,7 @@ type StatusEntity = {
   table: string;
   groupColumns: string[];
   countAlias: string;
-  dateColumn: string;
+  dateColumn: SQL;
   hasSoftDelete: boolean;
 };
 
@@ -63,35 +64,35 @@ const STATUS_ENTITIES: Record<StatusCountEntity, StatusEntity> = {
     table: 'orders',
     groupColumns: ['status'],
     countAlias: 'so_don',
-    dateColumn: 'order_date',
+    dateColumn: sql.raw('order_date'),
     hasSoftDelete: true,
   },
   [StatusCountEntity.PRODUCTION_JOBS]: {
     table: 'production_jobs',
     groupColumns: ['status'],
     countAlias: 'so_job',
-    dateColumn: 'created_at',
+    dateColumn: vnTimestamp(sql.raw('created_at')),
     hasSoftDelete: false,
   },
   [StatusCountEntity.PRODUCTION_ORDERS]: {
     table: 'production_orders',
     groupColumns: ['status'],
     countAlias: 'so_lenh',
-    dateColumn: 'created_at',
+    dateColumn: vnTimestamp(sql.raw('created_at')),
     hasSoftDelete: false,
   },
   [StatusCountEntity.PAYMENT_REQUESTS]: {
     table: 'payment_requests',
     groupColumns: ['status'],
     countAlias: 'so_de_nghi',
-    dateColumn: 'created_at',
+    dateColumn: vnTimestamp(sql.raw('created_at')),
     hasSoftDelete: false,
   },
   [StatusCountEntity.INVENTORY_RECEIPTS]: {
     table: 'inventory_receipts',
     groupColumns: ['receipt_type', 'status'],
     countAlias: 'so_phieu',
-    dateColumn: 'receipt_date',
+    dateColumn: sql.raw('receipt_date'),
     hasSoftDelete: false,
   },
 };
@@ -105,7 +106,7 @@ export class IntegrationOrdersService {
     const conditions: SQL[] = entity.hasSoftDelete
       ? [sql`deleted_at IS NULL`]
       : [];
-    conditions.push(...dateRangeConditions(sql.raw(entity.dateColumn), reqDto));
+    conditions.push(...dateRangeConditions(entity.dateColumn, reqDto));
     // Cột nhóm là enum: ép text để cột trả về luôn là chuỗi
     const groupList = sql.raw(entity.groupColumns.join(', '));
     const selectList = sql.raw(

@@ -24,6 +24,7 @@ import {
 } from '../../common/utils/document-sequence.util';
 import { hasFields } from '../../common/utils/object.util';
 import { unaccentILike } from '../../common/utils/search.util';
+import { exclusiveEndOfDay, startOfVnDay } from '../../common/utils/time';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
@@ -155,13 +156,10 @@ export class PurchaseQuotationsService {
           )
         : undefined,
       reqDto.startDate
-        ? gte(purchaseQuotations.createdAt, reqDto.startDate)
+        ? gte(purchaseQuotations.createdAt, startOfVnDay(reqDto.startDate))
         : undefined,
       reqDto.endDate
-        ? lt(
-            purchaseQuotations.createdAt,
-            new Date(reqDto.endDate.getTime() + 24 * 60 * 60 * 1000),
-          )
+        ? lt(purchaseQuotations.createdAt, exclusiveEndOfDay(reqDto.endDate))
         : undefined,
     );
 

@@ -9,6 +9,7 @@ import {
   generateDocumentSequence,
 } from '../../common/utils/document-sequence.util';
 import { unaccentILike } from '../../common/utils/search.util';
+import { vnZone } from '../../common/utils/time';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
@@ -503,7 +504,7 @@ export class SupplierReturnsService {
     tx: DbTransaction,
     returnDate: Date,
   ): Promise<string> {
-    const year = returnDate.getFullYear();
+    const year = vnZone(returnDate).getFullYear();
     const sequence = await generateDocumentSequence(
       tx,
       DocumentType.SUPPLIER_RETURN,

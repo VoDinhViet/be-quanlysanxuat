@@ -1,5 +1,6 @@
 import { HttpStatus, Inject, Injectable, StreamableFile } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
+import { format } from 'date-fns';
 import {
   and,
   count,
@@ -11,7 +12,6 @@ import {
   lt,
   or,
 } from 'drizzle-orm';
-import { DateTime } from 'luxon';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
@@ -19,8 +19,8 @@ import {
   DocumentType,
   generateDocumentSequence,
 } from '../../common/utils/document-sequence.util';
-import { formatVnDate } from '../../common/utils/excel.util';
 import { unaccentILike } from '../../common/utils/search.util';
+import { getFileTimestamp, vnZone } from '../../common/utils/time';
 import { formatQuantity } from '../../common/utils/vnd.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
@@ -322,11 +322,13 @@ export class InventoryIssuesService {
     const context = {
       code: inventoryIssue.code,
       requisition_code: requisition?.code ?? '',
-      issue_date: formatVnDate(inventoryIssue.issueDate),
+      issue_date: format(inventoryIssue.issueDate, 'dd/MM/yyyy', {
+        in: vnZone,
+      }),
       department_name: inventoryIssue.department?.name ?? '',
       requester_name: inventoryIssue.requesterBy?.fullName ?? '',
       creator_name: inventoryIssue.creatorBy?.fullName ?? '',
-      creator_date: formatVnDate(new Date()),
+      creator_date: format(new Date(), 'dd/MM/yyyy', { in: vnZone }),
       source:
         resolvePoOrReason(
           requisition,
@@ -349,7 +351,7 @@ export class InventoryIssuesService {
       context,
     );
 
-    const fileName = `${inventoryIssue.code}-${DateTime.now().toFormat('yyyyLLdd-HHmm')}.pdf`;
+    const fileName = `${inventoryIssue.code}-${getFileTimestamp()}.pdf`;
     return new StreamableFile(buffer, {
       type: 'application/pdf',
       disposition: `attachment; filename="${fileName}"`,
@@ -633,7 +635,7 @@ export class InventoryIssuesService {
     tx: DbTransaction,
     issueDate: Date,
   ): Promise<string> {
-    const year = issueDate.getFullYear();
+    const year = vnZone(issueDate).getFullYear();
     const sequence = await generateDocumentSequence(
       tx,
       DocumentType.INVENTORY_ISSUE,

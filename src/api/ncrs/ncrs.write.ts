@@ -4,6 +4,7 @@ import {
   DocumentType,
   generateDocumentSequence,
 } from '../../common/utils/document-sequence.util';
+import { vnZone } from '../../common/utils/time';
 import type { DbTransaction } from '../../database/database.type';
 import {
   ncrLogs,
@@ -85,7 +86,7 @@ export async function generateNcrCode(
   tx: DbTransaction,
   date: Date,
 ): Promise<string> {
-  const year = date.getFullYear();
+  const year = vnZone(date).getFullYear();
   const sequence = await generateDocumentSequence(tx, DocumentType.NCR, year);
 
   return `NCR-${year}-${String(sequence).padStart(5, '0')}`;

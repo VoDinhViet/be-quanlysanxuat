@@ -15,7 +15,6 @@ import {
   or,
   sql,
 } from 'drizzle-orm';
-import { DateTime } from 'luxon';
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
@@ -25,6 +24,7 @@ import {
 } from '../../common/utils/document-sequence.util';
 import { buildXlsxBuffer, XLSX_MIME } from '../../common/utils/excel.util';
 import { hasFields } from '../../common/utils/object.util';
+import { getFileTimestamp } from '../../common/utils/time';
 import { ErrorCode } from '../../constants/error-code.constant';
 import {
   type PermissionCode,
@@ -178,7 +178,7 @@ export class UsersService {
       .limit(UsersService.MAX_EXPORT_ROWS);
 
     const buffer = await buildXlsxBuffer('Nhân sự', USER_EXPORT_COLUMNS, rows);
-    const fileName = `nhan-su-${DateTime.now().toFormat('yyyyLLdd-HHmm')}.xlsx`;
+    const fileName = `nhan-su-${getFileTimestamp()}.xlsx`;
 
     return new StreamableFile(buffer, {
       type: XLSX_MIME,

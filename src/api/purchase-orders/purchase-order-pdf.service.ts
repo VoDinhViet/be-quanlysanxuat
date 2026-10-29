@@ -1,8 +1,8 @@
 import { HttpStatus, Inject, Injectable, StreamableFile } from '@nestjs/common';
+import { format } from 'date-fns';
 import { asc, desc, eq, getTableColumns } from 'drizzle-orm';
-import { DateTime } from 'luxon';
 
-import { formatVnDate } from '../../common/utils/excel.util';
+import { getFileTimestamp, vnZone } from '../../common/utils/time';
 import {
   formatQuantity,
   formatVnd,
@@ -103,8 +103,10 @@ export class PurchaseOrderPdfService {
 
     const context = {
       code: purchaseOrder.code,
-      order_date: formatVnDate(purchaseOrder.orderDate),
-      expected_date: formatVnDate(purchaseOrder.expectedDate),
+      order_date: format(purchaseOrder.orderDate, 'dd/MM/yyyy', { in: vnZone }),
+      expected_date: purchaseOrder.expectedDate
+        ? format(purchaseOrder.expectedDate, 'dd/MM/yyyy', { in: vnZone })
+        : '',
       supplier_name: supplier.name,
       supplier_address: supplier.address,
       supplier_tax_code: supplier.taxCode ?? '',
@@ -142,9 +144,13 @@ export class PurchaseOrderPdfService {
       balance_due: formatVnd(amounts.balanceDue),
       amount_in_words: formatVndInWords(amounts.totalAmount),
       creator_name: quotation?.creatorBy?.fullName ?? '',
-      creator_date: formatVnDate(quotation?.createdAt ?? null),
+      creator_date: quotation?.createdAt
+        ? format(quotation.createdAt, 'dd/MM/yyyy', { in: vnZone })
+        : '',
       approver_name: quotation?.approverBy?.fullName ?? '',
-      approver_date: formatVnDate(quotation?.approvedAt ?? null),
+      approver_date: quotation?.approvedAt
+        ? format(quotation.approvedAt, 'dd/MM/yyyy', { in: vnZone })
+        : '',
     };
 
     const buffer = await this.pdfRendererService.render(
@@ -152,7 +158,7 @@ export class PurchaseOrderPdfService {
       context,
     );
 
-    const fileName = `${purchaseOrder.code}-${DateTime.now().toFormat('yyyyLLdd-HHmm')}.pdf`;
+    const fileName = `${purchaseOrder.code}-${getFileTimestamp()}.pdf`;
     return new StreamableFile(buffer, {
       type: 'application/pdf',
       disposition: `attachment; filename="${fileName}"`,

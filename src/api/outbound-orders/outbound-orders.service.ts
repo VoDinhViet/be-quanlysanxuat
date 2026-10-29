@@ -1,5 +1,6 @@
 import { HttpStatus, Inject, Injectable, StreamableFile } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
+import { format } from 'date-fns';
 import {
   and,
   asc,
@@ -14,7 +15,6 @@ import {
   or,
   sql,
 } from 'drizzle-orm';
-import { DateTime } from 'luxon';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
@@ -24,6 +24,7 @@ import {
 } from '../../common/utils/document-sequence.util';
 import { buildXlsxBuffer, XLSX_MIME } from '../../common/utils/excel.util';
 import { unaccentILike } from '../../common/utils/search.util';
+import { getFileTimestamp, vnToday, vnZone } from '../../common/utils/time';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
@@ -254,7 +255,7 @@ export class OutboundOrdersService {
       OUTBOUND_ORDER_EXPORT_COLUMNS,
       outboundOrdersForExport,
     );
-    const fileName = `don-giao-hang-${DateTime.now().toFormat('yyyyLLdd-HHmm')}.xlsx`;
+    const fileName = `don-giao-hang-${getFileTimestamp()}.xlsx`;
 
     return new StreamableFile(buffer, {
       type: XLSX_MIME,
@@ -862,7 +863,7 @@ export class OutboundOrdersService {
       .innerJoin(items, eq(items.id, outboundOrderItems.itemId))
       .where(eq(outboundOrderItems.outboundOrderId, outboundOrderId));
 
-    const issueDate = new Date();
+    const issueDate = vnToday();
     const issueCode = await this.generateSalesIssueCode(tx, issueDate);
 
     const [salesIssue] = await tx
@@ -893,7 +894,7 @@ export class OutboundOrdersService {
     tx: DbTransaction,
     issueDate: Date,
   ): Promise<string> {
-    const year = issueDate.getFullYear();
+    const year = vnZone(issueDate).getFullYear();
     const sequence = await generateDocumentSequence(
       tx,
       DocumentType.INVENTORY_ISSUE,
@@ -951,11 +952,8 @@ export class OutboundOrdersService {
    * `document_sequences.year` bị mượn làm khoá reset-theo-ngày: lưu nguyên `yyMMdd` (không phải
    * năm thật) để mỗi ngày có một dãy số riêng. */
   private async generateOutboundOrderCode(tx: DbTransaction): Promise<string> {
-    const now = new Date();
-    const yy = String(now.getFullYear() % 100).padStart(2, '0');
-    const mm = String(now.getMonth() + 1).padStart(2, '0');
-    const dd = String(now.getDate()).padStart(2, '0');
-    const dayKey = Number(`${yy}${mm}${dd}`);
+    const dayCode = format(new Date(), 'yyMMdd', { in: vnZone });
+    const dayKey = Number(dayCode);
 
     const sequence = await generateDocumentSequence(
       tx,
@@ -963,6 +961,6 @@ export class OutboundOrdersService {
       dayKey,
     );
 
-    return `DO-${yy}${mm}${dd}-${String(sequence).padStart(3, '0')}`;
+    return `DO-${dayCode}-${String(sequence).padStart(3, '0')}`;
   }
 }

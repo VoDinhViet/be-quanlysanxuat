@@ -14,7 +14,11 @@ import {
 } from 'drizzle-orm';
 import type { Column, SQL } from 'drizzle-orm';
 
-import { exclusiveEndOfDay } from '../../common/utils/date-range.util';
+import {
+  exclusiveEndOfDay,
+  startOfVnDay,
+  vnTimestamp,
+} from '../../common/utils/time';
 import {
   PermissionCode,
   SUPER_PERMISSION,
@@ -79,7 +83,7 @@ function timestampRangeFilter<TColumn extends Column>(
   range: ReportDateRange,
 ): SQL | undefined {
   return and(
-    range.startDate ? gte(column, range.startDate) : undefined,
+    range.startDate ? gte(column, startOfVnDay(range.startDate)) : undefined,
     range.endDate ? lt(column, exclusiveEndOfDay(range.endDate)) : undefined,
   );
 }
@@ -229,7 +233,7 @@ export class ReportsService {
   // QC_PASS_RATE_WINDOW_DAYS điểm kể cả ngày không có lần kiểm nào (LEFT JOIN, null khi ngày đó
   // không có lần kiểm nào của kind tương ứng).
   async getQcPassRate(): Promise<QcPassRateResDto[]> {
-    const inspectionDay = sql`(${qualityInspectionResults.createdAt} at time zone 'Asia/Ho_Chi_Minh')::date`;
+    const inspectionDay = sql`${vnTimestamp(qualityInspectionResults.createdAt)}::date`;
     const windowStart = sql`${VN_TODAY} - ${ReportsService.QC_PASS_RATE_WINDOW_DAYS - 1}::int`;
 
     const rows = await this.db

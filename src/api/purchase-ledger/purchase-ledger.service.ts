@@ -15,12 +15,16 @@ import {
   sql,
   type SQL,
 } from 'drizzle-orm';
-import { DateTime } from 'luxon';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { buildXlsxBuffer, XLSX_MIME } from '../../common/utils/excel.util';
 import { unaccentILike } from '../../common/utils/search.util';
+import {
+  exclusiveEndOfDay,
+  getFileTimestamp,
+  startOfVnDay,
+} from '../../common/utils/time';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database } from '../../database/database.type';
 import {
@@ -100,12 +104,12 @@ export class PurchaseLedgerService {
         ? lte(purchaseRequests.neededDate, reqDto.neededEndDate)
         : undefined,
       reqDto.createdStartDate
-        ? gte(purchaseRequests.createdAt, reqDto.createdStartDate)
+        ? gte(purchaseRequests.createdAt, startOfVnDay(reqDto.createdStartDate))
         : undefined,
       reqDto.createdEndDate
         ? lt(
             purchaseRequests.createdAt,
-            new Date(reqDto.createdEndDate.getTime() + 24 * 60 * 60 * 1000),
+            exclusiveEndOfDay(reqDto.createdEndDate),
           )
         : undefined,
     );
@@ -230,12 +234,12 @@ export class PurchaseLedgerService {
         ? lte(purchaseRequests.neededDate, reqDto.neededEndDate)
         : undefined,
       reqDto.createdStartDate
-        ? gte(purchaseRequests.createdAt, reqDto.createdStartDate)
+        ? gte(purchaseRequests.createdAt, startOfVnDay(reqDto.createdStartDate))
         : undefined,
       reqDto.createdEndDate
         ? lt(
             purchaseRequests.createdAt,
-            new Date(reqDto.createdEndDate.getTime() + 24 * 60 * 60 * 1000),
+            exclusiveEndOfDay(reqDto.createdEndDate),
           )
         : undefined,
     );
@@ -290,7 +294,7 @@ export class PurchaseLedgerService {
       PURCHASE_LEDGER_EXPORT_COLUMNS,
       rows,
     );
-    const fileName = `so-cai-mua-hang-${DateTime.now().toFormat('yyyyLLdd-HHmm')}.xlsx`;
+    const fileName = `so-cai-mua-hang-${getFileTimestamp()}.xlsx`;
     return new StreamableFile(buffer, {
       type: XLSX_MIME,
       disposition: `attachment; filename="${fileName}"`,

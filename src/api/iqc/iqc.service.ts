@@ -10,7 +10,6 @@ import {
   sql,
 } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
-import { DateTime } from 'luxon';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
@@ -20,10 +19,10 @@ import {
 } from '../../common/utils/document-sequence.util';
 import { buildXlsxBuffer, XLSX_MIME } from '../../common/utils/excel.util';
 import { unaccentILike } from '../../common/utils/search.util';
+import { getFileTimestamp, vnToday, vnZone } from '../../common/utils/time';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
-import { vnToday } from '../../database/vn-date.util';
 import {
   clients,
   inventoryReceipts,
@@ -271,7 +270,7 @@ export class IqcService {
       .limit(IqcService.MAX_EXPORT_ROWS);
 
     const buffer = await buildXlsxBuffer('IQC', IQC_EXPORT_COLUMNS, rows);
-    const fileName = `iqc-${DateTime.now().toFormat('yyyyLLdd-HHmm')}.xlsx`;
+    const fileName = `iqc-${getFileTimestamp()}.xlsx`;
 
     return new StreamableFile(buffer, {
       type: XLSX_MIME,
@@ -1039,7 +1038,7 @@ export class IqcService {
     inspectionDate: Date,
     quantity: number,
   ): Promise<string[]> {
-    const year = inspectionDate.getFullYear();
+    const year = vnZone(inspectionDate).getFullYear();
     const sequences = await generateDocumentSequences(
       tx,
       DocumentType.IQC,

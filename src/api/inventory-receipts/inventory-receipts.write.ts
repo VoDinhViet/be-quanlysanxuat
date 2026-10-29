@@ -5,7 +5,7 @@ import {
   generateDocumentSequence,
 } from '../../common/utils/document-sequence.util';
 import type { DbTransaction } from '../../database/database.type';
-import { vnToday } from '../../database/vn-date.util';
+import { vnToday, vnZone } from '../../common/utils/time';
 import {
   InventoryDocumentStatus,
   inventoryReceiptItems,
@@ -21,7 +21,7 @@ export async function generateReceiptCode(
   tx: DbTransaction,
   receiptDate: Date,
 ): Promise<string> {
-  const year = receiptDate.getFullYear();
+  const year = vnZone(receiptDate).getFullYear();
   const sequence = await generateDocumentSequence(
     tx,
     DocumentType.INVENTORY_RECEIPT,

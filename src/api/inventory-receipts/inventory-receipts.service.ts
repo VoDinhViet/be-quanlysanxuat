@@ -1,5 +1,6 @@
 import { HttpStatus, Inject, Injectable, StreamableFile } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
+import { format } from 'date-fns';
 import {
   and,
   asc,
@@ -15,11 +16,10 @@ import {
   or,
   sql,
 } from 'drizzle-orm';
-import { DateTime } from 'luxon';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
-import { formatVnDate } from '../../common/utils/excel.util';
+import { getFileTimestamp, vnZone } from '../../common/utils/time';
 import { formatQuantity } from '../../common/utils/vnd.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
@@ -351,7 +351,7 @@ export class InventoryReceiptsService {
 
     const context = {
       code: receipt.code,
-      receipt_date: formatVnDate(receipt.receiptDate),
+      receipt_date: format(receipt.receiptDate, 'dd/MM/yyyy', { in: vnZone }),
       purchase_order_codes: purchaseOrderCodes.join(', '),
       source:
         this.resolvePoOrReason(
@@ -360,7 +360,7 @@ export class InventoryReceiptsService {
         ) ?? '',
       ...resolveReceiptPartner(receipt),
       creator_name: receipt.creatorBy?.fullName ?? '',
-      creator_date: formatVnDate(new Date()),
+      creator_date: format(new Date(), 'dd/MM/yyyy', { in: vnZone }),
       receipt_items: receiptLines.map((line, index) => ({
         stt: index + 1,
         item_code: line.item.code,
@@ -380,7 +380,7 @@ export class InventoryReceiptsService {
       context,
     );
 
-    const fileName = `${receipt.code}-${DateTime.now().toFormat('yyyyLLdd-HHmm')}.pdf`;
+    const fileName = `${receipt.code}-${getFileTimestamp()}.pdf`;
     return new StreamableFile(buffer, {
       type: 'application/pdf',
       disposition: `attachment; filename="${fileName}"`,

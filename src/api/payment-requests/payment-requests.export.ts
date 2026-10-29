@@ -1,8 +1,6 @@
-import {
-  formatVnDate,
-  formatVnDateTime,
-  type ExcelColumn,
-} from '../../common/utils/excel.util';
+import { format } from 'date-fns';
+import { type ExcelColumn } from '../../common/utils/excel.util';
+import { vnZone } from '../../common/utils/time';
 import { PaymentRequestStatus } from '../../database/schemas';
 
 export interface PaymentRequestExport {
@@ -49,7 +47,10 @@ export const PAYMENT_REQUEST_EXPORT_COLUMNS: ExcelColumn<PaymentRequestExport>[]
       numFmt: '#,##0',
     },
     { header: 'Lý do phát sinh', value: (row) => row.extraCostNote ?? '' },
-    { header: 'Hạn thanh toán', value: (row) => formatVnDate(row.dueDate) },
+    {
+      header: 'Hạn thanh toán',
+      value: (row) => format(row.dueDate, 'dd/MM/yyyy', { in: vnZone }),
+    },
     {
       header: 'Mức độ',
       value: (row) => (row.isUrgent ? 'Gấp' : 'Bình thường'),
@@ -60,10 +61,16 @@ export const PAYMENT_REQUEST_EXPORT_COLUMNS: ExcelColumn<PaymentRequestExport>[]
     },
     {
       header: 'Ngày đã thanh toán',
-      value: (row) => formatVnDateTime(row.paidAt),
+      value: (row) =>
+        row.paidAt
+          ? format(row.paidAt, 'dd/MM/yyyy HH:mm', { in: vnZone })
+          : '',
     },
     { header: 'Lý do huỷ', value: (row) => row.cancellationReason },
     { header: 'Ghi chú', value: (row) => row.note, width: 30 },
     { header: 'Người tạo', value: (row) => row.creatorName },
-    { header: 'Ngày tạo', value: (row) => formatVnDateTime(row.createdAt) },
+    {
+      header: 'Ngày tạo',
+      value: (row) => format(row.createdAt, 'dd/MM/yyyy HH:mm', { in: vnZone }),
+    },
   ];

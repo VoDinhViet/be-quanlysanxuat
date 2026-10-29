@@ -8,6 +8,7 @@ import {
   DocumentType,
   generateDocumentSequence,
 } from '../../common/utils/document-sequence.util';
+import { vnToday, vnZone } from '../../common/utils/time';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
@@ -309,7 +310,7 @@ export class InventoryAdjustmentsService {
         await this.inventoryPostingService.reverseDocument(tx, {
           referenceType: InventoryReferenceType.INVENTORY_ADJUSTMENT,
           referenceId: adjustmentId,
-          transactionDate: new Date(),
+          transactionDate: vnToday(),
           createdBy: userId,
         });
       }
@@ -382,7 +383,7 @@ export class InventoryAdjustmentsService {
     tx: DbTransaction,
     adjustmentDate: Date,
   ): Promise<string> {
-    const year = adjustmentDate.getFullYear();
+    const year = vnZone(adjustmentDate).getFullYear();
     const sequence = await generateDocumentSequence(
       tx,
       DocumentType.INVENTORY_ADJUSTMENT,

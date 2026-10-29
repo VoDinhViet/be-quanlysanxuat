@@ -1,5 +1,4 @@
 import { Workbook } from 'exceljs';
-import { DateTime } from 'luxon';
 
 export const XLSX_MIME =
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -9,27 +8,6 @@ export interface ExcelColumn<T> {
   width?: number;
   numFmt?: string;
   value: (row: T) => string | number | null;
-}
-
-// Pin về giờ VN thay vì giờ local server — tránh lệch ngày khi server chạy múi giờ khác.
-export function formatVnDate(date: Date | null): string {
-  if (!date) return '';
-
-  return DateTime.fromJSDate(date)
-    .setZone('Asia/Ho_Chi_Minh')
-    .toFormat('dd/MM/yyyy');
-}
-
-/**
- * Format timestamp theo múi giờ Việt Nam.
- * Dùng cho các cột `timestamp` như `createdAt`/`updatedAt`.
- */
-export function formatVnDateTime(date: Date | null): string {
-  if (!date) return '';
-
-  return DateTime.fromJSDate(date, {
-    zone: 'Asia/Ho_Chi_Minh',
-  }).toFormat('dd/MM/yyyy HH:mm');
 }
 
 /** Điểm đóng gói ExcelJS duy nhất trong repo — mọi export khác chỉ khai `ExcelColumn[]`, không tự

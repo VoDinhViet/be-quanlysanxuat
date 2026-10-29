@@ -3,6 +3,7 @@ import { and, asc, desc, eq, isNull, or, sql } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
 
 import { qualityInspections, suppliers } from '../../database/schemas';
+import { vnTimestamp } from '../../common/utils/time';
 
 import { IntegrationResultResDto } from './dto/integration-common.dto';
 import {
@@ -28,7 +29,11 @@ const DEFAULT_IQC_LIMIT = 10;
 
 // `completed_at` chưa được ghi ở dữ liệu thật của ERP, nên thời điểm phiếu kiểm xong lấy lần cập
 // nhật cuối của phiếu
-const INSPECTION_DONE_AT = sql`COALESCE(${qualityInspections.completedAt}, ${qualityInspections.updatedAt})`;
+const INSPECTION_DONE_AT = vnTimestamp(
+  sql`COALESCE(${qualityInspections.completedAt}, ${qualityInspections.updatedAt})`,
+);
+
+const INSPECTION_CREATED_DAY = sql`${vnTimestamp(qualityInspections.createdAt)}::date`;
 
 @Injectable()
 export class IntegrationQualityService {
@@ -117,11 +122,11 @@ export class IntegrationQualityService {
       ['phieu_kiem', 'loai', 'ma_vat_tu', 'so_luong', 'status', 'so_ngay_ton'],
       sql`SELECT ${qualityInspections.inspectionNo} AS phieu_kiem, ${qualityInspections.inspectionType}::text AS loai,
         ${qualityInspections.itemCode} AS ma_vat_tu, ${qualityInspections.quantity}::float8 AS so_luong,
-        ${qualityInspections.status}::text AS status, (${TODAY} - ${qualityInspections.createdAt}::date)::int AS so_ngay_ton
+        ${qualityInspections.status}::text AS status, (${TODAY} - ${INSPECTION_CREATED_DAY})::int AS so_ngay_ton
         FROM ${qualityInspections}
         WHERE ${qualityInspections.decision}::text = 'FAIL' AND ${qualityInspections.status}::text <> 'CANCELLED'
         AND (${qualityInspections.status}::text <> 'COMPLETED' OR ${qualityInspections.disposition} IS NULL)
-        AND ${TODAY} - ${qualityInspections.createdAt}::date >= ${reqDto.minAgeDays ?? 0}::int
+        AND ${TODAY} - ${INSPECTION_CREATED_DAY} >= ${reqDto.minAgeDays ?? 0}::int
         ORDER BY so_ngay_ton DESC LIMIT ${reqDto.limit ?? DEFAULT_LIST_LIMIT}`,
     );
   }
@@ -157,7 +162,7 @@ export class IntegrationQualityService {
             ma_vat_tu: qualityInspections.itemCode,
             so_luong: sql<number>`${qualityInspections.quantity}::float8`,
             status: sql<string>`${qualityInspections.status}::text`,
-            so_ngay_ton: sql<number>`(${TODAY} - ${qualityInspections.createdAt}::date)::int`,
+            so_ngay_ton: sql<number>`(${TODAY} - ${INSPECTION_CREATED_DAY})::int`,
           })
           .from(qualityInspections)
           .where(
@@ -168,11 +173,11 @@ export class IntegrationQualityService {
                 sql`${qualityInspections.status}::text <> 'COMPLETED'`,
                 isNull(qualityInspections.disposition),
               ),
-              sql`${TODAY} - ${qualityInspections.createdAt}::date >= ${reqDto.minAgeDays ?? 0}::int`,
+              sql`${TODAY} - ${INSPECTION_CREATED_DAY} >= ${reqDto.minAgeDays ?? 0}::int`,
             ),
           )
           .orderBy(
-            asc(sql`${qualityInspections.createdAt}::date`),
+            asc(INSPECTION_CREATED_DAY),
             asc(qualityInspections.inspectionNo),
           )
           .limit(reqDto.limit ?? DEFAULT_LIST_LIMIT),

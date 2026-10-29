@@ -15,6 +15,7 @@ import {
   supplierReturns,
   suppliers,
 } from '../../database/schemas';
+import { vnTimestamp } from '../../common/utils/time';
 
 import {
   IntegrationResultResDto,
@@ -291,7 +292,7 @@ export class IntegrationPurchasingService {
           .where(
             and(
               ...dateRangeConditions(
-                sql`${purchaseQuotations.createdAt}`,
+                vnTimestamp(purchaseQuotations.createdAt),
                 reqDto,
               ),
             ),
@@ -359,7 +360,7 @@ export class IntegrationPurchasingService {
     reqDto: PurchasingSummaryReqDto,
   ): Promise<IntegrationResultResDto> {
     const filters = [
-      ...dateRangeConditions(sql`${paymentRequests.createdAt}`, reqDto),
+      ...dateRangeConditions(vnTimestamp(paymentRequests.createdAt), reqDto),
     ];
     if (reqDto.status) {
       filters.push(equalsText(paymentRequests.status, reqDto.status));

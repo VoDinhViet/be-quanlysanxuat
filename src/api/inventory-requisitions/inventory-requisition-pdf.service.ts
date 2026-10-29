@@ -1,8 +1,8 @@
 import { HttpStatus, Inject, Injectable, StreamableFile } from '@nestjs/common';
+import { format } from 'date-fns';
 import { asc, eq, getTableColumns } from 'drizzle-orm';
-import { DateTime } from 'luxon';
 
-import { formatVnDate } from '../../common/utils/excel.util';
+import { getFileTimestamp, vnZone } from '../../common/utils/time';
 import { formatQuantity } from '../../common/utils/vnd.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
@@ -71,13 +71,17 @@ export class InventoryRequisitionPdfService {
 
     const context = {
       code: inventoryRequisition.code,
-      requisition_date: formatVnDate(inventoryRequisition.requisitionDate),
+      requisition_date: format(
+        inventoryRequisition.requisitionDate,
+        'dd/MM/yyyy',
+        { in: vnZone },
+      ),
       source: source ?? '',
       job_code: inventoryRequisition.productionJob?.code ?? '',
       department_name: inventoryRequisition.department?.name ?? '',
       note: inventoryRequisition.note ?? '',
       creator_name: inventoryRequisition.creatorBy?.fullName ?? '',
-      creator_date: formatVnDate(new Date()),
+      creator_date: format(new Date(), 'dd/MM/yyyy', { in: vnZone }),
       requisition_items: requisitionLines.map((line, index) => ({
         stt: index + 1,
         item_code: line.item.code,
@@ -93,7 +97,7 @@ export class InventoryRequisitionPdfService {
       context,
     );
 
-    const fileName = `${inventoryRequisition.code}-${DateTime.now().toFormat('yyyyLLdd-HHmm')}.pdf`;
+    const fileName = `${inventoryRequisition.code}-${getFileTimestamp()}.pdf`;
     return new StreamableFile(buffer, {
       type: 'application/pdf',
       disposition: `attachment; filename="${fileName}"`,

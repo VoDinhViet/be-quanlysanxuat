@@ -24,9 +24,12 @@ export const DRIZZLE = 'DRIZZLE';
           infer: true,
         });
 
+        // Phiên UTC để `DEFAULT now()` ghi UTC dù máy chủ Postgres đặt múi giờ nào; đặt ở kết nối
+        // của app vì refresh staging tạo lại database nên `ALTER DATABASE ... SET timezone` mất.
         const queryClient = postgres(databaseUrl, {
           ssl,
           max,
+          connection: { TimeZone: 'UTC' },
         });
         return drizzle(queryClient, { schema });
       },

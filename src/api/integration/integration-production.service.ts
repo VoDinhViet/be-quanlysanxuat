@@ -11,6 +11,7 @@ import {
   productionOrders,
   suppliers,
 } from '../../database/schemas';
+import { vnTimestamp } from '../../common/utils/time';
 
 import { IntegrationResultResDto } from './dto/integration-common.dto';
 import {
@@ -76,7 +77,7 @@ export class IntegrationProductionService {
     if (reqDto.staleDays) {
       conditions.push(
         sql`(${productionJobOperations.lastReportedAt} IS NULL
-          OR ${productionJobOperations.lastReportedAt}::date < ${TODAY} - ${reqDto.staleDays}::int)`,
+          OR ${vnTimestamp(productionJobOperations.lastReportedAt)}::date < ${TODAY} - ${reqDto.staleDays}::int)`,
       );
     }
 
@@ -176,7 +177,7 @@ export class IntegrationProductionService {
           .where(
             and(
               ...dateRangeConditions(
-                sql`${outsourcingOrders.createdAt}`,
+                vnTimestamp(outsourcingOrders.createdAt),
                 reqDto,
               ),
             ),
@@ -190,7 +191,7 @@ export class IntegrationProductionService {
     reqDto: ProductionSummaryReqDto,
   ): Promise<IntegrationResultResDto> {
     const filters = [
-      ...dateRangeConditions(sql`${outsourcingOrders.createdAt}`, reqDto),
+      ...dateRangeConditions(vnTimestamp(outsourcingOrders.createdAt), reqDto),
     ];
     if (reqDto.status) {
       filters.push(equalsText(outsourcingOrders.status, reqDto.status));
@@ -262,7 +263,10 @@ export class IntegrationProductionService {
           .from(productionJobs)
           .where(
             and(
-              ...dateRangeConditions(sql`${productionJobs.createdAt}`, reqDto),
+              ...dateRangeConditions(
+                vnTimestamp(productionJobs.createdAt),
+                reqDto,
+              ),
             ),
           )
           .groupBy(productionJobs.status)
@@ -291,7 +295,10 @@ export class IntegrationProductionService {
                 productionJobs.status,
                 reqDto.status ?? DEFAULT_JOB_STATUS,
               ),
-              ...dateRangeConditions(sql`${productionJobs.createdAt}`, reqDto),
+              ...dateRangeConditions(
+                vnTimestamp(productionJobs.createdAt),
+                reqDto,
+              ),
             ),
           )
           .groupBy(items.code, items.name)
@@ -315,7 +322,7 @@ export class IntegrationProductionService {
           .where(
             and(
               ...dateRangeConditions(
-                sql`${productionOrders.createdAt}`,
+                vnTimestamp(productionOrders.createdAt),
                 reqDto,
               ),
             ),
@@ -362,7 +369,7 @@ export class IntegrationProductionService {
       // Công đoạn chưa từng báo cáo (NULL) cũng tính là lâu không có tiến độ
       filters.push(
         sql`(${productionJobOperations.lastReportedAt} IS NULL
-          OR ${productionJobOperations.lastReportedAt}::date < ${TODAY} - ${reqDto.staleDays}::int)`,
+          OR ${vnTimestamp(productionJobOperations.lastReportedAt)}::date < ${TODAY} - ${reqDto.staleDays}::int)`,
       );
     }
     return this.queryService.query(

@@ -44,7 +44,10 @@ async function main() {
     throw new Error('DATABASE_URL is required');
   }
 
-  const client = postgres(databaseUrl, { max: 1 });
+  const client = postgres(databaseUrl, {
+    max: 1,
+    connection: { TimeZone: 'UTC' },
+  });
   const db = drizzle(client, { schema });
 
   try {

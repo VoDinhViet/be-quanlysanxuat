@@ -1,4 +1,6 @@
-import { formatVnDate, type ExcelColumn } from '../../common/utils/excel.util';
+import { format } from 'date-fns';
+import { type ExcelColumn } from '../../common/utils/excel.util';
+import { vnZone } from '../../common/utils/time';
 import { Currency, OrderStatus } from '../../database/schemas';
 
 export interface OrderExport {
@@ -35,8 +37,15 @@ export const ORDER_EXPORT_COLUMNS: ExcelColumn<OrderExport>[] = [
   { header: 'Khách hàng', value: (row) => row.clientName, width: 30 },
   { header: 'Mã khách hàng', value: (row) => row.clientCode },
   { header: 'NVKD phụ trách', value: (row) => row.assignedUserName, width: 25 },
-  { header: 'Ngày đặt', value: (row) => formatVnDate(row.orderDate) },
-  { header: 'Ngày giao', value: (row) => formatVnDate(row.dueDate) },
+  {
+    header: 'Ngày đặt',
+    value: (row) => format(row.orderDate, 'dd/MM/yyyy', { in: vnZone }),
+  },
+  {
+    header: 'Ngày giao',
+    value: (row) =>
+      row.dueDate ? format(row.dueDate, 'dd/MM/yyyy', { in: vnZone }) : '',
+  },
   { header: 'Trạng thái', value: (row) => ORDER_STATUS_LABELS[row.status] },
   { header: 'Tiền tệ', value: (row) => row.currency },
   {

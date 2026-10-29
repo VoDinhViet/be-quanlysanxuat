@@ -1,6 +1,6 @@
 import { and, count, eq, isNull, sql } from 'drizzle-orm';
 
-import { vnToday } from '../../database/vn-date.util';
+import { vnToday } from '../../common/utils/time';
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
   InventoryDocumentStatus,

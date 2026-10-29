@@ -1,7 +1,6 @@
-import {
-  formatVnDateTime,
-  type ExcelColumn,
-} from '../../common/utils/excel.util';
+import { format } from 'date-fns';
+import { type ExcelColumn } from '../../common/utils/excel.util';
+import { vnZone } from '../../common/utils/time';
 import {
   OqcDisposition,
   QualityInspectionDecision,
@@ -79,7 +78,8 @@ export const OQC_EXPORT_COLUMNS: ExcelColumn<OqcExport>[] = [
   },
   {
     header: 'Ngày kiểm',
-    value: (row) => formatVnDateTime(row.inspectionDate),
+    value: (row) =>
+      format(row.inspectionDate, 'dd/MM/yyyy HH:mm', { in: vnZone }),
   },
   {
     header: 'Kết quả',
@@ -93,5 +93,8 @@ export const OQC_EXPORT_COLUMNS: ExcelColumn<OqcExport>[] = [
   { header: 'Trạng thái', value: (row) => OQC_STATUS_LABELS[row.status] },
   { header: 'Ghi chú', value: (row) => row.note, width: 30 },
   { header: 'Người tạo', value: (row) => row.creatorName },
-  { header: 'Ngày tạo', value: (row) => formatVnDateTime(row.createdAt) },
+  {
+    header: 'Ngày tạo',
+    value: (row) => format(row.createdAt, 'dd/MM/yyyy HH:mm', { in: vnZone }),
+  },
 ];

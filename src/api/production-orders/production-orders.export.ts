@@ -1,8 +1,6 @@
-import {
-  formatVnDate,
-  formatVnDateTime,
-  type ExcelColumn,
-} from '../../common/utils/excel.util';
+import { format } from 'date-fns';
+import { type ExcelColumn } from '../../common/utils/excel.util';
+import { vnZone } from '../../common/utils/time';
 import { ProductionOrderStatus } from '../../database/schemas';
 
 export interface ProductionOrderExport {
@@ -29,10 +27,14 @@ export const PRODUCTION_ORDER_EXPORT_COLUMNS: ExcelColumn<ProductionOrderExport>
     { header: 'Mã LSX', value: (row) => row.code },
     { header: 'Mã đơn hàng', value: (row) => row.orderCode },
     { header: 'Khách hàng', value: (row) => row.clientName, width: 25 },
-    { header: 'Ngày đặt', value: (row) => formatVnDate(row.orderDate) },
+    {
+      header: 'Ngày đặt',
+      value: (row) => format(row.orderDate, 'dd/MM/yyyy', { in: vnZone }),
+    },
     {
       header: 'Ngày giao yêu cầu',
-      value: (row) => formatVnDate(row.dueDate),
+      value: (row) =>
+        row.dueDate ? format(row.dueDate, 'dd/MM/yyyy', { in: vnZone }) : '',
     },
     {
       header: 'Trạng thái',
@@ -45,5 +47,8 @@ export const PRODUCTION_ORDER_EXPORT_COLUMNS: ExcelColumn<ProductionOrderExport>
       width: 30,
     },
     { header: 'Người tạo', value: (row) => row.creatorName },
-    { header: 'Ngày tạo', value: (row) => formatVnDateTime(row.createdAt) },
+    {
+      header: 'Ngày tạo',
+      value: (row) => format(row.createdAt, 'dd/MM/yyyy HH:mm', { in: vnZone }),
+    },
   ];

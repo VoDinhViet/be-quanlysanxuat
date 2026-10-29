@@ -1,8 +1,6 @@
-import {
-  formatVnDate,
-  formatVnDateTime,
-  type ExcelColumn,
-} from '../../common/utils/excel.util';
+import { format } from 'date-fns';
+import { type ExcelColumn } from '../../common/utils/excel.util';
+import { vnZone } from '../../common/utils/time';
 import {
   FulfillmentType,
   OutboundOrderInvoiceStatus,
@@ -54,7 +52,7 @@ export const OUTBOUND_ORDER_EXPORT_COLUMNS: ExcelColumn<OutboundOrderExport>[] =
     { header: 'Mã khách hàng', value: (row) => row.clientCode },
     {
       header: 'Ngày giao',
-      value: (row) => formatVnDate(row.fulfillmentDate),
+      value: (row) => format(row.fulfillmentDate, 'dd/MM/yyyy', { in: vnZone }),
     },
     {
       header: 'Hình thức giao',
@@ -71,7 +69,10 @@ export const OUTBOUND_ORDER_EXPORT_COLUMNS: ExcelColumn<OutboundOrderExport>[] =
     { header: 'Số hóa đơn', value: (row) => row.invoiceNo },
     {
       header: 'Ngày xuất hóa đơn',
-      value: (row) => (row.invoiceDate ? formatVnDate(row.invoiceDate) : null),
+      value: (row) =>
+        row.invoiceDate
+          ? format(row.invoiceDate, 'dd/MM/yyyy', { in: vnZone })
+          : null,
     },
     {
       header: 'Mã đơn hàng nguồn',
@@ -90,5 +91,8 @@ export const OUTBOUND_ORDER_EXPORT_COLUMNS: ExcelColumn<OutboundOrderExport>[] =
     },
     { header: 'Ghi chú', value: (row) => row.note, width: 30 },
     { header: 'Người tạo', value: (row) => row.creatorName },
-    { header: 'Ngày tạo', value: (row) => formatVnDateTime(row.createdAt) },
+    {
+      header: 'Ngày tạo',
+      value: (row) => format(row.createdAt, 'dd/MM/yyyy HH:mm', { in: vnZone }),
+    },
   ];

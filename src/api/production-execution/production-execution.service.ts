@@ -37,7 +37,7 @@ import {
   ProductionJobStatus,
   productionOrders,
 } from '../../database/schemas';
-import { vnToday } from '../../database/vn-date.util';
+import { vnToday } from '../../common/utils/time';
 import { AppException } from '../../exceptions/app.exception';
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
 import { FilesService } from '../files/files.service';

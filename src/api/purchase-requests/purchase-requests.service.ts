@@ -1,5 +1,6 @@
 import { HttpStatus, Inject, Injectable, StreamableFile } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
+import { format } from 'date-fns';
 import {
   and,
   asc,
@@ -16,7 +17,6 @@ import {
   or,
   sql,
 } from 'drizzle-orm';
-import { DateTime } from 'luxon';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
@@ -24,14 +24,19 @@ import {
   DocumentType,
   generateDocumentSequence,
 } from '../../common/utils/document-sequence.util';
-import { formatVnDate } from '../../common/utils/excel.util';
 import { hasFields } from '../../common/utils/object.util';
 import { unaccentILike } from '../../common/utils/search.util';
+import {
+  exclusiveEndOfDay,
+  getFileTimestamp,
+  startOfVnDay,
+  vnToday,
+  vnZone,
+} from '../../common/utils/time';
 import { formatQuantity } from '../../common/utils/vnd.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
-import { vnToday } from '../../database/vn-date.util';
 import {
   departments,
   files,
@@ -144,12 +149,12 @@ export class PurchaseRequestsService {
         ? eq(purchaseRequests.neededDate, reqDto.neededDate)
         : undefined,
       reqDto.createdStartDate
-        ? gte(purchaseRequests.createdAt, reqDto.createdStartDate)
+        ? gte(purchaseRequests.createdAt, startOfVnDay(reqDto.createdStartDate))
         : undefined,
       reqDto.createdEndDate
         ? lt(
             purchaseRequests.createdAt,
-            new Date(reqDto.createdEndDate.getTime() + 24 * 60 * 60 * 1000),
+            exclusiveEndOfDay(reqDto.createdEndDate),
           )
         : undefined,
     );
@@ -278,13 +283,17 @@ export class PurchaseRequestsService {
 
     const context = {
       code: purchaseRequest.code,
-      request_date: formatVnDate(purchaseRequest.createdAt),
-      needed_date: formatVnDate(purchaseRequest.neededDate),
+      request_date: format(purchaseRequest.createdAt, 'dd/MM/yyyy', {
+        in: vnZone,
+      }),
+      needed_date: format(purchaseRequest.neededDate, 'dd/MM/yyyy', {
+        in: vnZone,
+      }),
       source,
       job_code: purchaseRequest.productionJob?.code ?? '',
       department_name: purchaseRequest.department?.name ?? '',
       creator_name: purchaseRequest.requesterBy?.fullName ?? '',
-      creator_date: formatVnDate(new Date()),
+      creator_date: format(new Date(), 'dd/MM/yyyy', { in: vnZone }),
       request_items: requestLines.map((line, index) => ({
         stt: index + 1,
         item_code: line.item.code,
@@ -300,7 +309,7 @@ export class PurchaseRequestsService {
       context,
     );
 
-    const fileName = `${purchaseRequest.code}-${DateTime.now().toFormat('yyyyLLdd-HHmm')}.pdf`;
+    const fileName = `${purchaseRequest.code}-${getFileTimestamp()}.pdf`;
     return new StreamableFile(buffer, {
       type: 'application/pdf',
       disposition: `attachment; filename="${fileName}"`,

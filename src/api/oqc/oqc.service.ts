@@ -12,12 +12,16 @@ import {
   or,
 } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
-import { DateTime } from 'luxon';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { buildXlsxBuffer, XLSX_MIME } from '../../common/utils/excel.util';
 import { unaccentILike } from '../../common/utils/search.util';
+import {
+  exclusiveEndOfDay,
+  getFileTimestamp,
+  startOfVnDay,
+} from '../../common/utils/time';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
@@ -119,13 +123,10 @@ export class OqcService {
         ? eq(qualityInspections.disposition, reqDto.disposition)
         : undefined,
       reqDto.startDate
-        ? gte(qualityInspections.requestedAt, reqDto.startDate)
+        ? gte(qualityInspections.requestedAt, startOfVnDay(reqDto.startDate))
         : undefined,
       reqDto.endDate
-        ? lt(
-            qualityInspections.requestedAt,
-            new Date(reqDto.endDate.getTime() + 24 * 60 * 60 * 1000),
-          )
+        ? lt(qualityInspections.requestedAt, exclusiveEndOfDay(reqDto.endDate))
         : undefined,
     );
 
@@ -253,13 +254,10 @@ export class OqcService {
         ? eq(qualityInspections.disposition, reqDto.disposition)
         : undefined,
       reqDto.startDate
-        ? gte(qualityInspections.requestedAt, reqDto.startDate)
+        ? gte(qualityInspections.requestedAt, startOfVnDay(reqDto.startDate))
         : undefined,
       reqDto.endDate
-        ? lt(
-            qualityInspections.requestedAt,
-            new Date(reqDto.endDate.getTime() + 24 * 60 * 60 * 1000),
-          )
+        ? lt(qualityInspections.requestedAt, exclusiveEndOfDay(reqDto.endDate))
         : undefined,
     );
 
@@ -325,7 +323,7 @@ export class OqcService {
       .limit(OqcService.MAX_EXPORT_ROWS);
 
     const buffer = await buildXlsxBuffer('OQC', OQC_EXPORT_COLUMNS, rows);
-    const fileName = `oqc-${DateTime.now().toFormat('yyyyLLdd-HHmm')}.xlsx`;
+    const fileName = `oqc-${getFileTimestamp()}.xlsx`;
 
     return new StreamableFile(buffer, {
       type: XLSX_MIME,

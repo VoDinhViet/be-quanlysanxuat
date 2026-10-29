@@ -1,5 +1,6 @@
 import { HttpStatus, Inject, Injectable, StreamableFile } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
+import { addDays } from 'date-fns';
 import {
   and,
   count,
@@ -12,11 +13,9 @@ import {
   or,
   sql,
 } from 'drizzle-orm';
-import { DateTime } from 'luxon';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
-import { exclusiveEndOfDay } from '../../common/utils/date-range.util';
 import {
   DocumentType,
   generateDocumentSequence,
@@ -24,6 +23,11 @@ import {
 import { buildXlsxBuffer, XLSX_MIME } from '../../common/utils/excel.util';
 import { extractPostgresError } from '../../common/utils/postgres-error.util';
 import { unaccentILike } from '../../common/utils/search.util';
+import {
+  exclusiveEndOfDay,
+  getFileTimestamp,
+  startOfVnDay,
+} from '../../common/utils/time';
 import { formatVnd } from '../../common/utils/vnd.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
@@ -149,7 +153,7 @@ export class PaymentRequestsService {
         ? eq(paymentRequests.isUrgent, reqDto.isUrgent)
         : undefined,
       reqDto.startDate
-        ? gte(paymentRequests.createdAt, reqDto.startDate)
+        ? gte(paymentRequests.createdAt, startOfVnDay(reqDto.startDate))
         : undefined,
       reqDto.endDate
         ? lt(paymentRequests.createdAt, exclusiveEndOfDay(reqDto.endDate))
@@ -235,7 +239,7 @@ export class PaymentRequestsService {
         ? eq(paymentRequests.isUrgent, reqDto.isUrgent)
         : undefined,
       reqDto.startDate
-        ? gte(paymentRequests.createdAt, reqDto.startDate)
+        ? gte(paymentRequests.createdAt, startOfVnDay(reqDto.startDate))
         : undefined,
       reqDto.endDate
         ? lt(paymentRequests.createdAt, exclusiveEndOfDay(reqDto.endDate))
@@ -278,7 +282,7 @@ export class PaymentRequestsService {
       PAYMENT_REQUEST_EXPORT_COLUMNS,
       exportedPaymentRequests,
     );
-    const fileName = `yeu-cau-thanh-toan-${DateTime.now().toFormat('yyyyLLdd-HHmm')}.xlsx`;
+    const fileName = `yeu-cau-thanh-toan-${getFileTimestamp()}.xlsx`;
 
     return new StreamableFile(buffer, {
       type: XLSX_MIME,
@@ -703,11 +707,10 @@ export class PaymentRequestsService {
       items: orderItems,
     });
 
-    const dueDate = DateTime.fromJSDate(purchaseOrder.orderDate, {
-      zone: 'utc',
-    })
-      .plus({ days: PAYMENT_TERM_DAYS[purchaseOrder.paymentTerm] })
-      .toJSDate();
+    const dueDate = addDays(
+      purchaseOrder.orderDate,
+      PAYMENT_TERM_DAYS[purchaseOrder.paymentTerm],
+    );
     const snapshot: PaymentRequestSnapshot = {
       requestedAmount: balanceDue,
       advancePaymentAmount: purchaseOrder.advancePaymentAmount,

@@ -1,5 +1,6 @@
 import { HttpStatus, Inject, Injectable, StreamableFile } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
+import { format } from 'date-fns';
 import {
   and,
   asc,
@@ -14,18 +15,16 @@ import {
   sql,
   type SQL,
 } from 'drizzle-orm';
-import { DateTime } from 'luxon';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { groupBy } from '../../common/utils/array.util';
 import { selectOperations } from './production-job-operations.util';
-import { formatVnDate } from '../../common/utils/excel.util';
+import { getFileTimestamp, vnToday, vnZone } from '../../common/utils/time';
 import { formatQuantity } from '../../common/utils/vnd.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
-import { vnToday } from '../../database/vn-date.util';
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
   clients,
@@ -146,8 +145,8 @@ export class ProductionJobsService {
 
     const context = {
       customer_name: customerNames.join(', '),
-      report_code: `KH-${DateTime.now().toFormat('yyyyLLdd-HHmm')}`,
-      report_date: formatVnDate(new Date()),
+      report_code: `KH-${getFileTimestamp()}`,
+      report_date: format(new Date(), 'dd/MM/yyyy', { in: vnZone }),
       total_quantity: formatQuantity(totalQuantity),
       jobs: jobRows.map((row, index) => ({
         stt: index + 1,
@@ -158,7 +157,9 @@ export class ProductionJobsService {
         technical_requirements: '',
         po_code: row.order.code,
         ncr_label: row.ncrAction ? NCR_ACTION_PLAN_LABELS[row.ncrAction] : '',
-        completion_deadline: formatVnDate(row.order.dueDate),
+        completion_deadline: row.order.dueDate
+          ? format(row.order.dueDate, 'dd/MM/yyyy', { in: vnZone })
+          : '',
         note: '',
       })),
     };
@@ -168,7 +169,7 @@ export class ProductionJobsService {
       context,
     );
 
-    const fileName = `ke-hoach-san-xuat-${DateTime.now().toFormat('yyyyLLdd-HHmm')}.pdf`;
+    const fileName = `ke-hoach-san-xuat-${getFileTimestamp()}.pdf`;
     return new StreamableFile(buffer, {
       type: 'application/pdf',
       disposition: `attachment; filename="${fileName}"`,

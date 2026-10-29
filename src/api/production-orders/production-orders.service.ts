@@ -1,5 +1,6 @@
 import { HttpStatus, Inject, Injectable, StreamableFile } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
+import { format } from 'date-fns';
 import {
   and,
   asc,
@@ -13,7 +14,6 @@ import {
   lte,
   or,
 } from 'drizzle-orm';
-import { DateTime } from 'luxon';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
@@ -21,12 +21,9 @@ import {
   DocumentType,
   generateDocumentSequence,
 } from '../../common/utils/document-sequence.util';
-import {
-  buildXlsxBuffer,
-  formatVnDate,
-  XLSX_MIME,
-} from '../../common/utils/excel.util';
+import { buildXlsxBuffer, XLSX_MIME } from '../../common/utils/excel.util';
 import { unaccentILike } from '../../common/utils/search.util';
+import { getFileTimestamp, vnZone } from '../../common/utils/time';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
@@ -196,7 +193,7 @@ export class ProductionOrdersService {
       PRODUCTION_ORDER_EXPORT_COLUMNS,
       rows,
     );
-    const fileName = `lenh-san-xuat-${DateTime.now().toFormat('yyyyLLdd-HHmm')}.xlsx`;
+    const fileName = `lenh-san-xuat-${getFileTimestamp()}.xlsx`;
 
     return new StreamableFile(buffer, {
       type: XLSX_MIME,
@@ -288,8 +285,10 @@ export class ProductionOrdersService {
       throw new AppException(ErrorCode.E081, HttpStatus.NOT_FOUND);
     }
 
-    const deliveryDateStr = order.dueDate ? formatVnDate(order.dueDate) : '';
-    const orderDateStr = formatVnDate(order.createdAt);
+    const deliveryDateStr = order.dueDate
+      ? format(order.dueDate, 'dd/MM/yyyy', { in: vnZone })
+      : '';
+    const orderDateStr = format(order.createdAt, 'dd/MM/yyyy', { in: vnZone });
 
     const items = itemRows.map((item, index) => ({
       stt: index + 1,
@@ -319,7 +318,7 @@ export class ProductionOrdersService {
       context,
     );
 
-    const fileName = `${order.code ?? 'LSX'}-${DateTime.now().toFormat('yyyyLLdd-HHmm')}.pdf`;
+    const fileName = `${order.code ?? 'LSX'}-${getFileTimestamp()}.pdf`;
     return new StreamableFile(buffer, {
       type: 'application/pdf',
       disposition: `attachment; filename="${fileName}"`,

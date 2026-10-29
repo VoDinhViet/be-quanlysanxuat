@@ -19,6 +19,7 @@ import {
   generateDocumentSequence,
 } from '../../common/utils/document-sequence.util';
 import { unaccentILike } from '../../common/utils/search.util';
+import { vnZone } from '../../common/utils/time';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
@@ -638,7 +639,7 @@ export class InventoryRequisitionsService {
     prefix: string,
     documentDate: Date,
   ): Promise<string> {
-    const year = documentDate.getFullYear();
+    const year = vnZone(documentDate).getFullYear();
     const sequence = await generateDocumentSequence(tx, documentType, year);
 
     return `${prefix}-${year}-${String(sequence).padStart(5, '0')}`;

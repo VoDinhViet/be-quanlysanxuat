@@ -4,6 +4,7 @@ import {
   DocumentType,
   generateDocumentSequence,
 } from '../../common/utils/document-sequence.util';
+import { vnZone } from '../../common/utils/time';
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
   OperationType,
@@ -358,7 +359,7 @@ export async function generateOqcCode(
   tx: DbTransaction,
   inspectionDate: Date,
 ): Promise<string> {
-  const year = inspectionDate.getFullYear();
+  const year = vnZone(inspectionDate).getFullYear();
   const sequence = await generateDocumentSequence(tx, DocumentType.OQC, year);
 
   return `OQC-${year}-${String(sequence).padStart(5, '0')}`;

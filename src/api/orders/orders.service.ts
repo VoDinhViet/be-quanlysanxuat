@@ -1,6 +1,6 @@
 import { HttpStatus, Inject, Injectable, StreamableFile } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
-import { DateTime } from 'luxon';
+import { format } from 'date-fns';
 import {
   and,
   asc,
@@ -25,12 +25,14 @@ import {
   DocumentType,
   generateDocumentSequence,
 } from '../../common/utils/document-sequence.util';
-import {
-  buildXlsxBuffer,
-  formatVnDate,
-  XLSX_MIME,
-} from '../../common/utils/excel.util';
+import { buildXlsxBuffer, XLSX_MIME } from '../../common/utils/excel.util';
 import { unaccentILike } from '../../common/utils/search.util';
+import {
+  VN_NOW,
+  getFileTimestamp,
+  vnTimestamp,
+  vnZone,
+} from '../../common/utils/time';
 import {
   formatQuantity,
   formatVnd,
@@ -229,7 +231,7 @@ export class OrdersService {
       ORDER_EXPORT_COLUMNS,
       rows,
     );
-    const fileName = `don-hang-${DateTime.now().toFormat('yyyyLLdd-HHmm')}.xlsx`;
+    const fileName = `don-hang-${getFileTimestamp()}.xlsx`;
 
     return new StreamableFile(buffer, {
       type: XLSX_MIME,
@@ -243,8 +245,8 @@ export class OrdersService {
   async getOrderStats(): Promise<OrderStatsResDto> {
     // Lặp lại y hệt ở vài biểu thức bên dưới — mọi chỗ lặp phải giữ đúng nguyên văn để cùng trỏ
     // một khung thời gian, vì không có CTE ở đây để tính một lần.
-    const thisMonth = sql`${orders.createdAt} >= date_trunc('month', now())`;
-    const lastMonth = sql`${orders.createdAt} >= date_trunc('month', now()) - interval '1 month' and ${orders.createdAt} < date_trunc('month', now())`;
+    const thisMonth = sql`${vnTimestamp(orders.createdAt)} >= date_trunc('month', ${VN_NOW})`;
+    const lastMonth = sql`${vnTimestamp(orders.createdAt)} >= date_trunc('month', ${VN_NOW}) - interval '1 month' and ${vnTimestamp(orders.createdAt)} < date_trunc('month', ${VN_NOW})`;
     // Mọi tổng dashboard phải cùng một đơn vị — cộng thẳng orders.total sẽ gộp đơn USD với đơn
     // VND. Đổi ra VND từng dòng trước khi aggregate; VND không có phần thập phân nên làm tròn 0.
     const totalVnd = sql`${orders.total} * ${orders.exchangeRate}`;
@@ -283,12 +285,12 @@ export class OrdersService {
             else count(*) filter (where ${orders.status} = ${OrderStatus.IN_PROGRESS})::numeric / count(*) * 100
           end, 1)`.mapWith(Number),
         expired:
-          sql<number>`count(*) filter (where ${orders.dueDate} < now() and ${orders.status} not in (${OrderStatus.COMPLETED}, ${OrderStatus.CANCELLED}))`.mapWith(
+          sql<number>`count(*) filter (where ${orders.dueDate}::timestamp < ${VN_NOW} and ${orders.status} not in (${OrderStatus.COMPLETED}, ${OrderStatus.CANCELLED}))`.mapWith(
             Number,
           ),
         expiredTrendCount: sql<number>`
-          count(*) filter (where ${orders.dueDate} < now() and ${orders.status} not in (${OrderStatus.COMPLETED}, ${OrderStatus.CANCELLED}))
-          - count(*) filter (where ${orders.dueDate} < now() - interval '7 days' and ${orders.status} not in (${OrderStatus.COMPLETED}, ${OrderStatus.CANCELLED}))
+          count(*) filter (where ${orders.dueDate}::timestamp < ${VN_NOW} and ${orders.status} not in (${OrderStatus.COMPLETED}, ${OrderStatus.CANCELLED}))
+          - count(*) filter (where ${orders.dueDate}::timestamp < ${VN_NOW} - interval '7 days' and ${orders.status} not in (${OrderStatus.COMPLETED}, ${OrderStatus.CANCELLED}))
         `.mapWith(Number),
         completed:
           sql<number>`count(*) filter (where ${orders.status} = ${OrderStatus.COMPLETED})`.mapWith(
@@ -407,7 +409,9 @@ export class OrdersService {
       )
       .orderBy(asc(orderItems.sortOrder));
 
-    const dueDate = formatVnDate(order.dueDate);
+    const dueDate = order.dueDate
+      ? format(order.dueDate, 'dd/MM/yyyy', { in: vnZone })
+      : '';
     const templateItems = itemRows.map((row, index) => ({
       stt: index + 1,
       item_code: row.item.code,
@@ -424,7 +428,7 @@ export class OrdersService {
 
     const context = {
       code: order.code,
-      order_date: formatVnDate(order.orderDate),
+      order_date: format(order.orderDate, 'dd/MM/yyyy', { in: vnZone }),
       customer_name: order.client?.name ?? '',
       customer_address: order.client?.address ?? '',
       subtotal: formatVnd(order.subtotal),
@@ -445,7 +449,7 @@ export class OrdersService {
       context,
     );
 
-    const fileName = `${order.code}-${DateTime.now().toFormat('yyyyLLdd-HHmm')}.pdf`;
+    const fileName = `${order.code}-${getFileTimestamp()}.pdf`;
     return new StreamableFile(buffer, {
       type: 'application/pdf',
       disposition: `attachment; filename="${fileName}"`,
@@ -507,20 +511,24 @@ export class OrdersService {
 
     const orderDates = orderRows.map((row) => row.orderDate);
     const context = {
-      period_from: formatVnDate(
+      period_from: format(
         new Date(Math.min(...orderDates.map((date) => date.getTime()))),
+        'dd/MM/yyyy',
+        { in: vnZone },
       ),
-      period_to: formatVnDate(
+      period_to: format(
         new Date(Math.max(...orderDates.map((date) => date.getTime()))),
+        'dd/MM/yyyy',
+        { in: vnZone },
       ),
-      report_code: `BC-SO-${DateTime.now().toFormat('yyyyLLdd-HHmm')}`,
-      report_date: formatVnDate(new Date()),
+      report_code: `BC-SO-${getFileTimestamp()}`,
+      report_date: format(new Date(), 'dd/MM/yyyy', { in: vnZone }),
       subtotal: formatVnd(subtotal),
       vat_amount: formatVnd(vatAmount),
       grand_total: formatVnd(grandTotal),
       amount_in_words: formatVndInWords(grandTotal),
       creator_name: preparer?.fullName ?? '',
-      creator_date: formatVnDate(new Date()),
+      creator_date: format(new Date(), 'dd/MM/yyyy', { in: vnZone }),
       orders: templateOrders,
     };
 
@@ -529,7 +537,7 @@ export class OrdersService {
       context,
     );
 
-    const fileName = `danh-sach-tong-hop-don-hang-${DateTime.now().toFormat('yyyyLLdd-HHmm')}.pdf`;
+    const fileName = `danh-sach-tong-hop-don-hang-${getFileTimestamp()}.pdf`;
     return new StreamableFile(buffer, {
       type: 'application/pdf',
       disposition: `attachment; filename="${fileName}"`,
@@ -792,7 +800,7 @@ export class OrdersService {
   private expiredSql() {
     return sql<boolean>`${orders.dueDate} is not null
       and ${orders.status} not in (${OrderStatus.COMPLETED}, ${OrderStatus.CANCELLED})
-      and ${orders.dueDate} < now()`.as('expired');
+      and ${orders.dueDate}::timestamp < ${VN_NOW}`.as('expired');
   }
 
   /** Quy đổi `total` sang VND lúc đọc từ `total`/`exchangeRate` của chính đơn — không thêm cột,

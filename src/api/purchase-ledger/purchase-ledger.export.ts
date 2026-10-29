@@ -1,8 +1,6 @@
-import {
-  formatVnDate,
-  formatVnDateTime,
-  type ExcelColumn,
-} from '../../common/utils/excel.util';
+import { format } from 'date-fns';
+import { type ExcelColumn } from '../../common/utils/excel.util';
+import { vnZone } from '../../common/utils/time';
 import { PurchaseLedgerStatus } from './purchase-ledger.constant';
 
 export interface PurchaseLedgerExport {
@@ -60,10 +58,13 @@ export const PURCHASE_LEDGER_EXPORT_COLUMNS: ExcelColumn<PurchaseLedgerExport>[]
       header: 'Trạng thái',
       value: (row) => PURCHASE_LEDGER_STATUS_LABELS[row.status],
     },
-    { header: 'Ngày cần', value: (row) => formatVnDate(row.neededDate) },
+    {
+      header: 'Ngày cần',
+      value: (row) => format(row.neededDate, 'dd/MM/yyyy', { in: vnZone }),
+    },
     { header: 'Ghi chú', value: (row) => row.note, width: 30 },
     {
       header: 'Ngày tạo',
-      value: (row) => formatVnDateTime(row.createdAt),
+      value: (row) => format(row.createdAt, 'dd/MM/yyyy HH:mm', { in: vnZone }),
     },
   ];

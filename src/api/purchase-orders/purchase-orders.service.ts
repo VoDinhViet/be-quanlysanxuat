@@ -26,7 +26,7 @@ import { unaccentILike } from '../../common/utils/search.util';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
-import { vnToday } from '../../database/vn-date.util';
+import { vnToday } from '../../common/utils/time';
 import {
   InventoryDocumentStatus,
   inventoryReceipts,

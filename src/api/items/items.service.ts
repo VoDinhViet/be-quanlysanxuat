@@ -15,7 +15,6 @@ import {
   ne,
   or,
 } from 'drizzle-orm';
-import { DateTime } from 'luxon';
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
@@ -31,6 +30,7 @@ import {
 } from '../../common/utils/excel.util';
 import { extractPostgresError } from '../../common/utils/postgres-error.util';
 import { unaccentILike } from '../../common/utils/search.util';
+import { getFileTimestamp } from '../../common/utils/time';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
@@ -209,7 +209,7 @@ export class ItemsService {
       .limit(ItemsService.MAX_EXPORT_ROWS);
 
     const buffer = await buildXlsxBuffer('Hàng hoá', ITEM_EXPORT_COLUMNS, rows);
-    const fileName = `hang-hoa-${DateTime.now().toFormat('yyyyLLdd-HHmm')}.xlsx`;
+    const fileName = `hang-hoa-${getFileTimestamp()}.xlsx`;
 
     return new StreamableFile(buffer, {
       type: XLSX_MIME,
