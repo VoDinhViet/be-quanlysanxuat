@@ -20,6 +20,8 @@ const { maxImageSize, maxDocumentSize } = uploadConfig() as UploadConfig;
 
 export const multerOptions: MulterOptions = {
   storage: memoryStorage(),
+  // Multer giải mã tên file theo `latin1` mặc định, làm tên tiếng Việt vỡ dấu.
+  defParamCharset: 'utf8',
   limits: {
     fileSize: Math.max(maxImageSize, maxDocumentSize),
   },
