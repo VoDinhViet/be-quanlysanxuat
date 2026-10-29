@@ -1,4 +1,4 @@
-<!-- Generated: 2026-10-26 | Files scanned: 52 | Token estimate: ~2900 -->
+<!-- Generated: 2026-10-29 | Files scanned: 52 | Token estimate: ~2900 -->
 # Purchasing codemap
 
 Paths relative to `src/api/` unless starting `src/`. Abbreviations: PRS=`purchase-requests/purchase-requests.service.ts`, PQS=`purchase-quotations/purchase-quotations.service.ts`, POS=`purchase-orders/purchase-orders.service.ts`, PYS=`payment-requests/payment-requests.service.ts`, PLS=`purchase-ledger/purchase-ledger.service.ts`, PNS=`purchase-notes/purchase-notes.service.ts`, SUS=`suppliers/suppliers.service.ts`.
@@ -35,7 +35,7 @@ purchase-quotations (12) -> PQS:
 
 purchase-orders (10) -> POS:
 - GET / read :99; GET /:id read :403; GET /:id/related-notes read: PNS :83.
-- GET /:id/export-pdf read: `purchase-orders/purchase-order-pdf.service.ts` exportPurchaseOrderPdf (PDF BM 07-02, A4 portrait, `FormTemplateType.PURCHASE_ORDER`; totals via `calculatePurchaseOrderAmounts`, contact = primary supplier representative, signature boxes left blank).
+- GET /:id/export-pdf read: `purchase-orders/purchase-order-pdf.service.ts` exportPurchaseOrderPdf (PDF BM 07-02, A4 portrait, `FormTemplateType.PURCHASE_ORDER`; totals via `calculatePurchaseOrderAmounts`, contact = primary supplier representative, "Người lập" / "Phê duyệt" = creator / approver of the source RFQ with `created_at` / `approved_at`, supplier box left blank).
 - PATCH /:id update :582; PATCH /:id/items/:itemId update :667 (both PENDING_CONFIRMATION only).
 - PATCH /:id/advance-payment update :603 [purchase_orders, payment_requests, logs].
 - POST /:id/confirm update :702; /cancel approve :743 [purchase_orders, payment_requests+logs, inventory_receipts, purchase_quotations]; /close approve :913 [purchase_order_items, purchase_orders, payment_requests].

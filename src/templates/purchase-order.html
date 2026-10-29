@@ -785,7 +785,7 @@
           </tfoot>
         </table>
 
-        <!-- 5. Khối chữ ký: bên mua (lập, duyệt) và nhà cung cấp xác nhận (điền tay) -->
+        <!-- 5. Khối chữ ký: bên mua (lập, duyệt lấy từ báo giá gốc) và nhà cung cấp xác nhận (điền tay) -->
         <div class="signatures-flat-row" style="justify-content: space-between; padding: 0 20px;">
           <div class="sig-flat-col" style="min-width: 150px;">
             <div>
@@ -800,10 +800,7 @@
               <div class="sig-title-main">Phê Duyệt</div>
               <div class="sig-title-sub">Bên mua</div>
             </div>
-            <div class="sig-name-block">
-              <div class="sig-person-name"></div>
-              <div class="sig-date-note">Ngày: ....................</div>
-            </div>
+            {{> approver-signature}}
           </div>
 
           <div class="sig-flat-col" style="min-width: 190px;">

@@ -224,7 +224,26 @@ export const FORM_TEMPLATES: Record<FormTemplateType, FormTemplateDefinition> =
           label: 'Tổng thanh toán bằng chữ',
           group: 'totals',
         },
-        ...creatorSignaturePlaceholders,
+        {
+          key: 'creator_name',
+          label: 'Người lập báo giá',
+          group: 'signatures',
+        },
+        {
+          key: 'creator_date',
+          label: 'Ngày tạo báo giá',
+          group: 'signatures',
+        },
+        {
+          key: 'approver_name',
+          label: 'Người phê duyệt',
+          group: 'signatures',
+        },
+        {
+          key: 'approver_date',
+          label: 'Ngày phê duyệt',
+          group: 'signatures',
+        },
       ],
     },
   };

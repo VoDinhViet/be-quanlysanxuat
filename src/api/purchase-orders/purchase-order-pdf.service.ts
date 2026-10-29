@@ -40,8 +40,9 @@ export class PurchaseOrderPdfService {
     private readonly pdfRendererService: PdfRendererService,
   ) {}
 
-  /** Chỉ ô "Người lập" tự điền (người tạo đơn), các ô ký khác để trống cho ký tay; thành tiền dòng và các tổng dùng chung công thức với màn chi tiết
-   * (`calculatePurchaseOrderAmounts`). */
+  /** Ô "Người lập" và "Phê duyệt" lấy người và ngày tạo/duyệt của báo giá gốc (`quotation`); để trống khi
+   * đơn không còn báo giá. Ô nhà cung cấp để trống cho ký tay. Thành tiền dòng và các tổng dùng chung
+   * công thức với màn chi tiết (`calculatePurchaseOrderAmounts`). */
   async exportPurchaseOrderPdf(
     purchaseOrderId: string,
   ): Promise<StreamableFile> {
@@ -49,7 +50,10 @@ export class PurchaseOrderPdfService {
       await Promise.all([
         this.db.query.purchaseOrders.findFirst({
           where: eq(purchaseOrders.id, purchaseOrderId),
-          with: { supplier: true, creatorBy: true },
+          with: {
+            supplier: true,
+            quotation: { with: { creatorBy: true, approverBy: true } },
+          },
         }),
         this.db
           .select({
@@ -95,7 +99,7 @@ export class PurchaseOrderPdfService {
       ...purchaseOrder,
       items: orderLines,
     });
-    const { supplier } = purchaseOrder;
+    const { supplier, quotation } = purchaseOrder;
 
     const context = {
       code: purchaseOrder.code,
@@ -137,8 +141,10 @@ export class PurchaseOrderPdfService {
       advance_payment: formatVnd(purchaseOrder.advancePaymentAmount),
       balance_due: formatVnd(amounts.balanceDue),
       amount_in_words: formatVndInWords(amounts.totalAmount),
-      creator_name: purchaseOrder.creatorBy?.fullName ?? '',
-      creator_date: formatVnDate(new Date()),
+      creator_name: quotation?.creatorBy?.fullName ?? '',
+      creator_date: formatVnDate(quotation?.createdAt ?? null),
+      approver_name: quotation?.approverBy?.fullName ?? '',
+      approver_date: formatVnDate(quotation?.approvedAt ?? null),
     };
 
     const buffer = await this.pdfRendererService.render(

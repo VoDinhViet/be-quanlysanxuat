@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { readFileSync } from 'fs';
 import Handlebars from 'handlebars';
+import { join } from 'path';
 import puppeteer, { Browser } from 'puppeteer';
 
 import { ErrorCode } from '../constants/error-code.constant';
@@ -32,6 +33,13 @@ export class PdfRendererService implements OnModuleInit, OnModuleDestroy {
     Handlebars.registerPartial(
       CREATOR_SIGNATURE_PARTIAL_NAME,
       readFileSync(CREATOR_SIGNATURE_PARTIAL_PATH, 'utf-8'),
+    );
+    Handlebars.registerPartial(
+      'approver-signature',
+      readFileSync(
+        join(__dirname, 'partials', 'approver-signature.html'),
+        'utf-8',
+      ),
     );
     this.browser = await puppeteer.launch({
       headless: true,
