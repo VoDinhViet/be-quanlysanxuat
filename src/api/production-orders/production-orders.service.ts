@@ -21,8 +21,8 @@ import {
   DocumentType,
   generateDocumentSequence,
 } from '../../common/utils/document-sequence';
-import { buildXlsxBuffer, XLSX_MIME } from '../../common/utils/excel.util';
-import { unaccentILike } from '../../common/utils/search.util';
+import { buildXlsxBuffer, XLSX_MIME } from '../../common/utils/excel';
+import { unaccentILike } from '../../common/utils/search';
 import { getFileTimestamp, vnZone } from '../../common/utils/time';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';

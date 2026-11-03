@@ -22,8 +22,8 @@ import {
   DocumentType,
   generateDocumentSequence,
 } from '../../common/utils/document-sequence';
-import { buildXlsxBuffer, XLSX_MIME } from '../../common/utils/excel.util';
-import { hasFields } from '../../common/utils/object.util';
+import { buildXlsxBuffer, XLSX_MIME } from '../../common/utils/excel';
+import { hasFields } from '../../common/utils/object';
 import { getFileTimestamp } from '../../common/utils/time';
 import { ErrorCode } from '../../constants/error-code.constant';
 import {

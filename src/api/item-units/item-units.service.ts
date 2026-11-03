@@ -2,7 +2,7 @@ import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { and, asc, eq, isNull } from 'drizzle-orm';
 
-import { extractPostgresError } from '../../common/utils/postgres-error.util';
+import { extractPostgresError } from '../../common/utils/postgres-error';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database } from '../../database/database.type';

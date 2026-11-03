@@ -15,7 +15,7 @@ import { STATUS_CODES } from 'http';
 import postgres from 'postgres';
 import { ErrorDetailDto } from '../common/dto/error-detail.dto';
 import { ErrorDto } from '../common/dto/error.dto';
-import { extractPostgresError } from '../common/utils/postgres-error.util';
+import { extractPostgresError } from '../common/utils/postgres-error';
 import { AllConfigType } from '../config/config.type';
 import { ErrorCode } from '../constants/error-code.constant';
 import { AppException } from '../exceptions/app.exception';

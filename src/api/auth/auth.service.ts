@@ -22,7 +22,7 @@ import { DRIZZLE } from '../../database/database.module';
 import type { Database } from '../../database/database.type';
 import { credentials, users, UserStatus } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
-import { createCacheKey } from '../../utils/cache.util';
+import { createCacheKey } from '../../utils/cache';
 import { LoginReqDto } from './dto/login.req.dto';
 import { LoginResDto } from './dto/login.res.dto';
 import { RefreshTokenReqDto } from './dto/refresh-token.req.dto';

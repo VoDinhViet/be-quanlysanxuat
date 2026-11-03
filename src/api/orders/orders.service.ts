@@ -25,8 +25,8 @@ import {
   DocumentType,
   generateDocumentSequence,
 } from '../../common/utils/document-sequence';
-import { buildXlsxBuffer, XLSX_MIME } from '../../common/utils/excel.util';
-import { unaccentILike } from '../../common/utils/search.util';
+import { buildXlsxBuffer, XLSX_MIME } from '../../common/utils/excel';
+import { unaccentILike } from '../../common/utils/search';
 import {
   VN_NOW,
   getFileTimestamp,
@@ -37,7 +37,7 @@ import {
   formatQuantity,
   formatVnd,
   formatVndInWords,
-} from '../../common/utils/vnd.util';
+} from '../../common/utils/vnd';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { FormTemplateType } from '../../templates/form-templates.registry';
 import { PdfRendererService } from '../../templates/pdf-renderer.service';

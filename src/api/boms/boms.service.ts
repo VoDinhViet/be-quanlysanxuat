@@ -10,8 +10,8 @@ import {
   sql,
 } from 'drizzle-orm';
 
-import { groupBy } from '../../common/utils/array.util';
-import { hasFields } from '../../common/utils/object.util';
+import { groupBy } from '../../common/utils/array';
+import { hasFields } from '../../common/utils/object';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
@@ -30,7 +30,7 @@ import { AppException } from '../../exceptions/app.exception';
 import { FilesService } from '../files/files.service';
 import { UnitsService } from '../units/units.service';
 import { BomOperationResDto } from '../bom-operations/dto/bom-operation.res.dto';
-import { buildBomItemPaths, compareBomPaths } from './bom-tree.util';
+import { buildBomItemPaths, compareBomPaths } from './bom-tree';
 import { BomItemResDto } from './dto/bom-item.res.dto';
 import { CreateBomItemReqDto } from './dto/create-bom-item.req.dto';
 import { UpdateBomItemReqDto } from './dto/update-bom-item.req.dto';

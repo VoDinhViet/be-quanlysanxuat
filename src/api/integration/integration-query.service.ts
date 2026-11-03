@@ -9,7 +9,7 @@ import { ConfigService } from '@nestjs/config';
 import { sql } from 'drizzle-orm';
 import type { AnyColumn, SQL } from 'drizzle-orm';
 
-import { extractPostgresError } from '../../common/utils/postgres-error.util';
+import { extractPostgresError } from '../../common/utils/postgres-error';
 import { AllConfigType } from '../../config/config.type';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';

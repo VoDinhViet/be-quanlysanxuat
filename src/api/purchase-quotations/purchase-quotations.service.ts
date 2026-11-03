@@ -22,8 +22,8 @@ import {
   DocumentType,
   generateDocumentSequence,
 } from '../../common/utils/document-sequence';
-import { hasFields } from '../../common/utils/object.util';
-import { unaccentILike } from '../../common/utils/search.util';
+import { hasFields } from '../../common/utils/object';
+import { unaccentILike } from '../../common/utils/search';
 import { exclusiveEndOfDay, startOfVnDay } from '../../common/utils/time';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';

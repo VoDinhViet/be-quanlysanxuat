@@ -3,7 +3,7 @@ import { format } from 'date-fns';
 import { asc, eq, getTableColumns } from 'drizzle-orm';
 
 import { getFileTimestamp, vnZone } from '../../common/utils/time';
-import { formatQuantity } from '../../common/utils/vnd.util';
+import { formatQuantity } from '../../common/utils/vnd';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database } from '../../database/database.type';

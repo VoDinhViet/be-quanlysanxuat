@@ -15,9 +15,9 @@ import {
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
-import { hasFields } from '../../common/utils/object.util';
-import { extractPostgresError } from '../../common/utils/postgres-error.util';
-import { unaccentILike } from '../../common/utils/search.util';
+import { hasFields } from '../../common/utils/object';
+import { extractPostgresError } from '../../common/utils/postgres-error';
+import { unaccentILike } from '../../common/utils/search';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database } from '../../database/database.type';

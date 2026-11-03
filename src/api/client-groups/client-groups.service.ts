@@ -4,7 +4,7 @@ import { and, count, desc, or } from 'drizzle-orm';
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
-import { unaccentILike } from '../../common/utils/search.util';
+import { unaccentILike } from '../../common/utils/search';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database } from '../../database/database.type';
 import { clientGroups } from '../../database/schemas';

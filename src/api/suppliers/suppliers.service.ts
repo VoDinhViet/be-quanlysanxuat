@@ -4,7 +4,7 @@ import { and, count, desc, eq, inArray, isNull, ne, or } from 'drizzle-orm';
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
-import { unaccentILike } from '../../common/utils/search.util';
+import { unaccentILike } from '../../common/utils/search';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';

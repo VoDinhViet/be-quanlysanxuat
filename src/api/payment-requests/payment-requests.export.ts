@@ -1,5 +1,5 @@
 import { format } from 'date-fns';
-import { type ExcelColumn } from '../../common/utils/excel.util';
+import { type ExcelColumn } from '../../common/utils/excel';
 import { vnZone } from '../../common/utils/time';
 import { PaymentRequestStatus } from '../../database/schemas';
 

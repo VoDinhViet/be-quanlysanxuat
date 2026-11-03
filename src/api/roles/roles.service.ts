@@ -8,7 +8,7 @@ import {
 import { plainToInstance } from 'class-transformer';
 import { and, desc, eq, isNull, ne, or } from 'drizzle-orm';
 
-import { unaccentILike } from '../../common/utils/search.util';
+import { unaccentILike } from '../../common/utils/search';
 import { ErrorCode } from '../../constants/error-code.constant';
 import {
   isPermissionCode,

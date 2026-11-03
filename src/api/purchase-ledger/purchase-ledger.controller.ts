@@ -2,7 +2,7 @@ import { Controller, Get, Query, StreamableFile } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
-import { XLSX_MIME } from '../../common/utils/excel.util';
+import { XLSX_MIME } from '../../common/utils/excel';
 import { ApiAuth } from '../../decorators/http.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
 import { ExportPurchaseLedgerReqDto } from './dto/export-purchase-ledger.req.dto';

@@ -21,7 +21,7 @@ import {
   DocumentType,
   generateDocumentSequence,
 } from '../../common/utils/document-sequence';
-import { unaccentILike } from '../../common/utils/search.util';
+import { unaccentILike } from '../../common/utils/search';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';

@@ -22,7 +22,7 @@ import type { StorageProvider } from '../../storage/storage-provider.interface';
 import { PermissionsService } from '../auth/permissions.service';
 import { FileResDto } from './dto/file.res.dto';
 import { uploadPolicies } from './upload-policy';
-import { detectFileType } from './util/file-type.util';
+import { detectFileType } from './util/file-type';
 
 type UploadOptions = {
   type: UploadType;

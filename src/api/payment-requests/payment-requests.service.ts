@@ -20,15 +20,15 @@ import {
   DocumentType,
   generateDocumentSequence,
 } from '../../common/utils/document-sequence';
-import { buildXlsxBuffer, XLSX_MIME } from '../../common/utils/excel.util';
-import { extractPostgresError } from '../../common/utils/postgres-error.util';
-import { unaccentILike } from '../../common/utils/search.util';
+import { buildXlsxBuffer, XLSX_MIME } from '../../common/utils/excel';
+import { extractPostgresError } from '../../common/utils/postgres-error';
+import { unaccentILike } from '../../common/utils/search';
 import {
   exclusiveEndOfDay,
   getFileTimestamp,
   startOfVnDay,
 } from '../../common/utils/time';
-import { formatVnd } from '../../common/utils/vnd.util';
+import { formatVnd } from '../../common/utils/vnd';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';

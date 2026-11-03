@@ -2,8 +2,8 @@ import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { and, asc, eq, ne, or } from 'drizzle-orm';
 
-import { extractPostgresError } from '../../common/utils/postgres-error.util';
-import { unaccentILike } from '../../common/utils/search.util';
+import { extractPostgresError } from '../../common/utils/postgres-error';
+import { unaccentILike } from '../../common/utils/search';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database } from '../../database/database.type';

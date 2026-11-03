@@ -110,7 +110,7 @@ export enum OqcDisposition {
 /**
  * Từ vựng `status` nội bộ, không có `pgEnum` riêng (cột thật là `QualityInspectionStatus`). Dùng ở
  * đường **ghi** để tính status trước khi map sang giá trị DB bằng `mapToQualityInspectionStatus()`
- * (`src/api/iqc/quality-inspection-status.util.ts`).
+ * (`src/api/iqc/quality-inspection-status.ts`).
  */
 export enum IqcStatus {
   NOT_INSPECTED = 'NOT_INSPECTED',

@@ -3,7 +3,7 @@ import { plainToInstance } from 'class-transformer';
 import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
 
 import type { ErrorDetailDto } from '../../common/dto/error-detail.dto';
-import { buildXlsxBuffer, XLSX_MIME } from '../../common/utils/excel.util';
+import { buildXlsxBuffer, XLSX_MIME } from '../../common/utils/excel';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database } from '../../database/database.type';

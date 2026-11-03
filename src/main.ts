@@ -22,7 +22,7 @@ import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './filters/global-exception.filter';
 import { Environment } from './constants/app.constant';
 import { AllConfigType } from './config/config.type';
-import { setupSwagger } from './utils/swagger.util';
+import { setupSwagger } from './utils/swagger';
 
 let cachedServer: Express | null = null;
 

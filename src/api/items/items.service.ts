@@ -27,9 +27,9 @@ import {
   buildXlsxBuffer,
   readXlsxRows,
   XLSX_MIME,
-} from '../../common/utils/excel.util';
-import { extractPostgresError } from '../../common/utils/postgres-error.util';
-import { unaccentILike } from '../../common/utils/search.util';
+} from '../../common/utils/excel';
+import { extractPostgresError } from '../../common/utils/postgres-error';
+import { unaccentILike } from '../../common/utils/search';
 import { getFileTimestamp } from '../../common/utils/time';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';

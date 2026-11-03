@@ -1,4 +1,4 @@
-import { groupBy } from '../../common/utils/array.util';
+import { groupBy } from '../../common/utils/array';
 
 /** Vừa đủ field `buildBomItemPaths` cần đọc — không phải `BomItemResDto`/schema row đầy đủ,
  *  nên hàm test được độc lập mà không cần dựng cả shape đó. */

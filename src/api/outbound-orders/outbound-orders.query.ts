@@ -1,6 +1,6 @@
 import { and, eq, exists, inArray, ne, or, sql } from 'drizzle-orm';
 
-import { unaccentILike } from '../../common/utils/search.util';
+import { unaccentILike } from '../../common/utils/search';
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
   items,

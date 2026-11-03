@@ -10,7 +10,7 @@ Includes the NCR<->OQC trace refs (PH-136). Controllers check permissions, servi
 | src/api/iqc/iqc.service.ts | 1100 | IQC CRUD, confirm, auto-creation from receipts, stats, export |
 | src/api/iqc/iqc.write.ts | 140 | Plain-tx fns: completeIqcAfterSupplierReturn:32, linkQcFiles:75, cancelReceiptInspections:99 |
 | src/api/iqc/iqc.query.ts | 86 | Gates: hasPendingIqcForItems:23 (ignores COMPLETED and CANCELLED), areReceiptIqcInspectionsCompleted:61 |
-| src/api/iqc/quality-inspection-status.util.ts | 28 | mapToQualityInspectionStatus:11 (legacy IqcStatus/OqcStatus -> DB status) |
+| src/api/iqc/quality-inspection-status.ts | 28 | mapToQualityInspectionStatus:11 (legacy IqcStatus/OqcStatus -> DB status) |
 | src/api/oqc/oqc.service.ts | 838 | OQC list/detail/export, createOqcForJob, confirmOqc, delete |
 | src/api/oqc/oqc.query.ts | 365 | Quota/coverage/close-job helpers, generateOqcCode |
 | src/api/ncrs/ncrs.service.ts | 549 | NCR approval flow, secondary LSX, re-OQC request, cost lines |

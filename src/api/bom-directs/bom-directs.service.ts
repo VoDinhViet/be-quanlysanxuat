@@ -5,7 +5,7 @@ import { and, asc, count, eq, or } from 'drizzle-orm';
 import { BomsService } from '../boms/boms.service';
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
-import { unaccentILike } from '../../common/utils/search.util';
+import { unaccentILike } from '../../common/utils/search';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database } from '../../database/database.type';
 import { bomItems, BomType, files, items, units } from '../../database/schemas';

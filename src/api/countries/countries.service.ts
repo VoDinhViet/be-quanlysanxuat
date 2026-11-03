@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { asc, or } from 'drizzle-orm';
 
-import { unaccentILike } from '../../common/utils/search.util';
+import { unaccentILike } from '../../common/utils/search';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database } from '../../database/database.type';
 import { countries } from '../../database/schemas';

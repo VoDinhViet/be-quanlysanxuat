@@ -1,4 +1,4 @@
-import type { ExcelColumn } from '../../common/utils/excel.util';
+import type { ExcelColumn } from '../../common/utils/excel';
 
 export const INVENTORY_IMPORT_MAX_ROWS = 1000;
 export const INVENTORY_IMPORT_TEMPLATE_NAME = 'mau-nhap-ton-kho.xlsx';

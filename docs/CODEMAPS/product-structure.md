@@ -11,7 +11,7 @@ Paths under `src/`. Only controllers check permissions; services do not.
 | item-units | service 118, controller 74 | Secondary unit + conversion factor per item |
 | units | service 139, controller 79 | Unit master (ĐVT) |
 | item-categories | service ~130, controller ~85 | Nhóm vật tư (user-managed catalog; optional `items.itemCategoryId` for DIRECT) |
-| boms | service 595, controller 79, bom-tree.util 43 | BOM tree (`bom_items`), lazy `boms` header |
+| boms | service 595, controller 79, bom-tree 43 | BOM tree (`bom_items`), lazy `boms` header |
 | bom-directs | service 76, controller 31 | Read-only DIRECT children of a node |
 | bom-operations | service 181, controller 108 | Steps (as-used) on a COMPONENT node |
 | routings | service 230, controller 86 | Level-0 steps of the FG itself (`routing_operations`) |
@@ -115,7 +115,7 @@ Catalog and BOM:
 
 Step lane: `bom_operations.type` / `routing_operations.type` is the real INHOUSE|OUTSOURCE choice; `operations.type` is only the prefilled default and the `?type=OUTSOURCE` filter (operations.ts:14-20). `operationId` is immutable (update edits sortOrder/note only).
 
-GET BOM tree (boms.service.ts:61): returns [] if no header; Level 0 is NOT in the response (read item via GET /items/:itemId and steps via routings). `code`/`name` = coalesce(row, item) :87; unit/image coalesce(item, row) :102-108; sorted by `buildBomItemPaths`/`compareBomPaths` (bom-tree.util.ts); operations in one query :128; off-structure DIRECT rows follow their owner and reuse its path :118-185.
+GET BOM tree (boms.service.ts:61): returns [] if no header; Level 0 is NOT in the response (read item via GET /items/:itemId and steps via routings). `code`/`name` = coalesce(row, item) :87; unit/image coalesce(item, row) :102-108; sorted by `buildBomItemPaths`/`compareBomPaths` (bom-tree.ts); operations in one query :128; off-structure DIRECT rows follow their owner and reuse its path :118-185.
 
 DIRECT demand (items.service.ts:630): multiplier = parent x quantity, rounded to scale 6 per step, summed per DIRECT item.
 

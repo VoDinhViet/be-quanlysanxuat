@@ -18,11 +18,11 @@ import {
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
-import { groupBy } from '../../common/utils/array.util';
+import { groupBy } from '../../common/utils/array';
 import { selectOperations } from './production-job-operations.util';
 import { getFileTimestamp, vnToday, vnZone } from '../../common/utils/time';
-import { formatQuantity } from '../../common/utils/vnd.util';
-import { unaccentILike } from '../../common/utils/search.util';
+import { formatQuantity } from '../../common/utils/vnd';
+import { unaccentILike } from '../../common/utils/search';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';

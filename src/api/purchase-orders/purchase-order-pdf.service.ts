@@ -7,7 +7,7 @@ import {
   formatQuantity,
   formatVnd,
   formatVndInWords,
-} from '../../common/utils/vnd.util';
+} from '../../common/utils/vnd';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database } from '../../database/database.type';

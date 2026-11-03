@@ -12,7 +12,7 @@ import {
 import { ApiTags } from '@nestjs/swagger';
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
-import { XLSX_MIME } from '../../common/utils/excel.util';
+import { XLSX_MIME } from '../../common/utils/excel';
 import { CurrentUser } from '../../decorators/current-user.decorator';
 import { ApiAuth } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';

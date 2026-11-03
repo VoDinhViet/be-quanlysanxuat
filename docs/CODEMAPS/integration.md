@@ -6,7 +6,7 @@ Conventions: controllers check permissions, services do not. Paths: `R`=`src/api
 ## 1. Modules
 - `R/` : `reports.controller.ts` 106, `reports.service.ts` 797, `dto/` 10 files. Imports AuthModule (for `PermissionsService`, `reports.module.ts:8`). Read-only; owns no business rule, re-reads rules of orders, production, quality, purchasing, inventory.
 - `I/` (AI platform read gateway): 5 controllers (identity 57, orders 128, production 72, purchasing 102, quality 60), services (orders 325, production 114, purchasing 191, quality 124), `integration-query.service.ts` 114 (shared SQL runner), `guards/` (api-key 57, on-behalf 91), `dto/` 5 files, `integration.module.ts` 61 (registers its own `ThrottlerModule`, limit from `integration.rateLimitPerMinute`, :36).
-- `F/`: `files.controller.ts` 77, `files.service.ts` 279, `files-cleanup.service.ts` 70, `upload-policy.ts` 50, `config/multer.config.ts` 26, `util/file-type.util.ts` 18.
+- `F/`: `files.controller.ts` 77, `files.service.ts` 279, `files-cleanup.service.ts` 70, `upload-policy.ts` 50, `config/multer.config.ts` 26, `util/file-type.ts` 18.
 - `H/`: `health.controller.ts` 32, `indicators/{database 28, redis 36}.health.ts`.
 - Shared infra: `src/storage/` (`storage.module.ts` 37 global, `storage-provider.interface.ts` 13 = `save`/`delete` only, `providers/local-disk.storage-provider.ts` 32; only LOCAL driver exists), `src/redis/` (`redis.module.ts` 43 global: Keyv-Redis `CacheModule` TTL 1 week + `BullModule` connection, both from `REDIS_URL`).
 - Schemas: `files` (`src/database/schemas/files.ts:112`), `quality_inspections`, `quality_inspection_results`, `quality_inspection_evidences` (`schemas/quality/`).

@@ -18,8 +18,8 @@ import {
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
-import { buildXlsxBuffer, XLSX_MIME } from '../../common/utils/excel.util';
-import { unaccentILike } from '../../common/utils/search.util';
+import { buildXlsxBuffer, XLSX_MIME } from '../../common/utils/excel';
+import { unaccentILike } from '../../common/utils/search';
 import {
   exclusiveEndOfDay,
   getFileTimestamp,

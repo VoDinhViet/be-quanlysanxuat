@@ -1,4 +1,4 @@
-import type { XlsxRow } from '../../common/utils/excel.util';
+import type { XlsxRow } from '../../common/utils/excel';
 import type { ErrorDetailDto } from '../../common/dto/error-detail.dto';
 
 /** Đường dẫn file mẫu lưu sẵn trong repo; `nest-cli.json` copy thư mục `templates` sang `dist`. */
