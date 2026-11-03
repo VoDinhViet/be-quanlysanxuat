@@ -1,10 +1,10 @@
 import { PageOptionsDto } from '../../../common/dto/offset-pagination/page-options.dto';
-import { ProductionJobStatus } from '../../../database/schemas';
 import {
   DateFieldOptional,
   EnumFieldOptional,
   UUIDFieldOptional,
 } from '../../../decorators/field.decorators';
+import { JobOperationProgress } from '../production-execution.constant';
 
 export class GetProductionExecutionJobsReqDto extends PageOptionsDto {
   @UUIDFieldOptional({
@@ -13,10 +13,10 @@ export class GetProductionExecutionJobsReqDto extends PageOptionsDto {
   })
   readonly operationId?: string;
 
-  @EnumFieldOptional(() => ProductionJobStatus, {
-    description: 'Lọc theo trạng thái Job',
+  @EnumFieldOptional(() => JobOperationProgress, {
+    description: 'Lọc theo trạng thái công đoạn (cột operationStatus của dòng)',
   })
-  readonly status?: ProductionJobStatus;
+  readonly operationStatus?: JobOperationProgress;
 
   @UUIDFieldOptional({ description: 'Lọc theo khách hàng' })
   readonly clientId?: string;

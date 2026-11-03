@@ -1,4 +1,3 @@
-import { ProductionJobStatus } from '../../../database/schemas';
 import {
   DateFieldOptional,
   EnumFieldOptional,
@@ -10,11 +9,6 @@ import { ProductionExecutionOperationSort } from '../production-execution.consta
 export class GetProductionExecutionOperationsReqDto {
   @StringFieldOptional()
   readonly q?: string;
-
-  @EnumFieldOptional(() => ProductionJobStatus, {
-    description: 'Lọc theo trạng thái Job',
-  })
-  readonly status?: ProductionJobStatus;
 
   @UUIDFieldOptional({ description: 'Lọc theo khách hàng' })
   readonly clientId?: string;

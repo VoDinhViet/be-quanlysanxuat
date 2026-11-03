@@ -1,4 +1,4 @@
-<!-- Generated: 2026-10-26 | Files scanned: 27 | Token estimate: ~3530 -->
+<!-- Generated: 2026-11-03 | Files scanned: 27 | Token estimate: ~3530 -->
 # Production codemap
 
 Paths relative to `src/api/` unless starting `database/` or `constants/`. `ctrl:N`/`svc:N` = line in that domain's controller/service (`po.svc`, `jobs.svc`, `exec svc`, `OO svc`, `OR svc` = the five services). Create/update routes return 204 unless noted.
@@ -9,7 +9,7 @@ Paths relative to `src/api/` unless starting `database/` or `constants/`. `ctrl:
 |---|---|---|
 | production-orders | ctrl 180, svc 774, export 49, dto/ | LSX header + plan lines, approve, logs, Excel/PDF. No query/write file: SQL inline in svc |
 | production-jobs | ctrl 338, svc 1052, `production-job-snapshot.query.ts` 536, `production-jobs.query.ts` 216, `production-job-issues.query.ts` 195, dto/ | JOB read/plan/start. snapshot.query builds BOM/ops/issues; jobs.query has close helpers; issues.query edits materials |
-| production-execution | ctrl 136, svc 645, constant 30, dto/ | "Thuc hien san xuat" screens; only manual progress writer. No query file |
+| production-execution | ctrl 136, svc 654, constant 30, dto/ | "Thuc hien san xuat" screens; only manual progress writer. No query file |
 | outsourcing-orders | ctrl 118, svc 489, `outsourcing-orders.query.ts` 327, dto/ | OS-OUT (send out); query holds `recomputeOutsourcingOrderStatus` |
 | outsourcing-receipts | ctrl 112, svc 695, `outsourcing-receipts.query.ts` 155, dto/ | OS-IN (receive back); query = received-qty subqueries |
 
@@ -57,12 +57,12 @@ Tables: `po`=production_orders, `poi`=_order_items, `pol`=_order_logs, `pj`=prod
 ### production-execution (6) `/production-execution` perm prefix `production-execution:`
 | Route | Perm | Controller -> Service | Writes |
 |---|---|---|---|
-| GET /operations | read | getOperations ctrl:37 -> svc:84 | - |
-| GET /jobs | read | getJobs ctrl:52 -> svc:194 | - |
-| GET /jobs/:productionJobId | read | getJob ctrl:66 -> svc:348 (builds from `getProductionJobRecord`, so it carries `productFiles` too) | - |
-| GET /jobs/:productionJobId/operations | read | getJobOperations ctrl:86 -> svc:371 | - |
-| GET /jobs/:productionJobId/reports | read | getJobOperationReports ctrl:106 -> svc:405 | - |
-| POST /operations/:jobOperationId/reports | report | createJobOperationReport ctrl:125 -> svc:479 | production_job_operation_reports(+_files), pjo, pj.status+pjl via `closeJobIfFinalAssemblyDone` |
+| GET /operations | read | getOperations ctrl:37 -> svc:86 (no status filter: the tiles stay an overview while the job table is filtered) | - |
+| GET /jobs | read | getJobs ctrl:52 -> svc:195 (`operationStatus` filters the computed stage status with HAVING; the total is counted over a grouped subquery) | - |
+| GET /jobs/:productionJobId | read | getJob ctrl:66 -> svc:356 (builds from `getProductionJobRecord`, so it carries `productFiles` too) | - |
+| GET /jobs/:productionJobId/operations | read | getJobOperations ctrl:86 -> svc:380 | - |
+| GET /jobs/:productionJobId/reports | read | getJobOperationReports ctrl:106 -> svc:414 | - |
+| POST /operations/:jobOperationId/reports | report | createJobOperationReport ctrl:125 -> svc:488 | production_job_operation_reports(+_files), pjo, pj.status+pjl via `closeJobIfFinalAssemblyDone` |
 
 ### outsourcing-orders (13) `/outsourcing-orders` perm prefix `outsourcing:`
 | Route | Perm | Controller -> Service | Writes |

@@ -77,7 +77,9 @@ export class ProductionExecutionService {
   ) {}
 
   /**
-   * Một dòng mỗi công đoạn (`operations`) có ít nhất 1 Job khớp bộ lọc, nhóm theo `operations.id`.
+   * Một dòng mỗi công đoạn (`operations`) có ít nhất 1 Job khớp từ khóa, khách hàng và khoảng ngày,
+   * nhóm theo `operations.id`. Không lọc theo trạng thái: thẻ là tổng quan, lọc thì thẻ đang chọn
+   * có thể biến mất.
    * `type` trả về là giá trị danh mục (`operations.type`, chỉ là gợi ý mặc định) nên có thể khác
    * `type` thật của từng dòng `production_job_operations` đã chọn lúc gắn vào BOM/routing.
    */
@@ -125,7 +127,6 @@ export class ProductionExecutionService {
           allowedOperationIds
             ? inArray(productionJobOperations.operationId, allowedOperationIds)
             : undefined,
-          reqDto.status ? eq(productionJobs.status, reqDto.status) : undefined,
           reqDto.clientId ? eq(orders.clientId, reqDto.clientId) : undefined,
           reqDto.startDate ? gte(orders.dueDate, reqDto.startDate) : undefined,
           reqDto.endDate ? lte(orders.dueDate, reqDto.endDate) : undefined,
@@ -216,7 +217,6 @@ export class ProductionExecutionService {
         : allowedOperationIds
           ? inArray(productionJobOperations.operationId, allowedOperationIds)
           : undefined,
-      reqDto.status ? eq(productionJobs.status, reqDto.status) : undefined,
       reqDto.clientId ? eq(orders.clientId, reqDto.clientId) : undefined,
       reqDto.startDate ? gte(orders.dueDate, reqDto.startDate) : undefined,
       reqDto.endDate ? lte(orders.dueDate, reqDto.endDate) : undefined,
@@ -253,8 +253,34 @@ export class ProductionExecutionService {
         else ${JobOperationEvaluation.LATE}
       end
     `;
+    // `operationStatus` là giá trị gộp nên chỉ lọc được bằng HAVING, không đặt trong `where`.
+    const operationStatusFilter = reqDto.operationStatus
+      ? sql`${operationStatusExpr} = ${reqDto.operationStatus}`
+      : undefined;
+    // Đếm trên subquery vì tổng phải tính sau HAVING; `count(distinct ...)` không làm được.
+    const matchingJobOperations = this.db
+      .select({ jobId: productionJobs.id })
+      .from(productionJobs)
+      .innerJoin(
+        productionOrders,
+        eq(productionOrders.id, productionJobs.productionOrderId),
+      )
+      .innerJoin(orders, eq(orders.id, productionOrders.orderId))
+      .innerJoin(items, eq(items.id, productionJobs.itemId))
+      .innerJoin(
+        productionJobOperations,
+        eq(productionJobOperations.productionJobId, productionJobs.id),
+      )
+      .innerJoin(
+        operations,
+        eq(operations.id, productionJobOperations.operationId),
+      )
+      .where(where)
+      .groupBy(productionJobs.id, operations.id)
+      .having(operationStatusFilter)
+      .as('matching_job_operations');
 
-    const [rows, [{ total }]] = await Promise.all([
+    const [jobOperations, [{ total }]] = await Promise.all([
       this.db
         .select({
           jobId: productionJobs.id,
@@ -304,6 +330,7 @@ export class ProductionExecutionService {
           items.id,
           files.id,
         )
+        .having(operationStatusFilter)
         .orderBy(
           // Job mới (mã lớn) lên trước; cùng mã thì hạn hoàn thành gần nhất trước, chưa đặt hạn
           // xuống cuối. Mã Job cố định độ rộng (YY-NNNNN-NNN) nên so chuỗi giảm dần = mới nhất.
@@ -313,30 +340,11 @@ export class ProductionExecutionService {
         )
         .limit(reqDto.limit)
         .offset(reqDto.offset),
-      this.db
-        .select({
-          // Một dòng / (Job × công đoạn) — đúng bằng số nhóm của câu SELECT phía trên.
-          total:
-            sql<number>`count(distinct (${productionJobs.id}, ${productionJobOperations.operationId}))`.mapWith(
-              Number,
-            ),
-        })
-        .from(productionJobs)
-        .innerJoin(
-          productionOrders,
-          eq(productionOrders.id, productionJobs.productionOrderId),
-        )
-        .innerJoin(orders, eq(orders.id, productionOrders.orderId))
-        .innerJoin(items, eq(items.id, productionJobs.itemId))
-        .innerJoin(
-          productionJobOperations,
-          eq(productionJobOperations.productionJobId, productionJobs.id),
-        )
-        .where(where),
+      this.db.select({ total: count() }).from(matchingJobOperations),
     ]);
 
     return new OffsetPaginatedDto(
-      plainToInstance(PageProductionExecutionJobResDto, rows, {
+      plainToInstance(PageProductionExecutionJobResDto, jobOperations, {
         excludeExtraneousValues: true,
       }),
       new OffsetPaginationDto(total, reqDto),
