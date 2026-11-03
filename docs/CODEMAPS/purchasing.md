@@ -1,4 +1,4 @@
-<!-- Generated: 2026-10-29 | Files scanned: 52 | Token estimate: ~2900 -->
+<!-- Generated: 2026-11-03 | Files scanned: 52 | Token estimate: ~2900 -->
 # Purchasing codemap
 
 Paths relative to `src/api/` unless starting `src/`. Abbreviations: PRS=`purchase-requests/purchase-requests.service.ts`, PQS=`purchase-quotations/purchase-quotations.service.ts`, POS=`purchase-orders/purchase-orders.service.ts`, PYS=`payment-requests/payment-requests.service.ts`, PLS=`purchase-ledger/purchase-ledger.service.ts`, PNS=`purchase-notes/purchase-notes.service.ts`, SUS=`suppliers/suppliers.service.ts`.
@@ -90,7 +90,7 @@ Notes chain (PNS, read-only): purchase_requests - purchase_request_items - purch
 - Receipt side: DMH must be ORDERED E145; line/DMH mismatch E127; POSTED receipt cannot be cancelled E289, so `cancelForOrder` runs only from DMH cancel (POS:773).
 - Ledger: only APPROVED requests, lines with cancelledAt null; ordered counts ORDERED DMH only (`purchase-ledger.query.ts:20`); quoted skips REJECTED/CANCELLED RFQs and uses live DMH qty for APPROVED RFQs (:108). Comment at `purchase-ledger.service.ts:54` says PO `DRAFT` (stale; enum is PENDING_CONFIRMATION). E126 retired.
 - Suppliers: code E020, tax code E022, group E021, country E023; delete blocked E247 when referenced by purchase_orders, quotation item_suppliers, outsourcing orders/receipts or supplier_returns (SUS:253). Files linked before the transaction (:281).
-- Codes PR-, RFQ-, DMH-, YCTT- via `generateDocumentSequence` (`src/common/utils/document-sequence.util`).
+- Codes PR-, RFQ-, DMH-, YCTT- via `generateDocumentSequence` (`src/common/utils/document-sequence`).
 
 ## 5. Cross-domain links
 

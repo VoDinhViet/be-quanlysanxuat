@@ -3,7 +3,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import {
   DocumentType,
   generateDocumentSequence,
-} from '../../common/utils/document-sequence.util';
+} from '../../common/utils/document-sequence';
 import type { DbTransaction } from '../../database/database.type';
 import { vnToday, vnZone } from '../../common/utils/time';
 import {

@@ -10,10 +10,10 @@ import {
 } from 'drizzle-orm/pg-core';
 
 /**
- * Bộ đếm dùng chung cho mọi mã chứng từ tự sinh — đường ghi duy nhất là
- * `generateDocumentSequence(s)` (`src/common/utils/document-sequence.util.ts`), xem
- * `docs/CODEMAPS/architecture.md`. `year = 0` là sentinel cho chứng từ không đánh số theo năm, không dùng
- * NULL: Postgres coi NULL trong UNIQUE là "distinct", phá cả ràng buộc lẫn `ON CONFLICT`.
+ * Không còn được đọc hay ghi: `generateDocumentSequence(s)` (`src/common/utils/document-sequence.ts`)
+ * tính số từ chính bảng chứng từ. Giữ bảng tới bản deploy sau vì `deploy.yml` migrate trước khi
+ * deploy, app cũ còn cần bảng trong lúc đó. Bộ đếm không còn được cập nhật nên rollback về bản cũ
+ * sẽ cấp trùng số nếu không đồng bộ lại `current_value`.
  */
 export const documentSequences = pgTable(
   'document_sequences',

@@ -7,7 +7,7 @@ import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated
 import {
   DocumentType,
   generateDocumentSequence,
-} from '../../common/utils/document-sequence.util';
+} from '../../common/utils/document-sequence';
 import { vnToday, vnZone } from '../../common/utils/time';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';

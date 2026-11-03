@@ -100,8 +100,8 @@ export enum ErrorCode {
   // Giữ comment, không tái sử dụng số.
   E056 = 'routing_operation.error.not_found',
   E057 = 'order.error.not_found',
-  // Nghỉ hưu — `orders.code` không còn nhận giá trị tay từ client, luôn sinh atomic qua
-  // `document_sequences` (`docs/CODEMAPS/architecture.md`). Giữ comment, không tái sử dụng số.
+  // Nghỉ hưu — `orders.code` không còn nhận giá trị tay từ client, luôn sinh qua
+  // `generateDocumentSequence` (`docs/CODEMAPS/architecture.md`). Giữ comment, không tái sử dụng số.
   E058 = 'order.error.code_exists',
   // Client/staff/item refs on an order. Retired when the module was pared down to a header-only
   // table on 2026-07-27, restored with their original meanings the same day when the module was
@@ -198,7 +198,7 @@ export enum ErrorCode {
   // tồn tại.
   E096 = 'inventory_document.error.not_found',
   // Nghỉ hưu — `code` không còn cho client tự truyền trên `create`, luôn server tự sinh qua
-  // `document_sequences` (atomic, không thể trùng). Giữ số, không tái sử dụng.
+  // `generateDocumentSequence`. Giữ số, không tái sử dụng.
   E097 = 'inventory_document.error.code_exists',
   // `PATCH`/`DELETE`/`post` gọi trên phiếu không còn `DRAFT`, hoặc `cancel` gọi trên phiếu đã
   // `CANCELLED` — dùng chung cho `inventory_receipts`/`inventory_issues`/`inventory_adjustments`.

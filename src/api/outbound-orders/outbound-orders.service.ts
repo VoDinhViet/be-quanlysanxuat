@@ -21,7 +21,7 @@ import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated
 import {
   DocumentType,
   generateDocumentSequence,
-} from '../../common/utils/document-sequence.util';
+} from '../../common/utils/document-sequence';
 import { buildXlsxBuffer, XLSX_MIME } from '../../common/utils/excel.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { getFileTimestamp, vnToday, vnZone } from '../../common/utils/time';
@@ -949,8 +949,8 @@ export class OutboundOrdersService {
 
   /** `DO-{yyMMdd}-{seq trong ngày}` — ngày là lúc tạo phiếu, không phải `fulfillmentDate` (có thể
    * ở tương lai), vì DO không có trường ngày nghiệp vụ như `receiptDate` của phiếu nhập.
-   * `document_sequences.year` bị mượn làm khoá reset-theo-ngày: lưu nguyên `yyMMdd` (không phải
-   * năm thật) để mỗi ngày có một dãy số riêng. */
+   * Tham số `year` của `generateDocumentSequence` bị mượn làm khoá reset-theo-ngày: truyền nguyên
+   * `yyMMdd` (không phải năm thật) để mỗi ngày có một dãy số riêng. */
   private async generateOutboundOrderCode(tx: DbTransaction): Promise<string> {
     const dayCode = format(new Date(), 'yyMMdd', { in: vnZone });
     const dayKey = Number(dayCode);

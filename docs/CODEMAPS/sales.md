@@ -1,4 +1,4 @@
-<!-- Generated: 2026-10-26 | Files scanned: 29 | Token estimate: ~2950 -->
+<!-- Generated: 2026-11-03 | Files scanned: 29 | Token estimate: ~2950 -->
 # Sales codemap
 
 Conventions: controllers check permissions, services do not; routes are under global prefix `api`. Create/update mostly return 204 (void) except `POST /orders`. Paths below: `O`=`src/api/orders`, `B`=`src/api/outbound-orders`, `C`=`src/api/clients`, `S`=`src/database/schemas`.
@@ -21,7 +21,7 @@ Orders (13), `@Controller('orders')`; static routes are declared before `:orderI
 | GET /orders/:orderId | orders:read | :104 -> `getOrder` (:310) | - |
 | GET /orders/:orderId/export-pdf | orders:read | :114 -> `exportOrderPdf` (:367) | - |
 | GET /orders/:orderId/items | orders:read | :127 -> `getOrderItems` (:538) | - |
-| POST /orders | orders:create | :140 -> `createOrder` (:580) | orders, order_items, order_files, document_sequences |
+| POST /orders | orders:create | :140 -> `createOrder` (:580) | orders, order_items, order_files |
 | PATCH /orders/:orderId | orders:update | :154 -> `updateOrder` (:646) | orders, order_items, order_files; deletes production_orders on cancel |
 | POST /orders/:orderId/approve | orders:approve | :168 -> `approveOrder` (:729) | orders, production_orders, production_order_items, logs |
 | POST /orders/:orderId/reject | orders:approve | :182 -> `rejectOrder` (:760) | orders |
@@ -36,10 +36,10 @@ Outbound orders (15), `@Controller('outbound-orders')`; handler lines in `B/outb
 | GET .../export | outbound:read | :91 -> `exportOutboundOrders` (:197) | - |
 | GET .../:outboundOrderId | outbound:read | :103 -> `getOutboundOrder` (:265) | - |
 | GET .../:outboundOrderId/items | outbound:read | :116 -> `getOutboundOrderItems` (:305) | - |
-| POST /outbound-orders | outbound:create | :129 -> `createOutboundOrder` (:491) | outbound_orders, outbound_order_items, document_sequences |
+| POST /outbound-orders | outbound:create | :129 -> `createOutboundOrder` (:491) | outbound_orders, outbound_order_items |
 | PATCH .../:id | outbound:update | :145 -> `updateOutboundOrder` (:516) | outbound_orders, outbound_order_items |
 | POST .../:id/send | outbound:update | :162 -> `sendOutboundOrder` (:637) | outbound_orders |
-| POST .../:id/approve | outbound:approve | :179 -> `approveOutboundOrder` (:672) | outbound_orders, inventory_issues + inventory_issue_items (DRAFT SALES issue), document_sequences |
+| POST .../:id/approve | outbound:approve | :179 -> `approveOutboundOrder` (:672) | outbound_orders, inventory_issues + inventory_issue_items (DRAFT SALES issue) |
 | POST .../:id/reject | outbound:approve | :195 -> `rejectOutboundOrder` (:755) | outbound_orders |
 | PATCH .../:id/invoice | outbound:invoice | :214 -> `updateOutboundOrderInvoice` (:819) - DELIVERED only, else E320; saving sets `invoiceStatus = ISSUED` | outbound_orders (invoice_status, invoice_no, invoice_date, invoiced_by, invoiced_at) |
 | POST .../:id/cancel | outbound:update | :233 -> `cancelOutboundOrder` (:547) | outbound_orders, inventory_issues (DRAFT issue -> CANCELLED) |

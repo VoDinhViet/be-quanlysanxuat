@@ -20,7 +20,7 @@ import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated
 import {
   DocumentType,
   generateDocumentSequence,
-} from '../../common/utils/document-sequence.util';
+} from '../../common/utils/document-sequence';
 import { buildXlsxBuffer, XLSX_MIME } from '../../common/utils/excel.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { getFileTimestamp, vnZone } from '../../common/utils/time';
@@ -528,8 +528,7 @@ export class ProductionOrdersService {
     return this.getProductionOrdersById(productionOrdersId);
   }
 
-  /** Cấp số qua `generateDocumentSequence` (atomic `INSERT ... ON CONFLICT DO UPDATE`), không
-   * TOCTOU; cùng khuôn `OrdersService.generateOrderCode`. */
+  /** Cấp số qua `generateDocumentSequence`; cùng khuôn `OrdersService.generateOrderCode`. */
   private async generateProductionOrderCode(
     tx: DbTransaction,
   ): Promise<string> {

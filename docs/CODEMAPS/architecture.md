@@ -1,4 +1,4 @@
-<!-- Generated: 2026-10-26 | Files scanned: 58 | Token estimate: ~2660 -->
+<!-- Generated: 2026-11-03 | Files scanned: 58 | Token estimate: ~2660 -->
 # Architecture Codemap
 
 **Last Updated:** 2026-10-16
@@ -44,7 +44,7 @@ client --HTTP--> helmet/compression/CORS (Express)
 
 ## Shared code
 - `src/common/dto/offset-pagination/` (`PageOptionsDto` limit/page/q/order, getter `offset`; `OffsetPaginatedDto {data, pagination}` with `OffsetPaginationDto` totalRecords/totalPages) and `cursor-pagination/`; `error.dto.ts`, `error-detail.dto.ts`. Default limit 10 (`DEFAULT_PAGE_LIMIT`), no max limit.
-- `src/common/utils/`: `document-sequence.util.ts`, `search.util.ts` (`unaccentILike`), `time.ts` (Vietnam time on UTC storage: `vnZone` for inline date-fns calls, `getFileTimestamp` for export file names, `vnToday`, `startOfVnDay` / `exclusiveEndOfDay` for `timestamp` range filters, `vnTimestamp` / `VN_NOW` for raw SQL), `excel.util.ts`, `vnd.util.ts`, `postgres-error.util.ts`, `array.util.ts`, `object.util.ts`.
+- `src/common/utils/`: `document-sequence.ts`, `search.util.ts` (`unaccentILike`), `time.ts` (Vietnam time on UTC storage: `vnZone` for inline date-fns calls, `getFileTimestamp` for export file names, `vnToday`, `startOfVnDay` / `exclusiveEndOfDay` for `timestamp` range filters, `vnTimestamp` / `VN_NOW` for raw SQL), `excel.util.ts`, `vnd.util.ts`, `postgres-error.util.ts`, `array.util.ts`, `object.util.ts`.
 - `src/decorators/`: `field.decorators.ts` (`StringField`, `UUIDField`, `EnumField`, `ClassField`, ... each with `*Optional`), `http.decorators.ts` (`ApiAuth`, `ApiPublic`), `permissions.decorator.ts`, `public.decorator.ts`, `current-user.decorator.ts`, `param.decorators.ts` (`UUIDParam`), `validators/`.
 - `src/constants/`: `error-code.constant.ts` (enum `ErrorCode`, 714 lines, 283 codes: `E###` business, `V###` validation, values like `ncr.error.job_required`; retired codes stay reserved), `permission.constant.ts`, `app.constant.ts` (`Environment`, `OrderBy`, paging defaults), `cache.constant.ts`, `role.constant.ts`.
 - `src/redis/`: `RedisModule` (global) gives a Keyv-Redis `CacheModule` (TTL 1 week) and `BullModule.forRootAsync` connection from `REDIS_URL`. No queue is registered and no `@Processor`/`InjectQueue` exists in `src` (grep): BullMQ is wiring only.
@@ -54,7 +54,7 @@ client --HTTP--> helmet/compression/CORS (Express)
 - `src/utils/`: `validate-config.ts`, `swagger.util.ts`, `cache.util.ts` (`createCacheKey`).
 
 ## Document code generation
-Table `document_sequences` (`src/database/schemas/document-sequences.ts`, unique `(document_type, year)`, `year = 0` for non-yearly docs). `generateDocumentSequence(tx, DocumentType, year)` in `src/common/utils/document-sequence.util.ts` is one atomic `INSERT ... ON CONFLICT DO UPDATE ... RETURNING`; it must run inside the open transaction that creates the document (row lock serialises concurrent creators). `generateDocumentSequences(tx, type, year, n)` reserves n consecutive numbers (IQC batches). `DocumentType` enum (23 values: ORDER, PRODUCTION_ORDER, NCR, IQC, OQC, INVENTORY_RECEIPT, PURCHASE_ORDER, PAYMENT_REQUEST, ...). The service formats the prefix/code; used by ~20 services (grep `document-sequence`).
+`generateDocumentSequence(tx, DocumentType, year)` and `generateDocumentSequences(tx, type, year, n)` in `src/common/utils/document-sequence.ts` compute the next number from the document table itself: `DOCUMENT_CODE_SOURCES` maps each type to its code column and prefix, an advisory lock per prefix (`pg_advisory_xact_lock`) serialises concurrent creators until the transaction ends, then `MAX` over the codes matching the prefix gives the last number. Must run inside the open transaction that creates the document, and the row must be inserted before generating again with the same prefix (`n` covers batches, as for IQC). Hard-deleting the last document of a series reuses its number. The table `document_sequences` is no longer read or written; it stays until a later release drops it.
 
 ## Errors and responses
 - Throw `new AppException(ErrorCode.X, HttpStatus.Y, message?, details?)` (`src/exceptions/app.exception.ts`; default status 400).

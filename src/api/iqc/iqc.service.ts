@@ -16,7 +16,7 @@ import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated
 import {
   DocumentType,
   generateDocumentSequences,
-} from '../../common/utils/document-sequence.util';
+} from '../../common/utils/document-sequence';
 import { buildXlsxBuffer, XLSX_MIME } from '../../common/utils/excel.util';
 import { unaccentILike } from '../../common/utils/search.util';
 import { getFileTimestamp, vnToday, vnZone } from '../../common/utils/time';

@@ -21,7 +21,7 @@ import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-p
 import {
   DocumentType,
   generateDocumentSequence,
-} from '../../common/utils/document-sequence.util';
+} from '../../common/utils/document-sequence';
 import type { ErrorDetailDto } from '../../common/dto/error-detail.dto';
 import {
   buildXlsxBuffer,

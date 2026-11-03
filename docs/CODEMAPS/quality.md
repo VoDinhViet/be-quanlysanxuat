@@ -1,4 +1,4 @@
-<!-- Generated: 2026-10-24 | Files scanned: 40 | Token estimate: ~3600 -->
+<!-- Generated: 2026-11-03 | Files scanned: 40 | Token estimate: ~3600 -->
 # Quality codemap
 
 Includes the NCR<->OQC trace refs (PH-136). Controllers check permissions, services do not.
@@ -32,7 +32,7 @@ IQC (iqc.controller.ts, 8 routes)
 | GET /iqc/stats :50 | iqc:read | getIqcStats -> getIqcStats:282 | - |
 | GET /iqc/export :62 | iqc:read | exportIqc -> exportIqc:219 (cap 10000 rows) | - |
 | GET /iqc/:iqcId :73 | iqc:read | getIqc -> getIqc:506 | - |
-| POST /iqc :83 | iqc:create | createIqc -> createIqc:322 | quality_inspections, quality_inspection_results (if `result`), document_sequences, inventory_receipts (syncReceiptIqcStatus) |
+| POST /iqc :83 | iqc:create | createIqc -> createIqc:322 | quality_inspections, quality_inspection_results (if `result`), inventory_receipts (syncReceiptIqcStatus) |
 | POST /iqc/:iqcId/confirm :96 | iqc:update | confirmIqc -> confirmIqc:673 | results, inspections, evidences, files, supplier_returns, production_jobs(+logs), outsourcing_orders, inventory_receipts |
 | PATCH /iqc/:iqcId :112 | iqc:update | updateIqc -> updateIqc:993 (only `requestedAt`) | quality_inspections |
 | DELETE /iqc/:iqcId :126 | iqc:delete | deleteIqc -> deleteIqc:966 | quality_inspections, inventory_receipts |
@@ -54,7 +54,7 @@ NCR (ncrs.controller.ts, 13 routes)
 | Route | Permission | Handler -> Service | Writes |
 |---|---|---|---|
 | GET /ncrs :36 | ncr:read | getNcrs -> getNcrs:73 | - |
-| POST /ncrs :45 | ncr:create | createNcr -> createNcr:145 (manual) | ncrs, ncr_logs, document_sequences |
+| POST /ncrs :45 | ncr:create | createNcr -> createNcr:145 (manual) | ncrs, ncr_logs |
 | GET /ncrs/:ncrId :58 | ncr:read | getNcr -> getNcr:101 (+getNcrTrace) | - |
 | GET /ncrs/:ncrId/operations :65 | ncr:read | getNcrOperations -> getNcrOperations:128 (buildJobPlan, read-only) | - |
 | PATCH /ncrs/:ncrId :77 | ncr:update | updateNcr -> updateNcr:178 | ncrs, ncr_logs |

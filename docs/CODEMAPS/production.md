@@ -52,7 +52,7 @@ Tables: `po`=production_orders, `poi`=_order_items, `pol`=_order_logs, `pj`=prod
 | GET /:jobId/operations/plan | read | getProductionJobPlanOperations ctrl:281 -> svc:543 | - |
 | PATCH /:jobId/operations/plan | update | updateProductionJobOperationsPlan ctrl:294 -> svc:640 | pjo.dueDate |
 | PATCH /:jobId/operations/:jobOperationId/due-date | update | updateProductionJobOperationDueDate ctrl:311 -> svc:518 | pjo.dueDate |
-| POST /:jobId/qc | oqc:create | requestJobQc ctrl:331 -> `OqcService.createOqcForJob` oqc/oqc.service.ts:470 | quality_inspections (one DRAFT OQC row, `ncrId` null, inserted in a tx) + document_sequences (OQC code via `generateOqcCode`) |
+| POST /:jobId/qc | oqc:create | requestJobQc ctrl:331 -> `OqcService.createOqcForJob` oqc/oqc.service.ts:470 | quality_inspections (one DRAFT OQC row, `ncrId` null, inserted in a tx) (OQC code via `generateOqcCode`) |
 
 ### production-execution (6) `/production-execution` perm prefix `production-execution:`
 | Route | Perm | Controller -> Service | Writes |

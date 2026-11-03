@@ -21,7 +21,7 @@ import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-p
 import {
   DocumentType,
   generateDocumentSequence,
-} from '../../common/utils/document-sequence.util';
+} from '../../common/utils/document-sequence';
 import { buildXlsxBuffer, XLSX_MIME } from '../../common/utils/excel.util';
 import { hasFields } from '../../common/utils/object.util';
 import { getFileTimestamp } from '../../common/utils/time';

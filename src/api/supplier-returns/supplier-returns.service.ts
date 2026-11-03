@@ -7,7 +7,7 @@ import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated
 import {
   DocumentType,
   generateDocumentSequence,
-} from '../../common/utils/document-sequence.util';
+} from '../../common/utils/document-sequence';
 import { unaccentILike } from '../../common/utils/search.util';
 import { vnZone } from '../../common/utils/time';
 import { ErrorCode } from '../../constants/error-code.constant';

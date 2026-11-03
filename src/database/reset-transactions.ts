@@ -102,18 +102,6 @@ const WIPE_TABLES = [
   'quality_inspection_evidences',
 ] as const;
 
-// Loại chứng từ cấp mã cho master data đang giữ — reset counter về 0 sẽ đâm vào mã đang sống
-// ngay lần tạo tiếp theo (`items` dùng partial unique index `uq_items_code_active`, và
-// `document-sequences-bootstrap.seed.ts` không phủ ITEM_DIRECT/ITEM_FG nên không có đường
-// phục hồi tự động).
-const KEEP_DOCUMENT_TYPES = [
-  'ITEM_DIRECT',
-  'ITEM_FG',
-  'CLIENT',
-  'SUPPLIER',
-  'USER',
-] as const;
-
 function parseArgs() {
   const args = process.argv.slice(2);
   const confirmTargetArg = args.find((arg) =>
@@ -134,7 +122,7 @@ function maskedTarget(databaseUrl: string): string {
 }
 
 async function ensureKnownTables(sql: postgres.Sql): Promise<void> {
-  const rows = await sql<{ tableName: string }[]>`
+  const publicTables = await sql<{ tableName: string }[]>`
     SELECT table_name AS "tableName"
     FROM information_schema.tables
     WHERE table_schema = 'public'
@@ -142,8 +130,8 @@ async function ensureKnownTables(sql: postgres.Sql): Promise<void> {
       AND table_name NOT LIKE '\\_\\_drizzle%'
   `;
   const known = new Set<string>([...KEEP_TABLES, ...WIPE_TABLES]);
-  const unknown = rows
-    .map((row) => row.tableName)
+  const unknown = publicTables
+    .map((publicTable) => publicTable.tableName)
     .filter((name) => !known.has(name));
   if (unknown.length > 0) {
     console.error(
@@ -157,10 +145,10 @@ async function ensureKnownTables(sql: postgres.Sql): Promise<void> {
 }
 
 async function countRows(sql: postgres.Sql, table: string): Promise<number> {
-  const rows = await sql<
+  const [tableCount] = await sql<
     { count: string }[]
   >`SELECT count(*) FROM ${sql(table)}`;
-  return Number(rows[0].count);
+  return Number(tableCount.count);
 }
 
 interface FilesForeignKey {
@@ -176,7 +164,7 @@ interface FilesForeignKey {
 async function listFilesForeignKeys(
   sql: postgres.Sql,
 ): Promise<FilesForeignKey[]> {
-  const rows = await sql<FilesForeignKey[]>`
+  const filesForeignKeys = await sql<FilesForeignKey[]>`
     SELECT
       src_cls.relname AS "tableName",
       src_att.attname AS "columnName"
@@ -189,7 +177,7 @@ async function listFilesForeignKeys(
       AND ref_cls.relname = 'files'
       AND src_cls.relname = ANY(${sql.array([...KEEP_TABLES])})
   `;
-  return rows;
+  return filesForeignKeys;
 }
 
 async function countOrphanFiles(
@@ -205,27 +193,12 @@ async function countOrphanFiles(
       )
     `,
   );
-  const rows = await sql<{ count: string }[]>`
+  const [orphanFileCount] = await sql<{ count: string }[]>`
     SELECT count(*) FROM files WHERE ${notExistsClauses.reduce(
       (acc, clause) => sql`${acc} AND ${clause}`,
     )}
   `;
-  return Number(rows[0].count);
-}
-
-async function countKeepDocumentSequences(sql: postgres.Sql): Promise<{
-  reset: number;
-  kept: number;
-}> {
-  const [resetRow] = await sql<{ count: string }[]>`
-    SELECT count(*) FROM document_sequences
-    WHERE document_type NOT IN ${sql(KEEP_DOCUMENT_TYPES)}
-  `;
-  const [keptRow] = await sql<{ count: string }[]>`
-    SELECT count(*) FROM document_sequences
-    WHERE document_type IN ${sql(KEEP_DOCUMENT_TYPES)}
-  `;
-  return { reset: Number(resetRow.count), kept: Number(keptRow.count) };
+  return Number(orphanFileCount.count);
 }
 
 function resolveUploadDir(): string {
@@ -290,12 +263,6 @@ async function main() {
         `${KEEP_TABLES.join(', ')} sau khi TRUNCATE).`,
     );
 
-    const documentSequences = await countKeepDocumentSequences(sql);
-    console.log(
-      `document_sequences: ${documentSequences.reset} dòng sẽ reset (DELETE), ` +
-        `${documentSequences.kept} dòng giữ nguyên (${KEEP_DOCUMENT_TYPES.join(', ')}).`,
-    );
-
     console.log('\nSố dòng hiện tại các bảng giữ (đối chiếu sau khi chạy):');
     for (const table of KEEP_TABLES) {
       console.log(`  ${table}: ${await countRows(sql, table)}`);
@@ -346,10 +313,6 @@ async function main() {
       if (orphanFiles.length > 0) {
         await tx`DELETE FROM files WHERE id IN ${tx(orphanFiles.map((f) => f.id))}`;
       }
-
-      await tx`
-        DELETE FROM document_sequences WHERE document_type NOT IN ${tx(KEEP_DOCUMENT_TYPES)}
-      `;
 
       return orphanFiles;
     });
