@@ -717,6 +717,8 @@ export enum ErrorCode {
   E324 = 'item_category.error.code_exists',
   // Xoá nhóm vật tư còn vật tư (kể cả đã xoá mềm) đang gắn.
   E325 = 'item_category.error.in_use',
+  // Xoá file đang đính kèm trên một chứng từ (bảng nối dùng `restrict`).
+  E326 = 'file.error.in_use',
   V003 = 'common.error.too_many_requests',
   // `GlobalExceptionFilter` bắt chuỗi "No values to set" của drizzle-orm — mọi `PATCH` khi
   // `ValidationPipe` whitelist đã loại sạch field lạ, còn lại payload rỗng cho `.set()`. Trước đây

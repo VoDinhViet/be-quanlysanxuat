@@ -4,6 +4,7 @@ import { plainToInstance } from 'class-transformer';
 import { createHash, randomUUID } from 'crypto';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 
+import { extractPostgresError } from '../../common/utils/postgres-error';
 import { AllConfigType } from '../../config/config.type';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { SUPER_PERMISSION } from '../../constants/permission.constant';
@@ -197,8 +198,7 @@ export class FilesService {
 
     await this.ensureFileNotLinkedToQcEvidence(fileId);
 
-    await this.storageProvider.delete(file.storageKey);
-    await this.db.delete(files).where(eq(files.id, fileId));
+    await this.deleteRowThenBytes(file);
   }
 
   /** Không check uploader/`system:manage` — dành cho service tiêu thụ (vd `BomsService`) thay một
@@ -209,8 +209,24 @@ export class FilesService {
 
     await this.ensureFileNotLinkedToQcEvidence(fileId);
 
+    await this.deleteRowThenBytes(file);
+  }
+
+  /** Xoá dòng `files` trước: các bảng đính kèm trỏ tới bằng `restrict`, nên file còn gắn phiếu thì
+   * dừng ở đây và byte vẫn nguyên. Đảo thứ tự sẽ mất byte mà dòng và liên kết vẫn còn (file vỡ). */
+  private async deleteRowThenBytes(file: FileSelect): Promise<void> {
+    try {
+      await this.db.delete(files).where(eq(files.id, file.id));
+    } catch (error) {
+      // Postgres 18 báo FK `restrict` bằng `23001`, bản cũ hơn bằng `23503`.
+      const postgresCode = extractPostgresError(error)?.code;
+      if (postgresCode === '23001' || postgresCode === '23503') {
+        throw new AppException(ErrorCode.E326, HttpStatus.CONFLICT);
+      }
+      throw error;
+    }
+
     await this.storageProvider.delete(file.storageKey);
-    await this.db.delete(files).where(eq(files.id, fileId));
   }
 
   /** Gọi bởi service tiêu thụ (users/items...) trước khi ghi một `*FileId` — kiểm tồn
