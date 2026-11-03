@@ -1,4 +1,4 @@
-<!-- Generated: 2026-10-26 | Files scanned: 38 | Token estimate: ~3560 -->
+<!-- Generated: 2026-11-03 | Files scanned: 38 | Token estimate: ~3560 -->
 # Inventory codemap
 
 Single warehouse: `inventory_balances.itemId` is UNIQUE, no warehouse column (`src/database/schemas/inventory/inventory-balances.ts`).
@@ -30,6 +30,7 @@ Controller file = `<folder>.controller.ts`; "Svc" = service line.
 | GET /inventory-receipts/:receiptId | R | getInventoryReceipt -> same (323) | - |
 | POST /inventory-receipts | C | createInventoryReceipt (426) | receipts, receipt_items |
 | PATCH /inventory-receipts/:receiptId | U | updateInventoryReceipt (480), DRAFT only | receipts, receipt_items |
+| PATCH /inventory-receipts/:receiptId/files | U | updateInventoryReceiptFiles, body `{fileIds}` is the whole list (max 20), any status except CANCELLED (E098, POSTED allowed), UploadType INVENTORY_RECEIPT_DOCUMENT; removing a file only unlinks it; detail returns `files`, separate from IQC evidence | inventory_receipt_files, files.linked_at |
 | DELETE /inventory-receipts/:receiptId | D | deleteInventoryReceipt (549), DRAFT, hard delete | receipts |
 | POST .../:receiptId/confirm | U | confirmInventoryReceipt (559) | receipts, quality_inspections |
 | POST .../:receiptId/post | U | postInventoryReceipt (642) | receipts, balances, transactions, payment_requests, production_jobs/orders(+logs), ncrs |

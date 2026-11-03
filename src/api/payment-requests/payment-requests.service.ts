@@ -10,6 +10,7 @@ import {
   gte,
   inArray,
   lt,
+  notInArray,
   or,
   sql,
 } from 'drizzle-orm';
@@ -38,6 +39,7 @@ import {
   paymentRequestLogs,
   PaymentRequestStatus,
   PaymentTerm,
+  paymentRequestFiles,
   paymentRequests,
   purchaseOrderItems,
   PurchaseOrderStatus,
@@ -46,6 +48,8 @@ import {
   users,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
+import { UpdateDocumentFilesReqDto } from '../files/dto/update-document-files.req.dto';
+import { FilesService } from '../files/files.service';
 import {
   calculatePurchaseOrderAmounts,
   getBilledQuotationQuantityByPurchaseOrderItemId,
@@ -126,7 +130,10 @@ function settledTotalOf(paymentRequest: {
 export class PaymentRequestsService {
   private static readonly MAX_EXPORT_ROWS = 10_000;
 
-  constructor(@Inject(DRIZZLE) private readonly db: Database) {}
+  constructor(
+    @Inject(DRIZZLE) private readonly db: Database,
+    private readonly filesService: FilesService,
+  ) {}
 
   async getPaymentRequests(
     reqDto: GetPaymentRequestsReqDto,
@@ -317,6 +324,13 @@ export class PaymentRequestsService {
         paidByUser: true,
         cancelledByUser: true,
         creatorBy: true,
+        files: {
+          with: { file: true },
+          orderBy: (requestFiles, { asc }) => [
+            asc(requestFiles.createdAt),
+            asc(requestFiles.id),
+          ],
+        },
       },
     });
 
@@ -373,6 +387,7 @@ export class PaymentRequestsService {
         rejectedBy: paymentRequest.rejectedByUser,
         paidBy: paymentRequest.paidByUser,
         cancelledBy: paymentRequest.cancelledByUser,
+        files: paymentRequest.files.map((requestFile) => requestFile.file),
       },
       { excludeExtraneousValues: true },
     );
@@ -582,6 +597,53 @@ export class PaymentRequestsService {
       .update(paymentRequests)
       .set({ note: reqDto.note?.trim() || null })
       .where(eq(paymentRequests.id, paymentRequestId));
+  }
+
+  /**
+   * Thay danh sách file đính kèm của yêu cầu thanh toán.
+   *
+   * Rules:
+   * - Chỉ xoá file bị bỏ và thêm file mới, không xoá hết rồi ghi lại, để file cũ giữ `createdAt` và
+   *   danh sách không đổi thứ tự.
+   * - Khoá dòng phiếu để không lọt qua lúc `cancel` đang chạy.
+   */
+  async updatePaymentRequestFiles(
+    paymentRequestId: string,
+    reqDto: UpdateDocumentFilesReqDto,
+  ): Promise<void> {
+    const fileIds = [...new Set(reqDto.fileIds)];
+    await this.filesService.linkFiles(fileIds);
+
+    await this.db.transaction(async (tx) => {
+      const [paymentRequest] = await tx
+        .select({ status: paymentRequests.status })
+        .from(paymentRequests)
+        .where(eq(paymentRequests.id, paymentRequestId))
+        .for('update');
+
+      if (!paymentRequest) {
+        throw new AppException(ErrorCode.E157, HttpStatus.NOT_FOUND);
+      }
+      if (paymentRequest.status === PaymentRequestStatus.CANCELLED) {
+        throw new AppException(ErrorCode.E158, HttpStatus.CONFLICT);
+      }
+
+      await tx
+        .delete(paymentRequestFiles)
+        .where(
+          and(
+            eq(paymentRequestFiles.paymentRequestId, paymentRequestId),
+            notInArray(paymentRequestFiles.fileId, fileIds),
+          ),
+        );
+
+      if (fileIds.length > 0) {
+        await tx
+          .insert(paymentRequestFiles)
+          .values(fileIds.map((fileId) => ({ paymentRequestId, fileId })))
+          .onConflictDoNothing();
+      }
+    });
   }
 
   /** Đánh dấu YCTT gấp / bình thường (PH-133); đổi được khi chưa chi hoặc huỷ (`DRAFT`/`PENDING`/

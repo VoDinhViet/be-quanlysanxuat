@@ -74,6 +74,10 @@ export enum UploadType {
   QUOTATION_SUPPLIER_EVIDENCE = 'QUOTATION_SUPPLIER_EVIDENCE',
   // Ảnh/file bằng chứng khi kho xác nhận xuất (`POST /inventory-issues/:issueId/post`).
   INVENTORY_ISSUE_EVIDENCE = 'INVENTORY_ISSUE_EVIDENCE',
+  // Ảnh/file đính kèm của phiếu (`PATCH /payment-requests/:paymentRequestId/files`,
+  // `PATCH /inventory-receipts/:receiptId/files`).
+  PAYMENT_REQUEST_DOCUMENT = 'PAYMENT_REQUEST_DOCUMENT',
+  INVENTORY_RECEIPT_DOCUMENT = 'INVENTORY_RECEIPT_DOCUMENT',
 }
 
 export const uploadTypeEnum = pgEnum('upload_type', [
@@ -97,6 +101,8 @@ export const uploadTypeEnum = pgEnum('upload_type', [
   UploadType.PRODUCTION_ORDER_SIGNED_DOCUMENT,
   UploadType.QUOTATION_SUPPLIER_EVIDENCE,
   UploadType.INVENTORY_ISSUE_EVIDENCE,
+  UploadType.PAYMENT_REQUEST_DOCUMENT,
+  UploadType.INVENTORY_RECEIPT_DOCUMENT,
 ]);
 
 /**

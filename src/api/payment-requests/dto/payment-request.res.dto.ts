@@ -13,6 +13,7 @@ import {
   StringFieldOptional,
   UUIDField,
 } from '../../../decorators/field.decorators';
+import { FileResDto } from '../../files/dto/file.res.dto';
 import { PurchaseOrderAmountsResDto } from '../../purchase-orders/dto/purchase-order-amounts.res.dto';
 import { UserRefResDto } from '../../users/dto/user-ref.res.dto';
 import { PaymentRequestItemResDto } from './payment-request-item.res.dto';
@@ -75,6 +76,13 @@ export class PaymentRequestResDto extends PurchaseOrderAmountsResDto {
   @Expose()
   @ClassField(() => PaymentRequestItemResDto, { each: true })
   items!: PaymentRequestItemResDto[];
+
+  @Expose()
+  @ClassField(() => FileResDto, {
+    each: true,
+    description: 'Ảnh/file đính kèm của yêu cầu thanh toán',
+  })
+  files!: FileResDto[];
 
   @Expose()
   @StringFieldOptional({ nullable: true })

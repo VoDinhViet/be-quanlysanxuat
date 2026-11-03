@@ -13,6 +13,7 @@ import {
 } from 'drizzle-orm/pg-core';
 
 import { users } from '../identity-access/users';
+import { paymentRequestFiles } from './payment-request-files';
 import { purchaseOrders } from './purchase-orders';
 
 // PH-134: DRAFT (người mua rà soát) → PENDING (đã đề nghị, chờ kế toán) → PAID; kế toán có thể trả về
@@ -127,7 +128,7 @@ export const paymentRequests = pgTable(
 
 export const paymentRequestsRelations = relations(
   paymentRequests,
-  ({ one }) => ({
+  ({ one, many }) => ({
     purchaseOrder: one(purchaseOrders, {
       fields: [paymentRequests.purchaseOrderId],
       references: [purchaseOrders.id],
@@ -152,6 +153,7 @@ export const paymentRequestsRelations = relations(
       fields: [paymentRequests.createdBy],
       references: [users.id],
     }),
+    files: many(paymentRequestFiles),
   }),
 );
 

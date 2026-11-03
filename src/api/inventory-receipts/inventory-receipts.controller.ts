@@ -17,6 +17,7 @@ import { ApiAuth } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
+import { UpdateDocumentFilesReqDto } from '../files/dto/update-document-files.req.dto';
 import { PurchaseChainNotesResDto } from '../purchase-notes/dto/purchase-chain-notes.res.dto';
 import { PurchaseNotesService } from '../purchase-notes/purchase-notes.service';
 import { CreateInventoryReceiptReqDto } from './dto/create-inventory-receipt.req.dto';
@@ -87,6 +88,23 @@ export class InventoryReceiptsController {
     @Body() reqDto: UpdateInventoryReceiptReqDto,
   ): Promise<InventoryReceiptResDto> {
     return this.inventoryReceiptsService.updateInventoryReceipt(
+      receiptId,
+      reqDto,
+    );
+  }
+
+  @Patch(':receiptId/files')
+  @Permissions('inventory:update')
+  @ApiAuth({
+    summary:
+      'Thay danh sách ảnh/file đính kèm của phiếu nhập kho — mọi trạng thái trừ CANCELLED',
+    statusCode: HttpStatus.NO_CONTENT,
+  })
+  updateInventoryReceiptFiles(
+    @UUIDParam('receiptId') receiptId: string,
+    @Body() reqDto: UpdateDocumentFilesReqDto,
+  ): Promise<void> {
+    return this.inventoryReceiptsService.updateInventoryReceiptFiles(
       receiptId,
       reqDto,
     );

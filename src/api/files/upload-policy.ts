@@ -49,4 +49,7 @@ export const uploadPolicies: Record<UploadType, UploadPolicy> = {
   [UploadType.QUOTATION_SUPPLIER_EVIDENCE]: { kind: FileKind.EVIDENCE },
   // Ảnh + tài liệu, cùng lý do SUPPLIER_RETURN_EVIDENCE: ngoài ảnh chụp còn có phiếu ký nhận scan.
   [UploadType.INVENTORY_ISSUE_EVIDENCE]: { kind: FileKind.EVIDENCE },
+  // Ảnh + tài liệu — chứng từ của phiếu vừa có ảnh chụp vừa có hoá đơn, biên bản PDF.
+  [UploadType.PAYMENT_REQUEST_DOCUMENT]: { kind: FileKind.EVIDENCE },
+  [UploadType.INVENTORY_RECEIPT_DOCUMENT]: { kind: FileKind.EVIDENCE },
 };

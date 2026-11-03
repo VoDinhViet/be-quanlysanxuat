@@ -13,6 +13,7 @@ import {
   isNull,
   lt,
   ne,
+  notInArray,
   or,
   sql,
 } from 'drizzle-orm';
@@ -29,6 +30,7 @@ import {
   clients,
   files,
   InventoryDocumentStatus,
+  inventoryReceiptFiles,
   inventoryReceiptItems,
   type InventoryReceiptItemSelect,
   inventoryReceipts,
@@ -59,6 +61,8 @@ import {
   buildFormPdfFileName,
 } from '../../templates/form-templates.registry';
 import { PdfRendererService } from '../../templates/pdf-renderer.service';
+import { UpdateDocumentFilesReqDto } from '../files/dto/update-document-files.req.dto';
+import { FilesService } from '../files/files.service';
 import {
   onHandQuantityByItemSubquery,
   itemStockColumns,
@@ -148,6 +152,7 @@ export class InventoryReceiptsService {
 
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
+    private readonly filesService: FilesService,
     private readonly inventoryPostingService: InventoryPostingService,
     private readonly iqcService: IqcService,
     private readonly paymentRequestsService: PaymentRequestsService,
@@ -408,6 +413,13 @@ export class InventoryReceiptsService {
         confirmerBy: true,
         posterBy: true,
         creatorBy: true,
+        files: {
+          with: { file: true },
+          orderBy: (receiptFiles, { asc }) => [
+            asc(receiptFiles.createdAt),
+            asc(receiptFiles.id),
+          ],
+        },
       },
     });
 
@@ -429,7 +441,11 @@ export class InventoryReceiptsService {
 
     return plainToInstance(
       InventoryReceiptResDto,
-      { ...inventoryReceipt, items: lines },
+      {
+        ...inventoryReceipt,
+        items: lines,
+        files: inventoryReceipt.files.map((receiptFile) => receiptFile.file),
+      },
       { excludeExtraneousValues: true },
     );
   }
@@ -617,6 +633,49 @@ export class InventoryReceiptsService {
     });
 
     return this.getInventoryReceipt(receiptId);
+  }
+
+  /**
+   * Thay danh sách file đính kèm của phiếu nhập kho.
+   *
+   * Rules:
+   * - Chỉ xoá file bị bỏ và thêm file mới, không xoá hết rồi ghi lại, để file cũ giữ `createdAt` và
+   *   danh sách không đổi thứ tự.
+   * - Phiếu `POSTED` vẫn đính kèm được vì file không ảnh hưởng tồn kho.
+   */
+  async updateInventoryReceiptFiles(
+    receiptId: string,
+    reqDto: UpdateDocumentFilesReqDto,
+  ): Promise<void> {
+    const fileIds = [...new Set(reqDto.fileIds)];
+    await this.filesService.linkFiles(fileIds);
+
+    await this.db.transaction(async (tx) => {
+      const inventoryReceipt = await this.getInventoryReceiptForUpdate(
+        tx,
+        receiptId,
+      );
+
+      if (inventoryReceipt.status === InventoryDocumentStatus.CANCELLED) {
+        throw new AppException(ErrorCode.E098, HttpStatus.CONFLICT);
+      }
+
+      await tx
+        .delete(inventoryReceiptFiles)
+        .where(
+          and(
+            eq(inventoryReceiptFiles.receiptId, receiptId),
+            notInArray(inventoryReceiptFiles.fileId, fileIds),
+          ),
+        );
+
+      if (fileIds.length > 0) {
+        await tx
+          .insert(inventoryReceiptFiles)
+          .values(fileIds.map((fileId) => ({ receiptId, fileId })))
+          .onConflictDoNothing();
+      }
+    });
   }
 
   async deleteInventoryReceipt(receiptId: string): Promise<void> {

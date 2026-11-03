@@ -16,6 +16,7 @@ import {
   InventoryDocumentStatus,
   inventoryDocumentStatusEnum,
 } from './inventory-documents';
+import { inventoryReceiptFiles } from './inventory-receipt-files';
 import { inventoryReceiptItems } from './inventory-receipt-items';
 import { clients } from '../clients/clients';
 import { productionJobs } from '../production/production-jobs';
@@ -193,6 +194,7 @@ export const inventoryReceiptsRelations = relations(
       references: [users.id],
     }),
     items: many(inventoryReceiptItems),
+    files: many(inventoryReceiptFiles),
   }),
 );
 

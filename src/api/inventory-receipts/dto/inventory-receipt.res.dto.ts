@@ -7,6 +7,7 @@ import {
 } from '../../../database/schemas';
 import {
   BooleanField,
+  ClassField,
   ClassFieldOptional,
   DateField,
   DateFieldOptional,
@@ -16,6 +17,7 @@ import {
   UUIDField,
 } from '../../../decorators/field.decorators';
 import { ClientRefResDto } from '../../clients/dto/client-ref.res.dto';
+import { FileResDto } from '../../files/dto/file.res.dto';
 import { ProductionJobRefResDto } from '../../production-jobs/dto/production-job-ref.res.dto';
 import { ProductionOrderRefResDto } from '../../production-orders/dto/production-order-ref.res.dto';
 import { PurchaseOrderRefResDto } from '../../purchase-orders/dto/purchase-order-ref.res.dto';
@@ -85,6 +87,13 @@ export class InventoryReceiptResDto {
   @Expose()
   @StringFieldOptional({ nullable: true })
   note!: string | null;
+
+  @Expose()
+  @ClassField(() => FileResDto, {
+    each: true,
+    description: 'Ảnh/file đính kèm của phiếu, không gồm ảnh IQC',
+  })
+  files!: FileResDto[];
 
   @Expose()
   @StringFieldOptional({

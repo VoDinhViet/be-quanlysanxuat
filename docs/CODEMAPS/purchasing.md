@@ -42,10 +42,11 @@ purchase-orders (10) -> POS:
 
 purchase-ledger (2) -> PLS, read: GET / :63; GET /export :196 (xlsx, silently capped 10,000 rows).
 
-payment-requests (12) -> PYS:
+payment-requests (13) -> PYS:
 - GET / read :127; GET /export read :213 (cap 10,000); GET /:id read :292; GET /:id/logs read :600.
 - POST /:id/mark-paid approve :377; /send update :422; /reject approve :454; /cancel approve :406 [payment_requests, payment_request_logs].
 - PATCH /:id/invoice update :551; /note update :568; /urgency update :585 [payment_requests]; /extra-cost update :489 [+logs].
+- PATCH /:id/files update `updatePaymentRequestFiles` [payment_request_files, files.linked_at]: body `{fileIds}` is the whole list (max 20), any status except CANCELLED (E158), UploadType PAYMENT_REQUEST_DOCUMENT; removing a file only unlinks it. Detail returns `files`.
 - No create route and no separate approve route: `mark-paid` is the accountant confirmation.
 
 suppliers (6) -> SUS, perm `suppliers:<x>`: GET / read :41; GET /stats read :96; GET /:id read :119; POST / create :142 and PATCH /:id update :191 (both return SupplierResDto; write suppliers, supplier_payment_info, supplier_files, supplier_representatives); DELETE /:id delete :241 (soft, 204).

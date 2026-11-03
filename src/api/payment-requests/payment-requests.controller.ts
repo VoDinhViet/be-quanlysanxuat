@@ -17,6 +17,7 @@ import { ApiAuth } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
+import { UpdateDocumentFilesReqDto } from '../files/dto/update-document-files.req.dto';
 import { CancelPaymentRequestReqDto } from './dto/cancel-payment-request.req.dto';
 import { ExportPaymentRequestsReqDto } from './dto/export-payment-requests.req.dto';
 import { GetPaymentRequestLogsReqDto } from './dto/get-payment-request-logs.req.dto';
@@ -157,6 +158,23 @@ export class PaymentRequestsController {
     @Body() reqDto: UpdatePaymentRequestNoteReqDto,
   ): Promise<void> {
     return this.paymentRequestsService.updatePaymentRequestNote(
+      paymentRequestId,
+      reqDto,
+    );
+  }
+
+  @Patch(':paymentRequestId/files')
+  @Permissions('purchasing:update')
+  @ApiAuth({
+    summary:
+      'Thay danh sách ảnh/file đính kèm của yêu cầu thanh toán — mọi trạng thái trừ CANCELLED',
+    statusCode: HttpStatus.NO_CONTENT,
+  })
+  updatePaymentRequestFiles(
+    @UUIDParam('paymentRequestId') paymentRequestId: string,
+    @Body() reqDto: UpdateDocumentFilesReqDto,
+  ): Promise<void> {
+    return this.paymentRequestsService.updatePaymentRequestFiles(
       paymentRequestId,
       reqDto,
     );

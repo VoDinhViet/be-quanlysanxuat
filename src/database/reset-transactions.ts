@@ -64,9 +64,11 @@ const WIPE_TABLES = [
   'purchase_order_items',
   'payment_requests',
   'payment_request_logs',
+  'payment_request_files',
   // Inventory
   'inventory_receipts',
   'inventory_receipt_items',
+  'inventory_receipt_files',
   'inventory_issues',
   'inventory_issue_items',
   'inventory_requisitions',
