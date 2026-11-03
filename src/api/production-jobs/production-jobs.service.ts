@@ -19,7 +19,6 @@ import {
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { groupBy } from '../../common/utils/array';
-import { selectOperations } from './production-job-operations.util';
 import { getFileTimestamp, vnToday, vnZone } from '../../common/utils/time';
 import { formatQuantity } from '../../common/utils/vnd';
 import { unaccentILike } from '../../common/utils/search';
@@ -486,22 +485,27 @@ export class ProductionJobsService {
       (operation) => operation.productionJobBomItemId,
     );
 
-    const groups = bomItems
-      .map((bomItem) => {
-        const { operations, nextOperationName } = selectOperations(
-          operationsByBomItemId.get(bomItem.id) ?? [],
-          operationId,
-        );
+    // Tra trên toàn bộ công đoạn của Job vì bước kế tiếp có thể không khớp `operationId` đang lọc.
+    const jobOperationNameById = new Map(
+      jobOperations.map((operation) => [operation.id, operation.name]),
+    );
 
-        return {
-          ...bomItem,
-          nextOperationName,
-          operations: operations.map((operation) => ({
+    const groups = bomItems
+      .map((bomItem) => ({
+        ...bomItem,
+        operations: (operationsByBomItemId.get(bomItem.id) ?? [])
+          .filter(
+            (operation) =>
+              !operationId || operation.operationId === operationId,
+          )
+          .map((operation) => ({
             ...operation,
             plannedQuantity: bomItem.plannedQuantity,
+            nextOperationName: operation.successorId
+              ? (jobOperationNameById.get(operation.successorId) ?? null)
+              : null,
           })),
-        };
-      })
+      }))
       .filter((bomItem) => bomItem.operations.length > 0);
 
     return plainToInstance(ProductionJobBomItemResDto, groups, {

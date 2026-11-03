@@ -58,6 +58,14 @@ export class ProductionJobBomOperationResDto {
   note!: string | null;
 
   @Expose()
+  @StringFieldOptional({
+    nullable: true,
+    description:
+      'Tên công đoạn kế tiếp: bước sau trong cùng Part, hết thì bước đầu của Part cha gần nhất có công đoạn, rồi tới thành phẩm — null khi không còn bước nào phía sau',
+  })
+  nextOperationName!: string | null;
+
+  @Expose()
   @NumberField({
     description:
       'SL kế hoạch của node BOM chứa công đoạn — định mức nhân luỹ kế theo cây × SL Job; cũng là ' +
@@ -137,14 +145,6 @@ export class ProductionJobBomItemResDto {
   @Expose()
   @FileField('imageFile', 'Ảnh part snapshot (hoặc ảnh thành phẩm cho FG)')
   image!: FileResDto | null;
-
-  @Expose()
-  @StringFieldOptional({
-    nullable: true,
-    description:
-      'Tên công đoạn liền sau công đoạn đang lọc (`operationId`) trong routing của Part này — null khi không lọc hoặc khi đó là bước cuối',
-  })
-  nextOperationName!: string | null;
 
   @Expose()
   @ClassField(() => ProductionJobBomOperationResDto, { each: true })

@@ -1,5 +1,6 @@
 import { asc, eq, getTableColumns, inArray } from 'drizzle-orm';
 
+import { groupBy } from '../../common/utils/array';
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
   bomItems,
@@ -127,6 +128,58 @@ function keepReworkOperations(
 }
 
 /**
+ * Bước kế tiếp của từng công đoạn trong Job; `plan.operations` đã theo thứ tự chạy của từng node.
+ *
+ * Rules:
+ * - Còn bước sau trong cùng node thì lấy bước đó.
+ * - Hết bước thì lấy bước đầu của node cha gần nhất có công đoạn.
+ * - Node gốc có `parentId` null nhưng vẫn lắp vào thành phẩm nên cấp trên của nó là node `FG`.
+ * - Bước cuối của node `FG` không có bước kế tiếp.
+ */
+function buildSuccessorIdByJobOperationId(
+  plan: Pick<JobPlan, 'bomItems' | 'operations'>,
+): Map<string, string | null> {
+  const bomItemById = new Map(
+    plan.bomItems.map((bomItem) => [bomItem.id, bomItem]),
+  );
+  const fgBomItem = plan.bomItems.find(
+    (bomItem) => bomItem.itemType === ProductionJobBomItemType.FG,
+  );
+  const operationsByBomItemId = groupBy(
+    plan.operations,
+    (operation) => operation.productionJobBomItemId,
+  );
+
+  const findFirstAncestorOperationId = (
+    bomItem: JobPlanBomItem,
+  ): string | null => {
+    const parent = bomItem.parentId
+      ? bomItemById.get(bomItem.parentId)
+      : fgBomItem;
+    if (!parent || parent.id === bomItem.id) {
+      return null;
+    }
+
+    return (
+      operationsByBomItemId.get(parent.id)?.at(0)?.id ??
+      findFirstAncestorOperationId(parent)
+    );
+  };
+
+  return new Map(
+    plan.bomItems.flatMap((bomItem) => {
+      const ownOperations = operationsByBomItemId.get(bomItem.id) ?? [];
+
+      return ownOperations.map((operation, index) => [
+        operation.id,
+        ownOperations.at(index + 1)?.id ??
+          findFirstAncestorOperationId(bomItem),
+      ]);
+    }),
+  );
+}
+
+/**
  * Ghi kế hoạch vào các bảng `production_job_*` và đóng dấu `snapshotLoadedAt`. Gọi trong
  * transaction tạo Job (`createJobs`) hoặc tải lại (`reloadSnapshot`, sau `clearJobSnapshot`).
  */
@@ -149,6 +202,9 @@ export async function createJobSnapshot(
   }
 
   if (plan.operations.length) {
+    // Tính trên danh sách đã lọc của Job sửa chữa để con trỏ không trỏ vào bước đã bị bỏ.
+    const successorIdByJobOperationId = buildSuccessorIdByJobOperationId(plan);
+
     await tx.insert(productionJobOperations).values(
       plan.operations.map((operation) => ({
         id: operation.id,
@@ -159,6 +215,7 @@ export async function createJobSnapshot(
         name: operation.name,
         type: operation.type,
         sortOrder: operation.sortOrder,
+        successorId: successorIdByJobOperationId.get(operation.id) ?? null,
         note: operation.note,
       })),
     );

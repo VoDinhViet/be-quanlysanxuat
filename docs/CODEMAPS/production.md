@@ -8,7 +8,7 @@ Paths relative to `src/api/` unless starting `database/` or `constants/`. `ctrl:
 | Folder | Files (lines) | Role |
 |---|---|---|
 | production-orders | ctrl 180, svc 774, export 49, dto/ | LSX header + plan lines, approve, logs, Excel/PDF. No query/write file: SQL inline in svc |
-| production-jobs | ctrl 338, svc 1052, `production-job-snapshot.query.ts` 536, `production-jobs.query.ts` 216, `production-job-issues.query.ts` 195, dto/ | JOB read/plan/start. snapshot.query builds BOM/ops/issues; jobs.query has close helpers; issues.query edits materials |
+| production-jobs | ctrl 338, svc 1069, `production-job-snapshot.query.ts` 593, `production-jobs.query.ts` 216, `production-job-issues.query.ts` 195, dto/ | JOB read/plan/start. snapshot.query builds BOM/ops/issues; jobs.query has close helpers; issues.query edits materials |
 | production-execution | ctrl 136, svc 654, constant 30, dto/ | "Thuc hien san xuat" screens; only manual progress writer. No query file |
 | outsourcing-orders | ctrl 118, svc 489, `outsourcing-orders.query.ts` 327, dto/ | OS-OUT (send out); query holds `recomputeOutsourcingOrderStatus` |
 | outsourcing-receipts | ctrl 112, svc 695, `outsourcing-receipts.query.ts` 155, dto/ | OS-IN (receive back); query = received-qty subqueries |
@@ -40,7 +40,7 @@ Tables: `po`=production_orders, `poi`=_order_items, `pol`=_order_logs, `pj`=prod
 | GET /export-plan-pdf | read | exportProductionPlanPdf ctrl:89 -> svc:114 | - |
 | GET /:jobId | read | getProductionJob ctrl:101 -> svc:275 (+oqc.query.ts:153; `productFiles` = item_files of the Job's item revision) | - |
 | GET /:jobId/bom | read | getProductionJobBom ctrl:114 -> svc:342 | - |
-| GET /:jobId/operations | read | getProductionJobOperations ctrl:132 -> svc:442 (ctrl asserts operation access if `operationId`) | - |
+| GET /:jobId/operations | read | getProductionJobOperations ctrl:132 -> svc:454 (ctrl asserts operation access if `operationId`; each operation carries `nextOperationName`, resolved from `successor_id`) | - |
 | GET /:jobId/notes | read | getProductionJobNotes ctrl:155 -> svc:675 | - |
 | GET /:jobId/logs | read | getProductionJobLogs ctrl:170 -> svc:701 | - |
 | POST /:jobId/notes | update | createProductionJobNote ctrl:183 -> svc:499 | production_job_notes |
@@ -105,7 +105,7 @@ LSX (`database/schemas/production/production-orders.ts:27`: PENDING, APPROVED, C
 
   NCR secondary LSX: NcrsService.createProductionOrder ncrs/ncrs.service.ts:337 (NCR status APPROVED|IN_PROGRESS)
      insert directly APPROVED, sourceType=NCR, ncrId+ncrAction (REWORK|REMAKE), same orderId, 1 JOB, NCR -> IN_PROGRESS
-     REWORK: qty=ncr.reworkQty, snapshot via `ReworkSnapshotOptions` (snapshot.query:105): only chosen ops + last FG op, issues []
+     REWORK: qty=ncr.reworkQty, snapshot via `ReworkSnapshotOptions` (snapshot.query:106): only chosen ops + last FG op, issues []
      REMAKE: qty=ncr.remakeQty, normal snapshot
      Marker: `production_orders.ncrAction` is exposed as `ncrAction` (null for normal LSX) on GET /production-jobs,
      GET /production-execution/jobs and GET /oqc rows; the plan PDF (`exportProductionPlanPdf`, template
@@ -115,7 +115,7 @@ LSX (`database/schemas/production/production-orders.ts:27`: PENDING, APPROVED, C
 
 JOB (`production-jobs.ts:26`: PENDING, IN_PROGRESS, WAITING_QC, WAITING_DELIVERY, COMPLETED; no manual route past start)
 
-  createJobs jobs.svc:705 (+createJobSnapshot snapshot.query:133)
+  createJobs jobs.svc:749 (+createJobSnapshot snapshot.query:186, writes `successor_id` via `buildSuccessorIdByJobOperationId`)
      PENDING --reloadSnapshot svc:749 / addIssues svc:771 / updateIssue / removeIssue (PENDING only)
         | startJob svc:819 (lock :825; shortage -> purchase request :860)
      IN_PROGRESS --report ops (exec svc:479) / OS-IN recompute (jobs.query:106)
@@ -160,7 +160,7 @@ OS-IN (outsourcing-receipts.ts:17): create -> POSTED (svc:355) -> CANCELLED (svc
 
 - Orders: `OrdersService.approveOrder` (orders.service.ts:729-750) calls `getInitialPlanItems`/`seedPlan`; stock via `InventoryService.getStockLevels` (po.svc:569).
 - Revision: JOB views (list, detail, BOM nodes), production-execution, OQC and outsourcing orders/receipts (`coalesce(production_job_bom_items.revision, items.revision)`) read `pj.item_revision` / `production_job_bom_items.revision`, not `items.revision`, so editing a product's revision after approval does not relabel its JOBs. SO, LSX lines, inventory and delivery still show the live revision. `item_revision` is nullable until a follow-up migration sets NOT NULL (old app compatibility).
-- BOM/routing: `buildJobPlan` (snapshot.query:62) reads `boms`, `bom_items`, BOM operations, items; builds job BOM nodes (FG/COMPONENT/DIRECT), operations, issues.
+- BOM/routing: `buildJobPlan` (snapshot.query:63) reads `boms`, `bom_items`, BOM operations, items; builds job BOM nodes (FG/COMPONENT/DIRECT), operations, issues.
 - Inventory: `getProductionJobBom` joins `issuedQuantityByJobItemSubquery`, `balanceByItemSubquery`, `availableQuantityByItemSubquery` (jobs.svc:334-337); inventory-requisitions.service.ts:575 throws E087 on job status; FG receipt via `createProductionReceiptForJob`/`postInventoryReceipt`.
 - Purchasing: `startJob` -> `PurchaseRequestsService.createShortageRequest` (jobs.svc:860).
 - Quality: OQC (`createOqcForJob`, `confirmOqc`), IQC from OS-IN, `closeJobIfQcCovered`, NCR (`createProductionOrder`, `requestOqc` ncrs.service:421).

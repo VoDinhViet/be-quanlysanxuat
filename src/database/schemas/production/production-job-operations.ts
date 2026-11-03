@@ -1,5 +1,6 @@
 import { relations, sql } from 'drizzle-orm';
 import {
+  type AnyPgColumn,
   check,
   date,
   index,
@@ -27,6 +28,8 @@ import { productionJobs } from './production-jobs';
  *   `operationId` chỉ là liên kết tham khảo (`set null` khi bị xoá).
  * - Không unique `(productionJobBomItemId, operationId)`: một routing được lặp lại cùng công đoạn
  *   (`bom_operations` cũng vậy), ép unique sẽ nuốt mất bước khi copy.
+ * - `successorId` là bước kế tiếp, ghi một lần lúc chụp snapshot (`createJobSnapshot`) và không đổi
+ *   sau đó vì thứ tự công đoạn của Job đã cố định; null khi không còn bước nào phía sau.
  * - `completedQuantity`/`rejectedQuantity`/`completedDate` chỉ sửa tay qua `POST .../reports`
  *   (`ProductionExecutionService`, cộng dồn và ghi thêm một dòng `production_job_operation_reports`;
  *   chỉ khi Job `IN_PROGRESS`, `E087`). Công đoạn `OUTSOURCE` bị chặn ở đó (`E260`), tự ghi qua
@@ -52,6 +55,10 @@ export const productionJobOperations = pgTable(
     name: varchar('name', { length: 255 }).notNull(),
     type: operationTypeEnum('type').notNull(),
     sortOrder: integer('sort_order').notNull().default(0),
+    successorId: uuid('successor_id').references(
+      (): AnyPgColumn => productionJobOperations.id,
+      { onDelete: 'set null' },
+    ),
     note: varchar('note', { length: 1000 }),
     completedQuantity: numeric('completed_quantity', {
       precision: 12,
@@ -85,6 +92,7 @@ export const productionJobOperations = pgTable(
       table.productionJobBomItemId,
     ),
     index('idx_production_job_operations_operation_id').on(table.operationId),
+    index('idx_production_job_operations_successor_id').on(table.successorId),
     check(
       'chk_production_job_operations_completed_quantity_non_negative',
       sql`completed_quantity >= 0`,
