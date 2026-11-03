@@ -44,7 +44,10 @@ import {
   units,
   users,
 } from '../../database/schemas';
-import { FormTemplateType } from '../../templates/form-templates.registry';
+import {
+  FormTemplateType,
+  buildFormPdfFileName,
+} from '../../templates/form-templates.registry';
 import { PdfRendererService } from '../../templates/pdf-renderer.service';
 import { AppException } from '../../exceptions/app.exception';
 import { InventoryService } from '../inventory/inventory.service';
@@ -318,7 +321,10 @@ export class ProductionOrdersService {
       context,
     );
 
-    const fileName = `${order.code ?? 'LSX'}-${getFileTimestamp()}.pdf`;
+    const fileName = buildFormPdfFileName(
+      FormTemplateType.PRODUCTION_ORDER,
+      order.code,
+    );
     return new StreamableFile(buffer, {
       type: 'application/pdf',
       disposition: `attachment; filename="${fileName}"`,

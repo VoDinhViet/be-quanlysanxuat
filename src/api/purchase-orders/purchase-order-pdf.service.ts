@@ -2,7 +2,7 @@ import { HttpStatus, Inject, Injectable, StreamableFile } from '@nestjs/common';
 import { format } from 'date-fns';
 import { asc, desc, eq, getTableColumns } from 'drizzle-orm';
 
-import { getFileTimestamp, vnZone } from '../../common/utils/time';
+import { vnZone } from '../../common/utils/time';
 import {
   formatQuantity,
   formatVnd,
@@ -21,7 +21,10 @@ import {
   units,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
-import { FormTemplateType } from '../../templates/form-templates.registry';
+import {
+  FormTemplateType,
+  buildFormPdfFileName,
+} from '../../templates/form-templates.registry';
 import { PdfRendererService } from '../../templates/pdf-renderer.service';
 import { calculatePurchaseOrderAmounts } from './purchase-orders.query';
 
@@ -158,7 +161,10 @@ export class PurchaseOrderPdfService {
       context,
     );
 
-    const fileName = `${purchaseOrder.code}-${getFileTimestamp()}.pdf`;
+    const fileName = buildFormPdfFileName(
+      FormTemplateType.PURCHASE_ORDER,
+      purchaseOrder.code,
+    );
     return new StreamableFile(buffer, {
       type: 'application/pdf',
       disposition: `attachment; filename="${fileName}"`,

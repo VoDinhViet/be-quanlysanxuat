@@ -12,6 +12,10 @@ export function getFileTimestamp(): string {
   return format(new Date(), 'yyyyMMdd-HHmm', { in: vnZone });
 }
 
+export function getFileDate(): string {
+  return format(new Date(), 'yyyyMMdd', { in: vnZone });
+}
+
 /** "Hôm nay" theo giờ Việt Nam, neo về UTC-midnight của đúng ngày đó — an toàn để ghi vào cột
  * Drizzle `date` (Postgres `date`, serialize qua `.toISOString()`). `new Date()` trần lệch một
  * ngày trong khung 00:00–06:59 giờ VN, vì lúc đó vẫn còn là ngày hôm trước theo UTC. */

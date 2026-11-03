@@ -1,5 +1,7 @@
 import { join } from 'path';
 
+import { getFileDate } from '../common/utils/time';
+
 /** Loại chứng từ đã có template từ KINH DOANH.xlsx:
  * - `ORDER`: chi tiết 1 đơn hàng bán, file `order.html`
  * - `ORDER_SUMMARY`: danh sách tổng hợp nhiều đơn hàng bán (mã BM-03/KD), file `order-summary.html`
@@ -31,6 +33,8 @@ export interface FormTemplatePlaceholder {
 
 interface FormTemplateDefinition {
   fileName: string;
+  /** Tiêu đề in trên biểu mẫu, viết thường, không dấu, nối bằng `-`; là phần đầu tên file tải về. */
+  downloadName: string;
   landscape: boolean;
   placeholders: FormTemplatePlaceholder[];
 }
@@ -49,6 +53,7 @@ export const FORM_TEMPLATES: Record<FormTemplateType, FormTemplateDefinition> =
   {
     [FormTemplateType.ORDER]: {
       fileName: 'order.html',
+      downloadName: 'don-hang',
       landscape: true,
       placeholders: [
         { key: 'code', label: 'Số đơn', group: 'meta' },
@@ -85,6 +90,7 @@ export const FORM_TEMPLATES: Record<FormTemplateType, FormTemplateDefinition> =
     },
     [FormTemplateType.ORDER_SUMMARY]: {
       fileName: 'order-summary.html',
+      downloadName: 'danh-sach-tong-hop-don-hang',
       landscape: true,
       placeholders: [
         { key: 'period_from', label: 'Từ ngày', group: 'meta' },
@@ -108,6 +114,7 @@ export const FORM_TEMPLATES: Record<FormTemplateType, FormTemplateDefinition> =
     },
     [FormTemplateType.PRODUCTION_ORDER]: {
       fileName: 'production-order.html',
+      downloadName: 'lenh-san-xuat',
       landscape: true,
       placeholders: [
         { key: 'code', label: 'Mã lệnh SX / PO', group: 'meta' },
@@ -118,6 +125,7 @@ export const FORM_TEMPLATES: Record<FormTemplateType, FormTemplateDefinition> =
     },
     [FormTemplateType.PRODUCTION_PLAN]: {
       fileName: 'production-plan.html',
+      downloadName: 'ke-hoach-san-xuat',
       landscape: true,
       placeholders: [
         { key: 'customer_name', label: 'Khách hàng', group: 'meta' },
@@ -128,6 +136,7 @@ export const FORM_TEMPLATES: Record<FormTemplateType, FormTemplateDefinition> =
     },
     [FormTemplateType.STOCK_IN_SLIP]: {
       fileName: 'stock-in-slip.html',
+      downloadName: 'phieu-nhap-kho',
       landscape: false,
       placeholders: [
         { key: 'code', label: 'Mã phiếu nhập', group: 'meta' },
@@ -156,6 +165,7 @@ export const FORM_TEMPLATES: Record<FormTemplateType, FormTemplateDefinition> =
     },
     [FormTemplateType.STOCK_OUT_SLIP]: {
       fileName: 'stock-out-slip.html',
+      downloadName: 'phieu-xuat-kho',
       landscape: false,
       placeholders: [
         { key: 'code', label: 'Mã phiếu xuất', group: 'meta' },
@@ -170,6 +180,7 @@ export const FORM_TEMPLATES: Record<FormTemplateType, FormTemplateDefinition> =
     },
     [FormTemplateType.MATERIAL_REQUISITION]: {
       fileName: 'material-requisition.html',
+      downloadName: 'phieu-lanh-vat-tu',
       landscape: false,
       placeholders: [
         { key: 'code', label: 'Mã phiếu lãnh', group: 'meta' },
@@ -183,6 +194,7 @@ export const FORM_TEMPLATES: Record<FormTemplateType, FormTemplateDefinition> =
     },
     [FormTemplateType.PURCHASE_REQUEST]: {
       fileName: 'purchase-request.html',
+      downloadName: 'de-xuat-mua-hang',
       landscape: false,
       placeholders: [
         { key: 'code', label: 'Số phiếu đề xuất', group: 'meta' },
@@ -196,6 +208,7 @@ export const FORM_TEMPLATES: Record<FormTemplateType, FormTemplateDefinition> =
     },
     [FormTemplateType.PURCHASE_ORDER]: {
       fileName: 'purchase-order.html',
+      downloadName: 'don-dat-hang',
       landscape: false,
       placeholders: [
         { key: 'code', label: 'Số đơn đặt hàng', group: 'meta' },
@@ -266,3 +279,20 @@ export const CREATOR_SIGNATURE_PARTIAL_PATH = join(
   'partials',
   'creator-signature.html',
 );
+
+/**
+ * Tên file PDF tải về, dạng `ten-bieu-mau_MA-CHUNG-TU.pdf`.
+ *
+ * Rules:
+ * - Không có mã (biểu mẫu danh sách, LSX chưa cấp mã) thì lấy ngày xuất `yyyyMMdd` thay cho mã.
+ * - Tên nằm trong header `Content-Disposition` dạng quoted nên mã chỉ giữ ký tự ASCII an toàn.
+ */
+export function buildFormPdfFileName(
+  type: FormTemplateType,
+  documentCode: string | null = null,
+): string {
+  const reference = documentCode
+    ? documentCode.replace(/[^\w.-]+/g, '-')
+    : getFileDate();
+  return `${FORM_TEMPLATES[type].downloadName}_${reference}.pdf`;
+}

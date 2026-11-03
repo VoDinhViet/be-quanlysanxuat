@@ -39,7 +39,10 @@ import {
   formatVndInWords,
 } from '../../common/utils/vnd';
 import { ErrorCode } from '../../constants/error-code.constant';
-import { FormTemplateType } from '../../templates/form-templates.registry';
+import {
+  FormTemplateType,
+  buildFormPdfFileName,
+} from '../../templates/form-templates.registry';
 import { PdfRendererService } from '../../templates/pdf-renderer.service';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
@@ -457,7 +460,7 @@ export class OrdersService {
       context,
     );
 
-    const fileName = `${order.code}-${getFileTimestamp()}.pdf`;
+    const fileName = buildFormPdfFileName(FormTemplateType.ORDER, order.code);
     return new StreamableFile(buffer, {
       type: 'application/pdf',
       disposition: `attachment; filename="${fileName}"`,
@@ -545,7 +548,7 @@ export class OrdersService {
       context,
     );
 
-    const fileName = `danh-sach-tong-hop-don-hang-${getFileTimestamp()}.pdf`;
+    const fileName = buildFormPdfFileName(FormTemplateType.ORDER_SUMMARY);
     return new StreamableFile(buffer, {
       type: 'application/pdf',
       disposition: `attachment; filename="${fileName}"`,

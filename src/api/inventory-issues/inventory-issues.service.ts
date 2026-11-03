@@ -20,7 +20,7 @@ import {
   generateDocumentSequence,
 } from '../../common/utils/document-sequence';
 import { unaccentILike } from '../../common/utils/search';
-import { getFileTimestamp, vnZone } from '../../common/utils/time';
+import { vnZone } from '../../common/utils/time';
 import { formatQuantity } from '../../common/utils/vnd';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
@@ -47,7 +47,10 @@ import {
   users,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
-import { FormTemplateType } from '../../templates/form-templates.registry';
+import {
+  FormTemplateType,
+  buildFormPdfFileName,
+} from '../../templates/form-templates.registry';
 import { PdfRendererService } from '../../templates/pdf-renderer.service';
 import { hasPendingIqcForItems } from '../iqc/iqc.query';
 import { FilesService } from '../files/files.service';
@@ -351,7 +354,10 @@ export class InventoryIssuesService {
       context,
     );
 
-    const fileName = `${inventoryIssue.code}-${getFileTimestamp()}.pdf`;
+    const fileName = buildFormPdfFileName(
+      FormTemplateType.STOCK_OUT_SLIP,
+      inventoryIssue.code,
+    );
     return new StreamableFile(buffer, {
       type: 'application/pdf',
       disposition: `attachment; filename="${fileName}"`,

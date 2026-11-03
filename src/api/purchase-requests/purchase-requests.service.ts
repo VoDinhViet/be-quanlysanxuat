@@ -28,7 +28,6 @@ import { hasFields } from '../../common/utils/object';
 import { unaccentILike } from '../../common/utils/search';
 import {
   exclusiveEndOfDay,
-  getFileTimestamp,
   startOfVnDay,
   vnToday,
   vnZone,
@@ -56,7 +55,10 @@ import {
   units,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
-import { FormTemplateType } from '../../templates/form-templates.registry';
+import {
+  FormTemplateType,
+  buildFormPdfFileName,
+} from '../../templates/form-templates.registry';
 import { PdfRendererService } from '../../templates/pdf-renderer.service';
 import { availableQuantityByItemSubquery } from '../inventory/available-quantity.query';
 import {
@@ -307,7 +309,10 @@ export class PurchaseRequestsService {
       context,
     );
 
-    const fileName = `${purchaseRequest.code}-${getFileTimestamp()}.pdf`;
+    const fileName = buildFormPdfFileName(
+      FormTemplateType.PURCHASE_REQUEST,
+      purchaseRequest.code,
+    );
     return new StreamableFile(buffer, {
       type: 'application/pdf',
       disposition: `attachment; filename="${fileName}"`,

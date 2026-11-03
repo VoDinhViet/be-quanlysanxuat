@@ -19,7 +19,7 @@ import {
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
-import { getFileTimestamp, vnZone } from '../../common/utils/time';
+import { vnZone } from '../../common/utils/time';
 import { formatQuantity } from '../../common/utils/vnd';
 import { unaccentILike } from '../../common/utils/search';
 import { ErrorCode } from '../../constants/error-code.constant';
@@ -54,7 +54,10 @@ import {
   units,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
-import { FormTemplateType } from '../../templates/form-templates.registry';
+import {
+  FormTemplateType,
+  buildFormPdfFileName,
+} from '../../templates/form-templates.registry';
 import { PdfRendererService } from '../../templates/pdf-renderer.service';
 import {
   onHandQuantityByItemSubquery,
@@ -380,7 +383,10 @@ export class InventoryReceiptsService {
       context,
     );
 
-    const fileName = `${receipt.code}-${getFileTimestamp()}.pdf`;
+    const fileName = buildFormPdfFileName(
+      FormTemplateType.STOCK_IN_SLIP,
+      receipt.code,
+    );
     return new StreamableFile(buffer, {
       type: 'application/pdf',
       disposition: `attachment; filename="${fileName}"`,

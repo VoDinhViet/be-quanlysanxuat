@@ -48,7 +48,10 @@ import {
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import { getOqcRequestableQuantity } from '../oqc/oqc.query';
-import { FormTemplateType } from '../../templates/form-templates.registry';
+import {
+  FormTemplateType,
+  buildFormPdfFileName,
+} from '../../templates/form-templates.registry';
 import { PdfRendererService } from '../../templates/pdf-renderer.service';
 import { issuedQuantityByJobItemSubquery } from '../inventory-requisitions/inventory-requisitions.query';
 import {
@@ -168,7 +171,7 @@ export class ProductionJobsService {
       context,
     );
 
-    const fileName = `ke-hoach-san-xuat-${getFileTimestamp()}.pdf`;
+    const fileName = buildFormPdfFileName(FormTemplateType.PRODUCTION_PLAN);
     return new StreamableFile(buffer, {
       type: 'application/pdf',
       disposition: `attachment; filename="${fileName}"`,

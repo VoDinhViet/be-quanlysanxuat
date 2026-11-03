@@ -2,7 +2,7 @@ import { HttpStatus, Inject, Injectable, StreamableFile } from '@nestjs/common';
 import { format } from 'date-fns';
 import { asc, eq, getTableColumns } from 'drizzle-orm';
 
-import { getFileTimestamp, vnZone } from '../../common/utils/time';
+import { vnZone } from '../../common/utils/time';
 import { formatQuantity } from '../../common/utils/vnd';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
@@ -15,7 +15,10 @@ import {
   units,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
-import { FormTemplateType } from '../../templates/form-templates.registry';
+import {
+  FormTemplateType,
+  buildFormPdfFileName,
+} from '../../templates/form-templates.registry';
 import { PdfRendererService } from '../../templates/pdf-renderer.service';
 
 /** Các ô ký trên phiếu để trống cho ký tay, nên không nạp người tạo / người duyệt. */
@@ -97,7 +100,10 @@ export class InventoryRequisitionPdfService {
       context,
     );
 
-    const fileName = `${inventoryRequisition.code}-${getFileTimestamp()}.pdf`;
+    const fileName = buildFormPdfFileName(
+      FormTemplateType.MATERIAL_REQUISITION,
+      inventoryRequisition.code,
+    );
     return new StreamableFile(buffer, {
       type: 'application/pdf',
       disposition: `attachment; filename="${fileName}"`,
