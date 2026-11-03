@@ -3,13 +3,14 @@
  * đọc, không lưu cột nào nên không cần `pgEnum`. Cách suy: `docs/CODEMAPS/production.md`.
  * `DONE` (không phải `COMPLETED`) — khớp giá trị FE `ProductionOperationProgressStatus` đã định
  * nghĩa trước (`web-qlsx-start/src/lib/types/production-job.type.ts`). `OVERDUE` = chưa xong mà
- * hạn hoàn thành (muộn nhất qua các Part) đã qua — ưu tiên hơn `NOT_STARTED`/`IN_PROGRESS`.
- * `IN_PROGRESS` gồm cả Job đang sản xuất (`production_jobs.status = IN_PROGRESS`) dù công đoạn
- * chưa ai báo cáo — `NOT_STARTED` chỉ còn cho Job đã qua giai đoạn đó mà chưa có sản lượng.
+ * hạn hoàn thành (muộn nhất qua các Part) đã qua — ưu tiên hơn `NOT_STARTED`/`NOT_DONE`.
+ * `NOT_DONE` ("Chưa thực hiện") gồm cả Job đang sản xuất (`production_jobs.status = IN_PROGRESS`)
+ * dù công đoạn chưa ai báo cáo — `NOT_STARTED` chỉ còn cho Job chưa bắt đầu sản xuất và chưa có
+ * sản lượng.
  */
 export enum JobOperationProgress {
   NOT_STARTED = 'NOT_STARTED',
-  IN_PROGRESS = 'IN_PROGRESS',
+  NOT_DONE = 'NOT_DONE',
   DONE = 'DONE',
   OVERDUE = 'OVERDUE',
 }

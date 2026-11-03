@@ -104,7 +104,7 @@ export class ProductionExecutionService {
           case
             when ${isDoneExpr} then ${JobOperationProgress.DONE}
             when max(${productionJobOperations.dueDate}) < ${today}::date then ${JobOperationProgress.OVERDUE}
-            when coalesce(sum(${productionJobOperations.completedQuantity}), 0) > 0 or ${productionJobs.status} = ${ProductionJobStatus.IN_PROGRESS} then ${JobOperationProgress.IN_PROGRESS}
+            when coalesce(sum(${productionJobOperations.completedQuantity}), 0) > 0 or ${productionJobs.status} = ${ProductionJobStatus.IN_PROGRESS} then ${JobOperationProgress.NOT_DONE}
             else ${JobOperationProgress.NOT_STARTED}
           end
         `.as('progress'),
@@ -157,14 +157,14 @@ export class ProductionExecutionService {
         Number,
       );
 
-    const rows = await this.db
+    const operationTiles = await this.db
       .select({
         operationId: operations.id,
         code: operations.code,
         name: operations.name,
         type: operations.type,
         remainingJobCount: remainingJobCountExpr,
-        inProgressJobCount: countJobs(JobOperationProgress.IN_PROGRESS),
+        notDoneJobCount: countJobs(JobOperationProgress.NOT_DONE),
         overdueJobCount: countJobs(JobOperationProgress.OVERDUE),
       })
       .from(operations)
@@ -181,7 +181,7 @@ export class ProductionExecutionService {
             : [asc(operations.code)]),
       );
 
-    return plainToInstance(ProductionExecutionOperationResDto, rows, {
+    return plainToInstance(ProductionExecutionOperationResDto, operationTiles, {
       excludeExtraneousValues: true,
     });
   }
@@ -242,7 +242,7 @@ export class ProductionExecutionService {
       case
         when ${isDoneExpr} then ${JobOperationProgress.DONE}
         when ${operationDueDateExpr} < ${today}::date then ${JobOperationProgress.OVERDUE}
-        when ${completedQuantitySumExpr} > 0 or ${productionJobs.status} = ${ProductionJobStatus.IN_PROGRESS} then ${JobOperationProgress.IN_PROGRESS}
+        when ${completedQuantitySumExpr} > 0 or ${productionJobs.status} = ${ProductionJobStatus.IN_PROGRESS} then ${JobOperationProgress.NOT_DONE}
         else ${JobOperationProgress.NOT_STARTED}
       end
     `;

@@ -38,9 +38,9 @@ export class ProductionExecutionOperationResDto {
   @NumberField({
     int: true,
     description:
-      'Số Job có công đoạn này đang thực hiện (operationStatus = IN_PROGRESS)',
+      'Số Job có công đoạn này chưa thực hiện (operationStatus = NOT_DONE)',
   })
-  inProgressJobCount!: number;
+  notDoneJobCount!: number;
 
   @Expose()
   @NumberField({
