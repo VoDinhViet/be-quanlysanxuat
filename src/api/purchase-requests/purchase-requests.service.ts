@@ -43,8 +43,6 @@ import {
   inventoryReceipts,
   ItemType,
   items,
-  orders,
-  productionOrders,
   PurchaseOrderStatus,
   purchaseOrderItems,
   purchaseOrders,
@@ -852,8 +850,8 @@ export class PurchaseRequestsService {
   /** Đường sinh **tự động** duy nhất — gọi từ `ProductionJobsService.startJob` khi Job thiếu vật
    * tư, ghi header + dòng trong transaction của nơi gọi. Khác `createPurchaseRequest` (đường tay)
    * ở chỗ luôn gắn `productionOrderId`/`productionJobId` và `quantity` là phần thiếu đã chốt.
-   * `note` (cột "PO / Lý do") khởi tạo bằng số PO khách hàng của đơn gốc, người dùng sửa lại được
-   * qua `PATCH .../note` (PH-124). */
+   * `note` để trống vì số PO đọc từ đơn qua LSX, chỉ có giá trị khi người dùng tự sửa cột
+   * "PO / Lý do". Bỏ chép số PO vào `note` từ 03/11/2026: bản chép lệch khi đơn đổi PO sau duyệt. */
   async createShortageRequest(
     tx: DbTransaction,
     input: CreateShortageRequestInput,
@@ -861,20 +859,12 @@ export class PurchaseRequestsService {
     const { items, ...purchaseRequestFields } = input;
     const code = await this.generatePurchaseRequestCode(tx);
 
-    const [sourceOrder] = await tx
-      .select({ buyerPoNo: orders.buyerPoNo })
-      .from(productionOrders)
-      .innerJoin(orders, eq(orders.id, productionOrders.orderId))
-      .where(eq(productionOrders.id, purchaseRequestFields.productionOrderId))
-      .limit(1);
-
     const [purchaseRequest] = await tx
       .insert(purchaseRequests)
       .values({
         ...purchaseRequestFields,
         code,
         neededDate: vnToday(),
-        note: sourceOrder?.buyerPoNo ?? null,
       })
       .returning({ id: purchaseRequests.id });
 

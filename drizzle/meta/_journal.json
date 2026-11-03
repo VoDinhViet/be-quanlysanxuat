@@ -1709,6 +1709,13 @@
       "when": 1793677084264,
       "tag": "0243_production_job_operation_successor",
       "breakpoints": true
+    },
+    {
+      "idx": 244,
+      "version": "7",
+      "when": 1793683368476,
+      "tag": "0244_clear_purchase_request_po_note",
+      "breakpoints": true
     }
   ]
 }

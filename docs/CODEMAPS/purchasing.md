@@ -57,7 +57,7 @@ Purchase request (`PurchaseRequestStatus`, `src/database/schemas/purchase-reques
   DRAFT --send PRS:537--> PENDING_APPROVAL --approve :553--> APPROVED
   PENDING_APPROVAL --reject :571--> REJECTED --send :537--> PENDING_APPROVAL
   REJECTED --edit/delete line or needed-date (ensurePurchaseRequestEditable :614)--> DRAFT
-  Sources: hand-made :687 (DRAFT, no LSX/JOB); `createShortageRequest` :761, called by `production-jobs/production-jobs.service.ts:860` (startJob), carries LSX/JOB ids.
+  Sources: hand-made :687 (DRAFT, no LSX/JOB); `createShortageRequest` :761, called by `production-jobs/production-jobs.service.ts:860` (startJob), carries LSX/JOB ids; `note` stays empty, the customer PO is read from the SO through the LSX.
 
 RFQ -> DMH (`PurchaseQuotationStatus` `purchasing/purchase-quotations.ts:14`, `PurchaseOrderStatus` `purchasing/purchase-orders.ts:20`):
   RFQ DRAFT --send PQS:470--> PENDING_APPROVAL --approve PQS:519--> APPROVED

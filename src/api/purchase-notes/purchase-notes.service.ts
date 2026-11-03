@@ -1,12 +1,14 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
-import { eq, inArray, or } from 'drizzle-orm';
+import { eq, inArray, or, sql } from 'drizzle-orm';
 
 import { DRIZZLE } from '../../database/database.module';
 import type { Database } from '../../database/database.type';
 import {
   inventoryReceiptItems,
   inventoryReceipts,
+  orders,
+  productionOrders,
   purchaseOrderItems,
   purchaseOrders,
   purchaseQuotationItemAllocations,
@@ -407,9 +409,17 @@ export class PurchaseNotesService {
             .select({
               id: purchaseRequests.id,
               code: purchaseRequests.code,
-              note: purchaseRequests.note,
+              // Cùng luật cột "PO / Lý do": `note` trống thì hiện số PO của đơn qua LSX.
+              note: sql<
+                string | null
+              >`coalesce(${purchaseRequests.note}, ${orders.buyerPoNo})`,
             })
             .from(purchaseRequests)
+            .leftJoin(
+              productionOrders,
+              eq(productionOrders.id, purchaseRequests.productionOrderId),
+            )
+            .leftJoin(orders, eq(orders.id, productionOrders.orderId))
             .where(inArray(purchaseRequests.id, ids.requestIds))
         : [],
       ids.quotationIds.length
