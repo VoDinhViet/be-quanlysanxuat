@@ -368,6 +368,7 @@ export class OrdersService {
   /** Xuất PDF chi tiết 1 đơn hàng bán — subtotal/chiết khấu/VAT/phí vận chuyển/tổng tiền đọc
    * thẳng từ cột đã lưu trên `orders` (`OrdersService.recalculateTotals`), không tính lại. */
   async exportOrderPdf(orderId: string): Promise<StreamableFile> {
+    const approverAlias = alias(users, 'approver');
     const [order] = await this.db
       .select({
         code: orders.code,
@@ -379,10 +380,13 @@ export class OrdersService {
         vatPercent: orders.vatPercent,
         vatAmount: orders.vatAmount,
         total: orders.total,
+        approvedAt: orders.approvedAt,
+        approverName: approverAlias.fullName,
         client: getTableColumns(clients),
       })
       .from(orders)
       .leftJoin(clients, eq(clients.id, orders.clientId))
+      .leftJoin(approverAlias, eq(approverAlias.id, orders.approvedBy))
       .where(and(eq(orders.id, orderId), isNull(orders.deletedAt)));
 
     if (!order) {
@@ -439,9 +443,12 @@ export class OrdersService {
       vat_amount: formatVnd(order.vatAmount),
       grand_total: formatVnd(order.total),
       amount_in_words: formatVndInWords(order.total),
-      // Để trống cho người ký điền tay, không tự điền từ dữ liệu hệ thống.
+      // Ô NV Kinh Doanh để trống cho người ký điền tay, không tự điền từ dữ liệu hệ thống.
       assigned_user_name: '',
-      approver_name: '',
+      approver_name: order.approverName ?? '',
+      approver_date: order.approvedAt
+        ? format(order.approvedAt, 'dd/MM/yyyy', { in: vnZone })
+        : '',
       items: templateItems,
     };
 

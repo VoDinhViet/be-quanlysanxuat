@@ -741,8 +741,13 @@
               <div class="sig-title-sub">General Director (Ký duyệt, đóng dấu)</div>
             </div>
             <div class="sig-name-block">
+              {{#if approver_name}}
+                <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="display: block; margin: 0 auto 6px;">
+                  <path d="M4 12.5l5 5L20 6.5"></path>
+                </svg>
+              {{/if}}
               <div class="sig-person-name">{{approver_name}}</div>
-              <div class="sig-date-note">Ngày ký: ....................</div>
+              <div class="sig-date-note">Ngày ký: {{#if approver_date}}{{approver_date}}{{else}}....................{{/if}}</div>
             </div>
           </div>
         </div>

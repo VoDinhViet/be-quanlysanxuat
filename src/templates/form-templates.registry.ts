@@ -76,6 +76,11 @@ export const FORM_TEMPLATES: Record<FormTemplateType, FormTemplateDefinition> =
           label: 'Giám đốc duyệt',
           group: 'signatures',
         },
+        {
+          key: 'approver_date',
+          label: 'Ngày Giám đốc duyệt',
+          group: 'signatures',
+        },
       ],
     },
     [FormTemplateType.ORDER_SUMMARY]: {
