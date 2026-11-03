@@ -26,6 +26,7 @@ import { OrderResDto } from './dto/order.res.dto';
 import { OrderStatsResDto } from './dto/order-stats.res.dto';
 import { PageOrderResDto } from './dto/page-order.res.dto';
 import { RejectOrderReqDto } from './dto/reject-order.req.dto';
+import { UpdateOrderBuyerPoReqDto } from './dto/update-order-buyer-po.req.dto';
 import { UpdateOrderReqDto } from './dto/update-order.req.dto';
 import { OrdersService } from './orders.service';
 
@@ -156,6 +157,20 @@ export class OrdersController {
     @Body() reqDto: UpdateOrderReqDto,
   ): Promise<void> {
     return this.ordersService.updateOrder(orderId, reqDto);
+  }
+
+  @Patch(':orderId/buyer-po')
+  @Permissions('orders:update')
+  @ApiAuth({
+    summary:
+      'Set the customer PO number — only `buyerPoNo` is written, so it also works on an approved order (blocked once COMPLETED, CANCELLED, or PENDING_CONFIRMATION)',
+    statusCode: HttpStatus.NO_CONTENT,
+  })
+  updateOrderBuyerPo(
+    @UUIDParam('orderId') orderId: string,
+    @Body() reqDto: UpdateOrderBuyerPoReqDto,
+  ): Promise<void> {
+    return this.ordersService.updateOrderBuyerPo(orderId, reqDto);
   }
 
   @Post(':orderId/approve')

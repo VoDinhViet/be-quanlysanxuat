@@ -4,28 +4,29 @@
 Conventions: controllers check permissions, services do not; routes are under global prefix `api`. Create/update mostly return 204 (void) except `POST /orders`. Paths below: `O`=`src/api/orders`, `B`=`src/api/outbound-orders`, `C`=`src/api/clients`, `S`=`src/database/schemas`.
 
 ## 1. Modules
-- `O/` (SO): `orders.controller.ts` 199, `orders.service.ts` 1045, `orders.query.ts` 26 (`issuedQuantityByOrderItemIdSubquery`:12 = delivered qty per order line, from `inventory_transactions`), `orders.export.ts` 76, `dto/` 14 files. Imports Files, ProductionOrders, Templates (PDF) modules (`orders.module.ts:11`).
+- `O/` (SO): `orders.controller.ts` 214, `orders.service.ts` 1105, `orders.query.ts` 26 (`issuedQuantityByOrderItemIdSubquery`:12 = delivered qty per order line, from `inventory_transactions`), `orders.export.ts` 76, `dto/` 14 files. Imports Files, ProductionOrders, Templates (PDF) modules (`orders.module.ts:11`).
 - `B/` (DO): `outbound-orders.controller.ts` 250, `.service.ts` 968, `.query.ts` 210 (held-qty and filter helpers, `closeOrdersIfFullyDelivered`:168), `.export.ts` 94. No module imports; posting the DO's issue lives in `InventoryIssuesService`.
 - `C/`: `clients.controller.ts` 118, `clients.service.ts` 354 (clients + contacts).
 - `src/api/client-groups/` (controller 26, service 49) and `src/api/countries/` (controller 23, service 34): read-only lookups.
 - Schemas: `S/orders/{orders 241, order-items 109, order-files 38}.ts`, `S/clients/{clients 77, client-contacts 41, client-groups 15}.ts`, `S/countries.ts` 15, `S/inventory/{outbound-orders 161, outbound-order-items 91}.ts`.
 
-## 2. Routes (35 total)
-Orders (13), `@Controller('orders')`; static routes are declared before `:orderId`.
+## 2. Routes (36 total)
+Orders (14), `@Controller('orders')`; static routes are declared before `:orderId`.
 | Route | Perm | Handler -> Service | Writes |
 |---|---|---|---|
-| GET /orders | orders:read | `O/orders.controller.ts:44` -> `getOrders` (service:91) | - |
-| GET /orders/stats | orders:read | :58 -> `getOrderStats` (:243) | - |
-| GET /orders/export-excel and /orders/export (alias) | orders:read | :68, :80 -> `exportOrdersExcel` (:191, cap 10,000 rows) | - |
-| GET /orders/export-summary-pdf | orders:read | :91 -> `exportOrdersSummaryPdf` (:457) | - |
-| GET /orders/:orderId | orders:read | :104 -> `getOrder` (:310) | - |
-| GET /orders/:orderId/export-pdf | orders:read | :114 -> `exportOrderPdf` (:367) | - |
-| GET /orders/:orderId/items | orders:read | :127 -> `getOrderItems` (:538) | - |
-| POST /orders | orders:create | :140 -> `createOrder` (:580) | orders, order_items, order_files |
-| PATCH /orders/:orderId | orders:update | :154 -> `updateOrder` (:646) | orders, order_items, order_files; deletes production_orders on cancel |
-| POST /orders/:orderId/approve | orders:approve | :168 -> `approveOrder` (:729) | orders, production_orders, production_order_items, logs |
-| POST /orders/:orderId/reject | orders:approve | :182 -> `rejectOrder` (:760) | orders |
-| DELETE /orders/:orderId | orders:delete | :196 -> `deleteOrder` (:779) | orders.deletedAt |
+| GET /orders | orders:read | `O/orders.controller.ts:45` -> `getOrders` (service:94) | - |
+| GET /orders/stats | orders:read | :59 -> `getOrderStats` (:246) | - |
+| GET /orders/export-excel and /orders/export (alias) | orders:read | :69, :81 -> `exportOrdersExcel` (:194, cap 10,000 rows) | - |
+| GET /orders/export-summary-pdf | orders:read | :92 -> `exportOrdersSummaryPdf` (:462) | - |
+| GET /orders/:orderId | orders:read | :105 -> `getOrder` (:313) | - |
+| GET /orders/:orderId/export-pdf | orders:read | :115 -> `exportOrderPdf` (:370) | - |
+| GET /orders/:orderId/items | orders:read | :128 -> `getOrderItems` (:548) | - |
+| POST /orders | orders:create | :141 -> `createOrder` (:590) | orders, order_items, order_files |
+| PATCH /orders/:orderId | orders:update | :155 -> `updateOrder` (:656) | orders, order_items, order_files; deletes production_orders on cancel |
+| PATCH /orders/:orderId/buyer-po | orders:update | :169 -> `updateOrderBuyerPo` (:745) | orders.buyerPoNo |
+| POST /orders/:orderId/approve | orders:approve | :183 -> `approveOrder` (:760) | orders, production_orders, production_order_items, logs |
+| POST /orders/:orderId/reject | orders:approve | :197 -> `rejectOrder` (:791) | orders |
+| DELETE /orders/:orderId | orders:delete | :211 -> `deleteOrder` (:810) | orders.deletedAt |
 
 Outbound orders (15), `@Controller('outbound-orders')`; handler lines in `B/outbound-orders.controller.ts`, service lines in `.service.ts`.
 | Route | Perm | Handler -> Service | Writes |
@@ -63,7 +64,7 @@ SO status (`S/orders/orders.ts:35`). No dedicated submit route: DRAFT -> PENDING
   DRAFT --(PATCH status)--> PENDING_CONFIRMATION --approveOrder--> AWAITING_PRODUCTION --approveProductionOrder--> IN_PROGRESS --postInventoryIssue/closeOrdersIfFullyDelivered--> COMPLETED
   PENDING_CONFIRMATION --rejectOrder--> REJECTED --updateOrder (no status sent)--> DRAFT; an explicit status sent with the PATCH (e.g. PENDING_CONFIRMATION, CANCELLED) is applied as sent instead of DRAFT (`updateOrder`, `revertsToDraft`)
   any editable state --updateOrder (status=CANCELLED)--> CANCELLED
-`approveOrder` (service:729): guard `ensurePendingConfirmation` (:1022), `ensureItemsNotLockedByProduction` (:952), `getInitialPlanItems` (`production-orders.service.ts:547`, read-only), then one tx: set AWAITING_PRODUCTION + approvedBy/At, `seedPlan` (`production-orders.service.ts:610`).
+`approveOrder` (service:760): guard `ensurePendingConfirmation` (:1082), `ensureItemsNotLockedByProduction` (:983), `getInitialPlanItems` (`production-orders.service.ts:547`, read-only), then one tx: set AWAITING_PRODUCTION + approvedBy/At, `seedPlan` (`production-orders.service.ts:610`).
 
 SO -> LSX:
   approveOrder -> seedPlan: delete-and-reuse branch for an old ORDER-type LSX (`orderLsxCondition`:600) is effectively unreachable here because `ensureItemsNotLockedByProduction` throws E080 first; insert `production_orders` PENDING (code reused if existed) + `production_order_items` (suggested qty = need beyond available stock) + CREATED log
@@ -81,10 +82,10 @@ Delivery is two steps. Approve (`approveOutboundOrder`, same tx as the status ch
 Invoice (separate flag, not a status): DELIVERED DOs start `invoiceStatus = NOT_ISSUED` (so do all older and not-yet-delivered DOs); `updateOutboundOrderInvoice` locks the DO row, requires DELIVERED (E320) and writes number (trimmed, <= 100) + date + `invoicedBy/At`, re-saving overwrites (last writer wins). `invoiceStatus` is a list/export filter; non-delivered DOs are always NOT_ISSUED, so "not invoiced" lists must also send `status=DELIVERED` to match the `notInvoiced` count. `outbound:invoice` is granted to nobody by default.
 Cancel both ways: `cancelOutboundOrder` also cancels the DRAFT issue; `InventoryIssuesService.cancelInventoryIssue` on a DO-linked issue cancels the DO and needs `outbound:update` as well (controller passes `canCancelOutboundOrder`, else E033). Update/delete of a DO-linked issue is blocked (E319). Badge `salesIssuesToPost` = DRAFT SALES issues; `inventoryIssuesToPost` now counts the other types.
 
-SO cancel/delete guards: PATCH blocked on COMPLETED/CANCELLED (E065) and PENDING_CONFIRMATION (E090), `ensureOrderEditable`:991. Cancel: E236 if its ORDER-LSX is APPROVED (`ensureProductionOrderNotApproved`:971); a PENDING LSX is deleted in the same tx (:704). Delete: only DRAFT or REJECTED, soft delete (`ensureOrderDeletable`:1003, E264). Client delete: E246 if any `orders` or `outbound_orders` row exists, including soft-deleted orders (`ensureClientNotInUse`:250).
+SO cancel/delete guards: PATCH blocked on COMPLETED/CANCELLED (E065) and PENDING_CONFIRMATION (E090), `ensureOrderEditable`:1022. Cancel: E236 if its ORDER-LSX is APPROVED (`ensureProductionOrderNotApproved`:1002); a PENDING LSX is deleted in the same tx (:716). Delete: only DRAFT or REJECTED, soft delete (`ensureOrderDeletable`:1034, E264). Client delete: E246 if any `orders` or `outbound_orders` row exists, including soft-deleted orders (`ensureClientNotInUse`:250).
 
 ## 4. Key rules and error codes (`src/constants/error-code.constant.ts`)
-- Money columns of SO are server-owned: `recalculateTotals` (orders.service:818) recomputes `line_total`, subtotal, discount, VAT, total; VND forces `exchangeRate=1` (:808). SO code `SOnnnn` (:888); DO code `DO-yyMMdd-nnn` (:938).
+- Money columns of SO are server-owned: `recalculateTotals` (orders.service:849) recomputes `line_total`, subtotal, discount, VAT, total; VND forces `exchangeRate=1` (:839). SO code `SOnnnn` (:919); DO code `DO-yyMMdd-nnn` (:938).
 - Items replace-all on PATCH (`replaceOrderItems`:858) but E080 if the SO already has an ORDER-LSX (:952). PATCH `status` goes through `ensureStatusTransitionAllowed` (`PATCHABLE_STATUS_SOURCES`): same status or undefined passes; PENDING_CONFIRMATION only from DRAFT/REJECTED, DRAFT only from REJECTED, CANCELLED from DRAFT/REJECTED/AWAITING_PRODUCTION/IN_PROGRESS; anything else (IN_PROGRESS, COMPLETED, AWAITING_PRODUCTION, REJECTED) is E075. `createOrder` still uses `ensureStatusSettable`.
 - SO: E057 not found (:1040), E059 client missing, E060 staff missing, E061 item missing, E275 contact not of client (:905), E074 not PENDING_CONFIRMATION (:1022), E090/E065/E080/E236/E264/E075 above.
 - DO: E195 not found; E259 edit only in DRAFT (:468); E258 delete only in DRAFT (:532); E257 cancel only from 3 states (:499); E239 send only from DRAFT/REJECTED (:580); E240 approve/reject only from PENDING_APPROVAL (:612, :694); E237 posting/cancelling the DO's issue only while the DO is PENDING_DELIVERY; E319 DO-linked issue is not editable/deletable; E194 qty over issuable (:675); E205 QC gate, send only (`ensureAllJobsQcCompleted`:717): each distinct JOB needs QC coverage and no open IQC, and either at least one completed final OQC lot (JOB has a final OQC operation) or no open QC row at all (JOB has none). DO create requires an existing client (E009, :930); `clientId` is immutable on update.

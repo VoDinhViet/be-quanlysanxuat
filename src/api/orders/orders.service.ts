@@ -73,6 +73,7 @@ import { OrderResDto } from './dto/order.res.dto';
 import { OrderStatsResDto } from './dto/order-stats.res.dto';
 import { PageOrderResDto } from './dto/page-order.res.dto';
 import { RejectOrderReqDto } from './dto/reject-order.req.dto';
+import { UpdateOrderBuyerPoReqDto } from './dto/update-order-buyer-po.req.dto';
 import { UpdateOrderReqDto } from './dto/update-order.req.dto';
 import { ORDER_EXPORT_COLUMNS, OrderExport } from './orders.export';
 import { issuedQuantityByOrderItemIdSubquery } from './orders.query';
@@ -731,6 +732,28 @@ export class OrdersService {
       // shippingFee cũng đủ đổi total header mà không đụng dòng nào.
       await this.recalculateTotals(tx, orderId);
     });
+  }
+
+  /**
+   * Chỉ ghi `buyerPoNo`, không qua `updateOrder` để đơn đã duyệt đổi được số PO mà không mở lại
+   * các trường khác (mã hàng, số lượng, giá).
+   *
+   * Rules:
+   * - Cùng khoá trạng thái với `updateOrder` (`ensureOrderEditable`).
+   * - Mọi chứng từ đọc số PO qua `orders` nên chỉ ghi một cột; `purchase_requests.note` là lý do
+   *   người dùng tự nhập, không đổi theo.
+   */
+  async updateOrderBuyerPo(
+    orderId: string,
+    reqDto: UpdateOrderBuyerPoReqDto,
+  ): Promise<void> {
+    const existing = await this.ensureOrderExists(orderId);
+    this.ensureOrderEditable(existing.status);
+
+    await this.db
+      .update(orders)
+      .set({ buyerPoNo: reqDto.buyerPoNo })
+      .where(eq(orders.id, orderId));
   }
 
   /** Nơi duy nhất ghi `AWAITING_PRODUCTION` (xem `ensureStatusSettable`) — đồng thời sinh sẵn kế
