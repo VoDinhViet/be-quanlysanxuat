@@ -8,6 +8,7 @@ import {
   UUIDField,
 } from '../../../decorators/field.decorators';
 import { FileResDto } from '../../files/dto/file.res.dto';
+import { ItemCategoryRefResDto } from '../../item-categories/dto/item-category-ref.res.dto';
 import { SupplierRefResDto } from '../../suppliers/dto/supplier-ref.res.dto';
 import { UnitRefResDto } from '../../units/dto/unit-ref.res.dto';
 
@@ -31,6 +32,10 @@ export class InventoryDirectResDto {
   @Expose()
   @ClassField(() => UnitRefResDto)
   unit!: UnitRefResDto;
+
+  @Expose()
+  @ClassFieldOptional(() => ItemCategoryRefResDto, { nullable: true })
+  itemCategory!: ItemCategoryRefResDto | null;
 
   @Expose()
   @ClassFieldOptional(() => SupplierRefResDto, { nullable: true })

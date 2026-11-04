@@ -12,9 +12,12 @@ import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated
 import { XLSX_MIME } from '../../common/utils/excel';
 import { CurrentUser } from '../../decorators/current-user.decorator';
 import { ApiAuth } from '../../decorators/http.decorators';
+import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
+import { GetHeldRequisitionsReqDto } from './dto/get-held-requisitions.req.dto';
 import { GetInventoryDirectsReqDto } from './dto/get-inventory-directs.req.dto';
+import { HeldRequisitionsResDto } from './dto/held-requisitions.res.dto';
 import { ImportInventoryDirectReqDto } from './dto/import-inventory-direct.req.dto';
 import { InventoryDirectImportResDto } from './dto/inventory-direct-import.res.dto';
 import { InventoryDirectResDto } from './dto/inventory-direct.res.dto';
@@ -40,6 +43,20 @@ export class InventoryDirectsController {
     @Query() reqDto: GetInventoryDirectsReqDto,
   ): Promise<OffsetPaginatedDto<InventoryDirectResDto>> {
     return this.inventoryDirectsService.getInventoryDirects(reqDto);
+  }
+
+  @Get(':itemId/held-requisitions')
+  @Permissions('inventory:read')
+  @ApiAuth({
+    type: HeldRequisitionsResDto,
+    summary:
+      'Các phiếu lãnh APPROVED đang giữ chỗ một vật tư (chi tiết số "Đã giữ"), kèm tổng số lượng giữ',
+  })
+  getHeldRequisitions(
+    @UUIDParam('itemId') itemId: string,
+    @Query() reqDto: GetHeldRequisitionsReqDto,
+  ): Promise<HeldRequisitionsResDto> {
+    return this.inventoryDirectsService.getHeldRequisitions(itemId, reqDto);
   }
 
   @Get('import-template')

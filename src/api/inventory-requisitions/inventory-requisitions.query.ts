@@ -1,14 +1,20 @@
-import { and, eq, inArray, ne, notInArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, ne, notInArray, or, sql } from 'drizzle-orm';
 
+import { unaccentILike } from '../../common/utils/search';
 import type { Database, DbTransaction } from '../../database/database.type';
 import {
+  departments,
   inventoryBalances,
   InventoryRequisitionStatus,
   inventoryRequisitionItems,
   inventoryRequisitions,
+  InventoryRequisitionType,
+  orders,
   productionJobIssues,
   productionJobs,
   ProductionJobStatus,
+  productionOrders,
+  users,
 } from '../../database/schemas';
 
 // Giữ chỗ bắt đầu từ lúc duyệt — `DRAFT`/`PENDING_APPROVAL` chưa giữ, `ISSUED` thôi giữ vì đã trừ
@@ -105,6 +111,93 @@ export async function getReservedQuantities(
     .groupBy(inventoryRequisitionItems.itemId);
 
   return new Map(rows.map((row) => [row.itemId, row.reservedQuantity]));
+}
+
+/**
+ * Các phiếu lãnh đang giữ chỗ một vật tư, mỗi phiếu một dòng — chi tiết của số "Đã giữ".
+ *
+ * Rules:
+ * - Chỉ phiếu `HOLDING_STATUS` (cùng hằng với số "Đã giữ") nên hai con số không thể lệch nhau.
+ * - `poOrReason` theo quy tắc phiếu in: `PRODUCTION` lấy số PO của đơn hàng, `OTHER` lấy `reason`.
+ * - `note` ưu tiên ghi chú của dòng vật tư, không có mới lấy ghi chú phiếu.
+ * - Mọi cột đặt alias bằng `sql` vì subquery dùng cho cả trang lẫn `sum`; không alias thì `code`
+ *   bị mơ hồ giữa `inventoryRequisitions` và `productionJobs`.
+ */
+export function heldRequisitionLinesSubquery(
+  db: Database,
+  params: {
+    itemId: string;
+    keyword?: string;
+    departmentId?: string;
+    type?: InventoryRequisitionType;
+  },
+) {
+  const poOrReason = sql<
+    string | null
+  >`case when ${inventoryRequisitions.type} = ${InventoryRequisitionType.PRODUCTION} then ${orders.buyerPoNo} else ${inventoryRequisitions.reason} end`;
+
+  return db
+    .select({
+      requisitionId: sql<string>`${inventoryRequisitions.id}`.as(
+        'requisition_id',
+      ),
+      code: sql<string>`${inventoryRequisitions.code}`.as('requisition_code'),
+      approvedAt: sql<Date | null>`${inventoryRequisitions.approvedAt}`
+        .mapWith(inventoryRequisitions.approvedAt)
+        .as('approved_at'),
+      jobCode: sql<string | null>`${productionJobs.code}`.as('job_code'),
+      poOrReason: poOrReason.as('po_or_reason'),
+      departmentName: sql<string | null>`${departments.name}`.as(
+        'department_name',
+      ),
+      creatorName: sql<string | null>`${users.fullName}`.as('creator_name'),
+      quantity: sql<number>`${inventoryRequisitionItems.quantity}`
+        .mapWith(inventoryRequisitionItems.quantity)
+        .as('held_quantity'),
+      note: sql<
+        string | null
+      >`coalesce(${inventoryRequisitionItems.note}, ${inventoryRequisitions.note})`.as(
+        'held_line_note',
+      ),
+    })
+    .from(inventoryRequisitionItems)
+    .innerJoin(
+      inventoryRequisitions,
+      eq(inventoryRequisitions.id, inventoryRequisitionItems.requisitionId),
+    )
+    .leftJoin(
+      productionJobs,
+      eq(productionJobs.id, inventoryRequisitions.productionJobId),
+    )
+    .leftJoin(
+      productionOrders,
+      eq(productionOrders.id, inventoryRequisitions.productionOrderId),
+    )
+    .leftJoin(orders, eq(orders.id, productionOrders.orderId))
+    .leftJoin(
+      departments,
+      eq(departments.id, inventoryRequisitions.departmentId),
+    )
+    .leftJoin(users, eq(users.id, inventoryRequisitions.createdBy))
+    .where(
+      and(
+        eq(inventoryRequisitions.status, HOLDING_STATUS),
+        eq(inventoryRequisitionItems.itemId, params.itemId),
+        params.type ? eq(inventoryRequisitions.type, params.type) : undefined,
+        params.departmentId
+          ? eq(inventoryRequisitions.departmentId, params.departmentId)
+          : undefined,
+        params.keyword
+          ? or(
+              unaccentILike(inventoryRequisitions.code, params.keyword),
+              unaccentILike(productionJobs.code, params.keyword),
+              unaccentILike(orders.buyerPoNo, params.keyword),
+              unaccentILike(inventoryRequisitions.reason, params.keyword),
+            )
+          : undefined,
+      ),
+    )
+    .as('held_requisition_lines');
 }
 
 /** Σ SL lãnh các phiếu `ISSUED` theo `(productionJobId, itemId)` — số "Đã lãnh".

@@ -1,4 +1,4 @@
-<!-- Generated: 2026-11-03 | Files scanned: 38 | Token estimate: ~3560 -->
+<!-- Generated: 2026-11-04 | Files scanned: 38 | Token estimate: ~3560 -->
 # Inventory codemap
 
 Single warehouse: `inventory_balances.itemId` is UNIQUE, no warehouse column (`src/database/schemas/inventory/inventory-balances.ts`).
@@ -65,7 +65,8 @@ Controller file = `<folder>.controller.ts`; "Svc" = service line.
 | POST .../:adjustmentId/cancel | U | cancelInventoryAdjustment (236) | adjustments, balances, transactions (reversal) |
 | GET /inventory-products | R | getInventoryProducts (62), FG ACTIVE | - |
 | GET /inventory-products/:itemId/ledger | R | getProductLedger (138) | - |
-| GET /inventory-directs | R | getInventoryDirects (38), DIRECT | - |
+| GET /inventory-directs | R | getInventoryDirects (55), DIRECT; rows carry `itemCategory` | - |
+| GET /inventory-directs/:itemId/held-requisitions | R | getHeldRequisitions (133): `APPROVED` requisitions holding the item (`heldRequisitionLinesSubquery`, same `HOLDING_STATUS` as `reserved`), filters `q`/`departmentId`/`type`, returns `totalQuantity` of the whole filtered set; E007 404 when not an active DIRECT | requisitions, requisition_items, jobs, orders, departments, users |
 | GET /inventory-directs/import-template | inventory:import | InventoryDirectImportService.downloadImportTemplate (67): xlsx prefilled with ACTIVE DIRECT items + current balance | - |
 | POST /inventory-directs/import | inventory:import | importStock (104): rows parsed by web (actual qty as string), all-or-nothing (E321 with per-row `details`), locks balances FOR UPDATE by itemId, delta = actual − locked balance, up to 2 PDC (INCREASE/DECREASE, STOCKTAKE) via `InventoryAdjustmentsService.createPostedAdjustment` (adjustments.service 252, created POSTED); returns `{documents, unchangedCount}` | adjustments, adjustment_items, balances, transactions |
 | GET /supplier-returns | R | getSupplierReturns (51) | - |

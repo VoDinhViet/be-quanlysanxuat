@@ -1,21 +1,35 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
-import { and, asc, count, eq, getTableColumns, isNull, or } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  getTableColumns,
+  isNull,
+  or,
+  sql,
+} from 'drizzle-orm';
 
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { unaccentILike } from '../../common/utils/search';
+import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database } from '../../database/database.type';
 import {
   files,
+  itemCategories,
   items,
   ItemStatus,
   ItemType,
   suppliers,
   units,
 } from '../../database/schemas';
+import { AppException } from '../../exceptions/app.exception';
 import {
+  heldRequisitionLinesSubquery,
   remainingBomDemandByItemSubquery,
   requisitionHeldQuantityByItemSubquery,
 } from '../inventory-requisitions/inventory-requisitions.query';
@@ -25,6 +39,9 @@ import {
   stockStatusCondition,
 } from '../inventory/inventory.query';
 import { GetInventoryDirectsReqDto } from './dto/get-inventory-directs.req.dto';
+import { GetHeldRequisitionsReqDto } from './dto/get-held-requisitions.req.dto';
+import { HeldRequisitionResDto } from './dto/held-requisition.res.dto';
+import { HeldRequisitionsResDto } from './dto/held-requisitions.res.dto';
 import { InventoryDirectResDto } from './dto/inventory-direct.res.dto';
 
 /** Tồn kho vật tư (DIRECT). Thành phẩm FG nằm ở `inventory-products`, hai nhánh không đọc chéo
@@ -72,6 +89,7 @@ export class InventoryDirectsService {
           code: items.code,
           name: items.name,
           unit: getTableColumns(units),
+          itemCategory: getTableColumns(itemCategories),
           supplier: getTableColumns(suppliers),
           image: getTableColumns(files),
           minStock: items.minStock,
@@ -82,6 +100,7 @@ export class InventoryDirectsService {
         })
         .from(items)
         .innerJoin(units, eq(units.id, items.unitId))
+        .leftJoin(itemCategories, eq(itemCategories.id, items.itemCategoryId))
         .leftJoin(suppliers, eq(suppliers.id, items.supplierId))
         .leftJoin(files, eq(files.id, items.imageFileId))
         .leftJoin(stock, eq(stock.itemId, items.id))
@@ -106,5 +125,65 @@ export class InventoryDirectsService {
       }),
       new OffsetPaginationDto(total, reqDto),
     );
+  }
+
+  /** Luật "phiếu nào đang giữ" nằm ở `heldRequisitionLinesSubquery`, cùng hằng với số "Đã giữ" của
+   * `getInventoryDirects`. */
+  async getHeldRequisitions(
+    itemId: string,
+    reqDto: GetHeldRequisitionsReqDto,
+  ): Promise<HeldRequisitionsResDto> {
+    await this.ensureDirectItemExists(itemId);
+
+    const heldLines = heldRequisitionLinesSubquery(this.db, {
+      itemId,
+      keyword: reqDto.q ? `%${reqDto.q}%` : undefined,
+      departmentId: reqDto.departmentId,
+      type: reqDto.type,
+    });
+
+    const [heldRequisitions, [heldTotals]] = await Promise.all([
+      this.db
+        .select()
+        .from(heldLines)
+        .orderBy(desc(heldLines.approvedAt), asc(heldLines.code))
+        .limit(reqDto.limit)
+        .offset(reqDto.offset),
+      this.db
+        .select({
+          total: count(),
+          totalQuantity:
+            sql<number>`coalesce(sum(${heldLines.quantity}), 0)`.mapWith(
+              Number,
+            ),
+        })
+        .from(heldLines),
+    ]);
+
+    return new HeldRequisitionsResDto(
+      plainToInstance(HeldRequisitionResDto, heldRequisitions, {
+        excludeExtraneousValues: true,
+      }),
+      new OffsetPaginationDto(heldTotals.total, reqDto),
+      heldTotals.totalQuantity,
+    );
+  }
+
+  private async ensureDirectItemExists(itemId: string): Promise<void> {
+    const [directItem] = await this.db
+      .select({ id: items.id })
+      .from(items)
+      .where(
+        and(
+          eq(items.id, itemId),
+          isNull(items.deletedAt),
+          eq(items.type, ItemType.DIRECT),
+        ),
+      )
+      .limit(1);
+
+    if (!directItem) {
+      throw new AppException(ErrorCode.E007, HttpStatus.NOT_FOUND);
+    }
   }
 }
