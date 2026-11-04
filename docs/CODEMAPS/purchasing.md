@@ -1,4 +1,4 @@
-<!-- Generated: 2026-11-03 | Files scanned: 52 | Token estimate: ~2900 -->
+<!-- Generated: 2026-11-04 | Files scanned: 52 | Token estimate: ~2900 -->
 # Purchasing codemap
 
 Paths relative to `src/api/` unless starting `src/`. Abbreviations: PRS=`purchase-requests/purchase-requests.service.ts`, PQS=`purchase-quotations/purchase-quotations.service.ts`, POS=`purchase-orders/purchase-orders.service.ts`, PYS=`payment-requests/payment-requests.service.ts`, PLS=`purchase-ledger/purchase-ledger.service.ts`, PNS=`purchase-notes/purchase-notes.service.ts`, SUS=`suppliers/suppliers.service.ts`.
@@ -30,8 +30,8 @@ purchase-requests (15), `PurchaseRequestsController` -> PRS; perm `purchase-requ
 
 purchase-quotations (12) -> PQS:
 - GET / read :79; GET /last-purchases read :300 (`purchase-quotations.query.ts:15`); GET /:id read :215; GET /:id/comparison read :235; GET /:id/related-notes read: PNS :60.
-- POST / create :407; PATCH /:id update :429 (deletes and recreates items); DELETE /:id delete :459 [quotations, items, allocations, item_suppliers, item_supplier_files].
-- POST /:id/send update :470; /approve approve :519 [item_suppliers.selected*, quotations, purchase_orders, purchase_order_items]; /reject approve :660; /cancel approve :683 [purchase_orders delete, quotations].
+- POST / create :411; PATCH /:id update :433 (DRAFT or REJECTED; deletes and recreates items; REJECTED goes back to DRAFT); DELETE /:id delete :481 [quotations, items, allocations, item_suppliers, item_supplier_files].
+- POST /:id/send update :492; /approve approve :550 [item_suppliers.selected*, quotations, purchase_orders, purchase_order_items]; /reject approve :693; /cancel approve :716 [purchase_orders delete, quotations].
 
 purchase-orders (10) -> POS:
 - GET / read :99; GET /:id read :403; GET /:id/related-notes read: PNS :83.
@@ -61,10 +61,10 @@ Purchase request (`PurchaseRequestStatus`, `src/database/schemas/purchase-reques
   Sources: hand-made :687 (DRAFT, no LSX/JOB); `createShortageRequest` :761, called by `production-jobs/production-jobs.service.ts:860` (startJob), carries LSX/JOB ids; `note` stays empty, the customer PO is read from the SO through the LSX.
 
 RFQ -> DMH (`PurchaseQuotationStatus` `purchasing/purchase-quotations.ts:14`, `PurchaseOrderStatus` `purchasing/purchase-orders.ts:20`):
-  RFQ DRAFT --send PQS:470--> PENDING_APPROVAL --approve PQS:519--> APPROVED
+  RFQ DRAFT|REJECTED --send PQS:492 (clears the rejection reason)--> PENDING_APPROVAL --approve PQS:550--> APPROVED
        approve -> POS.createPendingOrdersFromQuotation :548: one DMH PENDING_CONFIRMATION per supplier (expectedDate = orderDate + max leadTime :1157)
-  PENDING_APPROVAL --reject PQS:660--> REJECTED (terminal)
-  APPROVED --cancelQuotation PQS:683--> CANCELLED (deletes pending DMH; blocked by any ORDERED DMH)
+  PENDING_APPROVAL --reject PQS:693--> REJECTED --edit updateQuotation :433--> DRAFT (reason kept until the next send)
+  APPROVED --cancelQuotation PQS:716--> CANCELLED (deletes pending DMH; blocked by any ORDERED DMH)
   APPROVED --revertQuotationToDraft POS:862 (cancel DMH with reopenQuotation)--> DRAFT
   DMH PENDING_CONFIRMATION --confirm POS:702--> ORDERED; either --cancel POS:743--> CANCELLED
   ORDERED + `closedAt` via closePurchaseOrder POS:913 (status stays ORDERED, lines cut to received qty, then `PYS.createIfOrderCompleted` POS:953)
@@ -85,7 +85,7 @@ Notes chain (PNS, read-only): purchase_requests - purchase_request_items - purch
 ## 4. Key rules and errors (`src/constants/error-code.constant.ts`)
 
 - PR: line edits only DRAFT/REJECTED else E114 (PRS:614); approve/reject need PENDING_APPROVAL E116 (:668); last line E115 (:339); empty E146, duplicate E147, non-DIRECT item E148 (:729); line exists E287 (:275). Not-purchasable needs APPROVED E298, blocked by open DMH E125, by DRAFT/PENDING RFQ E299 (:376).
-- RFQ: not found E117, wrong status E118 (PQS:1003). Allocations (:909): none E150, duplicate request line E128, line not APPROVED or cancelled E125, item mismatch E149, qty <= 0 E265. Supplier conflict E129 (:881; also fires when the same supplier has a different quoted unit/qty), supplier missing E019. Quoted unit (ĐVBG) and quoted qty must come as a pair with qty > 0, else 422 E314 (`validateQuotationUnits`); both fields are exposed by `QuotationItemSupplierResDto` so the comparison/detail payload and the update form keep them (the update re-inserts all supplier rows). Send: no items E131, item without supplier E130, unit price missing E120. Approve needs one winner per item E132 (:783; DB partial unique index on selected_at). Cancel blocked by ORDERED DMH E133. Quotation qty split by allocation ratio :1032.
+- RFQ: not found E117, wrong status E118 (PQS:1057). Allocations (:963): none E150, duplicate request line E128, line not APPROVED or cancelled E125, item mismatch E149, qty <= 0 E265. Supplier conflict E129 (:933; also fires when the same supplier has a different quoted unit/qty), supplier missing E019. Quoted unit (ĐVBG) and quoted qty must come as a pair with qty > 0, else 422 E314 (`validateQuotationUnits`); both fields are exposed by `QuotationItemSupplierResDto` so the comparison/detail payload and the update form keep them (the update re-inserts all supplier rows). Send: no items E131, item without supplier E130, unit price missing E120. Approve needs one winner per item E132 (:783; DB partial unique index on selected_at). Cancel blocked by ORDERED DMH E133. Quotation qty split by allocation ratio :1032.
 - DMH: not found E121; not PENDING_CONFIRMATION, double cancel, close on non-ORDERED/closed E122 (POS:1079, :1098, :962); line E123; confirm needs expectedDate E134, paymentTerm E156, all unitPrice E135 (:702); assignee E136; cancel with POSTED receipt E124; reopen blocked E133; close with unposted receipts E285, nothing to close E286; advance on CANCELLED E313, over total E312, PENDING request E317, PAID request E284; quotationQuantity without unit E316.
 - Payment request: not found E157, status mismatch E158, PAID blocks cancelForOrder/advance E284. Lines are read from purchase_order_items, no own item table.
 - Receipt side: DMH must be ORDERED E145; line/DMH mismatch E127; POSTED receipt cannot be cancelled E289, so `cancelForOrder` runs only from DMH cancel (POS:773).

@@ -69,6 +69,12 @@ type QuotationAllocationDetail = PurchaseQuotationItemAllocationSelect & {
   purchaseRequestItem: PurchaseRequestItemSelect;
 };
 
+/** RFQ còn sửa và gửi duyệt được: `REJECTED` sửa xong tự về `DRAFT`, hoặc gửi duyệt lại thẳng. */
+const EDITABLE_STATUSES: PurchaseQuotationStatus[] = [
+  PurchaseQuotationStatus.DRAFT,
+  PurchaseQuotationStatus.REJECTED,
+];
+
 @Injectable()
 export class PurchaseQuotationsService {
   constructor(
@@ -428,10 +434,7 @@ export class PurchaseQuotationsService {
     quotationId: string,
     reqDto: UpdateQuotationReqDto,
   ): Promise<void> {
-    await this.ensureQuotationStatus(
-      quotationId,
-      PurchaseQuotationStatus.DRAFT,
-    );
+    await this.ensureQuotationStatus(quotationId, EDITABLE_STATUSES);
 
     const { items: itemsReq, ...quotationFields } = reqDto;
     const quotationItems = await this.prepareQuotationItems(itemsReq);
@@ -439,6 +442,20 @@ export class PurchaseQuotationsService {
     await this.linkQuotationSupplierFiles(quotationItems);
 
     await this.db.transaction(async (tx) => {
+      // Khoá dòng RFQ rồi đọc lại trạng thái: gửi duyệt hoặc duyệt chen vào giữa lần kiểm tra
+      // ngoài transaction và lần ghi này thì không bị ghi đè.
+      const [lockedQuotation] = await tx
+        .select({ status: purchaseQuotations.status })
+        .from(purchaseQuotations)
+        .where(eq(purchaseQuotations.id, quotationId))
+        .for('update');
+      if (
+        !lockedQuotation ||
+        !EDITABLE_STATUSES.includes(lockedQuotation.status)
+      ) {
+        throw new AppException(ErrorCode.E118, HttpStatus.CONFLICT);
+      }
+
       await tx
         .delete(purchaseQuotationItems)
         .where(eq(purchaseQuotationItems.quotationId, quotationId));
@@ -449,6 +466,13 @@ export class PurchaseQuotationsService {
         await tx
           .update(purchaseQuotations)
           .set(quotationFields)
+          .where(eq(purchaseQuotations.id, quotationId));
+      }
+
+      if (lockedQuotation.status === PurchaseQuotationStatus.REJECTED) {
+        await tx
+          .update(purchaseQuotations)
+          .set({ status: PurchaseQuotationStatus.DRAFT })
           .where(eq(purchaseQuotations.id, quotationId));
       }
     });
@@ -466,10 +490,7 @@ export class PurchaseQuotationsService {
   }
 
   async sendQuotation(quotationId: string, userId: string): Promise<void> {
-    await this.ensureQuotationStatus(
-      quotationId,
-      PurchaseQuotationStatus.DRAFT,
-    );
+    await this.ensureQuotationStatus(quotationId, EDITABLE_STATUSES);
     await this.ensureRequestItemsPurchasable(quotationId);
 
     // LEFT JOIN để dòng vật tư chưa NCC nào chào giá vẫn còn trong kết quả — INNER JOIN nuốt mất
@@ -504,14 +525,26 @@ export class PurchaseQuotationsService {
       }
     }
 
-    await this.db
+    const sentQuotations = await this.db
       .update(purchaseQuotations)
       .set({
         status: PurchaseQuotationStatus.PENDING_APPROVAL,
         sentBy: userId,
         sentAt: new Date(),
+        cancelledBy: null,
+        cancelledAt: null,
+        cancellationReason: null,
       })
-      .where(eq(purchaseQuotations.id, quotationId));
+      .where(
+        and(
+          eq(purchaseQuotations.id, quotationId),
+          inArray(purchaseQuotations.status, EDITABLE_STATUSES),
+        ),
+      )
+      .returning({ id: purchaseQuotations.id });
+    if (!sentQuotations.length) {
+      throw new AppException(ErrorCode.E118, HttpStatus.CONFLICT);
+    }
   }
 
   async approveQuotation(
@@ -655,6 +688,8 @@ export class PurchaseQuotationsService {
     });
   }
 
+  /** `REJECTED` không còn là trạng thái cuối: gửi duyệt lại thẳng (`sendQuotation`) hoặc sửa
+   * (`updateQuotation`) để tự về `DRAFT`. Lý do từ chối giữ lại đến lần gửi duyệt kế tiếp. */
   async rejectQuotation(
     quotationId: string,
     reqDto: RejectQuotationReqDto,
@@ -1021,7 +1056,7 @@ export class PurchaseQuotationsService {
 
   private async ensureQuotationStatus(
     quotationId: string,
-    expected: PurchaseQuotationStatus,
+    expected: PurchaseQuotationStatus | readonly PurchaseQuotationStatus[],
   ): Promise<void> {
     const quotation = await this.db.query.purchaseQuotations.findFirst({
       columns: { id: true, status: true },
@@ -1032,7 +1067,8 @@ export class PurchaseQuotationsService {
       throw new AppException(ErrorCode.E117, HttpStatus.NOT_FOUND);
     }
 
-    if (quotation.status !== expected) {
+    const allowedStatuses = Array.isArray(expected) ? expected : [expected];
+    if (!allowedStatuses.includes(quotation.status)) {
       throw new AppException(ErrorCode.E118, HttpStatus.CONFLICT);
     }
   }

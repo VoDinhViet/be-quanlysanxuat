@@ -30,7 +30,8 @@ export const purchaseQuotationStatusEnum = pgEnum('purchase_quotation_status', [
 /**
  * Báo giá (RFQ) — header cho một nhóm dòng vật tư, mỗi vật tư mang danh sách NCC được hỏi giá
  * (`purchase_quotation_items` → `purchase_quotation_item_suppliers`, `docs/CODEMAPS/purchasing.md`).
- * `DRAFT → PENDING_APPROVAL → APPROVED`, hoặc `REJECTED` (không duyệt) từ `PENDING_APPROVAL`; `APPROVED` huỷ
+ * `DRAFT → PENDING_APPROVAL → APPROVED`, hoặc `REJECTED` (không duyệt) từ `PENDING_APPROVAL`, rồi sửa
+ * về `DRAFT` hoặc gửi duyệt lại; `APPROVED` huỷ
  * (`CANCELLED`) được thẳng (`cancel`) hoặc về `DRAFT` khi huỷ PO kèm `reopenQuotation` (`docs/CODEMAPS/purchasing.md`).
  */
 export const purchaseQuotations = pgTable(
