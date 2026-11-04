@@ -1,4 +1,4 @@
-<!-- Generated: 2026-11-03 | Files scanned: 40 | Token estimate: ~2590 -->
+<!-- Generated: 2026-11-04 | Files scanned: 40 | Token estimate: ~2600 -->
 # Data Codemap
 
 **Last Updated:** 2026-10-16
@@ -16,7 +16,7 @@
 - Schema column comments are largely Vietnamese.
 
 ## Tables by folder (`src/database/schemas/`)
-- Top level: `files` (uploaded file registry; `FileKind` IMAGE/DOCUMENT/EVIDENCE, `UploadType` per screen), `document_sequences` (unused, to be dropped), `departments`, `positions`, `countries`, `operations` (+ `operation_assignments`).
+- Top level: `files` (uploaded file registry; `FileKind` IMAGE/DOCUMENT/EVIDENCE, `UploadType` per screen; `linked_at` set once a document references the file, `draft_expires_at` keeps an unlinked file for a saved form draft until that time, see integration.md files flow), `document_sequences` (unused, to be dropped), `departments`, `positions`, `countries`, `operations` (+ `operation_assignments`).
 - `identity-access/`: `users` (profile; `user_status`, gender), `credentials` (login, role link), `roles` (permission code sets).
 - `clients/`: `clients`, `client_groups`, `client_contacts`.
 - `suppliers/`: `suppliers`, `supplier_groups`, `supplier_files`, `supplier_representatives`, `supplier_payment_info`.

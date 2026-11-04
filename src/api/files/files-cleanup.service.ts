@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { and, inArray, isNull, lt } from 'drizzle-orm';
+import { and, inArray, isNull, lt, or } from 'drizzle-orm';
 
 import { AllConfigType } from '../../config/config.type';
 import { DRIZZLE } from '../../database/database.module';
@@ -19,6 +19,8 @@ import type { StorageProvider } from '../../storage/storage-provider.interface';
  *   reverse-lookup sweeper needs one `NOT EXISTS` per referencing table, and the day someone adds
  *   a module and forgets a clause, this job starts deleting live data — here a new module is safe
  *   by default, because linking is what marks a file, not who links it.
+ * - File nằm trong bản nháp form có `draftExpiresAt`: bỏ qua `orphanTtl`, chỉ bị xoá khi hạn đó đã
+ *   qua (nháp quá `upload.draftTtl` hoặc đã bị xoá), xem `FilesService.holdDraftFiles`.
  * - Requires a long-lived process: `@nestjs/schedule` timers live in memory, so under the
  *   serverless handler exported by `main.ts` this never fires and nothing reports it — an
  *   external scheduler (cron hitting a dedicated endpoint, a queue worker, etc.) is needed in
@@ -39,11 +41,18 @@ export class FilesCleanupService {
     const orphanTtl = this.configService.getOrThrow('upload.orphanTtl', {
       infer: true,
     });
-    const cutoff = new Date(Date.now() - orphanTtl * 1000);
+    const now = new Date();
+    const cutoff = new Date(now.getTime() - orphanTtl * 1000);
 
     const orphans = await this.db.query.files.findMany({
       columns: { id: true, storageKey: true },
-      where: and(isNull(files.linkedAt), lt(files.createdAt, cutoff)),
+      where: and(
+        isNull(files.linkedAt),
+        or(
+          and(isNull(files.draftExpiresAt), lt(files.createdAt, cutoff)),
+          lt(files.draftExpiresAt, now),
+        ),
+      ),
     });
 
     if (orphans.length === 0) {
@@ -64,7 +73,7 @@ export class FilesCleanupService {
     );
 
     this.logger.log(
-      `Swept ${orphans.length} orphaned file(s) older than ${orphanTtl}s`,
+      `Swept ${orphans.length} unlinked file(s) past their orphan TTL (${orphanTtl}s) or draft hold`,
     );
   }
 }

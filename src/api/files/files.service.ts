@@ -2,7 +2,7 @@ import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { plainToInstance } from 'class-transformer';
 import { createHash, randomUUID } from 'crypto';
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
 
 import { extractPostgresError } from '../../common/utils/postgres-error';
 import { AllConfigType } from '../../config/config.type';
@@ -22,6 +22,7 @@ import { STORAGE_PROVIDER } from '../../storage/storage.constants';
 import type { StorageProvider } from '../../storage/storage-provider.interface';
 import { PermissionsService } from '../auth/permissions.service';
 import { FileResDto } from './dto/file.res.dto';
+import { HoldDraftFilesResDto } from './dto/hold-draft-files.res.dto';
 import { uploadPolicies } from './upload-policy';
 import { detectFileType } from './util/file-type';
 
@@ -253,6 +254,90 @@ export class FilesService {
       .update(files)
       .set({ linkedAt: new Date() })
       .where(and(inArray(files.id, uniqueIds), isNull(files.linkedAt)));
+  }
+
+  /** Giữ các file của một bản nháp form thêm `upload.draftTtl` kể từ lúc gọi, để bộ dọn không xoá
+   * chúng trước khi nháp được dùng.
+   *
+   * Rules:
+   * - Chỉ file do chính người gọi tải lên và chưa gắn phiếu; file của người khác hay đã gắn bị bỏ
+   *   qua, không báo lỗi, để nháp lẫn file đã dùng vẫn lưu được.
+   * - `missingFileIds` là id không còn trong registry (đã bị dọn): form gỡ chúng khỏi nháp.
+   * - Gọi lại mỗi lần "Lưu nháp" để tính lại hạn từ đầu. */
+  async holdDraftFiles(
+    fileIds: string[],
+    actorUserId: string,
+  ): Promise<HoldDraftFilesResDto> {
+    const draftTtl = this.configService.getOrThrow('upload.draftTtl', {
+      infer: true,
+    });
+    const expiresAt = new Date(Date.now() + draftTtl * 1000);
+    const uniqueFileIds = [...new Set(fileIds)];
+
+    if (uniqueFileIds.length === 0) {
+      return this.toHoldResDto(expiresAt, []);
+    }
+
+    await this.db
+      .update(files)
+      .set({ draftExpiresAt: expiresAt })
+      .where(
+        and(
+          inArray(files.id, uniqueFileIds),
+          eq(files.uploadedBy, actorUserId),
+          isNull(files.linkedAt),
+        ),
+      );
+
+    // Đọc sau khi ghi: file bị dọn xen giữa vẫn được tính là thiếu.
+    const existingFiles = await this.db
+      .select({ id: files.id })
+      .from(files)
+      .where(inArray(files.id, uniqueFileIds));
+    const existingFileIds = new Set(
+      existingFiles.map((existingFile) => existingFile.id),
+    );
+
+    return this.toHoldResDto(
+      expiresAt,
+      uniqueFileIds.filter((fileId) => !existingFileIds.has(fileId)),
+    );
+  }
+
+  /** Nháp bị xoá hoặc file bị gỡ khỏi nháp: cho hạn giữ về hiện tại để lượt dọn kế tiếp xoá file.
+   * Chỉ đụng file đã được giữ (`draftExpiresAt` có giá trị), chưa gắn phiếu và do chính người gọi
+   * tải lên; file vừa tải lên ở form khác chưa lưu nháp vẫn theo `orphanTtl`. */
+  async releaseDraftFiles(
+    fileIds: string[],
+    actorUserId: string,
+  ): Promise<void> {
+    const uniqueFileIds = [...new Set(fileIds)];
+    if (uniqueFileIds.length === 0) {
+      return;
+    }
+
+    await this.db
+      .update(files)
+      .set({ draftExpiresAt: new Date() })
+      .where(
+        and(
+          inArray(files.id, uniqueFileIds),
+          eq(files.uploadedBy, actorUserId),
+          isNull(files.linkedAt),
+          isNotNull(files.draftExpiresAt),
+        ),
+      );
+  }
+
+  private toHoldResDto(
+    expiresAt: Date,
+    missingFileIds: string[],
+  ): HoldDraftFilesResDto {
+    return plainToInstance(
+      HoldDraftFilesResDto,
+      { expiresAt, missingFileIds },
+      { excludeExtraneousValues: true },
+    );
   }
 
   private async ensureFileExists(fileId: string) {

@@ -1,4 +1,4 @@
-<!-- Generated: 2026-11-03 | Files scanned: 58 | Token estimate: ~2660 -->
+<!-- Generated: 2026-11-04 | Files scanned: 58 | Token estimate: ~2680 -->
 # Architecture Codemap
 
 **Last Updated:** 2026-10-16
@@ -48,7 +48,7 @@ client --HTTP--> helmet/compression/CORS (Express)
 - `src/decorators/`: `field.decorators.ts` (`StringField`, `UUIDField`, `EnumField`, `ClassField`, ... each with `*Optional`), `http.decorators.ts` (`ApiAuth`, `ApiPublic`), `permissions.decorator.ts`, `public.decorator.ts`, `current-user.decorator.ts`, `param.decorators.ts` (`UUIDParam`), `validators/`.
 - `src/constants/`: `error-code.constant.ts` (enum `ErrorCode`, 714 lines, 283 codes: `E###` business, `V###` validation, values like `ncr.error.job_required`; retired codes stay reserved), `permission.constant.ts`, `app.constant.ts` (`Environment`, `OrderBy`, paging defaults), `cache.constant.ts`, `role.constant.ts`.
 - `src/redis/`: `RedisModule` (global) gives a Keyv-Redis `CacheModule` (TTL 1 week) and `BullModule.forRootAsync` connection from `REDIS_URL`. No queue is registered and no `@Processor`/`InjectQueue` exists in `src` (grep): BullMQ is wiring only.
-- `src/storage/`: `STORAGE_PROVIDER` symbol, `LocalDiskStorageProvider` (only driver; `UPLOAD_DRIVER=local`, dir `uploads/`). Upload policies per `UploadType` in `src/api/files/upload-policy.ts`; hourly cleanup of orphan files (`UPLOAD_ORPHAN_TTL`).
+- `src/storage/`: `STORAGE_PROVIDER` symbol, `LocalDiskStorageProvider` (only driver; `UPLOAD_DRIVER=local`, dir `uploads/`). Upload policies per `UploadType` in `src/api/files/upload-policy.ts`; hourly cleanup of orphan files (`UPLOAD_ORPHAN_TTL`, 24h; files of a saved form draft are kept `UPLOAD_DRAFT_TTL`, 30 days).
 - `src/templates/`: `TemplatesModule` exports `PdfRendererService` (Puppeteer/Chromium, init/destroy hooks, `render(type, ctx) -> Buffer`); `form-templates.registry.ts` maps `FormTemplateType` (ORDER, ORDER_SUMMARY, PRODUCTION_ORDER, PRODUCTION_PLAN, STOCK_IN_SLIP, STOCK_OUT_SLIP, MATERIAL_REQUISITION, PURCHASE_REQUEST, PURCHASE_ORDER) to static `*.html` plus page orientation (`landscape`; PURCHASE_REQUEST, PURCHASE_ORDER, STOCK_IN_SLIP, STOCK_OUT_SLIP and MATERIAL_REQUISITION are portrait); copied to `dist/src/templates` via `nest-cli.json` assets. Specs importing the renderer must `jest.mock` it (puppeteer is ESM-only).
 - `src/test-utils/chainable-mock.ts` (`chainableMock`): thenable mock of Drizzle's fluent builder for service specs. `test/` holds only `app.e2e-spec.ts`.
 - `src/utils/`: `validate-config.ts`, `swagger.ts`, `cache.ts` (`createCacheKey`).

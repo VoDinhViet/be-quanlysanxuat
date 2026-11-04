@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Delete,
   Get,
@@ -16,7 +17,9 @@ import { CurrentUser } from '../../decorators/current-user.decorator';
 import { ApiAuth } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
 import { multerOptions } from './config/multer.config';
+import { DraftFilesReqDto } from './dto/draft-files.req.dto';
 import { FileResDto } from './dto/file.res.dto';
+import { HoldDraftFilesResDto } from './dto/hold-draft-files.res.dto';
 import { UploadFileReqDto } from './dto/upload-file.req.dto';
 import { FilesService } from './files.service';
 
@@ -51,6 +54,33 @@ export class FilesController {
       type: reqDto.type,
       uploadedBy: payload.userId,
     });
+  }
+
+  @Post('drafts/hold')
+  @ApiAuth({
+    type: HoldDraftFilesResDto,
+    summary:
+      'Hold the files of a saved form draft so the orphan sweep keeps them (own uploads only)',
+    statusCode: HttpStatus.OK,
+  })
+  holdDraftFiles(
+    @Body() reqDto: DraftFilesReqDto,
+    @CurrentUser() payload: JwtPayloadType,
+  ): Promise<HoldDraftFilesResDto> {
+    return this.filesService.holdDraftFiles(reqDto.fileIds, payload.userId);
+  }
+
+  @Post('drafts/release')
+  @ApiAuth({
+    summary:
+      'Release held draft files after the draft is deleted or the file leaves it (own uploads only)',
+    statusCode: HttpStatus.NO_CONTENT,
+  })
+  releaseDraftFiles(
+    @Body() reqDto: DraftFilesReqDto,
+    @CurrentUser() payload: JwtPayloadType,
+  ): Promise<void> {
+    return this.filesService.releaseDraftFiles(reqDto.fileIds, payload.userId);
   }
 
   @Get(':fileId')

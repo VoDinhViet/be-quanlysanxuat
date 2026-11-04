@@ -139,6 +139,15 @@ export const files = pgTable(
      * user picked an image and abandoned the form), making the row sweepable by
      * `FilesCleanupService` once older than `upload.orphanTtl`. Set by `FilesService.linkFiles`. */
     linkedAt: timestamp('linked_at'),
+    /**
+     * Hạn giữ một file chưa gắn phiếu vì nó đang nằm trong bản nháp form (`FilesService.holdDraftFiles`).
+     *
+     * Rules:
+     * - `NULL`: file thường, `FilesCleanupService` xoá sau `upload.orphanTtl` kể từ `createdAt`.
+     * - Có giá trị: bộ dọn bỏ qua `orphanTtl`, chỉ xoá khi hạn này đã qua; xoá nháp đặt hạn về hiện tại.
+     * - Chỉ có nghĩa khi `linkedAt` còn `NULL`: file đã gắn phiếu không bao giờ bị dọn.
+     */
+    draftExpiresAt: timestamp('draft_expires_at'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at')
       .defaultNow()

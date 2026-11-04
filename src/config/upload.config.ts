@@ -28,6 +28,11 @@ class EnvironmentVariablesValidator {
   @Min(1)
   @IsOptional()
   UPLOAD_ORPHAN_TTL?: number;
+
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  UPLOAD_DRAFT_TTL?: number;
 }
 
 export default registerAs<UploadConfig>('upload', () => {
@@ -47,5 +52,9 @@ export default registerAs<UploadConfig>('upload', () => {
     orphanTtl: process.env.UPLOAD_ORPHAN_TTL
       ? parseInt(process.env.UPLOAD_ORPHAN_TTL, 10)
       : 24 * 60 * 60,
+    // Phải khớp `FORM_DRAFT_TTL_DAYS` của FE: nháp hết hạn thì file của nó cũng hết hạn.
+    draftTtl: process.env.UPLOAD_DRAFT_TTL
+      ? parseInt(process.env.UPLOAD_DRAFT_TTL, 10)
+      : 30 * 24 * 60 * 60,
   };
 });
