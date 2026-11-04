@@ -1,3 +1,5 @@
+import { readFile } from 'node:fs/promises';
+
 import { HttpStatus, Inject, Injectable, StreamableFile } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { format } from 'date-fns';
@@ -25,7 +27,7 @@ import {
   DocumentType,
   generateDocumentSequence,
 } from '../../common/utils/document-sequence';
-import { buildXlsxBuffer, XLSX_MIME } from '../../common/utils/excel';
+import { buildXlsxFromTemplate, XLSX_MIME } from '../../common/utils/excel';
 import { unaccentILike } from '../../common/utils/search';
 import {
   VN_NOW,
@@ -78,8 +80,16 @@ import { PageOrderResDto } from './dto/page-order.res.dto';
 import { RejectOrderReqDto } from './dto/reject-order.req.dto';
 import { UpdateOrderBuyerPoReqDto } from './dto/update-order-buyer-po.req.dto';
 import { UpdateOrderReqDto } from './dto/update-order.req.dto';
-import { ORDER_EXPORT_COLUMNS, OrderExport } from './orders.export';
-import { issuedQuantityByOrderItemIdSubquery } from './orders.query';
+import {
+  ORDER_ITEM_TRACKING_COLUMNS,
+  ORDER_TRACKING_FIRST_DATA_ROW,
+  ORDER_TRACKING_TEMPLATE_PATH,
+  OrderItemTracking,
+} from './orders.export';
+import {
+  invoicesByOrderItemIdSubquery,
+  issuedQuantityByOrderItemIdSubquery,
+} from './orders.query';
 
 /** Đơn hàng: `DRAFT` → ... → `AWAITING_PRODUCTION` (duyệt Giám đốc) → `IN_PROGRESS`. Vòng đời +
  * business rule đầy đủ: `docs/CODEMAPS/sales.md`. */
@@ -192,55 +202,90 @@ export class OrdersService {
     );
   }
 
-  /** Cắt im lặng ở `MAX_EXPORT_ROWS`, không báo lỗi khi vượt trần. Bộ lọc tách riêng khỏi
-   * `getOrders` dù trông giống nhau — hai route độc lập, sửa filter route nào chỉ route đó đổi. */
+  /** Xuất Excel theo mẫu "Theo dõi đơn hàng" của khách: mỗi dòng hàng một dòng Excel, xem
+   * `findOrderItemTrackings`. Tách riêng khỏi `getOrders` dù bộ lọc trông giống nhau — hai route
+   * độc lập, sửa filter route nào chỉ route đó đổi. */
   async exportOrdersExcel(reqDto: ExportOrdersReqDto): Promise<StreamableFile> {
-    const where = and(
-      isNull(orders.deletedAt),
-      inArray(orders.id, reqDto.orderIds),
+    const orderItemTrackings = await this.findOrderItemTrackings(
+      reqDto.orderIds,
     );
 
-    const assignedUserAlias = alias(users, 'assigned_user');
-    const rows: OrderExport[] = await this.db
-      .select({
-        code: orders.code,
-        clientName: clients.name,
-        clientCode: clients.code,
-        assignedUserName: assignedUserAlias.fullName,
-        orderDate: orders.orderDate,
-        dueDate: orders.dueDate,
-        status: orders.status,
-        currency: orders.currency,
-        exchangeRate: orders.exchangeRate,
-        subtotal: orders.subtotal,
-        discountAmount: orders.discountAmount,
-        vatAmount: orders.vatAmount,
-        shippingFee: orders.shippingFee,
-        total: orders.total,
-        totalVnd: this.totalVndSql(),
-        note: orders.note,
-      })
-      .from(orders)
-      .leftJoin(clients, eq(clients.id, orders.clientId))
-      .leftJoin(
-        assignedUserAlias,
-        eq(assignedUserAlias.id, orders.assignedUserId),
-      )
-      .where(where)
-      .orderBy(desc(orders.createdAt))
-      .limit(OrdersService.MAX_EXPORT_ROWS);
-
-    const buffer = await buildXlsxBuffer(
-      'Đơn hàng',
-      ORDER_EXPORT_COLUMNS,
-      rows,
-    );
-    const fileName = `don-hang-${getFileTimestamp()}.xlsx`;
+    const buffer = await buildXlsxFromTemplate({
+      template: await readFile(ORDER_TRACKING_TEMPLATE_PATH),
+      firstDataRow: ORDER_TRACKING_FIRST_DATA_ROW,
+      columns: ORDER_ITEM_TRACKING_COLUMNS,
+      records: orderItemTrackings,
+    });
+    const fileName = `theo-doi-don-hang-${getFileTimestamp()}.xlsx`;
 
     return new StreamableFile(buffer, {
       type: XLSX_MIME,
       disposition: `attachment; filename="${fileName}"`,
     });
+  }
+
+  /**
+   * Các dòng hàng của những đơn đã chọn, mới nhất trước, mỗi dòng đã quy tiền về VND.
+   *
+   * Rules:
+   * - Bỏ dòng `CANCELLED`: dòng huỷ không nằm trong `subtotal` nên không thuộc phần theo dõi.
+   * - Tiền quy VND bằng `exchangeRate` của đơn; đơn VND có rate = 1 (xem `enforceExchangeRate`).
+   * - Dòng coi là đã giao khi SL xuất thật >= SL đặt; giao một phần vẫn là chưa giao. SL xuất lấy
+   *   từ sổ kho (`issuedQuantityByOrderItemIdSubquery`), không từ trạng thái phiếu giao.
+   * - Hoá đơn lấy từ phiếu giao `DELIVERED` đã xuất hoá đơn (`invoicesByOrderItemIdSubquery`).
+   * - Cắt im lặng ở `MAX_EXPORT_ROWS` dòng hàng, không báo lỗi khi vượt trần.
+   */
+  private findOrderItemTrackings(
+    orderIds: string[],
+  ): Promise<OrderItemTracking[]> {
+    const issuedByItem = issuedQuantityByOrderItemIdSubquery(this.db);
+    const invoicesByItem = invoicesByOrderItemIdSubquery(this.db);
+
+    const unitPriceVnd = sql<number>`round(${orderItems.unitPrice} * ${orders.exchangeRate}, 2)`;
+    const lineTotalVnd = sql<number>`round(${orderItems.lineTotal} * ${orders.exchangeRate}, 0)`;
+    const isFullyDelivered = sql<boolean>`coalesce(${issuedByItem.issuedQty}, 0) >= ${orderItems.quantity}`;
+
+    return this.db
+      .select({
+        itemCode: items.code,
+        buyerPoNo: orders.buyerPoNo,
+        clientCode: clients.code,
+        clientName: clients.name,
+        itemName: items.name,
+        unitName: units.name,
+        orderedQuantity: orderItems.quantity,
+        unitPriceVnd: unitPriceVnd.mapWith(Number),
+        exchangeRate: orders.exchangeRate,
+        discountPercent: orderItems.discountPercent,
+        lineTotalVnd: lineTotalVnd.mapWith(Number),
+        orderDate: orders.orderDate,
+        dueDate: orders.dueDate,
+        isFullyDelivered: isFullyDelivered.mapWith(Boolean),
+        invoiceNumbers: invoicesByItem.invoiceNumbers,
+        latestInvoiceDate: invoicesByItem.latestInvoiceDate,
+        note: orderItems.note,
+      })
+      .from(orderItems)
+      .innerJoin(orders, eq(orders.id, orderItems.orderId))
+      .innerJoin(items, eq(items.id, orderItems.itemId))
+      .innerJoin(units, eq(units.id, items.unitId))
+      .leftJoin(clients, eq(clients.id, orders.clientId))
+      .leftJoin(issuedByItem, eq(issuedByItem.orderItemId, orderItems.id))
+      .leftJoin(invoicesByItem, eq(invoicesByItem.orderItemId, orderItems.id))
+      .where(
+        and(
+          isNull(orders.deletedAt),
+          inArray(orders.id, orderIds),
+          ne(orderItems.status, OrderItemStatus.CANCELLED),
+        ),
+      )
+      .orderBy(
+        desc(orders.createdAt),
+        asc(orders.code),
+        asc(orderItems.sortOrder),
+        asc(orderItems.createdAt),
+      )
+      .limit(OrdersService.MAX_EXPORT_ROWS);
   }
 
   /** `expiredTrendCount` so "trễ hạn cách đây 1 tuần" với *trạng thái hôm nay*, không phải trạng

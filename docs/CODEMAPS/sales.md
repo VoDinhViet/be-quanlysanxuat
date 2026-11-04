@@ -1,10 +1,10 @@
-<!-- Generated: 2026-11-03 | Files scanned: 29 | Token estimate: ~2950 -->
+<!-- Generated: 2026-11-04 | Files scanned: 29 | Token estimate: ~2950 -->
 # Sales codemap
 
 Conventions: controllers check permissions, services do not; routes are under global prefix `api`. Create/update mostly return 204 (void) except `POST /orders`. Paths below: `O`=`src/api/orders`, `B`=`src/api/outbound-orders`, `C`=`src/api/clients`, `S`=`src/database/schemas`.
 
 ## 1. Modules
-- `O/` (SO): `orders.controller.ts` 214, `orders.service.ts` 1113, `orders.query.ts` 26 (`issuedQuantityByOrderItemIdSubquery`:12 = delivered qty per order line, from `inventory_transactions`), `orders.export.ts` 76, `dto/` 14 files. Imports Files, ProductionOrders, Templates (PDF) modules (`orders.module.ts:11`).
+- `O/` (SO): `orders.controller.ts` 214, `orders.service.ts` 1161, `orders.query.ts` 63 (`issuedQuantityByOrderItemIdSubquery`:18 = delivered qty per order line, from `inventory_transactions`; `invoicesByOrderItemIdSubquery`:37 = invoice numbers and latest date per order line, from DELIVERED + ISSUED DOs), `orders.export.ts` 128 (column map of the "Theo dõi đơn hàng" Excel; Thành tiền is a formula + stored amount for VND orders, a plain amount for foreign-currency orders), `templates/order-tracking-template.xlsx` (the customer's workbook, copied by `nest-cli.json` assets), `dto/` 14 files. Imports Files, ProductionOrders, Templates (PDF) modules (`orders.module.ts:11`).
 - `B/` (DO): `outbound-orders.controller.ts` 250, `.service.ts` 968, `.query.ts` 210 (held-qty and filter helpers, `closeOrdersIfFullyDelivered`:168), `.export.ts` 94. No module imports; posting the DO's issue lives in `InventoryIssuesService`.
 - `C/`: `clients.controller.ts` 118, `clients.service.ts` 354 (clients + contacts).
 - `src/api/client-groups/` (controller 26, service 49) and `src/api/countries/` (controller 23, service 34): read-only lookups.
@@ -15,18 +15,18 @@ Orders (14), `@Controller('orders')`; static routes are declared before `:orderI
 | Route | Perm | Handler -> Service | Writes |
 |---|---|---|---|
 | GET /orders | orders:read | `O/orders.controller.ts:45` -> `getOrders` (service:94) | - |
-| GET /orders/stats | orders:read | :59 -> `getOrderStats` (:246) | - |
-| GET /orders/export-excel and /orders/export (alias) | orders:read | :69, :81 -> `exportOrdersExcel` (:194, cap 10,000 rows) | - |
-| GET /orders/export-summary-pdf | orders:read | :92 -> `exportOrdersSummaryPdf` (:469) | - |
-| GET /orders/:orderId | orders:read | :105 -> `getOrder` (:313) | - |
-| GET /orders/:orderId/export-pdf | orders:read | :115 -> `exportOrderPdf` (:370) | - |
-| GET /orders/:orderId/items | orders:read | :128 -> `getOrderItems` (:555) | - |
-| POST /orders | orders:create | :141 -> `createOrder` (:597) | orders, order_items, order_files |
-| PATCH /orders/:orderId | orders:update | :155 -> `updateOrder` (:663) | orders, order_items, order_files; deletes production_orders on cancel |
-| PATCH /orders/:orderId/buyer-po | orders:update | :169 -> `updateOrderBuyerPo` (:753) | orders.buyerPoNo |
-| POST /orders/:orderId/approve | orders:approve | :183 -> `approveOrder` (:768) | orders, production_orders, production_order_items, logs |
-| POST /orders/:orderId/reject | orders:approve | :197 -> `rejectOrder` (:799) | orders |
-| DELETE /orders/:orderId | orders:delete | :211 -> `deleteOrder` (:818) | orders.deletedAt |
+| GET /orders/stats | orders:read | :59 -> `getOrderStats` (:294) | - |
+| GET /orders/export-excel and /orders/export (alias) | orders:read | :69, :81 -> `exportOrdersExcel` (:208; one Excel row per non-cancelled order line via `findOrderItemTrackings`:238, VND, cap 10,000 lines; filled into the template by `buildXlsxFromTemplate`) | - |
+| GET /orders/export-summary-pdf | orders:read | :92 -> `exportOrdersSummaryPdf` (:517) | - |
+| GET /orders/:orderId | orders:read | :105 -> `getOrder` (:361) | - |
+| GET /orders/:orderId/export-pdf | orders:read | :115 -> `exportOrderPdf` (:418) | - |
+| GET /orders/:orderId/items | orders:read | :128 -> `getOrderItems` (:603) | - |
+| POST /orders | orders:create | :141 -> `createOrder` (:645) | orders, order_items, order_files |
+| PATCH /orders/:orderId | orders:update | :155 -> `updateOrder` (:711) | orders, order_items, order_files; deletes production_orders on cancel |
+| PATCH /orders/:orderId/buyer-po | orders:update | :169 -> `updateOrderBuyerPo` (:801) | orders.buyerPoNo |
+| POST /orders/:orderId/approve | orders:approve | :183 -> `approveOrder` (:816) | orders, production_orders, production_order_items, logs |
+| POST /orders/:orderId/reject | orders:approve | :197 -> `rejectOrder` (:847) | orders |
+| DELETE /orders/:orderId | orders:delete | :211 -> `deleteOrder` (:866) | orders.deletedAt |
 
 Outbound orders (15), `@Controller('outbound-orders')`; handler lines in `B/outbound-orders.controller.ts`, service lines in `.service.ts`.
 | Route | Perm | Handler -> Service | Writes |
