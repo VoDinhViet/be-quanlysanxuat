@@ -22,21 +22,27 @@ import { CreateOutboundOrderReqDto } from './dto/create-outbound-order.req.dto';
 import { ExportOutboundOrdersReqDto } from './dto/export-outbound-orders.req.dto';
 import { GetOutboundOrderStatsReqDto } from './dto/get-outbound-order-stats.req.dto';
 import { GetOutboundOrdersReqDto } from './dto/get-outbound-orders.req.dto';
+import { GetPendingDeliveryOutboundOrdersReqDto } from './dto/get-pending-delivery-outbound-orders.req.dto';
 import { GetUnfulfilledOrderItemsReqDto } from './dto/get-unfulfilled-order-items.req.dto';
 import { OutboundOrderItemResDto } from './dto/outbound-order-item.res.dto';
 import { OutboundOrderResDto } from './dto/outbound-order.res.dto';
 import { PageOutboundOrderResDto } from './dto/page-outbound-order.res.dto';
+import { PendingDeliveryOutboundOrderResDto } from './dto/pending-delivery-outbound-order.res.dto';
 import { RejectOutboundOrderReqDto } from './dto/reject-outbound-order.req.dto';
 import { UnfulfilledOrderItemResDto } from './dto/unfulfilled-order-item.res.dto';
 import { OutboundOrderStatsResDto } from './dto/outbound-order-stats.res.dto';
 import { UpdateOutboundOrderInvoiceReqDto } from './dto/update-outbound-order-invoice.req.dto';
 import { UpdateOutboundOrderReqDto } from './dto/update-outbound-order.req.dto';
+import { OutboundOrdersSummaryService } from './outbound-orders-summary.service';
 import { OutboundOrdersService } from './outbound-orders.service';
 
 @ApiTags('Outbound Orders')
 @Controller('outbound-orders')
 export class OutboundOrdersController {
-  constructor(private readonly outboundOrdersService: OutboundOrdersService) {}
+  constructor(
+    private readonly outboundOrdersService: OutboundOrdersService,
+    private readonly outboundOrdersSummaryService: OutboundOrdersSummaryService,
+  ) {}
 
   @Get()
   @Permissions('outbound:read')
@@ -63,6 +69,23 @@ export class OutboundOrdersController {
     @Query() reqDto: GetOutboundOrderStatsReqDto,
   ): Promise<OutboundOrderStatsResDto> {
     return this.outboundOrdersService.getOutboundOrderStats(reqDto);
+  }
+
+  // Khai trước ':outboundOrderId' để 'pending-delivery' không bị bắt nhầm thành id.
+  @Get('pending-delivery')
+  @Permissions('outbound:read')
+  @ApiAuth({
+    type: PendingDeliveryOutboundOrderResDto,
+    summary:
+      'Phiếu giao hàng (DO) đang chờ giao, đến hạn trong N ngày tới (kể cả đã quá hạn)',
+    isArray: true,
+  })
+  getPendingDeliveryOutboundOrders(
+    @Query() reqDto: GetPendingDeliveryOutboundOrdersReqDto,
+  ): Promise<PendingDeliveryOutboundOrderResDto[]> {
+    return this.outboundOrdersSummaryService.getPendingDeliveryOutboundOrders(
+      reqDto,
+    );
   }
 
   @Get('unfulfilled-order-items')

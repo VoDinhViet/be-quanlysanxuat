@@ -5,12 +5,13 @@ import { AuthModule } from '../auth/auth.module';
 import { FilesModule } from '../files/files.module';
 import { ProductionOrdersModule } from '../production-orders/production-orders.module';
 import { OrdersController } from './orders.controller';
+import { OrdersSummaryService } from './orders-summary.service';
 import { OrdersService } from './orders.service';
 
 @Module({
   imports: [AuthModule, FilesModule, ProductionOrdersModule, TemplatesModule],
   controllers: [OrdersController],
-  providers: [OrdersService],
+  providers: [OrdersService, OrdersSummaryService],
   exports: [OrdersService],
 })
 export class OrdersModule {}

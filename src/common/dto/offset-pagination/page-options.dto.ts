@@ -24,10 +24,16 @@ export class PageOptionsDto {
   })
   readonly page: number = DEFAULT_CURRENT_PAGE;
 
-  @StringFieldOptional()
+  @StringFieldOptional({
+    description:
+      'Search keyword; which fields it matches depends on the list (usually the code and name)',
+  })
   readonly q?: string;
 
-  @EnumFieldOptional(() => OrderBy, { default: OrderBy.ASC })
+  @EnumFieldOptional(() => OrderBy, {
+    default: OrderBy.ASC,
+    description: 'Sort direction; the sorted column depends on the list',
+  })
   readonly order?: OrderBy = OrderBy.ASC;
 
   get offset() {

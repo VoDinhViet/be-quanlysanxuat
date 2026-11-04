@@ -21,10 +21,13 @@ import { UpdateDocumentFilesReqDto } from '../files/dto/update-document-files.re
 import { PurchaseChainNotesResDto } from '../purchase-notes/dto/purchase-chain-notes.res.dto';
 import { PurchaseNotesService } from '../purchase-notes/purchase-notes.service';
 import { CreateInventoryReceiptReqDto } from './dto/create-inventory-receipt.req.dto';
+import { GetInventoryReceiptStatusStatsReqDto } from './dto/get-inventory-receipt-status-stats.req.dto';
 import { GetInventoryReceiptsReqDto } from './dto/get-inventory-receipts.req.dto';
+import { InventoryReceiptStatusStatResDto } from './dto/inventory-receipt-status-stat.res.dto';
 import { InventoryReceiptResDto } from './dto/inventory-receipt.res.dto';
 import { PageInventoryReceiptResDto } from './dto/page-inventory-receipt.res.dto';
 import { UpdateInventoryReceiptReqDto } from './dto/update-inventory-receipt.req.dto';
+import { InventoryReceiptsSummaryService } from './inventory-receipts-summary.service';
 import { InventoryReceiptsService } from './inventory-receipts.service';
 
 @ApiTags('Inventory Receipts')
@@ -33,6 +36,7 @@ export class InventoryReceiptsController {
   constructor(
     private readonly inventoryReceiptsService: InventoryReceiptsService,
     private readonly purchaseNotesService: PurchaseNotesService,
+    private readonly inventoryReceiptsSummaryService: InventoryReceiptsSummaryService,
   ) {}
 
   @Get()
@@ -46,6 +50,20 @@ export class InventoryReceiptsController {
     @Query() reqDto: GetInventoryReceiptsReqDto,
   ): Promise<OffsetPaginatedDto<PageInventoryReceiptResDto>> {
     return this.inventoryReceiptsService.getInventoryReceipts(reqDto);
+  }
+
+  // Khai trước ':receiptId' để 'status-stats' không bị bắt nhầm thành id.
+  @Get('status-stats')
+  @Permissions('inventory:read')
+  @ApiAuth({
+    type: InventoryReceiptStatusStatResDto,
+    isArray: true,
+    summary: 'Inventory receipt counts by receipt type and status',
+  })
+  getReceiptStatusStats(
+    @Query() reqDto: GetInventoryReceiptStatusStatsReqDto,
+  ): Promise<InventoryReceiptStatusStatResDto[]> {
+    return this.inventoryReceiptsSummaryService.getReceiptStatusStats(reqDto);
   }
 
   @Get(':receiptId')

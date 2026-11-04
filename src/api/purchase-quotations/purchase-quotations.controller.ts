@@ -20,16 +20,19 @@ import { PurchaseChainNotesResDto } from '../purchase-notes/dto/purchase-chain-n
 import { PurchaseNotesService } from '../purchase-notes/purchase-notes.service';
 import { ApproveQuotationReqDto } from './dto/approve-quotation.req.dto';
 import { CreateQuotationReqDto } from './dto/create-quotation.req.dto';
+import { GetQuotationStatusStatsReqDto } from './dto/get-quotation-status-stats.req.dto';
 import { GetQuotationLastPurchasesReqDto } from './dto/get-quotation-last-purchases.req.dto';
 import { QuotationLastPurchaseResDto } from './dto/quotation-last-purchase.res.dto';
 import { GetQuotationsReqDto } from './dto/get-quotations.req.dto';
 import { PageQuotationResDto } from './dto/page-quotation.res.dto';
 import { QuotationItemResDto } from './dto/quotation-item.res.dto';
 import { QuotationResDto } from './dto/quotation.res.dto';
+import { QuotationStatusStatResDto } from './dto/quotation-status-stat.res.dto';
 import { CancelQuotationReqDto } from './dto/cancel-quotation.req.dto';
 import { RejectQuotationReqDto } from './dto/reject-quotation.req.dto';
 import { UpdateQuotationReqDto } from './dto/update-quotation.req.dto';
 import { PurchaseQuotationsService } from './purchase-quotations.service';
+import { PurchaseQuotationsSummaryService } from './purchase-quotations-summary.service';
 
 @ApiTags('Purchase Quotations')
 @Controller('purchase-quotations')
@@ -37,6 +40,7 @@ export class PurchaseQuotationsController {
   constructor(
     private readonly purchaseQuotationsService: PurchaseQuotationsService,
     private readonly purchaseNotesService: PurchaseNotesService,
+    private readonly purchaseQuotationsSummaryService: PurchaseQuotationsSummaryService,
   ) {}
 
   @Get()
@@ -64,6 +68,20 @@ export class PurchaseQuotationsController {
     @Query() reqDto: GetQuotationLastPurchasesReqDto,
   ): Promise<QuotationLastPurchaseResDto[]> {
     return this.purchaseQuotationsService.getLastPurchases(reqDto);
+  }
+
+  @Get('status-stats')
+  @Permissions('purchasing:read')
+  @ApiAuth({
+    type: QuotationStatusStatResDto,
+    isArray: true,
+    summary:
+      'Quotation (RFQ) counts per status, optionally within a created date range',
+  })
+  getQuotationStatusStats(
+    @Query() reqDto: GetQuotationStatusStatsReqDto,
+  ): Promise<QuotationStatusStatResDto[]> {
+    return this.purchaseQuotationsSummaryService.getStatusStats(reqDto);
   }
 
   @Get(':quotationId')

@@ -24,22 +24,29 @@ import { ExportProductionJobsPlanReqDto } from './dto/export-production-jobs-pla
 import { CreateProductionJobIssuesReqDto } from './dto/create-production-job-issues.req.dto';
 import { UpdateProductionJobIssueReqDto } from './dto/update-production-job-issue.req.dto';
 import { CreateProductionJobNoteReqDto } from './dto/create-production-job-note.req.dto';
+import { GetLateProductionJobOperationsReqDto } from './dto/get-late-production-job-operations.req.dto';
 import { GetProductionJobBomReqDto } from './dto/get-production-job-bom.req.dto';
+import { GetProductionJobItemSummaryReqDto } from './dto/get-production-job-item-summary.req.dto';
 import { GetProductionJobLogsReqDto } from './dto/get-production-job-logs.req.dto';
 import { GetProductionJobNotesReqDto } from './dto/get-production-job-notes.req.dto';
 import { GetProductionJobOperationsReqDto } from './dto/get-production-job-operations.req.dto';
+import { GetProductionJobOperationTypeStatsReqDto } from './dto/get-production-job-operation-type-stats.req.dto';
 import { GetProductionJobStatsReqDto } from './dto/get-production-job-stats.req.dto';
 import { GetProductionJobsReqDto } from './dto/get-production-jobs.req.dto';
+import { LateProductionJobOperationResDto } from './dto/late-production-job-operation.res.dto';
 import { ProductionJobBomItemResDto } from './dto/production-job-bom-operation.res.dto';
 import { ProductionJobPlanOperationResDto } from './dto/production-job-plan-operation.res.dto';
 import { ProductionJobDetailResDto } from './dto/production-job-detail.res.dto';
 import { ProductionJobIssueResDto } from './dto/production-job-issue.res.dto';
+import { ProductionJobItemSummaryResDto } from './dto/production-job-item-summary.res.dto';
 import { ProductionJobLogResDto } from './dto/production-job-log.res.dto';
 import { ProductionJobNoteResDto } from './dto/production-job-note.res.dto';
+import { ProductionJobOperationTypeStatResDto } from './dto/production-job-operation-type-stat.res.dto';
 import { ProductionJobStatsResDto } from './dto/production-job-stats.res.dto';
 import { ProductionJobResDto } from './dto/production-job.res.dto';
 import { UpdateProductionJobOperationDueDateReqDto } from './dto/update-production-job-operation-due-date.req.dto';
 import { UpdateProductionJobOperationsPlanReqDto } from './dto/update-production-job-operations-plan.req.dto';
+import { ProductionJobsSummaryService } from './production-jobs-summary.service';
 import { ProductionJobsService } from './production-jobs.service';
 
 @ApiTags('Production Jobs')
@@ -47,6 +54,7 @@ import { ProductionJobsService } from './production-jobs.service';
 export class ProductionJobsController {
   constructor(
     private readonly productionJobsService: ProductionJobsService,
+    private readonly productionJobsSummaryService: ProductionJobsSummaryService,
     private readonly oqcService: OqcService,
     private readonly operationAccess: OperationAccessService,
   ) {}
@@ -77,6 +85,48 @@ export class ProductionJobsController {
     @Query() reqDto: GetProductionJobStatsReqDto,
   ): Promise<ProductionJobStatsResDto> {
     return this.productionJobsService.getProductionJobStats(reqDto);
+  }
+
+  // Khai trước ':jobId' để 'item-summary', 'late-operations' và 'operation-type-stats' không bị
+  // bắt nhầm thành id.
+  @Get('item-summary')
+  @Permissions('production:read')
+  @ApiAuth({
+    type: ProductionJobItemSummaryResDto,
+    isArray: true,
+    summary: 'JOB counts per item, filtered by status (default COMPLETED)',
+  })
+  getProductionJobItemSummary(
+    @Query() reqDto: GetProductionJobItemSummaryReqDto,
+  ): Promise<ProductionJobItemSummaryResDto[]> {
+    return this.productionJobsSummaryService.getItemSummary(reqDto);
+  }
+
+  @Get('late-operations')
+  @Permissions('production:read')
+  @ApiAuth({
+    type: LateProductionJobOperationResDto,
+    isArray: true,
+    summary:
+      'Overdue unfinished JOB operations with order and JOB, optionally without recent progress reports',
+  })
+  getLateProductionJobOperations(
+    @Query() reqDto: GetLateProductionJobOperationsReqDto,
+  ): Promise<LateProductionJobOperationResDto[]> {
+    return this.productionJobsSummaryService.getLateOperations(reqDto);
+  }
+
+  @Get('operation-type-stats')
+  @Permissions('production:read')
+  @ApiAuth({
+    type: ProductionJobOperationTypeStatResDto,
+    isArray: true,
+    summary: 'JOB operation counts by type (OUTSOURCE = outsourced operations)',
+  })
+  getProductionJobOperationTypeStats(
+    @Query() reqDto: GetProductionJobOperationTypeStatsReqDto,
+  ): Promise<ProductionJobOperationTypeStatResDto[]> {
+    return this.productionJobsSummaryService.getOperationTypeStats(reqDto);
   }
 
   // Khai trước ':jobId' để không bị nuốt thành param đó.

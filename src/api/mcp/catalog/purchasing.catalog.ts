@@ -1,0 +1,186 @@
+import { PaymentRequestsController } from '../../payment-requests/payment-requests.controller';
+import { PurchaseLedgerController } from '../../purchase-ledger/purchase-ledger.controller';
+import { PurchaseOrdersController } from '../../purchase-orders/purchase-orders.controller';
+import { PurchaseQuotationsController } from '../../purchase-quotations/purchase-quotations.controller';
+import { PurchaseRequestsController } from '../../purchase-requests/purchase-requests.controller';
+import { SupplierGroupsController } from '../../supplier-groups/supplier-groups.controller';
+import { SuppliersController } from '../../suppliers/suppliers.controller';
+import { defineMcpTool } from './define-mcp-tool';
+
+export const PURCHASING_TOOLS = [
+  defineMcpTool({
+    name: 'purchasing_supplier_list',
+    title: 'Danh sách nhà cung cấp',
+    hint: 'Find suppliers by name or code, status, group or country; use it to get a supplierId for purchasing filters',
+    controller: SuppliersController,
+    method: 'getSuppliers',
+  }),
+  defineMcpTool({
+    name: 'purchasing_supplier_get',
+    title: 'Chi tiết nhà cung cấp',
+    hint: 'One supplier by supplierId, with tax code, group, country and status',
+    controller: SuppliersController,
+    method: 'getSupplier',
+  }),
+  defineMcpTool({
+    name: 'purchasing_supplier_stats',
+    title: 'Thống kê nhà cung cấp',
+    hint: 'Supplier counts by status: total, active, paused, stopped',
+    controller: SuppliersController,
+    method: 'getSupplierStats',
+  }),
+  defineMcpTool({
+    name: 'purchasing_supplier_group_list',
+    title: 'Danh sách nhóm nhà cung cấp',
+    hint: 'Supplier groups, for filtering purchasing_supplier_list by supplierGroupId',
+    controller: SupplierGroupsController,
+    method: 'getSupplierGroups',
+  }),
+  defineMcpTool({
+    name: 'purchasing_request_list',
+    title: 'Danh sách đề xuất mua hàng',
+    hint: 'Purchase requests filtered by requester, department, status, needed date, or the LSX/JOB they serve',
+    controller: PurchaseRequestsController,
+    method: 'getPurchaseRequests',
+  }),
+  defineMcpTool({
+    name: 'purchasing_request_get',
+    title: 'Chi tiết đề xuất mua hàng',
+    hint: 'One purchase request by purchaseRequestId, with its lines and approval state',
+    controller: PurchaseRequestsController,
+    method: 'getPurchaseRequest',
+  }),
+  defineMcpTool({
+    name: 'purchasing_request_note_list',
+    title: 'Ghi chú theo chuỗi mua hàng của đề xuất',
+    hint: 'Notes written along the whole purchasing chain (request, quotation, DMH, receipt) of one purchase request',
+    controller: PurchaseRequestsController,
+    method: 'getRelatedNotes',
+  }),
+  defineMcpTool({
+    name: 'purchasing_quotation_list',
+    title: 'Danh sách báo giá (RFQ)',
+    hint: 'Supplier quotations (RFQ) filtered by supplier, status or the purchase request they answer',
+    controller: PurchaseQuotationsController,
+    method: 'getQuotations',
+  }),
+  defineMcpTool({
+    name: 'purchasing_quotation_get',
+    title: 'Chi tiết báo giá (RFQ)',
+    hint: 'One quotation (RFQ) by quotationId, with its lines and prices',
+    controller: PurchaseQuotationsController,
+    method: 'getQuotation',
+  }),
+  defineMcpTool({
+    name: 'purchasing_quotation_comparison_get',
+    title: 'Bảng so sánh báo giá',
+    hint: 'Side-by-side price comparison of the suppliers quoting the same RFQ, by quotationId',
+    controller: PurchaseQuotationsController,
+    method: 'getQuotationComparison',
+  }),
+  defineMcpTool({
+    name: 'purchasing_quotation_note_list',
+    title: 'Ghi chú theo chuỗi mua hàng của báo giá',
+    hint: 'Notes written along the purchasing chain of one quotation (RFQ)',
+    controller: PurchaseQuotationsController,
+    method: 'getRelatedNotes',
+  }),
+  defineMcpTool({
+    name: 'purchasing_last_purchase_list',
+    title: 'Giá mua gần nhất theo nhà cung cấp',
+    hint: 'Most recent purchase price per supplier for the given itemIds, to judge whether a quote is reasonable',
+    controller: PurchaseQuotationsController,
+    method: 'getLastPurchases',
+  }),
+  defineMcpTool({
+    name: 'purchasing_order_list',
+    title: 'Danh sách đơn mua (DMH)',
+    hint: 'Supplier purchase orders (DMH) filtered by supplier, status, receiving progress or remaining receipt',
+    controller: PurchaseOrdersController,
+    method: 'getPurchaseOrders',
+  }),
+  defineMcpTool({
+    name: 'purchasing_order_get',
+    title: 'Chi tiết đơn mua (DMH)',
+    hint: 'One purchase order (DMH) by purchaseOrderId, with lines and received quantities',
+    controller: PurchaseOrdersController,
+    method: 'getPurchaseOrder',
+  }),
+  defineMcpTool({
+    name: 'purchasing_order_note_list',
+    title: 'Ghi chú theo chuỗi mua hàng của đơn mua',
+    hint: 'Notes written along the purchasing chain of one purchase order (DMH)',
+    controller: PurchaseOrdersController,
+    method: 'getRelatedNotes',
+  }),
+  defineMcpTool({
+    name: 'purchasing_payment_request_list',
+    title: 'Danh sách yêu cầu thanh toán',
+    hint: 'Payment requests to suppliers filtered by DMH code, supplier, status or urgency',
+    controller: PaymentRequestsController,
+    method: 'getPaymentRequests',
+  }),
+  defineMcpTool({
+    name: 'purchasing_payment_request_get',
+    title: 'Chi tiết yêu cầu thanh toán',
+    hint: 'One payment request by paymentRequestId',
+    controller: PaymentRequestsController,
+    method: 'getPaymentRequest',
+  }),
+  defineMcpTool({
+    name: 'purchasing_payment_request_log_list',
+    title: 'Nhật ký yêu cầu thanh toán',
+    hint: 'Action history of one payment request by paymentRequestId: who did what and when',
+    controller: PaymentRequestsController,
+    method: 'getPaymentRequestLogs',
+  }),
+  defineMcpTool({
+    name: 'purchasing_ledger_list',
+    title: 'Sổ mua hàng',
+    hint: 'Purchase ledger: one row per material line of an APPROVED purchase request (PR), with its ordering status computed when read; use it to follow what was requested and ordered, not to total spend (use purchasing_order_supplier_value_summary for spend)',
+    controller: PurchaseLedgerController,
+    method: 'getPurchaseLedgers',
+  }),
+  defineMcpTool({
+    name: 'purchasing_order_supplier_value_summary',
+    title: 'Giá trị đơn mua theo nhà cung cấp',
+    hint: 'Total value and count of DMH per supplier for one status (default ORDERED), optionally within an order date range',
+    controller: PurchaseOrdersController,
+    method: 'getPurchaseOrderSupplierValueSummary',
+  }),
+  defineMcpTool({
+    name: 'purchasing_order_overdue_list',
+    title: 'Đơn mua quá hạn nhận hàng',
+    hint: 'DMH in ORDERED status past the expected date and not fully received, with days overdue and received quantity',
+    controller: PurchaseOrdersController,
+    method: 'getOverduePurchaseOrders',
+  }),
+  defineMcpTool({
+    name: 'purchasing_request_stuck_list',
+    title: 'Đề xuất mua kẹt chưa lên đơn',
+    hint: 'Approved purchase requests with active lines not yet on any DMH, earliest needed date first',
+    controller: PurchaseRequestsController,
+    method: 'getStuckPurchaseRequests',
+  }),
+  defineMcpTool({
+    name: 'purchasing_payment_request_overdue_list',
+    title: 'Yêu cầu thanh toán quá hạn',
+    hint: 'Payment requests still in DRAFT, PENDING or REJECTED past their due date, most overdue first',
+    controller: PaymentRequestsController,
+    method: 'getOverduePaymentRequests',
+  }),
+  defineMcpTool({
+    name: 'purchasing_payment_request_value_summary',
+    title: 'Giá trị yêu cầu thanh toán theo trạng thái',
+    hint: 'Payment request count and requested amount per status, optionally for one status or a created date range',
+    controller: PaymentRequestsController,
+    method: 'getPaymentRequestValueSummary',
+  }),
+  defineMcpTool({
+    name: 'purchasing_quotation_status_stats',
+    title: 'Thống kê báo giá theo trạng thái',
+    hint: 'Quotation (RFQ) counts per status, optionally within a created date range',
+    controller: PurchaseQuotationsController,
+    method: 'getQuotationStatusStats',
+  }),
+];

@@ -20,23 +20,29 @@ import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
 import { UpdateDocumentFilesReqDto } from '../files/dto/update-document-files.req.dto';
 import { CancelPaymentRequestReqDto } from './dto/cancel-payment-request.req.dto';
 import { ExportPaymentRequestsReqDto } from './dto/export-payment-requests.req.dto';
+import { GetOverduePaymentRequestsReqDto } from './dto/get-overdue-payment-requests.req.dto';
 import { GetPaymentRequestLogsReqDto } from './dto/get-payment-request-logs.req.dto';
+import { GetPaymentRequestValueSummaryReqDto } from './dto/get-payment-request-value-summary.req.dto';
 import { GetPaymentRequestsReqDto } from './dto/get-payment-requests.req.dto';
+import { OverduePaymentRequestResDto } from './dto/overdue-payment-request.res.dto';
 import { PagePaymentRequestResDto } from './dto/page-payment-request.res.dto';
 import { PaymentRequestLogResDto } from './dto/payment-request-log.res.dto';
 import { PaymentRequestResDto } from './dto/payment-request.res.dto';
+import { PaymentRequestValueSummaryResDto } from './dto/payment-request-value-summary.res.dto';
 import { RejectPaymentRequestReqDto } from './dto/reject-payment-request.req.dto';
 import { UpdatePaymentRequestUrgencyReqDto } from './dto/update-payment-request-urgency.req.dto';
 import { UpdatePaymentRequestInvoiceReqDto } from './dto/update-payment-request-invoice.req.dto';
 import { UpdatePaymentRequestNoteReqDto } from './dto/update-payment-request-note.req.dto';
 import { UpdatePaymentRequestExtraCostReqDto } from './dto/update-payment-request-extra-cost.req.dto';
 import { PaymentRequestsService } from './payment-requests.service';
+import { PaymentRequestsSummaryService } from './payment-requests-summary.service';
 
 @ApiTags('Payment Requests')
 @Controller('payment-requests')
 export class PaymentRequestsController {
   constructor(
     private readonly paymentRequestsService: PaymentRequestsService,
+    private readonly paymentRequestsSummaryService: PaymentRequestsSummaryService,
   ) {}
 
   @Get()
@@ -52,7 +58,8 @@ export class PaymentRequestsController {
     return this.paymentRequestsService.getPaymentRequests(reqDto);
   }
 
-  // Khai trước ':paymentRequestId' để 'export' không bị bắt nhầm thành id.
+  // Khai trước ':paymentRequestId' để 'export', 'overdue' và 'value-summary' không bị bắt nhầm
+  // thành id.
   @Get('export')
   @Permissions('purchasing:read')
   @ApiAuth({
@@ -64,6 +71,34 @@ export class PaymentRequestsController {
     @Query() reqDto: ExportPaymentRequestsReqDto,
   ): Promise<StreamableFile> {
     return this.paymentRequestsService.exportPaymentRequests(reqDto);
+  }
+
+  @Get('overdue')
+  @Permissions('purchasing:read')
+  @ApiAuth({
+    type: OverduePaymentRequestResDto,
+    isArray: true,
+    summary:
+      'Draft, pending or rejected payment requests past their due date, most overdue first',
+  })
+  getOverduePaymentRequests(
+    @Query() reqDto: GetOverduePaymentRequestsReqDto,
+  ): Promise<OverduePaymentRequestResDto[]> {
+    return this.paymentRequestsSummaryService.getOverduePaymentRequests(reqDto);
+  }
+
+  @Get('value-summary')
+  @Permissions('purchasing:read')
+  @ApiAuth({
+    type: PaymentRequestValueSummaryResDto,
+    isArray: true,
+    summary:
+      'Payment request count and requested amount per status, optionally for one status or a created date range',
+  })
+  getPaymentRequestValueSummary(
+    @Query() reqDto: GetPaymentRequestValueSummaryReqDto,
+  ): Promise<PaymentRequestValueSummaryResDto[]> {
+    return this.paymentRequestsSummaryService.getValueSummary(reqDto);
   }
 
   @Get(':paymentRequestId')

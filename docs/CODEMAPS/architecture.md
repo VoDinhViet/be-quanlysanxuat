@@ -1,22 +1,23 @@
-<!-- Generated: 2026-11-04 | Files scanned: 58 | Token estimate: ~2680 -->
+<!-- Generated: 2026-11-04 | Files scanned: 58 | Token estimate: ~2700 -->
 # Architecture Codemap
 
-**Last Updated:** 2026-10-16
+**Last Updated:** 2026-11-04
 **Entry Points:** `src/main.ts`, `src/app.module.ts`
 **Stack:** NestJS 11 modular monolith, Drizzle ORM + postgres.js, Redis (Keyv cache + BullMQ connection), pnpm, Node >= 24. Companion: `docs/CODEMAPS/data.md` (schema).
 
 ## Bootstrap (`src/main.ts`)
 - Lines 1-3: dotenv loads `.env.${NODE_ENV || 'local'}` then `.env`. `ConfigModule.forRoot` (`src/app.module.ts:69`) uses the list `.env.${NODE_ENV||'local'}`, `.env.local`, `.env`; first file wins per key. `pnpm start:dev` sets `NODE_ENV=local`.
 - `bootstrap()` (`main.ts:29`) exports an Express instance; default export `handler(req,res)` also supports serverless. `instance.listen(PORT || 3000)` runs only when `require.main === module` (`main.ts:95`).
-- Order: `trust proxy`, helmet (cross-origin resource policy), compression, CORS (`app.corsOrigin`), global prefix `api` (excluded: `GET /`, `GET health`), URI versioning enabled (`main.ts:57`, only integration controllers use `version: '1'`), `GlobalExceptionFilter`, `ValidationPipe`, `ClassSerializerInterceptor`.
+- Order: `trust proxy`, helmet (cross-origin resource policy), compression, CORS (`app.corsOrigin`), global prefix `api` (excluded: `GET /`, `GET health`), URI versioning enabled (`main.ts:59`; no controller declares a version, so every route is unversioned), `GlobalExceptionFilter`, `ValidationPipe`, `ClassSerializerInterceptor`.
 - `ValidationPipe`: `transform`, `whitelist`, validation failures raise `UnprocessableEntityException` (HTTP 422) (`main.ts:60`).
 - Swagger at `/api-docs` (`src/utils/swagger.ts`) with Bearer and `Api-Key` schemes, mounted whenever `NODE_ENV !== production`.
 
 ## Module registration (`src/app.module.ts`)
 - Global infrastructure: `DatabaseModule` (token `DRIZZLE`, `src/database/database.module.ts`), `RedisModule`, `StorageModule`, `ServeStaticModule` (serves `upload.dir` at the domain root, no auth; storage key is the public path), `ScheduleModule` (cron `FilesCleanupService` hourly, `src/api/files/files-cleanup.service.ts:37`; timers only in a long-lived process).
-- ~45 domain modules, one per folder in `src/api/` (auth, users, roles, clients, items, boms, routings, orders, production-*, iqc, oqc, ncrs, inventory-*, outsourcing-*, supplier-returns, purchase-*, payment-requests, reports, integration, files, health ...). Each is imported in `imports: [...]`.
+- ~48 domain modules, one per folder in `src/api/` (auth, users, roles, clients, items, boms, routings, orders, production-*, iqc, oqc, ncrs, inventory-*, outsourcing-*, supplier-returns, purchase-*, payment-requests, reports, traces, files, health, mcp ...). Each is imported in `imports: [...]`.
 - Global guards (`app.module.ts:163-164`, order matters): `JwtAuthGuard` then `PermissionsGuard`.
-- Config loaders (`load:`): app, auth, database, redis, upload, integration; typed by `AllConfigType` (`src/config/config.type.ts`). Each is a `registerAs` factory + env validator class run through `src/utils/validate-config.ts`; a missing required var stops boot. Env keys (`.env.example`): PORT, DATABASE_URL, DATABASE_SSL_MODE, FRONTEND_DOMAIN, BACKEND_DOMAIN, AUTH_JWT_*, AUTH_REFRESH_*, REDIS_URL, UPLOAD_*, INTEGRATION_*.
+- `McpModule` (`src/api/mcp/`) exposes the read-only MCP endpoint `POST /api/mcp`. It does not follow the controller -> service layout: it calls other modules' GET controller methods through `ModuleRef`, outside the global guard chain below, with its own API-key and caller guards. See `docs/CODEMAPS/mcp.md`.
+- Config loaders (`load:`): app, auth, database, redis, upload, mcp; typed by `AllConfigType` (`src/config/config.type.ts`). Each is a `registerAs` factory + env validator class run through `src/utils/validate-config.ts`; a missing required var stops boot. Env keys (`.env.example`): PORT, DATABASE_URL, DATABASE_SSL_MODE, FRONTEND_DOMAIN, BACKEND_DOMAIN, AUTH_JWT_*, AUTH_REFRESH_*, REDIS_URL, UPLOAD_*, MCP_*.
 
 ## Request flow
 
@@ -37,7 +38,8 @@ client --HTTP--> helmet/compression/CORS (Express)
 - JWT payload (`src/api/auth/types/jwt-payload.type.ts`): `sub` = credential id (table `credentials`), `userId` = users.id, `username`, `email`, `sessionId`. `@CurrentUser()` returns it.
 - `verifyAccessToken` (`auth.service.ts:172`) checks signature then `CacheKey.SESSION_BLACKLIST` in Redis (`src/constants/cache.constant.ts`).
 - Permission codes: `PERMISSION_CODES` array (`src/constants/permission.constant.ts:12`) of `resource:action`, `SUPER_PERMISSION = 'system:manage'`, plus labels and `PERMISSION_CATALOGUE_GROUPS`. Roles in DB reference these codes. Only controllers check permissions; services do not (`.claude/rules/api-conventions.md`). `PermissionsService.getPermissionCodes(credentialId)` is for non-controller callers.
-- Integration routes (`src/api/integration/`, `/api/v1/integration/*`): `@ApiPublic` skips JWT; guarded instead by `IntegrationApiKeyGuard` (header `api-key`, env `INTEGRATION_API_KEY`, route group off when unset), `IntegrationOnBehalfGuard`, `ThrottlerGuard`.
+- Routes outside the JWT chain: `POST /api/mcp` and `GET /api/auth/whoami` (`src/api/mcp/`) are `@Public()` and guarded by `McpApiKeyGuard` (header `Api-Key`, env `MCP_API_KEY`, off when unset) + `McpThrottlerGuard`; `/mcp` adds `McpCallerGuard` (`X-On-Behalf-Of` credential). See `mcp.md`.
+- Read-only summary routes (`GET /orders/value-summary`, `/iqc/inspection-rate`, `/traces/*` ...) are ordinary JWT + `@Permissions` routes; they carry no special guard. Their shared helpers are in `src/common/summary/` (`summary.constant.ts` limits and patterns, `summary.dto.ts` date-range and `limit` DTO bases, `summary.sql.ts` Vietnam-time `TODAY` and enum-safe `equalsText`/`inTexts`).
 
 ## Per-domain file convention (`src/api/<domain>/`)
 `<d>.module.ts`, `<d>.controller.ts`, `<d>.service.ts`, optional `<d>.query.ts` (20 files in 16 domains: read helpers/joins), `<d>.write.ts` (3 domains: ncrs, iqc, inventory-receipts; transactional write helpers, e.g. `ncrs.write.ts` `generateNcrCode(tx)`), `<d>.constant.ts` (inventory, production-execution, purchase-ledger, purchase-orders), `<d>.export.ts` (Excel, e.g. orders, iqc, oqc, items), `dto/` (`*.req.dto.ts`, `*.res.dto.ts`, `*-ref.res.dto.ts` for narrow refs). Query/write helpers are plain functions, not providers, so modules avoid circular imports (see comment `ncrs.write.ts`: OqcModule deliberately does not import NcrsModule). Reference example: `src/api/ncrs/`.

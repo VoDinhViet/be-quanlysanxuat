@@ -1,4 +1,4 @@
-<!-- Generated: 2026-10-16 | Files scanned: 34 | Token estimate: ~2590 -->
+<!-- Generated: 2026-11-04 | Files scanned: 34 | Token estimate: ~2590 -->
 
 # Identity & Access Codemap
 
@@ -22,7 +22,7 @@ Shared code (wc -l):
 
 ## 2 Routes
 
-Prefix: `/api` (`src/main.ts:51`), URI versioning on (`main.ts:57`). Permission "-" means JWT only.
+Prefix: `/api` (`src/main.ts:53`), URI versioning on (`main.ts:59`) but no controller declares a version. `GET /auth/whoami` is not in this controller: it lives in `McpIdentityController` (`src/api/mcp/`, see `integration.md`). Permission "-" means JWT only.
 
 **auth** (`auth.controller.ts`, controller path `auth`)
 
@@ -100,7 +100,7 @@ request -> JwtAuthGuard: @Public? skip : verifyAccessToken (signature + blacklis
               : every required code present? else E033 (403)
 ```
 
-Permission lookup: `PermissionsService.getPermissionCodes` (`src/api/auth/permissions.service.ts:17`) is one join `credentials -> roles` (`roles.deletedAt IS NULL`), returns `roles.permissions`. No cache in this file. Callers: PermissionsGuard, UsersService (lines 251, 482, 529), RolesService (214), FilesService (191), ReportsService (526), OperationAccessService, IntegrationOnBehalfGuard, IntegrationIdentityController.
+Permission lookup: `PermissionsService.getPermissionCodes` (`src/api/auth/permissions.service.ts:17`) is one join `credentials -> roles` (`roles.deletedAt IS NULL`), returns `roles.permissions`. No cache in this file. Callers: PermissionsGuard, UsersService (lines 251, 482, 529), RolesService (214), FilesService (191), ReportsService (526), OperationAccessService, McpCallerGuard, McpIdentityController.
 
 Token shape: `JwtPayloadType` (`src/api/auth/types/jwt-payload.type.ts`): `sub` = credential id, `userId` = users.id, `username`, `email`, `sessionId`, plus `iat`/`exp`. `@CurrentUser()` returns this payload; use `payload.sub` for permission and credential lookups and `payload.userId` for business rows (as FilesController does).
 
@@ -122,7 +122,7 @@ Token shape: `JwtPayloadType` (`src/api/auth/types/jwt-payload.type.ts`): `sub` 
 ## 5 Cross-domain links
 
 - Files: avatar via `users.avatarFileId` (`users.service.ts` getCurrentUser); files uploads and deletes check `system:manage` in `src/api/files/files.service.ts:182`. See `integration.md`.
-- Integration: `IntegrationOnBehalfGuard` (`src/api/integration/guards/integration-on-behalf.guard.ts`) reuses `PermissionsService` for the `X-On-Behalf-Of` credential id.
+- MCP: `McpCallerGuard` (`src/api/mcp/guards/mcp-caller.guard.ts`) calls `AuthService.getActiveCredentialIdentity` (unknown credential E033, disabled credential or resigned user E018) and `PermissionsService.getPermissionCodes` for the `X-On-Behalf-Of` credential id; `McpIdentityController` (`GET /api/auth/whoami`) calls `AuthService.getActiveIdentity` (same checks as a JWT request: signature, blacklist, `ensureCredentialEnabled`) and `getPermissionCodes`. See `mcp.md`.
 - Operations: `OperationAccessService` calls `getPermissionCodes` (`src/api/operations/operation-access.service.ts:32`).
 - Production jobs: `UsersService.getUserDepartmentId` (`users.service.ts:593`) is used by `production-jobs.service.ts:861`.
 - Redis: session keys `session_hash:%s`, `session_blacklist:%s` (`src/constants/cache.constant.ts`).

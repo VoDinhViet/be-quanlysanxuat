@@ -15,9 +15,9 @@ import { RolesModule } from './api/roles/roles.module';
 import { SupplierGroupsModule } from './api/supplier-groups/supplier-groups.module';
 import { SuppliersModule } from './api/suppliers/suppliers.module';
 import appConfig from './config/app.config';
-import integrationConfig from './config/integration.config';
+import mcpConfig from './config/mcp.config';
 import uploadConfig from './config/upload.config';
-import { IntegrationModule } from './api/integration/integration.module';
+import { McpModule } from './api/mcp/mcp.module';
 import authConfig from './api/auth/config/auth.config';
 import databaseConfig from './database/config/database.config';
 import redisConfig from './redis/redis.config';
@@ -62,6 +62,7 @@ import { PurchaseRequestsModule } from './api/purchase-requests/purchase-request
 import { ReportsModule } from './api/reports/reports.module';
 import { RoutingsModule } from './api/routings/routings.module';
 import { SupplierReturnsModule } from './api/supplier-returns/supplier-returns.module';
+import { TracesModule } from './api/traces/traces.module';
 import { UnitsModule } from './api/units/units.module';
 import { UsersModule } from './api/users/users.module';
 
@@ -79,7 +80,7 @@ import { UsersModule } from './api/users/users.module';
         databaseConfig,
         redisConfig,
         uploadConfig,
-        integrationConfig,
+        mcpConfig,
       ],
       isGlobal: true,
     }),
@@ -153,7 +154,8 @@ import { UsersModule } from './api/users/users.module';
     PurchaseNotesModule,
     PaymentRequestsModule,
     ReportsModule,
-    IntegrationModule,
+    TracesModule,
+    McpModule,
   ],
 
   controllers: [AppController],

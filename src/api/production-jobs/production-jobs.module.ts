@@ -7,6 +7,7 @@ import { OqcModule } from '../oqc/oqc.module';
 import { PurchaseRequestsModule } from '../purchase-requests/purchase-requests.module';
 import { UsersModule } from '../users/users.module';
 import { ProductionJobsController } from './production-jobs.controller';
+import { ProductionJobsSummaryService } from './production-jobs-summary.service';
 import { ProductionJobsService } from './production-jobs.service';
 
 @Module({
@@ -19,7 +20,7 @@ import { ProductionJobsService } from './production-jobs.service';
     UsersModule,
   ],
   controllers: [ProductionJobsController],
-  providers: [ProductionJobsService],
+  providers: [ProductionJobsService, ProductionJobsSummaryService],
   exports: [ProductionJobsService],
 })
 export class ProductionJobsModule {}

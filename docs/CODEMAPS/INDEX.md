@@ -1,4 +1,4 @@
-<!-- Generated: 2026-10-16 | Files scanned: 10 codemaps + src/api listing | Token estimate: ~950 -->
+<!-- Generated: 2026-11-04 | Files scanned: 11 codemaps + src/api listing | Token estimate: ~1000 -->
 # Codemaps index
 
 Entry point for tracing the backend. A codemap is a map; the code is the source of truth. If they disagree, trust the code and fix the codemap.
@@ -22,7 +22,8 @@ Entry point for tracing the backend. A codemap is a map; the code is the source 
 | `production.md` | production-orders (LSX), production-jobs (JOB), production-execution, outsourcing-orders, outsourcing-receipts |
 | `quality.md` | iqc, oqc, ncrs (incl. OQC Fail, Sort, NCR, secondary LSX, re-OQC flow) |
 | `identity-access.md` | auth, users, roles, departments, positions, permission model |
-| `integration.md` | integration, reports, files, health, storage and redis infra |
+| `integration.md` | reports, traces (cross-domain trace routes), files, health, `GET /auth/whoami`, storage and redis infra. The old `/v1/integration` gateway is gone; the file keeps its name for existing links |
+| `mcp.md` | MCP server (`/api/mcp`): read-only tools for the internal chat agent, each wrapping an existing GET route (145 tools, including the summary routes added to sales, purchasing, inventory, production and quality); auth, naming, catalog, how to add a tool |
 
 ## Glossary
 | Term | Meaning |
@@ -39,10 +40,10 @@ Entry point for tracing the backend. A codemap is a map; the code is the source 
 | PH-nnn | ticket id used in commit messages and the issue sheet |
 
 ## Citation conventions
-Each codemap keeps its own line convention; read the file's header lines. `production.md` and the FE codemaps cite the controller handler-method line (`ctrl:N`), `quality.md`, `sales.md` and `integration.md` cite the route decorator line, service citations are the method definition line (or the exact statement line when it points into a body).
+Each codemap keeps its own line convention; read the file's header lines. `production.md`, `sales.md` and the FE codemaps cite the controller handler-method line, `quality.md` and `integration.md` cite the route decorator line, service citations are the method definition line (or the exact statement line when it points into a body).
 
 ## Where each domain lives
-auth, users, roles, departments, positions: identity-access. clients, client-groups, countries, orders, outbound-orders: sales. suppliers, supplier-groups, purchase-requests, purchase-quotations, purchase-orders, purchase-notes, purchase-ledger, payment-requests: purchasing. inventory, inventory-adjustments, inventory-directs, inventory-issues, inventory-products, inventory-receipts, inventory-requisitions, supplier-returns: inventory. items, item-units, units, boms, bom-directs, bom-operations, operations, routings: product-structure. production-orders, production-jobs, production-execution, outsourcing-orders, outsourcing-receipts: production. iqc, oqc, ncrs: quality. integration, reports, files, health: integration.
+auth, users, roles, departments, positions: identity-access. clients, client-groups, countries, orders, outbound-orders: sales. suppliers, supplier-groups, purchase-requests, purchase-quotations, purchase-orders, purchase-notes, purchase-ledger, payment-requests: purchasing. inventory, inventory-adjustments, inventory-directs, inventory-issues, inventory-products, inventory-receipts, inventory-requisitions, supplier-returns: inventory. items, item-units, units, boms, bom-directs, bom-operations, operations, routings: product-structure. production-orders, production-jobs, production-execution, outsourcing-orders, outsourcing-receipts: production. iqc, oqc, ncrs: quality. reports, traces, files, health: integration. mcp: mcp.
 
 ## Maintenance
 When a change adds or edits a route, a status transition, a table or a cross-domain call, update the matching codemap and refresh its `Generated:` header (`/ecc:update-codemaps` helps). The same rule is in `.claude/rules/project-overrides.md`.

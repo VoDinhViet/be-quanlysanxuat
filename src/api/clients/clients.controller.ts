@@ -16,11 +16,14 @@ import { CurrentUser } from '../../decorators/current-user.decorator';
 import { ApiAuth } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
+import { ClientsSummaryService } from './clients-summary.service';
 import { ClientsService } from './clients.service';
 import { ClientContactResDto } from './dto/client-contact.res.dto';
 import { ClientOptionResDto } from './dto/client-option.res.dto';
+import { ClientStatusStatResDto } from './dto/client-status-stat.res.dto';
 import { ClientResDto } from './dto/client.res.dto';
 import { CreateClientReqDto } from './dto/create-client.req.dto';
+import { GetClientStatusStatsReqDto } from './dto/get-client-status-stats.req.dto';
 import { GetClientOptionsReqDto } from './dto/get-client-options.req.dto';
 import { GetClientsReqDto } from './dto/get-clients.req.dto';
 import { PageClientResDto } from './dto/page-client.res.dto';
@@ -29,7 +32,10 @@ import { UpdateClientReqDto } from './dto/update-client.req.dto';
 @ApiTags('Clients')
 @Controller('clients')
 export class ClientsController {
-  constructor(private readonly clientsService: ClientsService) {}
+  constructor(
+    private readonly clientsService: ClientsService,
+    private readonly clientsSummaryService: ClientsSummaryService,
+  ) {}
 
   @Get()
   @Permissions('clients:read')
@@ -55,6 +61,20 @@ export class ClientsController {
     @Query() reqDto: GetClientOptionsReqDto,
   ): Promise<ClientOptionResDto[]> {
     return this.clientsService.getClientOptions(reqDto);
+  }
+
+  // Khai trước ':clientId' để 'status-stats' không bị bắt nhầm thành id.
+  @Get('status-stats')
+  @Permissions('clients:read')
+  @ApiAuth({
+    type: ClientStatusStatResDto,
+    summary: 'Count of clients grouped by status',
+    isArray: true,
+  })
+  getClientStatusStats(
+    @Query() reqDto: GetClientStatusStatsReqDto,
+  ): Promise<ClientStatusStatResDto[]> {
+    return this.clientsSummaryService.getClientStatusStats(reqDto);
   }
 
   @Get(':clientId')

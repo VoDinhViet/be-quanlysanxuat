@@ -1,25 +1,26 @@
-<!-- Generated: 2026-11-04 | Files scanned: 52 | Token estimate: ~2900 -->
+<!-- Generated: 2026-11-04 | Files scanned: 57 | Token estimate: ~3300 -->
 # Purchasing codemap
 
-Paths relative to `src/api/` unless starting `src/`. Abbreviations: PRS=`purchase-requests/purchase-requests.service.ts`, PQS=`purchase-quotations/purchase-quotations.service.ts`, POS=`purchase-orders/purchase-orders.service.ts`, PYS=`payment-requests/payment-requests.service.ts`, PLS=`purchase-ledger/purchase-ledger.service.ts`, PNS=`purchase-notes/purchase-notes.service.ts`, SUS=`suppliers/suppliers.service.ts`.
+Paths relative to `src/api/` unless starting `src/`. Abbreviations: PRS=`purchase-requests/purchase-requests.service.ts`, PQS=`purchase-quotations/purchase-quotations.service.ts`, POS=`purchase-orders/purchase-orders.service.ts`, PYS=`payment-requests/payment-requests.service.ts`, PLS=`purchase-ledger/purchase-ledger.service.ts`, PNS=`purchase-notes/purchase-notes.service.ts`, SUS=`suppliers/suppliers.service.ts`. Purchase-requests, purchase-quotations, purchase-orders, payment-requests (and supplier-returns, see `inventory.md`) each have a `*-summary.service.ts` with read-only queries for the summary routes (section 2); they run on the global `DRIZZLE` db, return plain arrays (no paging, `limit` max 50, default 20) and are MCP tools (`mcp.md`). "Today" is Asia/Ho_Chi_Minh; shared helpers are in `src/common/summary/`.
 
 ## 1. Modules (wc -l)
 
 | Folder | Main files | Role |
 |---|---|---|
-| purchase-requests | service 803, controller 271 | Purchase request (ĐXMH) header + lines; exported to production-jobs |
-| purchase-quotations | service 1056, controller 220, query 54 | RFQ: items, suppliers, allocations to request lines |
-| purchase-orders | service 1205, controller 184, query 339, constant 13 | DMH; imports PaymentRequests; exported to quotations |
+| purchase-requests | service 803, controller 305, summary service 73 | Purchase request (ĐXMH) header + lines; exported to production-jobs |
+| purchase-quotations | service 1056, controller 240, query 54, summary service 36 | RFQ: items, suppliers, allocations to request lines |
+| purchase-orders | service 1205, controller 235, query 339, constant 13, summary service 141 | DMH; imports PaymentRequests; exported to quotations |
 | purchase-notes | service 458, no controller | Reads notes along the chain; routes sit on 4 other controllers |
 | purchase-ledger | service 365, controller 44, query 168 | Read-only per-request-line ledger + xlsx |
-| payment-requests | service 1044, controller 237 | YCTT, 1:1 with DMH; exported to purchase-orders, inventory-receipts |
+| payment-requests | service 1044, controller 290, summary service 94 | YCTT, 1:1 with DMH; exported to purchase-orders, inventory-receipts |
 | suppliers / supplier-groups | 400+103 / 49+26 | Supplier master; group list |
 
 Schemas `src/database/schemas/`: `purchase-requests/*` (2 tables), `purchasing/*` (quotations, items, item-suppliers, allocations, supplier-files, purchase-orders, purchase-order-items, payment-requests, payment-request-logs), `suppliers/*` (suppliers, supplier-payment-info, files, representatives, groups).
 
 ## 2. Routes (prefix `/api`; permission `purchasing:<x>` unless noted; writes mostly return void)
 
-purchase-requests (15), `PurchaseRequestsController` -> PRS; perm `purchase-requests:<x>`:
+purchase-requests (16), `PurchaseRequestsController` -> PRS; perm `purchase-requests:<x>`:
+- GET /stuck read: `getStuckPurchaseRequests` (ctrl:68) -> `PurchaseRequestsSummaryService.getStuckPurchaseRequests` (`purchase-requests-summary.service.ts:24`): APPROVED requests with lines not cancelled and not on any DMH line; one row per request with `unorderedLineCount`, `unorderedQuantity`, `daysOverdue` (negative before `neededDate`); `limit`. Declared before `/:id`.
 - GET / read: getPurchaseRequests :91. GET /:id read: getPurchaseRequest :181 (lines :227).
 - POST / create: createPurchaseRequest :687 [purchase_requests, purchase_request_items]. DELETE /:id delete: deletePurchaseRequest :494.
 - POST /:id/send update :537; /approve approve :553; /reject approve :571 [purchase_requests].
@@ -28,12 +29,15 @@ purchase-requests (15), `PurchaseRequestsController` -> PRS; perm `purchase-requ
 - GET /:id/related-notes read: PNS.getChainNotesFromRequest :37.
 - GET /:id/export-pdf read: exportPurchaseRequestPdf :234 (PDF BM 07-01, A4 portrait, `FormTemplateType.PURCHASE_REQUEST`; skips cancelled lines, signature boxes left blank).
 
-purchase-quotations (12) -> PQS:
+purchase-quotations (13) -> PQS:
+- GET /status-stats purchasing:read: `getQuotationStatusStats` (ctrl:81) -> `PurchaseQuotationsSummaryService.getStatusStats` (`purchase-quotations-summary.service.ts:16`): RFQ count per status, `startDate`/`endDate` on `createdAt`; declared before `/:id`.
 - GET / read :79; GET /last-purchases read :300 (`purchase-quotations.query.ts:15`); GET /:id read :215; GET /:id/comparison read :235; GET /:id/related-notes read: PNS :60.
 - POST / create :411; PATCH /:id update :433 (DRAFT or REJECTED; deletes and recreates items; REJECTED goes back to DRAFT); DELETE /:id delete :481 [quotations, items, allocations, item_suppliers, item_supplier_files].
 - POST /:id/send update :492; /approve approve :550 [item_suppliers.selected*, quotations, purchase_orders, purchase_order_items]; /reject approve :693; /cancel approve :716 [purchase_orders delete, quotations].
 
-purchase-orders (10) -> POS:
+purchase-orders (12) -> POS:
+- GET /supplier-value-summary read: `getPurchaseOrderSupplierValueSummary` (ctrl:70) -> `PurchaseOrdersSummaryService.getSupplierValueSummary` (`purchase-orders-summary.service.ts:31`): per supplier `totalValue` (sum of `coalesce(quotationQuantity, quantity) * unitPrice`) and `orderCount`; `status` default ORDERED, date range on `orderDate`, `limit`.
+- GET /overdue read: `getOverduePurchaseOrders` (ctrl:84) -> `getOverduePurchaseOrders` (summary svc:63): ORDERED, not closed, `expectedDate` before today and received < ordered; received = POSTED receipt lines, supplier returns are not netted out (differs from `resolveOrderProgress`). `limit`.
 - GET / read :99; GET /:id read :403; GET /:id/related-notes read: PNS :83.
 - GET /:id/export-pdf read: `purchase-orders/purchase-order-pdf.service.ts` exportPurchaseOrderPdf (PDF BM 07-02, A4 portrait, `FormTemplateType.PURCHASE_ORDER`; totals via `calculatePurchaseOrderAmounts`, contact = primary supplier representative, "Người lập" / "Phê duyệt" = creator / approver of the source RFQ with `created_at` / `approved_at`, supplier box left blank).
 - PATCH /:id update :582; PATCH /:id/items/:itemId update :667 (both PENDING_CONFIRMATION only).
@@ -42,12 +46,16 @@ purchase-orders (10) -> POS:
 
 purchase-ledger (2) -> PLS, read: GET / :63; GET /export :196 (xlsx, silently capped 10,000 rows).
 
-payment-requests (13) -> PYS:
+payment-requests (15) -> PYS:
+- GET /overdue read: `getOverduePaymentRequests` (ctrl:84) -> `PaymentRequestsSummaryService.getOverduePaymentRequests` (`payment-requests-summary.service.ts:36`): DRAFT, PENDING or REJECTED with `dueDate` before today, oldest first; `limit`.
+- GET /value-summary read: `getPaymentRequestValueSummary` (ctrl:98) -> `getValueSummary` (summary svc:63): count and `requestedAmount` total per status; optional `status`, date range on `createdAt`. Both are declared before `/:id`.
 - GET / read :127; GET /export read :213 (cap 10,000); GET /:id read :292; GET /:id/logs read :600.
 - POST /:id/mark-paid approve :377; /send update :422; /reject approve :454; /cancel approve :406 [payment_requests, payment_request_logs].
 - PATCH /:id/invoice update :551; /note update :568; /urgency update :585 [payment_requests]; /extra-cost update :489 [+logs].
 - PATCH /:id/files update `updatePaymentRequestFiles` [payment_request_files, files.linked_at]: body `{fileIds}` is the whole list (max 20), any status except CANCELLED (E158), UploadType PAYMENT_REQUEST_DOCUMENT; removing a file only unlinks it. Detail returns `files`.
 - No create route and no separate approve route: `mark-paid` is the accountant confirmation.
+
+supplier-returns summary: `GET /supplier-returns/summary` (inventory:read, tool `inventory_supplier_return_summary`) is documented in `inventory.md`; its service `supplier-returns-summary.service.ts` is one of the five summary services of this chain.
 
 suppliers (6) -> SUS, perm `suppliers:<x>`: GET / read :41; GET /stats read :96; GET /:id read :119; POST / create :142 and PATCH /:id update :191 (both return SupplierResDto; write suppliers, supplier_payment_info, supplier_files, supplier_representatives); DELETE /:id delete :241 (soft, 204).
 supplier-groups (1): GET / -> `supplier-groups/supplier-groups.service.ts:18`; `@ApiPublic` applies `@Public()` (`src/decorators/http.decorators.ts:95`): no JWT, no permission.

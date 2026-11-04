@@ -1,4 +1,4 @@
-<!-- Generated: 2026-11-03 | Files scanned: 40 | Token estimate: ~3600 -->
+<!-- Generated: 2026-11-04 | Files scanned: 43 | Token estimate: ~4000 -->
 # Quality codemap
 
 Includes the NCR<->OQC trace refs (PH-136). Controllers check permissions, services do not.
@@ -8,6 +8,7 @@ Includes the NCR<->OQC trace refs (PH-136). Controllers check permissions, servi
 | Path | Lines | Role |
 |---|---|---|
 | src/api/iqc/iqc.service.ts | 1100 | IQC CRUD, confirm, auto-creation from receipts, stats, export |
+| src/api/iqc/iqc-summary.service.ts | 182 | Read-only summaries behind `inspection-rate`, `supplier-fail-rate`, `open-failures` (+ `iqc-summary.constant.ts`) |
 | src/api/iqc/iqc.write.ts | 140 | Plain-tx fns: completeIqcAfterSupplierReturn:32, linkQcFiles:75, cancelReceiptInspections:99 |
 | src/api/iqc/iqc.query.ts | 86 | Gates: hasPendingIqcForItems:23 (ignores COMPLETED and CANCELLED), areReceiptIqcInspectionsCompleted:61 |
 | src/api/iqc/quality-inspection-status.ts | 28 | mapToQualityInspectionStatus:11 (legacy IqcStatus/OqcStatus -> DB status) |
@@ -24,18 +25,21 @@ Tables: `quality_inspections` (case row; IQC and OQC share it via `inspectionTyp
 
 ## 2. Routes (all under /api)
 
-IQC (iqc.controller.ts, 8 routes)
+IQC (iqc.controller.ts, 11 routes; the three summary routes are served by `IqcSummaryService`, `src/api/iqc/iqc-summary.service.ts` 182 lines, return plain arrays, `limit` max 50 default 20, and are MCP tools, see `mcp.md`)
 
 | Route | Permission | Handler -> Service | Writes |
 |---|---|---|---|
-| GET /iqc :36 | iqc:read | getIqcs -> getIqcs:109 | - |
-| GET /iqc/stats :50 | iqc:read | getIqcStats -> getIqcStats:282 | - |
-| GET /iqc/export :62 | iqc:read | exportIqc -> exportIqc:219 (cap 10000 rows) | - |
-| GET /iqc/:iqcId :73 | iqc:read | getIqc -> getIqc:506 | - |
-| POST /iqc :83 | iqc:create | createIqc -> createIqc:322 | quality_inspections, quality_inspection_results (if `result`), inventory_receipts (syncReceiptIqcStatus) |
-| POST /iqc/:iqcId/confirm :96 | iqc:update | confirmIqc -> confirmIqc:673 | results, inspections, evidences, files, supplier_returns, production_jobs(+logs), outsourcing_orders, inventory_receipts |
-| PATCH /iqc/:iqcId :112 | iqc:update | updateIqc -> updateIqc:993 (only `requestedAt`) | quality_inspections |
-| DELETE /iqc/:iqcId :126 | iqc:delete | deleteIqc -> deleteIqc:966 | quality_inspections, inventory_receipts |
+| GET /iqc :46 | iqc:read | getIqcs -> getIqcs:109 | - |
+| GET /iqc/stats :60 | iqc:read | getIqcStats -> getIqcStats:282 | - |
+| GET /iqc/inspection-rate :72 | iqc:read | getIqcInspectionRate -> `IqcSummaryService.getInspectionRate`:71 (raw `sql`): completed inspections (`status` COMPLETED, done time = `completedAt` else `updatedAt`) counted by `decision`; only `inspectionType` IQC (OQC rows are excluded because the route needs only `iqc:read`); `groupBy` decision (default) \| day \| supplier adds a second grouping column (supplier groups by id and skips soft-deleted suppliers); `sinceDays` 1-365; no `limit`, hard cap 500 rows (`INSPECTION_RATE_MAX_ROWS`), newest days first for `groupBy=day` | - |
+| GET /iqc/supplier-fail-rate :86 | iqc:read | getIqcSupplierFailRate -> `getSupplierFailRate`:87: IQC only, completed within `sinceDays` (default 90), non-deleted suppliers with at least `minInspections` (default 3, max 100) completed and at least one FAIL, highest `failRate` first | - |
+| GET /iqc/open-failures :100 | iqc:read | getOpenIqcFailures -> `getOpenIqcFailures`:123: IQC rows (`inspectionType` IQC only) in `quality_inspections` with `decision` FAIL, status not CANCELLED, and either not COMPLETED or without `disposition`; `minAgeDays` filters by days since `createdAt`; oldest first. It does NOT read the `ncrs` table, so it differs from `GET /ncrs` | - |
+| GET /iqc/export :113 | iqc:read | exportIqc -> exportIqc:219 (cap 10000 rows) | - |
+| GET /iqc/:iqcId :124 | iqc:read | getIqc -> getIqc:506 | - |
+| POST /iqc :134 | iqc:create | createIqc -> createIqc:322 | quality_inspections, quality_inspection_results (if `result`), inventory_receipts (syncReceiptIqcStatus) |
+| POST /iqc/:iqcId/confirm :147 | iqc:update | confirmIqc -> confirmIqc:673 | results, inspections, evidences, files, supplier_returns, production_jobs(+logs), outsourcing_orders, inventory_receipts |
+| PATCH /iqc/:iqcId :163 | iqc:update | updateIqc -> updateIqc:993 (only `requestedAt`) | quality_inspections |
+| DELETE /iqc/:iqcId :177 | iqc:delete | deleteIqc -> deleteIqc:966 | quality_inspections, inventory_receipts |
 
 OQC (oqc.controller.ts, 5 routes)
 
@@ -47,7 +51,7 @@ OQC (oqc.controller.ts, 5 routes)
 | POST /oqc/:oqcId/confirm :67 | oqc:update | confirmOqc -> confirmOqc:545 | results, inspections, evidences, files, inventory_receipts(+items), production_jobs(+logs), ncrs(+logs) |
 | DELETE /oqc/:oqcId :82 | oqc:delete | deleteOqc -> deleteOqc:757 | quality_inspections |
 
-OQC rows are created elsewhere: POST /production-jobs/:jobId/qc (production-jobs.controller.ts:307, oqc:create) -> OqcService.createOqcForJob:470, and NCR requestOqc below.
+OQC rows are created elsewhere: POST /production-jobs/:jobId/qc (production-jobs.controller.ts:373, oqc:create) -> OqcService.createOqcForJob:470, and NCR requestOqc below.
 
 NCR (ncrs.controller.ts, 13 routes)
 

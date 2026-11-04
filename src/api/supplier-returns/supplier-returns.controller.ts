@@ -15,18 +15,22 @@ import { ApiAuth } from '../../decorators/http.decorators';
 import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
+import { GetSupplierReturnSummaryReqDto } from './dto/get-supplier-return-summary.req.dto';
 import { GetSupplierReturnsReqDto } from './dto/get-supplier-returns.req.dto';
 import { PageSupplierReturnResDto } from './dto/page-supplier-return.res.dto';
 import { PostSupplierReturnReqDto } from './dto/post-supplier-return.req.dto';
 import { SupplierReturnResDto } from './dto/supplier-return.res.dto';
+import { SupplierReturnSummaryResDto } from './dto/supplier-return-summary.res.dto';
 import { UpdateSupplierReturnReqDto } from './dto/update-supplier-return.req.dto';
 import { SupplierReturnsService } from './supplier-returns.service';
+import { SupplierReturnsSummaryService } from './supplier-returns-summary.service';
 
 @ApiTags('Supplier Returns')
 @Controller('supplier-returns')
 export class SupplierReturnsController {
   constructor(
     private readonly supplierReturnsService: SupplierReturnsService,
+    private readonly supplierReturnsSummaryService: SupplierReturnsSummaryService,
   ) {}
 
   @Get()
@@ -40,6 +44,21 @@ export class SupplierReturnsController {
     @Query() reqDto: GetSupplierReturnsReqDto,
   ): Promise<OffsetPaginatedDto<PageSupplierReturnResDto>> {
     return this.supplierReturnsService.getSupplierReturns(reqDto);
+  }
+
+  // Khai trước ':supplierReturnId' để 'summary' không bị bắt nhầm thành id.
+  @Get('summary')
+  @Permissions('inventory:read')
+  @ApiAuth({
+    type: SupplierReturnSummaryResDto,
+    isArray: true,
+    summary:
+      'Supplier return count and quantity grouped by status or by supplier, optionally within a return date range',
+  })
+  getSupplierReturnSummary(
+    @Query() reqDto: GetSupplierReturnSummaryReqDto,
+  ): Promise<SupplierReturnSummaryResDto[]> {
+    return this.supplierReturnsSummaryService.getSummary(reqDto);
   }
 
   @Get(':supplierReturnId')

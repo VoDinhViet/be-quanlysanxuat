@@ -6,6 +6,7 @@ import { InventoryModule } from '../inventory/inventory.module';
 import { ProductionJobsModule } from '../production-jobs/production-jobs.module';
 import { TemplatesModule } from '../../templates/templates.module';
 import { ProductionOrdersController } from './production-orders.controller';
+import { ProductionOrdersSummaryService } from './production-orders-summary.service';
 import { ProductionOrdersService } from './production-orders.service';
 
 @Module({
@@ -17,7 +18,7 @@ import { ProductionOrdersService } from './production-orders.service';
     TemplatesModule,
   ],
   controllers: [ProductionOrdersController],
-  providers: [ProductionOrdersService],
+  providers: [ProductionOrdersService, ProductionOrdersSummaryService],
   exports: [ProductionOrdersService],
 })
 export class ProductionOrdersModule {}

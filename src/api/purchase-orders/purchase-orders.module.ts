@@ -6,11 +6,16 @@ import { PurchaseNotesModule } from '../purchase-notes/purchase-notes.module';
 import { PurchaseOrderPdfService } from './purchase-order-pdf.service';
 import { PurchaseOrdersController } from './purchase-orders.controller';
 import { PurchaseOrdersService } from './purchase-orders.service';
+import { PurchaseOrdersSummaryService } from './purchase-orders-summary.service';
 
 @Module({
   imports: [PaymentRequestsModule, PurchaseNotesModule, TemplatesModule],
   controllers: [PurchaseOrdersController],
-  providers: [PurchaseOrdersService, PurchaseOrderPdfService],
+  providers: [
+    PurchaseOrdersService,
+    PurchaseOrdersSummaryService,
+    PurchaseOrderPdfService,
+  ],
   exports: [PurchaseOrdersService],
 })
 export class PurchaseOrdersModule {}

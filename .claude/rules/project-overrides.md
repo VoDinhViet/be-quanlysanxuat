@@ -41,6 +41,7 @@ How to run them:
 - Do not apply a simplifier's rewrite blindly: keep behaviour, keep the naming rules, and drop suggestions that add abstraction.
 - Tell the simplifier and reviewers to check the code against `naming.md`, `api-conventions.md` and the comments you added or touched against `comments.md` (why not what, no changelog or ticket tags, no pointer to a missing file or section, no claim the code contradicts).
 - When a change adds or edits a route, a status transition, a table or a cross-domain call, update the matching file in `docs/CODEMAPS/` (by hand or with `/ecc:update-codemaps`) and refresh its `Generated:` header.
+- A new `GET` route needs a matching tool in `src/api/mcp/catalog/*.catalog.ts` (or a reasoned exclusion in `excluded-routes.ts`); the startup log line `mcp_route_not_covered` lists the misses. See `docs/CODEMAPS/mcp.md`.
 - Skip all of this for typo or comment-only edits, doc changes, sheet updates, and pure `.claude/` config edits.
 - This never grants permission to commit or push.
 

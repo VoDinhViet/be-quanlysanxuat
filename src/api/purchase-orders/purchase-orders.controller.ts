@@ -20,14 +20,19 @@ import { PurchaseChainNotesResDto } from '../purchase-notes/dto/purchase-chain-n
 import { PurchaseNotesService } from '../purchase-notes/purchase-notes.service';
 import { CancelPurchaseOrderReqDto } from './dto/cancel-purchase-order.req.dto';
 import { ClosePurchaseOrderReqDto } from './dto/close-purchase-order.req.dto';
+import { GetOverduePurchaseOrdersReqDto } from './dto/get-overdue-purchase-orders.req.dto';
+import { GetPurchaseOrderSupplierValueSummaryReqDto } from './dto/get-purchase-order-supplier-value-summary.req.dto';
 import { GetPurchaseOrdersReqDto } from './dto/get-purchase-orders.req.dto';
+import { OverduePurchaseOrderResDto } from './dto/overdue-purchase-order.res.dto';
 import { PagePurchaseOrderResDto } from './dto/page-purchase-order.res.dto';
 import { PurchaseOrderResDto } from './dto/purchase-order.res.dto';
+import { PurchaseOrderSupplierValueResDto } from './dto/purchase-order-supplier-value.res.dto';
 import { UpdatePurchaseOrderAdvancePaymentReqDto } from './dto/update-purchase-order-advance-payment.req.dto';
 import { UpdatePurchaseOrderItemReqDto } from './dto/update-purchase-order-item.req.dto';
 import { UpdatePurchaseOrderReqDto } from './dto/update-purchase-order.req.dto';
 import { PurchaseOrderPdfService } from './purchase-order-pdf.service';
 import { PurchaseOrdersService } from './purchase-orders.service';
+import { PurchaseOrdersSummaryService } from './purchase-orders-summary.service';
 
 @ApiTags('Purchase Orders')
 @Controller('purchase-orders')
@@ -36,6 +41,7 @@ export class PurchaseOrdersController {
     private readonly purchaseOrdersService: PurchaseOrdersService,
     private readonly purchaseNotesService: PurchaseNotesService,
     private readonly purchaseOrderPdfService: PurchaseOrderPdfService,
+    private readonly purchaseOrdersSummaryService: PurchaseOrdersSummaryService,
   ) {}
 
   @Get()
@@ -49,6 +55,35 @@ export class PurchaseOrdersController {
     @Query() reqDto: GetPurchaseOrdersReqDto,
   ): Promise<OffsetPaginatedDto<PagePurchaseOrderResDto>> {
     return this.purchaseOrdersService.getPurchaseOrders(reqDto);
+  }
+
+  // Khai trước ':purchaseOrderId' để 'supplier-value-summary' và 'overdue' không bị bắt nhầm thành id.
+  @Get('supplier-value-summary')
+  @Permissions('purchasing:read')
+  @ApiAuth({
+    type: PurchaseOrderSupplierValueResDto,
+    isArray: true,
+    summary:
+      'Purchase order (DMH) value and count per supplier for one status, optionally within an order date range',
+  })
+  getPurchaseOrderSupplierValueSummary(
+    @Query() reqDto: GetPurchaseOrderSupplierValueSummaryReqDto,
+  ): Promise<PurchaseOrderSupplierValueResDto[]> {
+    return this.purchaseOrdersSummaryService.getSupplierValueSummary(reqDto);
+  }
+
+  @Get('overdue')
+  @Permissions('purchasing:read')
+  @ApiAuth({
+    type: OverduePurchaseOrderResDto,
+    isArray: true,
+    summary:
+      'Ordered purchase orders (DMH) past the expected date and not fully received, most overdue first',
+  })
+  getOverduePurchaseOrders(
+    @Query() reqDto: GetOverduePurchaseOrdersReqDto,
+  ): Promise<OverduePurchaseOrderResDto[]> {
+    return this.purchaseOrdersSummaryService.getOverduePurchaseOrders(reqDto);
   }
 
   @Get(':purchaseOrderId')

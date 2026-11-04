@@ -18,14 +18,19 @@ import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
 import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
 import { ExportProductionOrdersReqDto } from './dto/export-production-orders.req.dto';
+import { GetOpenProductionOrdersReqDto } from './dto/get-open-production-orders.req.dto';
 import { GetProductionOrderLogsReqDto } from './dto/get-production-order-logs.req.dto';
+import { GetProductionOrderStatusStatsReqDto } from './dto/get-production-order-status-stats.req.dto';
 import { GetProductionOrdersReqDto } from './dto/get-production-orders.req.dto';
+import { OpenProductionOrderResDto } from './dto/open-production-order.res.dto';
 import { ProductionOrderDetailResDto } from './dto/production-order-detail.res.dto';
 import { ProductionOrderLogResDto } from './dto/production-order-log.res.dto';
+import { ProductionOrderStatusStatResDto } from './dto/production-order-status-stat.res.dto';
 import { ProductionOrderResDto } from './dto/production-order.res.dto';
 import { UpdateProductionOrderNoteReqDto } from './dto/update-production-order-note.req.dto';
 import { UpdateProductionOrderSignedFileReqDto } from './dto/update-production-order-signed-file.req.dto';
 import { UpdateProductionOrderReqDto } from './dto/update-production-order.req.dto';
+import { ProductionOrdersSummaryService } from './production-orders-summary.service';
 import { ProductionOrdersService } from './production-orders.service';
 
 @ApiTags('Production Orders')
@@ -33,6 +38,7 @@ import { ProductionOrdersService } from './production-orders.service';
 export class ProductionOrdersController {
   constructor(
     private readonly productionOrdersService: ProductionOrdersService,
+    private readonly productionOrdersSummaryService: ProductionOrdersSummaryService,
   ) {}
 
   @Get()
@@ -60,6 +66,37 @@ export class ProductionOrdersController {
     @Query() reqDto: ExportProductionOrdersReqDto,
   ): Promise<StreamableFile> {
     return this.productionOrdersService.exportProductionOrders(reqDto);
+  }
+
+  // Khai trước ':productionOrdersId' để 'open' và 'status-stats' không bị bắt nhầm thành id.
+  @Get('open')
+  @Permissions('production:read')
+  @ApiAuth({
+    type: OpenProductionOrderResDto,
+    isArray: true,
+    summary:
+      'Production orders (LSX) not yet COMPLETED, with their sales order code',
+  })
+  getOpenProductionOrders(
+    @Query() reqDto: GetOpenProductionOrdersReqDto,
+  ): Promise<OpenProductionOrderResDto[]> {
+    return this.productionOrdersSummaryService.getOpenProductionOrders(reqDto);
+  }
+
+  @Get('status-stats')
+  @Permissions('production:read')
+  @ApiAuth({
+    type: ProductionOrderStatusStatResDto,
+    isArray: true,
+    summary:
+      'Production order (LSX) counts by status over a creation date range',
+  })
+  getProductionOrderStatusStats(
+    @Query() reqDto: GetProductionOrderStatusStatsReqDto,
+  ): Promise<ProductionOrderStatusStatResDto[]> {
+    return this.productionOrdersSummaryService.getProductionOrderStatusStats(
+      reqDto,
+    );
   }
 
   @Get(':productionOrdersId')

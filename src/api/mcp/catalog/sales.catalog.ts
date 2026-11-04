@@ -1,0 +1,141 @@
+import { ClientGroupsController } from '../../client-groups/client-groups.controller';
+import { ClientsController } from '../../clients/clients.controller';
+import { OrdersController } from '../../orders/orders.controller';
+import { OutboundOrdersController } from '../../outbound-orders/outbound-orders.controller';
+import { defineMcpTool } from './define-mcp-tool';
+
+export const SALES_TOOLS = [
+  defineMcpTool({
+    name: 'client_list',
+    title: 'Danh sách khách hàng',
+    hint: 'Find customers (clients) by name or code; use it to get a clientId for order and delivery filters',
+    controller: ClientsController,
+    method: 'getClients',
+  }),
+  defineMcpTool({
+    name: 'client_get',
+    title: 'Chi tiết khách hàng',
+    hint: 'One customer by clientId, with tax code, group and status',
+    controller: ClientsController,
+    method: 'getClient',
+  }),
+  defineMcpTool({
+    name: 'client_status_stats',
+    title: 'Thống kê khách hàng theo trạng thái',
+    hint: 'Count of non-deleted customers (clients) per status (ACTIVE, PAUSED), optionally for one status',
+    controller: ClientsController,
+    method: 'getClientStatusStats',
+  }),
+  defineMcpTool({
+    name: 'client_contact_list',
+    title: 'Người liên hệ của khách hàng',
+    hint: 'Contact persons of one customer by clientId',
+    controller: ClientsController,
+    method: 'getClientContacts',
+  }),
+  defineMcpTool({
+    name: 'client_group_list',
+    title: 'Danh sách nhóm khách hàng',
+    hint: 'Customer groups, for filtering client_list by clientGroupId',
+    controller: ClientGroupsController,
+    method: 'getClientGroups',
+  }),
+  defineMcpTool({
+    name: 'order_list',
+    title: 'Danh sách đơn hàng bán (SO)',
+    hint: 'Sales orders (SO) filtered by customer, assignee, status or date range; q matches the SO code, buyer PO number, customer name or code, or an item name or code on its lines',
+    controller: OrdersController,
+    method: 'getOrders',
+  }),
+  defineMcpTool({
+    name: 'order_get',
+    title: 'Chi tiết đơn hàng bán (SO)',
+    hint: 'One sales order (SO) by orderId, with header, approval and delivery information',
+    controller: OrdersController,
+    method: 'getOrder',
+  }),
+  defineMcpTool({
+    name: 'order_line_list',
+    title: 'Dòng sản phẩm của đơn hàng bán (SO)',
+    hint: 'Product lines of one sales order (SO) by orderId',
+    controller: OrdersController,
+    method: 'getOrderItems',
+  }),
+  defineMcpTool({
+    name: 'order_stats',
+    title: 'Thống kê đơn hàng bán (SO)',
+    hint: 'Dashboard totals of sales orders: month and week trends, delivered, in progress, overdue, completed',
+    controller: OrdersController,
+    method: 'getOrderStats',
+  }),
+  defineMcpTool({
+    name: 'order_value_summary',
+    title: 'Tổng hợp giá trị đơn hàng bán (SO)',
+    hint: 'Value and count of sales orders (SO) grouped by month, client, status or salesperson; use status=REJECTED with groupBy=status to count rejected orders',
+    controller: OrdersController,
+    method: 'getOrderValueSummary',
+  }),
+  defineMcpTool({
+    name: 'order_top_value_list',
+    title: 'Đơn hàng bán (SO) giá trị lớn nhất',
+    hint: 'Largest single sales orders (SO) by total, filtered by status, date range and minTotal/maxTotal',
+    controller: OrdersController,
+    method: 'getOrderTopValue',
+  }),
+  defineMcpTool({
+    name: 'order_overdue_list',
+    title: 'Đơn hàng bán (SO) quá hạn giao',
+    hint: 'Sales orders (SO) past their due date, or due within dueWithinDays, still in production statuses (AWAITING_PRODUCTION, IN_PROGRESS); use order_progress_list for the JOB completion of those orders',
+    controller: OrdersController,
+    method: 'getOverdueOrders',
+  }),
+  defineMcpTool({
+    name: 'order_progress_list',
+    title: 'Tiến độ sản xuất theo đơn hàng bán (SO)',
+    hint: 'Completed JOB over total JOB per sales order (SO); pass orderCode for one order or status to change the default in-production filter',
+    controller: OrdersController,
+    method: 'getOrderProgress',
+  }),
+  defineMcpTool({
+    name: 'outbound_order_list',
+    title: 'Danh sách phiếu giao hàng (DO)',
+    hint: 'Delivery orders (DO) filtered by customer, status, invoice status, PO number or item',
+    controller: OutboundOrdersController,
+    method: 'getOutboundOrders',
+  }),
+  defineMcpTool({
+    name: 'outbound_order_get',
+    title: 'Chi tiết phiếu giao hàng (DO)',
+    hint: 'One delivery order (DO) by outboundOrderId',
+    controller: OutboundOrdersController,
+    method: 'getOutboundOrder',
+  }),
+  defineMcpTool({
+    name: 'outbound_order_line_list',
+    title: 'Dòng của phiếu giao hàng (DO)',
+    hint: 'Item lines of one delivery order (DO) by outboundOrderId',
+    controller: OutboundOrdersController,
+    method: 'getOutboundOrderItems',
+  }),
+  defineMcpTool({
+    name: 'outbound_order_stats',
+    title: 'Thống kê phiếu giao hàng (DO)',
+    hint: 'Total number of delivery orders (DO) and how many are delivered but not yet invoiced, under the list filters except status; not paginated',
+    controller: OutboundOrdersController,
+    method: 'getOutboundOrderStats',
+  }),
+  defineMcpTool({
+    name: 'outbound_order_pending_delivery_list',
+    title: 'Phiếu giao hàng (DO) chờ giao',
+    hint: 'Delivery orders (DO) waiting for delivery, due within daysAhead days (overdue ones included), nearest first',
+    controller: OutboundOrdersController,
+    method: 'getPendingDeliveryOutboundOrders',
+  }),
+  defineMcpTool({
+    name: 'unfulfilled_line_list',
+    title: 'Dòng đơn hàng chưa giao',
+    hint: 'Sales order lines that are not yet fully delivered, to see what is still owed to customers',
+    controller: OutboundOrdersController,
+    method: 'getUnfulfilledOrderItems',
+  }),
+].map((tool) => ({ ...tool, domain: 'sales' as const }));

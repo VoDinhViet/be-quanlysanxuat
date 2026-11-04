@@ -8,6 +8,7 @@ import { IqcModule } from '../iqc/iqc.module';
 import { PaymentRequestsModule } from '../payment-requests/payment-requests.module';
 import { PurchaseNotesModule } from '../purchase-notes/purchase-notes.module';
 import { InventoryReceiptsController } from './inventory-receipts.controller';
+import { InventoryReceiptsSummaryService } from './inventory-receipts-summary.service';
 import { InventoryReceiptsService } from './inventory-receipts.service';
 
 @Module({
@@ -21,6 +22,6 @@ import { InventoryReceiptsService } from './inventory-receipts.service';
     TemplatesModule,
   ],
   controllers: [InventoryReceiptsController],
-  providers: [InventoryReceiptsService],
+  providers: [InventoryReceiptsService, InventoryReceiptsSummaryService],
 })
 export class InventoryReceiptsModule {}

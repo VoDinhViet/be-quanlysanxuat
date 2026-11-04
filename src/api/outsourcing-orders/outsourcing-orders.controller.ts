@@ -19,12 +19,17 @@ import { OperationAccessService } from '../operations/operation-access.service';
 import { CreateOutsourcingOrderReqDto } from './dto/create-outsourcing-order.req.dto';
 import { CreateStandaloneOutsourcingOrderReqDto } from './dto/create-standalone-outsourcing-order.req.dto';
 import { GetOutsourceableOperationsReqDto } from './dto/get-outsourceable-operations.req.dto';
+import { GetOutsourcingOrderSummaryReqDto } from './dto/get-outsourcing-order-summary.req.dto';
 import { GetOutsourcingOrdersReqDto } from './dto/get-outsourcing-orders.req.dto';
+import { GetOverdueOutsourcingOrdersReqDto } from './dto/get-overdue-outsourcing-orders.req.dto';
 import { OutsourceableOperationResDto } from './dto/outsourceable-operation.res.dto';
 import { OutsourcingOrderItemResDto } from './dto/outsourcing-order-item.res.dto';
+import { OutsourcingOrderSummaryResDto } from './dto/outsourcing-order-summary.res.dto';
 import { OutsourcingOrderResDto } from './dto/outsourcing-order.res.dto';
+import { OverdueOutsourcingOrderResDto } from './dto/overdue-outsourcing-order.res.dto';
 import { PageOutsourcingOrderResDto } from './dto/page-outsourcing-order.res.dto';
 import { RejectOutsourcingOrderReqDto } from './dto/reject-outsourcing-order.req.dto';
+import { OutsourcingOrdersSummaryService } from './outsourcing-orders-summary.service';
 import { OutsourcingOrdersService } from './outsourcing-orders.service';
 
 @ApiTags('Outsourcing Orders')
@@ -33,6 +38,7 @@ export class OutsourcingOrdersController {
   constructor(
     private readonly outsourcingOrdersService: OutsourcingOrdersService,
     private readonly operationAccess: OperationAccessService,
+    private readonly outsourcingOrdersSummaryService: OutsourcingOrdersSummaryService,
   ) {}
 
   @Get()
@@ -66,6 +72,34 @@ export class OutsourcingOrdersController {
     }
 
     return this.outsourcingOrdersService.getOutsourceableOperations(reqDto);
+  }
+
+  // Khai trước ':outsourcingOrderId' để 'summary' và 'overdue' không bị bắt nhầm thành id.
+  @Get('summary')
+  @Permissions('outsourcing:read')
+  @ApiAuth({
+    type: OutsourcingOrderSummaryResDto,
+    isArray: true,
+    summary: 'Outsourcing order (OS-OUT) counts grouped by status or supplier',
+  })
+  getOutsourcingOrderSummary(
+    @Query() reqDto: GetOutsourcingOrderSummaryReqDto,
+  ): Promise<OutsourcingOrderSummaryResDto[]> {
+    return this.outsourcingOrdersSummaryService.getOrderSummary(reqDto);
+  }
+
+  @Get('overdue')
+  @Permissions('outsourcing:read')
+  @ApiAuth({
+    type: OverdueOutsourcingOrderResDto,
+    isArray: true,
+    summary:
+      'Outsourcing orders (OS-OUT) still waiting for goods back past the expected return date',
+  })
+  getOverdueOutsourcingOrders(
+    @Query() reqDto: GetOverdueOutsourcingOrdersReqDto,
+  ): Promise<OverdueOutsourcingOrderResDto[]> {
+    return this.outsourcingOrdersSummaryService.getOverdueOrders(reqDto);
   }
 
   @Get(':outsourcingOrderId')

@@ -22,14 +22,17 @@ import { PurchaseNotesService } from '../purchase-notes/purchase-notes.service';
 import { CreatePurchaseRequestItemsReqDto } from './dto/create-purchase-request-items.req.dto';
 import { CreatePurchaseRequestReqDto } from './dto/create-purchase-request.req.dto';
 import { GetPurchaseRequestsReqDto } from './dto/get-purchase-requests.req.dto';
+import { GetStuckPurchaseRequestsReqDto } from './dto/get-stuck-purchase-requests.req.dto';
 import { PagePurchaseRequestResDto } from './dto/page-purchase-request.res.dto';
 import { PurchaseRequestResDto } from './dto/purchase-request.res.dto';
 import { RejectPurchaseRequestReqDto } from './dto/reject-purchase-request.req.dto';
+import { StuckPurchaseRequestResDto } from './dto/stuck-purchase-request.res.dto';
 import { UpdatePurchaseRequestItemReqDto } from './dto/update-purchase-request-item.req.dto';
 import { UpdatePurchaseRequestItemPurchasableReqDto } from './dto/update-purchase-request-item-purchasable.req.dto';
 import { UpdatePurchaseRequestNeededDateReqDto } from './dto/update-purchase-request-needed-date.req.dto';
 import { UpdatePurchaseRequestNoteReqDto } from './dto/update-purchase-request-note.req.dto';
 import { PurchaseRequestsService } from './purchase-requests.service';
+import { PurchaseRequestsSummaryService } from './purchase-requests-summary.service';
 
 @ApiTags('Purchase Requests')
 @Controller('purchase-requests')
@@ -37,6 +40,7 @@ export class PurchaseRequestsController {
   constructor(
     private readonly purchaseRequestsService: PurchaseRequestsService,
     private readonly purchaseNotesService: PurchaseNotesService,
+    private readonly purchaseRequestsSummaryService: PurchaseRequestsSummaryService,
   ) {}
 
   @Get()
@@ -50,6 +54,21 @@ export class PurchaseRequestsController {
     @Query() reqDto: GetPurchaseRequestsReqDto,
   ): Promise<OffsetPaginatedDto<PagePurchaseRequestResDto>> {
     return this.purchaseRequestsService.getPurchaseRequests(reqDto);
+  }
+
+  // Khai trước ':purchaseRequestId' để 'stuck' không bị bắt nhầm thành id.
+  @Get('stuck')
+  @Permissions('purchase-requests:read')
+  @ApiAuth({
+    type: StuckPurchaseRequestResDto,
+    isArray: true,
+    summary:
+      'Approved purchase requests that still have lines not yet on any purchase order (DMH), earliest needed date first',
+  })
+  getStuckPurchaseRequests(
+    @Query() reqDto: GetStuckPurchaseRequestsReqDto,
+  ): Promise<StuckPurchaseRequestResDto[]> {
+    return this.purchaseRequestsSummaryService.getStuckPurchaseRequests(reqDto);
   }
 
   @Get(':purchaseRequestId')

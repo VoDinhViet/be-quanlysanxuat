@@ -29,7 +29,7 @@ import { RefreshTokenReqDto } from './dto/refresh-token.req.dto';
 import { JwtPayloadType } from './types/jwt-payload.type';
 import { RefreshTokenPayloadType } from './types/refresh-token-payload.type';
 
-type SessionCredential = {
+export type SessionCredential = {
   credentialId: string;
   userId: string;
   username: string;
@@ -212,6 +212,45 @@ export class AuthService {
       userId: payload.userId,
       username: payload.username,
       displayName: user?.fullName ?? payload.username,
+    };
+  }
+
+  /**
+   * Danh tính của credential đang dùng được, cho caller không đi qua đăng nhập (MCP).
+   * Cùng luật với `ensureCredentialEnabled` nhưng một truy vấn: credential không tồn tại là E033,
+   * bị khoá hoặc user đã nghỉ việc là E018.
+   */
+  async getActiveCredentialIdentity(
+    credentialId: string,
+  ): Promise<SessionCredential> {
+    const [identity] = await this.db
+      .select({
+        credentialId: credentials.id,
+        userId: credentials.userId,
+        username: credentials.username,
+        email: credentials.email,
+        credentialEnabled: credentials.credentialEnabled,
+        userStatus: users.status,
+      })
+      .from(credentials)
+      .leftJoin(users, eq(users.id, credentials.userId))
+      .where(eq(credentials.id, credentialId))
+      .limit(1);
+    if (!identity) {
+      throw new AppException(ErrorCode.E033, HttpStatus.FORBIDDEN);
+    }
+    if (
+      !identity.credentialEnabled ||
+      identity.userStatus === UserStatus.RESIGNED
+    ) {
+      throw new AppException(ErrorCode.E018, HttpStatus.FORBIDDEN);
+    }
+
+    return {
+      credentialId: identity.credentialId,
+      userId: identity.userId,
+      username: identity.username,
+      email: identity.email,
     };
   }
 

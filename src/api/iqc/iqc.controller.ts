@@ -21,17 +21,27 @@ import type { JwtPayloadType } from '../auth/types/jwt-payload.type';
 import { ConfirmIqcReqDto } from './dto/confirm-iqc.req.dto';
 import { CreateIqcReqDto } from './dto/create-iqc.req.dto';
 import { ExportIqcReqDto } from './dto/export-iqc.req.dto';
+import { GetIqcInspectionRateReqDto } from './dto/get-iqc-inspection-rate.req.dto';
+import { GetIqcSupplierFailRateReqDto } from './dto/get-iqc-supplier-fail-rate.req.dto';
 import { GetIqcsReqDto } from './dto/get-iqcs.req.dto';
+import { GetOpenIqcFailuresReqDto } from './dto/get-open-iqc-failures.req.dto';
 import { IqcResDto } from './dto/iqc.res.dto';
+import { IqcInspectionRateResDto } from './dto/iqc-inspection-rate.res.dto';
 import { IqcStatsResDto } from './dto/iqc-stats.res.dto';
+import { IqcSupplierFailRateResDto } from './dto/iqc-supplier-fail-rate.res.dto';
+import { OpenIqcFailureResDto } from './dto/open-iqc-failure.res.dto';
 import { PageIqcResDto } from './dto/page-iqc.res.dto';
 import { UpdateIqcReqDto } from './dto/update-iqc.req.dto';
 import { IqcService } from './iqc.service';
+import { IqcSummaryService } from './iqc-summary.service';
 
 @ApiTags('IQC')
 @Controller('iqc')
 export class IqcController {
-  constructor(private readonly iqcService: IqcService) {}
+  constructor(
+    private readonly iqcService: IqcService,
+    private readonly iqcSummaryService: IqcSummaryService,
+  ) {}
 
   @Get()
   @Permissions('iqc:read')
@@ -56,6 +66,49 @@ export class IqcController {
   })
   getIqcStats(): Promise<IqcStatsResDto> {
     return this.iqcService.getIqcStats();
+  }
+
+  // Ba route thống kê dưới đây khai trước ':iqcId' để không bị bắt nhầm thành id.
+  @Get('inspection-rate')
+  @Permissions('iqc:read')
+  @ApiAuth({
+    type: IqcInspectionRateResDto,
+    isArray: true,
+    summary:
+      'Completed IQC inspections by result (pass, fail), grouped by result, day or supplier',
+  })
+  getIqcInspectionRate(
+    @Query() reqDto: GetIqcInspectionRateReqDto,
+  ): Promise<IqcInspectionRateResDto[]> {
+    return this.iqcSummaryService.getInspectionRate(reqDto);
+  }
+
+  @Get('supplier-fail-rate')
+  @Permissions('iqc:read')
+  @ApiAuth({
+    type: IqcSupplierFailRateResDto,
+    isArray: true,
+    summary:
+      'IQC fail rate per supplier, only suppliers with at least one failure, highest rate first',
+  })
+  getIqcSupplierFailRate(
+    @Query() reqDto: GetIqcSupplierFailRateReqDto,
+  ): Promise<IqcSupplierFailRateResDto[]> {
+    return this.iqcSummaryService.getSupplierFailRate(reqDto);
+  }
+
+  @Get('open-failures')
+  @Permissions('iqc:read')
+  @ApiAuth({
+    type: OpenIqcFailureResDto,
+    isArray: true,
+    summary:
+      'Failed IQC inspections still open (not completed, or completed without a disposition), oldest first',
+  })
+  getOpenIqcFailures(
+    @Query() reqDto: GetOpenIqcFailuresReqDto,
+  ): Promise<OpenIqcFailureResDto[]> {
+    return this.iqcSummaryService.getOpenIqcFailures(reqDto);
   }
 
   // Khai trước ':iqcId' để 'export' không bị bắt nhầm thành id — cùng lý do 'stats' ở trên.

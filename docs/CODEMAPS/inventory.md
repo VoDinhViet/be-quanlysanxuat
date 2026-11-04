@@ -1,4 +1,4 @@
-<!-- Generated: 2026-11-04 | Files scanned: 38 | Token estimate: ~3560 -->
+<!-- Generated: 2026-11-04 | Files scanned: 41 | Token estimate: ~3800 -->
 # Inventory codemap
 
 Single warehouse: `inventory_balances.itemId` is UNIQUE, no warehouse column (`src/database/schemas/inventory/inventory-balances.ts`).
@@ -7,18 +7,18 @@ Single warehouse: `inventory_balances.itemId` is UNIQUE, no warehouse column (`s
 
 | Folder | Main files | Role |
 |---|---|---|
-| inventory | service 192, posting.service 133, inventory.query 116, item-stock.query 121, available-quantity.query 84 | Only ledger writer (`InventoryPostingService`) + raw reads; module exports both services |
-| inventory-receipts | service 1375, write 189, query 76 | PNK receipts, IQC/OQC gates |
+| inventory | summary service 64 (`stock-ranking`), service 192, posting.service 133, inventory.query 116, item-stock.query 121, available-quantity.query 84 | Only ledger writer (`InventoryPostingService`) + raw reads; module exports both services |
+| inventory-receipts | service 1375, write 189, query 76, summary service 38 (`status-stats`) | PNK receipts, IQC/OQC gates |
 | inventory-issues | service 607 | PXK issues |
 | inventory-requisitions | service 725, lines.service 218, query 237 | MR requisitions (DIRECT items), reservation maths |
 | inventory-adjustments | service 377 | PDC adjustments |
 | inventory-products | service 249, product-ledger.query 41 | FG stock list + stock card |
 | inventory-directs | service 107, import.service ~320 | DIRECT stock list; Excel stock import (actual qty → posted PDC) |
-| supplier-returns | service 515, query 38 | PTNCC returns to supplier |
+| supplier-returns | service 515, query 38, summary service 77, constant (`SupplierReturnSummaryGroupBy`) | PTNCC returns to supplier |
 
 Split: `*.service` = validation + orchestration. `*.write.ts` / `*.query.ts` = plain functions taking `tx`/`db` (no DI) so IQC/OQC/NCR modules call them without module cycles (`inventory-receipts.write.ts:82`, `supplier-returns.query.ts:15`). Issues, adjustments, requisitions write directly in the service. `inventory-documents.ts` holds only the shared status enum (no table). Code prefixes via `generateDocumentSequence`: PNK `inventory-receipts.write.ts:20`, PXK `inventory-issues.service.ts:451`, PDC `inventory-adjustments.service.ts:323`, MR/PXK `inventory-requisitions.service.ts:635`, PTNCC `supplier-returns.service.ts:502`.
 
-## 2. Routes (43). Perm: R=inventory:read, C=inventory:create, U=inventory:update, D=inventory:delete
+## 2. Routes (46). Perm: R=inventory:read, C=inventory:create, U=inventory:update, D=inventory:delete
 
 Controller file = `<folder>.controller.ts`; "Svc" = service line.
 
@@ -26,7 +26,9 @@ Controller file = `<folder>.controller.ts`; "Svc" = service line.
 |---|---|---|---|
 | GET /inventory/balances | R | getInventoryBalances -> InventoryService.getInventoryBalances (45) | - |
 | GET /inventory/transactions | R | getInventoryTransactions -> getInventoryTransactions (98) | - |
+| GET /inventory/stock-ranking | R | getStockRanking -> `InventorySummaryService.getStockRanking` (`inventory-summary.service.ts:20`): `inventory_balances` joined to non-deleted `items`, ranked by quantity; `order` highest (default) \| lowest, `inStockOnly`, `belowMinStock` (minStock > 0 and quantity below it, out-of-stock included); `order=lowest` always drops zero-quantity rows; `limit` default 20, max 50; this controller has no `/:id` route | - |
 | GET /inventory-receipts | R | getInventoryReceipts -> same (130) | - |
+| GET /inventory-receipts/status-stats | R | getReceiptStatusStats -> `InventoryReceiptsSummaryService.getReceiptStatusStats` (`inventory-receipts-summary.service.ts:16`): receipt count per (`receiptType`, `status`), `startDate`/`endDate` on `receiptDate`; declared before `:receiptId` | - |
 | GET /inventory-receipts/:receiptId | R | getInventoryReceipt -> same (323) | - |
 | POST /inventory-receipts | C | createInventoryReceipt (426) | receipts, receipt_items |
 | PATCH /inventory-receipts/:receiptId | U | updateInventoryReceipt (480), DRAFT only | receipts, receipt_items |
@@ -70,6 +72,7 @@ Controller file = `<folder>.controller.ts`; "Svc" = service line.
 | GET /inventory-directs/import-template | inventory:import | InventoryDirectImportService.downloadImportTemplate (67): xlsx prefilled with ACTIVE DIRECT items + current balance | - |
 | POST /inventory-directs/import | inventory:import | importStock (104): rows parsed by web (actual qty as string), all-or-nothing (E321 with per-row `details`), locks balances FOR UPDATE by itemId, delta = actual − locked balance, up to 2 PDC (INCREASE/DECREASE, STOCKTAKE) via `InventoryAdjustmentsService.createPostedAdjustment` (adjustments.service 252, created POSTED); returns `{documents, unchangedCount}` | adjustments, adjustment_items, balances, transactions |
 | GET /supplier-returns | R | getSupplierReturns (51) | - |
+| GET /supplier-returns/summary | R | getSupplierReturnSummary -> `SupplierReturnsSummaryService.getSummary` (`supplier-returns-summary.service.ts:20`): `groupBy` status (default, count and `totalQuantity` per status) \| supplier (`limit` default 20, max 50, applies only here); optional `status`, `startDate`/`endDate` on `returnDate`; MCP tool `inventory_supplier_return_summary` (catalog file `purchasing.catalog.ts`); declared before `:supplierReturnId` | - |
 | GET /supplier-returns/:supplierReturnId | R | getSupplierReturn (194) | - |
 | PATCH .../:supplierReturnId | U | updateSupplierReturn (233), DRAFT, note only | supplier_returns, quality_inspections(+_results).dispositionNote |
 | POST .../:supplierReturnId/post | U | postSupplierReturn (336) | supplier_returns, supplier_return_files, balances, transactions, outsourcing_orders, production_job_operations, quality_inspections |

@@ -1,61 +1,67 @@
-<!-- Generated: 2026-11-04 | Files scanned: 29 | Token estimate: ~2950 -->
+<!-- Generated: 2026-11-04 | Files scanned: 33 | Token estimate: ~3500 -->
 # Sales codemap
 
 Conventions: controllers check permissions, services do not; routes are under global prefix `api`. Create/update mostly return 204 (void) except `POST /orders`. Paths below: `O`=`src/api/orders`, `B`=`src/api/outbound-orders`, `C`=`src/api/clients`, `S`=`src/database/schemas`.
 
 ## 1. Modules
-- `O/` (SO): `orders.controller.ts` 214, `orders.service.ts` 1161, `orders.query.ts` 63 (`issuedQuantityByOrderItemIdSubquery`:18 = delivered qty per order line, from `inventory_transactions`; `invoicesByOrderItemIdSubquery`:37 = invoice numbers and latest date per order line, from DELIVERED + ISSUED DOs), `orders.export.ts` 128 (column map of the "Theo dõi đơn hàng" Excel; Thành tiền is a formula + stored amount for VND orders, a plain amount for foreign-currency orders), `templates/order-tracking-template.xlsx` (the customer's workbook, copied by `nest-cli.json` assets), `dto/` 14 files. Imports Files, ProductionOrders, Templates (PDF) modules (`orders.module.ts:11`).
-- `B/` (DO): `outbound-orders.controller.ts` 250, `.service.ts` 968, `.query.ts` 210 (held-qty and filter helpers, `closeOrdersIfFullyDelivered`:168), `.export.ts` 94. No module imports; posting the DO's issue lives in `InventoryIssuesService`.
-- `C/`: `clients.controller.ts` 118, `clients.service.ts` 354 (clients + contacts).
+- `O/` (SO): `orders.controller.ts` 214, `orders.service.ts` 1161, `orders.query.ts` 63 (`issuedQuantityByOrderItemIdSubquery`:18 = delivered qty per order line, from `inventory_transactions`; `invoicesByOrderItemIdSubquery`:37 = invoice numbers and latest date per order line, from DELIVERED + ISSUED DOs), `orders.export.ts` 128 (column map of the "Theo dõi đơn hàng" Excel; Thành tiền is a formula + stored amount for VND orders, a plain amount for foreign-currency orders), `templates/order-tracking-template.xlsx` (the customer's workbook, copied by `nest-cli.json` assets), `dto/` 22 files, `orders-summary.service.ts` 304 + `orders-summary.constant.ts` (read-only summary queries behind the four summary routes below). Imports Files, ProductionOrders, Templates (PDF) modules (`orders.module.ts:11`).
+- `B/` (DO): `outbound-orders.controller.ts` 250, `.service.ts` 968, `.query.ts` 210 (held-qty and filter helpers, `closeOrdersIfFullyDelivered`:168), `.export.ts` 94, `outbound-orders-summary.service.ts` 52 + `.constant.ts` (pending-delivery list). No module imports; posting the DO's issue lives in `InventoryIssuesService`.
+- `C/`: `clients.controller.ts` 118, `clients.service.ts` 354 (clients + contacts), `clients-summary.service.ts` 36 (`status-stats`).
 - `src/api/client-groups/` (controller 26, service 49) and `src/api/countries/` (controller 23, service 34): read-only lookups.
 - Schemas: `S/orders/{orders 241, order-items 109, order-files 38}.ts`, `S/clients/{clients 77, client-contacts 41, client-groups 15}.ts`, `S/countries.ts` 15, `S/inventory/{outbound-orders 161, outbound-order-items 91}.ts`.
 
-## 2. Routes (36 total)
-Orders (14), `@Controller('orders')`; static routes are declared before `:orderId`.
+## 2. Routes (42 total)
+Orders (18), `@Controller('orders')`; static routes are declared before `:orderId`. The four summary routes (`value-summary`, `top-value`, `overdue`, `progress`) are served by `OrdersSummaryService` (`O/orders-summary.service.ts`), need only `orders:read`, return plain arrays (no paging, `limit` max 50), report values in VND (`total * exchangeRate`), and are MCP tools (`order_*`, see `mcp.md`). Day maths uses "today" in Asia/Ho_Chi_Minh (`TODAY`, `src/common/summary/summary.sql.ts`); shared caps and DTO bases are in `src/common/summary/`.
 | Route | Perm | Handler -> Service | Writes |
 |---|---|---|---|
-| GET /orders | orders:read | `O/orders.controller.ts:45` -> `getOrders` (service:94) | - |
-| GET /orders/stats | orders:read | :59 -> `getOrderStats` (:294) | - |
-| GET /orders/export-excel and /orders/export (alias) | orders:read | :69, :81 -> `exportOrdersExcel` (:208; one Excel row per non-cancelled order line via `findOrderItemTrackings`:238, VND, cap 10,000 lines; filled into the template by `buildXlsxFromTemplate`) | - |
-| GET /orders/export-summary-pdf | orders:read | :92 -> `exportOrdersSummaryPdf` (:517) | - |
-| GET /orders/:orderId | orders:read | :105 -> `getOrder` (:361) | - |
-| GET /orders/:orderId/export-pdf | orders:read | :115 -> `exportOrderPdf` (:418) | - |
-| GET /orders/:orderId/items | orders:read | :128 -> `getOrderItems` (:603) | - |
-| POST /orders | orders:create | :141 -> `createOrder` (:645) | orders, order_items, order_files |
-| PATCH /orders/:orderId | orders:update | :155 -> `updateOrder` (:711) | orders, order_items, order_files; deletes production_orders on cancel |
-| PATCH /orders/:orderId/buyer-po | orders:update | :169 -> `updateOrderBuyerPo` (:801) | orders.buyerPoNo |
-| POST /orders/:orderId/approve | orders:approve | :183 -> `approveOrder` (:816) | orders, production_orders, production_order_items, logs |
-| POST /orders/:orderId/reject | orders:approve | :197 -> `rejectOrder` (:847) | orders |
-| DELETE /orders/:orderId | orders:delete | :211 -> `deleteOrder` (:866) | orders.deletedAt |
+| GET /orders | orders:read | `O/orders.controller.ts:57` -> `getOrders` (service:94) | - |
+| GET /orders/stats | orders:read | :71 -> `getOrderStats` (:294) | - |
+| GET /orders/value-summary | orders:read | :84 -> `getOrderValueSummary` (summary svc:73). `groupBy` month (default) \| client \| status \| salesperson; `metric` total (default) \| count ranks client/status/salesperson groups; filters `startDate`/`endDate` (on `orderDate`), `status`, `excludeRejected` (default true unless `groupBy=status` or `status` is set), `minTotal`/`maxTotal` (only `groupBy=client`, on the client's period total, even when `metric=count`); `limit` default 10 for client/salesperson | - |
+| GET /orders/top-value | orders:read | :98 -> `getOrderTopValue` (:98): largest single orders by `total`; same date/status/`excludeRejected`/`minTotal`/`maxTotal` filters; `limit` default 10 | - |
+| GET /orders/overdue | orders:read | :112 -> `getOverdueOrders` (:135): `statuses` (CSV, default AWAITING_PRODUCTION + IN_PROGRESS), `dueWithinDays` 0-30 (0 = already past `dueDate`, N adds orders due within N days), `limit` default 20 | - |
+| GET /orders/progress | orders:read | :126 -> `getOrderProgress` (:167): per SO `jobCount` and `completedJobCount` over the ORDER-type LSX only (NCR secondary LSX excluded); `orderCode` returns that SO whatever its status, else `status` (default AWAITING_PRODUCTION + IN_PROGRESS), `limit` default 20 | - |
+| GET /orders/export-excel and /orders/export (alias) | orders:read | :138, :150 -> `exportOrdersExcel` (:208; one Excel row per non-cancelled order line via `findOrderItemTrackings`:238, VND, cap 10,000 lines; filled into the template by `buildXlsxFromTemplate`) | - |
+| GET /orders/export-summary-pdf | orders:read | :161 -> `exportOrdersSummaryPdf` (:517) | - |
+| GET /orders/:orderId | orders:read | :174 -> `getOrder` (:361) | - |
+| GET /orders/:orderId/export-pdf | orders:read | :184 -> `exportOrderPdf` (:418) | - |
+| GET /orders/:orderId/items | orders:read | :197 -> `getOrderItems` (:603) | - |
+| POST /orders | orders:create | :210 -> `createOrder` (:645) | orders, order_items, order_files |
+| PATCH /orders/:orderId | orders:update | :224 -> `updateOrder` (:711) | orders, order_items, order_files; deletes production_orders on cancel |
+| PATCH /orders/:orderId/buyer-po | orders:update | :238 -> `updateOrderBuyerPo` (:801) | orders.buyerPoNo |
+| POST /orders/:orderId/approve | orders:approve | :252 -> `approveOrder` (:816) | orders, production_orders, production_order_items, logs |
+| POST /orders/:orderId/reject | orders:approve | :266 -> `rejectOrder` (:847) | orders |
+| DELETE /orders/:orderId | orders:delete | :280 -> `deleteOrder` (:866) | orders.deletedAt |
 
-Outbound orders (15), `@Controller('outbound-orders')`; handler lines in `B/outbound-orders.controller.ts`, service lines in `.service.ts`.
+Outbound orders (16), `@Controller('outbound-orders')`; handler lines in `B/outbound-orders.controller.ts`, service lines in `.service.ts`.
 | Route | Perm | Handler -> Service | Writes |
 |---|---|---|---|
-| GET /outbound-orders | outbound:read | :48 -> `getOutboundOrders` (:95) | - |
-| GET .../stats | outbound:read | :62 -> `getOutboundOrderStats` (:156) - `{total, notInvoiced}`, own filter DTO (no status/invoiceStatus/paging), declared before `:outboundOrderId` | - |
-| GET .../unfulfilled-order-items | outbound:read | :76 -> `getUnfulfilledOrderItems` (:365) | - |
-| GET .../export | outbound:read | :91 -> `exportOutboundOrders` (:197) | - |
-| GET .../:outboundOrderId | outbound:read | :103 -> `getOutboundOrder` (:265) | - |
-| GET .../:outboundOrderId/items | outbound:read | :116 -> `getOutboundOrderItems` (:305) | - |
-| POST /outbound-orders | outbound:create | :129 -> `createOutboundOrder` (:491) | outbound_orders, outbound_order_items |
-| PATCH .../:id | outbound:update | :145 -> `updateOutboundOrder` (:516) | outbound_orders, outbound_order_items |
-| POST .../:id/send | outbound:update | :162 -> `sendOutboundOrder` (:637) | outbound_orders |
-| POST .../:id/approve | outbound:approve | :179 -> `approveOutboundOrder` (:672) | outbound_orders, inventory_issues + inventory_issue_items (DRAFT SALES issue) |
-| POST .../:id/reject | outbound:approve | :195 -> `rejectOutboundOrder` (:755) | outbound_orders |
-| PATCH .../:id/invoice | outbound:invoice | :214 -> `updateOutboundOrderInvoice` (:819) - DELIVERED only, else E320; saving sets `invoiceStatus = ISSUED` | outbound_orders (invoice_status, invoice_no, invoice_date, invoiced_by, invoiced_at) |
-| POST .../:id/cancel | outbound:update | :233 -> `cancelOutboundOrder` (:547) | outbound_orders, inventory_issues (DRAFT issue -> CANCELLED) |
-| DELETE .../:id | outbound:delete | :245 -> `deleteOutboundOrder` (:583) | outbound_orders (hard delete, items cascade) |
+| GET /outbound-orders | outbound:read | :54 -> `getOutboundOrders` (:95) | - |
+| GET .../stats | outbound:read | :68 -> `getOutboundOrderStats` (:156) - `{total, notInvoiced}`, own filter DTO (no status/invoiceStatus/paging), declared before `:outboundOrderId` | - |
+| GET .../pending-delivery | outbound:read | :83 -> `OutboundOrdersSummaryService.getPendingDeliveryOutboundOrders` (summary svc:22): DOs in PENDING_DELIVERY with `fulfillmentDate` within `daysAhead` days (default 7, max 60; overdue ones included), `limit` default 20; same permission as the other outbound-orders routes | - |
+| GET .../unfulfilled-order-items | outbound:read | :99 -> `getUnfulfilledOrderItems` (:365) | - |
+| GET .../export | outbound:read | :114 -> `exportOutboundOrders` (:197) | - |
+| GET .../:outboundOrderId | outbound:read | :126 -> `getOutboundOrder` (:265) | - |
+| GET .../:outboundOrderId/items | outbound:read | :139 -> `getOutboundOrderItems` (:305) | - |
+| POST /outbound-orders | outbound:create | :152 -> `createOutboundOrder` (:491) | outbound_orders, outbound_order_items |
+| PATCH .../:id | outbound:update | :168 -> `updateOutboundOrder` (:516) | outbound_orders, outbound_order_items |
+| POST .../:id/send | outbound:update | :185 -> `sendOutboundOrder` (:637) | outbound_orders |
+| POST .../:id/approve | outbound:approve | :202 -> `approveOutboundOrder` (:672) | outbound_orders, inventory_issues + inventory_issue_items (DRAFT SALES issue) |
+| POST .../:id/reject | outbound:approve | :218 -> `rejectOutboundOrder` (:755) | outbound_orders |
+| PATCH .../:id/invoice | outbound:invoice | :237 -> `updateOutboundOrderInvoice` (:819) - DELIVERED only, else E320; saving sets `invoiceStatus = ISSUED` | outbound_orders (invoice_status, invoice_no, invoice_date, invoiced_by, invoiced_at) |
+| POST .../:id/cancel | outbound:update | :256 -> `cancelOutboundOrder` (:547) | outbound_orders, inventory_issues (DRAFT issue -> CANCELLED) |
+| DELETE .../:id | outbound:delete | :268 -> `deleteOutboundOrder` (:583) | outbound_orders (hard delete, items cascade) |
 
-Clients (7), handler lines in `C/clients.controller.ts`, service in `clients.service.ts`.
+Clients (8), handler lines in `C/clients.controller.ts`, service in `clients.service.ts`.
 | Route | Perm | Handler -> Service | Writes |
 |---|---|---|---|
-| GET /clients | clients:read | :41 -> `getClients` (:49) | - |
-| GET /clients/options | clients:read | :54 -> `getClientOptions` (:101, limit 100) | - |
-| GET /clients/:clientId | clients:read | :66 -> `getClient` (:128) | - |
-| GET /clients/:clientId/contacts | clients:read | :77 -> `getClientContacts` (:147) | - |
-| POST /clients | clients:create | :89 -> `createClient` (:161) | clients, client_contacts |
-| PATCH /clients/:clientId | clients:update | :102 -> `updateClient` (:199) | clients, client_contacts (replace-all, :269) |
-| DELETE /clients/:clientId | clients:delete | :115 -> `deleteClient` (:237) | clients.deletedAt |
+| GET /clients | clients:read | :47 -> `getClients` (:49) | - |
+| GET /clients/options | clients:read | :60 -> `getClientOptions` (:101, limit 100) | - |
+| GET /clients/status-stats | clients:read | :74 -> `ClientsSummaryService.getClientStatusStats` (summary svc:15): client counts per status, optional `status` filter; declared before `:clientId` | - |
+| GET /clients/:clientId | clients:read | :86 -> `getClient` (:128) | - |
+| GET /clients/:clientId/contacts | clients:read | :97 -> `getClientContacts` (:147) | - |
+| POST /clients | clients:create | :109 -> `createClient` (:161) | clients, client_contacts |
+| PATCH /clients/:clientId | clients:update | :122 -> `updateClient` (:199) | clients, client_contacts (replace-all, :269) |
+| DELETE /clients/:clientId | clients:delete | :135 -> `deleteClient` (:237) | clients.deletedAt |
 
 Public (no JWT, `@ApiPublic`): `GET /client-groups` (1) `client-groups.controller.ts:21` -> `getClientGroups` (service:18) reads `client_groups`; `GET /countries` (1) `countries.controller.ts:20` -> `getCountries` (service:16) reads `countries`, alphabetical, unpaginated.
 
@@ -97,4 +103,4 @@ SO cancel/delete guards: PATCH blocked on COMPLETED/CANCELLED (E065) and PENDING
 - Inventory: DO approval writes `inventory_issues.outboundOrderId` (DRAFT SALES issue) (`S/inventory/inventory-issues.ts:63`); `InventoryService` copies delivered/open-demand queries for AWAITING_PRODUCTION and IN_PROGRESS SO (`inventory/inventory.query.ts:92`); `OrdersService.getOrderItems` exposes `issuedQty`/`remainingQty` (unclamped).
 - Quality: DO send reads `getJobQcCoverage`/`getJobFinalOperation` (`oqc/oqc.query.ts:213`, :112). NCR rows from OQC copy `orderId` from the JOB's LSX (`ncrs/ncrs.write.ts:69`); secondary LSX reuses it, E305 if missing (`ncrs.service.ts:347`).
 - Items: SO and DO lines reference `items` with restrict FK; `outbound_order_items.productionJobId` is a display snapshot, set null if the JOB is deleted on LSX re-approval (`S/inventory/outbound-order-items.ts:35-40`).
-- Others reading SO: `reports.service.ts`, `integration/integration-orders.service.ts` (raw SQL on `orders`), payment-requests and purchase-orders modules (not read; unverified how).
+- Others reading SO: `reports.service.ts`, `traces/traces.order.query.ts` (`GET /traces/order`, see `integration.md`), `orders-summary.service.ts` (value, overdue and progress summaries), payment-requests and purchase-orders modules (not read; unverified how).

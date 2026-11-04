@@ -1,4 +1,4 @@
-<!-- Generated: 2026-11-03 | Files scanned: 27 | Token estimate: ~3530 -->
+<!-- Generated: 2026-11-04 | Files scanned: 32 | Token estimate: ~4100 -->
 # Production codemap
 
 Paths relative to `src/api/` unless starting `database/` or `constants/`. `ctrl:N`/`svc:N` = line in that domain's controller/service (`po.svc`, `jobs.svc`, `exec svc`, `OO svc`, `OR svc` = the five services). Create/update routes return 204 unless noted.
@@ -7,52 +7,57 @@ Paths relative to `src/api/` unless starting `database/` or `constants/`. `ctrl:
 
 | Folder | Files (lines) | Role |
 |---|---|---|
-| production-orders | ctrl 180, svc 774, export 49, dto/ | LSX header + plan lines, approve, logs, Excel/PDF. No query/write file: SQL inline in svc |
-| production-jobs | ctrl 338, svc 1069, `production-job-snapshot.query.ts` 593, `production-jobs.query.ts` 216, `production-job-issues.query.ts` 195, dto/ | JOB read/plan/start. snapshot.query builds BOM/ops/issues; jobs.query has close helpers; issues.query edits materials |
+| production-orders | ctrl 217, svc 774, summary svc 68, export 49, dto/ | LSX header + plan lines, approve, logs, Excel/PDF. No query/write file: SQL inline in svc |
+| production-jobs | ctrl 388, svc 1069, summary svc 144, `production-job-snapshot.query.ts` 593, `production-jobs.query.ts` 216, `production-job-issues.query.ts` 195, dto/ | JOB read/plan/start. snapshot.query builds BOM/ops/issues; jobs.query has close helpers; issues.query edits materials |
 | production-execution | ctrl 136, svc 654, constant 30, dto/ | "Thuc hien san xuat" screens; only manual progress writer. No query file |
-| outsourcing-orders | ctrl 118, svc 489, `outsourcing-orders.query.ts` 327, dto/ | OS-OUT (send out); query holds `recomputeOutsourcingOrderStatus` |
+| outsourcing-orders | ctrl 279, svc 489, summary svc 125, `outsourcing-orders.query.ts` 327, dto/ | OS-OUT (send out); query holds `recomputeOutsourcingOrderStatus` |
 | outsourcing-receipts | ctrl 112, svc 695, `outsourcing-receipts.query.ts` 155, dto/ | OS-IN (receive back); query = received-qty subqueries |
 
 No `*.write.ts` here; write helpers sit in `ncrs/ncrs.write.ts`, `iqc/iqc.write.ts`, `inventory-receipts/inventory-receipts.write.ts`. Schemas: `database/schemas/production/*` (13 files) and `database/schemas/inventory/outsourcing-{orders,order-items,receipts,receipt-items}.ts`.
 
-## 2. Routes (44)
+## 2. Routes (53)
 
 Tables: `po`=production_orders, `poi`=_order_items, `pol`=_order_logs, `pj`=production_jobs, `pjo`=_job_operations, `pjl`=_job_logs.
 
-### production-orders (9) `/production-orders` perm prefix `production:`
+### production-orders (11) `/production-orders` perm prefix `production:`
 | Route | Perm | Controller -> Service | Writes |
 |---|---|---|---|
-| GET / | read | getProductionOrders ctrl:45 -> svc:93 | - |
-| GET /export | read | exportProductionOrders ctrl:59 -> svc:155 (10,000-row cap) | - |
-| GET /:productionOrdersId | read | getProductionOrdersById ctrl:71 -> svc:209 | - |
-| GET /:id/export-pdf | read | exportProductionOrderPdf ctrl:85 -> svc:250 | - |
-| PATCH /:id | update | updateProductionOrder ctrl:100 -> svc:335 (returns detail DTO) | poi, pol |
-| PATCH /:id/note | update | updateProductionOrderNote ctrl:118 -> svc:728 | po.note, pol |
-| PATCH /:id/signed-file | update | updateProductionOrderSignedFile ctrl:136 -> svc:687 (returns detail) | po.signedFileId, pol |
-| GET /:id/logs | read | getProductionOrderLogs ctrl:155 -> svc:654 | - |
-| POST /:id/approve | approve | approveProductionOrder ctrl:171 -> svc:434 (returns detail) | po, orders.status, pj + snapshot tables, pjl, pol |
+| GET / | read | getProductionOrders ctrl:51 -> svc:93 | - |
+| GET /export | read | exportProductionOrders ctrl:65 -> svc:155 (10,000-row cap) | - |
+| GET /open | read | getOpenProductionOrders ctrl:80 -> `ProductionOrdersSummaryService.getOpenProductionOrders` (`production-orders-summary.service.ts:24`): LSX not COMPLETED with its SO code, by `code`, `limit` default 20 (max 50); declared before `/:productionOrdersId` | - |
+| GET /status-stats | read | getProductionOrderStatusStats ctrl:94 -> summary svc:44: LSX count per status, `startDate`/`endDate` on `createdAt` | - |
+| GET /:productionOrdersId | read | getProductionOrdersById ctrl:108 -> svc:209 | - |
+| GET /:id/export-pdf | read | exportProductionOrderPdf ctrl:122 -> svc:250 | - |
+| PATCH /:id | update | updateProductionOrder ctrl:137 -> svc:335 (returns detail DTO) | poi, pol |
+| PATCH /:id/note | update | updateProductionOrderNote ctrl:155 -> svc:728 | po.note, pol |
+| PATCH /:id/signed-file | update | updateProductionOrderSignedFile ctrl:173 -> svc:687 (returns detail) | po.signedFileId, pol |
+| GET /:id/logs | read | getProductionOrderLogs ctrl:192 -> svc:654 | - |
+| POST /:id/approve | approve | approveProductionOrder ctrl:208 -> svc:434 (returns detail) | po, orders.status, pj + snapshot tables, pjl, pol |
 
-### production-jobs (18) `/production-jobs` perm prefix `production:`
+### production-jobs (21) `/production-jobs` perm prefix `production:`
 | Route | Perm | Controller -> Service | Writes |
 |---|---|---|---|
-| GET / | read | getProductionJobs ctrl:62 -> svc:178 | - |
-| GET /stats | read | getProductionJobStats ctrl:76 -> svc:245 (counts per status; same filters as GET / minus status, shared `buildProductionJobFilter`) | - |
-| GET /export-plan-pdf | read | exportProductionPlanPdf ctrl:89 -> svc:114 | - |
-| GET /:jobId | read | getProductionJob ctrl:101 -> svc:275 (+oqc.query.ts:153; `productFiles` = item_files of the Job's item revision) | - |
-| GET /:jobId/bom | read | getProductionJobBom ctrl:114 -> svc:342 | - |
-| GET /:jobId/operations | read | getProductionJobOperations ctrl:132 -> svc:454 (ctrl asserts operation access if `operationId`; each operation carries `nextOperationName`, resolved from `successor_id`) | - |
-| GET /:jobId/notes | read | getProductionJobNotes ctrl:155 -> svc:675 | - |
-| GET /:jobId/logs | read | getProductionJobLogs ctrl:170 -> svc:701 | - |
-| POST /:jobId/notes | update | createProductionJobNote ctrl:183 -> svc:499 | production_job_notes |
-| POST /:jobId/bom | update | addIssues ctrl:202 -> svc:798 -> addJobIssues issues.query:26 | production_job_issues, job items/units, pjl (ITEMS_EDITED), pj.snapshotEditedAt |
-| PATCH /:jobId/bom/:issueId | update | updateIssue ctrl:216 -> svc:809 -> updateJobIssue issues.query:112 | same as above |
-| DELETE /:jobId/bom/:issueId | update | removeIssue ctrl:236 -> svc:821 -> removeJobIssue issues.query:136 | same as above |
-| POST /:jobId/snapshot | update | reloadSnapshot ctrl:255 -> svc:776 | delete+insert job bom items/operations/issues, pj.snapshotLoadedAt, pj.snapshotEditedAt (null), pj.itemRevision |
-| POST /:jobId/start | update | startJob ctrl:266 -> svc:846 | pj, pjl, purchase_requests (via `PurchaseRequestsService.createShortageRequest`) |
-| GET /:jobId/operations/plan | read | getProductionJobPlanOperations ctrl:281 -> svc:543 | - |
-| PATCH /:jobId/operations/plan | update | updateProductionJobOperationsPlan ctrl:294 -> svc:640 | pjo.dueDate |
-| PATCH /:jobId/operations/:jobOperationId/due-date | update | updateProductionJobOperationDueDate ctrl:311 -> svc:518 | pjo.dueDate |
-| POST /:jobId/qc | oqc:create | requestJobQc ctrl:331 -> `OqcService.createOqcForJob` oqc/oqc.service.ts:470 | quality_inspections (one DRAFT OQC row, `ncrId` null, inserted in a tx) (OQC code via `generateOqcCode`) |
+| GET / | read | getProductionJobs ctrl:70 -> svc:178 | - |
+| GET /stats | read | getProductionJobStats ctrl:84 -> svc:245 (counts per status; same filters as GET / minus status, shared `buildProductionJobFilter`) | - |
+| GET /export-plan-pdf | read | exportProductionPlanPdf ctrl:139 -> svc:114 | - |
+| GET /item-summary | read | getProductionJobItemSummary ctrl:99 -> `ProductionJobsSummaryService.getItemSummary` (`production-jobs-summary.service.ts:38`): JOB count per item for one `status` (default COMPLETED), date range on `createdAt`, `limit`; declared before `/:jobId` | - |
+| GET /late-operations | read | getLateProductionJobOperations ctrl:113 -> summary svc:67: operations with `dueDate` before today and completed qty < JOB qty, JOB not COMPLETED, SO not CANCELLED/REJECTED; `staleDays` keeps those with no progress report for that many days (never reported counts); `limit` | - |
+| GET /operation-type-stats | production:read | getProductionJobOperationTypeStats ctrl:126 -> summary svc:99: JOB operation count per `type` (OUTSOURCE = outsourced), optional `type` | - |
+| GET /:jobId | read | getProductionJob ctrl:151 -> svc:275 (+oqc.query.ts:153; `productFiles` = item_files of the Job's item revision) | - |
+| GET /:jobId/bom | read | getProductionJobBom ctrl:164 -> svc:342 | - |
+| GET /:jobId/operations | read | getProductionJobOperations ctrl:182 -> svc:454 (ctrl asserts operation access if `operationId`; each operation carries `nextOperationName`, resolved from `successor_id`) | - |
+| GET /:jobId/notes | read | getProductionJobNotes ctrl:205 -> svc:675 | - |
+| GET /:jobId/logs | read | getProductionJobLogs ctrl:220 -> svc:701 | - |
+| POST /:jobId/notes | update | createProductionJobNote ctrl:233 -> svc:499 | production_job_notes |
+| POST /:jobId/bom | update | addIssues ctrl:252 -> svc:798 -> addJobIssues issues.query:26 | production_job_issues, job items/units, pjl (ITEMS_EDITED), pj.snapshotEditedAt |
+| PATCH /:jobId/bom/:issueId | update | updateIssue ctrl:266 -> svc:809 -> updateJobIssue issues.query:112 | same as above |
+| DELETE /:jobId/bom/:issueId | update | removeIssue ctrl:286 -> svc:821 -> removeJobIssue issues.query:136 | same as above |
+| POST /:jobId/snapshot | update | reloadSnapshot ctrl:305 -> svc:776 | delete+insert job bom items/operations/issues, pj.snapshotLoadedAt, pj.snapshotEditedAt (null), pj.itemRevision |
+| POST /:jobId/start | update | startJob ctrl:316 -> svc:846 | pj, pjl, purchase_requests (via `PurchaseRequestsService.createShortageRequest`) |
+| GET /:jobId/operations/plan | read | getProductionJobPlanOperations ctrl:331 -> svc:543 | - |
+| PATCH /:jobId/operations/plan | update | updateProductionJobOperationsPlan ctrl:344 -> svc:640 | pjo.dueDate |
+| PATCH /:jobId/operations/:jobOperationId/due-date | update | updateProductionJobOperationDueDate ctrl:361 -> svc:518 | pjo.dueDate |
+| POST /:jobId/qc | oqc:create | requestJobQc ctrl:381 -> `OqcService.createOqcForJob` oqc/oqc.service.ts:470 | quality_inspections (one DRAFT OQC row, `ncrId` null, inserted in a tx) (OQC code via `generateOqcCode`) |
 
 ### production-execution (6) `/production-execution` perm prefix `production-execution:`
 | Route | Perm | Controller -> Service | Writes |
@@ -64,13 +69,15 @@ Tables: `po`=production_orders, `poi`=_order_items, `pol`=_order_logs, `pj`=prod
 | GET /jobs/:productionJobId/reports | read | getJobOperationReports ctrl:106 -> svc:414 | - |
 | POST /operations/:jobOperationId/reports | report | createJobOperationReport ctrl:125 -> svc:488 | production_job_operation_reports(+_files), pjo, pj.status+pjl via `closeJobIfFinalAssemblyDone` |
 
-### outsourcing-orders (13) `/outsourcing-orders` perm prefix `outsourcing:`
+### outsourcing-orders (15) `/outsourcing-orders` perm prefix `outsourcing:`
 | Route | Perm | Controller -> Service | Writes |
 |---|---|---|---|
-| GET / | read | getOutsourcingOrders ctrl:35 -> svc:62 | - |
-| GET /outsourceable-operations | read | getOutsourceableOperations ctrl:49 -> svc:231 | - |
-| GET /:outsourcingOrderId | read | getOutsourcingOrder ctrl:67 -> svc:120 | - |
-| GET /:id/items | read | getOrderItems ctrl:82 -> svc:173 | - |
+| GET / | read | getOutsourcingOrders ctrl:51 -> svc:62 | - |
+| GET /summary | read | getOutsourcingOrderSummary ctrl:85 -> `OutsourcingOrdersSummaryService.getOrderSummary` (`outsourcing-orders-summary.service.ts:39`): OS-OUT count by `groupBy` status (default) \| supplier, optional `status`, date range on `createdAt`, `limit` (supplier grouping) | - |
+| GET /overdue | read | getOverdueOutsourcingOrders ctrl:99 -> summary svc:54: status SENT, PARTIAL or WAITING_QC with `expectedReturnDate` before today, oldest first; this is not the rule of `GET /reports/outsourcing-order-due-date` (see `integration.md`) | - |
+| GET /outsourceable-operations | read | getOutsourceableOperations ctrl:65 -> svc:231 | - |
+| GET /:outsourcingOrderId | read | getOutsourcingOrder ctrl:111 -> svc:120 | - |
+| GET /:id/items | read | getOrderItems ctrl:126 -> svc:173 | - |
 | POST / | create | createOutsourcingOrder -> creates a `DRAFT` (204) | outsourcing_orders, outsourcing_order_items |
 | POST /standalone | create | createStandaloneOutsourcingOrder (DRAFT, `origin` MANUAL, no Job, no quota check; operation must be OUTSOURCE + ACTIVE) | outsourcing_orders, outsourcing_order_items (`unitId` per line) |
 | PATCH /:id/standalone | update | updateStandaloneOutsourcingOrder (DRAFT/REJECTED, origin MANUAL only) | outsourcing_orders, outsourcing_order_items (replaced) |

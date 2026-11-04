@@ -20,20 +20,32 @@ import { UUIDParam } from '../../decorators/param.decorators';
 import { Permissions } from '../../decorators/permissions.decorator';
 import { CreateOrderReqDto } from './dto/create-order.req.dto';
 import { ExportOrdersReqDto } from './dto/export-orders.req.dto';
+import { GetOrderProgressReqDto } from './dto/get-order-progress.req.dto';
+import { GetOrderTopValueReqDto } from './dto/get-order-top-value.req.dto';
+import { GetOrderValueSummaryReqDto } from './dto/get-order-value-summary.req.dto';
 import { GetOrdersReqDto } from './dto/get-orders.req.dto';
+import { GetOverdueOrdersReqDto } from './dto/get-overdue-orders.req.dto';
 import { OrderItemResDto } from './dto/order-item.res.dto';
+import { OrderProgressResDto } from './dto/order-progress.res.dto';
 import { OrderResDto } from './dto/order.res.dto';
 import { OrderStatsResDto } from './dto/order-stats.res.dto';
+import { OrderTopValueResDto } from './dto/order-top-value.res.dto';
+import { OrderValueSummaryResDto } from './dto/order-value-summary.res.dto';
+import { OverdueOrderResDto } from './dto/overdue-order.res.dto';
 import { PageOrderResDto } from './dto/page-order.res.dto';
 import { RejectOrderReqDto } from './dto/reject-order.req.dto';
 import { UpdateOrderBuyerPoReqDto } from './dto/update-order-buyer-po.req.dto';
 import { UpdateOrderReqDto } from './dto/update-order.req.dto';
+import { OrdersSummaryService } from './orders-summary.service';
 import { OrdersService } from './orders.service';
 
 @ApiTags('Orders')
 @Controller('orders')
 export class OrdersController {
-  constructor(private readonly ordersService: OrdersService) {}
+  constructor(
+    private readonly ordersService: OrdersService,
+    private readonly ordersSummaryService: OrdersSummaryService,
+  ) {}
 
   @Get()
   @Permissions('orders:read')
@@ -58,6 +70,61 @@ export class OrdersController {
   })
   getOrderStats(): Promise<OrderStatsResDto> {
     return this.ordersService.getOrderStats();
+  }
+
+  // Khai trước ':orderId' để 'value-summary', 'top-value', 'overdue' và 'progress' không bị bắt nhầm
+  // thành id.
+  @Get('value-summary')
+  @Permissions('orders:read')
+  @ApiAuth({
+    type: OrderValueSummaryResDto,
+    summary:
+      'Order value and count grouped by month, client, status or salesperson',
+    isArray: true,
+  })
+  getOrderValueSummary(
+    @Query() reqDto: GetOrderValueSummaryReqDto,
+  ): Promise<OrderValueSummaryResDto[]> {
+    return this.ordersSummaryService.getOrderValueSummary(reqDto);
+  }
+
+  @Get('top-value')
+  @Permissions('orders:read')
+  @ApiAuth({
+    type: OrderTopValueResDto,
+    summary: 'Largest single orders by total value',
+    isArray: true,
+  })
+  getOrderTopValue(
+    @Query() reqDto: GetOrderTopValueReqDto,
+  ): Promise<OrderTopValueResDto[]> {
+    return this.ordersSummaryService.getOrderTopValue(reqDto);
+  }
+
+  @Get('overdue')
+  @Permissions('orders:read')
+  @ApiAuth({
+    type: OverdueOrderResDto,
+    summary: 'Orders past their due date (or due within the next N days)',
+    isArray: true,
+  })
+  getOverdueOrders(
+    @Query() reqDto: GetOverdueOrdersReqDto,
+  ): Promise<OverdueOrderResDto[]> {
+    return this.ordersSummaryService.getOverdueOrders(reqDto);
+  }
+
+  @Get('progress')
+  @Permissions('orders:read')
+  @ApiAuth({
+    type: OrderProgressResDto,
+    summary: 'Production progress per order: completed jobs over total jobs',
+    isArray: true,
+  })
+  getOrderProgress(
+    @Query() reqDto: GetOrderProgressReqDto,
+  ): Promise<OrderProgressResDto[]> {
+    return this.ordersSummaryService.getOrderProgress(reqDto);
   }
 
   @Get('export-excel')
