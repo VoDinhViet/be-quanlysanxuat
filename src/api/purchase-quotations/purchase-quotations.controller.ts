@@ -111,7 +111,8 @@ export class PurchaseQuotationsController {
   @Patch(':quotationId')
   @Permissions('purchasing:update')
   @ApiAuth({
-    summary: 'Sửa RFQ (replace-all vật tư + NCC) — chỉ khi DRAFT hoặc REJECTED (REJECTED tự về DRAFT)',
+    summary:
+      'Sửa RFQ (replace-all vật tư + NCC) — chỉ khi DRAFT hoặc REJECTED (REJECTED tự về DRAFT)',
     statusCode: HttpStatus.NO_CONTENT,
   })
   updateQuotation(
@@ -136,7 +137,8 @@ export class PurchaseQuotationsController {
   @Post(':quotationId/send')
   @Permissions('purchasing:update')
   @ApiAuth({
-    summary: 'Gửi duyệt — DRAFT hoặc REJECTED → PENDING_APPROVAL (REJECTED = gửi duyệt lại)',
+    summary:
+      'Gửi duyệt — DRAFT hoặc REJECTED → PENDING_APPROVAL (REJECTED = gửi duyệt lại)',
     statusCode: HttpStatus.NO_CONTENT,
   })
   sendQuotation(
