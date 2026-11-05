@@ -73,7 +73,8 @@ export class BomsController {
   deleteItem(
     @UUIDParam('itemId') itemId: string,
     @UUIDParam('bomItemId') bomItemId: string,
+    @CurrentUser() payload: JwtPayloadType,
   ): Promise<void> {
-    return this.bomsService.deleteBomItem(itemId, bomItemId);
+    return this.bomsService.deleteBomItem(itemId, bomItemId, payload.userId);
   }
 }

@@ -1,4 +1,4 @@
-import { asc, eq, getTableColumns, inArray } from 'drizzle-orm';
+import { and, asc, eq, getTableColumns, inArray, isNull } from 'drizzle-orm';
 
 import { groupBy } from '../../common/utils/array';
 import type { Database, DbTransaction } from '../../database/database.type';
@@ -78,7 +78,7 @@ export async function buildJobPlan(
     .select({ ...getTableColumns(bomItems), item: getTableColumns(items) })
     .from(bomItems)
     .leftJoin(items, eq(items.id, bomItems.itemId))
-    .where(eq(bomItems.bomId, bom.id))
+    .where(and(eq(bomItems.bomId, bom.id), isNull(bomItems.deletedAt)))
     .orderBy(asc(bomItems.level), asc(bomItems.sortOrder));
 
   const { planBomItems, jobBomItemIdByBaseId } = await buildPlanBomItems(
@@ -307,7 +307,12 @@ async function buildPlanBomItems(
   const [fgStep] = await db
     .select({ id: routingOperations.id })
     .from(routingOperations)
-    .where(eq(routingOperations.bomId, bomId))
+    .where(
+      and(
+        eq(routingOperations.bomId, bomId),
+        isNull(routingOperations.deletedAt),
+      ),
+    )
     .limit(1);
 
   if (fgStep) {
@@ -360,7 +365,12 @@ async function buildPlanOperations(
         })
         .from(bomOperations)
         .innerJoin(operations, eq(operations.id, bomOperations.operationId))
-        .where(inArray(bomOperations.bomItemId, baseBomItemIds))
+        .where(
+          and(
+            inArray(bomOperations.bomItemId, baseBomItemIds),
+            isNull(bomOperations.deletedAt),
+          ),
+        )
         .orderBy(asc(bomOperations.sortOrder), asc(bomOperations.createdAt))
     : [];
   const fgSteps = await db
@@ -370,7 +380,12 @@ async function buildPlanOperations(
     })
     .from(routingOperations)
     .innerJoin(operations, eq(operations.id, routingOperations.operationId))
-    .where(eq(routingOperations.bomId, bomId))
+    .where(
+      and(
+        eq(routingOperations.bomId, bomId),
+        isNull(routingOperations.deletedAt),
+      ),
+    )
     .orderBy(
       asc(routingOperations.sortOrder),
       asc(routingOperations.createdAt),

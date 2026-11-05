@@ -21,8 +21,8 @@ import { users } from '../identity-access/users';
  * - `operationId` bất biến sau khi thêm — đổi công đoạn là xoá dòng rồi thêm lại.
  * - Không unique trên `(bomItemId, operationId)` — một chuỗi được phép lặp lại cùng công đoạn (vd.
  *   Kiểm tra → Gia công → Kiểm tra).
- * - `type` là quyết định thật cho bước này (Inhouse/Outsource) — độc lập với `operations.type` của
- *   công đoạn danh mục, chỉ trùng lúc tạo vì FE prefill theo giá trị đó.
+ * - `type` chép từ `operations.type` lúc thêm: đổi loại trong danh mục sau đó không đổi các bước đã
+ *   có, vì LSX và JOB đang chạy dựa trên giá trị này.
  *
  */
 export const bomOperations = pgTable(
@@ -48,6 +48,10 @@ export const bomOperations = pgTable(
       .defaultNow()
       .notNull()
       .$onUpdate(() => new Date()),
+    deletedAt: timestamp('deleted_at'),
+    deletedBy: uuid('deleted_by').references(() => users.id, {
+      onDelete: 'set null',
+    }),
   },
   (table) => [
     index('idx_bom_operations_bom_item_id').on(table.bomItemId),

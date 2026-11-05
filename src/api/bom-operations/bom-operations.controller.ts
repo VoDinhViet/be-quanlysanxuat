@@ -79,12 +79,14 @@ export class BomOperationsController {
     @UUIDParam('bomItemId') bomItemId: string,
     @UUIDParam('stepId') stepId: string,
     @Body() reqDto: UpdateBomOperationReqDto,
+    @CurrentUser() payload: JwtPayloadType,
   ): Promise<BomOperationResDto> {
     return this.bomOperationsService.updateBomOperation(
       itemId,
       bomItemId,
       stepId,
       reqDto,
+      payload.userId,
     );
   }
 
@@ -98,11 +100,13 @@ export class BomOperationsController {
     @UUIDParam('itemId') itemId: string,
     @UUIDParam('bomItemId') bomItemId: string,
     @UUIDParam('stepId') stepId: string,
+    @CurrentUser() payload: JwtPayloadType,
   ): Promise<void> {
     return this.bomOperationsService.deleteBomOperation(
       itemId,
       bomItemId,
       stepId,
+      payload.userId,
     );
   }
 }

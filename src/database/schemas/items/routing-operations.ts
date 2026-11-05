@@ -18,8 +18,8 @@ import { users } from '../identity-access/users';
  *
  *
  * Rules: cùng `bom_operations` — `operationId` bất biến sau khi thêm (đổi = xoá + thêm lại);
- * không unique trên `(bomId, operationId)` (một chuỗi được lặp lại cùng công đoạn); `type` là
- * quyết định thật cho bước này, độc lập với `operations.type` danh mục.
+ * không unique trên `(bomId, operationId)` (một chuỗi được lặp lại cùng công đoạn); `type` chép
+ * từ `operations.type` lúc thêm.
  *
  */
 export const routingOperations = pgTable(
@@ -45,6 +45,10 @@ export const routingOperations = pgTable(
       .defaultNow()
       .notNull()
       .$onUpdate(() => new Date()),
+    deletedAt: timestamp('deleted_at'),
+    deletedBy: uuid('deleted_by').references(() => users.id, {
+      onDelete: 'set null',
+    }),
   },
   (table) => [
     index('idx_routing_operations_bom_id').on(table.bomId),

@@ -1,4 +1,4 @@
-<!-- Generated: 2026-10-27 | Files scanned: 34 | Token estimate: ~3270 -->
+<!-- Generated: 2026-11-05 | Files scanned: 34 | Token estimate: ~3270 -->
 # Product structure codemap
 
 Paths under `src/`. Only controllers check permissions; services do not.
@@ -17,7 +17,7 @@ Paths under `src/`. Only controllers check permissions; services do not.
 | routings | service 230, controller 86 | Level-0 steps of the FG itself (`routing_operations`) |
 | operations | service 332, controller 156, operation-access.service 81 | Operation master, assignments, access scope |
 
-Schemas: `database/schemas/items/{items 168, bom-items 162, boms 41, bom-operations 74, routing-operations 74, item-units 63, item-files 44}.ts`, `units/units.ts` 45, `operations.ts` 120.
+Schemas: `database/schemas/items/{items 168, bom-items 162, boms 41, bom-operations 74, routing-operations 74, item-operation-logs 72, item-units 63, item-files 44}.ts`, `units/units.ts` 45, `operations.ts` 120.
 bom-operations, routings, bom-directs modules import `BomsModule`, reusing `BomsService.ensureItemExists` (boms.service.ts:328), `ensureBomItemInBom` (:504), `ensureBomItemCanHaveOperations` (:487), `getOrCreateBomId` (:567).
 
 ## 2. Routes (Controller.method line -> Service.method line)
@@ -35,7 +35,7 @@ Items (`items.controller.ts` -> `items.service.ts`), 11 routes:
 | PATCH /items/:itemId | items:update | :148 -> updateItem :512 | items, item_files (replace-all :609) |
 | GET /items/:itemId/issues | items:read | :163 -> getItemIssues :630 | - |
 | DELETE /items/:itemId | items:delete | :176 -> deleteItem :560 | items.deletedAt (soft) |
-| POST /items/:itemId/copy | items:copy | :187 -> copyItem :735 | items, item_files, boms, bom_items, bom_operations, routing_operations (copyBomTree :847) |
+| POST /items/:itemId/copy | items:copy | :187 -> copyItem :774 | items, item_files, boms, bom_items, bom_operations, routing_operations, item_operation_logs (COPIED) (copyBomTree :892) |
 
 Item units (`items/:itemId/units`, `item-units.controller.ts` -> `item-units.service.ts`), 4:
 | GET | items:read | :32 -> getItemUnits :21 | - |
@@ -61,23 +61,23 @@ Units (`units.controller.ts` -> `units.service.ts`), 5:
 
 BOM (`items/:itemId/bom`, `boms.controller.ts` -> `boms.service.ts`), 4:
 | GET | items:read | :34 -> getBomItem :61 | - |
-| POST items | items:bom-manage | :45 -> createBomItem :192 | boms (lazy), bom_items; deletes DIRECT siblings :437 |
-| PATCH items/:bomItemId | items:bom-manage | :59 -> updateBomItem :281 | bom_items |
-| DELETE items/:bomItemId | items:bom-manage | :73 -> deleteBomItem :316 | bom_items (cascade children, bom_operations) |
+| POST items | items:bom-manage | :45 -> createBomItem :204 | boms (lazy, row locked with DELETE below), bom_items; soft-deletes DIRECT siblings |
+| PATCH items/:bomItemId | items:bom-manage | :59 -> updateBomItem :290 | bom_items |
+| DELETE items/:bomItemId | items:bom-manage | :73 -> deleteBomItem :331 | locks the boms row, then bom_items, bom_operations of the subtree (soft delete), item_operation_logs (DELETED_WITH_PART) |
 
 BOM directs (`items/:itemId/bom/items/:bomItemId/directs`), 1: GET | items:read | `bom-directs.controller.ts:24` -> `getBomDirects` (`bom-directs.service.ts:22`).
 
 BOM operations (`.../bom/items/:bomItemId/operations`, `bom-operations.controller.ts` -> `bom-operations.service.ts`), 4:
 | GET | items:read | :38 -> getBomOperations :26 | - |
-| POST | items:bom-manage | :57 -> createBomOperation :68 | bom_operations |
-| PATCH :stepId | items:bom-manage | :77 -> updateBomOperation :95 | bom_operations |
-| DELETE :stepId | items:bom-manage | :97 -> deleteBomOperation :118 | bom_operations |
+| POST | items:bom-manage | :57 -> createBomOperation :80 | bom_operations, item_operation_logs (CREATED) |
+| PATCH :stepId | items:bom-manage | :77 -> updateBomOperation | bom_operations, item_operation_logs (UPDATED) |
+| DELETE :stepId | items:bom-manage | :97 -> deleteBomOperation | bom_operations (soft delete), item_operation_logs (DELETED) |
 
 Routings (`items/:itemId/operations`, `routings.controller.ts` -> `routings.service.ts`), 4:
 | GET | items:read | :38 -> getOperations :35 | - |
-| POST | items:bom-manage | :52 -> createOperation :89 | boms (lazy), routing_operations |
-| PATCH :stepId | items:bom-manage | :66 -> updateOperation :133 | routing_operations |
-| DELETE :stepId | items:bom-manage | :80 -> deleteOperation :154 | routing_operations |
+| POST | items:bom-manage | :52 -> createOperation :97 | boms (lazy), routing_operations, item_operation_logs (CREATED) |
+| PATCH :stepId | items:bom-manage | :66 -> updateOperation | routing_operations, item_operation_logs (UPDATED) |
+| DELETE :stepId | items:bom-manage | :80 -> deleteOperation | routing_operations (soft delete), item_operation_logs (DELETED) |
 
 Operations (`operations.controller.ts` -> `operations.service.ts`), 9:
 | GET /operations | operations:read | :43 -> getOperations :53 | - |
@@ -111,9 +111,9 @@ Catalog and BOM:
                      isOffStructure (DIRECT only): attachable next to COMPONENT siblings, not deleted when a COMPONENT child is added
                      checks: chk_bom_items_node_shape, chk_bom_items_off_structure_direct (bom-items.ts)
                      |-- bom_operations (COMPONENT only: bomItemId, operationId, type, sortOrder; repeats allowed)
-    operations (code unique, type default suggestion, status, soft delete) <-- operation_assignments (operationId,userId unique) = team staffing
+    operations (code unique, type copied to steps on add, status, soft delete) <-- operation_assignments (operationId,userId unique) = team staffing
 
-Step lane: `bom_operations.type` / `routing_operations.type` is the real INHOUSE|OUTSOURCE choice; `operations.type` is only the prefilled default and the `?type=OUTSOURCE` filter (operations.ts:14-20). `operationId` is immutable (update edits sortOrder/note only).
+Step lane: `bom_operations.type` / `routing_operations.type` (INHOUSE|OUTSOURCE) are copied from `operations.type` when a step is added and do not follow later catalog edits; `operations.type` also backs the `?type=OUTSOURCE` filter (operations.ts:14-18). `operationId` is immutable (update edits sortOrder/note only).
 
 GET BOM tree (boms.service.ts:61): returns [] if no header; Level 0 is NOT in the response (read item via GET /items/:itemId and steps via routings). `code`/`name` = coalesce(row, item) :87; unit/image coalesce(item, row) :102-108; sorted by `buildBomItemPaths`/`compareBomPaths` (bom-tree.ts); operations in one query :128; off-structure DIRECT rows follow their owner and reuse its path :118-185.
 
@@ -149,7 +149,7 @@ Snapshot into a JOB (production-jobs, not at start):
 - E270 itemId is not DIRECT: boms.service.ts:370; E271 invalid node payload / DIRECT code,name / DIRECT unitId,imageFileId: :355,:295,:384.
 - Adding a COMPONENT silently deletes non-off-structure DIRECT siblings (:437).
 - E109 step not found: bom-operations.service.ts:144,:178; routings.service.ts:175,:210,:225. E046 operation not found: bom-operations.service.ts:161, routings.service.ts:193, operations.service.ts:113,:268.
-- E047 operation code exists: operations.service.ts:205,:292. E248 operation in use by bom_operations, delete blocked: :307. E278 assignees must be WORKING and not deleted: :329.
+- E047 operation code exists: operations.service.ts:205,:292. E248 operation in use by bom_operations, delete blocked: :311. E278 assignees must be WORKING and not deleted: :329.
 - E279 (403) operation not assigned to user: operation-access.service.ts:78; `getAllowedOperationIds` :29 returns null for super permission or `production-execution:read-all`.
 - E011 unit not found: units.service.ts:92, item-units.service.ts:101; E241 unit code exists :60,:114; E242 unit in use (items, production_job_units) :136.
 - E262 item unit not found: item-units.service.ts:115; E263 duplicate unit or same as base unit: :43,:50.

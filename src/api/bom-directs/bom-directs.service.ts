@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
-import { and, asc, count, eq, or } from 'drizzle-orm';
+import { and, asc, count, eq, isNull, or } from 'drizzle-orm';
 
 import { BomsService } from '../boms/boms.service';
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
@@ -30,6 +30,7 @@ export class BomDirectsService {
     const where = and(
       eq(bomItems.parentId, bomItemId),
       eq(bomItems.type, BomType.DIRECT),
+      isNull(bomItems.deletedAt),
       keyword
         ? or(
             unaccentILike(items.code, keyword),
@@ -38,7 +39,7 @@ export class BomDirectsService {
         : undefined,
     );
 
-    const [rows, [{ total }]] = await Promise.all([
+    const [bomDirects, [{ total }]] = await Promise.all([
       this.db
         .select({
           id: bomItems.id,
@@ -67,7 +68,7 @@ export class BomDirectsService {
     ]);
 
     return new OffsetPaginatedDto(
-      plainToInstance(BomDirectResDto, rows, {
+      plainToInstance(BomDirectResDto, bomDirects, {
         excludeExtraneousValues: true,
       }),
       new OffsetPaginationDto(total, reqDto),

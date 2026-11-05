@@ -3,16 +3,23 @@ import { plainToInstance } from 'class-transformer';
 import { and, asc, count, eq, isNull, or } from 'drizzle-orm';
 
 import { BomsService } from '../boms/boms.service';
+import {
+  buildItemOperationLog,
+  describeStepChanges,
+} from '../boms/item-operation-log';
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { unaccentILike } from '../../common/utils/search';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
-import type { Database } from '../../database/database.type';
+import type { Database, DbTransaction } from '../../database/database.type';
 import {
   boms,
+  ItemOperationLogAction,
+  itemOperationLogs,
   ItemType,
   operations,
+  OperationType,
   routingOperations,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
@@ -52,6 +59,7 @@ export class RoutingsService {
     const keyword = reqDto.q ? `%${reqDto.q}%` : undefined;
     const where = and(
       eq(routingOperations.bomId, bom.id),
+      isNull(routingOperations.deletedAt),
       keyword
         ? or(
             unaccentILike(operations.code, keyword),
@@ -60,7 +68,7 @@ export class RoutingsService {
         : undefined,
     );
 
-    const [rows, [{ total }]] = await Promise.all([
+    const [routingSteps, [{ total }]] = await Promise.all([
       this.db.query.routingOperations.findMany({
         where,
         with: { operation: true },
@@ -79,7 +87,7 @@ export class RoutingsService {
     ]);
 
     return new OffsetPaginatedDto(
-      plainToInstance(RoutingOperationResDto, rows, {
+      plainToInstance(RoutingOperationResDto, routingSteps, {
         excludeExtraneousValues: true,
       }),
       new OffsetPaginationDto(total, reqDto),
@@ -95,7 +103,7 @@ export class RoutingsService {
     if (item.type === ItemType.DIRECT) {
       throw new AppException(ErrorCode.E111, HttpStatus.BAD_REQUEST);
     }
-    await this.ensureOperationExists(reqDto.operationId);
+    const operation = await this.ensureOperationExists(reqDto.operationId);
 
     const [existingBom] = await this.db
       .select({ id: boms.id })
@@ -103,7 +111,7 @@ export class RoutingsService {
       .where(eq(boms.itemId, itemId))
       .limit(1);
 
-    const rowId = await this.db.transaction(async (tx) => {
+    const createdStepId = await this.db.transaction(async (tx) => {
       const { bomId } = await this.bomsService.getOrCreateBomId(
         tx,
         itemId,
@@ -111,22 +119,41 @@ export class RoutingsService {
         userId,
       );
 
-      const [row] = await tx
+      const [createdStep] = await tx
         .insert(routingOperations)
         .values({
           bomId,
           operationId: reqDto.operationId,
-          type: reqDto.type,
+          type: operation.type,
           sortOrder: reqDto.sortOrder ?? 0,
           note: reqDto.note,
           createdBy: userId,
         })
-        .returning({ id: routingOperations.id });
+        .returning({
+          id: routingOperations.id,
+          operationId: routingOperations.operationId,
+          type: routingOperations.type,
+          sortOrder: routingOperations.sortOrder,
+          note: routingOperations.note,
+        });
 
-      return row.id;
+      await tx.insert(itemOperationLogs).values(
+        buildItemOperationLog({
+          itemId,
+          action: ItemOperationLogAction.CREATED,
+          step: {
+            ...createdStep,
+            operationCode: operation.code,
+            operationName: operation.name,
+          },
+          performedBy: userId,
+        }),
+      );
+
+      return createdStep.id;
     });
 
-    return this.getOperation(rowId);
+    return this.getOperation(createdStepId);
   }
 
   /** Chỉ sửa STT/note — `operationId` bất biến, đổi thì xoá + thêm lại. */
@@ -134,57 +161,128 @@ export class RoutingsService {
     itemId: string,
     stepId: string,
     reqDto: UpdateRoutingOperationReqDto,
+    userId: string,
   ): Promise<RoutingOperationResDto> {
     await this.bomsService.ensureItemExists(itemId);
-    const bom = await this.ensureRoutingOperationExists(itemId, stepId);
 
-    await this.db
-      .update(routingOperations)
-      .set(reqDto)
-      .where(
-        and(
-          eq(routingOperations.id, stepId),
-          eq(routingOperations.bomId, bom.id),
-        ),
-      );
+    await this.db.transaction(async (tx) => {
+      const step = await this.lockActiveStep(tx, itemId, stepId);
+
+      await tx
+        .update(routingOperations)
+        .set(reqDto)
+        .where(eq(routingOperations.id, stepId));
+
+      const changes = describeStepChanges(step, reqDto);
+      if (changes) {
+        await tx.insert(itemOperationLogs).values(
+          buildItemOperationLog({
+            itemId,
+            action: ItemOperationLogAction.UPDATED,
+            changes,
+            step,
+            performedBy: userId,
+          }),
+        );
+      }
+    });
 
     return this.getOperation(stepId);
   }
 
-  async deleteOperation(itemId: string, stepId: string): Promise<void> {
+  async deleteOperation(
+    itemId: string,
+    stepId: string,
+    userId: string,
+  ): Promise<void> {
     await this.bomsService.ensureItemExists(itemId);
-    const bom = await this.ensureRoutingOperationExists(itemId, stepId);
 
-    await this.db
-      .delete(routingOperations)
+    await this.db.transaction(async (tx) => {
+      const step = await this.lockActiveStep(tx, itemId, stepId);
+
+      await tx.insert(itemOperationLogs).values(
+        buildItemOperationLog({
+          itemId,
+          action: ItemOperationLogAction.DELETED,
+          step,
+          performedBy: userId,
+        }),
+      );
+
+      await tx
+        .update(routingOperations)
+        .set({ deletedAt: new Date(), deletedBy: userId })
+        .where(eq(routingOperations.id, stepId));
+    });
+  }
+
+  /** Khoá dòng để hai request đồng thời không cùng ghi log cho một lần sửa/xoá: request đến sau đọc
+   * lại thấy `deletedAt` đã có và nhận `E109`. */
+  private async lockActiveStep(
+    tx: DbTransaction,
+    itemId: string,
+    stepId: string,
+  ) {
+    const [step] = await tx
+      .select({
+        id: routingOperations.id,
+        operationId: routingOperations.operationId,
+        operationCode: operations.code,
+        operationName: operations.name,
+        type: routingOperations.type,
+        sortOrder: routingOperations.sortOrder,
+        note: routingOperations.note,
+      })
+      .from(routingOperations)
+      .innerJoin(operations, eq(operations.id, routingOperations.operationId))
+      .innerJoin(boms, eq(boms.id, routingOperations.bomId))
       .where(
         and(
           eq(routingOperations.id, stepId),
-          eq(routingOperations.bomId, bom.id),
+          eq(boms.itemId, itemId),
+          isNull(routingOperations.deletedAt),
         ),
-      );
-  }
+      )
+      .limit(1)
+      .for('update', { of: routingOperations });
 
-  private async getOperation(id: string): Promise<RoutingOperationResDto> {
-    const row = await this.db.query.routingOperations.findFirst({
-      where: eq(routingOperations.id, id),
-      with: { operation: true },
-    });
-
-    if (!row) {
+    if (!step) {
       throw new AppException(ErrorCode.E109, HttpStatus.NOT_FOUND);
     }
 
-    return plainToInstance(RoutingOperationResDto, row, {
+    return step;
+  }
+
+  private async getOperation(stepId: string): Promise<RoutingOperationResDto> {
+    const routingStep = await this.db.query.routingOperations.findFirst({
+      where: and(
+        eq(routingOperations.id, stepId),
+        isNull(routingOperations.deletedAt),
+      ),
+      with: { operation: true },
+    });
+
+    if (!routingStep) {
+      throw new AppException(ErrorCode.E109, HttpStatus.NOT_FOUND);
+    }
+
+    return plainToInstance(RoutingOperationResDto, routingStep, {
       excludeExtraneousValues: true,
     });
   }
 
   /** Trùng check tồn tại với `OperationsService.ensureOperationExists` — cố ý không inject qua DI
    * để module này đứng độc lập, giống cách `BomOperationsService` tự query. */
-  private async ensureOperationExists(operationId: string): Promise<void> {
+  private async ensureOperationExists(
+    operationId: string,
+  ): Promise<{ id: string; code: string; name: string; type: OperationType }> {
     const [existing] = await this.db
-      .select({ id: operations.id })
+      .select({
+        id: operations.id,
+        code: operations.code,
+        name: operations.name,
+        type: operations.type,
+      })
       .from(operations)
       .where(and(eq(operations.id, operationId), isNull(operations.deletedAt)))
       .limit(1);
@@ -192,39 +290,7 @@ export class RoutingsService {
     if (!existing) {
       throw new AppException(ErrorCode.E046, HttpStatus.NOT_FOUND);
     }
-  }
 
-  /** Chưa có `boms` header nghĩa là chưa từng có `routing_operations` nào — `E109` thẳng, không
-   * cần phân biệt "item chưa có BOM" khỏi "step không tồn tại". */
-  private async ensureRoutingOperationExists(
-    itemId: string,
-    stepId: string,
-  ): Promise<{ id: string }> {
-    const [bom] = await this.db
-      .select({ id: boms.id })
-      .from(boms)
-      .where(eq(boms.itemId, itemId))
-      .limit(1);
-
-    if (!bom) {
-      throw new AppException(ErrorCode.E109, HttpStatus.NOT_FOUND);
-    }
-
-    const [existing] = await this.db
-      .select({ id: routingOperations.id })
-      .from(routingOperations)
-      .where(
-        and(
-          eq(routingOperations.id, stepId),
-          eq(routingOperations.bomId, bom.id),
-        ),
-      )
-      .limit(1);
-
-    if (!existing) {
-      throw new AppException(ErrorCode.E109, HttpStatus.NOT_FOUND);
-    }
-
-    return bom;
+    return existing;
   }
 }

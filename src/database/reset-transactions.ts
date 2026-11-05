@@ -45,6 +45,8 @@ const KEEP_TABLES = [
   'boms',
   'bom_items',
   'bom_operations',
+  'routing_operations',
+  'item_operation_logs',
 ] as const;
 
 const WIPE_TABLES = [

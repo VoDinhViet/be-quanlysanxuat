@@ -105,6 +105,10 @@ export const bomItems = pgTable(
       .defaultNow()
       .notNull()
       .$onUpdate(() => new Date()),
+    deletedAt: timestamp('deleted_at'),
+    deletedBy: uuid('deleted_by').references(() => users.id, {
+      onDelete: 'set null',
+    }),
   },
   (table) => [
     index('idx_bom_items_bom_id').on(table.bomId),
@@ -126,13 +130,14 @@ export const bomItems = pgTable(
     ),
     // Lưới an toàn tầng DB cho `BomsService.ensureBomItemNotDuplicate` — cùng `itemId` không được
     // xuất hiện hai lần dưới cùng node cha. Tách theo NULL ≠ NULL của Postgres vì `parent_id NULL`
-    // (ngay dưới Cấp 0) không được coi là "cùng cha" với chính nó qua so sánh `=` thường.
+    // (ngay dưới Cấp 0) không được coi là "cùng cha" với chính nó qua so sánh `=` thường. Bỏ qua
+    // dòng đã xoá mềm để thêm lại đúng vật tư vừa xoá không bị `E245`.
     uniqueIndex('uq_bom_items_bom_item_no_parent')
       .on(table.bomId, table.itemId)
-      .where(sql`parent_id IS NULL`),
+      .where(sql`parent_id IS NULL AND deleted_at IS NULL`),
     uniqueIndex('uq_bom_items_bom_parent_item')
       .on(table.bomId, table.parentId, table.itemId)
-      .where(sql`parent_id IS NOT NULL`),
+      .where(sql`parent_id IS NOT NULL AND deleted_at IS NULL`),
   ],
 );
 

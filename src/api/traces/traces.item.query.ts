@@ -79,7 +79,13 @@ export function findProductsUsingItems(
     .innerJoin(boms, eq(boms.id, bomItems.bomId))
     .innerJoin(items, eq(items.id, boms.itemId))
     .innerJoin(material, eq(material.id, bomItems.itemId))
-    .where(and(inArray(bomItems.itemId, itemIds), isNull(items.deletedAt)))
+    .where(
+      and(
+        inArray(bomItems.itemId, itemIds),
+        isNull(items.deletedAt),
+        isNull(bomItems.deletedAt),
+      ),
+    )
     .orderBy(asc(items.code))
     .limit(TRACE_STEP_LIMIT);
 }
@@ -157,7 +163,7 @@ export function findBomTree(
     .leftJoin(items, eq(items.id, bomItems.itemId))
     .leftJoin(parent, eq(parent.id, bomItems.parentId))
     .leftJoin(parentItem, eq(parentItem.id, parent.itemId))
-    .where(inArray(boms.itemId, productIds))
+    .where(and(inArray(boms.itemId, productIds), isNull(bomItems.deletedAt)))
     .orderBy(asc(bomItems.level), asc(bomItems.sortOrder))
     .limit(BOM_TREE_LIMIT);
 }
@@ -183,7 +189,13 @@ export function findBomOperations(
     .innerJoin(boms, eq(boms.id, bomItems.bomId))
     .innerJoin(operations, eq(operations.id, bomOperations.operationId))
     .leftJoin(items, eq(items.id, bomItems.itemId))
-    .where(and(inArray(boms.itemId, productIds), isNull(operations.deletedAt)))
+    .where(
+      and(
+        inArray(boms.itemId, productIds),
+        isNull(operations.deletedAt),
+        isNull(bomOperations.deletedAt),
+      ),
+    )
     .orderBy(asc(bomItems.level), asc(bomOperations.sortOrder))
     .limit(BOM_TREE_LIMIT);
 }

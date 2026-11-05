@@ -1,4 +1,4 @@
-<!-- Generated: 2026-11-04 | Files scanned: 40 | Token estimate: ~2600 -->
+<!-- Generated: 2026-11-05 | Files scanned: 40 | Token estimate: ~2600 -->
 # Data Codemap
 
 **Last Updated:** 2026-10-16
@@ -21,7 +21,7 @@
 - `clients/`: `clients`, `client_groups`, `client_contacts`.
 - `suppliers/`: `suppliers`, `supplier_groups`, `supplier_files`, `supplier_representatives`, `supplier_payment_info`.
 - `units/`: `units` (`unit_type`, `unit_status`); item-specific conversion in `items/item_units`.
-- `items/`: `items` (types FG/DIRECT, code + revision; nullable `item_category_id` -> `item_categories`, restrict), `item_categories` (code unique; seeded by migration 0240), `item_files`, `item_units`, `boms`, `bom_items` (`bom_node_type`: COMPONENT/DIRECT), `bom_operations`, `routing_operations`.
+- `items/`: `items` (types FG/DIRECT, code + revision; nullable `item_category_id` -> `item_categories`, restrict), `item_categories` (code unique; seeded by migration 0240), `item_files`, `item_units`, `boms`, `bom_items` (`bom_node_type`: COMPONENT/DIRECT), `bom_operations`, `routing_operations` (these three plus `bom_items` soft-delete via `deleted_at`/`deleted_by`), `item_operation_logs` (`item_operation_log_action`: CREATED/COPIED/UPDATED/DELETED/DELETED_WITH_PART; `item_operation_step_level`: ROUTING/PART; append-only history of an item's steps, filterable by `step_id`, `operation_id`, `bom_item_id`; rows built by `buildItemOperationLog`).
 - `orders/`: `orders` (sales order SO, FK `client_id`, `assigned_user_id`), `order_items` (FK `order_id`, `item_id`), `order_files`.
 - `production/`: `production_orders` (LSX; FK `order_id`, optional `ncr_id`), `production_order_items` (FK `production_order_id`, `order_item_id`, `item_id`), `production_order_logs`, `production_jobs` (JOB; FK `production_order_id`, `item_id`), `production_job_items`, `production_job_units`, `production_job_bom_items` (snapshot of BOM), `production_job_operations` (FK `production_job_id`, `operation_id`, bom item; self FK `successor_id` = next stage, set once at snapshot), `production_job_operation_reports` (+ `_report_files`), `production_job_issues`, `production_job_logs`, `production_job_notes` (append-only).
 - `quality/`: `quality_inspections` (IQC and OQC in one table, `inspection_no`), `quality_inspection_results`, `quality_inspection_evidences` (`quality_evidence_kind`), `ncrs`, `ncr_logs`, `ncr_cost_lines` (`ncr_cost_kind`), `quality-enums.ts`.

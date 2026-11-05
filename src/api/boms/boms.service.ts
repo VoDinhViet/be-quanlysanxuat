@@ -21,6 +21,8 @@ import {
   boms,
   BomType,
   files,
+  ItemOperationLogAction,
+  itemOperationLogs,
   items,
   ItemType,
   operations,
@@ -30,7 +32,12 @@ import { AppException } from '../../exceptions/app.exception';
 import { FilesService } from '../files/files.service';
 import { UnitsService } from '../units/units.service';
 import { BomOperationResDto } from '../bom-operations/dto/bom-operation.res.dto';
-import { buildBomItemPaths, compareBomPaths } from './bom-tree';
+import {
+  buildBomItemPaths,
+  collectBomSubtreeIds,
+  compareBomPaths,
+} from './bom-tree';
+import { buildItemOperationLog } from './item-operation-log';
 import { BomItemResDto } from './dto/bom-item.res.dto';
 import { CreateBomItemReqDto } from './dto/create-bom-item.req.dto';
 import { UpdateBomItemReqDto } from './dto/update-bom-item.req.dto';
@@ -76,7 +83,7 @@ export class BomsService {
 
     // Sắp theo (level, sortOrder, createdAt) — chưa phải depth-first theo từng nhánh, nhưng đủ để
     // `buildBomItemPaths` bên dưới gom đúng theo cha (2 node cùng cha luôn cùng level).
-    const rows = await this.db
+    const bomNodes = await this.db
       .select({
         id: bomItems.id,
         parentId: bomItems.parentId,
@@ -108,7 +115,7 @@ export class BomsService {
           sql`coalesce(${items.imageFileId}, ${bomItems.imageFileId})`,
         ),
       )
-      .where(eq(bomItems.bomId, bom.id))
+      .where(and(eq(bomItems.bomId, bom.id), isNull(bomItems.deletedAt)))
       .orderBy(
         asc(bomItems.level),
         asc(bomItems.sortOrder),
@@ -117,8 +124,10 @@ export class BomsService {
 
     // Vật tư ngoài cấu trúc không tính vào path nên STT của Part không đổi — chúng đứng ngay sau
     // node chủ (Cấp 0 → đầu mảng), `path` mượn của chủ.
-    const structureRows = rows.filter((row) => !row.isOffStructure);
-    const offStructureRows = rows.filter((row) => row.isOffStructure);
+    const structureRows = bomNodes.filter((bomNode) => !bomNode.isOffStructure);
+    const offStructureRows = bomNodes.filter(
+      (bomNode) => bomNode.isOffStructure,
+    );
     const paths = buildBomItemPaths(structureRows);
     structureRows.sort((a, b) =>
       compareBomPaths(paths.get(a.id) ?? [], paths.get(b.id) ?? []),
@@ -139,9 +148,12 @@ export class BomsService {
       .from(bomOperations)
       .innerJoin(operations, eq(operations.id, bomOperations.operationId))
       .where(
-        inArray(
-          bomOperations.bomItemId,
-          structureRows.map((row) => row.id),
+        and(
+          inArray(
+            bomOperations.bomItemId,
+            structureRows.map((bomNode) => bomNode.id),
+          ),
+          isNull(bomOperations.deletedAt),
         ),
       )
       .orderBy(
@@ -156,30 +168,30 @@ export class BomsService {
 
     const offStructureByOwnerId = groupBy(
       offStructureRows,
-      (row) => row.parentId,
+      (bomNode) => bomNode.parentId,
     );
     const toOffStructureNodes = (ownerId: string | null, path: number[]) =>
-      (offStructureByOwnerId.get(ownerId) ?? []).map((row) => ({
-        ...row,
+      (offStructureByOwnerId.get(ownerId) ?? []).map((bomNode) => ({
+        ...bomNode,
         path,
         operations: [],
       }));
 
     const nodes = [
       ...toOffStructureNodes(null, []),
-      ...structureRows.flatMap((row) => {
-        const path = paths.get(row.id) ?? [];
+      ...structureRows.flatMap((bomNode) => {
+        const path = paths.get(bomNode.id) ?? [];
         return [
           {
-            ...row,
+            ...bomNode,
             path,
             operations: plainToInstance(
               BomOperationResDto,
-              operationsByItemId.get(row.id) ?? [],
+              operationsByItemId.get(bomNode.id) ?? [],
               { excludeExtraneousValues: true },
             ),
           },
-          ...toOffStructureNodes(row.id, path),
+          ...toOffStructureNodes(bomNode.id, path),
         ];
       }),
     ];
@@ -236,6 +248,7 @@ export class BomsService {
         existingBom?.id,
         userId,
       );
+      await this.lockBomStructure(tx, bomId);
 
       if (reqDto.type === BomType.DIRECT) {
         if (!reqDto.isOffStructure) {
@@ -249,17 +262,13 @@ export class BomsService {
           reqDto.itemId!,
         );
       } else {
-        await this.deleteDirectChildren(tx, bomId, parentId);
+        await this.softDeleteDirectChildren(tx, bomId, parentId, userId);
       }
 
       let parentLevel = 0;
       if (parentId) {
-        const [parentItem] = await tx
-          .select({ level: bomItems.level })
-          .from(bomItems)
-          .where(eq(bomItems.id, parentId))
-          .limit(1);
-        parentLevel = parentItem?.level ?? 0;
+        const parentItem = await this.lockActiveBomItem(tx, parentId);
+        parentLevel = parentItem.level;
       }
 
       await tx.insert(bomItems).values({
@@ -309,19 +318,171 @@ export class BomsService {
       await this.db
         .update(bomItems)
         .set(reqDto)
-        .where(and(eq(bomItems.id, bomItemId), eq(bomItems.bomId, bom.id)));
+        .where(
+          and(
+            eq(bomItems.id, bomItemId),
+            eq(bomItems.bomId, bom.id),
+            isNull(bomItems.deletedAt),
+          ),
+        );
     }
   }
 
-  async deleteBomItem(itemId: string, bomItemId: string): Promise<void> {
+  async deleteBomItem(
+    itemId: string,
+    bomItemId: string,
+    userId: string,
+  ): Promise<void> {
     await this.ensureItemExists(itemId);
 
     const bom = await this.getBomOrThrow(itemId);
     await this.ensureBomItemExists(bom.id, bomItemId);
 
-    await this.db
-      .delete(bomItems)
-      .where(and(eq(bomItems.id, bomItemId), eq(bomItems.bomId, bom.id)));
+    await this.db.transaction(async (tx) => {
+      await this.lockBomStructure(tx, bom.id);
+      const activeBomItems = await this.lockActiveBomItemsOfBom(tx, bom.id);
+      const deletedPart = activeBomItems.find(
+        (bomItem) => bomItem.id === bomItemId,
+      );
+      // Request xoá đồng thời đến sau: khoá xong mới thấy Part đã bị xoá.
+      if (!deletedPart) {
+        throw new AppException(ErrorCode.E050, HttpStatus.NOT_FOUND);
+      }
+
+      const deletedBomItemIds = collectBomSubtreeIds(activeBomItems, bomItemId);
+      // Cùng một mốc thời gian cho cả nhánh để sau này nhận ra các dòng bị xoá chung một lần.
+      const softDeleteFields = { deletedAt: new Date(), deletedBy: userId };
+
+      await this.softDeleteStepsOfDeletedParts(tx, {
+        itemId,
+        deletedPartCode: deletedPart.code,
+        deletedBomItemIds,
+        softDeleteFields,
+      });
+
+      await tx
+        .update(bomItems)
+        .set(softDeleteFields)
+        .where(inArray(bomItems.id, deletedBomItemIds));
+    });
+  }
+
+  /** Xếp hàng các thao tác thêm và xoá node trên cùng một BOM: request xoá không thấy Part con đang
+   * được thêm dở nên sẽ bỏ sót nó, mà xoá mềm không có FK cascade nào dọn giúp. Dùng
+   * `NO KEY UPDATE` để không chặn việc thêm công đoạn, vốn chỉ cần `FOR KEY SHARE` của FK `bom_id`. */
+  private async lockBomStructure(
+    tx: DbTransaction,
+    bomId: string,
+  ): Promise<void> {
+    await tx
+      .select({ id: boms.id })
+      .from(boms)
+      .where(eq(boms.id, bomId))
+      .for('no key update');
+  }
+
+  /** Chờ các request đang thêm công đoạn vào Part (giữ `FOR SHARE`) xong, và chặn request mới, để
+   * câu đọc công đoạn ngay sau đó thấy đủ. */
+  private lockActiveBomItemsOfBom(tx: DbTransaction, bomId: string) {
+    return tx
+      .select({
+        id: bomItems.id,
+        parentId: bomItems.parentId,
+        code: bomItems.code,
+      })
+      .from(bomItems)
+      .where(and(eq(bomItems.bomId, bomId), isNull(bomItems.deletedAt)))
+      .for('update');
+  }
+
+  /** Công đoạn của Part bị xoá phải xoá mềm và ghi log cùng Part, vì mọi chỗ đọc công đoạn lọc trên
+   * chính `bom_operations.deleted_at`. */
+  private async softDeleteStepsOfDeletedParts(
+    tx: DbTransaction,
+    params: {
+      itemId: string;
+      deletedPartCode: string | null;
+      deletedBomItemIds: string[];
+      softDeleteFields: { deletedAt: Date; deletedBy: string };
+    },
+  ): Promise<void> {
+    const activeSteps = await this.lockActiveStepsOfBomItems(
+      tx,
+      params.deletedBomItemIds,
+    );
+
+    if (activeSteps.length === 0) {
+      return;
+    }
+
+    await tx.insert(itemOperationLogs).values(
+      activeSteps.map((step) =>
+        buildItemOperationLog({
+          itemId: params.itemId,
+          action: ItemOperationLogAction.DELETED_WITH_PART,
+          deletedPartCode: params.deletedPartCode,
+          step,
+          performedBy: params.softDeleteFields.deletedBy,
+        }),
+      ),
+    );
+
+    await tx
+      .update(bomOperations)
+      .set(params.softDeleteFields)
+      .where(
+        and(
+          inArray(bomOperations.bomItemId, params.deletedBomItemIds),
+          isNull(bomOperations.deletedAt),
+        ),
+      );
+  }
+
+  /** Khoá để không ghi log trùng với request đang xoá riêng một công đoạn trong nhánh này. */
+  private lockActiveStepsOfBomItems(tx: DbTransaction, bomItemIds: string[]) {
+    return tx
+      .select({
+        id: bomOperations.id,
+        bomItemId: bomOperations.bomItemId,
+        operationId: bomOperations.operationId,
+        type: bomOperations.type,
+        sortOrder: bomOperations.sortOrder,
+        note: bomOperations.note,
+        operationCode: operations.code,
+        operationName: operations.name,
+        partCode: bomItems.code,
+      })
+      .from(bomOperations)
+      .innerJoin(operations, eq(operations.id, bomOperations.operationId))
+      .innerJoin(bomItems, eq(bomItems.id, bomOperations.bomItemId))
+      .where(
+        and(
+          inArray(bomOperations.bomItemId, bomItemIds),
+          isNull(bomOperations.deletedAt),
+        ),
+      )
+      .orderBy(asc(bomOperations.bomItemId), asc(bomOperations.sortOrder))
+      .for('update', { of: bomOperations });
+  }
+
+  /** Giữ Part không bị xoá cho tới hết transaction ghi con hoặc công đoạn vào nó: xoá mềm không còn
+   * FK nào chặn việc gắn vào một Part vừa xoá. Public vì `BomOperationsService` cũng cần. */
+  async lockActiveBomItem(
+    tx: DbTransaction,
+    bomItemId: string,
+  ): Promise<{ level: number; code: string | null }> {
+    const [bomItem] = await tx
+      .select({ level: bomItems.level, code: bomItems.code })
+      .from(bomItems)
+      .where(and(eq(bomItems.id, bomItemId), isNull(bomItems.deletedAt)))
+      .limit(1)
+      .for('share');
+
+    if (!bomItem) {
+      throw new AppException(ErrorCode.E051, HttpStatus.NOT_FOUND);
+    }
+
+    return bomItem;
   }
 
   /** Dùng chung với `BomOperationsService` (`BomOperationsModule` import `BomsModule`). */
@@ -423,6 +584,7 @@ export class BomsService {
             ? eq(bomItems.parentId, parentId)
             : isNull(bomItems.parentId),
           eq(bomItems.type, BomType.COMPONENT),
+          isNull(bomItems.deletedAt),
         ),
       )
       .limit(1);
@@ -434,13 +596,15 @@ export class BomsService {
 
   /** Side-effect của `createBomItem` khi thêm COMPONENT: node cha vừa thành node cấu trúc nên vật tư
    * đang khai trực tiếp trên nó bị xoá ngầm, trừ vật tư ngoài cấu trúc (`docs/CODEMAPS/product-structure.md`). */
-  private async deleteDirectChildren(
+  private async softDeleteDirectChildren(
     tx: DbTransaction,
     bomId: string,
     parentId: string | null,
+    userId: string,
   ): Promise<void> {
     await tx
-      .delete(bomItems)
+      .update(bomItems)
+      .set({ deletedAt: new Date(), deletedBy: userId })
       .where(
         and(
           eq(bomItems.bomId, bomId),
@@ -449,6 +613,7 @@ export class BomsService {
             : isNull(bomItems.parentId),
           eq(bomItems.type, BomType.DIRECT),
           eq(bomItems.isOffStructure, false),
+          isNull(bomItems.deletedAt),
         ),
       );
   }
@@ -473,6 +638,7 @@ export class BomsService {
             ? eq(bomItems.parentId, parentId)
             : isNull(bomItems.parentId),
           eq(bomItems.itemId, itemId),
+          isNull(bomItems.deletedAt),
         ),
       )
       .limit(1);
@@ -508,7 +674,7 @@ export class BomsService {
     const bomItem = await this.db.query.bomItems.findFirst({
       columns: { id: true, bomId: true },
       with: { bom: { columns: { itemId: true } } },
-      where: eq(bomItems.id, bomItemId),
+      where: and(eq(bomItems.id, bomItemId), isNull(bomItems.deletedAt)),
     });
 
     if (!bomItem) {
@@ -548,7 +714,13 @@ export class BomsService {
         type: bomItems.type,
       })
       .from(bomItems)
-      .where(and(eq(bomItems.id, bomItemId), eq(bomItems.bomId, bomId)))
+      .where(
+        and(
+          eq(bomItems.id, bomItemId),
+          eq(bomItems.bomId, bomId),
+          isNull(bomItems.deletedAt),
+        ),
+      )
       .limit(1);
 
     if (!bomItem) {

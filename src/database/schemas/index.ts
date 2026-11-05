@@ -16,6 +16,7 @@ export * from './items/boms';
 export * from './items/bom-items';
 export * from './items/bom-operations';
 export * from './items/routing-operations';
+export * from './items/item-operation-logs';
 export * from './departments';
 export * from './positions';
 export * from './countries';

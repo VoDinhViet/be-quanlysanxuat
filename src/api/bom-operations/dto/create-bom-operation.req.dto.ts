@@ -1,6 +1,4 @@
-import { OperationType } from '../../../database/schemas';
 import {
-  EnumFieldOptional,
   NumberFieldOptional,
   StringFieldOptional,
   UUIDField,
@@ -9,11 +7,6 @@ import {
 export class CreateBomOperationReqDto {
   @UUIDField({ description: 'Master operation (công đoạn) id' })
   readonly operationId!: string;
-
-  @EnumFieldOptional(() => OperationType, {
-    description: 'Defaults to INHOUSE when omitted',
-  })
-  readonly type?: OperationType;
 
   @NumberFieldOptional({
     int: true,

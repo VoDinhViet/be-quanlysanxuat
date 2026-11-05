@@ -44,9 +44,12 @@ import {
   files,
   itemCategories,
   itemFiles,
+  ItemOperationLogAction,
+  itemOperationLogs,
   items,
   ItemStatus,
   ItemType,
+  operations,
   orderItems,
   productionJobs,
   productionOrderItems,
@@ -56,6 +59,7 @@ import {
   users,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
+import { buildItemOperationLog } from '../boms/item-operation-log';
 import { FilesService } from '../files/files.service';
 import { getOnHandQuantityByItemId } from '../inventory/item-stock.query';
 import { CopyItemReqDto } from './dto/copy-item.req.dto';
@@ -687,7 +691,7 @@ export class ItemsService {
         type: bomItems.type,
       })
       .from(bomItems)
-      .where(eq(bomItems.bomId, bom.id))
+      .where(and(eq(bomItems.bomId, bom.id), isNull(bomItems.deletedAt)))
       .orderBy(asc(bomItems.level), asc(bomItems.sortOrder));
 
     // multiplier[node] = multiplier[cha] × quantity node, gốc (parentId null) = 1 × quantity —
@@ -811,7 +815,13 @@ export class ItemsService {
           .returning({ id: items.id });
 
         if (bomStructure) {
-          await this.copyBomTree(tx, createdItem.id, bomStructure, userId);
+          await this.copyBomTree(
+            tx,
+            createdItem.id,
+            item.code,
+            bomStructure,
+            userId,
+          );
         }
 
         if (itemFilesToCopy.length) {
@@ -869,7 +879,7 @@ export class ItemsService {
     if (!bom) return null;
 
     const bomItemsToCopy = await this.db.query.bomItems.findMany({
-      where: eq(bomItems.bomId, bom.id),
+      where: and(eq(bomItems.bomId, bom.id), isNull(bomItems.deletedAt)),
       orderBy: [asc(bomItems.level), asc(bomItems.sortOrder)],
     });
 
@@ -882,6 +892,7 @@ export class ItemsService {
   private async copyBomTree(
     tx: DbTransaction,
     itemId: string,
+    sourceItemCode: string,
     bomStructure: ItemBomStructure,
     userId: string,
   ): Promise<void> {
@@ -919,36 +930,140 @@ export class ItemsService {
     if (newItems.length) {
       await tx.insert(bomItems).values(newItems);
 
-      const sourceOperations = await tx.query.bomOperations.findMany({
-        where: inArray(bomOperations.bomItemId, [...newIdByOldId.keys()]),
-      });
-      if (sourceOperations.length) {
-        await tx.insert(bomOperations).values(
-          sourceOperations.map(
-            ({ id, createdAt, updatedAt, ...operation }) => ({
-              ...operation,
-              bomItemId: newIdByOldId.get(operation.bomItemId)!,
-              createdBy: userId,
-            }),
-          ),
-        );
-      }
+      await this.copyBomSteps(tx, itemId, sourceItemCode, newIdByOldId, userId);
     }
 
-    const sourceRoutingOperations = await tx.query.routingOperations.findMany({
-      where: eq(routingOperations.bomId, bomStructure.bom.id),
-    });
-    if (sourceRoutingOperations.length) {
-      await tx.insert(routingOperations).values(
-        sourceRoutingOperations.map(
-          ({ id, createdAt, updatedAt, ...operation }) => ({
-            ...operation,
-            bomId: newBom.id,
-            createdBy: userId,
-          }),
+    await this.copyRoutingSteps(
+      tx,
+      itemId,
+      sourceItemCode,
+      bomStructure.bom.id,
+      newBom.id,
+      userId,
+    );
+  }
+
+  private async copyBomSteps(
+    tx: DbTransaction,
+    itemId: string,
+    sourceItemCode: string,
+    newBomItemIdByOldId: Map<string, string>,
+    userId: string,
+  ): Promise<void> {
+    const sourceSteps = await tx
+      .select({
+        bomItemId: bomOperations.bomItemId,
+        operationId: bomOperations.operationId,
+        type: bomOperations.type,
+        sortOrder: bomOperations.sortOrder,
+        note: bomOperations.note,
+        operationCode: operations.code,
+        operationName: operations.name,
+        partCode: bomItems.code,
+      })
+      .from(bomOperations)
+      .innerJoin(operations, eq(operations.id, bomOperations.operationId))
+      .innerJoin(bomItems, eq(bomItems.id, bomOperations.bomItemId))
+      .where(
+        and(
+          inArray(bomOperations.bomItemId, [...newBomItemIdByOldId.keys()]),
+          isNull(bomOperations.deletedAt),
         ),
       );
+
+    if (sourceSteps.length === 0) {
+      return;
     }
+
+    const copiedSteps = sourceSteps.map((step) => ({
+      ...step,
+      id: crypto.randomUUID(),
+      bomItemId: newBomItemIdByOldId.get(step.bomItemId)!,
+    }));
+
+    await tx.insert(bomOperations).values(
+      copiedSteps.map((step) => ({
+        id: step.id,
+        bomItemId: step.bomItemId,
+        operationId: step.operationId,
+        type: step.type,
+        sortOrder: step.sortOrder,
+        note: step.note,
+        createdBy: userId,
+      })),
+    );
+
+    await tx.insert(itemOperationLogs).values(
+      copiedSteps.map((step) =>
+        buildItemOperationLog({
+          itemId,
+          action: ItemOperationLogAction.COPIED,
+          sourceItemCode,
+          step,
+          performedBy: userId,
+        }),
+      ),
+    );
+  }
+
+  private async copyRoutingSteps(
+    tx: DbTransaction,
+    itemId: string,
+    sourceItemCode: string,
+    sourceBomId: string,
+    newBomId: string,
+    userId: string,
+  ): Promise<void> {
+    const sourceSteps = await tx
+      .select({
+        operationId: routingOperations.operationId,
+        type: routingOperations.type,
+        sortOrder: routingOperations.sortOrder,
+        note: routingOperations.note,
+        operationCode: operations.code,
+        operationName: operations.name,
+      })
+      .from(routingOperations)
+      .innerJoin(operations, eq(operations.id, routingOperations.operationId))
+      .where(
+        and(
+          eq(routingOperations.bomId, sourceBomId),
+          isNull(routingOperations.deletedAt),
+        ),
+      );
+
+    if (sourceSteps.length === 0) {
+      return;
+    }
+
+    const copiedSteps = sourceSteps.map((step) => ({
+      ...step,
+      id: crypto.randomUUID(),
+    }));
+
+    await tx.insert(routingOperations).values(
+      copiedSteps.map((step) => ({
+        id: step.id,
+        bomId: newBomId,
+        operationId: step.operationId,
+        type: step.type,
+        sortOrder: step.sortOrder,
+        note: step.note,
+        createdBy: userId,
+      })),
+    );
+
+    await tx.insert(itemOperationLogs).values(
+      copiedSteps.map((step) =>
+        buildItemOperationLog({
+          itemId,
+          action: ItemOperationLogAction.COPIED,
+          sourceItemCode,
+          step,
+          performedBy: userId,
+        }),
+      ),
+    );
   }
 
   private async ensureItemExists(itemId: string) {

@@ -67,8 +67,14 @@ export class RoutingsController {
     @UUIDParam('itemId') itemId: string,
     @UUIDParam('stepId') stepId: string,
     @Body() reqDto: UpdateRoutingOperationReqDto,
+    @CurrentUser() payload: JwtPayloadType,
   ): Promise<RoutingOperationResDto> {
-    return this.routingsService.updateOperation(itemId, stepId, reqDto);
+    return this.routingsService.updateOperation(
+      itemId,
+      stepId,
+      reqDto,
+      payload.userId,
+    );
   }
 
   @Delete(':stepId')
@@ -80,7 +86,8 @@ export class RoutingsController {
   deleteOperation(
     @UUIDParam('itemId') itemId: string,
     @UUIDParam('stepId') stepId: string,
+    @CurrentUser() payload: JwtPayloadType,
   ): Promise<void> {
-    return this.routingsService.deleteOperation(itemId, stepId);
+    return this.routingsService.deleteOperation(itemId, stepId, payload.userId);
   }
 }

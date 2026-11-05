@@ -1730,6 +1730,13 @@
       "when": 1793760749068,
       "tag": "0246_dazzling_zodiak",
       "breakpoints": true
+    },
+    {
+      "idx": 247,
+      "version": "7",
+      "when": 1793871984634,
+      "tag": "0247_certain_phalanx",
+      "breakpoints": true
     }
   ]
 }

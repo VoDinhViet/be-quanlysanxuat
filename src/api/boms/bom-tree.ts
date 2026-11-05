@@ -32,6 +32,26 @@ export function buildBomItemPaths(nodes: BomItemRef[]): Map<string, number[]> {
   return paths;
 }
 
+/** Id của `rootId` và mọi node con cháu — cả nhánh phải xoá mềm cùng nhau khi xoá một Part. */
+export function collectBomSubtreeIds(
+  nodes: BomItemRef[],
+  rootId: string,
+): string[] {
+  const childrenByParentId = groupBy(nodes, (node) => node.parentId);
+
+  const subtreeIds: string[] = [];
+  const pendingIds = [rootId];
+  while (pendingIds.length > 0) {
+    const nodeId = pendingIds.pop() as string;
+    subtreeIds.push(nodeId);
+    for (const child of childrenByParentId.get(nodeId) ?? []) {
+      pendingIds.push(child.id);
+    }
+  }
+
+  return subtreeIds;
+}
+
 /** So 2 path (mảng số) kiểu lexicographic — dùng để sort node theo đúng thứ tự depth-first sau
  *  khi đã có path từ `buildBomItemPaths`. */
 export function compareBomPaths(a: number[], b: number[]): number {

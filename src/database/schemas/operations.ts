@@ -12,12 +12,9 @@ import {
 import { users } from './identity-access/users';
 
 /** Which lane a công đoạn (operation) runs in: `INHOUSE` is performed on the factory floor,
- * `OUTSOURCE` is sent to a supplier (gia công ngoài). The real, load-bearing value lives per
- * attachment on `bom_operations.type` (the same catalog operation can be Inhouse on one BOM node
- * and Outsource on another — including the ROOT node, "Cấp 0")
- * — `operations.type` here is only the default suggestion pre-filled when
- * attaching, plus the value the "Gia công ngoài" catalog screen filters on (`GET
- * /operations?type=OUTSOURCE`). */
+ * `OUTSOURCE` is sent to a supplier (gia công ngoài). `operations.type` is the source of truth:
+ * adding a step copies it to `bom_operations.type` / `routing_operations.type`, and the "Gia công
+ * ngoài" catalog screen filters on it (`GET /operations?type=OUTSOURCE`). */
 export enum OperationType {
   INHOUSE = 'INHOUSE',
   OUTSOURCE = 'OUTSOURCE',
