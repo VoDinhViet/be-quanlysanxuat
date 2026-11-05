@@ -23,8 +23,16 @@ const INFRASTRUCTURE_CONTROLLERS = new Set([
   'FilesController',
   'HealthController',
   'McpController',
-  'McpIdentityController',
 ]);
+
+// Route nói về người đang đăng nhập hoặc phạm vi công đoạn được phân công cho họ: MCP chưa có người
+// dùng nên không chạy được. Làm lại khi có phân quyền theo người dùng.
+const SIGNED_IN_USER_PATHS = new Set([
+  '/users/me',
+  '/users/me/permissions',
+  '/reports/pending-approvals',
+]);
+const SIGNED_IN_USER_CONTROLLERS = new Set(['ProductionExecutionController']);
 
 /**
  * Route GET cố ý không thành tool. Route GET nào không có trong catalog và không khớp quy tắc
@@ -34,5 +42,7 @@ export const MCP_EXCLUDED_ROUTES: Array<(route: McpRouteInfo) => boolean> = [
   // Trả file nhị phân (Excel, PDF) hoặc file mẫu nhập; agent không dùng được, web đã có
   ({ path }) => /(^|\/)(export[\w-]*|import-template)$/.test(path),
   ({ path }) => DROPDOWN_ONLY_PATHS.has(path),
+  ({ path }) => SIGNED_IN_USER_PATHS.has(path),
+  ({ controller }) => SIGNED_IN_USER_CONTROLLERS.has(controller.name),
   ({ controller }) => INFRASTRUCTURE_CONTROLLERS.has(controller.name),
 ];

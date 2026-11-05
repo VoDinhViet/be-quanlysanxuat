@@ -1,8 +1,5 @@
 export const MCP_API_KEY_HEADER = 'api-key';
 
-// Header mang credentialId của nhân viên đang chat (`sub` trong JWT đăng nhập của họ)
-export const MCP_ON_BEHALF_OF_HEADER = 'x-on-behalf-of';
-
 // `PageOptionsDto` không có trần `limit`, nên MCP tự đặt để một lần gọi không kéo cả bảng vào
 // context
 export const MCP_DEFAULT_PAGE_LIMIT = 20;

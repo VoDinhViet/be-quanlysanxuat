@@ -12,7 +12,6 @@ import { validate, type ValidationError } from 'class-validator';
 
 import { ErrorCode } from '../../../constants/error-code.constant';
 import { MCP_MAX_RESULT_CHARS } from '../mcp.constant';
-import type { McpCaller } from '../types/mcp-caller.type';
 import type { HandlerArg } from './handler-args';
 import type { McpTool } from './mcp-tool.type';
 
@@ -58,9 +57,10 @@ function flattenValidationErrors(
   });
 }
 
-// Factory của `@CurrentUser()` chỉ đọc `request.user`; dựng đúng phần đó từ caller
-function createExecutionContext(caller: McpCaller): ExecutionContext {
-  const request = { user: caller.jwtPayload };
+// Factory của `@CurrentUser()` chỉ đọc `request.user`. MCP chưa có người dùng nên là `undefined`;
+// chỉ route khai `omitArguments` ở catalog mới được dùng nó (registry kiểm lúc khởi động)
+function createExecutionContext(): ExecutionContext {
+  const request = { user: undefined };
 
   return {
     switchToHttp: () => ({ getRequest: () => request }),
@@ -81,12 +81,11 @@ export class McpToolInvoker {
   async invoke(
     tool: McpTool,
     validArguments: Record<string, unknown>,
-    caller: McpCaller,
   ): Promise<CallToolResult> {
     const startedAt = Date.now();
-    const callResult = await this.run(tool, validArguments, caller);
+    const callResult = await this.run(tool, validArguments);
     this.logger.log(
-      `mcp_tool_call tool=${tool.name} credentialId=${caller.credentialId} ok=${!callResult.isError} ms=${Date.now() - startedAt}`,
+      `mcp_tool_call tool=${tool.name} ok=${!callResult.isError} ms=${Date.now() - startedAt}`,
     );
 
     return callResult;
@@ -95,7 +94,6 @@ export class McpToolInvoker {
   private async run(
     tool: McpTool,
     validArguments: Record<string, unknown>,
-    caller: McpCaller,
   ): Promise<CallToolResult> {
     try {
       const issues: ValidationIssue[] = [];
@@ -104,7 +102,6 @@ export class McpToolInvoker {
         handlerArgs[handlerArg.index] = await this.resolveArgument(
           handlerArg,
           validArguments,
-          caller,
           issues,
         );
       }
@@ -130,14 +127,10 @@ export class McpToolInvoker {
   private async resolveArgument(
     handlerArg: HandlerArg,
     validArguments: Record<string, unknown>,
-    caller: McpCaller,
     issues: ValidationIssue[],
   ): Promise<unknown> {
     if (handlerArg.kind === 'custom') {
-      return handlerArg.factory(
-        handlerArg.data,
-        createExecutionContext(caller),
-      );
+      return handlerArg.factory(handlerArg.data, createExecutionContext());
     }
 
     if (handlerArg.kind === 'path-param') {

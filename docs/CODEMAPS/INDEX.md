@@ -1,4 +1,4 @@
-<!-- Generated: 2026-11-04 | Files scanned: 11 codemaps + src/api listing | Token estimate: ~1000 -->
+<!-- Generated: 2026-11-05 | Files scanned: 11 codemaps + src/api listing | Token estimate: ~1000 -->
 # Codemaps index
 
 Entry point for tracing the backend. A codemap is a map; the code is the source of truth. If they disagree, trust the code and fix the codemap.
@@ -22,7 +22,7 @@ Entry point for tracing the backend. A codemap is a map; the code is the source 
 | `production.md` | production-orders (LSX), production-jobs (JOB), production-execution, outsourcing-orders, outsourcing-receipts |
 | `quality.md` | iqc, oqc, ncrs (incl. OQC Fail, Sort, NCR, secondary LSX, re-OQC flow) |
 | `identity-access.md` | auth, users, roles, departments, positions, permission model |
-| `integration.md` | reports, traces (cross-domain trace routes), files, health, `GET /auth/whoami`, storage and redis infra. The old `/v1/integration` gateway is gone; the file keeps its name for existing links |
+| `integration.md` | reports, traces (cross-domain trace routes), files, health, storage and redis infra. The old `/v1/integration` gateway is gone; the file keeps its name for existing links |
 | `mcp.md` | MCP server (`/api/mcp`): read-only tools for the internal chat agent, each wrapping an existing GET route (145 tools, including the summary routes added to sales, purchasing, inventory, production and quality); auth, naming, catalog, how to add a tool |
 
 ## Glossary

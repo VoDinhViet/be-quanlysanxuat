@@ -1,4 +1,4 @@
-<!-- Generated: 2026-11-04 | Files scanned: 58 | Token estimate: ~2700 -->
+<!-- Generated: 2026-11-05 | Files scanned: 58 | Token estimate: ~2700 -->
 # Architecture Codemap
 
 **Last Updated:** 2026-11-04
@@ -38,7 +38,7 @@ client --HTTP--> helmet/compression/CORS (Express)
 - JWT payload (`src/api/auth/types/jwt-payload.type.ts`): `sub` = credential id (table `credentials`), `userId` = users.id, `username`, `email`, `sessionId`. `@CurrentUser()` returns it.
 - `verifyAccessToken` (`auth.service.ts:172`) checks signature then `CacheKey.SESSION_BLACKLIST` in Redis (`src/constants/cache.constant.ts`).
 - Permission codes: `PERMISSION_CODES` array (`src/constants/permission.constant.ts:12`) of `resource:action`, `SUPER_PERMISSION = 'system:manage'`, plus labels and `PERMISSION_CATALOGUE_GROUPS`. Roles in DB reference these codes. Only controllers check permissions; services do not (`.claude/rules/api-conventions.md`). `PermissionsService.getPermissionCodes(credentialId)` is for non-controller callers.
-- Routes outside the JWT chain: `POST /api/mcp` and `GET /api/auth/whoami` (`src/api/mcp/`) are `@Public()` and guarded by `McpApiKeyGuard` (header `Api-Key`, env `MCP_API_KEY`, off when unset) + `McpThrottlerGuard`; `/mcp` adds `McpCallerGuard` (`X-On-Behalf-Of` credential). See `mcp.md`.
+- Routes outside the JWT chain: `POST /api/mcp` (`src/api/mcp/`) is `@Public()` and guarded by `McpApiKeyGuard` (header `Api-Key`, env `MCP_API_KEY`, off when unset) + the nest `ThrottlerGuard` (per IP). The key alone grants read access to every tool; there is no per-user permission yet. See `mcp.md`.
 - Read-only summary routes (`GET /orders/value-summary`, `/iqc/inspection-rate`, `/traces/*` ...) are ordinary JWT + `@Permissions` routes; they carry no special guard. Their shared helpers are in `src/common/summary/` (`summary.constant.ts` limits and patterns, `summary.dto.ts` date-range and `limit` DTO bases, `summary.sql.ts` Vietnam-time `TODAY` and enum-safe `equalsText`/`inTexts`).
 
 ## Per-domain file convention (`src/api/<domain>/`)

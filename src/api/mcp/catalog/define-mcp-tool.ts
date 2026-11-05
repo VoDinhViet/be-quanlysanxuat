@@ -8,6 +8,9 @@ export interface McpCatalogEntry {
   domain?: McpDomain;
   title: string;
   hint: string;
+  // Tham số của route bị ẩn khỏi tool. Bắt buộc khi route đọc `@CurrentUser()`: MCP chưa có người
+  // dùng, nên route chỉ được chạy khi các tham số cần người dùng (như `operationId`) không có mặt
+  omitArguments?: string[];
   controller: Type<object>;
   method: string;
 }

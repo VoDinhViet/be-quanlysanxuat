@@ -1,6 +1,5 @@
 import { OutsourcingOrdersController } from '../../outsourcing-orders/outsourcing-orders.controller';
 import { OutsourcingReceiptsController } from '../../outsourcing-receipts/outsourcing-receipts.controller';
-import { ProductionExecutionController } from '../../production-execution/production-execution.controller';
 import { ProductionJobsController } from '../../production-jobs/production-jobs.controller';
 import { ProductionOrdersController } from '../../production-orders/production-orders.controller';
 import { defineMcpTool } from './define-mcp-tool';
@@ -93,9 +92,10 @@ export const PRODUCTION_TOOLS = [
   defineMcpTool({
     name: 'production_job_operation_list',
     title: 'Công đoạn của JOB',
-    hint: 'Operations of one JOB by jobId, with progress; pass operationId to read a single operation',
+    hint: 'Operations of one JOB by jobId, with progress',
     controller: ProductionJobsController,
     method: 'getProductionJobOperations',
+    omitArguments: ['operationId'],
   }),
   defineMcpTool({
     name: 'production_job_plan_get',
@@ -117,41 +117,6 @@ export const PRODUCTION_TOOLS = [
     hint: 'Action log of one JOB by jobId',
     controller: ProductionJobsController,
     method: 'getProductionJobLogs',
-  }),
-  defineMcpTool({
-    name: 'production_execution_operation_list',
-    title: 'Công đoạn cần thực hiện tại xưởng',
-    hint: 'Shop-floor view of operations the signed-in employee can work on',
-    controller: ProductionExecutionController,
-    method: 'getOperations',
-  }),
-  defineMcpTool({
-    name: 'production_execution_job_list',
-    title: 'JOB tại xưởng',
-    hint: 'Shop-floor view of JOBs the signed-in employee can work on',
-    controller: ProductionExecutionController,
-    method: 'getJobs',
-  }),
-  defineMcpTool({
-    name: 'production_execution_job_get',
-    title: 'Chi tiết JOB tại xưởng',
-    hint: 'One JOB in the shop-floor view by productionJobId',
-    controller: ProductionExecutionController,
-    method: 'getJob',
-  }),
-  defineMcpTool({
-    name: 'production_execution_job_operation_list',
-    title: 'Công đoạn của JOB tại xưởng',
-    hint: 'Operations of one JOB in the shop-floor view by productionJobId',
-    controller: ProductionExecutionController,
-    method: 'getJobOperations',
-  }),
-  defineMcpTool({
-    name: 'production_execution_job_report_list',
-    title: 'Báo cáo sản lượng của JOB',
-    hint: 'Output reports submitted on the operations of one JOB by productionJobId',
-    controller: ProductionExecutionController,
-    method: 'getJobOperationReports',
   }),
   defineMcpTool({
     name: 'production_outsourcing_order_list',
@@ -194,6 +159,7 @@ export const PRODUCTION_TOOLS = [
     hint: 'JOB operations that can still be sent out for outsourcing',
     controller: OutsourcingOrdersController,
     method: 'getOutsourceableOperations',
+    omitArguments: ['operationId'],
   }),
   defineMcpTool({
     name: 'production_outsourcing_receipt_list',

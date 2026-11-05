@@ -18,9 +18,6 @@ import { DiscoveryService, MetadataScanner } from '@nestjs/core';
 import { z } from 'zod';
 
 import { AllConfigType } from '../../../config/config.type';
-import type { PermissionCode } from '../../../constants/permission.constant';
-import { IS_PUBLIC_KEY } from '../../../decorators/public.decorator';
-import { PERMISSIONS_KEY } from '../../../decorators/permissions.decorator';
 import { MCP_CATALOG } from '../catalog';
 import type { McpCatalogEntry } from '../catalog/define-mcp-tool';
 import {
@@ -35,10 +32,9 @@ import {
   MCP_TOOL_NAME_PATTERN,
   type McpDomain,
 } from '../mcp.constant';
-import type { McpCaller } from '../types/mcp-caller.type';
 import { buildDtoShape } from './dto-zod-schema';
 import { type HandlerArg, readHandlerArgs } from './handler-args';
-import { canUseTool, type McpTool } from './mcp-tool.type';
+import type { McpTool } from './mcp-tool.type';
 import { readMetadata, readPrototypeMember } from './read-metadata';
 import { SWAGGER_API_OPERATION } from './swagger-metadata';
 
@@ -127,29 +123,10 @@ function buildDescription(
     .join('. ');
 }
 
-// Cùng quy tắc `PermissionsGuard`: khai ở method thì thắng khai ở class; route `@Public` không
-// cần quyền
-function readPermissions(
-  controller: Type<object>,
-  handler: object,
-): PermissionCode[] {
-  const isPublic =
-    readMetadata<boolean>(IS_PUBLIC_KEY, handler) ??
-    readMetadata<boolean>(IS_PUBLIC_KEY, controller);
-  if (isPublic) {
-    return [];
-  }
-
-  return (
-    readMetadata<PermissionCode[]>(PERMISSIONS_KEY, handler) ??
-    readMetadata<PermissionCode[]>(PERMISSIONS_KEY, controller) ??
-    []
-  );
-}
-
 function readToolInput(
   toolName: string,
   handlerArgs: HandlerArg[],
+  omitArguments: string[] = [],
 ): z.ZodObject<z.ZodRawShape> {
   const shape: z.ZodRawShape = {};
 
@@ -172,6 +149,15 @@ function readToolInput(
         addProperty(propertyName, schema);
       }
     }
+  }
+
+  for (const omittedName of omitArguments) {
+    if (!(omittedName in shape)) {
+      throw new Error(
+        `mcp_catalog_invalid ${toolName}: omitArguments "${omittedName}" không phải tham số của route`,
+      );
+    }
+    delete shape[omittedName];
   }
 
   // `strict` để tham số lạ báo lỗi thay vì bị bỏ qua lặng lẽ
@@ -215,10 +201,9 @@ export class McpToolsRegistry implements OnApplicationBootstrap {
     return this.toolByName.get(name);
   }
 
-  listVisibleTools(caller: McpCaller, domains?: McpDomain[]): McpTool[] {
+  listTools(domains?: McpDomain[]): McpTool[] {
     return [...this.toolByName.values()].filter(
-      (tool) =>
-        (!domains || domains.includes(tool.domain)) && canUseTool(tool, caller),
+      (tool) => !domains || domains.includes(tool.domain),
     );
   }
 
@@ -235,7 +220,15 @@ export class McpToolsRegistry implements OnApplicationBootstrap {
     assertNoRouteEnhancers(name, controller, handler);
 
     const handlerArgs = readHandlerArgs(controller, method);
-    const inputSchema = readToolInput(name, handlerArgs);
+    if (
+      handlerArgs.some((handlerArg) => handlerArg.kind === 'custom') &&
+      !entry.omitArguments?.length
+    ) {
+      throw new Error(
+        `mcp_catalog_invalid ${name}: route đọc người dùng hiện tại (@CurrentUser) mà MCP chưa có người dùng; ẩn tham số cần nó bằng omitArguments hoặc đưa route vào excluded-routes`,
+      );
+    }
+    const inputSchema = readToolInput(name, handlerArgs, entry.omitArguments);
     const summary = readMetadata<{ summary?: string }>(
       SWAGGER_API_OPERATION,
       handler,
@@ -257,7 +250,6 @@ export class McpToolsRegistry implements OnApplicationBootstrap {
         'page' in inputSchema.shape && 'limit' in inputSchema.shape,
       ),
       domain,
-      permissions: readPermissions(controller, handler),
       inputSchema,
       controller,
       method,

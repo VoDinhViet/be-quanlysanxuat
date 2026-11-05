@@ -7,20 +7,6 @@ import { defineMcpTool } from './define-mcp-tool';
 
 export const ORG_TOOLS = [
   defineMcpTool({
-    name: 'org_me_get',
-    title: 'Hồ sơ của tôi',
-    hint: 'Profile of the employee the agent is acting for',
-    controller: UsersController,
-    method: 'getCurrentUser',
-  }),
-  defineMcpTool({
-    name: 'org_my_permission_list',
-    title: 'Quyền của tôi',
-    hint: 'Effective permissions of the employee the agent is acting for; use it to explain why a tool is missing',
-    controller: UsersController,
-    method: 'getCurrentPermissions',
-  }),
-  defineMcpTool({
     name: 'org_user_list',
     title: 'Danh sách nhân viên',
     hint: 'Employees; use it to get a userId for requester or assignee filters',

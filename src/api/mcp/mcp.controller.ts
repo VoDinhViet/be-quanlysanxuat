@@ -13,17 +13,15 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
-import type { Response } from 'express';
+import { ThrottlerGuard } from '@nestjs/throttler';
+import type { Request, Response } from 'express';
 
 import { ErrorCode } from '../../constants/error-code.constant';
 import { Public } from '../../decorators/public.decorator';
 import { AppException } from '../../exceptions/app.exception';
 import { McpApiKeyGuard } from './guards/mcp-api-key.guard';
-import { McpCallerGuard } from './guards/mcp-caller.guard';
-import { McpThrottlerGuard } from './guards/mcp-throttler.guard';
 import { MCP_DOMAINS, type McpDomain } from './mcp.constant';
 import { McpServerFactory } from './mcp-server.factory';
-import type { McpRequest } from './types/mcp-caller.type';
 
 // Mã -32000 theo ví dụ 405 của SDK; trùng số với `ConnectionClosed` nên không dùng enum của SDK
 const JSON_RPC_METHOD_NOT_ALLOWED = -32000;
@@ -56,12 +54,12 @@ function parseDomains(domainsQuery?: string): McpDomain[] | undefined {
 }
 
 /**
- * Endpoint MCP (Streamable HTTP) chạy stateless: mỗi POST dựng server riêng cho nhân viên đang hỏi
- * rồi đóng, không giữ session, nên nhiều instance BE đứng sau load balancer không cần sticky.
+ * Endpoint MCP (Streamable HTTP) chạy stateless: mỗi POST dựng một server rồi đóng, không giữ
+ * session, nên nhiều instance BE đứng sau load balancer không cần sticky.
  *
  * Rules:
- * - `@Public()` chỉ để bỏ qua JWT toàn cục; xác thực là `McpApiKeyGuard` rồi `McpCallerGuard`, còn
- *   hạn mức đứng giữa để request vượt mức bị chặn trước khi tốn truy vấn DB.
+ * - `@Public()` chỉ để bỏ qua JWT toàn cục; xác thực chỉ là `McpApiKeyGuard`, key hợp lệ đọc được
+ *   mọi tool. Chưa có phân quyền theo người dùng; hạn mức tính theo IP của máy chủ gọi.
  * - Trả JSON thường (`enableJsonResponse`) thay vì SSE để `compression()` không giữ stream.
  * - Body đã được body parser đọc, nên truyền `request.body` cho transport.
  *
@@ -70,7 +68,7 @@ function parseDomains(domainsQuery?: string): McpDomain[] | undefined {
 @ApiExcludeController()
 @Public()
 @Controller('mcp')
-@UseGuards(McpApiKeyGuard, McpThrottlerGuard, McpCallerGuard)
+@UseGuards(McpApiKeyGuard, ThrottlerGuard)
 export class McpController {
   private readonly logger = new Logger(McpController.name);
 
@@ -78,15 +76,10 @@ export class McpController {
 
   @Post()
   async handleRequest(
-    @Req() request: McpRequest,
+    @Req() request: Request,
     @Res() response: Response,
     @Query('domains') domainsQuery?: string,
   ): Promise<void> {
-    const { mcpCaller: caller } = request;
-    if (!caller) {
-      throw new AppException(ErrorCode.E033, HttpStatus.FORBIDDEN);
-    }
-
     // MCP 2025-06-18 bỏ batch; SDK vẫn nhận tới 100 lời gọi trong một POST, vượt hạn mức theo
     // request
     if (Array.isArray(request.body)) {
@@ -102,10 +95,7 @@ export class McpController {
       return;
     }
 
-    const server = this.serverFactory.create(
-      caller,
-      parseDomains(domainsQuery),
-    );
+    const server = this.serverFactory.create(parseDomains(domainsQuery));
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
       enableJsonResponse: true,

@@ -1,9 +1,9 @@
-<!-- Generated: 2026-11-04 | Files scanned: 41 | Token estimate: ~2600 -->
+<!-- Generated: 2026-11-05 | Files scanned: 41 | Token estimate: ~2600 -->
 # Reports, files, health, traces & infra codemap
 
-Conventions: controllers check permissions, services do not. The file keeps its old name (`integration.md`) because other docs link it; the `/api/v1/integration/*` gateway no longer exists. Paths: `R`=`src/api/reports`, `T`=`src/api/traces`, `F`=`src/api/files`, `H`=`src/api/health`. Counts verified by reading controllers: reports 7, traces 5, files 5, health 1, plus `GET /auth/whoami` (owned by the MCP module).
+Conventions: controllers check permissions, services do not. The file keeps its old name (`integration.md`) because other docs link it; the `/api/v1/integration/*` gateway no longer exists. Paths: `R`=`src/api/reports`, `T`=`src/api/traces`, `F`=`src/api/files`, `H`=`src/api/health`. Counts verified by reading controllers: reports 7, traces 5, files 5, health 1.
 
-Known external breakage: `../ai-platform` (separate repo) still calls the removed `/api/v1/integration/*` routes and the old `whoami` path. It must move to the MCP server (`POST /api/mcp`, see `mcp.md`) and `GET /api/auth/whoami`.
+Known external breakage: `../ai-platform` (separate repo) still calls the removed `/api/v1/integration/*` routes and `whoami`. It must move to the MCP server (`POST /api/mcp`, see `mcp.md`) and send only the `Api-Key` header.
 
 ## 1. Modules
 - `R/` : `reports.controller.ts` 106, `reports.service.ts` 926, `dto/` 10 files. Imports AuthModule (for `PermissionsService`, `reports.module.ts:8`). Read-only; owns no business rule, re-reads rules of orders, production, quality, purchasing, inventory.
@@ -13,7 +13,7 @@ Known external breakage: `../ai-platform` (separate repo) still calls the remove
 - Shared infra: `src/storage/` (`storage.module.ts` 37 global, `storage-provider.interface.ts` 13 = `save`/`delete` only, `providers/local-disk.storage-provider.ts` 32; only LOCAL driver exists), `src/redis/` (`redis.module.ts` 43 global: Keyv-Redis `CacheModule` TTL 1 week + `BullModule` connection, both from `REDIS_URL`).
 - Schemas: `files` (`src/database/schemas/files.ts:121`, `draft_expires_at` :150), `quality_inspections`, `quality_inspection_results`, `quality_inspection_evidences` (`schemas/quality/`).
 
-## 2. Routes (19 total)
+## 2. Routes (18 total)
 Reports (7), `@Controller('reports')`, all GET, all `@ApiAuth` (JWT). Handler lines in `R/reports.controller.ts`.
 | Route | Perm | Handler -> Service | Reads |
 |---|---|---|---|
@@ -36,7 +36,7 @@ Traces (5), `@Controller('traces')`, all GET, all `@ApiAuth` (JWT), all return `
 
 Each trace runs in one `repeatable read`, `read only` transaction (`TracesService.readSnapshot`) so the chained queries see the same data. Caps: `TRACE_STEP_LIMIT` 50 rows per step, `BOM_TREE_LIMIT` 200, at most 3 matched items (`MAX_MATCHED_ITEMS`) or suppliers (`MAX_MATCHED_SUPPLIERS`). Code params match `DOCUMENT_CODE_PATTERN` (<= 40 chars); the supplier keyword is <= 80.
 
-Identity (1): `GET /api/auth/whoami`, owned by `McpIdentityController` (`src/api/mcp/mcp-identity.controller.ts`, `@Controller('auth')`), not by the auth module. `@Public()` (skips JWT) with `McpApiKeyGuard` + `McpThrottlerGuard`; header `X-User-Token` (the user's ERP access token, missing = 401) -> `AuthService.getActiveIdentity` (signature, session not blacklisted, credential enabled, user not resigned) + `PermissionsService.getPermissionCodes` -> `{credentialId, userId, username, displayName, permissions[]}`. The token is not stored or echoed. The AI platform uses it to learn the `credentialId` it sends as `X-On-Behalf-Of` to `/api/mcp`. It is an infrastructure route and is excluded from the MCP catalog. See `mcp.md`.
+`GET /api/auth/whoami` no longer exists: the MCP server is authorised by its API key alone and has no per-user identity (see `mcp.md`).
 
 Files (5), `@Controller('files')`, all `@ApiAuth`, none has `@Permissions`:
 | Route | Handler -> Service | Tables |

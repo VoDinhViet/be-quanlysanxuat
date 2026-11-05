@@ -44,11 +44,4 @@ export const REPORT_TOOLS = [
     controller: ReportsController,
     method: 'getProductionProgress',
   }),
-  defineMcpTool({
-    name: 'report_pending_approval_summary',
-    title: 'Việc đang chờ tôi xử lý',
-    hint: 'Counts of documents waiting for the signed-in employee to approve, post or submit; modules they cannot act on count 0',
-    controller: ReportsController,
-    method: 'getPendingApprovals',
-  }),
 ];
