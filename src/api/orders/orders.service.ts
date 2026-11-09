@@ -912,7 +912,12 @@ export class OrdersService {
       WHERE order_id = ${orderId}
     `);
 
-    await tx.execute(sql`
+    const [{ subtotal, discount_amount: discountAmount, status }] =
+      await tx.execute<{
+        subtotal: string;
+        discount_amount: string;
+        status: OrderStatus;
+      }>(sql`
       WITH agg AS (
         SELECT coalesce(sum(line_total), 0) AS subtotal
         FROM order_items
@@ -938,7 +943,17 @@ export class OrdersService {
           updated_at      = now()
       FROM calc c
       WHERE o.id = ${orderId}
+      RETURNING c.subtotal, c.discount_amount, o.status
     `);
+
+    // Ném trong transaction của create/update nên cả ghi đơn lẫn dòng đều rollback. Đơn đã huỷ
+    // không cần tổng hợp lệ — bỏ qua để vẫn huỷ được đơn có chiết khấu lớn hơn tạm tính cũ.
+    if (
+      status !== OrderStatus.CANCELLED &&
+      Number(discountAmount) > Number(subtotal)
+    ) {
+      throw new AppException(ErrorCode.E327, HttpStatus.UNPROCESSABLE_ENTITY);
+    }
   }
 
   /** Replace-all. Bắt buộc truyền `tx` để tránh ghi ra ngoài transaction. */
