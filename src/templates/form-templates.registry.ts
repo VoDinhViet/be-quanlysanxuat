@@ -409,10 +409,10 @@ export const FORM_TEMPLATES: Record<FormTemplateType, FormTemplateDefinition> =
         },
         {
           key: 'approver_name',
-          label: 'Người xác nhận kế hoạch',
+          label: 'Người tạo Job',
           group: 'signatures',
         },
-        { key: 'approver_date', label: 'Ngày xác nhận', group: 'signatures' },
+        { key: 'approver_date', label: 'Ngày tạo Job', group: 'signatures' },
       ],
     },
   };

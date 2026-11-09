@@ -8,7 +8,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import bwipjs from 'bwip-js';
 import { format } from 'date-fns';
-import { asc, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import { readFile } from 'fs/promises';
 import { resolve, sep } from 'path';
 
@@ -28,13 +28,14 @@ import {
   ProductionJobBomItemType,
   productionJobIssues,
   productionJobItems,
+  ProductionJobLogAction,
+  productionJobLogs,
   productionJobNotes,
   productionJobOperations,
   productionJobs,
   productionJobUnits,
   productionOrders,
   units,
-  users,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
 import {
@@ -208,8 +209,8 @@ export class ProductionJobPdfService {
    *
    * Rules:
    * - Ghi chú lấy các ghi chú của chính Job, không có thì lấy ghi chú của LSX.
-   * - Ô ký "Xác nhận kế hoạch sản xuất" đọc `operationsApprovedBy`/`operationsApprovedAt`; Job cũ
-   *   chưa có giá trị thì để trống ô ký.
+   * - Ô ký "Xác nhận kế hoạch sản xuất" là người tạo Job và ngày tạo, đọc từ log `CREATED` (Job
+   *   không có cột người tạo; `operationsApprovedBy` là dữ liệu cũ, không còn được ghi).
    * - Ảnh sản phẩm thiếu file trên đĩa thì bỏ trống khung ảnh, không làm hỏng PDF.
    */
   async exportProductionJobPdf(jobId: string): Promise<StreamableFile> {
@@ -218,8 +219,6 @@ export class ProductionJobPdfService {
         code: productionJobs.code,
         quantity: productionJobs.quantity,
         itemRevision: productionJobs.itemRevision,
-        approvedAt: productionJobs.operationsApprovedAt,
-        approverName: users.fullName,
         productionOrderNote: productionOrders.note,
         buyerPoNo: orders.buyerPoNo,
         orderDate: orders.orderDate,
@@ -241,52 +240,64 @@ export class ProductionJobPdfService {
       .innerJoin(items, eq(items.id, productionJobs.itemId))
       .leftJoin(units, eq(units.id, items.unitId))
       .leftJoin(files, eq(files.id, items.imageFileId))
-      .leftJoin(users, eq(users.id, productionJobs.operationsApprovedBy))
       .where(eq(productionJobs.id, jobId));
 
     if (!job) {
       throw new AppException(ErrorCode.E082, HttpStatus.NOT_FOUND);
     }
 
-    const [jobNotes, jobOperations, jobBomItems, jobMaterials, imageDataUri] =
-      await Promise.all([
-        this.db
-          .select({ content: productionJobNotes.content })
-          .from(productionJobNotes)
-          .where(eq(productionJobNotes.productionJobId, jobId))
-          .orderBy(asc(productionJobNotes.createdAt)),
-        this.db
-          .select()
-          .from(productionJobOperations)
-          .where(eq(productionJobOperations.productionJobId, jobId))
-          .orderBy(
-            asc(productionJobOperations.sortOrder),
-            asc(productionJobOperations.createdAt),
-          ),
-        this.db
-          .select()
-          .from(productionJobBomItems)
-          .where(eq(productionJobBomItems.productionJobId, jobId)),
-        this.db
-          .select({
-            code: productionJobItems.code,
-            name: productionJobItems.name,
-            unitName: productionJobUnits.name,
-            requiredQty: productionJobIssues.requiredQty,
-          })
-          .from(productionJobIssues)
-          .innerJoin(
-            productionJobItems,
-            eq(productionJobItems.id, productionJobIssues.productionJobItemId),
-          )
-          .innerJoin(
-            productionJobUnits,
-            eq(productionJobUnits.id, productionJobIssues.productionJobUnitId),
-          )
-          .where(eq(productionJobIssues.productionJobId, jobId))
-          .orderBy(asc(productionJobItems.code), asc(productionJobIssues.id)),
-        this.readImageDataUri(job.imageStorageKey, job.imageMimetype),
-      ]);
+    const [
+      jobNotes,
+      jobOperations,
+      jobBomItems,
+      jobMaterials,
+      imageDataUri,
+      creationLog,
+    ] = await Promise.all([
+      this.db
+        .select({ content: productionJobNotes.content })
+        .from(productionJobNotes)
+        .where(eq(productionJobNotes.productionJobId, jobId))
+        .orderBy(asc(productionJobNotes.createdAt)),
+      this.db
+        .select()
+        .from(productionJobOperations)
+        .where(eq(productionJobOperations.productionJobId, jobId))
+        .orderBy(
+          asc(productionJobOperations.sortOrder),
+          asc(productionJobOperations.createdAt),
+        ),
+      this.db
+        .select()
+        .from(productionJobBomItems)
+        .where(eq(productionJobBomItems.productionJobId, jobId)),
+      this.db
+        .select({
+          code: productionJobItems.code,
+          name: productionJobItems.name,
+          unitName: productionJobUnits.name,
+          requiredQty: productionJobIssues.requiredQty,
+        })
+        .from(productionJobIssues)
+        .innerJoin(
+          productionJobItems,
+          eq(productionJobItems.id, productionJobIssues.productionJobItemId),
+        )
+        .innerJoin(
+          productionJobUnits,
+          eq(productionJobUnits.id, productionJobIssues.productionJobUnitId),
+        )
+        .where(eq(productionJobIssues.productionJobId, jobId))
+        .orderBy(asc(productionJobItems.code), asc(productionJobIssues.id)),
+      this.readImageDataUri(job.imageStorageKey, job.imageMimetype),
+      this.db.query.productionJobLogs.findFirst({
+        where: and(
+          eq(productionJobLogs.productionJobId, jobId),
+          eq(productionJobLogs.action, ProductionJobLogAction.CREATED),
+        ),
+        with: { performerBy: true },
+      }),
+    ]);
 
     const bomItemLevelById = new Map(
       jobBomItems.map((bomItem) => [bomItem.id, bomItem.level]),
@@ -328,9 +339,9 @@ export class ProductionJobPdfService {
         name: job.itemName,
         quantity: job.quantity,
       }),
-      approver_name: job.approverName ?? '',
-      approver_date: job.approvedAt
-        ? format(job.approvedAt, 'dd/MM/yyyy', { in: vnZone })
+      approver_name: creationLog?.performerBy?.fullName ?? '',
+      approver_date: creationLog
+        ? format(creationLog.createdAt, 'dd/MM/yyyy', { in: vnZone })
         : '',
     };
 
