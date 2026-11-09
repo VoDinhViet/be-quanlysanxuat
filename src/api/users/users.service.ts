@@ -1,5 +1,8 @@
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { HttpStatus, Inject, Injectable, StreamableFile } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { hash } from 'bcryptjs';
+import type { Cache } from 'cache-manager';
 import { plainToInstance } from 'class-transformer';
 import {
   and,
@@ -15,6 +18,7 @@ import {
   or,
   sql,
 } from 'drizzle-orm';
+import ms from 'ms';
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
 import { OffsetPaginationDto } from '../../common/dto/offset-pagination/offset-pagination.dto';
@@ -25,6 +29,8 @@ import {
 import { buildXlsxBuffer, XLSX_MIME } from '../../common/utils/excel';
 import { hasFields } from '../../common/utils/object';
 import { getFileTimestamp } from '../../common/utils/time';
+import { AllConfigType } from '../../config/config.type';
+import { CacheKey } from '../../constants/cache.constant';
 import { ErrorCode } from '../../constants/error-code.constant';
 import {
   type PermissionCode,
@@ -43,6 +49,7 @@ import {
   UserStatus,
 } from '../../database/schemas';
 import { AppException } from '../../exceptions/app.exception';
+import { createCacheKey } from '../../utils/cache';
 import { PermissionsService } from '../auth/permissions.service';
 import { FilesService } from '../files/files.service';
 import { AssignRoleReqDto } from './dto/assign-role.req.dto';
@@ -68,6 +75,8 @@ export class UsersService {
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly permissionsService: PermissionsService,
     private readonly filesService: FilesService,
+    private readonly configService: ConfigService<AllConfigType>,
+    @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
   ) {}
 
   async getUsers(
@@ -401,6 +410,20 @@ export class UsersService {
             : {}),
         })
         .where(eq(credentials.id, linkedCredential.id));
+
+      // Access token đã phát còn sống tới khi hết hạn. Lưu mốc tắt để `verifyAccessToken` loại mọi
+      // token phát trước mốc đó; bật lại không cần xoá khoá vì token mới có `iat` sau mốc.
+      if (credential.credentialEnabled === false) {
+        const jwtTokenExpiresIn = this.configService.getOrThrow(
+          'auth.jwtTokenExpiresIn',
+          { infer: true },
+        );
+        await this.cacheManager.set(
+          createCacheKey(CacheKey.CREDENTIAL_DISABLED, linkedCredential.id),
+          Date.now(),
+          ms(jwtTokenExpiresIn),
+        );
+      }
 
       return;
     }

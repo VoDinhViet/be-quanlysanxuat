@@ -1,4 +1,4 @@
-<!-- Generated: 2026-11-05 | Files scanned: 34 | Token estimate: ~2590 -->
+<!-- Generated: 2026-11-09 | Files scanned: 34 | Token estimate: ~2590 -->
 
 # Identity & Access Codemap
 
@@ -43,7 +43,7 @@ Prefix: `/api` (`src/main.ts:53`), URI versioning on (`main.ts:59`) but no contr
 | GET /users/export | users:update | exportUsers -> exportUsers (svc:144) | users |
 | GET /users/:userId | users:update | getUser -> getUser (svc:570) | users |
 | POST /users | users:create | createUser -> createUser (svc:265) | users, credentials (tx) |
-| PATCH /users/:userId | users:update | updateUser -> updateUser (svc:313) | users, credentials |
+| PATCH /users/:userId | users:update | updateUser -> updateUser (svc:313); `credentialEnabled=false` also writes Redis `credential_disabled:<credentialId>` = now (TTL = access expiry) | users, credentials, Redis |
 | PATCH /users/:userId/role | roles:update | assignRole -> assignRole (svc:429) | users, credentials, roles |
 
 **roles** (`roles.controller.ts`)
@@ -94,7 +94,7 @@ POST /auth/logout ── Redis SESSION_BLACKLIST[sessionId] (TTL = access expiry
 Per-request check (global `APP_GUARD`, `src/app.module.ts:163-164`):
 
 ```
-request -> JwtAuthGuard: @Public? skip : verifyAccessToken (signature + blacklist) -> request.user
+request -> JwtAuthGuard: @Public? skip : verifyAccessToken (signature + session blacklist + `credential_disabled:<credentialId>` disable timestamp vs token `iat`) -> request.user
         -> PermissionsGuard: @Public? skip : no @Permissions? pass
               : getPermissionCodes(user.sub) -> system:manage? pass
               : every required code present? else E033 (403)

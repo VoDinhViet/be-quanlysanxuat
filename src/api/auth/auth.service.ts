@@ -186,6 +186,15 @@ export class AuthService {
       throw new UnauthorizedException();
     }
 
+    // Tài khoản bị tắt đăng nhập: token phát trước mốc tắt mất hiệu lực ngay, không chờ hết hạn.
+    const credentialDisabledAt = await this.cacheManager.get<number>(
+      createCacheKey(CacheKey.CREDENTIAL_DISABLED, payload.sub),
+    );
+
+    if (credentialDisabledAt && payload.iat * 1000 < credentialDisabledAt) {
+      throw new UnauthorizedException();
+    }
+
     return payload;
   }
 
