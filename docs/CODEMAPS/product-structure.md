@@ -1,4 +1,4 @@
-<!-- Generated: 2026-11-05 | Files scanned: 34 | Token estimate: ~3270 -->
+<!-- Generated: 2026-11-09 | Files scanned: 34 | Token estimate: ~3270 -->
 # Product structure codemap
 
 Paths under `src/`. Only controllers check permissions; services do not.
@@ -149,9 +149,9 @@ Snapshot into a JOB (production-jobs, not at start):
 - E270 itemId is not DIRECT: boms.service.ts:370; E271 invalid node payload / DIRECT code,name / DIRECT unitId,imageFileId: :355,:295,:384.
 - Adding a COMPONENT silently deletes non-off-structure DIRECT siblings (:437).
 - E109 step not found: bom-operations.service.ts:144,:178; routings.service.ts:175,:210,:225. E046 operation not found: bom-operations.service.ts:161, routings.service.ts:193, operations.service.ts:113,:268.
-- E047 operation code exists: operations.service.ts:205,:292. E248 operation in use by bom_operations, delete blocked: :311. E278 assignees must be WORKING and not deleted: :329.
+- E047 operation code exists: operations.service.ts:205,:292. E248 operation in use by active bom_operations or routing_operations, delete blocked (soft delete skips the FK, so checked in `ensureOperationIsDeletable`). E278 assignees must be WORKING and not deleted: :329.
 - E279 (403) operation not assigned to user: operation-access.service.ts:78; `getAllowedOperationIds` :29 returns null for super permission or `production-execution:read-all`.
-- E011 unit not found: units.service.ts:92, item-units.service.ts:101; E241 unit code exists :60,:114; E242 unit in use (items, production_job_units) :136.
+- E011 unit not found: units.service.ts:92, item-units.service.ts:101; E241 unit code exists :60,:114; E242 unit in use (items, production_job_units, outsourcing_order_items checked up front; any other `restrict` FK is caught on the hard delete as PG 23001/23503).
 - E262 item unit not found: item-units.service.ts:115; E263 duplicate unit or same as base unit: :43,:50.
 
 Observed gaps (unverified as intended): `ensureOperationIsDeletable` (operations.service.ts:299) checks only `bom_operations`, not `routing_operations` (soft delete skips the restrict FK; its comment says that table is gone, yet it exists). `ensureUnitNotInUse` (units.service.ts:121) checks items and production_job_units only, not bom_items.unitId or item_units.unitId .

@@ -30,6 +30,7 @@ import {
   operations,
   positions,
   roles,
+  routingOperations,
   users,
   UserStatus,
 } from '../../database/schemas';
@@ -293,21 +294,33 @@ export class OperationsService {
     }
   }
 
-  /** Chặn xoá khi còn `bom_operations` đang hoạt động trỏ tới — FK là `restrict`, xoá mềm không tự
-   * kích hoạt ràng buộc đó nên phải tự kiểm ở tầng service. */
+  /** Chặn xoá khi còn `bom_operations` hoặc `routing_operations` đang hoạt động trỏ tới — FK là
+   * `restrict`, xoá mềm không tự kích hoạt ràng buộc đó nên phải tự kiểm ở tầng service. */
   private async ensureOperationIsDeletable(operationId: string): Promise<void> {
-    const [bomOperation] = await this.db
-      .select({ id: bomOperations.id })
-      .from(bomOperations)
-      .where(
-        and(
-          eq(bomOperations.operationId, operationId),
-          isNull(bomOperations.deletedAt),
-        ),
-      )
-      .limit(1);
+    const [[bomOperation], [routingOperation]] = await Promise.all([
+      this.db
+        .select({ id: bomOperations.id })
+        .from(bomOperations)
+        .where(
+          and(
+            eq(bomOperations.operationId, operationId),
+            isNull(bomOperations.deletedAt),
+          ),
+        )
+        .limit(1),
+      this.db
+        .select({ id: routingOperations.id })
+        .from(routingOperations)
+        .where(
+          and(
+            eq(routingOperations.operationId, operationId),
+            isNull(routingOperations.deletedAt),
+          ),
+        )
+        .limit(1),
+    ]);
 
-    if (bomOperation) {
+    if (bomOperation || routingOperation) {
       throw new AppException(ErrorCode.E248, HttpStatus.CONFLICT);
     }
   }

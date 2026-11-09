@@ -85,7 +85,17 @@ export class UnitsService {
     await this.ensureUnitExists(unitId);
     await this.ensureUnitNotInUse(unitId);
 
-    await this.db.delete(units).where(eq(units.id, unitId));
+    try {
+      await this.db.delete(units).where(eq(units.id, unitId));
+    } catch (error) {
+      // `ensureUnitNotInUse` chỉ kiểm vài bảng; FK `restrict` ở các bảng còn lại cũng phải ra 409,
+      // không phải 500. Postgres 18 báo `23001`, bản cũ hơn báo `23503`.
+      const postgresCode = extractPostgresError(error)?.code;
+      if (postgresCode === '23001' || postgresCode === '23503') {
+        throw new AppException(ErrorCode.E242, HttpStatus.CONFLICT);
+      }
+      throw error;
+    }
   }
 
   async ensureUnitExists(unitId: string) {
