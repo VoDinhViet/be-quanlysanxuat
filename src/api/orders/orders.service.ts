@@ -41,6 +41,7 @@ import {
   formatVndInWords,
 } from '../../common/utils/vnd';
 import { ErrorCode } from '../../constants/error-code.constant';
+import { PAYMENT_TERM_LABELS } from '../../constants/payment-term.constant';
 import {
   FormTemplateType,
   buildFormPdfFileName,
@@ -414,12 +415,17 @@ export class OrdersService {
   }
 
   /** Xuất PDF chi tiết 1 đơn hàng bán — subtotal/chiết khấu/VAT/phí vận chuyển/tổng tiền đọc
-   * thẳng từ cột đã lưu trên `orders` (`OrdersService.recalculateTotals`), không tính lại. */
+   * thẳng từ cột đã lưu trên `orders` (`OrdersService.recalculateTotals`), không tính lại.
+   * Hai ô ký: NV kinh doanh là `assignedUserId` (ký ngày đặt đơn), Giám đốc là người duyệt đơn. */
   async exportOrderPdf(orderId: string): Promise<StreamableFile> {
     const approverAlias = alias(users, 'approver');
+    const salesStaffAlias = alias(users, 'sales_staff');
     const [order] = await this.db
       .select({
         code: orders.code,
+        buyerPoNo: orders.buyerPoNo,
+        note: orders.note,
+        paymentTerm: orders.paymentTerm,
         orderDate: orders.orderDate,
         dueDate: orders.dueDate,
         subtotal: orders.subtotal,
@@ -430,24 +436,27 @@ export class OrdersService {
         total: orders.total,
         approvedAt: orders.approvedAt,
         approverName: approverAlias.fullName,
+        salesStaffName: salesStaffAlias.fullName,
+        contactName: clientContacts.name,
         client: getTableColumns(clients),
       })
       .from(orders)
       .leftJoin(clients, eq(clients.id, orders.clientId))
+      .leftJoin(clientContacts, eq(clientContacts.id, orders.clientContactId))
       .leftJoin(approverAlias, eq(approverAlias.id, orders.approvedBy))
+      .leftJoin(salesStaffAlias, eq(salesStaffAlias.id, orders.assignedUserId))
       .where(and(eq(orders.id, orderId), isNull(orders.deletedAt)));
 
     if (!order) {
       throw new AppException(ErrorCode.E057, HttpStatus.NOT_FOUND);
     }
 
-    const itemRows = await this.db
+    const orderLines = await this.db
       .select({
         item: getTableColumns(items),
         unit: getTableColumns(units),
         quantity: orderItems.quantity,
         unitPrice: orderItems.unitPrice,
-        discountPercent: orderItems.discountPercent,
         lineTotal: orderItems.lineTotal,
         note: orderItems.note,
       })
@@ -462,37 +471,43 @@ export class OrdersService {
       )
       .orderBy(asc(orderItems.sortOrder));
 
-    const dueDate = order.dueDate
-      ? format(order.dueDate, 'dd/MM/yyyy', { in: vnZone })
-      : '';
-    const templateItems = itemRows.map((row, index) => ({
+    const templateItems = orderLines.map((orderLine, index) => ({
       stt: index + 1,
-      item_code: row.item.code,
-      item_name: row.item.name,
-      unit_name: row.unit?.name ?? '',
-      quantity: formatQuantity(row.quantity),
-      unit_price: formatVnd(row.unitPrice),
-      discount_percent:
-        row.discountPercent > 0 ? `${row.discountPercent}%` : '',
-      line_total: formatVnd(row.lineTotal),
-      due_date: dueDate,
-      note: row.note ?? '',
+      item_code: orderLine.item.code,
+      item_name: orderLine.item.name,
+      unit_name: orderLine.unit?.name ?? '',
+      quantity: formatQuantity(orderLine.quantity),
+      unit_price: formatVnd(orderLine.unitPrice),
+      line_total: formatVnd(orderLine.lineTotal),
+      note: orderLine.note ?? '',
     }));
 
     const context = {
       code: order.code,
+      buyer_po_no: order.buyerPoNo ?? '',
       order_date: format(order.orderDate, 'dd/MM/yyyy', { in: vnZone }),
+      due_date: order.dueDate
+        ? format(order.dueDate, 'dd/MM/yyyy', { in: vnZone })
+        : '',
       customer_name: order.client?.name ?? '',
       customer_address: order.client?.address ?? '',
+      customer_tax_code: order.client?.taxCode ?? '',
+      customer_phone: order.client?.phoneNumber ?? '',
+      customer_contact: order.contactName ?? '',
+      customer_email: order.client?.email ?? '',
+      note: order.note ?? '',
+      payment_term: order.paymentTerm
+        ? PAYMENT_TERM_LABELS[order.paymentTerm]
+        : '',
       subtotal: formatVnd(order.subtotal),
+      has_discount: order.discountAmount > 0,
       discount_amount: formatVnd(order.discountAmount),
       shipping_fee: formatVnd(order.shippingFee),
       vat_percent: order.vatPercent,
       vat_amount: formatVnd(order.vatAmount),
       grand_total: formatVnd(order.total),
-      amount_in_words: formatVndInWords(order.total),
-      // Ô NV Kinh Doanh để trống cho người ký điền tay, không tự điền từ dữ liệu hệ thống.
-      assigned_user_name: '',
+      sales_staff_name: order.salesStaffName ?? '',
+      sales_staff_date: format(order.orderDate, 'dd/MM/yyyy', { in: vnZone }),
       approver_name: order.approverName ?? '',
       approver_date: order.approvedAt
         ? format(order.approvedAt, 'dd/MM/yyyy', { in: vnZone })

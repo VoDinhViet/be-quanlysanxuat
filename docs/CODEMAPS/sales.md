@@ -10,7 +10,7 @@ Conventions: controllers check permissions, services do not; routes are under gl
 - `src/api/client-groups/` (controller 26, service 49) and `src/api/countries/` (controller 23, service 34): read-only lookups.
 - Schemas: `S/orders/{orders 241, order-items 109, order-files 38}.ts`, `S/clients/{clients 77, client-contacts 41, client-groups 15}.ts`, `S/countries.ts` 15, `S/inventory/{outbound-orders 161, outbound-order-items 91}.ts`.
 
-## 2. Routes (42 total)
+## 2. Routes (43 total)
 Orders (18), `@Controller('orders')`; static routes are declared before `:orderId`. The four summary routes (`value-summary`, `top-value`, `overdue`, `progress`) are served by `OrdersSummaryService` (`O/orders-summary.service.ts`), need only `orders:read`, return plain arrays (no paging, `limit` max 50), report values in VND (`total * exchangeRate`), and are MCP tools (`order_*`, see `mcp.md`). Day maths uses "today" in Asia/Ho_Chi_Minh (`TODAY`, `src/common/summary/summary.sql.ts`); shared caps and DTO bases are in `src/common/summary/`.
 | Route | Perm | Handler -> Service | Writes |
 |---|---|---|---|
@@ -23,7 +23,7 @@ Orders (18), `@Controller('orders')`; static routes are declared before `:orderI
 | GET /orders/export-excel and /orders/export (alias) | orders:read | :138, :150 -> `exportOrdersExcel` (:208; one Excel row per non-cancelled order line via `findOrderItemTrackings`:238, VND, cap 10,000 lines; filled into the template by `buildXlsxFromTemplate`) | - |
 | GET /orders/export-summary-pdf | orders:read | :161 -> `exportOrdersSummaryPdf` (:517) | - |
 | GET /orders/:orderId | orders:read | :174 -> `getOrder` (:361) | - |
-| GET /orders/:orderId/export-pdf | orders:read | :184 -> `exportOrderPdf` (:418) | - |
+| GET /orders/:orderId/export-pdf | orders:read | :184 -> `exportOrderPdf` (:418): PDF BM 10-03 A4 landscape; signatures = assigned sales user (order date) + approver | - |
 | GET /orders/:orderId/items | orders:read | :197 -> `getOrderItems` (:603) | - |
 | POST /orders | orders:create | :210 -> `createOrder` (:645) | orders, order_items, order_files |
 | PATCH /orders/:orderId | orders:update | :224 -> `updateOrder` (:711) | orders, order_items, order_files; deletes production_orders on cancel |
@@ -32,7 +32,7 @@ Orders (18), `@Controller('orders')`; static routes are declared before `:orderI
 | POST /orders/:orderId/reject | orders:approve | :266 -> `rejectOrder` (:847) | orders |
 | DELETE /orders/:orderId | orders:delete | :280 -> `deleteOrder` (:866) | orders.deletedAt |
 
-Outbound orders (16), `@Controller('outbound-orders')`; handler lines in `B/outbound-orders.controller.ts`, service lines in `.service.ts`.
+Outbound orders (17), `@Controller('outbound-orders')`; handler lines in `B/outbound-orders.controller.ts`, service lines in `.service.ts`.
 | Route | Perm | Handler -> Service | Writes |
 |---|---|---|---|
 | GET /outbound-orders | outbound:read | :54 -> `getOutboundOrders` (:95) | - |
@@ -42,6 +42,7 @@ Outbound orders (16), `@Controller('outbound-orders')`; handler lines in `B/outb
 | GET .../export | outbound:read | :114 -> `exportOutboundOrders` (:197) | - |
 | GET .../:outboundOrderId | outbound:read | :126 -> `getOutboundOrder` (:265) | - |
 | GET .../:outboundOrderId/items | outbound:read | :139 -> `getOutboundOrderItems` (:305) | - |
+| GET .../:outboundOrderId/export-pdf | outbound:read | `OutboundOrderPdfService.exportOutboundOrderPdf` (`outbound-order-pdf.service.ts`): PDF BM 09-04 A4 portrait (delivery note); order code = `orders.buyerPoNo` ?? `orders.code`; signatures = creator + approver, driver/receiver blank | - |
 | POST /outbound-orders | outbound:create | :152 -> `createOutboundOrder` (:491) | outbound_orders, outbound_order_items |
 | PATCH .../:id | outbound:update | :168 -> `updateOutboundOrder` (:516) | outbound_orders, outbound_order_items |
 | POST .../:id/send | outbound:update | :185 -> `sendOutboundOrder` (:637) | outbound_orders |

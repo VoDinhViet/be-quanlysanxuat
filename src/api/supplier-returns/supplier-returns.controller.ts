@@ -6,6 +6,7 @@ import {
   Patch,
   Post,
   Query,
+  StreamableFile,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 
@@ -22,6 +23,7 @@ import { PostSupplierReturnReqDto } from './dto/post-supplier-return.req.dto';
 import { SupplierReturnResDto } from './dto/supplier-return.res.dto';
 import { SupplierReturnSummaryResDto } from './dto/supplier-return-summary.res.dto';
 import { UpdateSupplierReturnReqDto } from './dto/update-supplier-return.req.dto';
+import { SupplierReturnPdfService } from './supplier-return-pdf.service';
 import { SupplierReturnsService } from './supplier-returns.service';
 import { SupplierReturnsSummaryService } from './supplier-returns-summary.service';
 
@@ -31,6 +33,7 @@ export class SupplierReturnsController {
   constructor(
     private readonly supplierReturnsService: SupplierReturnsService,
     private readonly supplierReturnsSummaryService: SupplierReturnsSummaryService,
+    private readonly supplierReturnPdfService: SupplierReturnPdfService,
   ) {}
 
   @Get()
@@ -71,6 +74,20 @@ export class SupplierReturnsController {
     @UUIDParam('supplierReturnId') supplierReturnId: string,
   ): Promise<SupplierReturnResDto> {
     return this.supplierReturnsService.getSupplierReturn(supplierReturnId);
+  }
+
+  @Get(':supplierReturnId/export-pdf')
+  @Permissions('inventory:read')
+  @ApiAuth({
+    summary: 'Xuất PDF Phiếu xuất trả nhà cung cấp (BM 09-08)',
+    fileType: 'application/pdf',
+  })
+  exportSupplierReturnPdf(
+    @UUIDParam('supplierReturnId') supplierReturnId: string,
+  ): Promise<StreamableFile> {
+    return this.supplierReturnPdfService.exportSupplierReturnPdf(
+      supplierReturnId,
+    );
   }
 
   @Patch(':supplierReturnId')

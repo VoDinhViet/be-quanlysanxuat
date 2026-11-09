@@ -10,6 +10,7 @@ import {
   getTableColumns,
   gte,
   inArray,
+  isNotNull,
   isNull,
   lt,
   ne,
@@ -52,6 +53,10 @@ import {
   purchaseOrders,
   PurchaseOrderStatus,
   purchaseRequests,
+  QualityInspectionOriginType,
+  QualityInspectionStatus,
+  QualityInspectionType,
+  qualityInspections,
   suppliers,
   units,
 } from '../../database/schemas';
@@ -293,55 +298,70 @@ export class InventoryReceiptsService {
       : (receipt.productionOrder?.order?.buyerPoNo ?? null);
   }
 
-  /** Chỉ ô "Người lập" tự điền (người tạo phiếu), các ô ký khác để trống cho điền tay; "PO / Lý do" dùng chung quy tắc với cột của danh
-   * sách (`resolvePoOrReason`). Phiếu không có NCC/khách (nhập thành phẩm) thì ẩn khối đơn vị giao. */
+  /** Ba ô ký lấy từ dữ liệu thật: Người lập = người tạo phiếu, QC = người kiểm của phiếu IQC đầu
+   * tiên chưa huỷ, Xác nhận nhập kho = người ghi sổ (`post`). "PO / Lý do" dùng chung quy tắc với
+   * cột của danh sách (`resolvePoOrReason`). Phiếu không có NCC/khách (nhập thành phẩm) thì ẩn khối
+   * đơn vị giao. */
   async exportInventoryReceiptPdf(receiptId: string): Promise<StreamableFile> {
-    const [receipt, receiptLines, purchaseSourcesByReceiptId] =
-      await Promise.all([
-        this.db.query.inventoryReceipts.findFirst({
-          where: eq(inventoryReceipts.id, receiptId),
-          with: {
-            supplier: true,
-            client: true,
-            purchaseRequest: {
-              with: { productionOrder: { with: { order: true } } },
-            },
-            productionOrder: { with: { order: true } },
-            purchaseOrder: true,
-            creatorBy: true,
+    const [
+      receipt,
+      receiptLines,
+      purchaseSourcesByReceiptId,
+      receiptInspection,
+    ] = await Promise.all([
+      this.db.query.inventoryReceipts.findFirst({
+        where: eq(inventoryReceipts.id, receiptId),
+        with: {
+          supplier: true,
+          client: true,
+          purchaseRequest: {
+            with: { productionOrder: { with: { order: true } } },
           },
-        }),
-        this.db
-          .select({
-            item: getTableColumns(itemsTable),
-            unit: getTableColumns(units),
-            quantity: inventoryReceiptItems.quantity,
-            quotationQuantity: inventoryReceiptItems.quotationQuantity,
-            quotationUnit: purchaseOrderItems.quotationUnit,
-            purchaseOrderCode: purchaseOrders.code,
-            note: inventoryReceiptItems.note,
-          })
-          .from(inventoryReceiptItems)
-          .innerJoin(
-            itemsTable,
-            eq(itemsTable.id, inventoryReceiptItems.itemId),
-          )
-          .leftJoin(units, eq(units.id, inventoryReceiptItems.unitId))
-          .leftJoin(
-            purchaseOrderItems,
-            eq(
-              purchaseOrderItems.id,
-              inventoryReceiptItems.purchaseOrderItemId,
-            ),
-          )
-          .leftJoin(
-            purchaseOrders,
-            eq(purchaseOrders.id, purchaseOrderItems.purchaseOrderId),
-          )
-          .where(eq(inventoryReceiptItems.receiptId, receiptId))
-          .orderBy(asc(inventoryReceiptItems.createdAt)),
-        getPurchaseSourcesByReceiptId(this.db, [receiptId]),
-      ]);
+          productionOrder: { with: { order: true } },
+          purchaseOrder: true,
+          creatorBy: true,
+          posterBy: true,
+        },
+      }),
+      this.db
+        .select({
+          item: getTableColumns(itemsTable),
+          unit: getTableColumns(units),
+          quantity: inventoryReceiptItems.quantity,
+          quotationQuantity: inventoryReceiptItems.quotationQuantity,
+          quotationUnit: purchaseOrderItems.quotationUnit,
+          purchaseOrderCode: purchaseOrders.code,
+          note: inventoryReceiptItems.note,
+        })
+        .from(inventoryReceiptItems)
+        .innerJoin(itemsTable, eq(itemsTable.id, inventoryReceiptItems.itemId))
+        .leftJoin(units, eq(units.id, inventoryReceiptItems.unitId))
+        .leftJoin(
+          purchaseOrderItems,
+          eq(purchaseOrderItems.id, inventoryReceiptItems.purchaseOrderItemId),
+        )
+        .leftJoin(
+          purchaseOrders,
+          eq(purchaseOrders.id, purchaseOrderItems.purchaseOrderId),
+        )
+        .where(eq(inventoryReceiptItems.receiptId, receiptId))
+        .orderBy(asc(inventoryReceiptItems.createdAt)),
+      getPurchaseSourcesByReceiptId(this.db, [receiptId]),
+      this.db.query.qualityInspections.findFirst({
+        where: and(
+          eq(qualityInspections.inspectionType, QualityInspectionType.IQC),
+          eq(
+            qualityInspections.originType,
+            QualityInspectionOriginType.INVENTORY_RECEIPT,
+          ),
+          eq(qualityInspections.originId, receiptId),
+          ne(qualityInspections.status, QualityInspectionStatus.CANCELLED),
+          isNotNull(qualityInspections.inspectedBy),
+        ),
+        orderBy: asc(qualityInspections.requestedAt),
+        with: { inspectorBy: true },
+      }),
+    ]);
 
     if (!receipt) {
       throw new AppException(ErrorCode.E096, HttpStatus.NOT_FOUND);
@@ -368,7 +388,15 @@ export class InventoryReceiptsService {
         ) ?? '',
       ...resolveReceiptPartner(receipt),
       creator_name: receipt.creatorBy?.fullName ?? '',
-      creator_date: format(new Date(), 'dd/MM/yyyy', { in: vnZone }),
+      creator_date: format(receipt.createdAt, 'dd/MM/yyyy', { in: vnZone }),
+      qc_name: receiptInspection?.inspectorBy?.fullName ?? '',
+      qc_date: receiptInspection?.startedAt
+        ? format(receiptInspection.startedAt, 'dd/MM/yyyy', { in: vnZone })
+        : '',
+      poster_name: receipt.posterBy?.fullName ?? '',
+      poster_date: receipt.postedAt
+        ? format(receipt.postedAt, 'dd/MM/yyyy', { in: vnZone })
+        : '',
       receipt_items: receiptLines.map((line, index) => ({
         stt: index + 1,
         item_code: line.item.code,

@@ -1,4 +1,4 @@
-<!-- Generated: 2026-11-04 | Files scanned: 32 | Token estimate: ~4100 -->
+<!-- Generated: 2026-11-09 | Files scanned: 32 | Token estimate: ~4100 -->
 # Production codemap
 
 Paths relative to `src/api/` unless starting `database/` or `constants/`. `ctrl:N`/`svc:N` = line in that domain's controller/service (`po.svc`, `jobs.svc`, `exec svc`, `OO svc`, `OR svc` = the five services). Create/update routes return 204 unless noted.
@@ -7,7 +7,7 @@ Paths relative to `src/api/` unless starting `database/` or `constants/`. `ctrl:
 
 | Folder | Files (lines) | Role |
 |---|---|---|
-| production-orders | ctrl 217, svc 774, summary svc 68, export 49, dto/ | LSX header + plan lines, approve, logs, Excel/PDF. No query/write file: SQL inline in svc |
+| production-orders | ctrl 217, svc 774, summary svc 68, export 49, dto/ | LSX header + plan lines, approve, logs, Excel. No query/write file: SQL inline in svc |
 | production-jobs | ctrl 388, svc 1069, summary svc 144, `production-job-snapshot.query.ts` 593, `production-jobs.query.ts` 216, `production-job-issues.query.ts` 195, dto/ | JOB read/plan/start. snapshot.query builds BOM/ops/issues; jobs.query has close helpers; issues.query edits materials |
 | production-execution | ctrl 136, svc 654, constant 30, dto/ | "Thuc hien san xuat" screens; only manual progress writer. No query file |
 | outsourcing-orders | ctrl 279, svc 489, summary svc 125, `outsourcing-orders.query.ts` 327, dto/ | OS-OUT (send out); query holds `recomputeOutsourcingOrderStatus` |
@@ -15,11 +15,11 @@ Paths relative to `src/api/` unless starting `database/` or `constants/`. `ctrl:
 
 No `*.write.ts` here; write helpers sit in `ncrs/ncrs.write.ts`, `iqc/iqc.write.ts`, `inventory-receipts/inventory-receipts.write.ts`. Schemas: `database/schemas/production/*` (13 files) and `database/schemas/inventory/outsourcing-{orders,order-items,receipts,receipt-items}.ts`.
 
-## 2. Routes (53)
+## 2. Routes (54)
 
 Tables: `po`=production_orders, `poi`=_order_items, `pol`=_order_logs, `pj`=production_jobs, `pjo`=_job_operations, `pjl`=_job_logs.
 
-### production-orders (11) `/production-orders` perm prefix `production:`
+### production-orders (10) `/production-orders` perm prefix `production:`
 | Route | Perm | Controller -> Service | Writes |
 |---|---|---|---|
 | GET / | read | getProductionOrders ctrl:51 -> svc:93 | - |
@@ -27,19 +27,19 @@ Tables: `po`=production_orders, `poi`=_order_items, `pol`=_order_logs, `pj`=prod
 | GET /open | read | getOpenProductionOrders ctrl:80 -> `ProductionOrdersSummaryService.getOpenProductionOrders` (`production-orders-summary.service.ts:24`): LSX not COMPLETED with its SO code, by `code`, `limit` default 20 (max 50); declared before `/:productionOrdersId` | - |
 | GET /status-stats | read | getProductionOrderStatusStats ctrl:94 -> summary svc:44: LSX count per status, `startDate`/`endDate` on `createdAt` | - |
 | GET /:productionOrdersId | read | getProductionOrdersById ctrl:108 -> svc:209 | - |
-| GET /:id/export-pdf | read | exportProductionOrderPdf ctrl:122 -> svc:250 | - |
 | PATCH /:id | update | updateProductionOrder ctrl:137 -> svc:335 (returns detail DTO) | poi, pol |
 | PATCH /:id/note | update | updateProductionOrderNote ctrl:155 -> svc:728 | po.note, pol |
 | PATCH /:id/signed-file | update | updateProductionOrderSignedFile ctrl:173 -> svc:687 (returns detail) | po.signedFileId, pol |
 | GET /:id/logs | read | getProductionOrderLogs ctrl:192 -> svc:654 | - |
 | POST /:id/approve | approve | approveProductionOrder ctrl:208 -> svc:434 (returns detail) | po, orders.status, pj + snapshot tables, pjl, pol |
 
-### production-jobs (21) `/production-jobs` perm prefix `production:`
+### production-jobs (22) `/production-jobs` perm prefix `production:`
 | Route | Perm | Controller -> Service | Writes |
 |---|---|---|---|
 | GET / | read | getProductionJobs ctrl:70 -> svc:178 | - |
 | GET /stats | read | getProductionJobStats ctrl:84 -> svc:245 (counts per status; same filters as GET / minus status, shared `buildProductionJobFilter`) | - |
 | GET /export-plan-pdf | read | exportProductionPlanPdf ctrl:139 -> svc:114 | - |
+| GET /:jobId/export-pdf | read | `ProductionJobPdfService.exportProductionJobPdf` (`production-job-pdf.service.ts`): PDF BM 08-05 A4 portrait, `FormTemplateType.PRODUCTION_JOB_ORDER`, one JOB per file: header + product image (base64 from `upload.dir`) + Code128 barcode (`bwip-js`), stages grouped like the plan screen, unpaginated `production_job_issues`, numbered BOM tree (1, 1.1, ...); signature = `operationsApprovedBy/At` (legacy columns, empty on new JOBs) | - |
 | GET /item-summary | read | getProductionJobItemSummary ctrl:99 -> `ProductionJobsSummaryService.getItemSummary` (`production-jobs-summary.service.ts:38`): JOB count per item for one `status` (default COMPLETED), date range on `createdAt`, `limit`; declared before `/:jobId` | - |
 | GET /late-operations | read | getLateProductionJobOperations ctrl:113 -> summary svc:67: operations with `dueDate` before today and completed qty < JOB qty, JOB not COMPLETED, SO not CANCELLED/REJECTED; `staleDays` keeps those with no progress report for that many days (never reported counts); `limit` | - |
 | GET /operation-type-stats | production:read | getProductionJobOperationTypeStats ctrl:126 -> summary svc:99: JOB operation count per `type` (OUTSOURCE = outsourced), optional `type` | - |
@@ -69,7 +69,7 @@ Tables: `po`=production_orders, `poi`=_order_items, `pol`=_order_logs, `pj`=prod
 | GET /jobs/:productionJobId/reports | read | getJobOperationReports ctrl:106 -> svc:414 | - |
 | POST /operations/:jobOperationId/reports | report | createJobOperationReport ctrl:125 -> svc:488 | production_job_operation_reports(+_files), pjo, pj.status+pjl via `closeJobIfFinalAssemblyDone` |
 
-### outsourcing-orders (15) `/outsourcing-orders` perm prefix `outsourcing:`
+### outsourcing-orders (16) `/outsourcing-orders` perm prefix `outsourcing:`
 | Route | Perm | Controller -> Service | Writes |
 |---|---|---|---|
 | GET / | read | getOutsourcingOrders ctrl:51 -> svc:62 | - |
@@ -77,6 +77,7 @@ Tables: `po`=production_orders, `poi`=_order_items, `pol`=_order_logs, `pj`=prod
 | GET /overdue | read | getOverdueOutsourcingOrders ctrl:99 -> summary svc:54: status SENT, PARTIAL or WAITING_QC with `expectedReturnDate` before today, oldest first; this is not the rule of `GET /reports/outsourcing-order-due-date` (see `integration.md`) | - |
 | GET /outsourceable-operations | read | getOutsourceableOperations ctrl:65 -> svc:231 | - |
 | GET /:outsourcingOrderId | read | getOutsourcingOrder ctrl:111 -> svc:120 | - |
+| GET /:outsourcingOrderId/export-pdf | read | `OutsourcingOrderPdfService.exportOutsourcingOrderPdf` (`outsourcing-order-pdf.service.ts`): PDF BM 09-06 A4 portrait, `FormTemplateType.OUTSOURCING_SEND_SLIP`; converted qty = `weight` kg; signatures = creator, approver (guard, driver, customer columns stay blank) | - |
 | GET /:id/items | read | getOrderItems ctrl:126 -> svc:173 | - |
 | POST / | create | createOutsourcingOrder -> creates a `DRAFT` (204) | outsourcing_orders, outsourcing_order_items |
 | POST /standalone | create | createStandaloneOutsourcingOrder (DRAFT, `origin` MANUAL, no Job, no quota check; operation must be OUTSOURCE + ACTIVE) | outsourcing_orders, outsourcing_order_items (`unitId` per line) |
@@ -88,12 +89,13 @@ Tables: `po`=production_orders, `poi`=_order_items, `pol`=_order_logs, `pj`=prod
 | POST /:id/confirm-send | update | confirmSendOutsourcingOrder | status SENT, postedBy/At |
 | POST /:id/cancel | update | cancelOutsourcingOrder | outsourcing_orders.status |
 
-### outsourcing-receipts (6) `/outsourcing-receipts` perm prefix `outsourcing:`
+### outsourcing-receipts (7) `/outsourcing-receipts` perm prefix `outsourcing:`
 | Route | Perm | Controller -> Service | Writes |
 |---|---|---|---|
 | GET / | read | getOutsourcingReceipts ctrl:33 -> svc:90 | - |
 | GET /pending-order-items | read | getPendingOrderItems ctrl:47 -> svc:250 | - |
 | GET /:outsourcingReceiptId | read | getOutsourcingReceipt ctrl:59 -> svc:179 | - |
+| GET /:outsourcingReceiptId/export-pdf | read | `OutsourcingReceiptPdfService.exportOutsourcingReceiptPdf` (`outsourcing-receipt-pdf.service.ts`): PDF BM 09-07 A4 portrait, `FormTemplateType.OUTSOURCING_RECEIVE_SLIP`; OS-OUT codes = distinct codes of the lines; QC = inspector of the first non-cancelled IQC (`OUTSOURCING_RECEIPT_ITEM`), confirm = `postedBy/At` | - |
 | GET /:id/items | read | getReceiptItems ctrl:74 -> svc:200 | - |
 | POST / | create | createOutsourcingReceipt ctrl:89 -> svc:355 | outsourcing_receipts(+items), quality_inspections (IQC, via `IqcService.createInspectionsFromOutsourcingReceipt`, only if `requiresIqc`), outsourcing_orders.status, pjo progress |
 | POST /:id/cancel | update | cancelOutsourcingReceipt ctrl:105 -> svc:445 | outsourcing_receipts.status, outsourcing_orders.status, pjo progress |

@@ -21,7 +21,6 @@ import {
 } from '../../templates/form-templates.registry';
 import { PdfRendererService } from '../../templates/pdf-renderer.service';
 
-/** Các ô ký trên phiếu để trống cho ký tay, nên không nạp người tạo / người duyệt. */
 @Injectable()
 export class InventoryRequisitionPdfService {
   constructor(
@@ -30,7 +29,7 @@ export class InventoryRequisitionPdfService {
   ) {}
 
   /** "PO / Lý do" cùng quy tắc với phiếu xuất sinh ra từ phiếu lãnh: lãnh cho LSX → số PO của đơn
-   * hàng, lãnh khác → lý do lãnh. */
+   * hàng, lãnh khác → lý do lãnh. Hai ô ký là người tạo và người duyệt phiếu lãnh. */
   async exportInventoryRequisitionPdf(
     requisitionId: string,
   ): Promise<StreamableFile> {
@@ -44,6 +43,7 @@ export class InventoryRequisitionPdfService {
           },
           productionJob: true,
           creatorBy: true,
+          approverBy: true,
         },
       }),
       this.db
@@ -84,7 +84,13 @@ export class InventoryRequisitionPdfService {
       department_name: inventoryRequisition.department?.name ?? '',
       note: inventoryRequisition.note ?? '',
       creator_name: inventoryRequisition.creatorBy?.fullName ?? '',
-      creator_date: format(new Date(), 'dd/MM/yyyy', { in: vnZone }),
+      creator_date: format(inventoryRequisition.createdAt, 'dd/MM/yyyy', {
+        in: vnZone,
+      }),
+      approver_name: inventoryRequisition.approverBy?.fullName ?? '',
+      approver_date: inventoryRequisition.approvedAt
+        ? format(inventoryRequisition.approvedAt, 'dd/MM/yyyy', { in: vnZone })
+        : '',
       requisition_items: requisitionLines.map((line, index) => ({
         stt: index + 1,
         item_code: line.item.code,

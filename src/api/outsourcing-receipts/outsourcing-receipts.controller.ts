@@ -1,4 +1,12 @@
-import { Body, Controller, Get, HttpStatus, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpStatus,
+  Post,
+  Query,
+  StreamableFile,
+} from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 
 import { OffsetPaginatedDto } from '../../common/dto/offset-pagination/paginated.dto';
@@ -14,6 +22,7 @@ import { OutsourcingReceiptItemResDto } from './dto/outsourcing-receipt-item.res
 import { OutsourcingReceiptResDto } from './dto/outsourcing-receipt.res.dto';
 import { PageOutsourcingReceiptResDto } from './dto/page-outsourcing-receipt.res.dto';
 import { PendingOrderItemResDto } from './dto/pending-order-item.res.dto';
+import { OutsourcingReceiptPdfService } from './outsourcing-receipt-pdf.service';
 import { OutsourcingReceiptsService } from './outsourcing-receipts.service';
 
 @ApiTags('Outsourcing Receipts')
@@ -21,6 +30,7 @@ import { OutsourcingReceiptsService } from './outsourcing-receipts.service';
 export class OutsourcingReceiptsController {
   constructor(
     private readonly outsourcingReceiptsService: OutsourcingReceiptsService,
+    private readonly outsourcingReceiptPdfService: OutsourcingReceiptPdfService,
   ) {}
 
   @Get()
@@ -75,6 +85,20 @@ export class OutsourcingReceiptsController {
     @UUIDParam('outsourcingReceiptId') outsourcingReceiptId: string,
   ): Promise<OutsourcingReceiptItemResDto[]> {
     return this.outsourcingReceiptsService.getReceiptItems(
+      outsourcingReceiptId,
+    );
+  }
+
+  @Get(':outsourcingReceiptId/export-pdf')
+  @Permissions('outsourcing:read')
+  @ApiAuth({
+    summary: 'Xuất PDF Phiếu nhập gia công ngoài (BM 09-07)',
+    fileType: 'application/pdf',
+  })
+  exportOutsourcingReceiptPdf(
+    @UUIDParam('outsourcingReceiptId') outsourcingReceiptId: string,
+  ): Promise<StreamableFile> {
+    return this.outsourcingReceiptPdfService.exportOutsourcingReceiptPdf(
       outsourcingReceiptId,
     );
   }

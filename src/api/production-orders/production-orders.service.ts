@@ -1,9 +1,7 @@
 import { HttpStatus, Inject, Injectable, StreamableFile } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
-import { format } from 'date-fns';
 import {
   and,
-  asc,
   count,
   desc,
   eq,
@@ -23,7 +21,7 @@ import {
 } from '../../common/utils/document-sequence';
 import { buildXlsxBuffer, XLSX_MIME } from '../../common/utils/excel';
 import { unaccentILike } from '../../common/utils/search';
-import { getFileTimestamp, vnZone } from '../../common/utils/time';
+import { getFileTimestamp } from '../../common/utils/time';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
@@ -41,14 +39,8 @@ import {
   productionOrders,
   ProductionOrderSourceType,
   ProductionOrderStatus,
-  units,
   users,
 } from '../../database/schemas';
-import {
-  FormTemplateType,
-  buildFormPdfFileName,
-} from '../../templates/form-templates.registry';
-import { PdfRendererService } from '../../templates/pdf-renderer.service';
 import { AppException } from '../../exceptions/app.exception';
 import { InventoryService } from '../inventory/inventory.service';
 import { ProductionJobsService } from '../production-jobs/production-jobs.service';
@@ -87,7 +79,6 @@ export class ProductionOrdersService {
     private readonly inventoryService: InventoryService,
     private readonly productionJobsService: ProductionJobsService,
     private readonly filesService: FilesService,
-    private readonly pdfRendererService: PdfRendererService,
   ) {}
 
   async getProductionOrders(
@@ -245,90 +236,6 @@ export class ProductionOrdersService {
       },
       { excludeExtraneousValues: true },
     );
-  }
-
-  async exportProductionOrderPdf(
-    productionOrderId: string,
-  ): Promise<StreamableFile> {
-    const [[order], itemRows] = await Promise.all([
-      this.db
-        .select({
-          code: productionOrders.code,
-          createdAt: productionOrders.createdAt,
-          orderCode: orders.code,
-          dueDate: orders.dueDate,
-          clientName: clients.name,
-          clientAddress: clients.address,
-        })
-        .from(productionOrders)
-        .innerJoin(orders, eq(orders.id, productionOrders.orderId))
-        .leftJoin(clients, eq(clients.id, orders.clientId))
-        .where(eq(productionOrders.id, productionOrderId)),
-      this.db
-        .select({
-          quantity: productionOrderItems.quantity,
-          note: orderItems.note,
-          itemCode: itemsTable.code,
-          itemRevision: itemsTable.revision,
-          itemName: itemsTable.name,
-          unitName: units.name,
-        })
-        .from(productionOrderItems)
-        .innerJoin(
-          orderItems,
-          eq(orderItems.id, productionOrderItems.orderItemId),
-        )
-        .innerJoin(itemsTable, eq(itemsTable.id, productionOrderItems.itemId))
-        .leftJoin(units, eq(units.id, itemsTable.unitId))
-        .where(eq(productionOrderItems.productionOrderId, productionOrderId))
-        .orderBy(asc(orderItems.sortOrder), asc(productionOrderItems.id)),
-    ]);
-
-    if (!order) {
-      throw new AppException(ErrorCode.E081, HttpStatus.NOT_FOUND);
-    }
-
-    const deliveryDateStr = order.dueDate
-      ? format(order.dueDate, 'dd/MM/yyyy', { in: vnZone })
-      : '';
-    const orderDateStr = format(order.createdAt, 'dd/MM/yyyy', { in: vnZone });
-
-    const items = itemRows.map((item, index) => ({
-      stt: index + 1,
-      item_code: item.itemCode,
-      revision: item.itemRevision ?? '',
-      purchase_request_code: order.orderCode ?? '',
-      item_name: item.itemName,
-      unit_name: item.unitName ?? '',
-      quantity: item.quantity.toLocaleString('en-US', {
-        maximumFractionDigits: 3,
-      }),
-      delivery_date: deliveryDateStr,
-      note: item.note ?? '',
-    }));
-
-    const context = {
-      customer_name: order.clientName ?? '',
-      customer_address: order.clientAddress ?? '',
-      po_code: order.orderCode ?? order.code ?? '',
-      order_date: orderDateStr,
-      code: order.code ?? '',
-      items,
-    };
-
-    const buffer = await this.pdfRendererService.render(
-      FormTemplateType.PRODUCTION_ORDER,
-      context,
-    );
-
-    const fileName = buildFormPdfFileName(
-      FormTemplateType.PRODUCTION_ORDER,
-      order.code,
-    );
-    return new StreamableFile(buffer, {
-      type: 'application/pdf',
-      disposition: `attachment; filename="${fileName}"`,
-    });
   }
 
   /** Sửa tay số lượng sản xuất từng dòng, chỉ khi LSX còn `PENDING` (`E084`).

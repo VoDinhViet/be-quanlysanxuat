@@ -623,6 +623,7 @@
     }
 
   </style>
+{{> print-layout}}
 </head>
 <body>
   <div class="form-wrapper">
@@ -642,11 +643,6 @@
               <div class="company-contact">Đường số 4, khu công nghiệp Sông Mây, Xã Bình Minh, TP Đồng Nai, Việt Nam</div>
               <div class="company-contact">MST: 3602622388 • Điện thoại: 0909185730 • Email: cokhitienhuy@gmail.com • Website: www.cokhitienhuy.com</div>
             </div>
-          </div>
-          <div class="header-iso-flat">
-            <div>Mã biểu mẫu: <strong>BM 09-01</strong></div>
-            <div>Ngày ban hành: <strong>01/07/2025</strong></div>
-            <div>Lần ban hành: <strong>02</strong> • Tiêu chuẩn ISO 9001:2015</div>
           </div>
         </header>
 
@@ -737,7 +733,7 @@
               <div class="sig-title-main">Người Lập</div>
               <div class="sig-title-sub">Ký, ghi rõ họ tên</div>
             </div>
-            {{> creator-signature}}
+            {{> signature name=creator_name date=creator_date}}
           </div>
 
           <div class="sig-flat-col" style="min-width: 150px;">
@@ -745,10 +741,7 @@
               <div class="sig-title-main">QC</div>
               <div class="sig-title-sub">Ký, ghi rõ họ tên</div>
             </div>
-            <div class="sig-name-block">
-              <div class="sig-person-name"></div>
-              <div class="sig-date-note">Ngày: ....................</div>
-            </div>
+            {{> signature name=qc_name date=qc_date}}
           </div>
 
           <div class="sig-flat-col" style="min-width: 150px;">
@@ -756,19 +749,10 @@
               <div class="sig-title-main">Xác Nhận Nhập Kho</div>
               <div class="sig-title-sub">Ký, ghi rõ họ tên</div>
             </div>
-            <div class="sig-name-block">
-              <div class="sig-person-name"></div>
-              <div class="sig-date-note">Ngày: ....................</div>
-            </div>
+            {{> signature name=poster_name date=poster_date}}
           </div>
         </div>
 
-        <!-- 6. Chân trang chính quy -->
-        <footer class="form-flat-footer">
-          <div>Tiến Huy Mold Co., Ltd • ISO 9001:2015</div>
-          <div>Phiếu nhập kho ban hành nội bộ • BM 09-01 Rev: 02, 01.07.2025</div>
-          <div>Trang 1 / 1</div>
-        </footer>
       </div>
     </section>
   </div>

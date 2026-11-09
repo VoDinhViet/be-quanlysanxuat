@@ -1,4 +1,4 @@
-<!-- Generated: 2026-11-04 | Files scanned: 41 | Token estimate: ~3800 -->
+<!-- Generated: 2026-11-09 | Files scanned: 41 | Token estimate: ~3800 -->
 # Inventory codemap
 
 Single warehouse: `inventory_balances.itemId` is UNIQUE, no warehouse column (`src/database/schemas/inventory/inventory-balances.ts`).
@@ -18,7 +18,7 @@ Single warehouse: `inventory_balances.itemId` is UNIQUE, no warehouse column (`s
 
 Split: `*.service` = validation + orchestration. `*.write.ts` / `*.query.ts` = plain functions taking `tx`/`db` (no DI) so IQC/OQC/NCR modules call them without module cycles (`inventory-receipts.write.ts:82`, `supplier-returns.query.ts:15`). Issues, adjustments, requisitions write directly in the service. `inventory-documents.ts` holds only the shared status enum (no table). Code prefixes via `generateDocumentSequence`: PNK `inventory-receipts.write.ts:20`, PXK `inventory-issues.service.ts:451`, PDC `inventory-adjustments.service.ts:323`, MR/PXK `inventory-requisitions.service.ts:635`, PTNCC `supplier-returns.service.ts:502`.
 
-## 2. Routes (46). Perm: R=inventory:read, C=inventory:create, U=inventory:update, D=inventory:delete
+## 2. Routes (47). Perm: R=inventory:read, C=inventory:create, U=inventory:update, D=inventory:delete
 
 Controller file = `<folder>.controller.ts`; "Svc" = service line.
 
@@ -37,11 +37,11 @@ Controller file = `<folder>.controller.ts`; "Svc" = service line.
 | POST .../:receiptId/confirm | U | confirmInventoryReceipt (559) | receipts, quality_inspections |
 | POST .../:receiptId/post | U | postInventoryReceipt (642) | receipts, balances, transactions, payment_requests, production_jobs/orders(+logs), ncrs |
 | POST .../:receiptId/cancel | U | cancelInventoryReceipt (860) | receipts, quality_inspections |
-| GET .../:receiptId/export-pdf | R | exportInventoryReceiptPdf (290): PDF BM 09-01 A4 portrait; PO / Lý do via `resolvePoOrReason`, PO codes from receipt lines, supplier or client block | - |
+| GET .../:receiptId/export-pdf | R | exportInventoryReceiptPdf (290): PDF BM 09-01 A4 portrait; signatures = creator, first non-cancelled IQC inspector (`INVENTORY_RECEIPT`), poster; PO / Lý do via `resolvePoOrReason`, PO codes from receipt lines, supplier or client block | - |
 | GET .../:receiptId/related-notes | R | PurchaseNotesService.getChainNotesFromReceipt | - |
 | GET /inventory-issues | R | getInventoryIssues (91) | - |
 | GET /inventory-issues/:issueId | R | getInventoryIssue (249), returns `postNote` + `files` | - |
-| GET .../:issueId/export-pdf | R | exportInventoryIssuePdf (295): PDF BM 09-02 A4 portrait; requisition code, PO / Lý do via `resolvePoOrReason`, requester = requisition creator | - |
+| GET .../:issueId/export-pdf | R | exportInventoryIssuePdf (295): PDF BM 09-02 A4 portrait; signatures = creator, requisition approver, poster; requisition code, PO / Lý do via `resolvePoOrReason`, requester = requisition creator | - |
 | POST /inventory-issues | C | createInventoryIssue (264) | issues, issue_items |
 | PATCH /inventory-issues/:issueId | U | updateInventoryIssue (291) | issues, issue_items |
 | DELETE /inventory-issues/:issueId | D | deleteInventoryIssue (321) | issues |
@@ -50,7 +50,7 @@ Controller file = `<folder>.controller.ts`; "Svc" = service line.
 | GET /inventory-requisitions | inventory-requisitions:read | getInventoryRequisitions (72) | - |
 | GET /inventory-requisitions/lines | :read | RequisitionLinesService.getRequisitionPickerLines (lines.service 109); declared before `:requisitionId` | - |
 | GET .../:requisitionId | :read | getInventoryRequisition (150) | - |
-| GET .../:requisitionId/export-pdf | :read | InventoryRequisitionPdfService.exportInventoryRequisitionPdf (pdf.service 31): PDF BM 09-03 A4 portrait; PO / Lý do = order `buyerPoNo` for PRODUCTION, `reason` otherwise | - |
+| GET .../:requisitionId/export-pdf | :read | InventoryRequisitionPdfService.exportInventoryRequisitionPdf (pdf.service 31): PDF BM 09-06 A4 portrait; signatures = creator + approver; PO / Lý do = order `buyerPoNo` for PRODUCTION, `reason` otherwise | - |
 | POST /inventory-requisitions | :create | createInventoryRequisition (185) | requisitions, requisition_items |
 | PATCH .../:requisitionId | :update | updateInventoryRequisition (233); REJECTED reopens to DRAFT | requisitions, requisition_items |
 | DELETE .../:requisitionId | :delete | deleteInventoryRequisition (270), DRAFT only | requisitions |
@@ -74,6 +74,7 @@ Controller file = `<folder>.controller.ts`; "Svc" = service line.
 | GET /supplier-returns | R | getSupplierReturns (51) | - |
 | GET /supplier-returns/summary | R | getSupplierReturnSummary -> `SupplierReturnsSummaryService.getSummary` (`supplier-returns-summary.service.ts:20`): `groupBy` status (default, count and `totalQuantity` per status) \| supplier (`limit` default 20, max 50, applies only here); optional `status`, `startDate`/`endDate` on `returnDate`; MCP tool `inventory_supplier_return_summary` (catalog file `purchasing.catalog.ts`); declared before `:supplierReturnId` | - |
 | GET /supplier-returns/:supplierReturnId | R | getSupplierReturn (194) | - |
+| GET .../:supplierReturnId/export-pdf | R | `SupplierReturnPdfService.exportSupplierReturnPdf` (`supplier-return-pdf.service.ts`): PDF BM 09-08 A4 portrait, one line per document; signatures = QC `createdBy`, confirm `postedBy/At`, approval = IQC `approvedBy/At`; converted qty always `-` (not stored) | - |
 | PATCH .../:supplierReturnId | U | updateSupplierReturn (233), DRAFT, note only | supplier_returns, quality_inspections(+_results).dispositionNote |
 | POST .../:supplierReturnId/post | U | postSupplierReturn (336) | supplier_returns, supplier_return_files, balances, transactions, outsourcing_orders, production_job_operations, quality_inspections |
 

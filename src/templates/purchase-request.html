@@ -607,7 +607,19 @@
       min-width: 110px;
     }
 
+    .meta-section-title {
+      font-size: 8pt;
+      font-weight: 700;
+      color: var(--navy);
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      border-bottom: 1px solid var(--border-line);
+      padding-bottom: 3px;
+      margin-top: 6px;
+    }
+
   </style>
+{{> print-layout}}
 </head>
 <body>
   <div class="form-wrapper">
@@ -628,11 +640,6 @@
               <div class="company-contact">MST: 3602622388 • Điện thoại: 0909185730 • Email: cokhitienhuy@gmail.com • Website: www.cokhitienhuy.com</div>
             </div>
           </div>
-          <div class="header-iso-flat">
-            <div>Mã biểu mẫu: <strong>BM 07-01</strong></div>
-            <div>Ngày ban hành: <strong>01/07/2025</strong></div>
-            <div>Lần ban hành: <strong>02</strong> • Tiêu chuẩn ISO 9001:2015</div>
-          </div>
         </header>
 
         <!-- 2. Tiêu đề biểu mẫu -->
@@ -641,6 +648,7 @@
         </div>
 
         <!-- 3. Thông tin mua hàng (Hoàn toàn phẳng, không dùng Card) -->
+        <div class="meta-section-title">Thông tin mua hàng</div>
         <div class="meta-flat-grid meta-grid-3">
           <div class="meta-row-item meta-row-wide">
             <span class="meta-item-lbl">PO / Lý do:</span>
@@ -671,13 +679,14 @@
         </div>
 
         <!-- 4. Bảng danh sách vật tư đề xuất -->
+        <div class="meta-section-title">Danh sách vật tư</div>
         <table class="form-integrated-table" id="table-purchase-request">
           <thead>
             <tr>
               <th style="width: 35px;">STT</th>
               <th style="width: 130px;">Mã vật tư</th>
               <th>Tên hàng hóa (bao gồm quy cách)</th>
-              <th style="width: 70px;">Đơn vị tính</th>
+              <th style="width: 70px;">ĐVT</th>
               <th style="width: 90px;">Số lượng</th>
               <th style="width: 220px;">Ghi chú</th>
             </tr>
@@ -702,26 +711,17 @@
             <div>
               <div class="sig-title-main">Người Lập</div>
             </div>
-            {{> creator-signature}}
+            {{> signature name=creator_name date=creator_date}}
           </div>
 
           <div class="sig-flat-col" style="min-width: 180px;">
             <div>
               <div class="sig-title-main">Phê Duyệt</div>
             </div>
-            <div class="sig-name-block">
-              <div class="sig-person-name"></div>
-              <div class="sig-date-note">Ngày: ....................</div>
-            </div>
+            {{> signature name=approver_name date=approver_date}}
           </div>
         </div>
 
-        <!-- 6. Chân trang chính quy -->
-        <footer class="form-flat-footer">
-          <div>Tiến Huy Mold Co., Ltd • ISO 9001:2015</div>
-          <div>Đề xuất mua hàng ban hành nội bộ • BM 07-01 Rev: 02, 01.07.2025</div>
-          <div>Trang 1 / 1</div>
-        </footer>
       </div>
     </section>
   </div>

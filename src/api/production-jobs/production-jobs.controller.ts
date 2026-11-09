@@ -46,6 +46,7 @@ import { ProductionJobStatsResDto } from './dto/production-job-stats.res.dto';
 import { ProductionJobResDto } from './dto/production-job.res.dto';
 import { UpdateProductionJobOperationDueDateReqDto } from './dto/update-production-job-operation-due-date.req.dto';
 import { UpdateProductionJobOperationsPlanReqDto } from './dto/update-production-job-operations-plan.req.dto';
+import { ProductionJobPdfService } from './production-job-pdf.service';
 import { ProductionJobsSummaryService } from './production-jobs-summary.service';
 import { ProductionJobsService } from './production-jobs.service';
 
@@ -55,6 +56,7 @@ export class ProductionJobsController {
   constructor(
     private readonly productionJobsService: ProductionJobsService,
     private readonly productionJobsSummaryService: ProductionJobsSummaryService,
+    private readonly productionJobPdfService: ProductionJobPdfService,
     private readonly oqcService: OqcService,
     private readonly operationAccess: OperationAccessService,
   ) {}
@@ -152,6 +154,18 @@ export class ProductionJobsController {
     @UUIDParam('jobId') jobId: string,
   ): Promise<ProductionJobDetailResDto> {
     return this.productionJobsService.getProductionJob(jobId);
+  }
+
+  @Get(':jobId/export-pdf')
+  @Permissions('production:read')
+  @ApiAuth({
+    summary: 'Xuất PDF Lệnh sản xuất theo Job (BM 08-05)',
+    fileType: 'application/pdf',
+  })
+  exportProductionJobPdf(
+    @UUIDParam('jobId') jobId: string,
+  ): Promise<StreamableFile> {
+    return this.productionJobPdfService.exportProductionJobPdf(jobId);
   }
 
   @Get(':jobId/bom')

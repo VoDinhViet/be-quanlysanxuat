@@ -585,7 +585,43 @@
       justify-content: space-between;
     }
 
+    /* Khối thông tin 3 cột: minmax(0, 1fr) để dòng chấm `::after` (nowrap) không nới cột tràn trang */
+    .meta-flat-grid.meta-grid-3 {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      row-gap: 8px;
+    }
+
+    .meta-grid-3 .meta-row-item {
+      margin-bottom: 0;
+    }
+
+    .meta-grid-3 .meta-row-wide {
+      grid-column: span 2;
+    }
+
+    .meta-flat-grid.meta-grid-3 > div .meta-item-lbl {
+      min-width: 110px;
+    }
+
+    .meta-grid-3 .meta-row-full {
+      grid-column: 1 / -1;
+    }
+
+    .meta-section-title {
+      font-size: 8pt;
+      font-weight: 700;
+      color: var(--navy);
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      border-bottom: 1px solid var(--border-line);
+      padding-bottom: 3px;
+      margin-top: 6px;
+    }
+
+
   </style>
+{{> print-layout}}
+</head>
 <body>
   <div class="form-wrapper">
     <!-- BIỂU MẪU: ĐƠN HÀNG / SALES ORDER -->
@@ -605,57 +641,77 @@
               <div class="company-contact">MST: 3602622388 • Điện thoại: 0909185730 • Email: cokhitienhuy@gmail.com • Website: www.cokhitienhuy.com</div>
             </div>
           </div>
-          <div class="header-iso-flat">
-            <div>Hệ thống ISO: <strong>9001:2015</strong></div>
-            <div>Hiệu lực: <strong>01/2026 (Rev: 02)</strong></div>
-          </div>
         </header>
 
         <!-- 2. Tiêu đề biểu mẫu -->
         <div class="title-flat-wrap">
           <h1 class="title-main-text">ĐƠN HÀNG</h1>
-          <div class="title-sub-text">SALES ORDER</div>
         </div>
 
-        <!-- 3. Thông tin chung (Hoàn toàn phẳng, không dùng Card) -->
-        <div class="meta-flat-grid">
-          <div>
-            <div class="meta-row-item">
-              <span class="meta-item-lbl">Khách hàng <span>/Customer:</span></span>
-              <div class="meta-item-val font-semibold">{{customer_name}}</div>
-            </div>
-            <div class="meta-row-item">
-              <span class="meta-item-lbl">Địa chỉ <span>/Address:</span></span>
-              <div class="meta-item-val">{{customer_address}}</div>
-            </div>
+        <!-- 3. Thông tin đơn hàng -->
+        <div class="meta-section-title">Thông tin đơn hàng</div>
+        <div class="meta-flat-grid meta-grid-3" style="grid-template-columns: repeat(4, minmax(0, 1fr));">
+          <div class="meta-row-item">
+            <span class="meta-item-lbl" style="min-width: 0;">Mã đơn hàng:</span>
+            <div class="meta-item-val font-bold font-mono" style="color: var(--navy);">{{code}}</div>
           </div>
-
-          <div>
-            <div class="meta-row-item">
-              <span class="meta-item-lbl">Số đơn <span>/Order No:</span></span>
-              <div class="meta-item-val font-bold font-mono" style="color: var(--navy);">{{code}}</div>
-            </div>
-            <div class="meta-row-item">
-              <span class="meta-item-lbl">Ngày tạo đơn <span>/Date:</span></span>
-              <div class="meta-item-val font-mono">{{order_date}}</div>
-            </div>
+          <div class="meta-row-item">
+            <span class="meta-item-lbl" style="min-width: 0;">Số PO:</span>
+            <div class="meta-item-val font-mono">{{buyer_po_no}}</div>
+          </div>
+          <div class="meta-row-item">
+            <span class="meta-item-lbl" style="min-width: 0;">Ngày đặt:</span>
+            <div class="meta-item-val font-mono">{{order_date}}</div>
+          </div>
+          <div class="meta-row-item">
+            <span class="meta-item-lbl" style="min-width: 0;">Ngày giao:</span>
+            <div class="meta-item-val font-mono">{{due_date}}</div>
+          </div>
+        </div>
+        <div class="meta-flat-grid meta-grid-3">
+          <div class="meta-row-item meta-row-full">
+            <span class="meta-item-lbl">Khách hàng:</span>
+            <div class="meta-item-val font-semibold">{{customer_name}}</div>
+          </div>
+          <div class="meta-row-item meta-row-wide">
+            <span class="meta-item-lbl">Địa chỉ:</span>
+            <div class="meta-item-val">{{customer_address}}</div>
+          </div>
+          <div class="meta-row-item">
+            <span class="meta-item-lbl">Mã số thuế:</span>
+            <div class="meta-item-val font-mono">{{customer_tax_code}}</div>
+          </div>
+          <div class="meta-row-item">
+            <span class="meta-item-lbl">Điện thoại:</span>
+            <div class="meta-item-val font-mono">{{customer_phone}}</div>
+          </div>
+          <div class="meta-row-item">
+            <span class="meta-item-lbl">Người liên hệ:</span>
+            <div class="meta-item-val">{{customer_contact}}</div>
+          </div>
+          <div class="meta-row-item">
+            <span class="meta-item-lbl">Email:</span>
+            <div class="meta-item-val">{{customer_email}}</div>
+          </div>
+          <div class="meta-row-item meta-row-full">
+            <span class="meta-item-lbl">Ghi chú:</span>
+            <div class="meta-item-val">{{note}}</div>
           </div>
         </div>
 
-        <!-- 4. Bảng chi tiết & Khối tính tiền liền khối (TFOOT Ledger chuẩn mực) -->
+        <!-- 4. Bảng chi tiết & khối tính tiền liền khối -->
+        <div class="meta-section-title">Chi tiết hàng hoá đặt mua</div>
         <table class="form-integrated-table" id="table-order">
           <thead>
             <tr>
-              <th style="width: 32px;">STT<span class="th-subline">No</span></th>
-              <th style="width: 115px;">Mã sản phẩm<span class="th-subline">Product Code</span></th>
-              <th>Tên hàng / Quy cách kỹ thuật gia công<span class="th-subline">Description & Specifications</span></th>
-              <th style="width: 45px;">ĐVT<span class="th-subline">Unit</span></th>
-              <th style="width: 55px;">Số lượng<span class="th-subline">Qty</span></th>
-              <th style="width: 100px;">Đơn giá (VNĐ)<span class="th-subline">Unit Price</span></th>
-              <th style="width: 65px;">Giảm giá<span class="th-subline">Discount</span></th>
-              <th style="width: 110px;">Thành tiền (VNĐ)<span class="th-subline">Amount</span></th>
-              <th style="width: 70px;">Ngày giao<span class="th-subline">Delivery</span></th>
-              <th style="width: 90px;">Ghi chú<span class="th-subline">Note</span></th>
+              <th style="width: 32px;">STT</th>
+              <th style="width: 100px;">Mã sản phẩm</th>
+              <th>Tên hàng / Quy cách kỹ thuật gia công</th>
+              <th style="width: 45px;">ĐVT</th>
+              <th style="width: 55px;">Số lượng</th>
+              <th style="width: 85px;">Đơn giá (VNĐ)</th>
+              <th style="width: 100px;">Thành tiền (VNĐ)</th>
+              <th style="width: 100px;">Ghi chú</th>
             </tr>
           </thead>
           <tbody>
@@ -667,97 +723,65 @@
               <td><div class="cell-edit text-center">{{this.unit_name}}</div></td>
               <td><div class="cell-edit text-right font-bold font-mono">{{this.quantity}}</div></td>
               <td><div class="cell-edit text-right font-mono">{{this.unit_price}}</div></td>
-              <td><div class="cell-edit text-right font-mono">{{this.discount_percent}}</div></td>
               <td><div class="cell-edit text-right font-bold font-mono" style="color: var(--navy);">{{this.line_total}}</div></td>
-              <td><div class="cell-edit text-center font-mono">{{this.due_date}}</div></td>
               <td><div class="cell-edit text-left">{{this.note}}</div></td>
             </tr>
             {{/each}}
           </tbody>
 
-          <!-- KHỐI TÍNH TIỀN LIỀN TRONG BẢNG (CHUẨN KẾ TOÁN CHÍNH QUY - KHÔNG CARD) -->
           <tfoot>
             <tr class="tfoot-calc-row">
-              <td colspan="6" rowspan="5" class="tfoot-notes-cell">
+              <td colspan="4" rowspan="{{#if has_discount}}6{{else}}5{{/if}}" class="tfoot-notes-cell" style="vertical-align: top;">
                 <div class="tfoot-words-line">
-                  <span class="tfoot-words-lbl">Số tiền viết bằng chữ / In words:</span>
-                  <div class="tfoot-words-val font-semibold" style="margin-top: 2px;">{{amount_in_words}}</div>
+                  <span class="tfoot-words-lbl">Ghi chú / Điều khoản thanh toán / Yêu cầu mua hàng:</span>
                 </div>
-                <div class="tfoot-subnotes" style="outline: none;">
-                  • Điều khoản thanh toán: Chuyển khoản trong vòng 30 ngày kể từ ngày nhận đủ hàng và hóa đơn hợp lệ.<br>
-                  • Tiêu chuẩn đóng gói: Theo quy cách kỹ thuật gia công khuôn mẫu Tiến Huy Mold.
-                </div>
+                <div class="tfoot-subnotes">{{#if payment_term}}Điều khoản thanh toán: {{payment_term}}{{/if}}</div>
               </td>
-              <td class="tfoot-calc-lbl" colspan="2">Thành tiền / Subtotal:</td>
-              <td class="tfoot-calc-val font-mono" colspan="2">
-                <span>{{subtotal}}</span> <span class="tfoot-curr">VNĐ</span>
-              </td>
+              <td class="tfoot-calc-lbl" colspan="2">Thành tiền (chưa thuế):</td>
+              <td class="tfoot-calc-val font-mono" colspan="2">{{subtotal}}</td>
             </tr>
+            {{#if has_discount}}
             <tr class="tfoot-calc-row">
-              <td class="tfoot-calc-lbl" colspan="2">Chiết khấu / Discount:</td>
-              <td class="tfoot-calc-val font-mono" colspan="2">
-                <span>{{discount_amount}}</span> <span class="tfoot-curr">VNĐ</span>
-              </td>
+              <td class="tfoot-calc-lbl" colspan="2">Chiết khấu:</td>
+              <td class="tfoot-calc-val font-mono" colspan="2">{{discount_amount}}</td>
             </tr>
-            <tr class="tfoot-calc-row">
-              <td class="tfoot-calc-lbl" colspan="2">Phí vận chuyển / Shipping:</td>
-              <td class="tfoot-calc-val font-mono" colspan="2">
-                <span>{{shipping_fee}}</span> <span class="tfoot-curr">VNĐ</span>
-              </td>
-            </tr>
+            {{/if}}
             <tr class="tfoot-calc-row">
               <td class="tfoot-calc-lbl" colspan="2">
-                Thuế GTGT / VAT (<span style="color: var(--navy); font-weight: bold;">{{vat_percent}}%</span>):
+                Thuế VAT (<span style="color: var(--navy); font-weight: bold;">{{vat_percent}}%</span>):
               </td>
-              <td class="tfoot-calc-val font-mono" colspan="2">
-                <span>{{vat_amount}}</span> <span class="tfoot-curr">VNĐ</span>
-              </td>
+              <td class="tfoot-calc-val font-mono" colspan="2">{{vat_amount}}</td>
+            </tr>
+            <tr class="tfoot-calc-row">
+              <td class="tfoot-calc-lbl" colspan="2">Chi phí khác (VNĐ):</td>
+              <td class="tfoot-calc-val font-mono" colspan="2">{{shipping_fee}}</td>
             </tr>
             <tr class="tfoot-grand-row">
-              <td class="tfoot-grand-lbl" colspan="2">TỔNG TIỀN / GRAND TOTAL:</td>
-              <td class="tfoot-grand-val font-mono" colspan="2">
-                <span>{{grand_total}}</span> <span class="tfoot-curr" style="color: var(--navy); font-weight: 700;">VNĐ</span>
-              </td>
+              <td class="tfoot-grand-lbl" colspan="2">TỔNG TIỀN (VNĐ):</td>
+              <td class="tfoot-grand-val font-mono" colspan="2">{{grand_total}}</td>
             </tr>
           </tfoot>
         </table>
 
-        <!-- 5. Khối chữ ký phẳng (Không dùng viền hộp Card) -->
+        <!-- 5. Khối chữ ký -->
         <div class="signatures-flat-row" style="justify-content: space-between; padding: 0 70px;">
           <div class="sig-flat-col">
             <div>
-              <div class="sig-title-main">NV Kinh Doanh</div>
-              <div class="sig-title-sub">Sales Staff (Ký, ghi rõ họ tên)</div>
+              <div class="sig-title-main">Nhân viên kinh doanh</div>
+              <div class="sig-title-sub">Ký, ghi rõ họ tên</div>
             </div>
-            <div class="sig-name-block">
-              <div class="sig-person-name">{{assigned_user_name}}</div>
-              <div class="sig-date-note">Ngày ký: ....................</div>
-            </div>
+            {{> signature name=sales_staff_name date=sales_staff_date}}
           </div>
 
           <div class="sig-flat-col">
             <div>
-              <div class="sig-title-main">Giám Đốc</div>
-              <div class="sig-title-sub">General Director (Ký duyệt, đóng dấu)</div>
+              <div class="sig-title-main">Giám đốc</div>
+              <div class="sig-title-sub">Ký, ghi rõ họ tên</div>
             </div>
-            <div class="sig-name-block">
-              {{#if approver_name}}
-                <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="display: block; margin: 0 auto 6px;">
-                  <path d="M4 12.5l5 5L20 6.5"></path>
-                </svg>
-              {{/if}}
-              <div class="sig-person-name">{{approver_name}}</div>
-              <div class="sig-date-note">Ngày ký: {{#if approver_date}}{{approver_date}}{{else}}....................{{/if}}</div>
-            </div>
+            {{> signature name=approver_name date=approver_date}}
           </div>
         </div>
 
-        <!-- 6. Chân trang -->
-        <footer class="form-flat-footer">
-          <div>Tiến Huy Mold Co., Ltd • ISO 9001:2015</div>
-          <div>Cam kết gia công cơ khí chính xác theo đúng bản vẽ kỹ thuật</div>
-          <div>Trang 1 / 1</div>
-        </footer>
       </div>
     </section>
   </div>

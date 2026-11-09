@@ -33,6 +33,7 @@ import { UnfulfilledOrderItemResDto } from './dto/unfulfilled-order-item.res.dto
 import { OutboundOrderStatsResDto } from './dto/outbound-order-stats.res.dto';
 import { UpdateOutboundOrderInvoiceReqDto } from './dto/update-outbound-order-invoice.req.dto';
 import { UpdateOutboundOrderReqDto } from './dto/update-outbound-order.req.dto';
+import { OutboundOrderPdfService } from './outbound-order-pdf.service';
 import { OutboundOrdersSummaryService } from './outbound-orders-summary.service';
 import { OutboundOrdersService } from './outbound-orders.service';
 
@@ -42,6 +43,7 @@ export class OutboundOrdersController {
   constructor(
     private readonly outboundOrdersService: OutboundOrdersService,
     private readonly outboundOrdersSummaryService: OutboundOrdersSummaryService,
+    private readonly outboundOrderPdfService: OutboundOrderPdfService,
   ) {}
 
   @Get()
@@ -127,6 +129,18 @@ export class OutboundOrdersController {
     @UUIDParam('outboundOrderId') outboundOrderId: string,
   ): Promise<OutboundOrderResDto> {
     return this.outboundOrdersService.getOutboundOrder(outboundOrderId);
+  }
+
+  @Get(':outboundOrderId/export-pdf')
+  @Permissions('outbound:read')
+  @ApiAuth({
+    summary: 'Xuất PDF Phiếu giao hàng (BM 09-04)',
+    fileType: 'application/pdf',
+  })
+  exportOutboundOrderPdf(
+    @UUIDParam('outboundOrderId') outboundOrderId: string,
+  ): Promise<StreamableFile> {
+    return this.outboundOrderPdfService.exportOutboundOrderPdf(outboundOrderId);
   }
 
   @Get(':outboundOrderId/items')

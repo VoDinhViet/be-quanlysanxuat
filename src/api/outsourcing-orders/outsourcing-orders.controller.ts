@@ -6,6 +6,7 @@ import {
   Patch,
   Post,
   Query,
+  StreamableFile,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 
@@ -29,6 +30,7 @@ import { OutsourcingOrderResDto } from './dto/outsourcing-order.res.dto';
 import { OverdueOutsourcingOrderResDto } from './dto/overdue-outsourcing-order.res.dto';
 import { PageOutsourcingOrderResDto } from './dto/page-outsourcing-order.res.dto';
 import { RejectOutsourcingOrderReqDto } from './dto/reject-outsourcing-order.req.dto';
+import { OutsourcingOrderPdfService } from './outsourcing-order-pdf.service';
 import { OutsourcingOrdersSummaryService } from './outsourcing-orders-summary.service';
 import { OutsourcingOrdersService } from './outsourcing-orders.service';
 
@@ -39,6 +41,7 @@ export class OutsourcingOrdersController {
     private readonly outsourcingOrdersService: OutsourcingOrdersService,
     private readonly operationAccess: OperationAccessService,
     private readonly outsourcingOrdersSummaryService: OutsourcingOrdersSummaryService,
+    private readonly outsourcingOrderPdfService: OutsourcingOrderPdfService,
   ) {}
 
   @Get()
@@ -127,6 +130,20 @@ export class OutsourcingOrdersController {
     @UUIDParam('outsourcingOrderId') outsourcingOrderId: string,
   ): Promise<OutsourcingOrderItemResDto[]> {
     return this.outsourcingOrdersService.getOrderItems(outsourcingOrderId);
+  }
+
+  @Get(':outsourcingOrderId/export-pdf')
+  @Permissions('outsourcing:read')
+  @ApiAuth({
+    summary: 'Xuất PDF Phiếu xuất gia công ngoài (BM 09-06)',
+    fileType: 'application/pdf',
+  })
+  exportOutsourcingOrderPdf(
+    @UUIDParam('outsourcingOrderId') outsourcingOrderId: string,
+  ): Promise<StreamableFile> {
+    return this.outsourcingOrderPdfService.exportOutsourcingOrderPdf(
+      outsourcingOrderId,
+    );
   }
 
   @Post()

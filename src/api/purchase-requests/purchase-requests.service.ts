@@ -234,8 +234,8 @@ export class PurchaseRequestsService {
     );
   }
 
-  /** Dòng đã huỷ (`cancelledAt`) không mua nên không in; `context` không có tên người ký — các ô ký
-   * để trống cho ký tay. */
+  /** Dòng đã huỷ (`cancelledAt`) không mua nên không in; hai ô ký là người đề xuất và người duyệt
+   * phiếu. */
   async exportPurchaseRequestPdf(
     purchaseRequestId: string,
   ): Promise<StreamableFile> {
@@ -249,6 +249,7 @@ export class PurchaseRequestsService {
           },
           productionJob: true,
           requesterBy: true,
+          approverBy: true,
         },
       }),
       this.db
@@ -293,7 +294,13 @@ export class PurchaseRequestsService {
       job_code: purchaseRequest.productionJob?.code ?? '',
       department_name: purchaseRequest.department?.name ?? '',
       creator_name: purchaseRequest.requesterBy?.fullName ?? '',
-      creator_date: format(new Date(), 'dd/MM/yyyy', { in: vnZone }),
+      creator_date: format(purchaseRequest.createdAt, 'dd/MM/yyyy', {
+        in: vnZone,
+      }),
+      approver_name: purchaseRequest.approverBy?.fullName ?? '',
+      approver_date: purchaseRequest.approvedAt
+        ? format(purchaseRequest.approvedAt, 'dd/MM/yyyy', { in: vnZone })
+        : '',
       request_items: requestLines.map((line, index) => ({
         stt: index + 1,
         item_code: line.item.code,

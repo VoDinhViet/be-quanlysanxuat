@@ -277,7 +277,7 @@ export class PurchaseRequestsController {
   @Get(':purchaseRequestId/export-pdf')
   @Permissions('purchase-requests:read')
   @ApiAuth({
-    summary: 'Xuất PDF Đề xuất mua hàng (BM 07-01)',
+    summary: 'Xuất PDF Đề xuất mua hàng (BM 09-03)',
     fileType: 'application/pdf',
   })
   exportPurchaseRequestPdf(

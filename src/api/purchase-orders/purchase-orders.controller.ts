@@ -210,7 +210,7 @@ export class PurchaseOrdersController {
   @Get(':purchaseOrderId/export-pdf')
   @Permissions('purchasing:read')
   @ApiAuth({
-    summary: 'Xuất PDF Đơn đặt hàng (BM 07-02)',
+    summary: 'Xuất PDF Đơn đặt hàng (BM 05-04)',
     fileType: 'application/pdf',
   })
   exportPurchaseOrderPdf(

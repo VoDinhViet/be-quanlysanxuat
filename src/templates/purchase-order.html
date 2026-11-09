@@ -630,6 +630,7 @@
     }
 
   </style>
+{{> print-layout}}
 </head>
 <body>
   <div class="form-wrapper">
@@ -649,11 +650,6 @@
               <div class="company-contact">Đường số 4, khu công nghiệp Sông Mây, Xã Bình Minh, TP Đồng Nai, Việt Nam</div>
               <div class="company-contact">MST: 3602622388 • Điện thoại: 0909185730 • Email: cokhitienhuy@gmail.com • Website: www.cokhitienhuy.com</div>
             </div>
-          </div>
-          <div class="header-iso-flat">
-            <div>Mã biểu mẫu: <strong>BM 07-02</strong></div>
-            <div>Ngày ban hành: <strong>01/07/2025</strong></div>
-            <div>Lần ban hành: <strong>02</strong> • Tiêu chuẩn ISO 9001:2015</div>
           </div>
         </header>
 
@@ -709,7 +705,7 @@
             <div class="meta-item-val">{{supplier_contact}}</div>
           </div>
 
-          <div class="meta-row-item">
+          <div class="meta-row-item meta-row-full">
             <span class="meta-item-lbl">Email:</span>
             <div class="meta-item-val">{{supplier_email}}</div>
           </div>
@@ -752,10 +748,6 @@
                 <div class="tfoot-terms-line">
                   <span class="tfoot-words-lbl">Ghi chú:</span>{{note}}
                 </div>
-                <div class="tfoot-subnotes">
-                  <span class="tfoot-words-lbl">Tổng thanh toán bằng chữ:</span>
-                  <span class="tfoot-words-val">{{amount_in_words}}</span>
-                </div>
               </td>
               <td class="tfoot-calc-lbl" colspan="2">Tổng tiền hàng (chưa thuế):</td>
               <td class="tfoot-calc-val font-mono">{{subtotal}}</td>
@@ -785,42 +777,37 @@
           </tfoot>
         </table>
 
-        <!-- 5. Khối chữ ký: bên mua (lập, duyệt lấy từ báo giá gốc) và nhà cung cấp xác nhận (điền tay) -->
-        <div class="signatures-flat-row" style="justify-content: space-between; padding: 0 20px;">
-          <div class="sig-flat-col" style="min-width: 150px;">
-            <div>
-              <div class="sig-title-main">Người Lập</div>
-              <div class="sig-title-sub">Bên mua</div>
+        <!-- 5. Xác nhận: bên mua (lập, duyệt lấy từ báo giá gốc) và nhà cung cấp (điền tay) -->
+        <div class="meta-section-title">Xác nhận</div>
+        <div class="signatures-flat-row" style="justify-content: space-between;">
+          <div style="flex: 1;">
+            <div class="sig-title-main">Công ty TNHH Cơ khí Khuôn mẫu Tiến Huy (Bên mua)</div>
+            <div class="signatures-flat-row" style="margin-top: 6px;">
+              <div class="sig-flat-col" style="min-width: 150px;">
+                <div>
+                  <div class="sig-title-main">Người Lập</div>
+                  <div class="sig-title-sub">Ký, ghi rõ họ tên</div>
+                </div>
+                {{> signature name=creator_name date=creator_date}}
+              </div>
+
+              <div class="sig-flat-col" style="min-width: 150px;">
+                <div>
+                  <div class="sig-title-main">Phê Duyệt</div>
+                  <div class="sig-title-sub">Ký, ghi rõ họ tên</div>
+                </div>
+                {{> signature name=approver_name date=approver_date}}
+              </div>
             </div>
-            {{> creator-signature}}
           </div>
 
-          <div class="sig-flat-col" style="min-width: 150px;">
-            <div>
-              <div class="sig-title-main">Phê Duyệt</div>
-              <div class="sig-title-sub">Bên mua</div>
-            </div>
-            {{> approver-signature}}
-          </div>
-
-          <div class="sig-flat-col" style="min-width: 190px;">
-            <div>
-              <div class="sig-title-main">Nhà Cung Cấp Xác Nhận</div>
-              <div class="sig-title-sub">Xác nhận số lượng, giá và thời gian giao hàng</div>
-            </div>
-            <div class="sig-name-block">
-              <div class="sig-person-name"></div>
-              <div class="sig-date-note">Ngày: ....................</div>
-            </div>
+          <div style="flex: 1;">
+            <div class="sig-title-main">Nhà cung cấp (Bên bán)</div>
+            <div class="sig-title-main">Xác nhận</div>
+            <div class="sig-title-sub">Xác nhận số lượng, giá và thời gian giao hàng</div>
           </div>
         </div>
 
-        <!-- 6. Chân trang chính quy -->
-        <footer class="form-flat-footer">
-          <div>Tiến Huy Mold Co., Ltd • ISO 9001:2015</div>
-          <div>Đơn đặt hàng ban hành nội bộ • BM 07-02 Rev: 02, 01.07.2025</div>
-          <div>Trang 1 / 1</div>
-        </footer>
       </div>
     </section>
   </div>

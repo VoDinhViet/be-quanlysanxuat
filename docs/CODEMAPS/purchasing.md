@@ -1,4 +1,4 @@
-<!-- Generated: 2026-11-04 | Files scanned: 57 | Token estimate: ~3300 -->
+<!-- Generated: 2026-11-09 | Files scanned: 57 | Token estimate: ~3300 -->
 # Purchasing codemap
 
 Paths relative to `src/api/` unless starting `src/`. Abbreviations: PRS=`purchase-requests/purchase-requests.service.ts`, PQS=`purchase-quotations/purchase-quotations.service.ts`, POS=`purchase-orders/purchase-orders.service.ts`, PYS=`payment-requests/payment-requests.service.ts`, PLS=`purchase-ledger/purchase-ledger.service.ts`, PNS=`purchase-notes/purchase-notes.service.ts`, SUS=`suppliers/suppliers.service.ts`. Purchase-requests, purchase-quotations, purchase-orders, payment-requests (and supplier-returns, see `inventory.md`) each have a `*-summary.service.ts` with read-only queries for the summary routes (section 2); they run on the global `DRIZZLE` db, return plain arrays (no paging, `limit` max 50, default 20) and are MCP tools (`mcp.md`). "Today" is Asia/Ho_Chi_Minh; shared helpers are in `src/common/summary/`.
@@ -27,7 +27,7 @@ purchase-requests (16), `PurchaseRequestsController` -> PRS; perm `purchase-requ
 - POST /:id/items update: createPurchaseRequestItems :275; PATCH /:id/items/:itemId update :308; DELETE same path update :339 [purchase_request_items].
 - PATCH /:id/items/:itemId/purchasable update :376 [purchase_request_items.cancelledAt]. PATCH /:id/note :502; /needed-date :523 (update).
 - GET /:id/related-notes read: PNS.getChainNotesFromRequest :37.
-- GET /:id/export-pdf read: exportPurchaseRequestPdf :234 (PDF BM 07-01, A4 portrait, `FormTemplateType.PURCHASE_REQUEST`; skips cancelled lines, signature boxes left blank).
+- GET /:id/export-pdf read: exportPurchaseRequestPdf :234 (PDF BM 09-03, A4 portrait, `FormTemplateType.PURCHASE_REQUEST`; skips cancelled lines; signatures = requester + approver).
 
 purchase-quotations (13) -> PQS:
 - GET /status-stats purchasing:read: `getQuotationStatusStats` (ctrl:81) -> `PurchaseQuotationsSummaryService.getStatusStats` (`purchase-quotations-summary.service.ts:16`): RFQ count per status, `startDate`/`endDate` on `createdAt`; declared before `/:id`.
@@ -39,7 +39,7 @@ purchase-orders (12) -> POS:
 - GET /supplier-value-summary read: `getPurchaseOrderSupplierValueSummary` (ctrl:70) -> `PurchaseOrdersSummaryService.getSupplierValueSummary` (`purchase-orders-summary.service.ts:31`): per supplier `totalValue` (sum of `coalesce(quotationQuantity, quantity) * unitPrice`) and `orderCount`; `status` default ORDERED, date range on `orderDate`, `limit`.
 - GET /overdue read: `getOverduePurchaseOrders` (ctrl:84) -> `getOverduePurchaseOrders` (summary svc:63): ORDERED, not closed, `expectedDate` before today and received < ordered; received = POSTED receipt lines, supplier returns are not netted out (differs from `resolveOrderProgress`). `limit`.
 - GET / read :99; GET /:id read :403; GET /:id/related-notes read: PNS :83.
-- GET /:id/export-pdf read: `purchase-orders/purchase-order-pdf.service.ts` exportPurchaseOrderPdf (PDF BM 07-02, A4 portrait, `FormTemplateType.PURCHASE_ORDER`; totals via `calculatePurchaseOrderAmounts`, contact = primary supplier representative, "Người lập" / "Phê duyệt" = creator / approver of the source RFQ with `created_at` / `approved_at`, supplier box left blank).
+- GET /:id/export-pdf read: `purchase-orders/purchase-order-pdf.service.ts` exportPurchaseOrderPdf (PDF BM 05-04, A4 portrait, `FormTemplateType.PURCHASE_ORDER`; totals via `calculatePurchaseOrderAmounts`, contact = primary supplier representative, "Người lập" / "Phê duyệt" = creator / approver of the source RFQ with `created_at` / `approved_at`, supplier box left blank).
 - PATCH /:id update :582; PATCH /:id/items/:itemId update :667 (both PENDING_CONFIRMATION only).
 - PATCH /:id/advance-payment update :603 [purchase_orders, payment_requests, logs].
 - POST /:id/confirm update :702; /cancel approve :743 [purchase_orders, payment_requests+logs, inventory_receipts, purchase_quotations]; /close approve :913 [purchase_order_items, purchase_orders, payment_requests].

@@ -1,0 +1,18 @@
+<style>
+  /* Biểu mẫu chảy theo nội dung và tự sang trang khi bảng dài; số trang và mã biểu mẫu
+     do Chromium vẽ ở chân trang (xem `PdfRendererService`). */
+  @media print {
+    html, body { height: auto !important; }
+    .form-wrapper { display: block !important; height: auto !important; }
+    .a4-page, .a4-page.active {
+      display: block !important;
+      height: auto !important;
+      min-height: 0 !important;
+      max-height: none !important;
+      overflow: visible !important;
+    }
+    .form-inner { display: block !important; height: auto !important; }
+    thead { display: table-header-group; }
+    tr, .signatures-flat-row { break-inside: avoid; }
+  }
+</style>

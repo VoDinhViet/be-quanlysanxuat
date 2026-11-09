@@ -85,7 +85,7 @@ export class InventoryRequisitionsController {
   @Get(':requisitionId/export-pdf')
   @Permissions('inventory-requisitions:read')
   @ApiAuth({
-    summary: 'Xuất PDF Phiếu lãnh vật tư (BM 09-03)',
+    summary: 'Xuất PDF Phiếu lãnh vật tư (BM 09-06)',
     fileType: 'application/pdf',
   })
   exportInventoryRequisitionPdf(

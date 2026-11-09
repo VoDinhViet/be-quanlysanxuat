@@ -3,17 +3,13 @@ import { format } from 'date-fns';
 import { asc, desc, eq, getTableColumns } from 'drizzle-orm';
 
 import { vnZone } from '../../common/utils/time';
-import {
-  formatQuantity,
-  formatVnd,
-  formatVndInWords,
-} from '../../common/utils/vnd';
+import { formatQuantity, formatVnd } from '../../common/utils/vnd';
 import { ErrorCode } from '../../constants/error-code.constant';
+import { PAYMENT_TERM_LABELS } from '../../constants/payment-term.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database } from '../../database/database.type';
 import {
   items,
-  PaymentTerm,
   purchaseOrderItems,
   purchaseOrders,
   purchaseRequestItems,
@@ -28,14 +24,7 @@ import {
 import { PdfRendererService } from '../../templates/pdf-renderer.service';
 import { calculatePurchaseOrderAmounts } from './purchase-orders.query';
 
-const paymentTermLabels: Record<PaymentTerm, string> = {
-  [PaymentTerm.IMMEDIATE]: 'Thanh toán ngay',
-  [PaymentTerm.NET_15]: 'Net 15 ngày',
-  [PaymentTerm.NET_30]: 'Net 30 ngày',
-  [PaymentTerm.NET_60]: 'Net 60 ngày',
-};
-
-/** Tách khỏi `PurchaseOrdersService` (đã quá dài) — chỉ đọc PO và in biểu mẫu BM 07-02. */
+/** Chỉ đọc PO và in biểu mẫu BM 05-04. */
 @Injectable()
 export class PurchaseOrderPdfService {
   constructor(
@@ -117,7 +106,7 @@ export class PurchaseOrderPdfService {
       supplier_email: supplier.email ?? '',
       supplier_contact: primaryRepresentative?.name ?? '',
       payment_term: purchaseOrder.paymentTerm
-        ? paymentTermLabels[purchaseOrder.paymentTerm]
+        ? PAYMENT_TERM_LABELS[purchaseOrder.paymentTerm]
         : '',
       note: purchaseOrder.note ?? '',
       order_items: orderLines.map((line, index) => ({
@@ -145,7 +134,6 @@ export class PurchaseOrderPdfService {
       grand_total: formatVnd(amounts.totalAmount),
       advance_payment: formatVnd(purchaseOrder.advancePaymentAmount),
       balance_due: formatVnd(amounts.balanceDue),
-      amount_in_words: formatVndInWords(amounts.totalAmount),
       creator_name: quotation?.creatorBy?.fullName ?? '',
       creator_date: quotation?.createdAt
         ? format(quotation.createdAt, 'dd/MM/yyyy', { in: vnZone })

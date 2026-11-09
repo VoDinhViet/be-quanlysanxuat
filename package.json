@@ -49,6 +49,7 @@
     "@types/compression": "^1.8.1",
     "bcryptjs": "^3.0.3",
     "bullmq": "^5.76.8",
+    "bwip-js": "^4.11.4",
     "cache-manager": "^7.2.8",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",

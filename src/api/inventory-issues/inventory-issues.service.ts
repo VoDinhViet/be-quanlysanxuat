@@ -294,9 +294,10 @@ export class InventoryIssuesService {
   }
 
   /** "PO / Lý do" dùng chung quy tắc với cột của danh sách (`resolvePoOrReason`); người lãnh in ra
-   * là `requesterBy` của phiếu lãnh sinh ra phiếu xuất. */
+   * là `requesterBy` của phiếu lãnh sinh ra phiếu xuất. Phê duyệt là người duyệt phiếu lãnh đó (phiếu
+   * xuất không có bước duyệt riêng), Xác nhận xuất kho là người ghi sổ phiếu xuất. */
   async exportInventoryIssuePdf(issueId: string): Promise<StreamableFile> {
-    const [inventoryIssue, requisitionByIssueId] = await Promise.all([
+    const [inventoryIssue, requisition] = await Promise.all([
       this.db.query.inventoryIssues.findFirst({
         where: eq(inventoryIssues.id, issueId),
         with: {
@@ -307,20 +308,22 @@ export class InventoryIssuesService {
           department: true,
           requesterBy: true,
           creatorBy: true,
+          posterBy: true,
           items: {
             with: { item: true, unit: true },
             orderBy: (issueItems, { asc }) => [asc(issueItems.createdAt)],
           },
         },
       }),
-      this.getRequisitionsByIssueIds([issueId]),
+      this.db.query.inventoryRequisitions.findFirst({
+        where: eq(inventoryRequisitions.inventoryIssueId, issueId),
+        with: { approverBy: true },
+      }),
     ]);
 
     if (!inventoryIssue) {
       throw new AppException(ErrorCode.E096, HttpStatus.NOT_FOUND);
     }
-
-    const requisition = requisitionByIssueId.get(issueId) ?? null;
 
     const context = {
       code: inventoryIssue.code,
@@ -331,10 +334,20 @@ export class InventoryIssuesService {
       department_name: inventoryIssue.department?.name ?? '',
       requester_name: inventoryIssue.requesterBy?.fullName ?? '',
       creator_name: inventoryIssue.creatorBy?.fullName ?? '',
-      creator_date: format(new Date(), 'dd/MM/yyyy', { in: vnZone }),
+      creator_date: format(inventoryIssue.createdAt, 'dd/MM/yyyy', {
+        in: vnZone,
+      }),
+      approver_name: requisition?.approverBy?.fullName ?? '',
+      approver_date: requisition?.approvedAt
+        ? format(requisition.approvedAt, 'dd/MM/yyyy', { in: vnZone })
+        : '',
+      poster_name: inventoryIssue.posterBy?.fullName ?? '',
+      poster_date: inventoryIssue.postedAt
+        ? format(inventoryIssue.postedAt, 'dd/MM/yyyy', { in: vnZone })
+        : '',
       source:
         resolvePoOrReason(
-          requisition,
+          requisition ?? null,
           inventoryIssue.productionOrder?.order.buyerPoNo ?? null,
           inventoryIssue.note,
         ) ?? '',
