@@ -19,7 +19,12 @@ import {
   generateDocumentSequence,
 } from '../../common/utils/document-sequence';
 import { unaccentILike } from '../../common/utils/search';
-import { vnZone } from '../../common/utils/time';
+import {
+  exclusiveEndOfDay,
+  startOfVnDay,
+  vnDateOf,
+  vnZone,
+} from '../../common/utils/time';
 import { ErrorCode } from '../../constants/error-code.constant';
 import { DRIZZLE } from '../../database/database.module';
 import type { Database, DbTransaction } from '../../database/database.type';
@@ -111,12 +116,15 @@ export class InventoryRequisitionsService {
         ? eq(inventoryRequisitions.productionJobId, reqDto.productionJobId)
         : undefined,
       reqDto.startDate
-        ? gte(inventoryRequisitions.requisitionDate, reqDto.startDate)
+        ? gte(
+            inventoryRequisitions.requisitionDate,
+            startOfVnDay(reqDto.startDate),
+          )
         : undefined,
       reqDto.endDate
         ? lt(
             inventoryRequisitions.requisitionDate,
-            new Date(reqDto.endDate.getTime() + 24 * 60 * 60 * 1000),
+            exclusiveEndOfDay(reqDto.endDate),
           )
         : undefined,
     );
@@ -428,7 +436,7 @@ export class InventoryRequisitionsService {
         code: issueCode,
         issueType: InventoryIssueType.PRODUCTION,
         status: InventoryDocumentStatus.DRAFT,
-        issueDate: inventoryRequisition.requisitionDate,
+        issueDate: vnDateOf(inventoryRequisition.requisitionDate),
         productionOrderId: inventoryRequisition.productionOrderId,
         productionJobId: inventoryRequisition.productionJobId,
         departmentId: inventoryRequisition.departmentId,

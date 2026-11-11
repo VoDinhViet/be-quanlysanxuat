@@ -25,9 +25,13 @@ export class GetInventoryRequisitionsReqDto extends PageOptionsDto {
   @UUIDFieldOptional({ description: 'Filter theo Job' })
   readonly productionJobId?: string;
 
-  @DateFieldOptional({ description: 'Filter: requisitionDate >= startDate' })
+  @DateFieldOptional({
+    description: 'Từ ngày (giờ Việt Nam), tính từ 00:00 của ngày này',
+  })
   readonly startDate?: Date;
 
-  @DateFieldOptional({ description: 'Filter: requisitionDate <= endDate' })
+  @DateFieldOptional({
+    description: 'Đến ngày (giờ Việt Nam), gồm cả ngày cuối',
+  })
   readonly endDate?: Date;
 }

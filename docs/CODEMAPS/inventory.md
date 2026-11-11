@@ -1,4 +1,4 @@
-<!-- Generated: 2026-11-09 | Files scanned: 41 | Token estimate: ~3800 -->
+<!-- Generated: 2026-11-11 | Files scanned: 41 | Token estimate: ~3800 -->
 # Inventory codemap
 
 Single warehouse: `inventory_balances.itemId` is UNIQUE, no warehouse column (`src/database/schemas/inventory/inventory-balances.ts`).
@@ -47,11 +47,11 @@ Controller file = `<folder>.controller.ts`; "Svc" = service line.
 | DELETE /inventory-issues/:issueId | D | deleteInventoryIssue (321) | issues |
 | POST .../:issueId/post | U | postInventoryIssue (358), optional body `{note, fileIds}` (UploadType INVENTORY_ISSUE_EVIDENCE, `linkFiles` before the tx) | issues (`post_note`), inventory_issue_files, balances, transactions, requisitions |
 | POST .../:issueId/cancel | U | cancelInventoryIssue (403) | issues, requisitions |
-| GET /inventory-requisitions | inventory-requisitions:read | getInventoryRequisitions (72) | - |
+| GET /inventory-requisitions | inventory-requisitions:read | getInventoryRequisitions (72); `startDate`/`endDate` filter `requisitionDate` by Vietnam day (`startOfVnDay` / `exclusiveEndOfDay`) | - |
 | GET /inventory-requisitions/lines | :read | RequisitionLinesService.getRequisitionPickerLines (lines.service 109); declared before `:requisitionId` | - |
 | GET .../:requisitionId | :read | getInventoryRequisition (150) | - |
 | GET .../:requisitionId/export-pdf | :read | InventoryRequisitionPdfService.exportInventoryRequisitionPdf (pdf.service 31): PDF BM 09-06 A4 portrait; signatures = creator + approver; PO / Lý do = order `buyerPoNo` for PRODUCTION, `reason` otherwise | - |
-| POST /inventory-requisitions | :create | createInventoryRequisition (185) | requisitions, requisition_items |
+| POST /inventory-requisitions | :create | createInventoryRequisition (185); body `requisitionDate` is an ISO instant (UTC; the web form defaults to now and sends the picked Vietnam wall-clock time as UTC), stored in a `timestamp` column; approve copies its Vietnam day to the PXK `issueDate` (`vnDateOf`) | requisitions, requisition_items |
 | PATCH .../:requisitionId | :update | updateInventoryRequisition (233); REJECTED reopens to DRAFT | requisitions, requisition_items |
 | DELETE .../:requisitionId | :delete | deleteInventoryRequisition (270), DRAFT only | requisitions |
 | POST .../:requisitionId/send | :update | sendInventoryRequisition (292) | requisitions |

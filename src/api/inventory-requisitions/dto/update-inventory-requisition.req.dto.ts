@@ -9,7 +9,7 @@ import {
 import { CreateInventoryRequisitionItemReqDto } from './create-inventory-requisition-item.req.dto';
 
 export class UpdateInventoryRequisitionReqDto {
-  @DateFieldOptional()
+  @DateFieldOptional({ description: 'Thời điểm lãnh (ISO, UTC)' })
   readonly requisitionDate?: Date;
 
   @EnumFieldOptional(() => InventoryRequisitionType)

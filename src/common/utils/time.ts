@@ -16,15 +16,21 @@ export function getFileDate(): string {
   return format(new Date(), 'yyyyMMdd', { in: vnZone });
 }
 
-/** "Hôm nay" theo giờ Việt Nam, neo về UTC-midnight của đúng ngày đó — an toàn để ghi vào cột
- * Drizzle `date` (Postgres `date`, serialize qua `.toISOString()`). `new Date()` trần lệch một
- * ngày trong khung 00:00–06:59 giờ VN, vì lúc đó vẫn còn là ngày hôm trước theo UTC. */
-export function vnToday(): Date {
-  const today = vnZone(Date.now());
+/** Ngày lịch theo giờ Việt Nam của một mốc giờ, neo về UTC-midnight của đúng ngày đó — an toàn để
+ * ghi vào cột Drizzle `date` (Postgres `date`, serialize qua `.toISOString()`). Ghi thẳng mốc giờ
+ * vào cột `date` lệch một ngày trong khung 00:00–06:59 giờ VN, vì lúc đó vẫn còn là ngày hôm
+ * trước theo UTC. */
+export function vnDateOf(moment: Date): Date {
+  const vnMoment = vnZone(moment);
 
   return new Date(
-    Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()),
+    Date.UTC(vnMoment.getFullYear(), vnMoment.getMonth(), vnMoment.getDate()),
   );
+}
+
+/** "Hôm nay" theo giờ Việt Nam, neo về UTC-midnight cho cột `date` (xem `vnDateOf`). */
+export function vnToday(): Date {
+  return vnDateOf(new Date());
 }
 
 // Bộ lọc khoảng ngày nhận `yyyy-MM-dd` đã parse thành 00:00 UTC (= 07:00 giờ VN, cùng ngày lịch).

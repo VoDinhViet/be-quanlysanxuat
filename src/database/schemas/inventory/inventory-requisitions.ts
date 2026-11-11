@@ -1,6 +1,5 @@
 import { relations } from 'drizzle-orm';
 import {
-  date,
   index,
   pgEnum,
   pgTable,
@@ -58,7 +57,7 @@ export const inventoryRequisitions = pgTable(
   {
     id: uuid('id').defaultRandom().primaryKey(),
     code: varchar('code', { length: 50 }).notNull().unique(),
-    requisitionDate: date('requisition_date', { mode: 'date' }).notNull(),
+    requisitionDate: timestamp('requisition_date').defaultNow().notNull(),
     type: inventoryRequisitionTypeEnum('type').notNull(),
     departmentId: uuid('department_id').references(() => departments.id, {
       onDelete: 'set null',
